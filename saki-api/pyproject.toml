@@ -1,0 +1,34 @@
+[project]
+name = "saki-api"
+version = "0.1.0"
+description = "Saki Active Learning API"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "sqlmodel>=0.0.8",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-multipart>=0.0.6",
+    "pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "modAL-python>=0.4.2",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "al_engine"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "httpx>=0.24.0",
+]

@@ -1,6 +1,21 @@
-import { Project, Sample, Annotation } from '../types';
+import { Project, Sample, Annotation, ALStrategy, ModelArchitecture } from '../types';
 
 // Mock Data
+const mockStrategies: ALStrategy[] = [
+  { id: 'least_confidence', name: 'Least Confidence', description: 'Selects samples where the model is least confident.' },
+  { id: 'margin_sampling', name: 'Margin Sampling', description: 'Selects samples with the smallest margin between top two predictions.' },
+  { id: 'entropy_sampling', name: 'Entropy Sampling', description: 'Selects samples with the highest entropy.' },
+  { id: 'random', name: 'Random Sampling', description: 'Selects samples randomly.' },
+];
+
+const mockArchitectures: ModelArchitecture[] = [
+  { id: 'resnet18', name: 'ResNet-18', taskType: 'classification' },
+  { id: 'resnet50', name: 'ResNet-50', taskType: 'classification' },
+  { id: 'efficientnet_b0', name: 'EfficientNet-B0', taskType: 'classification' },
+  { id: 'yolov5', name: 'YOLOv5', taskType: 'detection' },
+  { id: 'faster_rcnn', name: 'Faster R-CNN', taskType: 'detection' },
+];
+
 const mockProjects: Project[] = [
   {
     id: '1',
@@ -85,5 +100,13 @@ export const api = {
   saveAnnotation: async (annotation: Annotation): Promise<void> => {
       console.log('Saved annotation:', annotation);
       return new Promise((resolve) => setTimeout(resolve, 300));
+  },
+
+  getALStrategies: async (): Promise<ALStrategy[]> => {
+    return new Promise((resolve) => setTimeout(() => resolve(mockStrategies), 300));
+  },
+
+  getModelArchitectures: async (): Promise<ModelArchitecture[]> => {
+    return new Promise((resolve) => setTimeout(() => resolve(mockArchitectures), 300));
   }
 };

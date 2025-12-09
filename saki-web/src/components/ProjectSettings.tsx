@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, ColorPicker } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { Project, LabelConfig } from '../types';
+import { Project, LabelConfig, ALStrategy, ModelArchitecture } from '../types';
+import { api } from '../services/api';
 
 interface ProjectSettingsProps {
   project: Project;
@@ -15,6 +16,13 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
   const [labels, setLabels] = useState<LabelConfig[]>(project.labels || []);
   const [newLabelName, setNewLabelName] = useState('');
   const [newLabelColor, setNewLabelColor] = useState('#1677ff');
+  const [strategies, setStrategies] = useState<ALStrategy[]>([]);
+  const [architectures, setArchitectures] = useState<ModelArchitecture[]>([]);
+
+  useEffect(() => {
+    api.getALStrategies().then(setStrategies);
+    api.getModelArchitectures().then(setArchitectures);
+  }, []);
 
   const handleSave = (values: any) => {
     const updatedProject = {
@@ -109,10 +117,9 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         <Card title={t('projectSettings.alConfig')} style={{ marginBottom: 24 }}>
           <Form.Item label={t('projectSettings.queryStrategy')} name="alConfig.strategy">
             <Select>
-              <Select.Option value="least_confidence">{t('projectSettings.strategies.least_confidence')}</Select.Option>
-              <Select.Option value="margin_sampling">{t('projectSettings.strategies.margin_sampling')}</Select.Option>
-              <Select.Option value="entropy_sampling">{t('projectSettings.strategies.entropy_sampling')}</Select.Option>
-              <Select.Option value="random">{t('projectSettings.strategies.random')}</Select.Option>
+              {strategies.map(s => (
+                <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
+              ))}
             </Select>
           </Form.Item>
           <Form.Item label={t('projectSettings.batchSize')} name="alConfig.batchSize" help={t('projectSettings.batchSizeHelp')}>
@@ -123,11 +130,11 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         <Card title={t('projectSettings.modelConfig')} style={{ marginBottom: 24 }}>
           <Form.Item label={t('projectSettings.modelArchitecture')} name="modelConfig.architecture">
             <Select>
-              <Select.Option value="resnet18">ResNet-18</Select.Option>
-              <Select.Option value="resnet50">ResNet-50</Select.Option>
-              <Select.Option value="efficientnet_b0">EfficientNet-B0</Select.Option>
-              <Select.Option value="yolov5">YOLOv5 (Detection)</Select.Option>
-              <Select.Option value="faster_rcnn">Faster R-CNN (Detection)</Select.Option>
+              {architectures
+                .filter(a => a.taskType === 'both' || a.taskType === project.taskType)
+                .map(a => (
+                  <Select.Option key={a.id} value={a.id}>{a.name}</Select.Option>
+                ))}
             </Select>
           </Form.Item>
         </Card>

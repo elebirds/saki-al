@@ -105,7 +105,7 @@ const AnnotationWorkspace: React.FC = () => {
 
   const handleSubmit = useCallback(() => {
     if (!currentSample) return;
-    console.log('Submitting annotations for', currentSample.id, annotations);
+    // In a real app, this would send data to the backend
     handleNext();
   }, [currentSample, annotations, handleNext]);
 

@@ -48,3 +48,15 @@ export interface Annotation {
     rotation?: number;
   };
 }
+
+export interface ALStrategy {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface ModelArchitecture {
+  id: string;
+  name: string;
+  taskType: 'classification' | 'detection' | 'both';
+}

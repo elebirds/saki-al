@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Button, Typography, Space, Card, List, Image, Tag, Progress, Tabs } from 'antd';
+import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Project, Sample } from '../types';
 import { api } from '../services/api';

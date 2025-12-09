@@ -75,6 +75,8 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
     });
   };
 
+  // Manually update text position during drag/transform to keep it synced
+  // before the React state update occurs on dragEnd/transformEnd.
   const updateTextPosition = (e: Konva.KonvaEventObject<Event>) => {
     const stage = e.target.getStage();
     const textNode = stage?.findOne(`#text-${ann.id}`);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, ColorPicker } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { Project, LabelConfig } from '../types';
 
 interface ProjectSettingsProps {
@@ -9,6 +10,7 @@ interface ProjectSettingsProps {
 }
 
 const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) => {
+  const { t } = useTranslation();
   const [form] = Form.useForm();
   const [labels, setLabels] = useState<LabelConfig[]>(project.labels || []);
   const [newLabelName, setNewLabelName] = useState('');
@@ -23,7 +25,7 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
     // In a real app, we would make an API call here
     console.log('Saving project settings:', updatedProject);
     onUpdate(updatedProject);
-    message.success('Settings saved successfully');
+    message.success(t('projectSettings.successMessage'));
   };
 
   const handleAddLabel = () => {
@@ -52,16 +54,16 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         }}
         onFinish={handleSave}
       >
-        <Card title="Basic Information" style={{ marginBottom: 24 }}>
-          <Form.Item label="Project Name" name="name" rules={[{ required: true }]}>
+        <Card title={t('projectSettings.basicInfo')} style={{ marginBottom: 24 }}>
+          <Form.Item label={t('projectSettings.projectName')} name="name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Description" name="description">
+          <Form.Item label={t('projectSettings.description')} name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Card>
 
-        <Card title="Label Management" style={{ marginBottom: 24 }}>
+        <Card title={t('projectSettings.labelManagement')} style={{ marginBottom: 24 }}>
           <div style={{ marginBottom: 16 }}>
             <Space wrap>
               {labels.map(label => (
@@ -91,7 +93,7 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
           </div>
           <Space>
             <Input
-              placeholder="New Label Name"
+              placeholder={t('projectSettings.newLabelName')}
               value={newLabelName}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabelName(e.target.value)}
               onPressEnter={handleAddLabel}
@@ -99,27 +101,27 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
             />
             <ColorPicker value={newLabelColor} onChange={(c: any) => setNewLabelColor(c)} />
             <Button type="dashed" onClick={handleAddLabel} icon={<PlusOutlined />}>
-              Add Label
+              {t('projectSettings.addLabel')}
             </Button>
           </Space>
         </Card>
 
-        <Card title="Active Learning Configuration" style={{ marginBottom: 24 }}>
-          <Form.Item label="Query Strategy" name="alConfig.strategy">
+        <Card title={t('projectSettings.alConfig')} style={{ marginBottom: 24 }}>
+          <Form.Item label={t('projectSettings.queryStrategy')} name="alConfig.strategy">
             <Select>
-              <Select.Option value="least_confidence">Least Confidence</Select.Option>
-              <Select.Option value="margin_sampling">Margin Sampling</Select.Option>
-              <Select.Option value="entropy_sampling">Entropy Sampling</Select.Option>
-              <Select.Option value="random">Random Sampling</Select.Option>
+              <Select.Option value="least_confidence">{t('projectSettings.strategies.least_confidence')}</Select.Option>
+              <Select.Option value="margin_sampling">{t('projectSettings.strategies.margin_sampling')}</Select.Option>
+              <Select.Option value="entropy_sampling">{t('projectSettings.strategies.entropy_sampling')}</Select.Option>
+              <Select.Option value="random">{t('projectSettings.strategies.random')}</Select.Option>
             </Select>
           </Form.Item>
-          <Form.Item label="Query Batch Size" name="alConfig.batchSize" help="Number of samples to query in each iteration">
+          <Form.Item label={t('projectSettings.batchSize')} name="alConfig.batchSize" help={t('projectSettings.batchSizeHelp')}>
             <InputNumber min={1} max={1000} />
           </Form.Item>
         </Card>
 
-        <Card title="Model Configuration" style={{ marginBottom: 24 }}>
-          <Form.Item label="Model Architecture" name="modelConfig.architecture">
+        <Card title={t('projectSettings.modelConfig')} style={{ marginBottom: 24 }}>
+          <Form.Item label={t('projectSettings.modelArchitecture')} name="modelConfig.architecture">
             <Select>
               <Select.Option value="resnet18">ResNet-18</Select.Option>
               <Select.Option value="resnet50">ResNet-50</Select.Option>
@@ -132,7 +134,7 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
 
         <Form.Item>
           <Button type="primary" htmlType="submit" size="large" block>
-            Save Settings
+            {t('projectSettings.saveSettings')}
           </Button>
         </Form.Item>
       </Form>

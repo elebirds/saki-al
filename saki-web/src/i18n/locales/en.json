@@ -1,0 +1,63 @@
+{
+  "app": {
+    "title": "Saki AL",
+    "projects": "Projects",
+    "about": "About",
+    "footer": "Saki Active Learning ©2023 Created by GitHub Copilot"
+  },
+  "projectList": {
+    "title": "Projects",
+    "newProject": "New Project",
+    "open": "Open",
+    "stats": "Stats",
+    "labeled": "Labeled",
+    "accuracy": "Accuracy"
+  },
+  "projectDetail": {
+    "progress": "Progress",
+    "labeled": "Labeled",
+    "startLabeling": "Start Labeling",
+    "trainModel": "Train Model",
+    "uploadData": "Upload Data",
+    "settings": "Settings",
+    "dataPool": "Data Pool"
+  },
+  "workspace": {
+    "annotations": "Annotations",
+    "noAnnotations": "No annotations",
+    "submitNext": "Submit & Next",
+    "loading": "Loading...",
+    "label": "Label:",
+    "tools": {
+      "select": "Select (V)",
+      "rect": "Rectangle (R)",
+      "obb": "Oriented BBox (O)",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "resetView": "Reset View"
+    },
+    "help": "Scroll to Zoom • Drag to Pan (Select Mode) • Delete to Remove"
+  },
+  "projectSettings": {
+    "successMessage": "Settings saved successfully",
+    "basicInfo": "Basic Information",
+    "projectName": "Project Name",
+    "description": "Description",
+    "labelManagement": "Label Management",
+    "newLabelName": "New Label Name",
+    "addLabel": "Add Label",
+    "alConfig": "Active Learning Configuration",
+    "queryStrategy": "Query Strategy",
+    "strategies": {
+      "least_confidence": "Least Confidence",
+      "margin_sampling": "Margin Sampling",
+      "entropy_sampling": "Entropy Sampling",
+      "random": "Random Sampling"
+    },
+    "batchSize": "Query Batch Size",
+    "batchSizeHelp": "Number of samples to query in each iteration",
+    "modelConfig": "Model Configuration",
+    "modelArchitecture": "Model Architecture",
+    "saveSettings": "Save Settings"
+  }
+}

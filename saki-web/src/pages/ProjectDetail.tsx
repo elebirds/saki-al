@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout, Button, Typography, Space, Card, List, Image, Tag, Progress, Tabs } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { Project, Sample } from '../types';
 import { api } from '../services/api';
 import { PlayCircleOutlined, HighlightOutlined, UploadOutlined, SettingOutlined } from '@ant-design/icons';
@@ -10,6 +11,7 @@ const { Title } = Typography;
 const { Sider, Content } = Layout;
 
 const ProjectDetail: React.FC = () => {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
@@ -30,15 +32,15 @@ const ProjectDetail: React.FC = () => {
     // In a real app, we would also trigger a refetch or update the backend here if not done in the component
   };
 
-  if (!project) return <div>Loading...</div>;
+  if (!project) return <div>{t('workspace.loading')}</div>;
 
   const items = [
     {
       key: 'data',
-      label: 'Data Pool',
+      label: t('projectDetail.dataPool'),
       children: (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <Title level={5} style={{ flexShrink: 0 }}>Data Pool</Title>
+          <Title level={5} style={{ flexShrink: 0 }}>{t('projectDetail.dataPool')}</Title>
           <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
             <List
               grid={{
@@ -72,7 +74,7 @@ const ProjectDetail: React.FC = () => {
     },
     {
       key: 'settings',
-      label: 'Settings',
+      label: t('projectDetail.settings'),
       children: (
         <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
           <ProjectSettings project={project} onUpdate={handleProjectUpdate} />
@@ -86,24 +88,24 @@ const ProjectDetail: React.FC = () => {
       <Sider width={300} theme="light" style={{ borderRight: '1px solid #f0f0f0', padding: '20px', overflowY: 'auto' }}>
         <Title level={4}>{project.name}</Title>
         <Space direction="vertical" style={{ width: '100%' }} size="large">
-          <Card size="small" title="Progress">
+          <Card size="small" title={t('projectDetail.progress')}>
             <Progress percent={Math.round((project.stats.labeledSamples / project.stats.totalSamples) * 100)} />
             <div style={{ marginTop: 10 }}>
-              Labeled: {project.stats.labeledSamples} / {project.stats.totalSamples}
+              {t('projectDetail.labeled')}: {project.stats.labeledSamples} / {project.stats.totalSamples}
             </div>
           </Card>
           
           <Button type="primary" block icon={<HighlightOutlined />} onClick={() => navigate(`/workspace/${project.id}`)}>
-            Start Labeling
+            {t('projectDetail.startLabeling')}
           </Button>
           <Button block icon={<PlayCircleOutlined />}>
-            Train Model
+            {t('projectDetail.trainModel')}
           </Button>
           <Button block icon={<UploadOutlined />}>
-            Upload Data
+            {t('projectDetail.uploadData')}
           </Button>
           <Button block icon={<SettingOutlined />} onClick={() => setActiveTab('settings')}>
-            Settings
+            {t('projectDetail.settings')}
           </Button>
         </Space>
       </Sider>

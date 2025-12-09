@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Layout, Button, Card, Space, Typography, List, Radio, Tooltip, Select, Tag } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { LeftOutlined, RightOutlined, CheckOutlined, DragOutlined, BorderOutlined, RotateRightOutlined, DeleteOutlined, UndoOutlined, RedoOutlined, ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons';
 import AnnotationCanvas, { AnnotationCanvasRef } from '../components/AnnotationCanvas';
 import { api } from '../services/api';
@@ -10,6 +11,7 @@ const { Sider, Content } = Layout;
 const { Title } = Typography;
 
 const AnnotationWorkspace: React.FC = () => {
+  const { t } = useTranslation();
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
@@ -152,7 +154,7 @@ const AnnotationWorkspace: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleNext, handlePrev, handleSubmit, undo, redo]);
 
-  if (!currentSample || !project) return <div>Loading...</div>;
+  if (!currentSample || !project) return <div>{t('workspace.loading')}</div>;
 
   return (
     <Layout style={{ height: '100%' }}>
@@ -160,7 +162,7 @@ const AnnotationWorkspace: React.FC = () => {
         {/* Toolbar */}
         <div style={{ padding: '10px', background: '#fff', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: '10px', alignItems: 'center' }}>
           <Space>
-            <span style={{ fontWeight: 'bold' }}>Label:</span>
+            <span style={{ fontWeight: 'bold' }}>{t('workspace.label')}</span>
             <Select
               value={selectedLabel?.name}
               onChange={(value) => {
@@ -188,36 +190,36 @@ const AnnotationWorkspace: React.FC = () => {
           <div style={{ width: 1, height: 24, background: '#f0f0f0', margin: '0 10px' }} />
           <Radio.Group value={currentTool} onChange={e => setCurrentTool(e.target.value)} buttonStyle="solid">
             <Radio.Button value="select">
-              <Tooltip title="Select & Edit (V)">
+              <Tooltip title={t('workspace.tools.select')}>
                 <DragOutlined /> Select
               </Tooltip>
             </Radio.Button>
             <Radio.Button value="rect">
-              <Tooltip title="Rectangle (R)">
+              <Tooltip title={t('workspace.tools.rect')}>
                 <BorderOutlined /> Rect
               </Tooltip>
             </Radio.Button>
             <Radio.Button value="obb">
-              <Tooltip title="Oriented BBox (O)">
+              <Tooltip title={t('workspace.tools.obb')}>
                 <RotateRightOutlined /> OBB
               </Tooltip>
             </Radio.Button>
           </Radio.Group>
           <div style={{ width: 1, height: 24, background: '#f0f0f0', margin: '0 10px' }} />
           <Space>
-            <Tooltip title="Zoom In">
+            <Tooltip title={t('workspace.tools.zoomIn')}>
               <Button icon={<ZoomInOutlined />} onClick={() => canvasRef.current?.zoomIn()} />
             </Tooltip>
-            <Tooltip title="Zoom Out">
+            <Tooltip title={t('workspace.tools.zoomOut')}>
               <Button icon={<ZoomOutOutlined />} onClick={() => canvasRef.current?.zoomOut()} />
             </Tooltip>
-            <Tooltip title="Reset View">
+            <Tooltip title={t('workspace.tools.resetView')}>
               <Button icon={<ExpandOutlined />} onClick={() => canvasRef.current?.resetView()} />
             </Tooltip>
           </Space>
           <div style={{ flex: 1 }} />
           <span style={{ lineHeight: '32px', color: '#888' }}>
-            Scroll to Zoom • Drag to Pan (Select Mode) • Delete to Remove
+            {t('workspace.help')}
           </span>
         </div>
 
@@ -239,7 +241,7 @@ const AnnotationWorkspace: React.FC = () => {
       </Content>
 
       <Sider width={300} theme="light" style={{ padding: '20px', borderLeft: '1px solid #f0f0f0', overflowY: 'auto' }}>
-        <Title level={4}>Annotations</Title>
+        <Title level={4}>{t('workspace.annotations')}</Title>
         <Space direction="vertical" style={{ width: '100%' }}>
           <Card size="small" bodyStyle={{ padding: 0 }}>
             <List
@@ -266,7 +268,7 @@ const AnnotationWorkspace: React.FC = () => {
                 </List.Item>
               )}
             />
-            {annotations.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#999' }}>No annotations</div>}
+            {annotations.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#999' }}>{t('workspace.noAnnotations')}</div>}
           </Card>
           
           <div style={{ marginTop: 20 }}>
@@ -278,7 +280,7 @@ const AnnotationWorkspace: React.FC = () => {
           </div>
 
           <Button type="primary" block icon={<CheckOutlined />} onClick={handleSubmit} style={{ marginTop: 20 }}>
-            Submit & Next
+            {t('workspace.submitNext')}
           </Button>
         </Space>
       </Sider>

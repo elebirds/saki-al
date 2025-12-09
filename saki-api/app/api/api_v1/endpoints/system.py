@@ -32,10 +32,11 @@ def setup_system(
             detail="System already initialized",
         )
     
-    user = User.from_orm(user_in)
-    user.hashed_password = security.get_password_hash(user_in.password)
-    user.is_superuser = True
-    user.is_active = True
+    user_data = user_in.model_dump(exclude={"password"})
+    user_data["hashed_password"] = security.get_password_hash(user_in.password)
+    user_data["is_superuser"] = True
+    user_data["is_active"] = True
+    user = User.model_validate(user_data)
     
     session.add(user)
     session.commit()

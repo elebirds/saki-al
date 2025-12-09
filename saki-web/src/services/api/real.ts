@@ -1,27 +1,74 @@
 import axios, { AxiosInstance } from 'axios';
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture } from '../../types';
+import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, User, LoginResponse } from '../../types';
 import { ApiService } from './interface';
+import { useAuthStore } from '../../store/authStore';
 
 export class RealApiService implements ApiService {
   private client: AxiosInstance;
 
   constructor() {
     this.client = axios.create({
-      baseURL: '/api/v1',
+      baseURL: 'http://localhost:8000/api/v1', // Updated to point to backend
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
+    // Add request interceptor to inject token
+    this.client.interceptors.request.use(
+      (config) => {
+        const token = useAuthStore.getState().token;
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
     // Add response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
-        const message = error.response?.data?.message || error.message || 'API Error';
+        if (error.response?.status === 401) {
+          useAuthStore.getState().logout();
+        }
+        const message = error.response?.data?.detail || error.message || 'API Error';
         console.error('API Request Failed:', message);
         return Promise.reject(new Error(message));
       }
     );
+  }
+
+  async login(username: string, password: string): Promise<LoginResponse> {
+    const formData = new URLSearchParams();
+    formData.append('username', username);
+    formData.append('password', password);
+    
+    const response = await this.client.post<LoginResponse>('/login/access-token', formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    return response.data;
+  }
+
+  async register(email: string, password: string, fullName?: string): Promise<User> {
+    const response = await this.client.post<User>('/register', { email, password, full_name: fullName });
+    return response.data;
+  }
+
+  async getCurrentUser(): Promise<User> {
+    const response = await this.client.get<User>('/users/me');
+    return response.data;
+  }
+
+  async getSystemStatus(): Promise<{ initialized: boolean }> {
+    const response = await this.client.get<{ initialized: boolean }>('/system/status');
+    return response.data;
+  }
+
+  async setupSystem(email: string, password: string, fullName?: string): Promise<User> {
+    const response = await this.client.post<User>('/system/setup', { email, password, full_name: fullName });
+    return response.data;
   }
 
   async getProjects(): Promise<Project[]> {

@@ -1,6 +1,15 @@
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture } from '../../types';
+import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, User, LoginResponse } from '../../types';
 
 export interface ApiService {
+  // Auth
+  login(username: string, password: string): Promise<LoginResponse>;
+  register(email: string, password: string, fullName?: string): Promise<User>;
+  getCurrentUser(): Promise<User>;
+
+  // System
+  getSystemStatus(): Promise<{ initialized: boolean }>;
+  setupSystem(email: string, password: string, fullName?: string): Promise<User>;
+
   getProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;
   createProject(project: Omit<Project, 'id' | 'createdAt' | 'stats'>): Promise<Project>;

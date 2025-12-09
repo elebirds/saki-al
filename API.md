@@ -2,7 +2,40 @@
 
 Base URL: `/api/v1`
 
-## 1. Project Management
+## 1. Authentication & Users
+
+### Login (Get Access Token)
+- **Endpoint**: `POST /login/access-token`
+- **Content-Type**: `application/x-www-form-urlencoded`
+- **Body**:
+  - `username`: string (email)
+  - `password`: string
+- **Response**:
+  ```json
+  {
+    "access_token": "string",
+    "token_type": "bearer"
+  }
+  ```
+
+### Register User
+- **Endpoint**: `POST /register`
+- **Body**:
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "strongpassword",
+    "full_name": "John Doe"
+  }
+  ```
+- **Response**: `User` object.
+
+### Get Current User
+- **Endpoint**: `GET /users/me` (Note: This endpoint might need to be added to backend if not exists, or use token info)
+- **Headers**: `Authorization: Bearer <token>`
+- **Response**: `User` object.
+
+## 2. Project Management
 
 ### List Projects
 - **Endpoint**: `GET /projects`

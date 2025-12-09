@@ -18,6 +18,8 @@ dependencies = [
     "torchvision>=0.15.0",
     "modAL-python>=0.4.2",
     "python-dotenv>=1.0.0",
+    "python-jose[cryptography]>=3.5.0",
+    "passlib[bcrypt]>=1.7.4",
 ]
 
 [build-system]

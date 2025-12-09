@@ -35,10 +35,6 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 def root():
     return {"message": "Welcome to Saki Active Learning API"}
 
-@app.get("/")
-def root():
-    return {"message": "Welcome to Saki Active Learning API"}
-
 # Import and include routers here later
 # from app.api import api_router
 # app.include_router(api_router, prefix=settings.API_V1_STR)

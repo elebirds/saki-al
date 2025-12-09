@@ -155,7 +155,7 @@ const AnnotationWorkspace: React.FC = () => {
   if (!currentSample || !project) return <div>Loading...</div>;
 
   return (
-    <Layout style={{ height: 'calc(100vh - 64px)' }}>
+    <Layout style={{ height: '100%' }}>
       <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Toolbar */}
         <div style={{ padding: '10px', background: '#fff', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: '10px', alignItems: 'center' }}>

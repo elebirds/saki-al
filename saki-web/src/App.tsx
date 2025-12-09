@@ -14,7 +14,7 @@ const App: React.FC = () => {
 
   return (
     <Router>
-      <Layout className="layout" style={{ minHeight: '100vh' }}>
+      <Layout className="layout" style={{ height: '100vh', overflow: 'hidden' }}>
         <Header style={{ display: 'flex', alignItems: 'center' }}>
           <div className="demo-logo" style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginRight: '20px' }}>
             Saki AL
@@ -29,8 +29,8 @@ const App: React.FC = () => {
             ]}
           />
         </Header>
-        <Content style={{ padding: '0 50px', marginTop: '20px' }}>
-          <div className="site-layout-content" style={{ background: colorBgContainer, padding: 24, minHeight: 380 }}>
+        <Content style={{ padding: '0 50px', marginTop: '20px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div className="site-layout-content" style={{ background: colorBgContainer, padding: 24, flex: 1, overflow: 'hidden' }}>
             <Routes>
               <Route path="/" element={<ProjectList />} />
               <Route path="/projects/:id" element={<ProjectDetail />} />
@@ -39,7 +39,7 @@ const App: React.FC = () => {
             </Routes>
           </div>
         </Content>
-        <Footer style={{ textAlign: 'center' }}>Saki Active Learning ©2023 Created by GitHub Copilot</Footer>
+        <Footer style={{ textAlign: 'center', flexShrink: 0 }}>Saki Active Learning ©2023 Created by GitHub Copilot</Footer>
       </Layout>
     </Router>
   );

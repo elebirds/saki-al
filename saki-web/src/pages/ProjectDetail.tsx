@@ -37,39 +37,53 @@ const ProjectDetail: React.FC = () => {
       key: 'data',
       label: 'Data Pool',
       children: (
-        <>
-          <Title level={5}>Data Pool</Title>
-          <List
-            grid={{ gutter: 16, column: 4 }}
-            dataSource={samples}
-            renderItem={(item) => (
-              <List.Item>
-                <Card
-                  hoverable
-                  cover={<img alt="example" src={item.url} style={{ height: 150, objectFit: 'cover' }} />}
-                  size="small"
-                >
-                  <Card.Meta 
-                    title={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
-                    description={`Score: ${item.score?.toFixed(4)}`}
-                  />
-                </Card>
-              </List.Item>
-            )}
-          />
-        </>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Title level={5} style={{ flexShrink: 0 }}>Data Pool</Title>
+          <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
+            <List
+              grid={{
+                gutter: 16,
+                xs: 1,
+                sm: 2,
+                md: 2,
+                lg: 3,
+                xl: 4,
+                xxl: 4,
+              }}
+              dataSource={samples}
+              renderItem={(item) => (
+                <List.Item>
+                  <Card
+                    hoverable
+                    cover={<img alt="example" src={item.url} style={{ height: 150, objectFit: 'cover' }} />}
+                    size="small"
+                  >
+                    <Card.Meta 
+                      title={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
+                      description={`Score: ${item.score?.toFixed(4)}`}
+                    />
+                  </Card>
+                </List.Item>
+              )}
+            />
+          </div>
+        </div>
       ),
     },
     {
       key: 'settings',
       label: 'Settings',
-      children: <ProjectSettings project={project} onUpdate={handleProjectUpdate} />,
+      children: (
+        <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
+          <ProjectSettings project={project} onUpdate={handleProjectUpdate} />
+        </div>
+      ),
     },
   ];
 
   return (
-    <Layout style={{ background: '#fff', minHeight: '100vh' }}>
-      <Sider width={300} theme="light" style={{ borderRight: '1px solid #f0f0f0', padding: '20px' }}>
+    <Layout style={{ background: '#fff', height: '100%' }}>
+      <Sider width={300} theme="light" style={{ borderRight: '1px solid #f0f0f0', padding: '20px', overflowY: 'auto' }}>
         <Title level={4}>{project.name}</Title>
         <Space direction="vertical" style={{ width: '100%' }} size="large">
           <Card size="small" title="Progress">
@@ -93,8 +107,8 @@ const ProjectDetail: React.FC = () => {
           </Button>
         </Space>
       </Sider>
-      <Content style={{ padding: '24px' }}>
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} />
+      <Content style={{ padding: '24px', height: '100%', overflow: 'hidden' }}>
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs" />
       </Content>
     </Layout>
   );

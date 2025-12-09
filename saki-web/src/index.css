@@ -6,9 +6,39 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+.full-height-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.full-height-tabs .ant-tabs-nav {
+  flex-shrink: 0;
+}
+
+.full-height-tabs .ant-tabs-content-holder {
+  flex: 1;
+  overflow: hidden;
+  height: 100%;
+}
+
+.full-height-tabs .ant-tabs-content {
+  height: 100%;
+}
+
+.full-height-tabs .ant-tabs-tabpane {
+  height: 100%;
 }

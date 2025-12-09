@@ -16,7 +16,7 @@ const ProjectList: React.FC = () => {
   }, []);
 
   return (
-    <div>
+    <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={2}>Projects</Title>
         <Button type="primary" icon={<PlusOutlined />}>

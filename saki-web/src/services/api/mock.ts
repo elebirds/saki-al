@@ -99,6 +99,20 @@ export class MockApiService implements ApiService {
     return new Promise((resolve) => setTimeout(() => resolve(newProject), 500));
   }
 
+  async updateProject(id: string, project: Partial<Project>): Promise<Project> {
+    const index = mockProjects.findIndex((p) => p.id === id);
+    if (index !== -1) {
+      mockProjects[index] = { ...mockProjects[index], ...project };
+      return new Promise((resolve) => setTimeout(() => resolve(mockProjects[index]), 500));
+    }
+    throw new Error('Project not found');
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    mockProjects = mockProjects.filter((p) => p.id !== id);
+    return new Promise((resolve) => setTimeout(() => resolve(), 500));
+  }
+
   async getSamples(projectId: string): Promise<Sample[]> {
     console.log(`Fetching samples for project ${projectId}`);
     return new Promise((resolve) => setTimeout(() => resolve(mockSamples), 400));

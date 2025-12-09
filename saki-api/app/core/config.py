@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./saki.db"
 
+    # Storage
+    UPLOAD_DIR: str = "./data/uploads"
+
     # Security
     SECRET_KEY: str = "YOUR_SUPER_SECRET_KEY_CHANGE_ME_IN_PRODUCTION"
     ALGORITHM: str = "HS256"

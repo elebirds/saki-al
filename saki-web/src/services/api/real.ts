@@ -86,6 +86,15 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
+  async updateProject(id: string, project: Partial<Project>): Promise<Project> {
+    const response = await this.client.put<Project>(`/projects/${id}`, project);
+    return response.data;
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    await this.client.delete(`/projects/${id}`);
+  }
+
   async getSamples(projectId: string): Promise<Sample[]> {
     const response = await this.client.get<{ items: Sample[] }>(`/projects/${projectId}/samples`);
     return response.data.items;

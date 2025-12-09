@@ -33,11 +33,16 @@ class ProjectCreate(ProjectBase):
     """
     pass
 
+class ProjectStats(SQLModel):
+    totalSamples: int = 0
+    labeledSamples: int = 0
+    accuracy: float = 0.0
+
 class ProjectRead(ProjectBase, TimestampMixin, UUIDMixin):
     """
     Model for reading Project data (response model).
     """
-    pass
+    stats: Optional[ProjectStats] = Field(default_factory=ProjectStats)
 
 class ProjectUpdate(SQLModel):
     """

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, ColorPicker } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, ColorPicker, Popconfirm } from 'antd';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Project, LabelConfig, ALStrategy, ModelArchitecture } from '../types';
 import { api } from '../services/api';
 
@@ -12,6 +13,7 @@ interface ProjectSettingsProps {
 
 const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [form] = Form.useForm();
   const [labels, setLabels] = useState<LabelConfig[]>(project.labels || []);
   const [newLabelName, setNewLabelName] = useState('');
@@ -24,16 +26,27 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
     api.getArchitectures().then(setArchitectures);
   }, []);
 
-  const handleSave = (values: any) => {
-    const updatedProject = {
-      ...project,
-      ...values,
-      labels,
-    };
-    // In a real app, we would make an API call here
-    console.log('Saving project settings:', updatedProject);
-    onUpdate(updatedProject);
-    message.success(t('projectSettings.successMessage'));
+  const handleSave = async (values: any) => {
+    try {
+      const updatedProject = await api.updateProject(project.id, {
+        ...values,
+        labels,
+      });
+      onUpdate(updatedProject);
+      message.success(t('projectSettings.successMessage'));
+    } catch (error) {
+      message.error('Failed to update project');
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await api.deleteProject(project.id);
+      message.success('Project deleted');
+      navigate('/');
+    } catch (error) {
+      message.error('Failed to delete project');
+    }
   };
 
   const handleAddLabel = () => {
@@ -140,9 +153,22 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         </Card>
 
         <Form.Item>
-          <Button type="primary" htmlType="submit" size="large" block>
-            {t('projectSettings.saveSettings')}
-          </Button>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Button type="primary" htmlType="submit">
+              {t('projectSettings.saveSettings')}
+            </Button>
+            <Popconfirm
+              title="Are you sure you want to delete this project?"
+              description="This action cannot be undone."
+              onConfirm={handleDelete}
+              okText="Yes"
+              cancelText="No"
+            >
+              <Button type="primary" danger icon={<DeleteOutlined />}>
+                Delete Project
+              </Button>
+            </Popconfirm>
+          </div>
         </Form.Item>
       </Form>
     </div>

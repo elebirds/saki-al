@@ -13,6 +13,8 @@ export interface ApiService {
   getProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;
   createProject(project: Omit<Project, 'id' | 'createdAt' | 'stats'>): Promise<Project>;
+  updateProject(id: string, project: Partial<Project>): Promise<Project>;
+  deleteProject(id: string): Promise<void>;
   
   getSamples(projectId: string): Promise<Sample[]>;
   getSample(sampleId: string): Promise<Sample | undefined>;

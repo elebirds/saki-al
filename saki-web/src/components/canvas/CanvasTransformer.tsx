@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import { forwardRef } from 'react';
 import { Transformer } from 'react-konva';
 import Konva from 'konva';
 import { Annotation } from '../../types';

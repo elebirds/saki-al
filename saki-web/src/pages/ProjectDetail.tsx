@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs } from 'antd';
+import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Project, Sample } from '../types';
 import { api } from '../services/api';
@@ -17,6 +17,7 @@ const ProjectDetail: React.FC = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [activeTab, setActiveTab] = useState('data');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (id) {
@@ -30,6 +31,32 @@ const ProjectDetail: React.FC = () => {
   const handleProjectUpdate = (updatedProject: Project) => {
     setProject(updatedProject);
     // In a real app, we would also trigger a refetch or update the backend here if not done in the component
+  };
+
+  const handleTrain = async () => {
+    if (!project) return;
+    try {
+      await api.trainProject(project.id);
+      message.success('Training started');
+    } catch (error) {
+      message.error('Failed to start training');
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!project || !e.target.files || e.target.files.length === 0) return;
+    try {
+      await api.uploadSamples(project.id, Array.from(e.target.files));
+      message.success('Samples uploaded');
+      // Refresh samples
+      api.getSamples(project.id).then(setSamples);
+    } catch (error) {
+      message.error('Failed to upload samples');
+    }
   };
 
   if (!project) return <div>{t('workspace.loading')}</div>;
@@ -98,12 +125,20 @@ const ProjectDetail: React.FC = () => {
           <Button type="primary" block icon={<HighlightOutlined />} onClick={() => navigate(`/workspace/${project.id}`)}>
             {t('projectDetail.startLabeling')}
           </Button>
-          <Button block icon={<PlayCircleOutlined />}>
+          <Button block icon={<PlayCircleOutlined />} onClick={handleTrain}>
             {t('projectDetail.trainModel')}
           </Button>
-          <Button block icon={<UploadOutlined />}>
+          <Button block icon={<UploadOutlined />} onClick={handleUploadClick}>
             {t('projectDetail.uploadData')}
           </Button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            style={{ display: 'none' }} 
+            multiple 
+            accept="image/*" 
+            onChange={handleFileChange} 
+          />
           <Button block icon={<SettingOutlined />} onClick={() => setActiveTab('settings')}>
             {t('projectDetail.settings')}
           </Button>

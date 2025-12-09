@@ -20,8 +20,8 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
   const [architectures, setArchitectures] = useState<ModelArchitecture[]>([]);
 
   useEffect(() => {
-    api.getALStrategies().then(setStrategies);
-    api.getModelArchitectures().then(setArchitectures);
+    api.getStrategies().then(setStrategies);
+    api.getArchitectures().then(setArchitectures);
   }, []);
 
   const handleSave = (values: any) => {

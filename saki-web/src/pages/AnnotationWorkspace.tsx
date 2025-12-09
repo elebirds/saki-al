@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Layout, Button, Card, Space, Typography, List, Radio, Tooltip, Select, Tag } from 'antd';
+import { Layout, Button, Card, Space, Typography, List, Radio, Tooltip, Select, Tag, message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { LeftOutlined, RightOutlined, CheckOutlined, DragOutlined, BorderOutlined, RotateRightOutlined, DeleteOutlined, UndoOutlined, RedoOutlined, ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons';
 import AnnotationCanvas, { AnnotationCanvasRef } from '../components/AnnotationCanvas';
@@ -40,6 +40,16 @@ const AnnotationWorkspace: React.FC = () => {
   }, [project]);
 
   const currentSample = samples[currentIndex];
+
+  useEffect(() => {
+    if (currentSample) {
+      api.getSampleAnnotations(currentSample.id).then((anns) => {
+        setAnnotations(anns);
+        setHistory([anns]);
+        setHistoryIndex(0);
+      });
+    }
+  }, [currentSample]);
 
   const addToHistory = (newAnnotations: Annotation[]) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -103,11 +113,16 @@ const AnnotationWorkspace: React.FC = () => {
     }
   }, [currentIndex]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!currentSample) return;
-    // In a real app, this would send data to the backend
-    handleNext();
-  }, [currentSample, annotations, handleNext]);
+    try {
+      await api.saveSampleAnnotations(currentSample.id, annotations);
+      message.success(t('annotation.saved') || 'Saved');
+      handleNext();
+    } catch (error) {
+      message.error('Failed to save annotations');
+    }
+  }, [currentSample, annotations, handleNext, t]);
 
   // Keyboard Shortcuts
   useEffect(() => {

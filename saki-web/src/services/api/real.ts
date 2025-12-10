@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, User, LoginResponse } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse } from '../../types';
 import { ApiService } from './interface';
 import { useAuthStore } from '../../store/authStore';
 
@@ -127,13 +127,13 @@ export class RealApiService implements ApiService {
     });
   }
 
-  async getStrategies(): Promise<ALStrategy[]> {
-    const response = await this.client.get<ALStrategy[]>('/configs/strategies');
+  async getStrategies(): Promise<QueryStrategy[]> {
+    const response = await this.client.get<QueryStrategy[]>('/configs/strategies');
     return response.data;
   }
 
-  async getArchitectures(): Promise<ModelArchitecture[]> {
-    const response = await this.client.get<ModelArchitecture[]>('/configs/architectures');
+  async getBaseModels(): Promise<BaseModel[]> {
+    const response = await this.client.get<BaseModel[]>('/configs/base-models');
     return response.data;
   }
 
@@ -143,6 +143,11 @@ export class RealApiService implements ApiService {
 
   async querySamples(projectId: string, n: number): Promise<Sample[]> {
     const response = await this.client.post<Sample[]>(`/projects/${projectId}/query`, { n });
+    return response.data;
+  }
+
+  async getModelVersions(projectId: string): Promise<ModelVersion[]> {
+    const response = await this.client.get<ModelVersion[]>(`/projects/${projectId}/models`);
     return response.data;
   }
 }

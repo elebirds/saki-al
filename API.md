@@ -35,7 +35,66 @@ Base URL: `/api/v1`
 - **Headers**: `Authorization: Bearer <token>`
 - **Response**: `User` object.
 
-## 2. Project Management
+## 2. System Configuration (global)
+
+System-level options that every project references. Only admins should mutate these.
+
+### List Query Strategies
+- **Endpoint**: `GET /configs/strategies`
+- **Response**:
+  ```json
+  [
+    {"id": "least_confidence", "name": "Least Confidence", "description": "Select samples where the model is least confident", "paramsSchema": {"k": {"type": "integer", "default": 10}}, "enabled": true}
+  ]
+  ```
+
+### Create/Update/Delete Query Strategy
+- **Endpoints**:
+  - `POST /configs/strategies`
+  - `PUT /configs/strategies/{id}`
+  - `DELETE /configs/strategies/{id}`
+- **Body (POST/PUT)**:
+  ```json
+  {
+    "id": "entropy_sampling",            // slug used by AL engine
+    "name": "Entropy Sampling",
+    "description": "Highest predictive entropy",
+    "entrypoint": "al_engine.strategies.entropy:EntropyStrategy",
+    "paramsSchema": {"batchSize": {"type": "integer", "minimum": 1}},
+    "enabled": true
+  }
+  ```
+
+### List Base Models (system-level)
+- **Endpoint**: `GET /configs/base-models`
+- **Response**:
+  ```json
+  [
+    {"id": "resnet50", "name": "ResNet-50", "taskType": "classification", "framework": "pytorch", "provider": "torchvision", "artifactUri": "", "defaultConfig": {"inputSize": 224}, "enabled": true}
+  ]
+  ```
+
+### Create/Update/Delete Base Model
+- **Endpoints**:
+  - `POST /configs/base-models`
+  - `PUT /configs/base-models/{id}`
+  - `DELETE /configs/base-models/{id}`
+- **Body (POST/PUT)**:
+  ```json
+  {
+    "id": "yolov8n",
+    "name": "YOLOv8-Nano",
+    "taskType": "detection",
+    "framework": "pytorch",
+    "provider": "ultralytics",
+    "artifactUri": "s3://models/yolov8n.pt", // or HF model id
+    "defaultConfig": {"imgsz": 640},
+    "description": "Default YOLOv8 nano weights",
+    "enabled": true
+  }
+  ```
+
+## 3. Project Management
 
 ### List Projects
 - **Endpoint**: `GET /projects`
@@ -66,16 +125,17 @@ Base URL: `/api/v1`
     "name": "string",
     "description": "string",
     "taskType": "classification" | "detection",
+  "queryStrategyId": "least_confidence",          // reference to system strategy
+  "baseModelId": "resnet50",                      // reference to system base model
     "labels": [
         { "name": "string", "color": "string" }
     ],
     "alConfig": {
-        "strategy": "string",
         "batchSize": number
     },
-    "modelConfig": {
-        "architecture": "string"
-    }
+  "modelConfig": {
+    "extra": "per-project overrides for the base model"
+  }
   }
   ```
 - **Response**: `Project` object.
@@ -93,7 +153,7 @@ Base URL: `/api/v1`
 - **Endpoint**: `DELETE /projects/{id}`
 - **Response**: `204 No Content`
 
-## 2. Data Management
+## 4. Data Management
 
 ### List Samples
 - **Endpoint**: `GET /projects/{projectId}/samples`
@@ -134,7 +194,7 @@ Base URL: `/api/v1`
 - **Endpoint**: `GET /samples/{id}/image`
 - **Description**: Returns the raw image file.
 
-## 3. Annotation
+## 5. Annotation
 
 ### Get Annotation
 - **Endpoint**: `GET /samples/{sampleId}/annotation`
@@ -163,25 +223,7 @@ Base URL: `/api/v1`
   ```
 - **Response**: `Annotation` object.
 
-## 4. Active Learning & Models
-
-### Get Available Strategies
-- **Endpoint**: `GET /configs/strategies`
-- **Response**:
-  ```json
-  [
-    { "id": "string", "name": "string", "description": "string" }
-  ]
-  ```
-
-### Get Available Architectures
-- **Endpoint**: `GET /configs/architectures`
-- **Response**:
-  ```json
-  [
-    { "id": "string", "name": "string", "taskType": "string" }
-  ]
-  ```
+## 6. Active Learning & Models
 
 ### Trigger Training
 - **Endpoint**: `POST /projects/{projectId}/train`
@@ -190,7 +232,14 @@ Base URL: `/api/v1`
   ```json
   {
     "jobId": "string",
-    "status": "queued"
+    "status": "queued",
+    "modelVersion": {
+      "id": "string",
+      "projectId": "string",
+      "baseModelId": "string",
+      "name": "v1",
+      "status": "training"
+    }
   }
   ```
 
@@ -219,3 +268,34 @@ Base URL: `/api/v1`
   }
   ```
 - **Response**: List of `Sample` objects.
+
+### List Project Model Versions
+- **Endpoint**: `GET /projects/{projectId}/models`
+- **Response**:
+  ```json
+  [
+    {
+      "id": "string",
+      "name": "v1",
+      "baseModelId": "resnet50",
+      "status": "ready",
+      "metrics": {"accuracy": 0.92},
+      "createdAt": "string"
+    }
+  ]
+  ```
+
+### Register/Update a Model Version
+- **Endpoint**: `POST /projects/{projectId}/models`
+- **Body**:
+  ```json
+  {
+    "name": "v2",
+    "baseModelId": "resnet50",
+    "metrics": {"map50": 0.41},
+    "pathToWeights": "s3://.../v2.pt",
+    "config": {"epochs": 50},
+    "status": "ready"
+  }
+  ```
+- **Endpoint (update)**: `PUT /projects/{projectId}/models/{modelId}` (partial body)

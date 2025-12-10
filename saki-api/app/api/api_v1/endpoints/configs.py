@@ -1,35 +1,132 @@
-from typing import List, Dict, Any
-from fastapi import APIRouter, Depends
-from app.models.user import User
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import Session, select
 from app.api import deps
+from app.db.session import get_session
+from app.models import (
+    User,
+    QueryStrategy, QueryStrategyCreate, QueryStrategyRead, QueryStrategyUpdate,
+    BaseModel, BaseModelCreate, BaseModelRead, BaseModelUpdate,
+)
 
 router = APIRouter()
 
-@router.get("/strategies", response_model=List[Dict[str, str]])
-def get_strategies(
-    current_user: User = Depends(deps.get_current_user)
-):
-    """
-    Get available Active Learning strategies.
-    """
-    return [
-        {"id": "least_confidence", "name": "Least Confidence", "description": "Selects samples where the model is least confident."},
-        {"id": "margin_sampling", "name": "Margin Sampling", "description": "Selects samples with the smallest margin between top two predictions."},
-        {"id": "entropy_sampling", "name": "Entropy Sampling", "description": "Selects samples with the highest entropy."},
-        {"id": "random", "name": "Random Sampling", "description": "Selects samples randomly."},
-    ]
 
-@router.get("/architectures", response_model=List[Dict[str, str]])
-def get_architectures(
-    current_user: User = Depends(deps.get_current_user)
+# --- Query Strategies ---
+@router.get("/strategies", response_model=List[QueryStrategyRead])
+def get_strategies(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
 ):
     """
-    Get available Model Architectures.
+    List available Active Learning query strategies.
     """
-    return [
-        {"id": "resnet18", "name": "ResNet-18", "taskType": "classification"},
-        {"id": "resnet50", "name": "ResNet-50", "taskType": "classification"},
-        {"id": "efficientnet_b0", "name": "EfficientNet-B0", "taskType": "classification"},
-        {"id": "yolov5", "name": "YOLOv5", "taskType": "detection"},
-        {"id": "faster_rcnn", "name": "Faster R-CNN", "taskType": "detection"},
-    ]
+    return session.exec(select(QueryStrategy)).all()
+
+
+@router.post("/strategies", response_model=QueryStrategyRead)
+def create_strategy(
+    strategy_in: QueryStrategyCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_active_superuser),
+):
+    if session.get(QueryStrategy, strategy_in.id):
+        raise HTTPException(status_code=400, detail="Strategy ID already exists")
+    strategy = QueryStrategy(**strategy_in.model_dump())
+    session.add(strategy)
+    session.commit()
+    session.refresh(strategy)
+    return strategy
+
+
+@router.put("/strategies/{strategy_id}", response_model=QueryStrategyRead)
+def update_strategy(
+    strategy_id: str,
+    strategy_in: QueryStrategyUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_active_superuser),
+):
+    strategy = session.get(QueryStrategy, strategy_id)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    update_data = strategy_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(strategy, key, value)
+    session.add(strategy)
+    session.commit()
+    session.refresh(strategy)
+    return strategy
+
+
+@router.delete("/strategies/{strategy_id}")
+def delete_strategy(
+    strategy_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_active_superuser),
+):
+    strategy = session.get(QueryStrategy, strategy_id)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    session.delete(strategy)
+    session.commit()
+    return {"ok": True}
+
+
+# --- Base Models ---
+@router.get("/base-models", response_model=List[BaseModelRead])
+def list_base_models(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """
+    List system-level base/foundation models.
+    """
+    return session.exec(select(BaseModel)).all()
+
+
+@router.post("/base-models", response_model=BaseModelRead)
+def create_base_model(
+    base_model_in: BaseModelCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_active_superuser),
+):
+    if session.get(BaseModel, base_model_in.id):
+        raise HTTPException(status_code=400, detail="Base model ID already exists")
+    base_model = BaseModel(**base_model_in.model_dump())
+    session.add(base_model)
+    session.commit()
+    session.refresh(base_model)
+    return base_model
+
+
+@router.put("/base-models/{base_model_id}", response_model=BaseModelRead)
+def update_base_model(
+    base_model_id: str,
+    base_model_in: BaseModelUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_active_superuser),
+):
+    base_model = session.get(BaseModel, base_model_id)
+    if not base_model:
+        raise HTTPException(status_code=404, detail="Base model not found")
+    update_data = base_model_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(base_model, key, value)
+    session.add(base_model)
+    session.commit()
+    session.refresh(base_model)
+    return base_model
+
+
+@router.delete("/base-models/{base_model_id}")
+def delete_base_model(
+    base_model_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_active_superuser),
+):
+    base_model = session.get(BaseModel, base_model_id)
+    if not base_model:
+        raise HTTPException(status_code=404, detail="Base model not found")
+    session.delete(base_model)
+    session.commit()
+    return {"ok": True}

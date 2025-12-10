@@ -16,13 +16,14 @@ export interface Project {
   };
   // New fields for settings
   labels: LabelConfig[];
+  queryStrategyId?: string;
+  baseModelId?: string;
   alConfig: {
-    strategy: string;
     batchSize: number;
+    [key: string]: any;
   };
   modelConfig: {
-    architecture: string;
-    baseModel?: string;
+    [key: string]: any;
   };
 }
 
@@ -49,16 +50,33 @@ export interface Annotation {
   };
 }
 
-export interface ALStrategy {
+export interface QueryStrategy {
   id: string;
   name: string;
   description?: string;
+  paramsSchema?: any;
+  enabled: boolean;
 }
 
-export interface ModelArchitecture {
+export interface BaseModel {
   id: string;
   name: string;
-  taskType: 'classification' | 'detection' | 'both';
+  taskType: 'classification' | 'detection';
+  framework?: string;
+  provider?: string;
+  description?: string;
+  enabled: boolean;
+}
+
+export interface ModelVersion {
+  id: string;
+  projectId: string;
+  baseModelId?: string;
+  name: string;
+  description?: string;
+  metrics: Record<string, number>;
+  status: 'training' | 'ready' | 'failed';
+  createdAt: string;
 }
 
 export interface User {

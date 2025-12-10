@@ -31,8 +31,10 @@ const ProjectList: React.FC = () => {
         description: values.description,
         taskType: values.taskType,
         labels: [],
-        alConfig: { strategy: 'random', batchSize: 10 },
-        modelConfig: { architecture: 'resnet18' }
+        queryStrategyId: 'least_confidence', // Default
+        baseModelId: values.taskType === 'classification' ? 'resnet50' : 'yolov5', // Default
+        alConfig: { batchSize: 10 },
+        modelConfig: {}
       });
       message.success(t('projectList.createSuccess'));
       setIsModalVisible(false);

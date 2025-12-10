@@ -3,7 +3,7 @@ import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, Co
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Project, LabelConfig, ALStrategy, ModelArchitecture } from '../types';
+import { Project, LabelConfig, QueryStrategy, BaseModel } from '../types';
 import { api } from '../services/api';
 
 interface ProjectSettingsProps {
@@ -18,12 +18,12 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
   const [labels, setLabels] = useState<LabelConfig[]>(project.labels || []);
   const [newLabelName, setNewLabelName] = useState('');
   const [newLabelColor, setNewLabelColor] = useState('#1677ff');
-  const [strategies, setStrategies] = useState<ALStrategy[]>([]);
-  const [architectures, setArchitectures] = useState<ModelArchitecture[]>([]);
+  const [strategies, setStrategies] = useState<QueryStrategy[]>([]);
+  const [baseModels, setBaseModels] = useState<BaseModel[]>([]);
 
   useEffect(() => {
     api.getStrategies().then(setStrategies);
-    api.getArchitectures().then(setArchitectures);
+    api.getBaseModels().then(setBaseModels);
   }, []);
 
   const handleSave = async (values: any) => {
@@ -53,7 +53,6 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
     if (newLabelName && !labels.some(l => l.name === newLabelName)) {
       setLabels([...labels, { name: newLabelName, color: typeof newLabelColor === 'string' ? newLabelColor : (newLabelColor as any).toHexString() }]);
       setNewLabelName('');
-      // Keep the color or reset? Let's keep it for convenience or maybe randomize
     }
   };
 
@@ -69,9 +68,9 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         initialValues={{
           name: project.name,
           description: project.description,
-          'alConfig.strategy': project.alConfig?.strategy || 'least_confidence',
+          queryStrategyId: project.queryStrategyId,
+          baseModelId: project.baseModelId,
           'alConfig.batchSize': project.alConfig?.batchSize || 10,
-          'modelConfig.architecture': project.modelConfig?.architecture || 'resnet50',
         }}
         onFinish={handleSave}
       >
@@ -128,7 +127,7 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         </Card>
 
         <Card title={t('projectSettings.alConfig')} style={{ marginBottom: 24 }}>
-          <Form.Item label={t('projectSettings.queryStrategy')} name="alConfig.strategy">
+          <Form.Item label={t('projectSettings.queryStrategy')} name="queryStrategyId">
             <Select>
               {strategies.map(s => (
                 <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
@@ -141,12 +140,12 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         </Card>
 
         <Card title={t('projectSettings.modelConfig')} style={{ marginBottom: 24 }}>
-          <Form.Item label={t('projectSettings.modelArchitecture')} name="modelConfig.architecture">
+          <Form.Item label={t('projectSettings.baseModel')} name="baseModelId">
             <Select>
-              {architectures
-                .filter(a => a.taskType === 'both' || a.taskType === project.taskType)
-                .map(a => (
-                  <Select.Option key={a.id} value={a.id}>{a.name}</Select.Option>
+              {baseModels
+                .filter(m => m.taskType === project.taskType)
+                .map(m => (
+                  <Select.Option key={m.id} value={m.id}>{m.name}</Select.Option>
                 ))}
             </Select>
           </Form.Item>

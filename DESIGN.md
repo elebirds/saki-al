@@ -59,11 +59,13 @@ graph TD
 
 ## 4. Data Model (Simplified)
 
-- **Project**: `id`, `name`, `task_type` (classification/detection), `created_at`
+- **QueryStrategy (system-level)**: `id`, `name`, `description`, `entrypoint`, `params_schema` (JSON), `enabled`
+- **BaseModel (system-level)**: `id`, `name`, `task_type`, `framework`, `provider`, `artifact_uri`, `default_config` (JSON), `enabled`
+- **Project**: `id`, `name`, `task_type`, `query_strategy_id`, `base_model_id`, `labels` (JSON), `al_config` (JSON), `model_settings` (JSON overrides), `created_at`
 - **Dataset**: `id`, `project_id`, `name`
-- **Sample**: `id`, `dataset_id`, `file_path`, `status` (unlabeled, labeled, skipped)
+- **Sample**: `id`, `project_id`, `dataset_id`, `file_path`, `status` (unlabeled, labeled, skipped)
 - **Annotation**: `id`, `sample_id`, `data` (JSON: class_id, bbox, polygon), `annotator_id`
-- **ModelVersion**: `id`, `project_id`, `metrics` (accuracy, mAP), `path_to_weights`
+- **ModelVersion**: `id`, `project_id`, `base_model_id`, `parent_version_id` (optional), `metrics` (accuracy, mAP), `path_to_weights`, `config` (JSON), `status`, `created_at`
 
 ## 5. API Design
 
@@ -82,24 +84,26 @@ graph TD
 - `GET /samples/{id}/annotation`: Get existing annotation.
 
 ### Active Learning Loop
-- `POST /projects/{id}/train`: Trigger a training cycle (Train on labeled pool).
-- `POST /projects/{id}/query`: Request next batch of samples to label (AL Query).
-  - Returns list of `sample_id` sorted by informativeness.
-- `GET /projects/{id}/metrics`: Get model performance history.
+- `POST /projects/{id}/train`: Trigger a training cycle (train a new ModelVersion on labeled pool starting from the selected BaseModel).
+- `POST /projects/{id}/query`: Request next batch of samples to label using the project’s configured QueryStrategy.
+    - Returns list of `sample_id` sorted by informativeness.
+- `GET /projects/{id}/models`: List ModelVersions for the project (with metrics/status).
+- `POST /projects/{id}/models`: Register/update a ModelVersion (e.g., after an external training job finishes).
 
 ## 6. Workflow
 
-1.  **Initialization**: User creates a project and uploads a pool of unlabeled images.
-2.  **Cold Start**: 
+1. **Initialization**: Admin configures system-level BaseModels and QueryStrategies. User creates a project referencing those choices and uploads unlabeled images.
+2. **Cold Start**:
     - Option A: Randomly sample N images for initial labeling.
-    - Option B: Use a pre-trained model to extract features and cluster.
-3.  **Annotation**: User labels the selected samples in the UI.
-4.  **Training**: System trains a model on the labeled set.
-5.  **Query (AL Step)**: 
-    - The trained model predicts on the remaining unlabeled pool.
-    - An acquisition function (e.g., Entropy) calculates an "informativeness" score for each sample.
+    - Option B: Use the selected BaseModel to extract features and cluster.
+3. **Annotation**: User labels the selected samples in the UI.
+4. **Training**: System trains a new ModelVersion on the labeled set starting from the project's BaseModel.
+5. **Query (AL Step)**:
+    - The trained ModelVersion predicts on the remaining unlabeled pool.
+    - The configured QueryStrategy computes informativeness scores.
     - The top K samples are presented to the user for labeling.
-6.  **Loop**: Repeat steps 3-5 until performance target is met or budget is exhausted.
+6. **Versioning**: Each training run registers a ModelVersion (metrics, weights, lineage back to BaseModel/previous version).
+7. **Loop**: Repeat steps 3-6 until performance target is met or budget is exhausted.
 
 ## 7. Directory Structure
 

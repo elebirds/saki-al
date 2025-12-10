@@ -1,4 +1,4 @@
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, User, LoginResponse } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse } from '../../types';
 
 export interface ApiService {
   // Auth
@@ -23,9 +23,11 @@ export interface ApiService {
   getSampleAnnotations(sampleId: string): Promise<Annotation[]>;
   saveSampleAnnotations(sampleId: string, annotations: Annotation[]): Promise<void>;
   
-  getStrategies(): Promise<ALStrategy[]>;
-  getArchitectures(): Promise<ModelArchitecture[]>;
+  getStrategies(): Promise<QueryStrategy[]>;
+  getBaseModels(): Promise<BaseModel[]>;
   
   trainProject(projectId: string): Promise<void>;
   querySamples(projectId: string, n: number): Promise<Sample[]>;
+
+  getModelVersions(projectId: string): Promise<ModelVersion[]>;
 }

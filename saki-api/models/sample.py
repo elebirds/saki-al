@@ -1,8 +1,8 @@
 from typing import List, Optional, Dict, Any
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import Column, JSON
-from app.models.base import TimestampMixin, UUIDMixin
-from app.models.enums import SampleStatus
+from models.base import TimestampMixin, UUIDMixin
+from models.enums import SampleStatus
 
 class SampleBase(SQLModel):
     """

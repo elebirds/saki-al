@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.api_v1.endpoints import projects, login, users, system, configs
+from api.api_v1.endpoints import projects, login, users, system, configs
 
 api_router = APIRouter()
 api_router.include_router(system.router, prefix="/system", tags=["system"])

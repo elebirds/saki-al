@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import Column, JSON
-from app.models.base import TimestampMixin, UUIDMixin
+from models.base import TimestampMixin, UUIDMixin
 
 class AnnotationBase(SQLModel):
     """

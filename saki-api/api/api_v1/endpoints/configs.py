@@ -1,9 +1,9 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
-from app.api import deps
-from app.db.session import get_session
-from app.models import (
+from api import deps
+from db.session import get_session
+from models import (
     User,
     QueryStrategy, QueryStrategyCreate, QueryStrategyRead, QueryStrategyUpdate,
     BaseModel, BaseModelCreate, BaseModelRead, BaseModelUpdate,

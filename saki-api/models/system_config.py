@@ -1,12 +1,12 @@
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import Column, JSON
-from app.models.base import TimestampMixin
-from app.models.enums import TaskType
+from models.base import TimestampMixin
+from models.enums import TaskType
 
 if TYPE_CHECKING:
-    from app.models.project import Project
-    from app.models.model_version import ModelVersion
+    from models.project import Project
+    from models.model_version import ModelVersion
 
 
 class QueryStrategyBase(SQLModel):

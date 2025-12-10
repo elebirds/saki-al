@@ -1,6 +1,6 @@
 from typing import Optional
 from sqlmodel import Field, SQLModel
-from app.models.base import TimestampMixin, UUIDMixin
+from models.base import TimestampMixin, UUIDMixin
 
 class UserBase(SQLModel):
     email: str = Field(unique=True, index=True, description="User email address")

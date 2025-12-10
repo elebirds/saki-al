@@ -5,10 +5,10 @@ from jose import jwt, JWTError
 from pydantic import ValidationError
 from sqlmodel import Session
 
-from app.core.config import settings
-from app.core import security
-from app.db.session import get_session
-from app.models.user import User
+from core.config import settings
+from core import security
+from db.session import get_session
+from models.user import User
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"

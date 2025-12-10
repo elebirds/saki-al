@@ -1,11 +1,11 @@
 from typing import Dict, Any, Optional, TYPE_CHECKING
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import Column, JSON
-from app.models.base import TimestampMixin, UUIDMixin
-from app.models.enums import ModelStatus
+from models.base import TimestampMixin, UUIDMixin
+from models.enums import ModelStatus
 
 if TYPE_CHECKING:
-    from app.models.system_config import BaseModel
+    from models.system_config import BaseModel
 
 class ModelVersionBase(SQLModel):
     """

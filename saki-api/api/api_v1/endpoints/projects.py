@@ -2,16 +2,16 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlmodel import Session, select
 from sqlalchemy import func
-from app.db.session import get_session
-from app.models import (
+from db.session import get_session
+from models import (
     Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats,
     Sample, SampleStatus, SampleRead,
     ModelVersion, ModelVersionCreate, ModelVersionRead, ModelVersionUpdate,
 )
-from app.api import deps
-from app.models.user import User
-from app.core.config import settings
-from app.models.enums import ModelStatus
+from api import deps
+from models.user import User
+from core.config import settings
+from models.enums import ModelStatus
 from pathlib import Path
 import shutil
 import os

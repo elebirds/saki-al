@@ -1,11 +1,11 @@
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import Column, JSON
-from app.models.base import TimestampMixin, UUIDMixin
-from app.models.enums import TaskType, ProjectStatus
+from models.base import TimestampMixin, UUIDMixin
+from models.enums import TaskType, ProjectStatus
 
 if TYPE_CHECKING:
-    from app.models.system_config import QueryStrategy, BaseModel
+    from models.system_config import QueryStrategy, BaseModel
 
 class ProjectBase(SQLModel):
     """

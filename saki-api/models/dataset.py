@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlmodel import Field, SQLModel, Relationship
-from app.models.base import TimestampMixin, UUIDMixin
+from models.base import TimestampMixin, UUIDMixin
 
 class DatasetBase(SQLModel):
     """

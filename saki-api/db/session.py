@@ -1,5 +1,5 @@
 from sqlmodel import create_engine, Session, SQLModel
-from app.core.config import settings
+from core.config import settings
 
 # SQLite requires specific connection arguments to work with multi-threaded applications
 connect_args = {}
@@ -23,5 +23,5 @@ def init_db():
     This should be called on application startup.
     """
     # Import models to ensure they are registered with SQLModel
-    from app import models
+    import models
     SQLModel.metadata.create_all(engine)

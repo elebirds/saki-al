@@ -4,6 +4,8 @@ import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LogoutOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
+import { api } from '../services/api';
+import { useEffect } from 'react';
 
 const { Header, Content, Footer } = Layout;
 
@@ -15,6 +17,28 @@ const ProtectedLayout: React.FC = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+  const setToken = useAuthStore((state) => state.setToken);
+
+  useEffect(() => {
+    let interval: number;
+    if (isAuthenticated) {
+      // Refresh token every 5 minutes
+      interval = setInterval(async () => {
+        try {
+          console.log('Refreshing token...');
+          const response = await api.refreshToken();
+          setToken(response.access_token);
+          console.log('Token refreshed');
+        } catch (error) {
+          console.error('Token refresh failed', error);
+          // If refresh fails (e.g. 401), the interceptor will handle logout
+        }
+      }, 5 * 60 * 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isAuthenticated, setToken]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

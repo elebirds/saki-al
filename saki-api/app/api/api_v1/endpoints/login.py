@@ -59,3 +59,18 @@ def register_user(
     session.commit()
     session.refresh(user)
     return user
+
+@router.post("/login/refresh-token")
+def refresh_token(
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Refresh access token
+    """
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return {
+        "access_token": security.create_access_token(
+            current_user.id, expires_delta=access_token_expires
+        ),
+        "token_type": "bearer",
+    }

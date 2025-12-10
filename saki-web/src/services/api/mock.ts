@@ -78,6 +78,54 @@ let mockSamples: Sample[] = Array.from({ length: 20 }).map((_, i) => ({
 const mockAnnotations: Record<string, Annotation[]> = {};
 
 export class MockApiService implements ApiService {
+  async login(username: string, password: string): Promise<LoginResponse> {
+    return {
+      access_token: 'mock-token',
+      token_type: 'bearer',
+    };
+  }
+
+  async register(email: string, password: string, fullName?: string): Promise<User> {
+    return {
+      id: '1',
+      email,
+      full_name: fullName,
+      is_active: true,
+      is_superuser: false,
+    };
+  }
+
+  async getCurrentUser(): Promise<User> {
+    return {
+      id: '1',
+      email: 'admin@example.com',
+      full_name: 'Admin User',
+      is_active: true,
+      is_superuser: true,
+    };
+  }
+
+  async getSystemStatus(): Promise<{ initialized: boolean }> {
+    return { initialized: true };
+  }
+
+  async setupSystem(email: string, password: string, fullName?: string): Promise<User> {
+    return {
+      id: '1',
+      email,
+      full_name: fullName,
+      is_active: true,
+      is_superuser: true,
+    };
+  }
+
+  async refreshToken(): Promise<LoginResponse> {
+    return {
+      access_token: 'mock-refreshed-token',
+      token_type: 'bearer',
+    };
+  }
+
   async getProjects(): Promise<Project[]> {
     return new Promise((resolve) => setTimeout(() => resolve(mockProjects), 500));
   }

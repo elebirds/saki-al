@@ -9,6 +9,7 @@ export interface ApiService {
   // System
   getSystemStatus(): Promise<{ initialized: boolean }>;
   setupSystem(email: string, password: string, fullName?: string): Promise<User>;
+  refreshToken(): Promise<LoginResponse>;
 
   getProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;

@@ -71,6 +71,11 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
+  async refreshToken(): Promise<LoginResponse> {
+    const response = await this.client.post<LoginResponse>('/login/refresh-token');
+    return response.data;
+  }
+
   async getProjects(): Promise<Project[]> {
     const response = await this.client.get<Project[]>('/projects');
     return response.data;

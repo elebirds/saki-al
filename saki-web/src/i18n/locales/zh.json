@@ -5,6 +5,10 @@
     "about": "关于",
     "footer": "Saki Active Learning ©2025 Created by elebird."
   },
+  "common": {
+    "networkError": "无法连接到服务器。请检查您的网络连接或稍后重试。",
+    "retry": "重试"
+  },
   "projectList": {
     "title": "项目列表",
     "newProject": "新建项目",

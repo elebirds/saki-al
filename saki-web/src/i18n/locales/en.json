@@ -5,6 +5,10 @@
     "about": "About",
     "footer": "Saki Active Learning ©2025 Created by elebird."
   },
+  "common": {
+    "networkError": "Cannot connect to the server. Please check your network connection or try again later.",
+    "retry": "Retry"
+  },
   "projectList": {
     "title": "Projects",
     "newProject": "New Project",

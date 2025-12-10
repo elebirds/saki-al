@@ -11,6 +11,11 @@ const SystemCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
 
   useEffect(() => {
+    if (location.pathname === '/network-error') {
+      setLoading(false);
+      return;
+    }
+
     const checkStatus = async () => {
       try {
         const status = await api.getSystemStatus();

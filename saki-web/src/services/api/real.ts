@@ -33,6 +33,14 @@ export class RealApiService implements ApiService {
         if (error.response?.status === 401) {
           useAuthStore.getState().logout();
         }
+        
+        // Check for network error (no response or network error code)
+        if ((!error.response || error.code === 'ERR_NETWORK') && window.location.pathname !== '/network-error') {
+          window.location.href = '/network-error';
+          // Return a promise that never resolves to prevent UI flickering before redirect
+          return new Promise(() => {});
+        }
+
         const message = error.response?.data?.detail || error.message || 'API Error';
         console.error('API Request Failed:', message);
         return Promise.reject(new Error(message));

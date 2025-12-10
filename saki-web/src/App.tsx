@@ -8,6 +8,7 @@ import UserManagement from './pages/UserManagement';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Setup from './pages/Setup';
+import NetworkError from './pages/NetworkError';
 import SystemCheck from './components/SystemCheck';
 import ProtectedLayout from './components/ProtectedLayout';
 
@@ -17,6 +18,7 @@ const App: React.FC = () => {
     <Router>
       <SystemCheck>
         <Routes>
+          <Route path="/network-error" element={<NetworkError />} />
           <Route path="/setup" element={<Setup />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />

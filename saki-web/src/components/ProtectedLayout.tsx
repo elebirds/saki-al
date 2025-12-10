@@ -61,6 +61,7 @@ const ProtectedLayout: React.FC = () => {
             defaultSelectedKeys={['1']}
             items={[
               { key: '1', label: <Link to="/">{t('app.projects')}</Link> },
+              ...(user?.is_superuser ? [{ key: '3', label: <Link to="/users">{t('Users')}</Link> }] : []),
               { key: '2', label: <Link to="/about">{t('app.about')}</Link> },
             ]}
           />

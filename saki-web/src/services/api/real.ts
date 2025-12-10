@@ -155,4 +155,23 @@ export class RealApiService implements ApiService {
     const response = await this.client.get<ModelVersion[]>(`/projects/${projectId}/models`);
     return response.data;
   }
+
+  async getUsers(skip: number = 0, limit: number = 100): Promise<User[]> {
+    const response = await this.client.get<User[]>('/users/', { params: { skip, limit } });
+    return response.data;
+  }
+
+  async createUser(user: Partial<User> & { password: string }): Promise<User> {
+    const response = await this.client.post<User>('/users/', user);
+    return response.data;
+  }
+
+  async updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User> {
+    const response = await this.client.put<User>(`/users/${id}`, user);
+    return response.data;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await this.client.delete(`/users/${id}`);
+  }
 }

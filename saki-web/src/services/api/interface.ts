@@ -31,4 +31,10 @@ export interface ApiService {
   querySamples(projectId: string, n: number): Promise<Sample[]>;
 
   getModelVersions(projectId: string): Promise<ModelVersion[]>;
+
+  // User Management
+  getUsers(skip?: number, limit?: number): Promise<User[]>;
+  createUser(user: Partial<User> & { password: string }): Promise<User>;
+  updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User>;
+  deleteUser(id: string): Promise<void>;
 }

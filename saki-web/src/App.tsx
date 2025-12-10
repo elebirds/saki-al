@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import ProjectList from './pages/ProjectList';
 import ProjectDetail from './pages/ProjectDetail';
 import AnnotationWorkspace from './pages/AnnotationWorkspace';
+import UserManagement from './pages/UserManagement';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Setup from './pages/Setup';
@@ -24,6 +25,7 @@ const App: React.FC = () => {
             <Route path="/" element={<ProjectList />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/workspace/:projectId" element={<AnnotationWorkspace />} />
+            <Route path="/users" element={<UserManagement />} />
             <Route path="/about" element={<div><h2>{t('app.about')}</h2><p>Saki is a visual active learning framework.</p></div>} />
           </Route>
         </Routes>

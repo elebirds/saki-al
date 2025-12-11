@@ -10,10 +10,10 @@ from saki_runtime.jobs.workspace import Workspace
 from saki_runtime.plugins.base import PluginBase
 
 
-class YoloAdapter(PluginAdapter):
+class DemoAdapter(PluginAdapter):
     @property
     def trainer_entrypoint(self) -> str:
-        return "saki_runtime.plugins.builtin.yolo_det_v1.train_entry"
+        return "saki_runtime.plugins.builtin.demo_plugin.train_entry"
 
     def validate_params(self, params: Dict[str, Any]) -> None:
         # Simple validation for MVP
@@ -77,10 +77,10 @@ class YoloAdapter(PluginAdapter):
         logger.info(f"Data preparation complete for job {workspace.job_id}")
 
 
-class YoloDetV1Plugin(PluginBase):
+class DemoPlugin(PluginBase):
     @property
     def id(self) -> str:
-        return "yolo_det_v1"
+        return "demo_plugin"
 
     @property
     def version(self) -> str:
@@ -104,4 +104,4 @@ class YoloDetV1Plugin(PluginBase):
         return {}
 
     def get_adapter(self) -> PluginAdapter:
-        return YoloAdapter()
+        return DemoAdapter()

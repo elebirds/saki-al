@@ -18,7 +18,7 @@ from saki_runtime.schemas.ir import DetAnnotationIR, LabelIR, SampleIR
 # Mock SakiClient
 @pytest.fixture
 def mock_saki_client():
-    with patch("saki_runtime.plugins.builtin.yolo_det_v1.plugin.saki_client") as mock:
+    with patch("saki_runtime.plugins.builtin.demo_plugin.plugin.saki_client") as mock:
         # Mock get_labels
         mock.get_labels = AsyncMock(return_value=[
             LabelIR(id=1, name="person", color="#ff0000"),
@@ -80,13 +80,13 @@ def test_e2e_job_lifecycle(client, auth_headers, mock_saki_client):
     response = client.get("/api/v1/plugins", headers=auth_headers)
     assert response.status_code == 200
     plugins = response.json()["plugins"]
-    assert any(p["id"] == "yolo_det_v1" for p in plugins)
+    assert any(p["id"] == "demo_plugin" for p in plugins)
 
     # 2. Create Job
     job_payload = {
         "job_type": "train_detection",
         "project_id": "p1",
-        "plugin_id": "yolo_det_v1",
+        "plugin_id": "demo_plugin",
         "data_ref": {
             "dataset_version_id": "dv1",
             "label_version_id": "lv1"
@@ -178,7 +178,7 @@ def test_query_mock(client, auth_headers):
 
         query_payload = {
             "project_id": "p1",
-            "plugin_id": "yolo_det_v1",
+            "plugin_id": "demo_plugin",
             "model_ref": {"job_id": "j1", "artifact_name": "best.pt"},
             "unlabeled_ref": {"dataset_version_id": "dv1", "label_version_id": "lv1"},
             "unit": "image",

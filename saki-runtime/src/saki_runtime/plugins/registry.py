@@ -32,10 +32,10 @@ class PluginRegistry:
     def load_builtin_plugins(self) -> None:
         # Hardcoded loading for MVP, can be dynamic later
         try:
-            from saki_runtime.plugins.builtin.yolo_det_v1.plugin import YoloDetV1Plugin
-            self.register(YoloDetV1Plugin())
+            from saki_runtime.plugins.builtin.demo_plugin.plugin import DemoPlugin
+            self.register(DemoPlugin())
         except ImportError as e:
-            logger.error(f"Failed to load builtin plugin yolo_det_v1: {e}")
+            logger.error(f"Failed to load builtin plugin demo_plugin: {e}")
 
 # Global registry
 registry = PluginRegistry()

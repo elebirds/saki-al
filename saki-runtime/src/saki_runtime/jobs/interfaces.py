@@ -5,6 +5,12 @@ from saki_runtime.jobs.workspace import Workspace
 
 
 class PluginAdapter(ABC):
+    @property
+    @abstractmethod
+    def trainer_entrypoint(self) -> str:
+        """Return the python module or script path to run."""
+        pass
+
     @abstractmethod
     def validate_params(self, params: Dict[str, Any]) -> None:
         pass

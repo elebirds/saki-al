@@ -20,6 +20,8 @@ app.add_exception_handler(RuntimeErrorBase, runtime_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
+# Include router directly without prefix since router has no prefix in definition
+# But settings.API_V1_STR is used in main.py
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/health")

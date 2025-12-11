@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.24.0",
     "loguru>=0.7.0",
     "python-multipart>=0.0.6",
+    "portalocker>=2.7.0",
 ]
 
 [build-system]

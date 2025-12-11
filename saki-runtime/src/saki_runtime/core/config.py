@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     # Saki API Configuration
     SAKI_API_URL: str = "http://localhost:8000/api/v1"
     SAKI_API_KEY: Optional[str] = None
+
+    # Internal API Configuration
+    SAKI_BASE_URL: str = "http://localhost:8000"
+    INTERNAL_TOKEN: str = "dev-secret"
+    HTTP_TIMEOUT_SEC: int = 30
     
     # Runtime Configuration
     RUNS_DIR: str = "runs"

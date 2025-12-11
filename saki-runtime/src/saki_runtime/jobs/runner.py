@@ -39,11 +39,11 @@ class SubprocessJobRunner(JobRunner):
         # Add arguments
         cmd.extend([
             "--job-id", workspace.job_id,
-            "--workdir", str(workspace.workdir),
-            "--config", str(workspace.config_path),
-            "--data-dir", str(workspace.data_dir),
-            "--artifacts-dir", str(workspace.artifacts_dir),
-            "--events", str(workspace.events_path),
+            "--workdir", str(workspace.workdir.resolve()),
+            "--config", str(workspace.config_path.resolve()),
+            "--data-dir", str(workspace.data_dir.resolve()),
+            "--artifacts-dir", str(workspace.artifacts_dir.resolve()),
+            "--events", str(workspace.events_path.resolve()),
         ])
 
         # Prepare environment
@@ -65,7 +65,7 @@ class SubprocessJobRunner(JobRunner):
             process = subprocess.Popen(
                 cmd,
                 env=env,
-                cwd=str(workspace.workdir),
+                cwd=str(workspace.workdir.resolve()),
                 stdout=stdout_f,
                 stderr=stderr_f,
                 # close_fds=True # Windows doesn't support close_fds=True with std redirection easily without extra care

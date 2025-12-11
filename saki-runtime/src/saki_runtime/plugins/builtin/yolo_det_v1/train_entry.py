@@ -6,7 +6,13 @@ from pathlib import Path
 # Add project root to sys.path to allow imports
 # This is needed because we run this script as __main__ but it imports from saki_runtime
 current_dir = Path(__file__).resolve().parent
-project_root = current_dir.parents[3] # src/saki_runtime/plugins/builtin/yolo_det_v1 -> src
+# src/saki_runtime/plugins/builtin/yolo_det_v1 -> src
+# parents[0] = yolo_det_v1
+# parents[1] = builtin
+# parents[2] = plugins
+# parents[3] = saki_runtime
+# parents[4] = src
+project_root = current_dir.parents[4] 
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 

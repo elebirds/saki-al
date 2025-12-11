@@ -35,13 +35,19 @@ class GPULockManager:
         self._files: Dict[int, Any] = {}
 
     def acquire(self, gpu_id: int) -> bool:
+        # Ensure lock dir exists in case it was removed (e.g. by tests)
+        self.lock_dir.mkdir(parents=True, exist_ok=True)
+        
         lock_file = self.lock_dir / f"gpu{gpu_id}.lock"
         try:
             f = open(lock_file, "w")
             portalocker.lock(f, portalocker.LOCK_EX | portalocker.LOCK_NB)
             self._files[gpu_id] = f
             return True
-        except (portalocker.LockException, OSError):
+        except (portalocker.LockException, OSError) as e:
+            # If it's an OSError other than "file in use" (which portalocker handles via LockException usually, 
+            # but on Windows locking might raise OSError/PermissionError), we should log it.
+            # But here we just return False to indicate failure to acquire.
             if gpu_id in self._files:
                 # Already held by this process
                 return True
@@ -55,6 +61,11 @@ class GPULockManager:
                 f.close()
             except Exception as e:
                 logger.error(f"Error releasing GPU lock {gpu_id}: {e}")
+
+    def release_all(self) -> None:
+        """Release all held locks. Useful for cleanup/testing."""
+        for gpu_id in list(self._files.keys()):
+            self.release(gpu_id)
 
 
 class JobManager:
@@ -285,7 +296,7 @@ class JobManager:
         if ws.config_path.exists():
             artifacts.append(ArtifactPayload(
                 name="config.json",
-                path=ws.config_path.as_uri(),
+                path=ws.config_path.resolve().as_uri(),
                 type="config",
                 size_bytes=ws.config_path.stat().st_size
             ))
@@ -293,7 +304,7 @@ class JobManager:
         if ws.events_path.exists():
             artifacts.append(ArtifactPayload(
                 name="events.jsonl",
-                path=ws.events_path.as_uri(),
+                path=ws.events_path.resolve().as_uri(),
                 type="events",
                 size_bytes=ws.events_path.stat().st_size
             ))
@@ -304,7 +315,7 @@ class JobManager:
                 if p.is_file():
                     artifacts.append(ArtifactPayload(
                         name=p.name,
-                        path=p.as_uri(),
+                        path=p.resolve().as_uri(),
                         type="artifact",
                         size_bytes=p.stat().st_size
                     ))

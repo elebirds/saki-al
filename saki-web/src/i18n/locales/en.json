@@ -104,5 +104,18 @@
   "Failed to fetch users": "Failed to fetch users",
   "Please input a valid email!": "Please input a valid email!",
   "Please input password!": "Please input password!",
-  "Leave empty to keep current password": "Leave empty to keep current password"
+  "Leave empty to keep current password": "Leave empty to keep current password",
+  "upload": {
+    "uploading": "Uploading...",
+    "complete": "Upload Complete ({{count}} files)",
+    "completeWithErrors": "Upload Complete: {{success}} succeeded, {{errors}} failed",
+    "failed": "Upload Failed",
+    "cancel": "Cancel",
+    "close": "Close",
+    "success": "Success",
+    "error": "Error",
+    "successCount": "{{count}} succeeded",
+    "errorCount": "{{count}} failed",
+    "completeMessage": "Uploaded {{success}} of {{total}} files"
+  }
 }

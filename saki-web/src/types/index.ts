@@ -221,3 +221,65 @@ export interface LoginResponse {
   accessToken: string;
   tokenType: string;
 }
+
+// ============================================================================
+// Upload Progress Types
+// ============================================================================
+
+export type UploadProgressLevel = 'debug' | 'info' | 'warning' | 'error';
+
+export interface UploadProgressLog {
+  timestamp: string;
+  level: UploadProgressLevel;
+  stage: string;
+  message: string;
+  current: number;
+  total: number;
+  percentage: number;
+  details?: Record<string, any>;
+}
+
+export interface UploadFileResult {
+  id?: string;
+  filename: string;
+  status: 'success' | 'error';
+  error?: string;
+}
+
+export interface UploadResult {
+  uploaded: number;
+  errors: number;
+  results: UploadFileResult[];
+  progressLogs?: UploadProgressLog[];
+}
+
+export type UploadEventType = 
+  | 'start'
+  | 'file_start'
+  | 'file_complete'
+  | 'file_error'
+  | 'complete';
+
+export interface UploadProgressEvent {
+  event: UploadEventType;
+  index?: number;
+  filename?: string;
+  success?: boolean;
+  sampleId?: string;
+  error?: string;
+  total?: number;
+  uploaded?: number;
+  errors?: number;
+  results?: UploadFileResult[];
+}
+
+export interface UploadProgress {
+  status: 'idle' | 'uploading' | 'complete' | 'error';
+  currentFile: number;
+  totalFiles: number;
+  percentage: number;
+  currentFilename: string;
+  results: UploadFileResult[];
+  error?: string;
+}
+

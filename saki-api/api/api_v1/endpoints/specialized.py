@@ -14,8 +14,8 @@ from models.project import Project
 from models.sample import Sample
 from models.enums import AnnotationSystemType, SampleStatus
 from core.config import settings
-from specialized.satellite_fedo.processor import FedoProcessor
-from specialized.satellite_fedo.lookup import load_lookup_table, indices_to_physical
+from annotation_systems.satellite_fedo.processor import FedoProcessor
+from annotation_systems.satellite_fedo.lookup import load_lookup_table, indices_to_physical
 
 import numpy as np
 

@@ -104,5 +104,18 @@
   "Failed to fetch users": "获取用户列表失败",
   "Please input a valid email!": "请输入有效的邮箱地址！",
   "Please input password!": "请输入密码！",
-  "Leave empty to keep current password": "留空以保持当前密码"
+  "Leave empty to keep current password": "留空以保持当前密码",
+  "upload": {
+    "uploading": "上传中...",
+    "complete": "上传完成 ({{count}} 个文件)",
+    "completeWithErrors": "上传完成: {{success}} 成功, {{errors}} 失败",
+    "failed": "上传失败",
+    "cancel": "取消",
+    "close": "关闭",
+    "success": "成功",
+    "error": "失败",
+    "successCount": "{{count}} 个成功",
+    "errorCount": "{{count}} 个失败",
+    "completeMessage": "已上传 {{success}} / {{total}} 个文件"
+  }
 }

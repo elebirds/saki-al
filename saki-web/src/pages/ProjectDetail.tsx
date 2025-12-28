@@ -6,6 +6,9 @@ import { Project, Sample } from '../types';
 import { api } from '../services/api';
 import { PlayCircleOutlined, HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined } from '@ant-design/icons';
 import ProjectSettings from '../components/ProjectSettings';
+import UploadProgressModal from '../components/UploadProgressModal';
+import { useUpload } from '../hooks';
+
 
 const { Title } = Typography;
 const { Sider, Content } = Layout;
@@ -17,7 +20,32 @@ const ProjectDetail: React.FC = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [activeTab, setActiveTab] = useState('data');
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize upload hook
+  const { progress, upload, cancel, reset, isUploading } = useUpload(id || '', {
+    useStreaming: true,
+    onFileComplete: (result) => {
+      if (result.status === 'success') {
+        console.log(`File uploaded: ${result.filename}`);
+      }
+    },
+    onComplete: (result) => {
+      message.success(t('upload.completeMessage', { 
+        success: result.uploaded, 
+        total: result.uploaded + result.errors 
+      }));
+      // Refresh samples after upload
+      if (id) {
+        api.getSamples(id).then(setSamples);
+      }
+    },
+    onError: (error) => {
+      message.error(error);
+    },
+  });
+
 
   useEffect(() => {
     if (id) {
@@ -49,14 +77,26 @@ const ProjectDetail: React.FC = () => {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!project || !e.target.files || e.target.files.length === 0) return;
-    try {
-      await api.uploadSamples(project.id, Array.from(e.target.files));
-      message.success('Samples uploaded');
-      // Refresh samples
-      api.getSamples(project.id).then(setSamples);
-    } catch (error) {
-      message.error('Failed to upload samples');
+    
+    reset();
+    setUploadModalOpen(true);
+    await upload(Array.from(e.target.files));
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
+  };
+
+  const handleUploadModalClose = () => {
+    if (!isUploading) {
+      setUploadModalOpen(false);
+      reset();
+    }
+  };
+
+  const handleUploadCancel = () => {
+    cancel();
   };
 
   if (!project) return <div>{t('workspace.loading')}</div>;
@@ -202,6 +242,14 @@ const ProjectDetail: React.FC = () => {
       </Sider>
       <Content style={{ padding: '24px', height: '100%', overflow: 'hidden' }}>
         <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs" />
+        
+        {/* Upload Progress Modal */}
+        <UploadProgressModal
+          open={uploadModalOpen}
+          progress={progress}
+          onClose={handleUploadModalClose}
+          onCancel={handleUploadCancel}
+        />
       </Content>
     </Layout>
   );

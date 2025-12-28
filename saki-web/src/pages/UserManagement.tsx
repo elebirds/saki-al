@@ -78,13 +78,13 @@ const UserManagement: React.FC = () => {
     },
     {
       title: t('Full Name'),
-      dataIndex: 'full_name',
-      key: 'full_name',
+      dataIndex: 'fullName',
+      key: 'fullName',
     },
     {
       title: t('Status'),
-      key: 'is_active',
-      dataIndex: 'is_active',
+      key: 'isActive',
+      dataIndex: 'isActive',
       render: (isActive: boolean) => (
         <Tag color={isActive ? 'green' : 'red'}>
           {isActive ? t('Active') : t('Inactive')}
@@ -93,8 +93,8 @@ const UserManagement: React.FC = () => {
     },
     {
       title: t('Role'),
-      key: 'is_superuser',
-      dataIndex: 'is_superuser',
+      key: 'isSuperuser',
+      dataIndex: 'isSuperuser',
       render: (isSuperuser: boolean) => (
         <Tag color={isSuperuser ? 'gold' : 'blue'}>
           {isSuperuser ? t('Admin') : t('User')}
@@ -149,7 +149,7 @@ const UserManagement: React.FC = () => {
             <Input disabled={!!editingUser} />
           </Form.Item>
           <Form.Item
-            name="full_name"
+            name="fullName"
             label={t('Full Name')}
           >
             <Input />
@@ -163,14 +163,14 @@ const UserManagement: React.FC = () => {
             <Input.Password />
           </Form.Item>
           <Form.Item
-            name="is_active"
+            name="isActive"
             valuePropName="checked"
             initialValue={true}
           >
             <Checkbox>{t('Active')}</Checkbox>
           </Form.Item>
           <Form.Item
-            name="is_superuser"
+            name="isSuperuser"
             valuePropName="checked"
             initialValue={false}
           >

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, ColorPicker, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, ColorPicker, Popconfirm, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Project, LabelConfig, QueryStrategy, BaseModel } from '../types';
+import { Project, LabelConfig, QueryStrategy, BaseModel, TypeInfo } from '../types';
 import { api } from '../services/api';
+import { useSystemCapabilities } from '../hooks/useSystemCapabilities';
 
 interface ProjectSettingsProps {
   project: Project;
@@ -20,6 +21,7 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
   const [newLabelColor, setNewLabelColor] = useState('#1677ff');
   const [strategies, setStrategies] = useState<QueryStrategy[]>([]);
   const [baseModels, setBaseModels] = useState<BaseModel[]>([]);
+  const { availableTypes } = useSystemCapabilities();
 
   useEffect(() => {
     api.getStrategies().then(setStrategies);
@@ -68,6 +70,7 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         initialValues={{
           name: project.name,
           description: project.description,
+          taskType: project.taskType || 'classification',
           queryStrategyId: project.queryStrategyId,
           baseModelId: project.baseModelId,
           'alConfig.batchSize': project.alConfig?.batchSize || 10,
@@ -81,7 +84,53 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
           <Form.Item label={t('projectSettings.description')} name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
+          <Form.Item label={t('projectSettings.taskType')} name="taskType">
+            <Select>
+              {(availableTypes?.taskTypes || []).map((type: TypeInfo) => (
+                <Select.Option key={type.value} value={type.value}>
+                  {type.label}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item 
+            label={
+              <span>
+                {t('projectSettings.annotationSystem')}
+                <Tooltip title={t('projectSettings.annotationSystemReadonly')}>
+                  <LockOutlined style={{ marginLeft: 8, color: '#999' }} />
+                </Tooltip>
+              </span>
+            }
+          >
+            <Select 
+              value={project.annotationSystem || 'classic'} 
+              disabled
+              style={{ backgroundColor: '#f5f5f5' }}
+            >
+              {(availableTypes?.annotationSystems || []).map((type: TypeInfo) => (
+                <Select.Option key={type.value} value={type.value}>
+                  {type.label}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
         </Card>
+
+        {project.annotationSystem === 'fedo' && (
+          <Card title={t('projectSettings.fedoConfig') || 'FEDO Settings'} style={{ marginBottom: 24 }}>
+            <Form.Item 
+              label={t('projectSettings.thumbnailView') || 'Thumbnail View'}
+              name={['annotationConfig', 'thumbnailView']}
+              initialValue={project.annotationConfig?.thumbnailView || 'time_energy'}
+            >
+              <Select>
+                <Select.Option value="time_energy">Time-Energy View</Select.Option>
+                <Select.Option value="l_wd">L-ωd View</Select.Option>
+              </Select>
+            </Form.Item>
+          </Card>
+        )}
 
         <Card title={t('projectSettings.labelManagement')} style={{ marginBottom: 24 }}>
           <div style={{ marginBottom: 16 }}>

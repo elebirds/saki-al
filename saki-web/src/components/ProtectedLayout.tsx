@@ -27,7 +27,7 @@ const ProtectedLayout: React.FC = () => {
         try {
           console.log('Refreshing token...');
           const response = await api.refreshToken();
-          setToken(response.access_token);
+          setToken(response.accessToken);
           console.log('Token refreshed');
         } catch (error) {
           console.error('Token refresh failed', error);
@@ -61,7 +61,7 @@ const ProtectedLayout: React.FC = () => {
             defaultSelectedKeys={['1']}
             items={[
               { key: '1', label: <Link to="/">{t('app.projects')}</Link> },
-              ...(user?.is_superuser ? [{ key: '3', label: <Link to="/users">{t('Users')}</Link> }] : []),
+              ...(user?.isSuperuser ? [{ key: '3', label: <Link to="/users">{t('Users')}</Link> }] : []),
               { key: '2', label: <Link to="/about">{t('app.about')}</Link> },
             ]}
           />
@@ -76,7 +76,7 @@ const ProtectedLayout: React.FC = () => {
               { value: 'zh', label: '中文' },
             ]}
           />
-          <span style={{ color: 'white' }}>{user?.full_name || user?.email}</span>
+          <span style={{ color: 'white' }}>{user?.fullName || user?.email}</span>
           <Button type="text" icon={<LogoutOutlined />} style={{ color: 'white' }} onClick={logout} />
         </div>
       </Header>

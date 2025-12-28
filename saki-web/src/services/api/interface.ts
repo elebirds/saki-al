@@ -1,4 +1,4 @@
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, AnnotationSystemCapability } from '../../types';
 
 export interface ApiService {
   // Auth
@@ -10,6 +10,10 @@ export interface ApiService {
   getSystemStatus(): Promise<{ initialized: boolean }>;
   setupSystem(email: string, password: string, fullName?: string): Promise<User>;
   refreshToken(): Promise<LoginResponse>;
+  
+  // Types & Capabilities
+  getAvailableTypes(): Promise<AvailableTypes>;
+  registerAnnotationCapability(capability: AnnotationSystemCapability): Promise<{ status: string; clientId: string }>;
 
   getProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;

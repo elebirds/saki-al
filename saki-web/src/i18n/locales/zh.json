@@ -7,11 +7,20 @@
   },
   "common": {
     "networkError": "无法连接到服务器。请检查您的网络连接或稍后重试。",
-    "retry": "重试"
+    "retry": "重试",
+    "loading": "加载中..."
   },
   "projectList": {
     "title": "项目列表",
     "newProject": "新建项目",
+    "createSuccess": "项目创建成功",
+    "createError": "创建项目失败",
+    "projectName": "项目名称",
+    "description": "描述",
+    "taskType": "任务类型",
+    "taskTypeHelp": "用于模型训练的机器学习任务类型",
+    "annotationSystem": "标注系统",
+    "annotationSystemHelp": "根据数据类型选择对应的标注界面",
     "open": "打开",
     "stats": "统计",
     "labeled": "已标注",
@@ -47,6 +56,9 @@
     "basicInfo": "基本信息",
     "projectName": "项目名称",
     "description": "描述",
+    "taskType": "任务类型",
+    "annotationSystem": "标注系统",
+    "annotationSystemReadonly": "标注系统类型不可更改，更改将导致所有标注数据失效",
     "labelManagement": "标签管理",
     "newLabelName": "新标签名称",
     "addLabel": "添加标签",

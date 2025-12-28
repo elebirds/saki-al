@@ -7,7 +7,8 @@
   },
   "common": {
     "networkError": "Cannot connect to the server. Please check your network connection or try again later.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "loading": "Loading..."
   },
   "projectList": {
     "title": "Projects",
@@ -17,6 +18,9 @@
     "projectName": "Project Name",
     "description": "Description",
     "taskType": "Task Type",
+    "taskTypeHelp": "Machine learning task type for model training",
+    "annotationSystem": "Annotation System",
+    "annotationSystemHelp": "Choose the annotation interface based on your data type",
     "open": "Open",
     "stats": "Stats",
     "labeled": "Labeled",
@@ -52,6 +56,9 @@
     "basicInfo": "Basic Information",
     "projectName": "Project Name",
     "description": "Description",
+    "taskType": "Task Type",
+    "annotationSystem": "Annotation System",
+    "annotationSystemReadonly": "Annotation system cannot be changed as it would invalidate all existing annotations",
     "labelManagement": "Label Management",
     "newLabelName": "New Label Name",
     "addLabel": "Add Label",

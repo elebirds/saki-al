@@ -11,7 +11,7 @@ from models import (
 from api import deps
 from models.user import User
 from core.config import settings
-from models.enums import ModelStatus
+from models.enums import ModelStatus, AnnotationSystemType
 from pathlib import Path
 import shutil
 import os
@@ -103,7 +103,7 @@ def delete_project(
     current_user: User = Depends(deps.get_current_user)
 ):
     """
-    Delete a project. Only superusers can delete projects.
+    Delete a project and all related data. Only superusers can delete projects.
     """
     # if not current_user.is_superuser:
     #     raise HTTPException(
@@ -115,6 +115,31 @@ def delete_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
+    # Manually delete related records to avoid foreign key constraint issues
+    # Delete model versions
+    from models.model_version import ModelVersion
+    from models.annotation import Annotation
+    
+    # Delete annotations for samples in this project
+    for sample in project.samples:
+        statement = select(Annotation).where(Annotation.sample_id == sample.id)
+        annotations = session.exec(statement).all()
+        for ann in annotations:
+            session.delete(ann)
+    
+    # Delete samples
+    for sample in project.samples:
+        session.delete(sample)
+    
+    # Delete datasets
+    for dataset in project.datasets:
+        session.delete(dataset)
+    
+    # Delete model versions
+    for mv in project.model_versions:
+        session.delete(mv)
+    
+    # Finally delete the project
     session.delete(project)
     session.commit()
     return {"ok": True}
@@ -269,6 +294,7 @@ def upload_samples(
 ):
     """
     Upload samples to a project.
+    Handles different processing based on project's annotation system type.
     """
     project = session.get(Project, project_id)
     if not project:
@@ -279,6 +305,10 @@ def upload_samples(
 
     uploaded_count = 0
     errors_count = 0
+    results = []
+
+    # Check if this is a FEDO project
+    is_fedo = project.annotation_system == AnnotationSystemType.FEDO
 
     for file in files:
         try:
@@ -286,22 +316,84 @@ def upload_samples(
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
             
-            # Create Sample record
-            sample = Sample(
-                project_id=project_id,
-                file_path=str(file_path),
-                url=f"/static/{project_id}/{file.filename}", # Assuming we serve static files
-                status=SampleStatus.UNLABELED
-            )
-            session.add(sample)
-            uploaded_count += 1
+            if is_fedo:
+                # Process FEDO file with specialized processor
+                try:
+                    from specialized.satellite_fedo.processor import FedoProcessor
+                    
+                    storage_path = str(upload_dir / "processed")
+                    processor = FedoProcessor(storage_path)
+                    
+                    # Get visualization config from project settings
+                    viz_config = project.annotation_config.get('visualization', {})
+                    dpi = viz_config.get('dpi', 200)
+                    l_xlim = tuple(viz_config.get('l_xlim', [1.2, 1.9]))
+                    wd_ylim = tuple(viz_config.get('wd_ylim', [0.0, 4.0]))
+                    
+                    result = processor.process_file(
+                        str(file_path),
+                        dpi=dpi,
+                        l_xlim=l_xlim,
+                        wd_ylim=wd_ylim,
+                    )
+                    
+                    # Create Sample record with FEDO paths
+                    sample = Sample(
+                        project_id=project_id,
+                        file_path=str(file_path),
+                        filename=file.filename,
+                        parquet_path=result['parquet_path'],
+                        time_energy_image_path=result['time_energy_image_path'],
+                        l_wd_image_path=result['l_wd_image_path'],
+                        lookup_table_path=result['lookup_table_path'],
+                        status=SampleStatus.UNLABELED,
+                        meta_data=result['metadata'],
+                    )
+                    sample.id = result['sample_id']
+                    session.add(sample)
+                    results.append({
+                        "id": sample.id,
+                        "filename": file.filename,
+                        "status": "success"
+                    })
+                    uploaded_count += 1
+                except Exception as e:
+                    print(f"Error processing FEDO file {file.filename}: {e}")
+                    results.append({
+                        "filename": file.filename,
+                        "status": "error",
+                        "error": str(e)
+                    })
+                    errors_count += 1
+            else:
+                # Classic image upload
+                sample = Sample(
+                    project_id=project_id,
+                    file_path=str(file_path),
+                    filename=file.filename,
+                    url=f"/static/{project_id}/{file.filename}",
+                    status=SampleStatus.UNLABELED
+                )
+                session.add(sample)
+                results.append({
+                    "id": sample.id,
+                    "filename": file.filename,
+                    "status": "success"
+                })
+                uploaded_count += 1
         except Exception as e:
             print(f"Error uploading file {file.filename}: {e}")
+            results.append({
+                "filename": file.filename,
+                "status": "error",
+                "error": str(e)
+            })
             errors_count += 1
     
     session.commit()
     
     return {
         "uploaded": uploaded_count,
-        "errors": errors_count
+        "errors": errors_count,
+        "results": results
     }

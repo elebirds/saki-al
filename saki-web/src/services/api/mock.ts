@@ -1,4 +1,4 @@
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture } from '../../types';
+import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, AvailableTypes, AnnotationSystemCapability, User, LoginResponse, QueryStrategy, BaseModel, ModelVersion } from '../../types';
 import { ApiService } from './interface';
 
 const mockStrategies: ALStrategy[] = [
@@ -16,12 +16,25 @@ const mockArchitectures: ModelArchitecture[] = [
   { id: 'faster_rcnn', name: 'Faster R-CNN', taskType: 'detection' },
 ];
 
+const mockAvailableTypes: AvailableTypes = {
+  taskTypes: [
+    { value: 'classification', label: 'Classification', description: 'Image classification task' },
+    { value: 'detection', label: 'Detection', description: 'Object detection task' },
+    { value: 'segmentation', label: 'Segmentation', description: 'Semantic segmentation task' },
+  ],
+  annotationSystems: [
+    { value: 'classic', label: 'Classic Annotation', description: 'Standard image annotation' },
+    { value: 'fedo', label: 'FEDO Dual-View', description: 'Satellite electron energy data annotation' },
+  ],
+};
+
 let mockProjects: Project[] = [
   {
     id: '1',
     name: 'Traffic Sign Detection',
     description: 'Detect traffic signs in street view images.',
     taskType: 'detection',
+    annotationSystem: 'classic',
     createdAt: '2023-10-01T10:00:00Z',
     stats: {
       totalSamples: 1200,
@@ -46,6 +59,7 @@ let mockProjects: Project[] = [
     name: 'Cat vs Dog Classification',
     description: 'Classify images as cat or dog.',
     taskType: 'classification',
+    annotationSystem: 'classic',
     createdAt: '2023-10-05T14:30:00Z',
     stats: {
       totalSamples: 5000,
@@ -64,6 +78,27 @@ let mockProjects: Project[] = [
       architecture: 'resnet50',
     },
   },
+  {
+    id: '3',
+    name: 'FEDO Electron Flux',
+    description: 'Satellite electron energy data annotation.',
+    taskType: 'detection',
+    annotationSystem: 'fedo',
+    createdAt: '2023-12-01T10:00:00Z',
+    stats: {
+      totalSamples: 50,
+      labeledSamples: 5,
+      accuracy: 0,
+    },
+    labels: [
+      { name: 'injection', color: '#ff0000' },
+      { name: 'dropout', color: '#0000ff' }
+    ],
+    alConfig: {
+      batchSize: 5,
+    },
+    modelConfig: {},
+  },
 ];
 
 let mockSamples: Sample[] = Array.from({ length: 20 }).map((_, i) => ({
@@ -80,8 +115,8 @@ const mockAnnotations: Record<string, Annotation[]> = {};
 export class MockApiService implements ApiService {
   async login(username: string, password: string): Promise<LoginResponse> {
     return {
-      access_token: 'mock-token',
-      token_type: 'bearer',
+      accessToken: 'mock-token',
+      tokenType: 'bearer',
     };
   }
 
@@ -89,9 +124,9 @@ export class MockApiService implements ApiService {
     return {
       id: '1',
       email,
-      full_name: fullName,
-      is_active: true,
-      is_superuser: false,
+      fullName: fullName,
+      isActive: true,
+      isSuperuser: false,
     };
   }
 
@@ -99,9 +134,9 @@ export class MockApiService implements ApiService {
     return {
       id: '1',
       email: 'admin@example.com',
-      full_name: 'Admin User',
-      is_active: true,
-      is_superuser: true,
+      fullName: 'Admin User',
+      isActive: true,
+      isSuperuser: true,
     };
   }
 
@@ -113,17 +148,26 @@ export class MockApiService implements ApiService {
     return {
       id: '1',
       email,
-      full_name: fullName,
-      is_active: true,
-      is_superuser: true,
+      fullName: fullName,
+      isActive: true,
+      isSuperuser: true,
     };
   }
 
   async refreshToken(): Promise<LoginResponse> {
     return {
-      access_token: 'mock-refreshed-token',
-      token_type: 'bearer',
+      accessToken: 'mock-refreshed-token',
+      tokenType: 'bearer',
     };
+  }
+
+  async getAvailableTypes(): Promise<AvailableTypes> {
+    return mockAvailableTypes;
+  }
+
+  async registerAnnotationCapability(capability: AnnotationSystemCapability): Promise<{ status: string; clientId: string }> {
+    console.log('Mock: Registered annotation capability:', capability);
+    return { status: 'registered', clientId: capability.clientId };
   }
 
   async getProjects(): Promise<Project[]> {

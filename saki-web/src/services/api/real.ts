@@ -1,20 +1,72 @@
-import axios, { AxiosInstance } from 'axios';
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse } from '../../types';
+import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, AnnotationSystemCapability } from '../../types';
 import { ApiService } from './interface';
 import { useAuthStore } from '../../store/authStore';
+
+// ============================================================================
+// Case Conversion Utilities
+// ============================================================================
+
+/** Convert snake_case string to camelCase */
+function snakeToCamel(str: string): string {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+/** Convert camelCase string to snake_case */
+function camelToSnake(str: string): string {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+/** Recursively convert object keys from snake_case to camelCase */
+function convertKeysToCamel<T>(obj: unknown): T {
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertKeysToCamel(item)) as T;
+  }
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj as object).reduce((result, key) => {
+      const camelKey = snakeToCamel(key);
+      (result as Record<string, unknown>)[camelKey] = convertKeysToCamel((obj as Record<string, unknown>)[key]);
+      return result;
+    }, {} as T);
+  }
+  return obj as T;
+}
+
+/** Recursively convert object keys from camelCase to snake_case */
+function convertKeysToSnake<T>(obj: unknown): T {
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertKeysToSnake(item)) as T;
+  }
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj as object).reduce((result, key) => {
+      const snakeKey = camelToSnake(key);
+      (result as Record<string, unknown>)[snakeKey] = convertKeysToSnake((obj as Record<string, unknown>)[key]);
+      return result;
+    }, {} as T);
+  }
+  return obj as T;
+}
+
+// ============================================================================
+// API Service Implementation
+// ============================================================================
 
 export class RealApiService implements ApiService {
   private client: AxiosInstance;
 
   constructor() {
     this.client = axios.create({
-      baseURL: 'http://localhost:8000/api/v1', // Updated to point to backend
+      baseURL: 'http://localhost:8000/api/v1',
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    // Add request interceptor to inject token
+    // ========================================================================
+    // Request Interceptors
+    // ========================================================================
+    
+    // 1. Add auth token
     this.client.interceptors.request.use(
       (config) => {
         const token = useAuthStore.getState().token;
@@ -26,18 +78,40 @@ export class RealApiService implements ApiService {
       (error) => Promise.reject(error)
     );
 
-    // Add response interceptor for error handling
+    // 2. Convert request body from camelCase to snake_case
+    this.client.interceptors.request.use(
+      (config: InternalAxiosRequestConfig) => {
+        // Only convert JSON data, skip FormData and URLSearchParams
+        if (config.data && 
+            !(config.data instanceof FormData) && 
+            !(config.data instanceof URLSearchParams)) {
+          config.data = convertKeysToSnake(config.data);
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    // ========================================================================
+    // Response Interceptors
+    // ========================================================================
+    
+    // 1. Convert response data from snake_case to camelCase
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        if (response.data) {
+          response.data = convertKeysToCamel(response.data);
+        }
+        return response;
+      },
       (error) => {
         if (error.response?.status === 401) {
           useAuthStore.getState().logout();
         }
         
-        // Check for network error (no response or network error code)
+        // Check for network error
         if ((!error.response || error.code === 'ERR_NETWORK') && window.location.pathname !== '/network-error') {
           window.location.href = '/network-error';
-          // Return a promise that never resolves to prevent UI flickering before redirect
           return new Promise(() => {});
         }
 
@@ -47,6 +121,10 @@ export class RealApiService implements ApiService {
       }
     );
   }
+
+  // ==========================================================================
+  // Auth APIs
+  // ==========================================================================
 
   async login(username: string, password: string): Promise<LoginResponse> {
     const formData = new URLSearchParams();
@@ -60,7 +138,7 @@ export class RealApiService implements ApiService {
   }
 
   async register(email: string, password: string, fullName?: string): Promise<User> {
-    const response = await this.client.post<User>('/register', { email, password, full_name: fullName });
+    const response = await this.client.post<User>('/register', { email, password, fullName });
     return response.data;
   }
 
@@ -75,7 +153,7 @@ export class RealApiService implements ApiService {
   }
 
   async setupSystem(email: string, password: string, fullName?: string): Promise<User> {
-    const response = await this.client.post<User>('/system/setup', { email, password, full_name: fullName });
+    const response = await this.client.post<User>('/system/setup', { email, password, fullName });
     return response.data;
   }
 
@@ -83,6 +161,27 @@ export class RealApiService implements ApiService {
     const response = await this.client.post<LoginResponse>('/login/refresh-token');
     return response.data;
   }
+
+  // ==========================================================================
+  // System APIs
+  // ==========================================================================
+
+  async getAvailableTypes(): Promise<AvailableTypes> {
+    const response = await this.client.get<AvailableTypes>('/system/types');
+    return response.data;
+  }
+
+  async registerAnnotationCapability(capability: AnnotationSystemCapability): Promise<{ status: string; clientId: string }> {
+    const response = await this.client.post<{ status: string; clientId: string }>(
+      '/system/annotation-systems/register', 
+      capability
+    );
+    return response.data;
+  }
+
+  // ==========================================================================
+  // Project APIs
+  // ==========================================================================
 
   async getProjects(): Promise<Project[]> {
     const response = await this.client.get<Project[]>('/projects');
@@ -108,28 +207,30 @@ export class RealApiService implements ApiService {
     await this.client.delete(`/projects/${id}`);
   }
 
+  // ==========================================================================
+  // Sample APIs
+  // ==========================================================================
+
   async getSamples(projectId: string): Promise<Sample[]> {
     const response = await this.client.get<{ items: Sample[] }>(`/projects/${projectId}/samples`);
     return response.data.items;
   }
 
   async getSample(sampleId: string): Promise<Sample | undefined> {
-    // TODO: Implement real API call if needed, or remove if not used
-    return undefined;
+    const response = await this.client.get<Sample>(`/samples/${sampleId}`);
+    return response.data;
   }
 
   async uploadSamples(projectId: string, files: File[]): Promise<void> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
     await this.client.post(`/projects/${projectId}/samples`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
   }
 
   async getSampleAnnotations(sampleId: string): Promise<Annotation[]> {
-    const response = await this.client.get<{ data: any }>(`/samples/${sampleId}/annotation`);
+    const response = await this.client.get<{ data: Annotation[] }>(`/samples/${sampleId}/annotation`);
     return response.data.data || [];
   }
 
@@ -140,6 +241,10 @@ export class RealApiService implements ApiService {
     });
   }
 
+  // ==========================================================================
+  // Config APIs
+  // ==========================================================================
+
   async getStrategies(): Promise<QueryStrategy[]> {
     const response = await this.client.get<QueryStrategy[]>('/configs/strategies');
     return response.data;
@@ -149,6 +254,10 @@ export class RealApiService implements ApiService {
     const response = await this.client.get<BaseModel[]>('/configs/base-models');
     return response.data;
   }
+
+  // ==========================================================================
+  // Training APIs
+  // ==========================================================================
 
   async trainProject(projectId: string): Promise<void> {
     await this.client.post(`/projects/${projectId}/train`);
@@ -163,6 +272,10 @@ export class RealApiService implements ApiService {
     const response = await this.client.get<ModelVersion[]>(`/projects/${projectId}/models`);
     return response.data;
   }
+
+  // ==========================================================================
+  // User APIs
+  // ==========================================================================
 
   async getUsers(skip: number = 0, limit: number = 100): Promise<User[]> {
     const response = await this.client.get<User[]>('/users/', { params: { skip, limit } });

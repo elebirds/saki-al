@@ -16,8 +16,8 @@ const Login: React.FC = () => {
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      const { access_token } = await api.login(values.email, values.password);
-      setToken(access_token);
+      const { accessToken } = await api.login(values.email, values.password);
+      setToken(accessToken);
       
       // Fetch user details
       const user = await api.getCurrentUser();

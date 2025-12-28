@@ -96,6 +96,30 @@ export const normalizeRect = (rect: Rect) => {
 };
 
 /**
+ * Normalizes an angle to be within -90° to 90° range.
+ * This ensures text labels are never upside down.
+ * If the angle exceeds this range, we flip it by 180° and return a flag to swap the origin.
+ * 
+ * @param angleDeg The angle in degrees.
+ * @returns The normalized angle and whether to flip the direction.
+ */
+export const normalizeObbAngle = (angleDeg: number): { angle: number; shouldFlip: boolean } => {
+  // Normalize to -180 to 180 range first
+  let angle = angleDeg;
+  while (angle > 180) angle -= 360;
+  while (angle < -180) angle += 360;
+  
+  // If angle is between -180 and -90, or between 90 and 180, flip it
+  if (angle > 90) {
+    return { angle: angle - 180, shouldFlip: true };
+  } else if (angle < -90) {
+    return { angle: angle + 180, shouldFlip: true };
+  }
+  
+  return { angle, shouldFlip: false };
+};
+
+/**
  * Calculates the Oriented Bounding Box (OBB) during the drawing process.
  * Step 1 ('width'): Defines the baseline vector (width and rotation).
  * Step 2 ('height'): Defines the height perpendicular to the baseline.
@@ -116,11 +140,22 @@ export const calculateObbRect = (
     const dx = currentPos.x - startPos.x;
     const dy = currentPos.y - startPos.y;
     const width = Math.sqrt(dx * dx + dy * dy);
-    const rotation = Math.atan2(dy, dx) * 180 / Math.PI;
+    const rawRotation = Math.atan2(dy, dx) * 180 / Math.PI;
+    
+    // Normalize angle to -90° to 90° range to prevent upside-down text
+    const { angle: rotation, shouldFlip } = normalizeObbAngle(rawRotation);
+    
+    // If we need to flip, swap the start and end points
+    let originX = startPos.x;
+    let originY = startPos.y;
+    if (shouldFlip) {
+      originX = currentPos.x;
+      originY = currentPos.y;
+    }
     
     return {
-      x: startPos.x,
-      y: startPos.y,
+      x: originX,
+      y: originY,
       w: width,
       h: 0, 
       rotation: rotation
@@ -145,28 +180,72 @@ export const calculateObbRect = (
 };
 
 /**
- * Finalizes the OBB rectangle, ensuring height is positive by shifting the origin if necessary.
+ * Finalizes the OBB rectangle, ensuring:
+ * 1. Height is positive by shifting the origin if necessary
+ * 2. The "width" edge is always more horizontal (|rotation| <= 45°), so text labels appear on the top edge
+ * 
  * @param rect The raw OBB rectangle (height might be negative).
- * @returns The finalized OBB rectangle with positive dimensions.
+ * @returns The finalized OBB rectangle with positive dimensions and normalized rotation.
  */
 export const finalizeObbRect = (rect: Rect) => {
   let finalRect = { ...rect };
-          
+  
+  // Step 1: Ensure height is positive
   if (finalRect.h < 0) {
-      const rad = (finalRect.rotation || 0) * Math.PI / 180;
-      const shiftX = -Math.sin(rad) * finalRect.h;
-      const shiftY = Math.cos(rad) * finalRect.h;
-      
-      finalRect.x += shiftX;
-      finalRect.y += shiftY;
-      finalRect.h = Math.abs(finalRect.h);
+    const rad = (finalRect.rotation || 0) * Math.PI / 180;
+    const shiftX = -Math.sin(rad) * finalRect.h;
+    const shiftY = Math.cos(rad) * finalRect.h;
+    
+    finalRect.x += shiftX;
+    finalRect.y += shiftY;
+    finalRect.h = Math.abs(finalRect.h);
+  }
+  
+  // Step 2: Ensure the "width" edge is more horizontal (|rotation| <= 45°)
+  // If |rotation| > 45°, swap width and height, and adjust rotation by ±90°
+  let rotation = finalRect.rotation || 0;
+  let width = finalRect.w;
+  let height = finalRect.h;
+  let x = finalRect.x;
+  let y = finalRect.y;
+  
+  if (Math.abs(rotation) > 45) {
+    // Swap width and height
+    const temp = width;
+    width = height;
+    height = temp;
+    
+    // Adjust rotation: if rotation > 45°, subtract 90°; if < -45°, add 90°
+    if (rotation > 45) {
+      rotation -= 90;
+    } else {
+      rotation += 90;
+    }
+    
+    // Recalculate origin point after rotation change
+    // The new origin should be at the corner that keeps the box in the same position
+    const oldRad = (finalRect.rotation || 0) * Math.PI / 180;
+    
+    // Move origin to the corner that will become the new top-left after swapping
+    // When we rotate by -90° (or +90°), we need to shift the origin
+    if (finalRect.rotation! > 45) {
+      // Original rotation > 45°, we subtract 90°
+      // New origin is at the old origin shifted by the height vector (perpendicular to old width)
+      x = finalRect.x - Math.sin(oldRad) * finalRect.h;
+      y = finalRect.y + Math.cos(oldRad) * finalRect.h;
+    } else {
+      // Original rotation < -45°, we add 90°
+      // New origin is at the old origin shifted by the width vector
+      x = finalRect.x + Math.cos(oldRad) * finalRect.w;
+      y = finalRect.y + Math.sin(oldRad) * finalRect.w;
+    }
   }
   
   return {
-    x: finalRect.x,
-    y: finalRect.y,
-    width: finalRect.w,
-    height: finalRect.h,
-    rotation: finalRect.rotation
+    x,
+    y,
+    width,
+    height,
+    rotation
   };
 };

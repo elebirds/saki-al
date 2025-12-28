@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { Stage, Layer, Image as KonvaImage } from 'react-konva';
 import useImage from 'use-image';
 import Konva from 'konva';
@@ -7,14 +7,9 @@ import AnnotationItem from './canvas/AnnotationItem';
 import Crosshair from './canvas/Crosshair';
 import CanvasTransformer from './canvas/CanvasTransformer';
 import NewAnnotationLayer from './canvas/NewAnnotationLayer';
-import { 
-  clampPoint, 
-  calculateFitScale, 
-  calculateZoom, 
-  normalizeRect, 
-  calculateObbRect, 
-  finalizeObbRect 
-} from '../utils/canvasUtils';
+import { useDrawingTools, ToolType } from './canvas/hooks';
+import { AnnotationCreateEvent } from './canvas/tools/types';
+import { calculateFitScale, calculateZoom } from '../utils/canvasUtils';
 
 export interface AnnotationCanvasRef {
   zoomIn: () => void;
@@ -22,42 +17,105 @@ export interface AnnotationCanvasRef {
   resetView: () => void;
 }
 
-interface AnnotationCanvasProps {
-  imageUrl: string;
-  annotations: Annotation[];
-  onAddAnnotation: (annotation: Annotation) => void;
-  onUpdateAnnotation: (annotation: Annotation) => void;
-  onDeleteAnnotation: (id: string) => void;
-  currentTool: 'select' | 'rect' | 'obb';
-  labelColor?: string;
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
+/** 画布事件回调接口 */
+export interface AnnotationCanvasCallbacks {
+  /** 新标注创建事件 */
+  onAnnotationCreate?: (event: AnnotationCreateEvent) => void;
+  /** 标注更新事件 */
+  onAnnotationUpdate?: (annotation: Annotation) => void;
+  /** 标注删除事件 */
+  onAnnotationDelete?: (id: string) => void;
+  /** 标注选择事件 */
+  onSelect?: (id: string | null) => void;
 }
 
+export interface AnnotationCanvasProps extends AnnotationCanvasCallbacks {
+  /** 图像 URL */
+  imageUrl: string;
+  /** 标注列表 */
+  annotations: Annotation[];
+  /** 当前工具类型 */
+  currentTool: ToolType;
+  /** 当前标签颜色（用于新绘制的标注） */
+  labelColor?: string;
+  /** 当前选中的标注 ID */
+  selectedId: string | null;
+}
+
+// 导出类型供外部使用
+export type { AnnotationCreateEvent, ToolType };
+
+/**
+ * 标注画布组件
+ * 
+ * 一个可复用的画布组件，支持：
+ * - 图像显示和缩放/平移
+ * - 多种标注工具（矩形、OBB、选择）
+ * - 标注的创建、编辑、删除
+ * 
+ * @example
+ * ```tsx
+ * <AnnotationCanvas
+ *   imageUrl="/image.jpg"
+ *   annotations={annotations}
+ *   currentTool="rect"
+ *   selectedId={selectedId}
+ *   onAnnotationCreate={(event) => {
+ *     // event.type: 'rect' | 'obb'
+ *     // event.bbox: { x, y, width, height, rotation? }
+ *     const newAnnotation = {
+ *       id: generateId(),
+ *       sampleId: currentSample.id,
+ *       label: currentLabel,
+ *       type: event.type,
+ *       bbox: event.bbox,
+ *     };
+ *     setAnnotations([...annotations, newAnnotation]);
+ *   }}
+ *   onAnnotationUpdate={(ann) => updateAnnotation(ann)}
+ *   onAnnotationDelete={(id) => deleteAnnotation(id)}
+ *   onSelect={(id) => setSelectedId(id)}
+ * />
+ * ```
+ */
 const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(({ 
   imageUrl, 
   annotations, 
-  onAddAnnotation,
-  onUpdateAnnotation,
-  onDeleteAnnotation,
   currentTool,
   labelColor = '#ff0000',
   selectedId,
-  onSelect
+  onAnnotationCreate,
+  onAnnotationUpdate,
+  onAnnotationDelete,
+  onSelect,
 }, ref) => {
   const [image] = useImage(imageUrl);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [newRect, setNewRect] = useState<{ x: number; y: number; w: number; h: number; rotation?: number } | null>(null);
-  const [obbStep, setObbStep] = useState<'none' | 'width' | 'height'>('none');
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
-  const isDrawing = useRef(false);
-  const startPos = useRef<{ x: number; y: number } | null>(null);
+
+  // 图像边界
+  const imageBounds = image ? { width: image.width, height: image.height } : null;
+
+  // 使用绘制工具 Hook
+  const {
+    drawingRect,
+    showCrosshair,
+    allowStageDrag,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    cursorPos,
+  } = useDrawingTools({
+    currentTool,
+    imageBounds,
+    onAnnotationCreate,
+    onSelect,
+  });
 
   useImperativeHandle(ref, () => ({
     zoomIn: () => {
@@ -77,13 +135,6 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
       }
     }
   }));
-
-  // Reset OBB step when tool changes
-  useEffect(() => {
-    setObbStep('none');
-    setNewRect(null);
-    isDrawing.current = false;
-  }, [currentTool]);
 
   const selectedAnnotation = annotations.find(a => a.id === selectedId);
 
@@ -134,15 +185,16 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
-        onDeleteAnnotation(selectedId);
-        onSelect(null);
+        onAnnotationDelete?.(selectedId);
+        onSelect?.(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, onDeleteAnnotation, onSelect]);
+  }, [selectedId, onAnnotationDelete, onSelect]);
 
-  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
+  // 滚轮缩放
+  const handleWheelEvent = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
@@ -159,111 +211,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
 
     setScale(newScale);
     setPosition(newPos);
-  };
-
-  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (currentTool === 'select') {
-      const clickedOnEmpty = e.target === e.target.getStage() || e.target.className === 'Image';
-      if (clickedOnEmpty) {
-        onSelect(null);
-      }
-      return;
-    }
-
-    const stage = e.target.getStage();
-    const pos = stage?.getRelativePointerPosition();
-    if (!pos || !image) return;
-
-    const clampedPos = clampPoint(pos, { width: image.width, height: image.height });
-
-    // Rect Tool Logic
-    if (currentTool === 'rect') {
-      isDrawing.current = true;
-      startPos.current = clampedPos;
-      setNewRect({ x: clampedPos.x, y: clampedPos.y, w: 0, h: 0 });
-      onSelect(null);
-      return;
-    }
-
-    // OBB Tool Logic
-    if (currentTool === 'obb') {
-      if (obbStep === 'none') {
-        // Step 1: Start drawing the baseline (width)
-        setObbStep('width');
-        startPos.current = clampedPos;
-        setNewRect({ x: clampedPos.x, y: clampedPos.y, w: 0, h: 0, rotation: 0 });
-        onSelect(null);
-      } else if (obbStep === 'width') {
-        // Step 2: Finish baseline, start drawing height
-        setObbStep('height');
-      } else if (obbStep === 'height') {
-        // Step 3: Finish height, finalize OBB
-        if (newRect) {
-          const finalRect = finalizeObbRect(newRect);
-
-          onAddAnnotation({
-            id: Date.now().toString(),
-            sampleId: 'current',
-            label: 'Object', // Label will be overwritten by parent
-            type: 'obb',
-            bbox: finalRect,
-          });
-        }
-        setObbStep('none');
-        setNewRect(null);
-      }
-    }
-  };
-
-  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    const stage = e.target.getStage();
-    const pos = stage?.getRelativePointerPosition();
-    
-    if (pos && image) {
-      const clamped = clampPoint(pos, { width: image.width, height: image.height });
-      if (currentTool !== 'select') {
-        setCursorPos(clamped);
-      } else {
-        setCursorPos(null);
-      }
-
-      if (!startPos.current) return;
-
-      if (currentTool === 'rect' && isDrawing.current) {
-        setNewRect({
-          x: startPos.current.x,
-          y: startPos.current.y,
-          w: clamped.x - startPos.current.x,
-          h: clamped.y - startPos.current.y,
-        });
-      } else if (currentTool === 'obb') {
-        if (obbStep !== 'none') {
-          const obbRect = calculateObbRect(startPos.current, clamped, obbStep as 'width' | 'height', newRect);
-          if (obbRect) {
-            setNewRect(obbRect);
-          }
-        }
-      }
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (currentTool === 'rect' && isDrawing.current && newRect) {
-      if (Math.abs(newRect.w) > 5 && Math.abs(newRect.h) > 5) {
-        const normalizedRect = normalizeRect(newRect);
-
-        onAddAnnotation({
-          id: Date.now().toString(),
-          sampleId: 'current',
-          label: 'Object',
-          type: 'rect',
-          bbox: normalizedRect,
-        });
-      }
-      isDrawing.current = false;
-      setNewRect(null);
-    }
-  };
+  }, []);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#1e1e1e' }}>
@@ -272,14 +220,14 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
         height={stageSize.height}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => setCursorPos(null)}
+        onMouseLeave={() => {/* cursorPos 在 hook 内部处理 */}}
         onMouseUp={handleMouseUp}
-        onWheel={handleWheel}
+        onWheel={handleWheelEvent}
         scaleX={scale}
         scaleY={scale}
         x={position.x}
         y={position.y}
-        draggable={currentTool === 'select' && !selectedId}
+        draggable={allowStageDrag(!!selectedId)}
         ref={stageRef}
       >
         <Layer>
@@ -299,13 +247,13 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
               stageX={position.x}
               stageY={position.y}
               currentTool={currentTool}
-              onSelect={onSelect}
-              onUpdate={onUpdateAnnotation}
+              onSelect={id => onSelect?.(id)}
+              onUpdate={ann => onAnnotationUpdate?.(ann)}
             />
           ))}
 
           <NewAnnotationLayer 
-            newRect={newRect} 
+            newRect={drawingRect} 
             labelColor={labelColor} 
             scale={scale} 
           />
@@ -315,7 +263,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
             imageWidth={image ? image.width : 0}
             imageHeight={image ? image.height : 0}
             scale={scale}
-            visible={(currentTool === 'rect' || currentTool === 'obb') && !!image}
+            visible={showCrosshair && !!image}
           />
 
           <CanvasTransformer
@@ -329,5 +277,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
     </div>
   );
 });
+
+AnnotationCanvas.displayName = 'AnnotationCanvas';
 
 export default AnnotationCanvas;

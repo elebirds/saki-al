@@ -75,12 +75,14 @@ const AnnotationWorkspace: React.FC = () => {
     }
   }, [history, historyIndex]);
 
-  const handleAddAnnotation = (ann: Annotation) => {
-    // Ensure the new annotation has the selected label and color
-    const newAnn = {
-      ...ann,
+  const handleAnnotationCreate = (event: { type: 'rect' | 'obb'; bbox: { x: number; y: number; width: number; height: number; rotation?: number } }) => {
+    const newAnn: Annotation = {
+      id: Date.now().toString(),
+      sampleId: currentSample?.id || 'current',
       label: selectedLabel?.name || 'unknown',
-      color: selectedLabel?.color || '#ff0000'
+      color: selectedLabel?.color || '#ff0000',
+      type: event.type,
+      bbox: event.bbox,
     };
     addToHistory([...annotations, newAnn]);
   };
@@ -244,9 +246,9 @@ const AnnotationWorkspace: React.FC = () => {
             ref={canvasRef}
             imageUrl={currentSample.url}
             annotations={annotations}
-            onAddAnnotation={handleAddAnnotation}
-            onUpdateAnnotation={handleUpdateAnnotation}
-            onDeleteAnnotation={handleDeleteAnnotation}
+            onAnnotationCreate={handleAnnotationCreate}
+            onAnnotationUpdate={handleUpdateAnnotation}
+            onAnnotationDelete={handleDeleteAnnotation}
             currentTool={currentTool}
             labelColor={selectedLabel?.color || '#ff0000'}
             selectedId={selectedId}

@@ -21,12 +21,13 @@ const CanvasTransformer = forwardRef<Konva.Transformer, CanvasTransformerProps>(
       keepRatio={false}
       ignoreStroke={true}
       boundBoxFunc={(_oldBox, newBox) => {
+        // 只对矩形类型应用边界约束，OBB 不限制
         if (!image || selectedAnnotation?.type !== 'rect') return newBox;
         
         let { x, y, width, height, rotation } = newBox;
 
-        // Clamp the transformer box to the image boundaries
-        // This prevents resizing the annotation outside the image area
+        // 只限制起始位置不能超出图像边界，不限制大小
+        // 如果左上角超出图像，调整位置和大小
         if (x < 0) {
           width += x;
           x = 0;
@@ -35,13 +36,10 @@ const CanvasTransformer = forwardRef<Konva.Transformer, CanvasTransformerProps>(
           height += y;
           y = 0;
         }
-        
-        if (x + width > image.width) {
-          width = image.width - x;
-        }
-        if (y + height > image.height) {
-          height = image.height - y;
-        }
+
+        // 确保最小尺寸
+        width = Math.max(5, width);
+        height = Math.max(5, height);
 
         return { x, y, width, height, rotation };
       }}

@@ -1,0 +1,199 @@
+import { useRef, forwardRef, useImperativeHandle } from 'react';
+import { Stage, Layer, Image as KonvaImage } from 'react-konva';
+import useImage from 'use-image';
+import { Annotation } from '../../types';
+import AnnotationItem from './AnnotationItem';
+import Crosshair from './Crosshair';
+import CanvasTransformer from './CanvasTransformer';
+import NewAnnotationLayer from './NewAnnotationLayer';
+import { 
+  useDrawingTools, 
+  useCanvasView, 
+  useTransformer, 
+  useKeyboardShortcuts,
+  ToolType 
+} from './hooks';
+import { AnnotationCreateEvent } from './tools/types';
+
+// ============================================================================
+// 类型定义
+// ============================================================================
+
+export interface AnnotationCanvasRef {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetView: () => void;
+}
+
+export interface AnnotationCanvasCallbacks {
+  /** 新标注创建事件 */
+  onAnnotationCreate?: (event: AnnotationCreateEvent) => void;
+  /** 标注更新事件 */
+  onAnnotationUpdate?: (annotation: Annotation) => void;
+  /** 标注删除事件 */
+  onAnnotationDelete?: (id: string) => void;
+  /** 标注选择事件 */
+  onSelect?: (id: string | null) => void;
+}
+
+export interface AnnotationCanvasProps extends AnnotationCanvasCallbacks {
+  /** 图像 URL */
+  imageUrl: string;
+  /** 标注列表 */
+  annotations: Annotation[];
+  /** 当前工具类型 */
+  currentTool: ToolType;
+  /** 当前标签颜色 */
+  labelColor?: string;
+  /** 当前选中的标注 ID */
+  selectedId: string | null;
+}
+
+export type { AnnotationCreateEvent, ToolType };
+
+// ============================================================================
+// 组件实现
+// ============================================================================
+
+/**
+ * 标注画布组件
+ * 
+ * 可复用的画布组件，支持：
+ * - 图像显示和缩放/平移
+ * - 多种标注工具（矩形、OBB、选择）
+ * - 标注的创建、编辑、删除
+ */
+const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(({
+  imageUrl,
+  annotations,
+  currentTool,
+  labelColor = '#ff0000',
+  selectedId,
+  onAnnotationCreate,
+  onAnnotationUpdate,
+  onAnnotationDelete,
+  onSelect,
+}, ref) => {
+  // ========== Refs ==========
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // ========== 图像加载 ==========
+  const [image] = useImage(imageUrl);
+  const imageBounds = image ? { width: image.width, height: image.height } : null;
+
+  // ========== 视图控制 ==========
+  const {
+    stageSize,
+    scale,
+    position,
+    stageRef,
+    zoomIn,
+    zoomOut,
+    resetView,
+    handleWheel,
+  } = useCanvasView({ image, containerRef });
+
+  // ========== 绘制工具 ==========
+  const {
+    drawingRect,
+    showCrosshair,
+    allowStageDrag,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    cursorPos,
+  } = useDrawingTools({
+    currentTool,
+    imageBounds,
+    onAnnotationCreate,
+    onSelect,
+  });
+
+  // ========== Transformer ==========
+  const { transformerRef } = useTransformer({
+    selectedId,
+    annotations,
+    stageRef,
+  });
+
+  // ========== 键盘快捷键 ==========
+  useKeyboardShortcuts({
+    selectedId,
+    onDelete: onAnnotationDelete,
+    onDeselect: () => onSelect?.(null),
+  });
+
+  // ========== 暴露方法 ==========
+  useImperativeHandle(ref, () => ({ zoomIn, zoomOut, resetView }));
+
+  // ========== 派生状态 ==========
+  const selectedAnnotation = annotations.find(a => a.id === selectedId);
+
+  // ========== 渲染 ==========
+  return (
+    <div 
+      ref={containerRef} 
+      style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#1e1e1e' }}
+    >
+      <Stage
+        ref={stageRef}
+        width={stageSize.width}
+        height={stageSize.height}
+        scaleX={scale}
+        scaleY={scale}
+        x={position.x}
+        y={position.y}
+        draggable={allowStageDrag(!!selectedId)}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onWheel={handleWheel}
+      >
+        <Layer>
+          {/* 背景图像 */}
+          {image && <KonvaImage image={image} />}
+          
+          {/* 已有标注 */}
+          {annotations.map(ann => (
+            <AnnotationItem
+              key={ann.id}
+              annotation={ann}
+              isSelected={selectedId === ann.id}
+              scale={scale}
+              image={image}
+              stageX={position.x}
+              stageY={position.y}
+              currentTool={currentTool}
+              onSelect={id => onSelect?.(id)}
+              onUpdate={updated => onAnnotationUpdate?.(updated)}
+            />
+          ))}
+
+          {/* 正在绘制的标注 */}
+          <NewAnnotationLayer newRect={drawingRect} labelColor={labelColor} scale={scale} />
+
+          {/* 十字准线 */}
+          <Crosshair
+            cursorPos={cursorPos}
+            imageWidth={image?.width ?? 0}
+            imageHeight={image?.height ?? 0}
+            scale={scale}
+            visible={showCrosshair && !!image}
+          />
+
+          {/* 变换控制器 */}
+          <CanvasTransformer
+            ref={transformerRef}
+            selectedAnnotation={selectedAnnotation}
+            currentTool={currentTool}
+            image={image}
+          />
+        </Layer>
+      </Stage>
+    </div>
+  );
+});
+
+AnnotationCanvas.displayName = 'AnnotationCanvas';
+
+export default AnnotationCanvas;

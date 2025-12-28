@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Layout, Button, Card, Space, Typography, List, Radio, Tooltip, Select, Tag, message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { LeftOutlined, RightOutlined, CheckOutlined, DragOutlined, BorderOutlined, RotateRightOutlined, DeleteOutlined, UndoOutlined, RedoOutlined, ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons';
-import AnnotationCanvas, { AnnotationCanvasRef } from '../components/AnnotationCanvas';
+import { AnnotationCanvas, AnnotationCanvasRef } from '../components/canvas';
 import { api } from '../services/api';
 import { Sample, Annotation, Project, LabelConfig } from '../types';
 

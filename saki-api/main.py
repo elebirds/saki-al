@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import settings
-from app.db.session import init_db
-from app.api.api_v1.api import api_router
+from core.config import settings
+from db.session import init_db
+from api.api_v1.api import api_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -36,5 +36,5 @@ def root():
     return {"message": "Welcome to Saki Active Learning API"}
 
 # Import and include routers here later
-# from app.api import api_router
+# from api import api_router
 # app.include_router(api_router, prefix=settings.API_V1_STR)

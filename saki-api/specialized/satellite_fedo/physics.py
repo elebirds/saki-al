@@ -91,25 +91,3 @@ def calculate_physics_data(
         'Flux': flux_matrix,      # (N, M)
         'Wd': wd_matrix           # (N, M)
     }
-
-
-def get_data_bounds(data: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
-    """
-    Get the physical bounds of the data for coordinate transformation.
-    
-    Returns:
-        Dictionary with bounds for each axis:
-        - time_idx: {min, max} - index range
-        - energy_idx: {min, max} - index range  
-        - L: {min, max} - L-shell range
-        - Wd: {min, max} - drift frequency range
-    """
-    L = data['L']
-    Wd = data['Wd']
-    
-    return {
-        'time_idx': {'min': 0, 'max': len(L) - 1},
-        'energy_idx': {'min': 0, 'max': len(data['E']) - 1},
-        'L': {'min': float(np.nanmin(L)), 'max': float(np.nanmax(L))},
-        'Wd': {'min': float(np.nanmin(Wd)), 'max': float(np.nanmax(Wd))},
-    }

@@ -8,11 +8,10 @@ import uuid
 import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import Dict, Any, Tuple, Optional
-from pathlib import Path
 
 from .parser import load_fedo_data
-from .physics import calculate_physics_data, get_data_bounds
-from .visualizer import generate_views, get_image_dimensions
+from .physics import calculate_physics_data
+from .visualizer import generate_views
 from .lookup import generate_lookup_table, LookupTable
 
 
@@ -42,8 +41,8 @@ class FedoProcessor:
         file_path: str,
         sample_id: Optional[str] = None,
         dpi: int = 200,
-        l_xlim: Tuple[float, float] = (1.2, 1.9),
-        wd_ylim: Tuple[float, float] = (0.0, 4.0),
+        l_xlim: Optional[Tuple[float, float]] = None,
+        wd_ylim: Optional[Tuple[float, float]] = None,
     ) -> Dict[str, Any]:
         """
         Process a FEDO data file completely.
@@ -94,10 +93,6 @@ class FedoProcessor:
         lookup_path = os.path.join(output_dir, "lookup.parquet")
         lookup = generate_lookup_table(data, lookup_path)
         
-        # Collect metadata
-        dimensions = get_image_dimensions(data)
-        bounds = get_data_bounds(data)
-        
         return {
             'sample_id': sample_id,
             'parquet_path': parquet_path,
@@ -105,8 +100,6 @@ class FedoProcessor:
             'l_wd_image_path': lwd_path,
             'lookup_table_path': lookup_path,
             'metadata': {
-                'dimensions': dimensions,
-                'bounds': bounds,
                 'n_time': lookup.n_time,
                 'n_energy': lookup.n_energy,
                 'L_range': [lookup.L_min, lookup.L_max],

@@ -60,8 +60,8 @@ def generate_pure_image(
     dpi: int = 200,
     figsize: Tuple[float, float] = (6, 4),
     cmap: str = "jet",
-    l_xlim: Optional[Tuple[float, float]] = (1.2, 1.9),
-    wd_ylim: Optional[Tuple[float, float]] = (0.0, 4.0),
+    l_xlim: Optional[Tuple[float, float]] = None,
+    wd_ylim: Optional[Tuple[float, float]] = None,
 ) -> str:
     """
     Generate a pure image (no axes, labels, or colorbar) for annotation overlay.
@@ -165,18 +165,3 @@ def generate_views(
     generate_pure_image(data, 'l_wd', lwd_path, dpi=dpi, **kwargs)
     
     return te_path, lwd_path
-
-
-def get_image_dimensions(data: Dict[str, Any]) -> Dict[str, Dict[str, int]]:
-    """
-    Get the dimensions of the data matrix.
-    
-    Returns:
-        Dictionary with dimensions for coordinate mapping:
-        - n_time: Number of time points
-        - n_energy: Number of energy channels
-    """
-    return {
-        'n_time': len(data['time']),
-        'n_energy': len(data['E']),
-    }

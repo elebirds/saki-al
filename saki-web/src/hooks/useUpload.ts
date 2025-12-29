@@ -1,13 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { UploadProgress, UploadProgressEvent, UploadFileResult, UploadResult } from '../types';
-import { useAuthStore } from '../store/authStore';
-
-// Use same base URL as the API service
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+import { api } from '../services/api';
 
 interface UseUploadOptions {
-  /** Use SSE streaming for progress updates */
-  useStreaming?: boolean;
   /** Callback for each file completion */
   onFileComplete?: (result: UploadFileResult) => void;
   /** Callback when upload starts */
@@ -19,8 +14,7 @@ interface UseUploadOptions {
 }
 
 export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
-  const { useStreaming = true, onFileComplete, onStart, onComplete, onError } = options;
-  const token = useAuthStore((state) => state.token);
+  const { onFileComplete, onStart, onComplete, onError } = options;
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const [progress, setProgress] = useState<UploadProgress>({
@@ -55,81 +49,6 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
     }));
   }, []);
 
-  const uploadWithStreaming = useCallback(
-    async (files: File[]) => {
-      const formData = new FormData();
-      files.forEach((file) => formData.append('files', file));
-
-      abortControllerRef.current = new AbortController();
-
-      setProgress({
-        status: 'uploading',
-        currentFile: 0,
-        totalFiles: files.length,
-        percentage: 0,
-        currentFilename: '',
-        results: [],
-      });
-
-      onStart?.(files.length);
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/samples/${datasetId}/stream`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Upload failed: ${response.statusText}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error('No response body');
-        }
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const event: UploadProgressEvent = JSON.parse(line.slice(6));
-                handleProgressEvent(event);
-              } catch (e) {
-                console.error('Failed to parse SSE event:', e);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-        const errorMsg = error instanceof Error ? error.message : 'Upload failed';
-        setProgress((prev) => ({
-          ...prev,
-          status: 'error',
-          error: errorMsg,
-        }));
-        onError?.(errorMsg);
-      }
-    },
-    [datasetId, token, onStart, onError]
-  );
-
   const handleProgressEvent = useCallback(
     (event: UploadProgressEvent) => {
       switch (event.event) {
@@ -160,7 +79,7 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
           setProgress((prev) => ({
             ...prev,
             results: [...prev.results, fileResult],
-            percentage: ((event.index || 0) + 1) / prev.totalFiles * 100,
+            percentage: (((event.index || 0) + 1) / prev.totalFiles) * 100,
           }));
           onFileComplete?.(fileResult);
           break;
@@ -196,10 +115,9 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
     [onFileComplete, onComplete]
   );
 
-  const uploadWithPolling = useCallback(
+  const upload = useCallback(
     async (files: File[]) => {
-      const formData = new FormData();
-      files.forEach((file) => formData.append('files', file));
+      if (files.length === 0) return;
 
       abortControllerRef.current = new AbortController();
 
@@ -208,38 +126,19 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
         currentFile: 0,
         totalFiles: files.length,
         percentage: 0,
-        currentFilename: files[0]?.name || '',
+        currentFilename: '',
         results: [],
       });
 
       onStart?.(files.length);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/samples/${datasetId}/samples`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Upload failed: ${response.statusText}`);
-        }
-
-        const result: UploadResult = await response.json();
-        
-        setProgress({
-          status: 'complete',
-          currentFile: files.length,
-          totalFiles: files.length,
-          percentage: 100,
-          currentFilename: '',
-          results: result.results,
-        });
-
-        onComplete?.(result);
+        await api.uploadSamplesWithProgress(
+          datasetId,
+          files,
+          handleProgressEvent,
+          abortControllerRef.current.signal
+        );
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           return;
@@ -253,20 +152,7 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
         onError?.(errorMsg);
       }
     },
-    [datasetId, token, onStart, onComplete, onError]
-  );
-
-  const upload = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) return;
-
-      if (useStreaming) {
-        await uploadWithStreaming(files);
-      } else {
-        await uploadWithPolling(files);
-      }
-    },
-    [useStreaming, uploadWithStreaming, uploadWithPolling]
+    [datasetId, handleProgressEvent, onStart, onError]
   );
 
   return {

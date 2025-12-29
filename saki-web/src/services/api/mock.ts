@@ -1,5 +1,5 @@
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, AvailableTypes, User, LoginResponse } from '../../types';
-import { ApiService } from './interface';
+import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, AvailableTypes, User, LoginResponse, UploadProgressEvent, UploadResult, UploadFileResult } from '../../types';
+import { ApiService, UploadProgressCallback } from './interface';
 
 const mockStrategies: ALStrategy[] = [
   { enabled: true, id: 'least_confidence', name: 'Least Confidence', description: 'Selects samples where the model is least confident.' },
@@ -212,17 +212,72 @@ export class MockApiService implements ApiService {
     );
   }
 
-  async uploadSamples(projectId: string, files: File[]): Promise<void> {
+  async uploadSamplesWithProgress(
+    projectId: string,
+    files: File[],
+    onProgress?: UploadProgressCallback,
+    _signal?: AbortSignal
+  ): Promise<UploadResult> {
     console.log(`Uploading ${files.length} files to project ${projectId}`);
-    // Mock adding samples
-    const newSamples: Sample[] = files.map((file, i) => ({
-        id: `new-sample-${Date.now()}-${i}`,
+
+    // Simulate start event
+    onProgress?.({ event: 'start', total: files.length });
+
+    const results: UploadFileResult[] = [];
+    const newSamples: Sample[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const sampleId = `new-sample-${Date.now()}-${i}`;
+
+      // Simulate file_start event
+      onProgress?.({ event: 'file_start', index: i, filename: file.name });
+
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Create mock sample
+      const sample: Sample = {
+        id: sampleId,
         projectId,
-        url: URL.createObjectURL(file), // This will only work for the current session
+        url: URL.createObjectURL(file),
         status: 'unlabeled',
-    }));
+      };
+      newSamples.push(sample);
+
+      results.push({
+        id: sampleId,
+        filename: file.name,
+        status: 'success',
+      });
+
+      // Simulate file_complete event
+      onProgress?.({
+        event: 'file_complete',
+        index: i,
+        filename: file.name,
+        success: true,
+        sampleId,
+      });
+    }
+
     mockSamples = [...mockSamples, ...newSamples];
-    return new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const uploadResult: UploadResult = {
+      uploaded: files.length,
+      errors: 0,
+      results,
+    };
+
+    // Simulate complete event
+    onProgress?.({
+      event: 'complete',
+      uploaded: files.length,
+      errors: 0,
+      results,
+    });
+
+    return uploadResult;
   }
 
   async getSampleAnnotations(sampleId: string): Promise<Annotation[]> {

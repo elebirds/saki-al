@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate } from '../../types';
-import { ApiService } from './interface';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult } from '../../types';
+import { ApiService, UploadProgressCallback } from './interface';
 import { useAuthStore } from '../../store/authStore';
 
 // ============================================================================
@@ -292,21 +292,77 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async uploadSamples(datasetId: string, files: File[]): Promise<void> {
+  async uploadSamplesWithProgress(
+    datasetId: string,
+    files: File[],
+    onProgress?: UploadProgressCallback,
+    signal?: AbortSignal
+  ): Promise<UploadResult> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
-    await this.client.post(`/samples/${datasetId}/samples`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+
+    const token = useAuthStore.getState().token;
+    const response = await fetch(`http://localhost:8000/api/v1/samples/${datasetId}/stream`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+      signal,
     });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.statusText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: UploadResult = { uploaded: 0, errors: 0, results: [] };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event: UploadProgressEvent = JSON.parse(line.slice(6));
+            onProgress?.(event);
+
+            // Capture the final result from the complete event
+            if (event.event === 'complete') {
+              finalResult = {
+                uploaded: event.uploaded || 0,
+                errors: event.errors || 0,
+                results: event.results || [],
+              };
+            }
+          } catch (e) {
+            console.error('Failed to parse SSE event:', e);
+          }
+        }
+      }
+    }
+
+    return finalResult;
   }
 
   async getSampleAnnotations(sampleId: string): Promise<Annotation[]> {
-    const response = await this.client.get<{ data: Annotation[] }>(`/samples/${sampleId}/annotation`);
+    const response = await this.client.get<{ data: Annotation[] }>(`/annotations/${sampleId}`);
     return response.data.data || [];
   }
 
   async saveSampleAnnotations(sampleId: string, annotations: Annotation[]): Promise<void> {
-    await this.client.post(`/samples/${sampleId}/annotation`, {
+    await this.client.post(`/annotations/${sampleId}`, {
       data: annotations,
       status: 'labeled',
     });

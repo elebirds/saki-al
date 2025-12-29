@@ -25,7 +25,6 @@ const DatasetDetail: React.FC = () => {
 
   // Initialize upload hook
   const { progress, upload, cancel, reset, isUploading } = useUpload(id || '', {
-    useStreaming: true,
     onFileComplete: (result) => {
       if (result.status === 'success') {
         console.log(`File uploaded: ${result.filename}`);
@@ -119,49 +118,21 @@ const DatasetDetail: React.FC = () => {
     }
   };
 
-  // Get preview image URL for FEDO sample
-  const getFedoPreviewUrl = (sample: Sample) => {
-    return `http://localhost:8000/api/v1/specialized/samples/${sample.id}/image/time_energy`;
-  };
-
-  // Render sample item based on annotation system
+  // Render sample item - uses sample.url for all annotation systems
   const renderSampleItem = (item: Sample) => {
-    if (dataset.annotationSystem === 'fedo') {
-      const previewUrl = getFedoPreviewUrl(item);
-      return (
-        <Card
-          hoverable
-          cover={
-            <img 
-              alt="sample" 
-              src={previewUrl} 
-              style={{ height: 150, objectFit: 'cover' }}
-              onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-          }
-          size="small"
-        >
-          <Card.Meta 
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <FileTextOutlined style={{ color: '#1890ff' }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.name || item.id}
-                </span>
-              </div>
-            }
-            description={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
-          />
-        </Card>
-      );
-    }
-    // Classic image display
     return (
       <Card
         hoverable
-        cover={<img alt="sample" src={item.url} style={{ height: 150, objectFit: 'cover' }} />}
+        cover={
+          <img 
+            alt="sample" 
+            src={item.url} 
+            style={{ height: 150, objectFit: 'cover' }}
+            onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+        }
         size="small"
       >
         <Card.Meta 

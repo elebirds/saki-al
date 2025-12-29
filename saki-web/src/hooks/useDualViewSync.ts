@@ -29,8 +29,8 @@ interface UseDualViewSyncReturn {
   mappedRegions: MappedRegion[];
   /** Last error message, if any */
   error: string | null;
-  /** Initialize the worker with a sample's lookup table */
-  initializeWithSample: (sampleId: string) => Promise<void>;
+  /** Initialize the worker with a sample's lookup table URL */
+  initializeWithLookupTable: (lookupTableUrl: string) => Promise<void>;
   /** Map a bounding box from Time-Energy view to L-ωd regions */
   mapBboxToLWd: (bbox: BoundingBox) => Promise<BboxMappingResult>;
   /** Map specific indices to physical coordinates */
@@ -58,9 +58,9 @@ export function useDualViewSync(): UseDualViewSyncReturn {
   // Initialize Worker with Sample
   // ========================================================================
 
-  const initializeWithSample = useCallback(async (sampleId: string) => {
-    // Skip if already initialized for this sample
-    if (currentSampleIdRef.current === sampleId && isReady) {
+  const initializeWithLookupTable = useCallback(async (lookupTableUrl: string) => {
+    // Skip if already initialized for this URL
+    if (currentSampleIdRef.current === lookupTableUrl && isReady) {
       return;
     }
 
@@ -68,8 +68,8 @@ export function useDualViewSync(): UseDualViewSyncReturn {
     setError(null);
 
     try {
-      // Fetch lookup table binary from backend
-      const response = await fetch(`/api/v1/specialized/samples/${sampleId}/lookup`);
+      // Fetch lookup table binary from the provided URL
+      const response = await fetch(lookupTableUrl);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch lookup table: ${response.statusText}`);
@@ -85,7 +85,7 @@ export function useDualViewSync(): UseDualViewSyncReturn {
       // Initialize worker with the lookup table
       await workerRef.current.initialize(buffer);
       
-      currentSampleIdRef.current = sampleId;
+      currentSampleIdRef.current = lookupTableUrl;
       setIsReady(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -197,7 +197,7 @@ export function useDualViewSync(): UseDualViewSyncReturn {
     isMapping,
     mappedRegions,
     error,
-    initializeWithSample,
+    initializeWithLookupTable,
     mapBboxToLWd,
     mapIndicesToPhysical,
     findIndicesInPolygon,

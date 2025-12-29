@@ -79,122 +79,6 @@ def read_samples(
     return {"items": samples, "total": total}
 
 
-@router.post("/{dataset_id}")
-def upload_samples(
-        dataset_id: str,
-        files: List[UploadFile] = File(...),
-        session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
-):
-    """
-    Upload samples to a dataset.
-    Uses pluggable handler architecture based on dataset's annotation system type.
-    """
-    dataset = session.get(Dataset, dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-
-    # Get the appropriate handler for this annotation system
-    try:
-        handler = get_handler(dataset.annotation_system)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No handler available for annotation system: {dataset.annotation_system.value}"
-        )
-
-    upload_dir = Path(settings.UPLOAD_DIR) / dataset_id
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create upload context
-    context = UploadContext(
-        project_id=dataset_id,  # Using dataset_id as the context identifier
-        upload_dir=upload_dir,
-        project_config={},
-        annotation_config={},
-    )
-
-    # Initialize progress tracker
-    tracker = ProgressTracker(total_files=len(files))
-
-    # Hook: pre-upload
-    handler.pre_upload(context)
-
-    results = []
-
-    for index, file in enumerate(files):
-        # Log file start
-        tracker.file_start(file.filename, index)
-
-        try:
-            # Save uploaded file
-            file_path = upload_dir / file.filename
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-
-            # Process file using handler
-            result = handler.process_upload(file_path, context)
-
-            if result.success:
-                # Create Sample record with handler-specific fields
-                sample_fields = handler.get_sample_fields(result)
-
-                sample = Sample(
-                    dataset_id=dataset_id,
-                    name=file.filename,
-                    url=str(file_path),
-                    status=SampleStatus.UNLABELED,
-                    **sample_fields
-                )
-
-                # Use sample_id from handler if provided
-                if result.sample_id:
-                    sample.id = result.sample_id
-
-                session.add(sample)
-
-                tracker.file_complete(file.filename, success=True, sample_id=sample.id)
-                results.append({
-                    "id": sample.id,
-                    "filename": file.filename,
-                    "status": "success"
-                })
-            else:
-                tracker.file_complete(file.filename, success=False, error=result.error)
-                results.append({
-                    "filename": file.filename,
-                    "status": "error",
-                    "error": result.error
-                })
-
-        except Exception as e:
-            logger.error(f"Error uploading file {file.filename}: {e}")
-            tracker.file_complete(file.filename, success=False, error=str(e))
-            results.append({
-                "filename": file.filename,
-                "status": "error",
-                "error": str(e)
-            })
-
-    session.commit()
-
-    # Hook: post-upload
-    handler.post_upload(context, [])
-
-    # Complete tracking
-    tracker.complete()
-
-    # Get summary from tracker
-    summary = tracker.results
-
-    return {
-        "uploaded": summary["success"],
-        "errors": summary["errors"],
-        "results": results,
-        "progress_logs": [log.to_dict() for log in tracker.history]
-    }
-
-
 @router.post("/{dataset_id}/stream")
 async def upload_samples_with_progress(
         dataset_id: str,
@@ -254,7 +138,6 @@ async def upload_samples_with_progress(
                     sample = Sample(
                         dataset_id=dataset_id,
                         name=file.filename,
-                        url=str(file_path),
                         status=SampleStatus.UNLABELED,
                         **sample_fields
                     )

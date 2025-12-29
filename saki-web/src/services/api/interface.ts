@@ -1,4 +1,9 @@
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult } from '../../types';
+
+/**
+ * Callback type for upload progress events
+ */
+export type UploadProgressCallback = (event: UploadProgressEvent) => void;
 
 export interface ApiService {
   // Auth
@@ -41,7 +46,12 @@ export interface ApiService {
   // Sample APIs (belong to Dataset)
   getSamples(datasetId: string): Promise<Sample[]>;
   getSample(sampleId: string): Promise<Sample | undefined>;
-  uploadSamples(datasetId: string, files: File[]): Promise<void>;
+  uploadSamplesWithProgress(
+    datasetId: string,
+    files: File[],
+    onProgress?: UploadProgressCallback,
+    signal?: AbortSignal
+  ): Promise<UploadResult>;
   
   // Annotation APIs
   getSampleAnnotations(sampleId: string): Promise<Annotation[]>;

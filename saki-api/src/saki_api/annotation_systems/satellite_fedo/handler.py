@@ -159,22 +159,57 @@ class FedoHandler(AnnotationSystemHandler):
         """
         Get fields to set on the Sample model from FEDO processing result.
         
-        Returns fields specific to FEDO samples:
-        - parquet_path
-        - time_energy_image_path
-        - l_wd_image_path
-        - lookup_table_path
-        - meta_data
+        Maps FEDO-specific outputs to generic Sample fields:
+        - url: Uses time_energy_image for preview display
+        - meta_data: Contains all FEDO-specific paths and metadata
         """
         if not result.success:
             return {}
 
+        # Get the absolute paths from processor
+        time_energy_abs_path = result.sample_data.get('time_energy_image_path', '')
+        l_wd_abs_path = result.sample_data.get('l_wd_image_path', '')
+        parquet_abs_path = result.sample_data.get('parquet_path', '')
+        lookup_abs_path = result.sample_data.get('lookup_table_path', '')
+        
+        # Convert absolute paths to relative static URLs
+        # Paths structure: {upload_dir}/processed/{sample_id}/filename
+        # Static URL: /static/{dataset_id}/processed/{sample_id}/filename
+        def to_static_url(abs_path: str) -> str:
+            if not abs_path:
+                return ''
+            from pathlib import Path
+            path = Path(abs_path)
+            # Find 'processed' in path and build URL from there
+            parts = path.parts
+            try:
+                proc_idx = parts.index('processed')
+                # Get dataset_id (one level before 'processed' in the data structure)
+                # The structure is: data/uploads/{dataset_id}/processed/{sample_id}/file
+                # So we need to go 2 levels up from 'processed' to find dataset_id
+                relative_parts = parts[proc_idx:]  # processed/{sample_id}/file
+                # Find dataset_id by looking at parent of processed
+                dataset_id = parts[proc_idx - 1] if proc_idx > 0 else ''
+                return f"/static/{dataset_id}/{'/'.join(relative_parts)}"
+            except (ValueError, IndexError):
+                return ''
+
+        url = to_static_url(time_energy_abs_path)
+
+        # Store all FEDO-specific data in meta_data with static URLs
+        fedo_metadata = {
+            # FEDO-specific file URLs (for frontend access)
+            'time_energy_image_url': to_static_url(time_energy_abs_path),
+            'l_wd_image_url': to_static_url(l_wd_abs_path),
+            'parquet_url': to_static_url(parquet_abs_path),
+            'lookup_table_url': to_static_url(lookup_abs_path),
+            # Include original metadata (n_time, n_energy, L_range, etc.)
+            **result.metadata,
+        }
+
         return {
-            'parquet_path': result.sample_data.get('parquet_path'),
-            'time_energy_image_path': result.sample_data.get('time_energy_image_path'),
-            'l_wd_image_path': result.sample_data.get('l_wd_image_path'),
-            'lookup_table_path': result.sample_data.get('lookup_table_path'),
-            'meta_data': result.metadata,
+            'url': url,
+            'meta_data': fedo_metadata,
         }
 
     def on_annotation_save(

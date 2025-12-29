@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
@@ -20,6 +23,13 @@ def on_startup():
     Initializes the database tables.
     """
     init_db()
+    
+    # Ensure upload directory exists for static file serving
+    upload_path = Path(settings.UPLOAD_DIR)
+    upload_path.mkdir(parents=True, exist_ok=True)
+
+    # Mount static files for serving uploaded images
+    app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 
 
 # Set all CORS enabled origins

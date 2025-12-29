@@ -4,7 +4,7 @@ import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, mes
 import { useTranslation } from 'react-i18next';
 import { Project, Sample } from '../../types';
 import { api } from '../../services/api';
-import { PlayCircleOutlined, HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, HighlightOutlined, UploadOutlined, SettingOutlined } from '@ant-design/icons';
 import ProjectSettings from '../../components/settings/ProjectSettings';
 import UploadProgressModal from '../../components/UploadProgressModal';
 import { useUpload } from '../../hooks';
@@ -25,7 +25,6 @@ const ProjectDetail: React.FC = () => {
 
   // Initialize upload hook
   const { progress, upload, cancel, reset, isUploading } = useUpload(id || '', {
-    useStreaming: true,
     onFileComplete: (result) => {
       if (result.status === 'success') {
         console.log(`File uploaded: ${result.filename}`);
@@ -101,66 +100,30 @@ const ProjectDetail: React.FC = () => {
 
   if (!project) return <div>{t('workspace.loading')}</div>;
 
-  // Determine file accept type based on annotation system
-  const getAcceptType = () => {
-    switch (project.annotationSystem) {
-      case 'fedo':
-        return '.txt';
-      case 'classic':
-      default:
-        return 'image/*';
-    }
-  };
-
-  // Get preview image URL for FEDO sample based on project config
-  const getFedoPreviewUrl = (sample: Sample) => {
-    const previewType = project.annotationConfig?.thumbnailView || 'time_energy';
-    return `http://localhost:8000/api/v1/specialized/samples/${sample.id}/image/${previewType}`;
-  };
-
-  // Render sample item based on annotation system
+  // Render sample item - uses sample.url for all annotation systems
   const renderSampleItem = (item: Sample) => {
-    if (project.annotationSystem === 'fedo') {
-      const previewUrl = getFedoPreviewUrl(item);
-      return (
-        <Card
-          hoverable
-          cover={
-            <img 
-              alt="sample" 
-              src={previewUrl} 
-              style={{ height: 150, objectFit: 'cover' }}
-              onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-          }
-          size="small"
-        >
-          <Card.Meta 
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <FileTextOutlined style={{ color: '#1890ff' }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.filename || item.id}
-                </span>
-              </div>
-            }
-            description={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
-          />
-        </Card>
-      );
-    }
-    // Classic image display
     return (
       <Card
         hoverable
-        cover={<img alt="sample" src={item.url} style={{ height: 150, objectFit: 'cover' }} />}
+        cover={
+          <img 
+            alt="sample" 
+            src={item.url} 
+            style={{ height: 150, objectFit: 'cover' }}
+            onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+        }
         size="small"
       >
         <Card.Meta 
-          title={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
-          description={`Score: ${item.score?.toFixed(4)}`}
+          title={
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.name}
+            </span>
+          }
+          description={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
         />
       </Card>
     );
@@ -232,7 +195,7 @@ const ProjectDetail: React.FC = () => {
             ref={fileInputRef} 
             style={{ display: 'none' }} 
             multiple 
-            accept={getAcceptType()} 
+            accept="image/*" 
             onChange={handleFileChange} 
           />
           <Button block icon={<SettingOutlined />} onClick={() => setActiveTab('settings')}>

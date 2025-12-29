@@ -135,7 +135,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
   const {
     isReady: isSyncReady,
     isMapping,
-    initializeWithSample,
+    initializeWithLookupTable,
     mapBboxToLWd,
     dispose: disposeSyncWorker
   } = useDualViewSync();
@@ -189,11 +189,13 @@ const FedoAnnotationWorkspace: React.FC = () => {
         setHistoryIndex(0);
       });
 
-      // Always try to initialize worker for FEDO samples
-      // The lookup table should exist for all processed FEDO samples
-      initializeWithSample(currentSample.id);
+      // Initialize worker with lookup table from sample metadata
+      const lookupTableUrl = currentSample.metaData?.lookup_table_url;
+      if (lookupTableUrl) {
+        initializeWithLookupTable(lookupTableUrl);
+      }
     }
-  }, [currentSample?.id, initializeWithSample]);
+  }, [currentSample?.id, currentSample?.metaData?.lookup_table_url, initializeWithLookupTable]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -378,16 +380,12 @@ const FedoAnnotationWorkspace: React.FC = () => {
   }, [handleNext, handlePrev, handleSubmit, undo, redo]);
 
   // ========================================================================
-  // Get Image URLs
+  // Get Image URLs from sample metadata
   // ========================================================================
 
-  const timeEnergyImageUrl = currentSample?.id 
-    ? `/api/v1/specialized/samples/${currentSample.id}/image/time_energy`
-    : '';
+  const timeEnergyImageUrl : string = currentSample?.metaData?.timeEnergyImageUrl || currentSample?.url || '';
   
-  const lWdImageUrl = currentSample?.id 
-    ? `/api/v1/specialized/samples/${currentSample.id}/image/l_wd`
-    : '';
+  const lWdImageUrl : string = currentSample?.metaData?.lWdImageUrl || '';
 
   // ========================================================================
   // Selected Annotation Info

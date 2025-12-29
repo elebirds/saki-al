@@ -98,7 +98,7 @@ export const AnnotationSidebar: React.FC<AnnotationSidebarProps> = ({
     >
       <Title level={4}>{t('workspace.annotations')}</Title>
       <Space direction="vertical" style={{ width: '100%' }}>
-        <Card size="small" bodyStyle={{ padding: 0 }}>
+        <Card size="small" styles={{ body: { padding: 0 } }}>
           <List
             size="small"
             dataSource={annotations}

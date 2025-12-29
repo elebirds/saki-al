@@ -9,17 +9,15 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Layout, message, Spin, Empty } from 'antd';
+import { Layout, message, Spin, Empty, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { DeleteOutlined, RotateRightOutlined, BorderOutlined } from '@ant-design/icons';
-import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
-import { AnnotationToolbar, AnnotationSidebar } from '../../components/annotation';
+import { AnnotationToolbar, AnnotationSidebar, DualCanvasArea, DualCanvasAreaRef } from '../../components/annotation';
 import { api } from '../../services/api';
 import {
   useAnnotationState,
   useAnnotationSync,
   useAnnotationShortcuts,
-  useDualViewSync,
 } from '../../hooks';
 import {
   Sample,
@@ -85,6 +83,37 @@ function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualVi
   };
 }
 
+/** Convert backend generated annotations to MappedRegion[] */
+function generatedToRegions(generated: Array<Record<string, any>>): MappedRegion[] {
+  return generated
+    .filter((gen) => gen.view === 'L-omegad')
+    .map((gen, index) => {
+      const data = gen.data || {};
+      // 将 bbox 转换为 polygon points（简化处理，实际可能需要更复杂的转换）
+      const bbox = {
+        x: data.x || 0,
+        y: data.y || 0,
+        width: data.width || 0,
+        height: data.height || 0,
+        rotation: data.rotation || 0,
+      };
+
+      // 简化的转换：将 bbox 转换为矩形 polygon
+      const polygonPoints: [number, number][] = [
+        [bbox.x, bbox.y],
+        [bbox.x + bbox.width, bbox.y],
+        [bbox.x + bbox.width, bbox.y + bbox.height],
+        [bbox.x, bbox.y + bbox.height],
+      ];
+
+      return {
+        timeRange: [0, 0] as [number, number], // 后端应该提供这个信息
+        polygonPoints,
+        isPrimary: index === 0,
+      };
+    });
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -100,9 +129,8 @@ const FedoAnnotationWorkspace: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [labels, setLabels] = useState<Label[]>([]);
 
-  // Canvas Refs
-  const timeEnergyCanvasRef = useRef<AnnotationCanvasRef>(null);
-  const lWdCanvasRef = useRef<AnnotationCanvasRef>(null);
+  // Dual Canvas Area Ref
+  const dualCanvasAreaRef = useRef<DualCanvasAreaRef>(null);
 
   // Current sample
   const currentSample = samples[currentIndex];
@@ -113,21 +141,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
   });
 
   // 使用同步 hook（调用后端 sync 接口）
-  const { isSyncing: isBackendSyncing, isSyncReady: isBackendSyncReady, sync: syncBackend } =
-    useAnnotationSync({ enabled: true });
-
-  // FEDO 专用的客户端 Worker sync（用于双视图映射）
-  const {
-    isReady: isWorkerReady,
-    isMapping: isWorkerMapping,
-    initializeWithLookupTable,
-    mapBboxToLWd,
-    dispose: disposeSyncWorker,
-  } = useDualViewSync();
-
-  // 合并同步状态：后端同步或 Worker 映射中时都显示为同步中
-  const isSyncing = isBackendSyncing || isWorkerMapping;
-  const isSyncReady = isBackendSyncReady && isWorkerReady;
+  const { isSyncing, isSyncReady, sync: syncBackend } = useAnnotationSync({ enabled: true });
 
   // ========================================================================
   // Memoized Conversions
@@ -167,7 +181,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
     }
   }, [datasetId]);
 
-  // Load sample data and initialize worker
+  // Load sample data
   useEffect(() => {
     if (currentSample?.id) {
       // Load annotations for this sample
@@ -184,21 +198,8 @@ const FedoAnnotationWorkspace: React.FC = () => {
           annotationState.setAnnotations([]);
         }
       });
-
-      // Initialize worker with lookup table from sample metadata
-      const lookupTableUrl = currentSample.metaData?.lookup_table_url;
-      if (lookupTableUrl) {
-        initializeWithLookupTable(lookupTableUrl);
-      }
     }
-  }, [currentSample?.id, currentSample?.metaData?.lookup_table_url, initializeWithLookupTable]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      disposeSyncWorker();
-    };
-  }, [disposeSyncWorker]);
+  }, [currentSample?.id]);
 
   // ========================================================================
   // Annotation Handlers
@@ -228,28 +229,14 @@ const FedoAnnotationWorkspace: React.FC = () => {
         extra: { view: 'time-energy' },
       };
 
-      let regions: MappedRegion[] = [];
-      let generatedAnnotations: Annotation[] = [];
-
       try {
-        // 先调用后端 sync
+        // 调用后端 sync
         const syncResponse = await syncBackend(currentSample.id, [syncAction]);
         
-        // 处理后端返回的生成标注（如果有）
+        // 处理后端返回的生成标注，转换为 regions
+        let regions: MappedRegion[] = [];
         if (syncResponse.results[0]?.generated) {
-          generatedAnnotations = syncResponse.results[0].generated as Annotation[];
-          // 提取生成的 regions（如果有）
-          // 这里假设生成的标注包含 secondary view 的信息
-        }
-
-        // 同时使用 Worker 进行客户端映射（作为补充）
-        if (isWorkerReady) {
-          try {
-            const result = await mapBboxToLWd(event.bbox as BoundingBox);
-            regions = result.regions;
-          } catch (err) {
-            console.warn('Worker mapping failed:', err);
-          }
+          regions = generatedToRegions(syncResponse.results[0].generated);
         }
 
         // 创建 DualViewAnnotation
@@ -289,28 +276,12 @@ const FedoAnnotationWorkspace: React.FC = () => {
         annotationState.handleAnnotationCreate(newAnn);
       }
     },
-    [
-      currentSample,
-      annotationState,
-      syncBackend,
-      isWorkerReady,
-      mapBboxToLWd,
-      t,
-    ]
+    [currentSample, annotationState, syncBackend, t]
   );
 
   const handleUpdateAnnotation = useCallback(
     async (updatedAnn: Annotation) => {
       if (!currentSample) return;
-
-      const bboxData = updatedAnn.data || {};
-      const bbox: BoundingBox = {
-        x: bboxData.x || 0,
-        y: bboxData.y || 0,
-        width: bboxData.width || 0,
-        height: bboxData.height || 0,
-        rotation: bboxData.rotation,
-      };
 
       // 调用后端 sync
       const syncAction: SyncAction = {
@@ -322,30 +293,27 @@ const FedoAnnotationWorkspace: React.FC = () => {
         extra: updatedAnn.extra || {},
       };
 
-      let regions: MappedRegion[] = [];
-
       try {
-        await syncBackend(currentSample.id, [syncAction]);
-
-        // 使用 Worker 重新映射
-        if (isWorkerReady && bbox.width > 0 && bbox.height > 0) {
-          try {
-            const result = await mapBboxToLWd(bbox);
-            regions = result.regions;
-          } catch (err) {
-            console.warn('Worker mapping failed:', err);
-          }
+        const syncResponse = await syncBackend(currentSample.id, [syncAction]);
+        
+        // 处理后端返回的生成标注，转换为 regions
+        let regions: MappedRegion[] = [];
+        if (syncResponse.results[0]?.generated) {
+          regions = generatedToRegions(syncResponse.results[0].generated);
         }
 
         const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, regions);
         annotationState.handleAnnotationUpdate(dualAnn);
       } catch (error) {
         console.error('Sync failed:', error);
-        const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, regions);
+        // 即使 sync 失败，也更新标注（使用现有的 regions）
+        const existingDual = annotationState.annotations.find((a) => a.id === updatedAnn.id);
+        const existingRegions = existingDual?.secondary?.regions || [];
+        const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, existingRegions);
         annotationState.handleAnnotationUpdate(dualAnn);
       }
     },
-    [currentSample, annotationState, syncBackend, isWorkerReady, mapBboxToLWd]
+    [currentSample, annotationState, syncBackend]
   );
 
   const handleDeleteAnnotation = useCallback(
@@ -446,7 +414,9 @@ const FedoAnnotationWorkspace: React.FC = () => {
           height: '100%',
         }}
       >
-        <Spin size="large" tip="Loading..." />
+        <Spin size="large">
+          <div style={{ minHeight: 200 }} />
+        </Spin>
       </div>
     );
   }
@@ -501,16 +471,13 @@ const FedoAnnotationWorkspace: React.FC = () => {
           currentTool={annotationState.currentTool}
           onToolChange={annotationState.setCurrentTool}
           onZoomIn={() => {
-            timeEnergyCanvasRef.current?.zoomIn();
-            lWdCanvasRef.current?.zoomIn();
+            dualCanvasAreaRef.current?.zoomIn();
           }}
           onZoomOut={() => {
-            timeEnergyCanvasRef.current?.zoomOut();
-            lWdCanvasRef.current?.zoomOut();
+            dualCanvasAreaRef.current?.zoomOut();
           }}
           onResetView={() => {
-            timeEnergyCanvasRef.current?.resetView();
-            lWdCanvasRef.current?.resetView();
+            dualCanvasAreaRef.current?.resetView();
           }}
           syncStatus={{
             isSyncing,
@@ -519,107 +486,21 @@ const FedoAnnotationWorkspace: React.FC = () => {
         />
 
         {/* Dual Canvas Area */}
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            overflow: 'hidden',
-            pointerEvents: isSyncing ? 'none' : 'auto', // 同步时禁用交互
-            opacity: isSyncing ? 0.6 : 1,
-          }}
-        >
-          {/* Left: Time-Energy View */}
-          <div
-            style={{
-              flex: 1,
-              position: 'relative',
-              overflow: 'hidden',
-              background: '#333',
-              borderRight: '2px solid #666',
-            }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                top: 8,
-                left: 8,
-                zIndex: 10,
-                background: 'rgba(0,0,0,0.6)',
-                color: '#fff',
-                padding: '4px 8px',
-                borderRadius: 4,
-                fontSize: 12,
-              }}
-            >
-              Time-Energy (Primary)
-            </div>
-            <AnnotationCanvas
-              ref={timeEnergyCanvasRef}
-              imageUrl={timeEnergyImageUrl}
-              annotations={canvasAnnotations}
-              onAnnotationCreate={handleAnnotationCreate}
-              onAnnotationUpdate={handleUpdateAnnotation}
-              onAnnotationDelete={handleDeleteAnnotation}
-              currentTool={annotationState.currentTool}
-              labelColor={annotationState.selectedLabel?.color || '#ff0000'}
-              selectedId={annotationState.selectedId}
-              onSelect={annotationState.setSelectedId}
-            />
-          </div>
-
-          {/* Right: L-ωd View (Read-only mapped regions) */}
-          <div
-            style={{
-              flex: 1,
-              position: 'relative',
-              overflow: 'hidden',
-              background: '#333',
-            }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                top: 8,
-                left: 8,
-                zIndex: 10,
-                background: 'rgba(0,0,0,0.6)',
-                color: '#fff',
-                padding: '4px 8px',
-                borderRadius: 4,
-                fontSize: 12,
-              }}
-            >
-              L-ωd (Mapped Regions)
-            </div>
-            <AnnotationCanvas
-              ref={lWdCanvasRef}
-              imageUrl={lWdImageUrl}
-              annotations={[]} // TODO: Convert mappedRegions to polygon Annotation format
-              currentTool="select" // Force select mode - L-ωd view is read-only
-              selectedId={null}
-              onSelect={() => {}}
-            />
-            {/* Mapped regions count indicator */}
-            {currentMappedRegions.length > 0 && (
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: 8,
-                  left: 8,
-                  zIndex: 10,
-                  background: 'rgba(0,0,0,0.6)',
-                  color: '#fff',
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  fontSize: 12,
-                }}
-              >
-                {currentMappedRegions.length} mapped region
-                {currentMappedRegions.length > 1 ? 's' : ''}
-              </div>
-            )}
-          </div>
-        </div>
+        <DualCanvasArea
+          ref={dualCanvasAreaRef}
+          timeEnergyImageUrl={timeEnergyImageUrl}
+          lWdImageUrl={lWdImageUrl}
+          annotations={canvasAnnotations}
+          onAnnotationCreate={handleAnnotationCreate}
+          onAnnotationUpdate={handleUpdateAnnotation}
+          onAnnotationDelete={handleDeleteAnnotation}
+          currentTool={annotationState.currentTool}
+          labelColor={annotationState.selectedLabel?.color || '#ff0000'}
+          selectedId={annotationState.selectedId}
+          onSelect={annotationState.setSelectedId}
+          isSyncing={isSyncing}
+          currentMappedRegions={currentMappedRegions}
+        />
       </Content>
 
       {/* Right Sidebar */}

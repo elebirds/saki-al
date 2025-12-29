@@ -9,13 +9,17 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Annotation } from '../types';
 
-export interface UseAnnotationStateOptions<T extends Annotation = Annotation> {
+// 基础类型约束：只需要有 id 属性
+export interface AnnotationLike {
+  id: string;
+}
+
+export interface UseAnnotationStateOptions<T extends AnnotationLike = AnnotationLike> {
   initialAnnotations?: T[];
 }
 
-export interface UseAnnotationStateReturn<T extends Annotation = Annotation> {
+export interface UseAnnotationStateReturn<T extends AnnotationLike = AnnotationLike> {
   // State
   annotations: T[];
   history: T[][];
@@ -42,7 +46,7 @@ export interface UseAnnotationStateReturn<T extends Annotation = Annotation> {
   handleAnnotationDelete: (id: string) => void;
 }
 
-export function useAnnotationState<T extends Annotation = Annotation>(
+export function useAnnotationState<T extends AnnotationLike = AnnotationLike>(
   options: UseAnnotationStateOptions<T> = {}
 ): UseAnnotationStateReturn<T> {
   const { initialAnnotations = [] } = options;

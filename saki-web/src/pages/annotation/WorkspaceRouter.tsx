@@ -47,7 +47,9 @@ const WorkspaceRouter: React.FC = () => {
         alignItems: 'center', 
         height: '100%' 
       }}>
-        <Spin size="large" tip="Loading workspace..." />
+        <Spin size="large">
+          <div style={{ minHeight: 200 }} />
+        </Spin>
       </div>
     );
   }

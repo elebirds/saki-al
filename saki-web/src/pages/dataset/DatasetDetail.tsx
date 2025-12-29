@@ -2,22 +2,22 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { Project, Sample } from '../types';
-import { api } from '../services/api';
-import { PlayCircleOutlined, HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined } from '@ant-design/icons';
-import ProjectSettings from '../components/ProjectSettings';
-import UploadProgressModal from '../components/UploadProgressModal';
-import { useUpload } from '../hooks';
+import { Dataset, Sample } from '../../types';
+import { api } from '../../services/api';
+import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import UploadProgressModal from '../../components/UploadProgressModal';
+import DatasetSettings from '../../components/settings/DatasetSettings';
+import { useUpload } from '../../hooks';
 
 
 const { Title } = Typography;
 const { Sider, Content } = Layout;
 
-const ProjectDetail: React.FC = () => {
+const DatasetDetail: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
+  const [dataset, setDataset] = useState<Dataset | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [activeTab, setActiveTab] = useState('data');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -39,6 +39,9 @@ const ProjectDetail: React.FC = () => {
       // Refresh samples after upload
       if (id) {
         api.getSamples(id).then(setSamples);
+        api.getDataset(id).then((d) => {
+          if (d) setDataset(d);
+        });
       }
     },
     onError: (error) => {
@@ -49,34 +52,19 @@ const ProjectDetail: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      api.getProject(id).then((p) => {
-        if (p) setProject(p);
+      api.getDataset(id).then((d) => {
+        if (d) setDataset(d);
       });
       api.getSamples(id).then(setSamples);
     }
   }, [id]);
-
-  const handleProjectUpdate = (updatedProject: Project) => {
-    setProject(updatedProject);
-    // In a real app, we would also trigger a refetch or update the backend here if not done in the component
-  };
-
-  const handleTrain = async () => {
-    if (!project) return;
-    try {
-      await api.trainProject(project.id);
-      message.success('Training started');
-    } catch (error) {
-      message.error('Failed to start training');
-    }
-  };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!project || !e.target.files || e.target.files.length === 0) return;
+    if (!dataset || !e.target.files || e.target.files.length === 0) return;
     
     reset();
     setUploadModalOpen(true);
@@ -99,11 +87,30 @@ const ProjectDetail: React.FC = () => {
     cancel();
   };
 
-  if (!project) return <div>{t('workspace.loading')}</div>;
+  const handleExport = async () => {
+    if (!dataset) return;
+    try {
+      const data = await api.exportDataset(dataset.id);
+      // Download as JSON file
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${dataset.name}_export.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      message.success(t('datasetDetail.exportSuccess'));
+    } catch (error) {
+      message.error(t('datasetDetail.exportError'));
+    }
+  };
+
+
+  if (!dataset) return <div>{t('common.loading')}</div>;
 
   // Determine file accept type based on annotation system
   const getAcceptType = () => {
-    switch (project.annotationSystem) {
+    switch (dataset.annotationSystem) {
       case 'fedo':
         return '.txt';
       case 'classic':
@@ -112,15 +119,14 @@ const ProjectDetail: React.FC = () => {
     }
   };
 
-  // Get preview image URL for FEDO sample based on project config
+  // Get preview image URL for FEDO sample
   const getFedoPreviewUrl = (sample: Sample) => {
-    const previewType = project.annotationConfig?.thumbnailView || 'time_energy';
-    return `http://localhost:8000/api/v1/specialized/samples/${sample.id}/image/${previewType}`;
+    return `http://localhost:8000/api/v1/specialized/samples/${sample.id}/image/time_energy`;
   };
 
   // Render sample item based on annotation system
   const renderSampleItem = (item: Sample) => {
-    if (project.annotationSystem === 'fedo') {
+    if (dataset.annotationSystem === 'fedo') {
       const previewUrl = getFedoPreviewUrl(item);
       return (
         <Card
@@ -142,7 +148,7 @@ const ProjectDetail: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FileTextOutlined style={{ color: '#1890ff' }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.filename || item.id}
+                  {item.name || item.id}
                 </span>
               </div>
             }
@@ -159,48 +165,71 @@ const ProjectDetail: React.FC = () => {
         size="small"
       >
         <Card.Meta 
-          title={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
-          description={`Score: ${item.score?.toFixed(4)}`}
+          title={
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.name}
+            </span>
+          }
+          description={<Tag color={item.status === 'labeled' ? 'green' : 'orange'}>{item.status}</Tag>}
         />
       </Card>
     );
   };
 
+  const completionPercent = dataset.sampleCount > 0 
+    ? Math.round((dataset.labeledCount / dataset.sampleCount) * 100) 
+    : 0;
+
   const items = [
     {
       key: 'data',
-      label: t('projectDetail.dataPool'),
+      label: t('datasetDetail.dataPool'),
       children: (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <Title level={5} style={{ flexShrink: 0 }}>{t('projectDetail.dataPool')}</Title>
+          <Title level={5} style={{ flexShrink: 0 }}>{t('datasetDetail.dataPool')}</Title>
           <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
-            <List
-              grid={{
-                gutter: 16,
-                xs: 1,
-                sm: 2,
-                md: 2,
-                lg: 3,
-                xl: 4,
-                xxl: 4,
-              }}
-              dataSource={samples}
-              renderItem={(item) => (
-                <List.Item>
-                  {renderSampleItem(item)}
-                </List.Item>
-              )}
-            />
+            {samples.length === 0 ? (
+              <Card>
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <FileTextOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
+                  <Title level={5} style={{ color: '#999' }}>{t('datasetDetail.noSamples')}</Title>
+                  <Button type="primary" icon={<UploadOutlined />} onClick={handleUploadClick}>
+                    {t('datasetDetail.uploadData')}
+                  </Button>
+                </div>
+              </Card>
+            ) : (
+              <List
+                grid={{
+                  gutter: 16,
+                  xs: 1,
+                  sm: 2,
+                  md: 2,
+                  lg: 3,
+                  xl: 4,
+                  xxl: 4,
+                }}
+                dataSource={samples}
+                renderItem={(item) => (
+                  <List.Item>
+                    {renderSampleItem(item)}
+                  </List.Item>
+                )}
+              />
+            )}
           </div>
         </div>
       ),
     },
     {
       key: 'settings',
-      label: t('projectDetail.settings'),
+      label: t('datasetDetail.settings'),
       children: (
         <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
-          <ProjectSettings project={project} onUpdate={handleProjectUpdate} />
+          <DatasetSettings 
+            dataset={dataset} 
+            onUpdate={(updatedDataset: Dataset) => setDataset(updatedDataset)} 
+          />
         </div>
       ),
     },
@@ -209,23 +238,39 @@ const ProjectDetail: React.FC = () => {
   return (
     <Layout style={{ background: '#fff', height: '100%' }}>
       <Sider width={300} theme="light" style={{ borderRight: '1px solid #f0f0f0', padding: '20px', overflowY: 'auto' }}>
-        <Title level={4}>{project.name}</Title>
+        <Button 
+          type="text" 
+          icon={<ArrowLeftOutlined />} 
+          onClick={() => navigate('/')}
+          style={{ marginBottom: 16 }}
+        >
+          {t('datasetDetail.backToList')}
+        </Button>
+        
+        <Title level={4}>{dataset.name}</Title>
+        <Tag color={dataset.annotationSystem === 'fedo' ? 'purple' : 'cyan'} style={{ marginBottom: 16 }}>
+          {dataset.annotationSystem}
+        </Tag>
+        
         <Space direction="vertical" style={{ width: '100%' }} size="large">
-          <Card size="small" title={t('projectDetail.progress')}>
-            <Progress percent={Math.round((project.stats.labeledSamples / project.stats.totalSamples) * 100)} />
+          <Card size="small" title={t('datasetDetail.progress')}>
+            <Progress percent={completionPercent} />
             <div style={{ marginTop: 10 }}>
-              {t('projectDetail.labeled')}: {project.stats.labeledSamples} / {project.stats.totalSamples}
+              {t('datasetDetail.labeled')}: {dataset.labeledCount} / {dataset.sampleCount}
             </div>
           </Card>
           
-          <Button type="primary" block icon={<HighlightOutlined />} onClick={() => navigate(`/workspace/${project.id}`)}>
-            {t('projectDetail.startLabeling')}
-          </Button>
-          <Button block icon={<PlayCircleOutlined />} onClick={handleTrain}>
-            {t('projectDetail.trainModel')}
+          <Button 
+            type="primary" 
+            block 
+            icon={<HighlightOutlined />} 
+            onClick={() => navigate(`/workspace/${dataset.id}`)}
+            disabled={samples.length === 0}
+          >
+            {t('datasetDetail.startLabeling')}
           </Button>
           <Button block icon={<UploadOutlined />} onClick={handleUploadClick}>
-            {t('projectDetail.uploadData')}
+            {t('datasetDetail.uploadData')}
           </Button>
           <input 
             type="file" 
@@ -235,8 +280,11 @@ const ProjectDetail: React.FC = () => {
             accept={getAcceptType()} 
             onChange={handleFileChange} 
           />
+          <Button block icon={<ExportOutlined />} onClick={handleExport} disabled={dataset.labeledCount === 0}>
+            {t('datasetDetail.exportData')}
+          </Button>
           <Button block icon={<SettingOutlined />} onClick={() => setActiveTab('settings')}>
-            {t('projectDetail.settings')}
+            {t('datasetDetail.settings')}
           </Button>
         </Space>
       </Sider>
@@ -255,4 +303,4 @@ const ProjectDetail: React.FC = () => {
   );
 };
 
-export default ProjectDetail;
+export default DatasetDetail;

@@ -3,9 +3,9 @@ import { Form, Input, Button, Card, Select, Space, Tag, InputNumber, message, Co
 import { PlusOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Project, LabelConfig, QueryStrategy, BaseModel, TypeInfo } from '../types';
-import { api } from '../services/api';
-import { useSystemCapabilities } from '../hooks/useSystemCapabilities';
+import { Project, LabelConfig, QueryStrategy, BaseModel, TypeInfo } from '../../types';
+import { api } from '../../services/api';
+import { useSystemCapabilities } from '../../hooks/useSystemCapabilities';
 
 interface ProjectSettingsProps {
   project: Project;

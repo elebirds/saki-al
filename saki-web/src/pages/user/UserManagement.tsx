@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag } from 'antd';
-import { User } from '../types';
-import { api } from '../services/api';
+import { User } from '../../types';
+import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 
 const UserManagement: React.FC = () => {

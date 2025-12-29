@@ -8,8 +8,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
-import { api } from '../services/api';
-import { Dataset, AnnotationSystemType } from '../types';
+import { api } from '../../services/api';
+import { Dataset, AnnotationSystemType } from '../../types';
 import AnnotationWorkspace from './AnnotationWorkspace';
 import FedoAnnotationWorkspace from './FedoAnnotationWorkspace';
 

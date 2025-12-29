@@ -1,14 +1,14 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import DatasetList from './pages/DatasetList';
-import DatasetDetail from './pages/DatasetDetail';
-import WorkspaceRouter from './pages/WorkspaceRouter';
-import UserManagement from './pages/UserManagement';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Setup from './pages/Setup';
-import NetworkError from './pages/NetworkError';
+import DatasetList from './pages/dataset/DatasetList';
+import DatasetDetail from './pages/dataset/DatasetDetail';
+import WorkspaceRouter from './pages/annotation/WorkspaceRouter';
+import UserManagement from './pages/user/UserManagement';
+import Login from './pages/user/Login';
+import Register from './pages/user/Register';
+import Setup from './pages/base/Setup';
+import NetworkError from './pages/base/NetworkError';
 import SystemCheck from './components/SystemCheck';
 import ProtectedLayout from './components/ProtectedLayout';
 

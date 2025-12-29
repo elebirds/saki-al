@@ -1,23 +1,23 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, message, Steps } from 'antd';
-import { UserOutlined, LockOutlined, MailOutlined, RocketOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
-import { api } from '../services/api';
+import { Form, Input, Button, Card, Typography, message } from 'antd';
+import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
+import { useNavigate, Link } from 'react-router-dom';
+import { api } from '../../services/api';
 
-const { Title, Paragraph } = Typography;
+const { Title } = Typography;
 
-const Setup: React.FC = () => {
+const Register: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      await api.setupSystem(values.email, values.password, values.fullName);
-      message.success('System initialized successfully! Please log in with your admin account.');
+      await api.register(values.email, values.password, values.fullName);
+      message.success('Registration successful! Please log in.');
       navigate('/login');
     } catch (error: any) {
-      message.error(error.message || 'Setup failed');
+      message.error(error.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -25,41 +25,27 @@ const Setup: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
-      <Card style={{ width: 600, padding: '20px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <RocketOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
-          <Title level={2}>Welcome to Saki</Title>
-          <Paragraph type="secondary">
-            It looks like this is your first time running Saki. <br />
-            Let's set up your administrator account to get started.
-          </Paragraph>
+      <Card style={{ width: 400 }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <Title level={2}>Sign Up</Title>
+          <Typography.Text type="secondary">Create your Saki account</Typography.Text>
         </div>
-
-        <Steps
-          current={0}
-          items={[
-            { title: 'Welcome', status: 'finish' },
-            { title: 'Create Admin', status: 'process' },
-            { title: 'Ready', status: 'wait' },
-          ]}
-          style={{ marginBottom: 40 }}
-        />
         
         <Form
-          name="setup"
+          name="register"
           onFinish={onFinish}
           size="large"
           layout="vertical"
         >
           <Form.Item
             name="email"
-            label="Admin Email"
+            label="Email"
             rules={[
               { required: true, message: 'Please input your Email!' },
               { type: 'email', message: 'Please enter a valid email!' }
             ]}
           >
-            <Input prefix={<MailOutlined />} placeholder="admin@example.com" />
+            <Input prefix={<MailOutlined />} placeholder="Email" />
           </Form.Item>
 
           <Form.Item
@@ -67,7 +53,7 @@ const Setup: React.FC = () => {
             label="Full Name"
             rules={[{ required: true, message: 'Please input your full name!' }]}
           >
-            <Input prefix={<UserOutlined />} placeholder="Administrator" />
+            <Input prefix={<UserOutlined />} placeholder="Full Name" />
           </Form.Item>
 
           <Form.Item
@@ -75,7 +61,7 @@ const Setup: React.FC = () => {
             label="Password"
             rules={[{ required: true, message: 'Please input your Password!' }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Strong Password" />
+            <Input.Password prefix={<LockOutlined />} placeholder="Password" />
           </Form.Item>
           
           <Form.Item
@@ -99,14 +85,18 @@ const Setup: React.FC = () => {
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading} size="large">
-              Initialize System
+            <Button type="primary" htmlType="submit" block loading={loading}>
+              Register
             </Button>
           </Form.Item>
+          
+          <div style={{ textAlign: 'center' }}>
+            Already have an account? <Link to="/login">Log in</Link>
+          </div>
         </Form>
       </Card>
     </div>
   );
 };
 
-export default Setup;
+export default Register;

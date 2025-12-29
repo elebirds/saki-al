@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Card, Col, Row, Statistic, Tag, Button, Typography, Modal, Form, Input, Select, message, Spin, Tooltip } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Project, AnnotationSystemType } from '../types';
-import { api } from '../services/api';
-import { useSystemCapabilities } from '../hooks';
+import { Project, AnnotationSystemType } from '../../types';
+import { api } from '../../services/api';
+import { useSystemCapabilities } from '../../hooks';
 import { PlusOutlined, BarChartOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
 const { Title, Paragraph } = Typography;

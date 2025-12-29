@@ -3,9 +3,9 @@ import { Form, Input, Button, Card, Select, Space, Tag, message, ColorPicker, Po
 import { PlusOutlined, DeleteOutlined, LockOutlined, EditOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Dataset, Label, LabelCreate, TypeInfo } from '../types';
-import { api } from '../services/api';
-import { useSystemCapabilities } from '../hooks/useSystemCapabilities';
+import { Dataset, Label, LabelCreate, TypeInfo } from '../../types';
+import { api } from '../../services/api';
+import { useSystemCapabilities } from '../../hooks/useSystemCapabilities';
 
 interface DatasetSettingsProps {
   dataset: Dataset;

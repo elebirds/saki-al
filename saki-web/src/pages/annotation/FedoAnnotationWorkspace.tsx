@@ -41,8 +41,8 @@ import {
   ExpandOutlined,
   SyncOutlined 
 } from '@ant-design/icons';
-import { AnnotationCanvas, AnnotationCanvasRef } from '../components/canvas';
-import { api } from '../services/api';
+import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
+import { api } from '../../services/api';
 import { 
   Sample, 
   Annotation, 
@@ -51,8 +51,8 @@ import {
   DualViewAnnotation, 
   MappedRegion,
   BoundingBox
-} from '../types';
-import { useDualViewSync } from '../hooks/useDualViewSync';
+} from '../../types';
+import { useDualViewSync } from '../../hooks/useDualViewSync';
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;

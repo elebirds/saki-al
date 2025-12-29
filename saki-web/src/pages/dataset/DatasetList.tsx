@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Card, Col, Row, Statistic, Tag, Button, Typography, Modal, Form, Input, Select, message, Spin, Tooltip, Progress } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Dataset, AnnotationSystemType } from '../types';
-import { api } from '../services/api';
-import { useSystemCapabilities } from '../hooks';
+import { Dataset, AnnotationSystemType } from '../../types';
+import { api } from '../../services/api';
+import { useSystemCapabilities } from '../../hooks';
 import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
 
 const { Title, Paragraph } = Typography;

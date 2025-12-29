@@ -3,9 +3,9 @@ import { useParams } from 'react-router-dom';
 import { Layout, Button, Card, Space, Typography, List, Radio, Tooltip, Select, Tag, message, Empty } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { LeftOutlined, RightOutlined, CheckOutlined, DragOutlined, BorderOutlined, RotateRightOutlined, DeleteOutlined, UndoOutlined, RedoOutlined, ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons';
-import { AnnotationCanvas, AnnotationCanvasRef } from '../components/canvas';
-import { api } from '../services/api';
-import { Sample, Annotation, Dataset, Label } from '../types';
+import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
+import { api } from '../../services/api';
+import { Sample, Annotation, Dataset, Label } from '../../types';
 
 const { Sider, Content } = Layout;
 const { Title } = Typography;

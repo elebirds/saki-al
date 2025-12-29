@@ -1,5 +1,6 @@
 """
 API endpoints for Sample-level operations including annotations.
+Samples belong to Datasets, not directly to Projects.
 """
 
 import json
@@ -24,7 +25,8 @@ from saki_api.api import deps
 from saki_api.core.config import settings
 from saki_api.db.session import get_session
 from saki_api.models import (
-    Project, )
+    Dataset,
+)
 from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.user import User
 
@@ -45,9 +47,9 @@ router = APIRouter()
 # API Endpoints
 # ============================================================================
 
-@router.get("/{project_id}", response_model=Dict[str, Any])
+@router.get("/{dataset_id}", response_model=Dict[str, Any])
 def read_samples(
-        project_id: str,
+        dataset_id: str,
         status: Optional[SampleStatus] = None,
         skip: int = 0,
         limit: int = 100,
@@ -55,14 +57,19 @@ def read_samples(
         current_user: User = Depends(deps.get_current_user)
 ):
     """
-    Get samples for a project.
+    Get samples for a dataset.
     """
-    query = select(Sample).where(Sample.project_id == project_id)
+    # Verify dataset exists
+    dataset = session.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    query = select(Sample).where(Sample.dataset_id == dataset_id)
     if status:
         query = query.where(Sample.status == status)
 
     # Calculate total count for pagination
-    count_query = select(func.count()).where(Sample.project_id == project_id)
+    count_query = select(func.count()).select_from(Sample).where(Sample.dataset_id == dataset_id)
     if status:
         count_query = count_query.where(Sample.status == status)
     total = session.exec(count_query).one()
@@ -72,42 +79,39 @@ def read_samples(
     return {"items": samples, "total": total}
 
 
-@router.post("/{project_id}/samples")
+@router.post("/{dataset_id}")
 def upload_samples(
-        project_id: str,
+        dataset_id: str,
         files: List[UploadFile] = File(...),
         session: Session = Depends(get_session),
         current_user: User = Depends(deps.get_current_user)
 ):
     """
-    Upload samples to a project.
-    Uses pluggable handler architecture based on project's annotation system type.
+    Upload samples to a dataset.
+    Uses pluggable handler architecture based on dataset's annotation system type.
     """
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    dataset = session.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
 
     # Get the appropriate handler for this annotation system
     try:
-        handler = get_handler(project.annotation_system)
+        handler = get_handler(dataset.annotation_system)
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=f"No handler available for annotation system: {project.annotation_system.value}"
+            detail=f"No handler available for annotation system: {dataset.annotation_system.value}"
         )
 
-    upload_dir = Path(settings.UPLOAD_DIR) / project_id
+    upload_dir = Path(settings.UPLOAD_DIR) / dataset_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     # Create upload context
     context = UploadContext(
-        project_id=project_id,
+        project_id=dataset_id,  # Using dataset_id as the context identifier
         upload_dir=upload_dir,
-        project_config={
-            'task_type': project.task_type.value if project.task_type else None,
-            'labels': project.labels,
-        },
-        annotation_config=project.annotation_config or {},
+        project_config={},
+        annotation_config={},
     )
 
     # Initialize progress tracker
@@ -136,9 +140,9 @@ def upload_samples(
                 sample_fields = handler.get_sample_fields(result)
 
                 sample = Sample(
-                    project_id=project_id,
-                    file_path=str(file_path),
-                    filename=file.filename,
+                    dataset_id=dataset_id,
+                    name=file.filename,
+                    url=str(file_path),
                     status=SampleStatus.UNLABELED,
                     **sample_fields
                 )
@@ -191,9 +195,9 @@ def upload_samples(
     }
 
 
-@router.post("/{project_id}/samples/stream")
+@router.post("/{dataset_id}/stream")
 async def upload_samples_with_progress(
-        project_id: str,
+        dataset_id: str,
         files: List[UploadFile] = File(...),
         session: Session = Depends(get_session),
         current_user: User = Depends(deps.get_current_user)
@@ -202,29 +206,26 @@ async def upload_samples_with_progress(
     Upload samples with SSE progress streaming.
     Returns a stream of progress events during upload.
     """
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    dataset = session.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
 
     try:
-        handler = get_handler(project.annotation_system)
+        handler = get_handler(dataset.annotation_system)
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=f"No handler available for annotation system: {project.annotation_system.value}"
+            detail=f"No handler available for annotation system: {dataset.annotation_system.value}"
         )
 
-    upload_dir = Path(settings.UPLOAD_DIR) / project_id
+    upload_dir = Path(settings.UPLOAD_DIR) / dataset_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     context = UploadContext(
-        project_id=project_id,
+        project_id=dataset_id,  # Using dataset_id as the context identifier
         upload_dir=upload_dir,
-        project_config={
-            'task_type': project.task_type.value if project.task_type else None,
-            'labels': project.labels,
-        },
-        annotation_config=project.annotation_config or {},
+        project_config={},
+        annotation_config={},
     )
 
     async def generate_progress():
@@ -251,9 +252,9 @@ async def upload_samples_with_progress(
                 if result.success:
                     sample_fields = handler.get_sample_fields(result)
                     sample = Sample(
-                        project_id=project_id,
-                        file_path=str(file_path),
-                        filename=file.filename,
+                        dataset_id=dataset_id,
+                        name=file.filename,
+                        url=str(file_path),
                         status=SampleStatus.UNLABELED,
                         **sample_fields
                     )

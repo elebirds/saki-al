@@ -1,43 +1,43 @@
 /**
  * WorkspaceRouter
  * 
- * Routes to the appropriate annotation workspace based on project's annotation system type.
- * This allows the same URL pattern (/workspace/:projectId) to work for all annotation systems.
+ * Routes to the appropriate annotation workspace based on dataset's annotation system type.
+ * This allows the same URL pattern (/workspace/:datasetId) to work for all annotation systems.
  */
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
 import { api } from '../services/api';
-import { Project, AnnotationSystemType } from '../types';
+import { Dataset, AnnotationSystemType } from '../types';
 import AnnotationWorkspace from './AnnotationWorkspace';
 import FedoAnnotationWorkspace from './FedoAnnotationWorkspace';
 
 const WorkspaceRouter: React.FC = () => {
-  const { projectId } = useParams<{ projectId: string }>();
-  const [project, setProject] = useState<Project | null>(null);
+  const { datasetId } = useParams<{ datasetId: string }>();
+  const [dataset, setDataset] = useState<Dataset | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (projectId) {
+    if (datasetId) {
       setLoading(true);
-      api.getProject(projectId)
-        .then((proj) => {
-          if (proj) {
-            setProject(proj);
+      api.getDataset(datasetId)
+        .then((ds) => {
+          if (ds) {
+            setDataset(ds);
           } else {
-            setError('Project not found');
+            setError('Dataset not found');
           }
         })
         .catch((err) => {
-          setError(err.message || 'Failed to load project');
+          setError(err.message || 'Failed to load dataset');
         })
         .finally(() => {
           setLoading(false);
         });
     }
-  }, [projectId]);
+  }, [datasetId]);
 
   if (loading) {
     return (
@@ -52,12 +52,12 @@ const WorkspaceRouter: React.FC = () => {
     );
   }
 
-  if (error || !project) {
+  if (error || !dataset) {
     return <Navigate to="/" replace />;
   }
 
   // Route to appropriate workspace based on annotation system
-  return getWorkspaceComponent(project.annotationSystem);
+  return getWorkspaceComponent(dataset.annotationSystem);
 };
 
 /**

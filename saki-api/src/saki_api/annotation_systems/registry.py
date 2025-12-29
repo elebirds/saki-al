@@ -154,8 +154,8 @@ def discover_handlers() -> None:
     This imports handler modules to trigger registration.
     """
     handler_modules = [
-        "annotation_systems.handlers.classic",
-        "annotation_systems.satellite_fedo.handler",
+        "saki_api.annotation_systems.handlers.classic",
+        "saki_api.annotation_systems.satellite_fedo.handler",
     ]
 
     for module_name in handler_modules:

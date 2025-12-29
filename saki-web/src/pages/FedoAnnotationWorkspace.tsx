@@ -46,7 +46,7 @@ import { api } from '../services/api';
 import { 
   Sample, 
   Annotation, 
-  Project, 
+  Dataset, 
   LabelConfig, 
   DualViewAnnotation, 
   MappedRegion,
@@ -98,12 +98,19 @@ function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualVi
 // Component
 // ============================================================================
 
+// Default labels for annotation
+const DEFAULT_LABELS: LabelConfig[] = [
+  { name: 'Event', color: '#1890ff' },
+  { name: 'Noise', color: '#52c41a' },
+  { name: 'Unknown', color: '#faad14' },
+];
+
 const FedoAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
-  const { projectId } = useParams<{ projectId: string }>();
+  const { datasetId } = useParams<{ datasetId: string }>();
   
-  // Project & Samples State
-  const [project, setProject] = useState<Project | null>(null);
+  // Dataset & Samples State
+  const [dataset, setDataset] = useState<Dataset | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -116,7 +123,8 @@ const FedoAnnotationWorkspace: React.FC = () => {
   
   // Tool State
   const [currentTool, setCurrentTool] = useState<'select' | 'rect' | 'obb'>('select');
-  const [selectedLabel, setSelectedLabel] = useState<LabelConfig | null>(null);
+  const [labels] = useState<LabelConfig[]>(DEFAULT_LABELS);
+  const [selectedLabel, setSelectedLabel] = useState<LabelConfig | null>(DEFAULT_LABELS[0]);
   
   // Canvas Refs
   const timeEnergyCanvasRef = useRef<AnnotationCanvasRef>(null);
@@ -151,29 +159,22 @@ const FedoAnnotationWorkspace: React.FC = () => {
   // ========================================================================
   
   useEffect(() => {
-    if (projectId) {
+    if (datasetId) {
       setLoading(true);
       Promise.all([
-        api.getProject(projectId),
-        api.getSamples(projectId)
-      ]).then(([proj, samps]) => {
-        if (proj) setProject(proj);
+        api.getDataset(datasetId),
+        api.getSamples(datasetId)
+      ]).then(([ds, samps]) => {
+        if (ds) setDataset(ds);
         setSamples(samps);
         setLoading(false);
       }).catch(err => {
-        console.error('Failed to load project:', err);
-        message.error('Failed to load project');
+        console.error('Failed to load dataset:', err);
+        message.error('Failed to load dataset');
         setLoading(false);
       });
     }
-  }, [projectId]);
-
-  // Initialize label selection
-  useEffect(() => {
-    if (project && project.labels.length > 0 && !selectedLabel) {
-      setSelectedLabel(project.labels[0]);
-    }
-  }, [project, selectedLabel]);
+  }, [datasetId]);
 
   // Load sample data and initialize worker
   useEffect(() => {
@@ -405,10 +406,10 @@ const FedoAnnotationWorkspace: React.FC = () => {
     );
   }
 
-  if (!project || samples.length === 0) {
+  if (!dataset || samples.length === 0) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <Empty description="No samples found for this project" />
+        <Empty description="No samples found for this dataset" />
       </div>
     );
   }
@@ -434,12 +435,12 @@ const FedoAnnotationWorkspace: React.FC = () => {
             <Select
               value={selectedLabel?.name}
               onChange={(value) => {
-                const label = project.labels.find(l => l.name === value);
+                const label = labels.find(l => l.name === value);
                 if (label) setSelectedLabel(label);
               }}
               style={{ width: 150 }}
             >
-              {project.labels.map(label => (
+              {labels.map(label => (
                 <Select.Option key={label.name} value={label.name}>
                   <Tag color={label.color}>{label.name}</Tag>
                 </Select.Option>

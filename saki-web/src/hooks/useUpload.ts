@@ -18,7 +18,7 @@ interface UseUploadOptions {
   onError?: (error: string) => void;
 }
 
-export function useUpload(projectId: string, options: UseUploadOptions = {}) {
+export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
   const { useStreaming = true, onFileComplete, onStart, onComplete, onError } = options;
   const token = useAuthStore((state) => state.token);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -74,7 +74,7 @@ export function useUpload(projectId: string, options: UseUploadOptions = {}) {
       onStart?.(files.length);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/projects/${projectId}/samples/stream`, {
+        const response = await fetch(`${API_BASE_URL}/samples/${datasetId}/samples/stream`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -127,7 +127,7 @@ export function useUpload(projectId: string, options: UseUploadOptions = {}) {
         onError?.(errorMsg);
       }
     },
-    [projectId, token, onStart, onError]
+    [datasetId, token, onStart, onError]
   );
 
   const handleProgressEvent = useCallback(
@@ -215,7 +215,7 @@ export function useUpload(projectId: string, options: UseUploadOptions = {}) {
       onStart?.(files.length);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/projects/${projectId}/samples`, {
+        const response = await fetch(`${API_BASE_URL}/samples/${datasetId}/samples`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -253,7 +253,7 @@ export function useUpload(projectId: string, options: UseUploadOptions = {}) {
         onError?.(errorMsg);
       }
     },
-    [projectId, token, onStart, onComplete, onError]
+    [datasetId, token, onStart, onComplete, onError]
   );
 
   const upload = useCallback(

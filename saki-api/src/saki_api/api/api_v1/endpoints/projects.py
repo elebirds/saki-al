@@ -8,12 +8,44 @@ from saki_api.api import deps
 from saki_api.db.session import get_session
 from saki_api.models import (
     Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats,
+    ProjectDataset, ProjectDatasetCreate,
     Sample, SampleStatus, ModelStatus,
-    ModelVersion, ModelVersionCreate, ModelVersionRead, ModelVersionUpdate,
+    ModelVersion, Dataset
 )
 from saki_api.models.user import User
 
 router = APIRouter()
+
+
+def _get_project_stats(session: Session, project: Project) -> ProjectStats:
+    """
+    Calculate project statistics from linked datasets.
+    """
+    # Get all dataset IDs linked to this project
+    dataset_ids = session.exec(
+        select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project.id)
+    ).all()
+    
+    if not dataset_ids:
+        return ProjectStats(total_datasets=0, total_samples=0, labeled_samples=0, accuracy=0.0)
+    
+    total_samples = session.exec(
+        select(func.count()).select_from(Sample).where(Sample.dataset_id.in_(dataset_ids))
+    ).one()
+    
+    labeled_samples = session.exec(
+        select(func.count()).select_from(Sample).where(
+            Sample.dataset_id.in_(dataset_ids),
+            Sample.status == SampleStatus.LABELED
+        )
+    ).one()
+    
+    return ProjectStats(
+        total_datasets=len(dataset_ids),
+        total_samples=total_samples,
+        labeled_samples=labeled_samples,
+        accuracy=0.0
+    )
 
 
 @router.get("/", response_model=List[ProjectRead])
@@ -29,11 +61,8 @@ def read_projects(
     projects = session.exec(select(Project).offset(skip).limit(limit)).all()
     result = []
     for p in projects:
-        p_read = ProjectRead.from_orm(p)
-        total = session.exec(select(func.count()).select_from(Sample).where(Sample.project_id == p.id)).one()
-        labeled = session.exec(select(func.count()).select_from(Sample).where(Sample.project_id == p.id,
-                                                                              Sample.status == SampleStatus.LABELED)).one()
-        p_read.stats = ProjectStats(totalSamples=total, labeledSamples=labeled, accuracy=0.0)
+        p_read = ProjectRead.model_validate(p)
+        p_read.stats = _get_project_stats(session, p)
         result.append(p_read)
     return result
 
@@ -47,11 +76,14 @@ def create_project(
     """
     Create new project.
     """
-    db_project = Project.from_orm(project)
+    db_project = Project.model_validate(project)
     session.add(db_project)
     session.commit()
     session.refresh(db_project)
-    return db_project
+    
+    p_read = ProjectRead.model_validate(db_project)
+    p_read.stats = ProjectStats()
+    return p_read
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
@@ -67,11 +99,8 @@ def read_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    p_read = ProjectRead.from_orm(project)
-    total = session.exec(select(func.count()).select_from(Sample).where(Sample.project_id == project.id)).one()
-    labeled = session.exec(select(func.count()).select_from(Sample).where(Sample.project_id == project.id,
-                                                                          Sample.status == SampleStatus.LABELED)).one()
-    p_read.stats = ProjectStats(totalSamples=total, labeledSamples=labeled, accuracy=0.0)
+    p_read = ProjectRead.model_validate(project)
+    p_read.stats = _get_project_stats(session, project)
 
     return p_read
 
@@ -90,14 +119,17 @@ def update_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    project_data = project_in.dict(exclude_unset=True)
+    project_data = project_in.model_dump(exclude_unset=True)
     for key, value in project_data.items():
         setattr(project, key, value)
 
     session.add(project)
     session.commit()
     session.refresh(project)
-    return project
+    
+    p_read = ProjectRead.model_validate(project)
+    p_read.stats = _get_project_stats(session, project)
+    return p_read
 
 
 @router.delete("/{project_id}")
@@ -107,36 +139,19 @@ def delete_project(
         current_user: User = Depends(deps.get_current_user)
 ):
     """
-    Delete a project and all related data. Only superusers can delete projects.
+    Delete a project and its dataset links.
+    Note: This does NOT delete the linked datasets or their samples.
     """
-    # if not current_user.is_superuser:
-    #     raise HTTPException(
-    #         status_code=403, 
-    #         detail="Not enough permissions. Only superusers can delete projects."
-    #     )
-
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Manually delete related records to avoid foreign key constraint issues
-    # Delete model versions
-    from saki_api.models.annotation import Annotation
-
-    # Delete annotations for samples in this project
-    for sample in project.samples:
-        statement = select(Annotation).where(Annotation.sample_id == sample.id)
-        annotations = session.exec(statement).all()
-        for ann in annotations:
-            session.delete(ann)
-
-    # Delete samples
-    for sample in project.samples:
-        session.delete(sample)
-
-    # Delete datasets
-    for dataset in project.datasets:
-        session.delete(dataset)
+    # Delete project-dataset links
+    links = session.exec(
+        select(ProjectDataset).where(ProjectDataset.project_id == project_id)
+    ).all()
+    for link in links:
+        session.delete(link)
 
     # Delete model versions
     for mv in project.model_versions:
@@ -145,7 +160,7 @@ def delete_project(
     # Finally delete the project
     session.delete(project)
     session.commit()
-    return {"ok": True}
+    return {"ok": True, "unlinked_datasets": len(links)}
 
 
 @router.post("/{project_id}/train")
@@ -179,68 +194,159 @@ def train_project(
     return {"jobId": "mock-job-id", "status": "queued", "modelVersion": model_version}
 
 
-@router.get("/{project_id}/models", response_model=List[ModelVersionRead])
-def list_model_versions(
+# ============================================================================
+# Project-Dataset Link Management
+# ============================================================================
+
+@router.get("/{project_id}/datasets")
+def get_project_datasets(
         project_id: str,
         session: Session = Depends(get_session),
         current_user: User = Depends(deps.get_current_user)
 ):
     """
-    List model versions for a project.
+    Get all datasets linked to a project.
     """
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return session.exec(select(ModelVersion).where(ModelVersion.project_id == project_id)).all()
+    
+    # Get linked datasets with their info
+    links = session.exec(
+        select(ProjectDataset).where(ProjectDataset.project_id == project_id)
+    ).all()
+    
+    result = []
+    for link in links:
+        dataset = session.get(Dataset, link.dataset_id)
+        if dataset:
+            # Calculate sample stats for this dataset
+            sample_count = session.exec(
+                select(func.count()).select_from(Sample).where(Sample.dataset_id == dataset.id)
+            ).one()
+            labeled_count = session.exec(
+                select(func.count()).select_from(Sample).where(
+                    Sample.dataset_id == dataset.id,
+                    Sample.status == SampleStatus.LABELED
+                )
+            ).one()
+            
+            result.append({
+                "dataset_id": dataset.id,
+                "name": dataset.name,
+                "description": dataset.description,
+                "annotation_system": dataset.annotation_system.value,
+                "sample_count": sample_count,
+                "labeled_count": labeled_count,
+                "linked_at": link.created_at.isoformat() if link.created_at else None,
+            })
+    
+    return {"datasets": result, "total": len(result)}
 
 
-@router.post("/{project_id}/models", response_model=ModelVersionRead)
-def create_model_version(
+@router.post("/{project_id}/datasets")
+def link_dataset_to_project(
         project_id: str,
-        model_in: ModelVersionCreate,
+        link_data: ProjectDatasetCreate,
         session: Session = Depends(get_session),
         current_user: User = Depends(deps.get_current_user)
 ):
     """
-    Register a new model version for a project (e.g., external training result).
+    Link a dataset to a project for use in active learning training.
     """
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-
-    payload = model_in.model_dump()
-    payload["project_id"] = project_id  # Enforce path param
-    model_version = ModelVersion(**payload)
-    session.add(model_version)
+    
+    dataset = session.get(Dataset, link_data.dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    # Check if already linked
+    existing = session.exec(
+        select(ProjectDataset).where(
+            ProjectDataset.project_id == project_id,
+            ProjectDataset.dataset_id == link_data.dataset_id
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Dataset already linked to this project")
+    
+    # Create link
+    link = ProjectDataset(
+        project_id=project_id,
+        dataset_id=link_data.dataset_id,
+    )
+    session.add(link)
     session.commit()
-    session.refresh(model_version)
-    return model_version
+    
+    return {"ok": True, "message": f"Dataset '{dataset.name}' linked to project '{project.name}'"}
 
 
-@router.put("/{project_id}/models/{model_id}", response_model=ModelVersionRead)
-def update_model_version(
+@router.delete("/{project_id}/datasets/{dataset_id}")
+def unlink_dataset_from_project(
         project_id: str,
-        model_id: str,
-        model_in: ModelVersionUpdate,
+        dataset_id: str,
         session: Session = Depends(get_session),
         current_user: User = Depends(deps.get_current_user)
 ):
     """
-    Update metadata for a model version (metrics, status, weights path, etc.).
+    Unlink a dataset from a project.
+    This does NOT delete the dataset or its samples.
+    """
+    link = session.exec(
+        select(ProjectDataset).where(
+            ProjectDataset.project_id == project_id,
+            ProjectDataset.dataset_id == dataset_id
+        )
+    ).first()
+    
+    if not link:
+        raise HTTPException(status_code=404, detail="Dataset is not linked to this project")
+    
+    session.delete(link)
+    session.commit()
+    
+    return {"ok": True, "message": "Dataset unlinked from project"}
+
+
+@router.get("/{project_id}/samples")
+def get_project_samples(
+        project_id: str,
+        status: str = None,
+        skip: int = 0,
+        limit: int = 100,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Get all samples from datasets linked to a project.
+    Useful for active learning to view all available training data.
     """
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-
-    model_version = session.get(ModelVersion, model_id)
-    if not model_version or model_version.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Model version not found for project")
-
-    update_data = model_in.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(model_version, key, value)
-
-    session.add(model_version)
-    session.commit()
-    session.refresh(model_version)
-    return model_version
+    
+    # Get all dataset IDs linked to this project
+    dataset_ids = session.exec(
+        select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
+    ).all()
+    
+    if not dataset_ids:
+        return {"items": [], "total": 0}
+    
+    # Build query for samples
+    query = select(Sample).where(Sample.dataset_id.in_(dataset_ids))
+    if status:
+        query = query.where(Sample.status == status)
+    
+    # Count total
+    count_query = select(func.count()).select_from(Sample).where(Sample.dataset_id.in_(dataset_ids))
+    if status:
+        count_query = count_query.where(Sample.status == status)
+    total = session.exec(count_query).one()
+    
+    samples = session.exec(query.offset(skip).limit(limit)).all()
+    
+    return {"items": samples, "total": total}

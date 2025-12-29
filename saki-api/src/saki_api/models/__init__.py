@@ -1,8 +1,11 @@
 from saki_api.models.annotation import Annotation, AnnotationCreate, AnnotationRead, AnnotationUpdate
 from saki_api.models.dataset import Dataset, DatasetCreate, DatasetRead, DatasetUpdate
-from saki_api.models.enums import TaskType, SampleStatus, ProjectStatus, ModelStatus
+from saki_api.models.enums import TaskType, SampleStatus, ProjectStatus, ModelStatus, AnnotationSystemType
 from saki_api.models.model_version import ModelVersion, ModelVersionCreate, ModelVersionRead, ModelVersionUpdate
-from saki_api.models.project import Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats
+from saki_api.models.project import (
+    Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats,
+    ProjectDataset, ProjectDatasetCreate, ProjectDatasetRead
+)
 from saki_api.models.sample import Sample, SampleCreate, SampleRead, SampleUpdate
 from saki_api.models.system_config import (
     QueryStrategy, QueryStrategyCreate, QueryStrategyRead, QueryStrategyUpdate,
@@ -11,13 +14,23 @@ from saki_api.models.system_config import (
 from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
 
 __all__ = [
-    "Project", "ProjectCreate", "ProjectRead", "ProjectUpdate", "ProjectStats",
+    # Dataset models (independent, for data annotation)
     "Dataset", "DatasetCreate", "DatasetRead", "DatasetUpdate",
+    # Sample models (belong to Dataset)
     "Sample", "SampleCreate", "SampleRead", "SampleUpdate",
+    # Annotation models
     "Annotation", "AnnotationCreate", "AnnotationRead", "AnnotationUpdate",
+    # Project models (for active learning)
+    "Project", "ProjectCreate", "ProjectRead", "ProjectUpdate", "ProjectStats",
+    # Project-Dataset link models
+    "ProjectDataset", "ProjectDatasetCreate", "ProjectDatasetRead",
+    # Model version models
     "ModelVersion", "ModelVersionCreate", "ModelVersionRead", "ModelVersionUpdate",
+    # System config models
     "QueryStrategy", "QueryStrategyCreate", "QueryStrategyRead", "QueryStrategyUpdate",
     "BaseModel", "BaseModelCreate", "BaseModelRead", "BaseModelUpdate",
-    "TaskType", "SampleStatus", "ProjectStatus", "ModelStatus",
+    # Enums
+    "TaskType", "SampleStatus", "ProjectStatus", "ModelStatus", "AnnotationSystemType",
+    # User models
     "User", "UserCreate", "UserRead", "UserUpdate"
 ]

@@ -1,39 +1,60 @@
 {
   "app": {
     "title": "Saki AL",
-    "projects": "Projects",
+    "datasets": "Datasets",
     "about": "About",
     "footer": "Saki Active Learning ©2025 Created by elebird."
   },
   "common": {
     "networkError": "Cannot connect to the server. Please check your network connection or try again later.",
     "retry": "Retry",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "yes": "Yes",
+    "no": "No"
   },
-  "projectList": {
-    "title": "Projects",
-    "newProject": "New Project",
-    "createSuccess": "Project created successfully",
-    "createError": "Failed to create project",
-    "projectName": "Project Name",
+  "datasetList": {
+    "title": "Datasets",
+    "newDataset": "New Dataset",
+    "createSuccess": "Dataset created successfully",
+    "createError": "Failed to create dataset",
+    "loadError": "Failed to load datasets",
+    "datasetName": "Dataset Name",
+    "namePlaceholder": "Enter dataset name",
+    "nameRequired": "Please enter dataset name",
     "description": "Description",
-    "taskType": "Task Type",
-    "taskTypeHelp": "Machine learning task type for model training",
+    "descriptionPlaceholder": "Enter dataset description (optional)",
     "annotationSystem": "Annotation System",
-    "annotationSystemHelp": "Choose the annotation interface based on your data type",
+    "annotationSystemHelp": "Choose the annotation interface based on your data type. Cannot be changed after creation.",
     "open": "Open",
-    "stats": "Stats",
+    "samples": "Samples",
     "labeled": "Labeled",
-    "accuracy": "Accuracy"
+    "noDescription": "No description",
+    "empty": "No datasets",
+    "emptyHint": "Click the button above to create your first dataset"
   },
-  "projectDetail": {
-    "progress": "Progress",
+  "datasetDetail": {
+    "progress": "Annotation Progress",
     "labeled": "Labeled",
     "startLabeling": "Start Labeling",
-    "trainModel": "Train Model",
     "uploadData": "Upload Data",
+    "exportData": "Export Data",
     "settings": "Settings",
-    "dataPool": "Data Pool"
+    "dataPool": "Data Pool",
+    "noSamples": "No data",
+    "backToList": "Back to List",
+    "basicInfo": "Basic Information",
+    "name": "Name",
+    "description": "Description",
+    "annotationSystem": "Annotation System",
+    "createdAt": "Created At",
+    "dangerZone": "Danger Zone",
+    "deleteDataset": "Delete Dataset",
+    "deleteConfirm": "Are you sure to delete this dataset?",
+    "deleteConfirmDesc": "This action cannot be undone. All samples and annotations will be deleted.",
+    "deleteSuccess": "Dataset deleted",
+    "deleteError": "Failed to delete dataset",
+    "exportSuccess": "Export successful",
+    "exportError": "Export failed"
   },
   "workspace": {
     "annotations": "Annotations",

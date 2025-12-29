@@ -26,5 +26,5 @@ def init_db():
     This should be called on application startup.
     """
     # Import models to ensure they are registered with SQLModel
-    import models
+    import saki_api.models
     SQLModel.metadata.create_all(engine)

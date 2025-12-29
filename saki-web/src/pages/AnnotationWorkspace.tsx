@@ -5,15 +5,22 @@ import { useTranslation } from 'react-i18next';
 import { LeftOutlined, RightOutlined, CheckOutlined, DragOutlined, BorderOutlined, RotateRightOutlined, DeleteOutlined, UndoOutlined, RedoOutlined, ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../components/canvas';
 import { api } from '../services/api';
-import { Sample, Annotation, Project, LabelConfig } from '../types';
+import { Sample, Annotation, Dataset, LabelConfig } from '../types';
 
 const { Sider, Content } = Layout;
 const { Title } = Typography;
 
+// Default labels for annotation (can be extended later)
+const DEFAULT_LABELS: LabelConfig[] = [
+  { name: 'Object', color: '#1890ff' },
+  { name: 'Background', color: '#52c41a' },
+  { name: 'Unknown', color: '#faad14' },
+];
+
 const AnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
-  const { projectId } = useParams<{ projectId: string }>();
-  const [project, setProject] = useState<Project | null>(null);
+  const { datasetId } = useParams<{ datasetId: string }>();
+  const [dataset, setDataset] = useState<Dataset | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
@@ -21,23 +28,18 @@ const AnnotationWorkspace: React.FC = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentTool, setCurrentTool] = useState<'select' | 'rect' | 'obb'>('select');
-  const [selectedLabel, setSelectedLabel] = useState<LabelConfig | null>(null);
+  const [labels] = useState<LabelConfig[]>(DEFAULT_LABELS);
+  const [selectedLabel, setSelectedLabel] = useState<LabelConfig | null>(DEFAULT_LABELS[0]);
   const canvasRef = useRef<AnnotationCanvasRef>(null);
 
   useEffect(() => {
-    if (projectId) {
-      api.getProject(projectId).then((p) => {
-        if (p) setProject(p);
+    if (datasetId) {
+      api.getDataset(datasetId).then((d) => {
+        if (d) setDataset(d);
       });
-      api.getSamples(projectId).then(setSamples);
+      api.getSamples(datasetId).then(setSamples);
     }
-  }, [projectId]);
-
-  useEffect(() => {
-    if (project && project.labels.length > 0 && !selectedLabel) {
-      setSelectedLabel(project.labels[0]);
-    }
-  }, [project]);
+  }, [datasetId]);
 
   const currentSample = samples[currentIndex];
 
@@ -171,7 +173,7 @@ const AnnotationWorkspace: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleNext, handlePrev, handleSubmit, undo, redo]);
 
-  if (!currentSample || !project) return <div>{t('workspace.loading')}</div>;
+  if (!currentSample || !dataset) return <div>{t('workspace.loading')}</div>;
 
   return (
     <Layout style={{ height: '100%' }}>
@@ -183,12 +185,12 @@ const AnnotationWorkspace: React.FC = () => {
             <Select
               value={selectedLabel?.name}
               onChange={(value) => {
-                const label = project.labels.find(l => l.name === value);
+                const label = labels.find(l => l.name === value);
                 if (label) setSelectedLabel(label);
               }}
               style={{ width: 150 }}
             >
-              {project.labels.map(label => (
+              {labels.map(label => (
                 <Select.Option key={label.name} value={label.name}>
                   <Tag color={label.color}>{label.name}</Tag>
                 </Select.Option>

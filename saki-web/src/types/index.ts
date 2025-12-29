@@ -4,7 +4,7 @@ export interface LabelConfig {
 }
 
 // ============================================================================
-// Task Type - ML task type for active learning
+// Task Type - ML task type for active learning (used in Project)
 // ============================================================================
 
 export type TaskType = 'classification' | 'detection' | 'segmentation';
@@ -31,7 +31,27 @@ export interface AvailableTypes {
 }
 
 // ============================================================================
-// Project
+// Dataset - Independent entity for data annotation
+// ============================================================================
+
+export interface Dataset {
+  id: string;
+  name: string;
+  description?: string;
+  
+  // Annotation system - determines UI for this dataset
+  annotationSystem: AnnotationSystemType;
+  
+  createdAt: string;
+  updatedAt?: string;
+  
+  // Statistics
+  sampleCount: number;
+  labeledCount: number;
+}
+
+// ============================================================================
+// Project - For active learning training (links to datasets)
 // ============================================================================
 
 export interface Project {
@@ -42,11 +62,9 @@ export interface Project {
   // Task type - for ML model training
   taskType: TaskType;
   
-  // Annotation system - determines UI
-  annotationSystem: AnnotationSystemType;
-  
   createdAt: string;
   stats: {
+    totalDatasets: number;
     totalSamples: number;
     labeledSamples: number;
     accuracy?: number;
@@ -63,33 +81,19 @@ export interface Project {
   modelConfig: {
     [key: string]: any;
   };
-  
-  // Annotation system specific config
-  annotationConfig?: {
-    // FEDO-specific config
-    thumbnailView?: 'time_energy' | 'l_wd';
-    visualization?: {
-      dpi?: number;
-      lXlim?: [number, number];
-      wdYlim?: [number, number];
-    };
-    [key: string]: any;
-  };
 }
 
 export interface Sample {
   id: string;
-  projectId: string;
+
+  datasetId: string;
+  name: string;
   url: string;
-  filename?: string; // Original filename
+  remark: string;
+  
   status: 'unlabeled' | 'labeled' | 'skipped';
-  score?: number; // Uncertainty score
-  // FEDO annotation system fields
-  parquetPath?: string;
-  timeEnergyImageUrl?: string;
-  lWdImageUrl?: string;
-  lookupTablePath?: string;
-  metadata?: FedoSampleMetadata;
+
+  metaData: Record<string, any>;
 }
 
 // FEDO specialized task types
@@ -103,18 +107,6 @@ export interface FedoSampleMetadata {
     lXlim: [number, number];
     wdYlim: [number, number];
   };
-}
-
-export interface FedoLookupTable {
-  nTime: number;
-  nEnergy: number;
-  L: Float32Array;      // (N,) L-shell values
-  Wd: Float32Array;     // (N * M,) drift frequency matrix (flattened)
-  E: Float32Array;      // (M,) energy centers
-  LMin: number;
-  LMax: number;
-  WdMin: number;
-  WdMax: number;
 }
 
 // Dual-view annotation types

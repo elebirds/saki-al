@@ -1,39 +1,60 @@
 {
   "app": {
     "title": "Saki AL",
-    "projects": "项目列表",
+    "datasets": "数据集列表",
     "about": "关于",
     "footer": "Saki Active Learning ©2025 Created by elebird."
   },
   "common": {
     "networkError": "无法连接到服务器。请检查您的网络连接或稍后重试。",
     "retry": "重试",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "yes": "是",
+    "no": "否"
   },
-  "projectList": {
-    "title": "项目列表",
-    "newProject": "新建项目",
-    "createSuccess": "项目创建成功",
-    "createError": "创建项目失败",
-    "projectName": "项目名称",
+  "datasetList": {
+    "title": "数据集列表",
+    "newDataset": "新建数据集",
+    "createSuccess": "数据集创建成功",
+    "createError": "创建数据集失败",
+    "loadError": "加载数据集失败",
+    "datasetName": "数据集名称",
+    "namePlaceholder": "输入数据集名称",
+    "nameRequired": "请输入数据集名称",
     "description": "描述",
-    "taskType": "任务类型",
-    "taskTypeHelp": "用于模型训练的机器学习任务类型",
+    "descriptionPlaceholder": "输入数据集描述（可选）",
     "annotationSystem": "标注系统",
-    "annotationSystemHelp": "根据数据类型选择对应的标注界面",
+    "annotationSystemHelp": "根据数据类型选择对应的标注界面，创建后不可更改",
     "open": "打开",
-    "stats": "统计",
+    "samples": "样本数",
     "labeled": "已标注",
-    "accuracy": "准确率"
+    "noDescription": "暂无描述",
+    "empty": "暂无数据集",
+    "emptyHint": "点击上方按钮创建您的第一个数据集"
   },
-  "projectDetail": {
-    "progress": "进度",
+  "datasetDetail": {
+    "progress": "标注进度",
     "labeled": "已标注",
     "startLabeling": "开始标注",
-    "trainModel": "训练模型",
     "uploadData": "上传数据",
+    "exportData": "导出数据",
     "settings": "设置",
-    "dataPool": "数据池"
+    "dataPool": "数据池",
+    "noSamples": "暂无数据",
+    "backToList": "返回列表",
+    "basicInfo": "基本信息",
+    "name": "名称",
+    "description": "描述",
+    "annotationSystem": "标注系统",
+    "createdAt": "创建时间",
+    "dangerZone": "危险操作",
+    "deleteDataset": "删除数据集",
+    "deleteConfirm": "确定要删除此数据集吗？",
+    "deleteConfirmDesc": "此操作不可恢复，所有样本和标注数据都将被删除。",
+    "deleteSuccess": "数据集已删除",
+    "deleteError": "删除数据集失败",
+    "exportSuccess": "导出成功",
+    "exportError": "导出失败"
   },
   "workspace": {
     "annotations": "标注列表",

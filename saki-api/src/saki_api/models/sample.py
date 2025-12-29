@@ -1,51 +1,55 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel, Relationship
 
+
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import SampleStatus
+
+if TYPE_CHECKING:
+    from saki_api.models.dataset import Dataset
+    from saki_api.models.annotation import Annotation
 
 
 class SampleBase(SQLModel):
     """
     Base model for Sample.
-    A Sample represents a single image or data point.
-    For specialized tasks like SATELLITE_FEDO, it can also represent a processed data file.
+    A Sample represents a single data item (e.g., image, time series).
+    Samples belong to a Dataset, not directly to a Project.
     """
-    project_id: str = Field(foreign_key="project.id", index=True, description="ID of the project.")
-    dataset_id: Optional[str] = Field(default=None, foreign_key="dataset.id", description="ID of the dataset batch.")
-    file_path: str = Field(description="Path to the image file or data file on storage.")
-    filename: Optional[str] = Field(default=None, description="Original filename of the uploaded file.")
-    url: Optional[str] = Field(default=None, description="Public URL to access the image (if applicable).")
+    dataset_id: str = Field(foreign_key="dataset.id", index=True, description="ID of the dataset this sample belongs to.")
+    name: str = Field(description="Name of the sample, which is the filename by default.")
+    url: str = Field(default=None, description="Public URL to access the data.")
+    remark: str = Field(default="", description="Remark associated with the sample.")
+
     status: SampleStatus = Field(default=SampleStatus.UNLABELED, index=True,
                                  description="Annotation status of the sample.")
-    score: float = Field(default=0.0, index=True, description="Informativeness score calculated by AL strategy.")
+
+    # tags: List[str] = Field(default=[], description="List of tags associated with the sample.")
+    # TODO: add tags in sample.
+
     meta_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON),
                                       description="Additional metadata for the sample.")
-
-    # Specialized task fields (for SATELLITE_FEDO etc.)
-    parquet_path: Optional[str] = Field(default=None, description="Path to parquet file with processed data.")
-    time_energy_image_path: Optional[str] = Field(default=None, description="Path to Time-Energy view image.")
-    l_wd_image_path: Optional[str] = Field(default=None, description="Path to L-ωd view image.")
-    lookup_table_path: Optional[str] = Field(default=None,
-                                             description="Path to coordinate lookup table (L, ωd for each i,j).")
-
 
 class Sample(SampleBase, TimestampMixin, UUIDMixin, table=True):
     """
     Database model for Sample.
+    Belongs to a Dataset. Can be used in multiple Projects through the Dataset link.
     """
-    project: "Project" = Relationship(back_populates="samples")
-    dataset: Optional["Dataset"] = Relationship(back_populates="samples")
+    dataset: "Dataset" = Relationship(back_populates="samples")
     annotations: List["Annotation"] = Relationship(back_populates="sample")
 
 
-class SampleCreate(SampleBase):
+class SampleCreate(SQLModel):
     """
     Model for creating a new Sample.
     """
-    pass
+    dataset_id: str = Field(description="ID of the dataset this sample belongs to.")
+    name: str = Field(description="Name of the sample.")
+    url: str = Field(default=None, description="Public URL to access the data.")
+    remark: str = Field(default="", description="Remark associated with the sample.")
+    meta_data: Dict[str, Any] = Field(default={}, description="Additional metadata for the sample.")
 
 
 class SampleRead(SampleBase, TimestampMixin, UUIDMixin):
@@ -60,5 +64,5 @@ class SampleUpdate(SQLModel):
     Model for updating a Sample.
     """
     status: Optional[SampleStatus] = None
-    score: Optional[float] = None
+    remark: Optional[str] = None
     meta_data: Optional[Dict[str, Any]] = None

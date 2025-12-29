@@ -1,8 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import ProjectList from './pages/ProjectList';
-import ProjectDetail from './pages/ProjectDetail';
+import DatasetList from './pages/DatasetList';
+import DatasetDetail from './pages/DatasetDetail';
 import WorkspaceRouter from './pages/WorkspaceRouter';
 import UserManagement from './pages/UserManagement';
 import Login from './pages/Login';
@@ -24,9 +24,9 @@ const App: React.FC = () => {
           <Route path="/register" element={<Register />} />
           
           <Route element={<ProtectedLayout />}>
-            <Route path="/" element={<ProjectList />} />
-            <Route path="/projects/:id" element={<ProjectDetail />} />
-            <Route path="/workspace/:projectId" element={<WorkspaceRouter />} />
+            <Route path="/" element={<DatasetList />} />
+            <Route path="/datasets/:id" element={<DatasetDetail />} />
+            <Route path="/workspace/:datasetId" element={<WorkspaceRouter />} />
             <Route path="/users" element={<UserManagement />} />
             <Route path="/about" element={<div><h2>{t('app.about')}</h2><p>Saki is a visual active learning framework.</p></div>} />
           </Route>

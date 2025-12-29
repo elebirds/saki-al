@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, AnnotationSystemCapability } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset } from '../../types';
 import { ApiService } from './interface';
 import { useAuthStore } from '../../store/authStore';
 
@@ -172,7 +172,55 @@ export class RealApiService implements ApiService {
   }
 
   // ==========================================================================
-  // Project APIs
+  // Dataset APIs (for data annotation)
+  // ==========================================================================
+
+  async getDatasets(): Promise<Dataset[]> {
+    const response = await this.client.get<Dataset[]>('/datasets');
+    return response.data;
+  }
+
+  async getDataset(id: string): Promise<Dataset | undefined> {
+    const response = await this.client.get<Dataset>(`/datasets/${id}`);
+    return response.data;
+  }
+
+  async createDataset(dataset: Omit<Dataset, 'id' | 'createdAt' | 'updatedAt' | 'sampleCount' | 'labeledCount'>): Promise<Dataset> {
+    const response = await this.client.post<Dataset>('/datasets', dataset);
+    return response.data;
+  }
+
+  async updateDataset(id: string, dataset: Partial<Dataset>): Promise<Dataset> {
+    const response = await this.client.put<Dataset>(`/datasets/${id}`, dataset);
+    return response.data;
+  }
+
+  async deleteDataset(id: string): Promise<void> {
+    await this.client.delete(`/datasets/${id}`);
+  }
+
+  async getDatasetStats(id: string): Promise<{
+    datasetId: string;
+    totalSamples: number;
+    labeledSamples: number;
+    unlabeledSamples: number;
+    skippedSamples: number;
+    completionRate: number;
+    linkedProjects: number;
+  }> {
+    const response = await this.client.get(`/datasets/${id}/stats`);
+    return response.data;
+  }
+
+  async exportDataset(id: string, format: string = 'json', includeUnlabeled: boolean = false): Promise<any> {
+    const response = await this.client.get(`/datasets/${id}/export`, {
+      params: { format, includeUnlabeled }
+    });
+    return response.data;
+  }
+
+  // ==========================================================================
+  // Project APIs (for active learning)
   // ==========================================================================
 
   async getProjects(): Promise<Project[]> {
@@ -200,23 +248,23 @@ export class RealApiService implements ApiService {
   }
 
   // ==========================================================================
-  // Sample APIs
+  // Sample APIs (belong to Dataset)
   // ==========================================================================
 
-  async getSamples(projectId: string): Promise<Sample[]> {
-    const response = await this.client.get<{ items: Sample[] }>(`/projects/${projectId}/samples`);
+  async getSamples(datasetId: string): Promise<Sample[]> {
+    const response = await this.client.get<{ items: Sample[] }>(`/samples/${datasetId}`);
     return response.data.items;
   }
 
   async getSample(sampleId: string): Promise<Sample | undefined> {
-    const response = await this.client.get<Sample>(`/samples/${sampleId}`);
+    const response = await this.client.get<Sample>(`/samples/item/${sampleId}`);
     return response.data;
   }
 
-  async uploadSamples(projectId: string, files: File[]): Promise<void> {
+  async uploadSamples(datasetId: string, files: File[]): Promise<void> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
-    await this.client.post(`/projects/${projectId}/samples`, formData, {
+    await this.client.post(`/samples/${datasetId}/samples`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   }

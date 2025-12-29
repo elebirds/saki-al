@@ -1,0 +1,290 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import { Layout, message, Empty } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
+import { AnnotationToolbar, AnnotationSidebar } from '../../components/annotation';
+import { api } from '../../services/api';
+import { useAnnotationState, useAnnotationSync, useAnnotationShortcuts } from '../../hooks';
+import { Sample, Annotation, Dataset, Label, AnnotationType, SyncAction } from '../../types';
+
+const { Content } = Layout;
+
+const ClassicAnnotationWorkspace: React.FC = () => {
+  const { t } = useTranslation();
+  const { datasetId } = useParams<{ datasetId: string }>();
+  const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [samples, setSamples] = useState<Sample[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const canvasRef = useRef<AnnotationCanvasRef>(null);
+
+  // 使用公共的状态管理 hook
+  const annotationState = useAnnotationState<Annotation>({
+    initialAnnotations: [],
+  });
+
+  // 使用同步 hook
+  const { isSyncing, isSyncReady, sync } = useAnnotationSync({ enabled: true });
+
+  const currentSample = samples[currentIndex];
+
+  // 加载数据集、标签和样本
+  useEffect(() => {
+    if (datasetId) {
+      // Load dataset
+      api.getDataset(datasetId).then((d) => {
+        if (d) setDataset(d);
+      });
+      // Load labels for this dataset
+      api.getLabels(datasetId).then((loadedLabels) => {
+        setLabels(loadedLabels);
+        // Set default selected label
+        if (loadedLabels.length > 0 && !annotationState.selectedLabel) {
+          annotationState.setSelectedLabel(loadedLabels[0]);
+        }
+      });
+      // Load samples
+      api.getSamples(datasetId).then(setSamples);
+    }
+  }, [datasetId]);
+
+  // 加载当前样本的标注
+  useEffect(() => {
+    if (currentSample) {
+      api.getSampleAnnotations(currentSample.id).then((response) => {
+        // 重置历史记录
+        annotationState.resetHistory();
+        // 设置初始标注并添加到历史记录
+        if (response.annotations.length > 0) {
+          annotationState.addToHistory(response.annotations);
+        } else {
+          annotationState.setAnnotations([]);
+        }
+      });
+    }
+  }, [currentSample]);
+
+  // 创建标注时调用 sync
+  const handleAnnotationCreate = useCallback(async (event: {
+    type: 'rect' | 'obb';
+    bbox: { x: number; y: number; width: number; height: number; rotation?: number };
+  }) => {
+    if (!annotationState.selectedLabel) {
+      message.warning(t('workspace.noLabelSelected'));
+      return;
+    }
+
+    if (!currentSample) return;
+
+    const newId = Date.now().toString();
+    const newAnn: Annotation = {
+      id: newId,
+      sampleId: currentSample.id,
+      labelId: annotationState.selectedLabel.id,
+      labelName: annotationState.selectedLabel.name,
+      labelColor: annotationState.selectedLabel.color,
+      type: event.type as AnnotationType,
+      source: 'manual',
+      data: {
+        x: event.bbox.x,
+        y: event.bbox.y,
+        width: event.bbox.width,
+        height: event.bbox.height,
+        rotation: event.bbox.rotation,
+      },
+      extra: {},
+    };
+
+    // 调用 sync 接口
+    const syncAction: SyncAction = {
+      action: 'create',
+      annotationId: newId,
+      labelId: annotationState.selectedLabel.id,
+      type: event.type as AnnotationType,
+      data: newAnn.data,
+      extra: {},
+    };
+
+    try {
+      await sync(currentSample.id, [syncAction]);
+      // Classic 模式下，sync 不返回生成的标注，直接使用创建的标注
+      annotationState.handleAnnotationCreate(newAnn);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      // 即使 sync 失败，也创建标注（降级处理）
+      annotationState.handleAnnotationCreate(newAnn);
+    }
+  }, [currentSample, annotationState, sync, t]);
+
+  // 更新标注时调用 sync
+  const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
+    if (!currentSample) return;
+
+    const syncAction: SyncAction = {
+      action: 'update',
+      annotationId: updatedAnn.id,
+      labelId: updatedAnn.labelId,
+      type: updatedAnn.type,
+      data: updatedAnn.data,
+      extra: updatedAnn.extra || {},
+    };
+
+    try {
+      await sync(currentSample.id, [syncAction]);
+      annotationState.handleAnnotationUpdate(updatedAnn);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      annotationState.handleAnnotationUpdate(updatedAnn);
+    }
+  }, [currentSample, annotationState, sync]);
+
+  // 删除标注时调用 sync
+  const handleDeleteAnnotation = useCallback(async (id: string) => {
+    if (!currentSample) return;
+
+    const syncAction: SyncAction = {
+      action: 'delete',
+      annotationId: id,
+      extra: {},
+    };
+
+    try {
+      await sync(currentSample.id, [syncAction]);
+      annotationState.handleAnnotationDelete(id);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      annotationState.handleAnnotationDelete(id);
+    }
+  }, [currentSample, annotationState, sync]);
+
+  const handleNext = useCallback(() => {
+    if (currentIndex < samples.length - 1) {
+      setCurrentIndex((c) => c + 1);
+      annotationState.resetHistory();
+    }
+  }, [currentIndex, samples.length, annotationState]);
+
+  const handlePrev = useCallback(() => {
+    if (currentIndex > 0) {
+      setCurrentIndex((c) => c - 1);
+      annotationState.resetHistory();
+    }
+  }, [currentIndex, annotationState]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!currentSample) return;
+    try {
+      await api.saveAnnotations(
+        currentSample.id,
+        annotationState.annotations,
+        'labeled'
+      );
+      message.success(t('annotation.saved') || 'Saved');
+      handleNext();
+    } catch (error) {
+      message.error('Failed to save annotations');
+    }
+  }, [currentSample, annotationState.annotations, handleNext, t]);
+
+  // 使用快捷键 hook
+  useAnnotationShortcuts({
+    currentTool: annotationState.currentTool,
+    onToolChange: annotationState.setCurrentTool,
+    onNext: handleNext,
+    onPrev: handlePrev,
+    onSubmit: handleSubmit,
+    onUndo: annotationState.undo,
+    onRedo: annotationState.redo,
+    disabled: isSyncing, // 同步时禁用快捷键
+  });
+
+  if (!currentSample || !dataset) {
+    return <div>{t('workspace.loading')}</div>;
+  }
+
+  // Check if labels are configured
+  if (labels.length === 0) {
+    return (
+      <Layout
+        style={{
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Empty description={t('workspace.noLabelsConfigured')} />
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout style={{ height: '100%' }}>
+      <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {/* Toolbar */}
+        <AnnotationToolbar
+          labels={labels}
+          selectedLabel={annotationState.selectedLabel}
+          onLabelChange={annotationState.setSelectedLabel}
+          historyIndex={annotationState.historyIndex}
+          historyLength={annotationState.history.length}
+          onUndo={annotationState.undo}
+          onRedo={annotationState.redo}
+          currentTool={annotationState.currentTool}
+          onToolChange={annotationState.setCurrentTool}
+          onZoomIn={() => canvasRef.current?.zoomIn()}
+          onZoomOut={() => canvasRef.current?.zoomOut()}
+          onResetView={() => canvasRef.current?.resetView()}
+          syncStatus={{
+            isSyncing,
+            isSyncReady,
+          }}
+        />
+
+        {/* Canvas Area */}
+        <div
+          style={{
+            flex: 1,
+            position: 'relative',
+            overflow: 'hidden',
+            background: '#333',
+            pointerEvents: isSyncing ? 'none' : 'auto', // 同步时禁用交互
+            opacity: isSyncing ? 0.6 : 1,
+          }}
+        >
+          <AnnotationCanvas
+            ref={canvasRef}
+            imageUrl={currentSample.url}
+            annotations={annotationState.annotations}
+            onAnnotationCreate={handleAnnotationCreate}
+            onAnnotationUpdate={handleUpdateAnnotation}
+            onAnnotationDelete={handleDeleteAnnotation}
+            currentTool={annotationState.currentTool}
+            labelColor={annotationState.selectedLabel?.color || '#ff0000'}
+            selectedId={annotationState.selectedId}
+            onSelect={annotationState.setSelectedId}
+          />
+        </div>
+      </Content>
+
+      {/* Sidebar */}
+      <AnnotationSidebar
+        annotations={annotationState.annotations}
+        selectedId={annotationState.selectedId}
+        onAnnotationSelect={(id) => {
+          annotationState.setSelectedId(id);
+          annotationState.setCurrentTool('select');
+        }}
+        onAnnotationDelete={handleDeleteAnnotation}
+        currentIndex={currentIndex}
+        totalSamples={samples.length}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        onSubmit={handleSubmit}
+      />
+    </Layout>
+  );
+};
+
+export default ClassicAnnotationWorkspace;

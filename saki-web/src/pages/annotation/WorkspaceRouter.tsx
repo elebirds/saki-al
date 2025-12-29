@@ -10,7 +10,7 @@ import { useParams, Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
 import { api } from '../../services/api';
 import { Dataset, AnnotationSystemType } from '../../types';
-import AnnotationWorkspace from './AnnotationWorkspace';
+import ClassicAnnotationWorkspace from './ClassicAnnotationWorkspace.tsx';
 import FedoAnnotationWorkspace from './FedoAnnotationWorkspace';
 
 const WorkspaceRouter: React.FC = () => {
@@ -69,7 +69,7 @@ function getWorkspaceComponent(annotationSystem: AnnotationSystemType): React.Re
       return <FedoAnnotationWorkspace />;
     case 'classic':
     default:
-      return <AnnotationWorkspace />;
+      return <ClassicAnnotationWorkspace />;
   }
 }
 

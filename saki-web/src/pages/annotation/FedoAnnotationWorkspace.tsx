@@ -9,58 +9,31 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { 
-  Layout, 
-  Button, 
-  Card, 
-  Space, 
-  Typography, 
-  List, 
-  Radio, 
-  Tooltip, 
-  Select, 
-  Tag, 
-  message, 
-  Spin,
-  Empty,
-  Divider 
-} from 'antd';
+import { Layout, message, Spin, Empty } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { 
-  LeftOutlined, 
-  RightOutlined, 
-  CheckOutlined, 
-  DragOutlined, 
-  BorderOutlined, 
-  RotateRightOutlined, 
-  DeleteOutlined, 
-  UndoOutlined, 
-  RedoOutlined, 
-  ZoomInOutlined, 
-  ZoomOutOutlined, 
-  ExpandOutlined,
-  SyncOutlined 
-} from '@ant-design/icons';
+import { DeleteOutlined, RotateRightOutlined, BorderOutlined } from '@ant-design/icons';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
+import { AnnotationToolbar, AnnotationSidebar } from '../../components/annotation';
 import { api } from '../../services/api';
-import { 
-  Sample, 
-  Annotation, 
-  Dataset, 
-  Label, 
-  DualViewAnnotation, 
+import {
+  useAnnotationState,
+  useAnnotationSync,
+  useAnnotationShortcuts,
+  useDualViewSync,
+} from '../../hooks';
+import {
+  Sample,
+  Annotation,
+  Dataset,
+  Label,
+  DualViewAnnotation,
   MappedRegion,
   BoundingBox,
-  AnnotationType
+  AnnotationType,
+  SyncAction,
 } from '../../types';
-import { useDualViewSync } from '../../hooks/useDualViewSync';
 
-const { Sider, Content } = Layout;
-const { Title, Text } = Typography;
-
-// ============================================================================
-// Types - Use Sample from types/index.ts which is already converted to camelCase
-// ============================================================================
+const { Content } = Layout;
 
 // ============================================================================
 // Helper Functions
@@ -86,7 +59,6 @@ function dualToAnnotation(dual: DualViewAnnotation): Annotation {
 
 /** Convert Annotation to DualViewAnnotation */
 function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualViewAnnotation {
-  // Extract bbox from data field
   const bbox: BoundingBox = {
     x: ann.data.x || 0,
     y: ann.data.y || 0,
@@ -94,10 +66,9 @@ function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualVi
     height: ann.data.height || 0,
     rotation: ann.data.rotation,
   };
-  
-  // Use regions from extra if available
+
   const extraRegions = ann.extra?.secondary?.regions || regions;
-  
+
   return {
     id: ann.id,
     sampleId: ann.sampleId || '',
@@ -121,42 +92,42 @@ function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualVi
 const FedoAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
-  
+
   // Dataset & Samples State
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  
-  // Annotation State
-  const [annotations, setAnnotations] = useState<DualViewAnnotation[]>([]);
-  const [history, setHistory] = useState<DualViewAnnotation[][]>([[]]);
-  const [historyIndex, setHistoryIndex] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  
-  // Tool State
-  const [currentTool, setCurrentTool] = useState<'select' | 'rect' | 'obb'>('select');
   const [labels, setLabels] = useState<Label[]>([]);
-  const [selectedLabel, setSelectedLabel] = useState<Label | null>(null);
-  
+
   // Canvas Refs
   const timeEnergyCanvasRef = useRef<AnnotationCanvasRef>(null);
   const lWdCanvasRef = useRef<AnnotationCanvasRef>(null);
-  
+
   // Current sample
   const currentSample = samples[currentIndex];
 
-  // ========================================================================
-  // Dual View Sync Hook
-  // ========================================================================
-  
+  // 使用公共的状态管理 hook（适配 DualViewAnnotation）
+  const annotationState = useAnnotationState<DualViewAnnotation>({
+    initialAnnotations: [],
+  });
+
+  // 使用同步 hook（调用后端 sync 接口）
+  const { isSyncing: isBackendSyncing, isSyncReady: isBackendSyncReady, sync: syncBackend } =
+    useAnnotationSync({ enabled: true });
+
+  // FEDO 专用的客户端 Worker sync（用于双视图映射）
   const {
-    isReady: isSyncReady,
-    isMapping,
+    isReady: isWorkerReady,
+    isMapping: isWorkerMapping,
     initializeWithLookupTable,
     mapBboxToLWd,
-    dispose: disposeSyncWorker
+    dispose: disposeSyncWorker,
   } = useDualViewSync();
+
+  // 合并同步状态：后端同步或 Worker 映射中时都显示为同步中
+  const isSyncing = isBackendSyncing || isWorkerMapping;
+  const isSyncReady = isBackendSyncReady && isWorkerReady;
 
   // ========================================================================
   // Memoized Conversions
@@ -164,34 +135,35 @@ const FedoAnnotationWorkspace: React.FC = () => {
 
   // Convert DualViewAnnotation[] to Annotation[] for AnnotationCanvas
   const canvasAnnotations = useMemo(() => {
-    return annotations.map(dualToAnnotation);
-  }, [annotations]);
+    return annotationState.annotations.map(dualToAnnotation);
+  }, [annotationState.annotations]);
 
   // ========================================================================
   // Data Loading
   // ========================================================================
-  
+
   useEffect(() => {
     if (datasetId) {
       setLoading(true);
       Promise.all([
         api.getDataset(datasetId),
         api.getLabels(datasetId),
-        api.getSamples(datasetId)
-      ]).then(([ds, loadedLabels, samps]) => {
-        if (ds) setDataset(ds);
-        setLabels(loadedLabels);
-        // Set default selected label
-        if (loadedLabels.length > 0 && !selectedLabel) {
-          setSelectedLabel(loadedLabels[0]);
-        }
-        setSamples(samps);
-        setLoading(false);
-      }).catch(err => {
-        console.error('Failed to load dataset:', err);
-        message.error('Failed to load dataset');
-        setLoading(false);
-      });
+        api.getSamples(datasetId),
+      ])
+        .then(([ds, loadedLabels, samps]) => {
+          if (ds) setDataset(ds);
+          setLabels(loadedLabels);
+          if (loadedLabels.length > 0 && !annotationState.selectedLabel) {
+            annotationState.setSelectedLabel(loadedLabels[0]);
+          }
+          setSamples(samps);
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error('Failed to load dataset:', err);
+          message.error('Failed to load dataset');
+          setLoading(false);
+        });
     }
   }, [datasetId]);
 
@@ -200,11 +172,17 @@ const FedoAnnotationWorkspace: React.FC = () => {
     if (currentSample?.id) {
       // Load annotations for this sample
       api.getSampleAnnotations(currentSample.id).then((response) => {
-        // Convert to DualViewAnnotation format
-        const dualAnns: DualViewAnnotation[] = response.annotations.map(ann => annotationToDual(ann, []));
-        setAnnotations(dualAnns);
-        setHistory([dualAnns]);
-        setHistoryIndex(0);
+        const dualAnns: DualViewAnnotation[] = response.annotations.map((ann) =>
+          annotationToDual(ann, [])
+        );
+        // 重置历史记录
+        annotationState.resetHistory();
+        // 设置初始标注并添加到历史记录
+        if (dualAnns.length > 0) {
+          annotationState.addToHistory(dualAnns);
+        } else {
+          annotationState.setAnnotations([]);
+        }
       });
 
       // Initialize worker with lookup table from sample metadata
@@ -223,105 +201,173 @@ const FedoAnnotationWorkspace: React.FC = () => {
   }, [disposeSyncWorker]);
 
   // ========================================================================
-  // History Management
-  // ========================================================================
-
-  const addToHistory = useCallback((newAnnotations: DualViewAnnotation[]) => {
-    const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push(newAnnotations);
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
-    setAnnotations(newAnnotations);
-  }, [history, historyIndex]);
-
-  const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setAnnotations(history[newIndex]);
-    }
-  }, [history, historyIndex]);
-
-  const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setAnnotations(history[newIndex]);
-    }
-  }, [history, historyIndex]);
-
-  // ========================================================================
   // Annotation Handlers
   // ========================================================================
 
-  const handleAnnotationCreate = useCallback(async (event: { 
-    type: 'rect' | 'obb'; 
-    bbox: { x: number; y: number; width: number; height: number; rotation?: number } 
-  }) => {
-    const newId = Date.now().toString();
-    
-    // Map bbox to L-ωd space
-    let regions: MappedRegion[] = [];
-    if (isSyncReady) {
-      try {
-        const result = await mapBboxToLWd(event.bbox as BoundingBox);
-        regions = result.regions;
-      } catch (err) {
-        console.warn('Failed to map bbox:', err);
+  const handleAnnotationCreate = useCallback(
+    async (event: {
+      type: 'rect' | 'obb';
+      bbox: { x: number; y: number; width: number; height: number; rotation?: number };
+    }) => {
+      if (!annotationState.selectedLabel) {
+        message.warning(t('workspace.noLabelSelected'));
+        return;
       }
-    }
-    
-    const newAnn: DualViewAnnotation = {
-      id: newId,
-      sampleId: currentSample?.id || 'current',
-      labelId: selectedLabel?.id || '',
-      labelName: selectedLabel?.name || 'unknown',
-      labelColor: selectedLabel?.color || '#ff0000',
-      primary: {
-        type: event.type,
-        bbox: event.bbox,
-      },
-      secondary: {
-        regions,
-      },
-    };
-    
-    addToHistory([...annotations, newAnn]);
-  }, [currentSample?.id, selectedLabel, isSyncReady, mapBboxToLWd, addToHistory, annotations]);
 
-  const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
-    // Extract bbox from data field
-    const bboxData = updatedAnn.data || {};
-    const bbox: BoundingBox = {
-      x: bboxData.x || 0,
-      y: bboxData.y || 0,
-      width: bboxData.width || 0,
-      height: bboxData.height || 0,
-      rotation: bboxData.rotation,
-    };
-    
-    // Re-map bbox when annotation is updated
-    let regions: MappedRegion[] = [];
-    if (isSyncReady && bbox.width > 0 && bbox.height > 0) {
+      if (!currentSample) return;
+
+      const newId = Date.now().toString();
+
+      // 调用后端 sync 接口
+      const syncAction: SyncAction = {
+        action: 'create',
+        annotationId: newId,
+        labelId: annotationState.selectedLabel.id,
+        type: event.type as AnnotationType,
+        data: event.bbox,
+        extra: { view: 'time-energy' },
+      };
+
+      let regions: MappedRegion[] = [];
+      let generatedAnnotations: Annotation[] = [];
+
       try {
-        const result = await mapBboxToLWd(bbox);
-        regions = result.regions;
-      } catch (err) {
-        console.warn('Failed to map bbox:', err);
-      }
-    }
-    
-    const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, regions);
-    
-    addToHistory(annotations.map(a => a.id === updatedAnn.id ? dualAnn : a));
-  }, [isSyncReady, mapBboxToLWd, addToHistory, annotations]);
+        // 先调用后端 sync
+        const syncResponse = await syncBackend(currentSample.id, [syncAction]);
+        
+        // 处理后端返回的生成标注（如果有）
+        if (syncResponse.results[0]?.generated) {
+          generatedAnnotations = syncResponse.results[0].generated as Annotation[];
+          // 提取生成的 regions（如果有）
+          // 这里假设生成的标注包含 secondary view 的信息
+        }
 
-  const handleDeleteAnnotation = useCallback((id: string) => {
-    addToHistory(annotations.filter(a => a.id !== id));
-    if (selectedId === id) {
-      setSelectedId(null);
-    }
-  }, [addToHistory, annotations, selectedId]);
+        // 同时使用 Worker 进行客户端映射（作为补充）
+        if (isWorkerReady) {
+          try {
+            const result = await mapBboxToLWd(event.bbox as BoundingBox);
+            regions = result.regions;
+          } catch (err) {
+            console.warn('Worker mapping failed:', err);
+          }
+        }
+
+        // 创建 DualViewAnnotation
+        const newAnn: DualViewAnnotation = {
+          id: newId,
+          sampleId: currentSample.id,
+          labelId: annotationState.selectedLabel.id,
+          labelName: annotationState.selectedLabel.name || 'unknown',
+          labelColor: annotationState.selectedLabel.color || '#ff0000',
+          primary: {
+            type: event.type,
+            bbox: event.bbox,
+          },
+          secondary: {
+            regions,
+          },
+        };
+
+        annotationState.handleAnnotationCreate(newAnn);
+      } catch (error) {
+        console.error('Sync failed:', error);
+        // 即使 sync 失败，也创建标注（降级处理）
+        const newAnn: DualViewAnnotation = {
+          id: newId,
+          sampleId: currentSample.id,
+          labelId: annotationState.selectedLabel.id,
+          labelName: annotationState.selectedLabel.name || 'unknown',
+          labelColor: annotationState.selectedLabel.color || '#ff0000',
+          primary: {
+            type: event.type,
+            bbox: event.bbox,
+          },
+          secondary: {
+            regions: [],
+          },
+        };
+        annotationState.handleAnnotationCreate(newAnn);
+      }
+    },
+    [
+      currentSample,
+      annotationState,
+      syncBackend,
+      isWorkerReady,
+      mapBboxToLWd,
+      t,
+    ]
+  );
+
+  const handleUpdateAnnotation = useCallback(
+    async (updatedAnn: Annotation) => {
+      if (!currentSample) return;
+
+      const bboxData = updatedAnn.data || {};
+      const bbox: BoundingBox = {
+        x: bboxData.x || 0,
+        y: bboxData.y || 0,
+        width: bboxData.width || 0,
+        height: bboxData.height || 0,
+        rotation: bboxData.rotation,
+      };
+
+      // 调用后端 sync
+      const syncAction: SyncAction = {
+        action: 'update',
+        annotationId: updatedAnn.id,
+        labelId: updatedAnn.labelId,
+        type: updatedAnn.type,
+        data: updatedAnn.data,
+        extra: updatedAnn.extra || {},
+      };
+
+      let regions: MappedRegion[] = [];
+
+      try {
+        await syncBackend(currentSample.id, [syncAction]);
+
+        // 使用 Worker 重新映射
+        if (isWorkerReady && bbox.width > 0 && bbox.height > 0) {
+          try {
+            const result = await mapBboxToLWd(bbox);
+            regions = result.regions;
+          } catch (err) {
+            console.warn('Worker mapping failed:', err);
+          }
+        }
+
+        const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, regions);
+        annotationState.handleAnnotationUpdate(dualAnn);
+      } catch (error) {
+        console.error('Sync failed:', error);
+        const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, regions);
+        annotationState.handleAnnotationUpdate(dualAnn);
+      }
+    },
+    [currentSample, annotationState, syncBackend, isWorkerReady, mapBboxToLWd]
+  );
+
+  const handleDeleteAnnotation = useCallback(
+    async (id: string) => {
+      if (!currentSample) return;
+
+      const syncAction: SyncAction = {
+        action: 'delete',
+        annotationId: id,
+        extra: {},
+      };
+
+      try {
+        await syncBackend(currentSample.id, [syncAction]);
+        annotationState.handleAnnotationDelete(id);
+      } catch (error) {
+        console.error('Sync failed:', error);
+        annotationState.handleAnnotationDelete(id);
+      }
+    },
+    [currentSample, annotationState, syncBackend]
+  );
 
   // ========================================================================
   // Navigation
@@ -329,97 +375,61 @@ const FedoAnnotationWorkspace: React.FC = () => {
 
   const handleNext = useCallback(() => {
     if (currentIndex < samples.length - 1) {
-      setCurrentIndex(c => c + 1);
-      setAnnotations([]);
-      setHistory([[]]);
-      setHistoryIndex(0);
-      setSelectedId(null);
+      setCurrentIndex((c) => c + 1);
+      annotationState.resetHistory();
     }
-  }, [currentIndex, samples.length]);
+  }, [currentIndex, samples.length, annotationState]);
 
   const handlePrev = useCallback(() => {
     if (currentIndex > 0) {
-      setCurrentIndex(c => c - 1);
-      setAnnotations([]);
-      setHistory([[]]);
-      setHistoryIndex(0);
-      setSelectedId(null);
+      setCurrentIndex((c) => c - 1);
+      annotationState.resetHistory();
     }
-  }, [currentIndex]);
+  }, [currentIndex, annotationState]);
 
   const handleSubmit = useCallback(async () => {
     if (!currentSample) return;
     try {
-      // Convert DualViewAnnotation back to Annotation for saving
-      const annsToSave: Annotation[] = annotations.map(dualToAnnotation);
+      const annsToSave: Annotation[] = annotationState.annotations.map(dualToAnnotation);
       await api.saveAnnotations(currentSample.id, annsToSave, 'labeled');
       message.success(t('annotation.saved') || 'Saved');
       handleNext();
     } catch (error) {
       message.error('Failed to save annotations');
     }
-  }, [currentSample, annotations, handleNext, t]);
+  }, [currentSample, annotationState.annotations, handleNext, t]);
 
   // ========================================================================
   // Keyboard Shortcuts
   // ========================================================================
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      switch (e.key.toLowerCase()) {
-        case 'v':
-          setCurrentTool('select');
-          break;
-        case 'r':
-          setCurrentTool('rect');
-          break;
-        case 'o':
-          setCurrentTool('obb');
-          break;
-        case 'arrowright':
-          handleNext();
-          break;
-        case 'arrowleft':
-          handlePrev();
-          break;
-        case 's':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            handleSubmit();
-          }
-          break;
-        case 'z':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            if (e.shiftKey) {
-              redo();
-            } else {
-              undo();
-            }
-          }
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNext, handlePrev, handleSubmit, undo, redo]);
+  useAnnotationShortcuts({
+    currentTool: annotationState.currentTool,
+    onToolChange: annotationState.setCurrentTool,
+    onNext: handleNext,
+    onPrev: handlePrev,
+    onSubmit: handleSubmit,
+    onUndo: annotationState.undo,
+    onRedo: annotationState.redo,
+    disabled: isSyncing, // 同步时禁用快捷键
+  });
 
   // ========================================================================
   // Get Image URLs from sample metadata
   // ========================================================================
 
-  const timeEnergyImageUrl : string = currentSample?.metaData?.timeEnergyImageUrl || currentSample?.url || '';
-  
-  const lWdImageUrl : string = currentSample?.metaData?.lWdImageUrl || '';
+  const timeEnergyImageUrl: string =
+    currentSample?.metaData?.timeEnergyImageUrl || currentSample?.url || '';
+
+  const lWdImageUrl: string = currentSample?.metaData?.lWdImageUrl || '';
 
   // ========================================================================
   // Selected Annotation Info
   // ========================================================================
 
-  const selectedAnnotation = annotations.find(a => a.id === selectedId);
+  const selectedAnnotation = annotationState.annotations.find(
+    (a) => a.id === annotationState.selectedId
+  );
   const currentMappedRegions = selectedAnnotation?.secondary?.regions || [];
 
   // ========================================================================
@@ -428,7 +438,14 @@ const FedoAnnotationWorkspace: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
+        }}
+      >
         <Spin size="large" tip="Loading..." />
       </div>
     );
@@ -436,7 +453,14 @@ const FedoAnnotationWorkspace: React.FC = () => {
 
   if (!dataset || samples.length === 0) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
+        }}
+      >
         <Empty description="No samples found for this dataset" />
       </div>
     );
@@ -446,127 +470,87 @@ const FedoAnnotationWorkspace: React.FC = () => {
     return <div>{t('workspace.loading')}</div>;
   }
 
+  // Check if labels are configured
+  if (labels.length === 0) {
+    return (
+      <Layout
+        style={{
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Empty description={t('workspace.noLabelsConfigured')} />
+      </Layout>
+    );
+  }
+
   return (
     <Layout style={{ height: '100%' }}>
       <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Toolbar */}
-        <div style={{ 
-          padding: '10px', 
-          background: '#fff', 
-          borderBottom: '1px solid #f0f0f0', 
-          display: 'flex', 
-          gap: '10px', 
-          alignItems: 'center' 
-        }}>
-          <Space>
-            <span style={{ fontWeight: 'bold' }}>{t('workspace.label')}</span>
-            <Select
-              value={selectedLabel?.id}
-              onChange={(value) => {
-                const label = labels.find(l => l.id === value);
-                if (label) setSelectedLabel(label);
-              }}
-              style={{ width: 150 }}
-            >
-              {labels.map(label => (
-                <Select.Option key={label.id} value={label.id}>
-                  <Tag color={label.color}>{label.name}</Tag>
-                </Select.Option>
-              ))}
-            </Select>
-          </Space>
-          
-          <Divider type="vertical" />
-          
-          <Space>
-            <Tooltip title="Undo (Ctrl+Z)">
-              <Button icon={<UndoOutlined />} onClick={undo} disabled={historyIndex === 0} />
-            </Tooltip>
-            <Tooltip title="Redo (Ctrl+Shift+Z)">
-              <Button icon={<RedoOutlined />} onClick={redo} disabled={historyIndex === history.length - 1} />
-            </Tooltip>
-          </Space>
-          
-          <Divider type="vertical" />
-          
-          <Radio.Group value={currentTool} onChange={e => setCurrentTool(e.target.value)} buttonStyle="solid">
-            <Radio.Button value="select">
-              <Tooltip title={t('workspace.tools.select')}>
-                <DragOutlined /> Select
-              </Tooltip>
-            </Radio.Button>
-            <Radio.Button value="rect">
-              <Tooltip title={t('workspace.tools.rect')}>
-                <BorderOutlined /> Rect
-              </Tooltip>
-            </Radio.Button>
-            <Radio.Button value="obb">
-              <Tooltip title={t('workspace.tools.obb')}>
-                <RotateRightOutlined /> OBB
-              </Tooltip>
-            </Radio.Button>
-          </Radio.Group>
-          
-          <Divider type="vertical" />
-          
-          <Space>
-            <Tooltip title={t('workspace.tools.zoomIn')}>
-              <Button icon={<ZoomInOutlined />} onClick={() => {
-                timeEnergyCanvasRef.current?.zoomIn();
-                lWdCanvasRef.current?.zoomIn();
-              }} />
-            </Tooltip>
-            <Tooltip title={t('workspace.tools.zoomOut')}>
-              <Button icon={<ZoomOutOutlined />} onClick={() => {
-                timeEnergyCanvasRef.current?.zoomOut();
-                lWdCanvasRef.current?.zoomOut();
-              }} />
-            </Tooltip>
-            <Tooltip title={t('workspace.tools.resetView')}>
-              <Button icon={<ExpandOutlined />} onClick={() => {
-                timeEnergyCanvasRef.current?.resetView();
-                lWdCanvasRef.current?.resetView();
-              }} />
-            </Tooltip>
-          </Space>
-          
-          <Divider type="vertical" />
-          
-          <Space>
-            {isMapping && <Spin size="small" />}
-            <Tag color={isSyncReady ? 'green' : 'orange'} icon={<SyncOutlined spin={isMapping} />}>
-              {isSyncReady ? 'Sync Ready' : 'Initializing...'}
-            </Tag>
-          </Space>
-          
-          <div style={{ flex: 1 }} />
-          
-          <span style={{ lineHeight: '32px', color: '#888' }}>
-            {t('workspace.help')}
-          </span>
-        </div>
+        <AnnotationToolbar
+          labels={labels}
+          selectedLabel={annotationState.selectedLabel}
+          onLabelChange={annotationState.setSelectedLabel}
+          historyIndex={annotationState.historyIndex}
+          historyLength={annotationState.history.length}
+          onUndo={annotationState.undo}
+          onRedo={annotationState.redo}
+          currentTool={annotationState.currentTool}
+          onToolChange={annotationState.setCurrentTool}
+          onZoomIn={() => {
+            timeEnergyCanvasRef.current?.zoomIn();
+            lWdCanvasRef.current?.zoomIn();
+          }}
+          onZoomOut={() => {
+            timeEnergyCanvasRef.current?.zoomOut();
+            lWdCanvasRef.current?.zoomOut();
+          }}
+          onResetView={() => {
+            timeEnergyCanvasRef.current?.resetView();
+            lWdCanvasRef.current?.resetView();
+          }}
+          syncStatus={{
+            isSyncing,
+            isSyncReady,
+          }}
+        />
 
         {/* Dual Canvas Area */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            overflow: 'hidden',
+            pointerEvents: isSyncing ? 'none' : 'auto', // 同步时禁用交互
+            opacity: isSyncing ? 0.6 : 1,
+          }}
+        >
           {/* Left: Time-Energy View */}
-          <div style={{ 
-            flex: 1, 
-            position: 'relative', 
-            overflow: 'hidden', 
-            background: '#333',
-            borderRight: '2px solid #666'
-          }}>
-            <div style={{ 
-              position: 'absolute', 
-              top: 8, 
-              left: 8, 
-              zIndex: 10,
-              background: 'rgba(0,0,0,0.6)',
-              color: '#fff',
-              padding: '4px 8px',
-              borderRadius: 4,
-              fontSize: 12
-            }}>
+          <div
+            style={{
+              flex: 1,
+              position: 'relative',
+              overflow: 'hidden',
+              background: '#333',
+              borderRight: '2px solid #666',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: 8,
+                left: 8,
+                zIndex: 10,
+                background: 'rgba(0,0,0,0.6)',
+                color: '#fff',
+                padding: '4px 8px',
+                borderRadius: 4,
+                fontSize: 12,
+              }}
+            >
               Time-Energy (Primary)
             </div>
             <AnnotationCanvas
@@ -576,56 +560,62 @@ const FedoAnnotationWorkspace: React.FC = () => {
               onAnnotationCreate={handleAnnotationCreate}
               onAnnotationUpdate={handleUpdateAnnotation}
               onAnnotationDelete={handleDeleteAnnotation}
-              currentTool={currentTool}
-              labelColor={selectedLabel?.color || '#ff0000'}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              currentTool={annotationState.currentTool}
+              labelColor={annotationState.selectedLabel?.color || '#ff0000'}
+              selectedId={annotationState.selectedId}
+              onSelect={annotationState.setSelectedId}
             />
           </div>
 
           {/* Right: L-ωd View (Read-only mapped regions) */}
-          <div style={{ 
-            flex: 1, 
-            position: 'relative', 
-            overflow: 'hidden', 
-            background: '#333'
-          }}>
-            <div style={{ 
-              position: 'absolute', 
-              top: 8, 
-              left: 8, 
-              zIndex: 10,
-              background: 'rgba(0,0,0,0.6)',
-              color: '#fff',
-              padding: '4px 8px',
-              borderRadius: 4,
-              fontSize: 12
-            }}>
-              L-ωd (Mapped Regions)
-            </div>
-            {/* For now, just show the image. Mapped regions overlay will be added later */}
-            <AnnotationCanvas
-              ref={lWdCanvasRef}
-              imageUrl={lWdImageUrl}
-              annotations={[]}  // TODO: Convert mappedRegions to polygon Annotation format
-              currentTool="select"  // Force select mode - L-ωd view is read-only
-              selectedId={null}
-              onSelect={() => {}}
-            />
-            {/* Mapped regions count indicator */}
-            {currentMappedRegions.length > 0 && (
-              <div style={{ 
-                position: 'absolute', 
-                bottom: 8, 
-                left: 8, 
+          <div
+            style={{
+              flex: 1,
+              position: 'relative',
+              overflow: 'hidden',
+              background: '#333',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: 8,
+                left: 8,
                 zIndex: 10,
                 background: 'rgba(0,0,0,0.6)',
                 color: '#fff',
                 padding: '4px 8px',
                 borderRadius: 4,
-                fontSize: 12
-              }}>
-                {currentMappedRegions.length} mapped region{currentMappedRegions.length > 1 ? 's' : ''}
+                fontSize: 12,
+              }}
+            >
+              L-ωd (Mapped Regions)
+            </div>
+            <AnnotationCanvas
+              ref={lWdCanvasRef}
+              imageUrl={lWdImageUrl}
+              annotations={[]} // TODO: Convert mappedRegions to polygon Annotation format
+              currentTool="select" // Force select mode - L-ωd view is read-only
+              selectedId={null}
+              onSelect={() => {}}
+            />
+            {/* Mapped regions count indicator */}
+            {currentMappedRegions.length > 0 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  left: 8,
+                  zIndex: 10,
+                  background: 'rgba(0,0,0,0.6)',
+                  color: '#fff',
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                }}
+              >
+                {currentMappedRegions.length} mapped region
+                {currentMappedRegions.length > 1 ? 's' : ''}
               </div>
             )}
           </div>
@@ -633,77 +623,76 @@ const FedoAnnotationWorkspace: React.FC = () => {
       </Content>
 
       {/* Right Sidebar */}
-      <Sider width={300} theme="light" style={{ padding: '20px', borderLeft: '1px solid #f0f0f0', overflowY: 'auto' }}>
-        <Title level={4}>{t('workspace.annotations')}</Title>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Card size="small" bodyStyle={{ padding: 0 }}>
-            <List
-              size="small"
-              dataSource={annotations}
-              renderItem={(item, index) => (
-                <List.Item 
-                  actions={[
-                    <Button 
-                      type="text" 
-                      danger 
-                      icon={<DeleteOutlined />} 
-                      onClick={(e: React.MouseEvent) => { 
-                        e.stopPropagation(); 
-                        handleDeleteAnnotation(item.id); 
-                      }} 
-                    />
-                  ]}
-                  style={{ 
-                    padding: '8px 16px',
-                    background: selectedId === item.id ? '#e6f7ff' : 'transparent',
-                    cursor: 'pointer',
-                    borderLeft: selectedId === item.id ? `4px solid ${item.labelColor || '#1890ff'}` : '4px solid transparent'
+      <AnnotationSidebar
+        annotations={canvasAnnotations}
+        selectedId={annotationState.selectedId}
+        onAnnotationSelect={(id) => {
+          annotationState.setSelectedId(id);
+          annotationState.setCurrentTool('select');
+        }}
+        onAnnotationDelete={handleDeleteAnnotation}
+        currentIndex={currentIndex}
+        totalSamples={samples.length}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        onSubmit={handleSubmit}
+        renderAnnotationItem={(item, index) => {
+          const dualAnn = annotationState.annotations.find((a) => a.id === item.id);
+          return (
+            <div
+              style={{
+                padding: '8px 16px',
+                background: annotationState.selectedId === item.id ? '#e6f7ff' : 'transparent',
+                cursor: 'pointer',
+                borderLeft:
+                  annotationState.selectedId === item.id
+                    ? `4px solid ${item.labelColor || '#1890ff'}`
+                    : '4px solid transparent',
+              }}
+              onClick={() => {
+                annotationState.setSelectedId(item.id);
+                annotationState.setCurrentTool('select');
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {item.type === 'obb' ? (
+                      <RotateRightOutlined />
+                    ) : (
+                      <BorderOutlined />
+                    )}
+                    <Tag color={item.labelColor}>{item.labelName}</Tag>
+                    <span>#{index + 1}</span>
+                  </div>
+                  {dualAnn && dualAnn.secondary.regions.length > 0 && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#888' }}>
+                      → {dualAnn.secondary.regions.length} L-ωd region
+                      {dualAnn.secondary.regions.length > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    handleDeleteAnnotation(item.id);
                   }}
-                  onClick={() => {
-                    setSelectedId(item.id);
-                    setCurrentTool('select');
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    color: '#ff4d4f',
+                    padding: '4px 8px',
                   }}
                 >
-                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                    <Space>
-                      {item.primary.type === 'obb' ? <RotateRightOutlined /> : <BorderOutlined />}
-                      <span>{item.labelName} {index + 1}</span>
-                    </Space>
-                    {item.secondary.regions.length > 0 && (
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        → {item.secondary.regions.length} L-ωd region{item.secondary.regions.length > 1 ? 's' : ''}
-                      </Text>
-                    )}
-                  </Space>
-                </List.Item>
-              )}
-            />
-            {annotations.length === 0 && (
-              <div style={{ padding: 16, textAlign: 'center', color: '#999' }}>
-                {t('workspace.noAnnotations')}
+                  <DeleteOutlined />
+                </button>
               </div>
-            )}
-          </Card>
-          
-          <div style={{ marginTop: 20 }}>
-            <Space>
-              <Button icon={<LeftOutlined />} onClick={handlePrev} disabled={currentIndex === 0} />
-              <span>{currentIndex + 1} / {samples.length}</span>
-              <Button icon={<RightOutlined />} onClick={handleNext} disabled={currentIndex === samples.length - 1} />
-            </Space>
-          </div>
-
-          <Button 
-            type="primary" 
-            block 
-            icon={<CheckOutlined />} 
-            onClick={handleSubmit} 
-            style={{ marginTop: 20 }}
-          >
-            {t('workspace.submitNext')}
-          </Button>
-        </Space>
-      </Sider>
+            </div>
+          );
+        }}
+      />
     </Layout>
   );
 };

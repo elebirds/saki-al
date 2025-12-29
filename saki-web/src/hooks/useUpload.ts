@@ -74,7 +74,7 @@ export function useUpload(datasetId: string, options: UseUploadOptions = {}) {
       onStart?.(files.length);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/samples/${datasetId}/samples/stream`, {
+        const response = await fetch(`${API_BASE_URL}/samples/${datasetId}/stream`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,

@@ -1,3 +1,34 @@
+// ============================================================================
+// Label - Annotation label belonging to a Dataset
+// ============================================================================
+
+export interface Label {
+  id: string;
+  datasetId: string;
+  name: string;
+  color: string;
+  description?: string;
+  sortOrder: number;
+  annotationCount: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface LabelCreate {
+  name: string;
+  color?: string;
+  description?: string;
+  sortOrder?: number;
+}
+
+export interface LabelUpdate {
+  name?: string;
+  color?: string;
+  description?: string;
+  sortOrder?: number;
+}
+
+// Legacy type for backward compatibility with Project labels
 export interface LabelConfig {
   name: string;
   color: string;
@@ -113,8 +144,9 @@ export interface FedoSampleMetadata {
 export interface DualViewAnnotation {
   id: string;
   sampleId: string;
-  label: string;
-  color?: string;
+  labelId: string;
+  labelName: string;  // For display convenience
+  labelColor: string; // For display convenience
   // Primary view (Time-Energy) - always a rect or OBB
   primary: {
     type: 'rect' | 'obb';
@@ -143,8 +175,9 @@ export interface MappedRegion {
 export interface Annotation {
   id: string;
   sampleId: string;
-  label: string;
-  color?: string; // Add color property
+  labelId: string;
+  labelName: string;  // For display convenience
+  labelColor: string; // For display convenience
   type: 'rect' | 'obb';
   bbox: {
     x: number;

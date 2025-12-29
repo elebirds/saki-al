@@ -47,7 +47,7 @@ import {
   Sample, 
   Annotation, 
   Dataset, 
-  LabelConfig, 
+  Label, 
   DualViewAnnotation, 
   MappedRegion,
   BoundingBox
@@ -70,8 +70,9 @@ function dualToAnnotation(dual: DualViewAnnotation): Annotation {
   return {
     id: dual.id,
     sampleId: dual.sampleId,
-    label: dual.label,
-    color: dual.color,
+    labelId: dual.labelId,
+    labelName: dual.labelName,
+    labelColor: dual.labelColor,
     type: dual.primary.type,
     bbox: dual.primary.bbox,
   };
@@ -82,8 +83,9 @@ function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualVi
   return {
     id: ann.id,
     sampleId: ann.sampleId,
-    label: ann.label,
-    color: ann.color,
+    labelId: ann.labelId,
+    labelName: ann.labelName,
+    labelColor: ann.labelColor,
     primary: {
       type: ann.type,
       bbox: ann.bbox,
@@ -97,13 +99,6 @@ function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualVi
 // ============================================================================
 // Component
 // ============================================================================
-
-// Default labels for annotation
-const DEFAULT_LABELS: LabelConfig[] = [
-  { name: 'Event', color: '#1890ff' },
-  { name: 'Noise', color: '#52c41a' },
-  { name: 'Unknown', color: '#faad14' },
-];
 
 const FedoAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
@@ -123,8 +118,8 @@ const FedoAnnotationWorkspace: React.FC = () => {
   
   // Tool State
   const [currentTool, setCurrentTool] = useState<'select' | 'rect' | 'obb'>('select');
-  const [labels] = useState<LabelConfig[]>(DEFAULT_LABELS);
-  const [selectedLabel, setSelectedLabel] = useState<LabelConfig | null>(DEFAULT_LABELS[0]);
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [selectedLabel, setSelectedLabel] = useState<Label | null>(null);
   
   // Canvas Refs
   const timeEnergyCanvasRef = useRef<AnnotationCanvasRef>(null);
@@ -163,9 +158,15 @@ const FedoAnnotationWorkspace: React.FC = () => {
       setLoading(true);
       Promise.all([
         api.getDataset(datasetId),
+        api.getLabels(datasetId),
         api.getSamples(datasetId)
-      ]).then(([ds, samps]) => {
+      ]).then(([ds, loadedLabels, samps]) => {
         if (ds) setDataset(ds);
+        setLabels(loadedLabels);
+        // Set default selected label
+        if (loadedLabels.length > 0 && !selectedLabel) {
+          setSelectedLabel(loadedLabels[0]);
+        }
         setSamples(samps);
         setLoading(false);
       }).catch(err => {
@@ -253,8 +254,9 @@ const FedoAnnotationWorkspace: React.FC = () => {
     const newAnn: DualViewAnnotation = {
       id: newId,
       sampleId: currentSample?.id || 'current',
-      label: selectedLabel?.name || 'unknown',
-      color: selectedLabel?.color || '#ff0000',
+      labelId: selectedLabel?.id || '',
+      labelName: selectedLabel?.name || 'unknown',
+      labelColor: selectedLabel?.color || '#ff0000',
       primary: {
         type: event.type,
         bbox: event.bbox,
@@ -433,15 +435,15 @@ const FedoAnnotationWorkspace: React.FC = () => {
           <Space>
             <span style={{ fontWeight: 'bold' }}>{t('workspace.label')}</span>
             <Select
-              value={selectedLabel?.name}
+              value={selectedLabel?.id}
               onChange={(value) => {
-                const label = labels.find(l => l.name === value);
+                const label = labels.find(l => l.id === value);
                 if (label) setSelectedLabel(label);
               }}
               style={{ width: 150 }}
             >
               {labels.map(label => (
-                <Select.Option key={label.name} value={label.name}>
+                <Select.Option key={label.id} value={label.id}>
                   <Tag color={label.color}>{label.name}</Tag>
                 </Select.Option>
               ))}
@@ -629,7 +631,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
                     padding: '8px 16px',
                     background: selectedId === item.id ? '#e6f7ff' : 'transparent',
                     cursor: 'pointer',
-                    borderLeft: selectedId === item.id ? `4px solid ${item.color || '#1890ff'}` : '4px solid transparent'
+                    borderLeft: selectedId === item.id ? `4px solid ${item.labelColor || '#1890ff'}` : '4px solid transparent'
                   }}
                   onClick={() => {
                     setSelectedId(item.id);
@@ -639,7 +641,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
                   <Space direction="vertical" size={2} style={{ width: '100%' }}>
                     <Space>
                       {item.primary.type === 'obb' ? <RotateRightOutlined /> : <BorderOutlined />}
-                      <span>{item.label} {index + 1}</span>
+                      <span>{item.labelName} {index + 1}</span>
                     </Space>
                     {item.secondary.regions.length > 0 && (
                       <Text type="secondary" style={{ fontSize: 11 }}>

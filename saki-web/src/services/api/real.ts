@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate } from '../../types';
 import { ApiService } from './interface';
 import { useAuthStore } from '../../store/authStore';
 
@@ -215,6 +215,37 @@ export class RealApiService implements ApiService {
   async exportDataset(id: string, format: string = 'json', includeUnlabeled: boolean = false): Promise<any> {
     const response = await this.client.get(`/datasets/${id}/export`, {
       params: { format, includeUnlabeled }
+    });
+    return response.data;
+  }
+
+  // ==========================================================================
+  // Label APIs (for dataset annotation labels)
+  // ==========================================================================
+
+  async getLabels(datasetId: string): Promise<Label[]> {
+    const response = await this.client.get<Label[]>(`/datasets/${datasetId}/labels`);
+    return response.data;
+  }
+
+  async createLabel(datasetId: string, label: LabelCreate): Promise<Label> {
+    const response = await this.client.post<Label>(`/datasets/${datasetId}/labels`, label);
+    return response.data;
+  }
+
+  async createLabelsBatch(datasetId: string, labels: LabelCreate[]): Promise<Label[]> {
+    const response = await this.client.post<Label[]>(`/datasets/${datasetId}/labels/batch`, labels);
+    return response.data;
+  }
+
+  async updateLabel(labelId: string, label: LabelUpdate): Promise<Label> {
+    const response = await this.client.put<Label>(`/datasets/labels/${labelId}`, label);
+    return response.data;
+  }
+
+  async deleteLabel(labelId: string, force: boolean = false): Promise<{ ok: boolean; deletedLabel: string; deletedAnnotations: number }> {
+    const response = await this.client.delete(`/datasets/labels/${labelId}`, {
+      params: { force }
     });
     return response.data;
   }

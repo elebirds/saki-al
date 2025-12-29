@@ -1,5 +1,6 @@
 """
 API endpoints for annotation operations in sample-level.
+Each annotation item is stored as a separate Annotation record with a label_id reference.
 """
 
 from typing import List, Optional, Dict
@@ -11,6 +12,7 @@ from sqlmodel import Session, select
 from saki_api.db.session import get_session
 from saki_api.models.annotation import Annotation
 from saki_api.models.sample import Sample, SampleStatus
+from saki_api.models.label import Label
 
 router = APIRouter()
 
@@ -23,10 +25,20 @@ class AnnotationData(BaseModel):
     """Single annotation item as sent from frontend."""
     id: str
     type: str  # 'bbox', 'obb', 'polygon', etc.
-    label: str
-    color: str
+    labelId: str  # Reference to Label.id
     bbox: Optional[Dict[str, float]] = None  # {x, y, width, height, rotation}
     points: Optional[List[List[float]]] = None  # For polygon/polyline
+
+
+class AnnotationDataResponse(BaseModel):
+    """Single annotation item with label info for response."""
+    id: str
+    type: str
+    labelId: str
+    labelName: str
+    labelColor: str
+    bbox: Optional[Dict[str, float]] = None
+    points: Optional[List[List[float]]] = None
 
 
 class AnnotationPayload(BaseModel):
@@ -38,7 +50,7 @@ class AnnotationPayload(BaseModel):
 class AnnotationResponse(BaseModel):
     """Response with annotations for a sample."""
     sample_id: str
-    data: List[AnnotationData]
+    data: List[AnnotationDataResponse]
 
 
 # ============================================================================
@@ -52,6 +64,7 @@ def get_annotations(
 ):
     """
     Get all annotations for a sample.
+    Each annotation record represents a single annotation item.
     """
     sample = session.get(Sample, sample_id)
     if not sample:
@@ -61,16 +74,26 @@ def get_annotations(
     statement = select(Annotation).where(Annotation.sample_id == sample_id)
     annotations = session.exec(statement).all()
 
-    # Combine all annotation data
-    # Each Annotation record may contain multiple annotation items in its `data` field
-    all_data: List[AnnotationData] = []
+    # Build response with label info
+    all_data: List[AnnotationDataResponse] = []
     for ann in annotations:
-        if isinstance(ann.data, list):
-            for item in ann.data:
-                all_data.append(AnnotationData(**item))
-        elif isinstance(ann.data, dict) and 'annotations' in ann.data:
-            for item in ann.data['annotations']:
-                all_data.append(AnnotationData(**item))
+        # Get label info
+        label = session.get(Label, ann.label_id)
+        if not label:
+            continue  # Skip orphaned annotations
+        
+        # Extract bbox/points from data field
+        ann_data = ann.data or {}
+        
+        all_data.append(AnnotationDataResponse(
+            id=ann.id,
+            type=ann_data.get('type', 'rect'),
+            labelId=ann.label_id,
+            labelName=label.name,
+            labelColor=label.color,
+            bbox=ann_data.get('bbox'),
+            points=ann_data.get('points'),
+        ))
 
     return AnnotationResponse(sample_id=sample_id, data=all_data)
 
@@ -84,6 +107,7 @@ def save_sample_annotations(
     """
     Save annotations for a sample.
     This replaces any existing annotations.
+    Each annotation item becomes a separate Annotation record.
     """
     sample = session.get(Sample, sample_id)
     if not sample:
@@ -95,13 +119,44 @@ def save_sample_annotations(
     for ann in existing:
         session.delete(ann)
 
-    # Create new annotation record with all items
-    if payload.data:
+    # Create new annotation records - one per annotation item
+    response_data: List[AnnotationDataResponse] = []
+    
+    for item in payload.data:
+        # Verify label exists
+        label = session.get(Label, item.labelId)
+        if not label:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Label with id '{item.labelId}' not found"
+            )
+        
+        # Store geometry data in the data field
+        data_dict = {
+            'type': item.type,
+        }
+        if item.bbox:
+            data_dict['bbox'] = item.bbox
+        if item.points:
+            data_dict['points'] = item.points
+        
         new_annotation = Annotation(
+            id=item.id,  # Use the frontend-provided ID for consistency
             sample_id=sample_id,
-            data=[item.model_dump() for item in payload.data],
+            label_id=item.labelId,
+            data=data_dict,
         )
         session.add(new_annotation)
+        
+        response_data.append(AnnotationDataResponse(
+            id=item.id,
+            type=item.type,
+            labelId=item.labelId,
+            labelName=label.name,
+            labelColor=label.color,
+            bbox=item.bbox,
+            points=item.points,
+        ))
 
     # Update sample status
     if payload.status == 'labeled':
@@ -111,4 +166,4 @@ def save_sample_annotations(
 
     session.commit()
 
-    return AnnotationResponse(sample_id=sample_id, data=payload.data)
+    return AnnotationResponse(sample_id=sample_id, data=response_data)

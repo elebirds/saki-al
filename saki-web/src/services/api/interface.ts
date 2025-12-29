@@ -1,4 +1,4 @@
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate } from '../../types';
 
 export interface ApiService {
   // Auth
@@ -30,6 +30,13 @@ export interface ApiService {
     linkedProjects: number;
   }>;
   exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any>;
+
+  // Label APIs (belong to Dataset)
+  getLabels(datasetId: string): Promise<Label[]>;
+  createLabel(datasetId: string, label: LabelCreate): Promise<Label>;
+  createLabelsBatch(datasetId: string, labels: LabelCreate[]): Promise<Label[]>;
+  updateLabel(labelId: string, label: LabelUpdate): Promise<Label>;
+  deleteLabel(labelId: string, force?: boolean): Promise<{ ok: boolean; deletedLabel: string; deletedAnnotations: number }>;
 
   // Sample APIs (belong to Dataset)
   getSamples(datasetId: string): Promise<Sample[]>;

@@ -1,6 +1,7 @@
 from saki_api.models.annotation import Annotation, AnnotationCreate, AnnotationRead, AnnotationUpdate
 from saki_api.models.dataset import Dataset, DatasetCreate, DatasetRead, DatasetUpdate
 from saki_api.models.enums import TaskType, SampleStatus, ProjectStatus, ModelStatus, AnnotationSystemType
+from saki_api.models.label import Label, LabelCreate, LabelRead, LabelUpdate
 from saki_api.models.model_version import ModelVersion, ModelVersionCreate, ModelVersionRead, ModelVersionUpdate
 from saki_api.models.project import (
     Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats,
@@ -16,6 +17,8 @@ from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
 __all__ = [
     # Dataset models (independent, for data annotation)
     "Dataset", "DatasetCreate", "DatasetRead", "DatasetUpdate",
+    # Label models (belong to Dataset)
+    "Label", "LabelCreate", "LabelRead", "LabelUpdate",
     # Sample models (belong to Dataset)
     "Sample", "SampleCreate", "SampleRead", "SampleUpdate",
     # Annotation models

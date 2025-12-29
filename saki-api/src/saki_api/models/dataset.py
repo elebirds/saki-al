@@ -8,6 +8,7 @@ from saki_api.models.enums import AnnotationSystemType
 if TYPE_CHECKING:
     from saki_api.models.sample import Sample
     from saki_api.models.project import ProjectDataset
+    from saki_api.models.label import Label
 
 
 class DatasetBase(SQLModel):
@@ -37,15 +38,20 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
     # Relationship to samples (one-to-many)
     samples: List["Sample"] = Relationship(back_populates="dataset")
     
+    # Relationship to labels (one-to-many)
+    labels: List["Label"] = Relationship(back_populates="dataset")
+    
     # Relationship to projects through link table (many-to-many)
     project_links: List["ProjectDataset"] = Relationship(back_populates="dataset")
 
 
-class DatasetCreate(DatasetBase):
+class DatasetCreate(SQLModel):
     """
     Model for creating a new Dataset.
     """
-    pass
+    name: str
+    description: Optional[str] = None
+    annotation_system: AnnotationSystemType = AnnotationSystemType.CLASSIC
 
 
 class DatasetRead(DatasetBase, TimestampMixin, UUIDMixin):

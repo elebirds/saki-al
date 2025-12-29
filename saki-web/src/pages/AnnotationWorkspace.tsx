@@ -1,26 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Layout, Button, Card, Space, Typography, List, Radio, Tooltip, Select, Tag, message } from 'antd';
+import { Layout, Button, Card, Space, Typography, List, Radio, Tooltip, Select, Tag, message, Empty } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { LeftOutlined, RightOutlined, CheckOutlined, DragOutlined, BorderOutlined, RotateRightOutlined, DeleteOutlined, UndoOutlined, RedoOutlined, ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../components/canvas';
 import { api } from '../services/api';
-import { Sample, Annotation, Dataset, LabelConfig } from '../types';
+import { Sample, Annotation, Dataset, Label } from '../types';
 
 const { Sider, Content } = Layout;
 const { Title } = Typography;
-
-// Default labels for annotation (can be extended later)
-const DEFAULT_LABELS: LabelConfig[] = [
-  { name: 'Object', color: '#1890ff' },
-  { name: 'Background', color: '#52c41a' },
-  { name: 'Unknown', color: '#faad14' },
-];
 
 const AnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
   const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [labels, setLabels] = useState<Label[]>([]);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
@@ -28,15 +22,24 @@ const AnnotationWorkspace: React.FC = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentTool, setCurrentTool] = useState<'select' | 'rect' | 'obb'>('select');
-  const [labels] = useState<LabelConfig[]>(DEFAULT_LABELS);
-  const [selectedLabel, setSelectedLabel] = useState<LabelConfig | null>(DEFAULT_LABELS[0]);
+  const [selectedLabel, setSelectedLabel] = useState<Label | null>(null);
   const canvasRef = useRef<AnnotationCanvasRef>(null);
 
   useEffect(() => {
     if (datasetId) {
+      // Load dataset
       api.getDataset(datasetId).then((d) => {
         if (d) setDataset(d);
       });
+      // Load labels for this dataset
+      api.getLabels(datasetId).then((loadedLabels) => {
+        setLabels(loadedLabels);
+        // Set default selected label
+        if (loadedLabels.length > 0 && !selectedLabel) {
+          setSelectedLabel(loadedLabels[0]);
+        }
+      });
+      // Load samples
       api.getSamples(datasetId).then(setSamples);
     }
   }, [datasetId]);
@@ -78,11 +81,16 @@ const AnnotationWorkspace: React.FC = () => {
   }, [history, historyIndex]);
 
   const handleAnnotationCreate = (event: { type: 'rect' | 'obb'; bbox: { x: number; y: number; width: number; height: number; rotation?: number } }) => {
+    if (!selectedLabel) {
+      message.warning(t('workspace.noLabelSelected'));
+      return;
+    }
     const newAnn: Annotation = {
       id: Date.now().toString(),
       sampleId: currentSample?.id || 'current',
-      label: selectedLabel?.name || 'unknown',
-      color: selectedLabel?.color || '#ff0000',
+      labelId: selectedLabel.id,
+      labelName: selectedLabel.name,
+      labelColor: selectedLabel.color,
       type: event.type,
       bbox: event.bbox,
     };
@@ -175,6 +183,17 @@ const AnnotationWorkspace: React.FC = () => {
 
   if (!currentSample || !dataset) return <div>{t('workspace.loading')}</div>;
 
+  // Check if labels are configured
+  if (labels.length === 0) {
+    return (
+      <Layout style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Empty
+          description={t('workspace.noLabelsConfigured')}
+        />
+      </Layout>
+    );
+  }
+
   return (
     <Layout style={{ height: '100%' }}>
       <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -183,15 +202,15 @@ const AnnotationWorkspace: React.FC = () => {
           <Space>
             <span style={{ fontWeight: 'bold' }}>{t('workspace.label')}</span>
             <Select
-              value={selectedLabel?.name}
+              value={selectedLabel?.id}
               onChange={(value) => {
-                const label = labels.find(l => l.name === value);
+                const label = labels.find(l => l.id === value);
                 if (label) setSelectedLabel(label);
               }}
               style={{ width: 150 }}
             >
               {labels.map(label => (
-                <Select.Option key={label.name} value={label.name}>
+                <Select.Option key={label.id} value={label.id}>
                   <Tag color={label.color}>{label.name}</Tag>
                 </Select.Option>
               ))}
@@ -273,7 +292,7 @@ const AnnotationWorkspace: React.FC = () => {
                     padding: '8px 16px',
                     background: selectedId === item.id ? '#e6f7ff' : 'transparent',
                     cursor: 'pointer',
-                    borderLeft: selectedId === item.id ? `4px solid ${item.color || '#1890ff'}` : '4px solid transparent'
+                    borderLeft: selectedId === item.id ? `4px solid ${item.labelColor || '#1890ff'}` : '4px solid transparent'
                   }}
                   onClick={() => {
                     setSelectedId(item.id);
@@ -282,7 +301,8 @@ const AnnotationWorkspace: React.FC = () => {
                 >
                   <Space>
                     {item.type === 'obb' ? <RotateRightOutlined /> : <BorderOutlined />}
-                    <span>{item.label} {index + 1}</span>
+                    <Tag color={item.labelColor}>{item.labelName}</Tag>
+                    <span>#{index + 1}</span>
                   </Space>
                 </List.Item>
               )}

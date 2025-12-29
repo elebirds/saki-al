@@ -1,15 +1,16 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message, Popconfirm } from 'antd';
+import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Dataset, Sample } from '../types';
 import { api } from '../services/api';
-import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import UploadProgressModal from '../components/UploadProgressModal';
+import DatasetSettings from '../components/DatasetSettings';
 import { useUpload } from '../hooks';
 
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 const { Sider, Content } = Layout;
 
 const DatasetDetail: React.FC = () => {
@@ -104,16 +105,6 @@ const DatasetDetail: React.FC = () => {
     }
   };
 
-  const handleDelete = async () => {
-    if (!dataset) return;
-    try {
-      await api.deleteDataset(dataset.id);
-      message.success(t('datasetDetail.deleteSuccess'));
-      navigate('/');
-    } catch (error: any) {
-      message.error(error.message || t('datasetDetail.deleteError'));
-    }
-  };
 
   if (!dataset) return <div>{t('common.loading')}</div>;
 
@@ -235,41 +226,10 @@ const DatasetDetail: React.FC = () => {
       label: t('datasetDetail.settings'),
       children: (
         <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
-          <Card title={t('datasetDetail.basicInfo')}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <div>
-                <Text strong>{t('datasetDetail.name')}:</Text> {dataset.name}
-              </div>
-              <div>
-                <Text strong>{t('datasetDetail.description')}:</Text> {dataset.description || '-'}
-              </div>
-              <div>
-                <Text strong>{t('datasetDetail.annotationSystem')}:</Text>{' '}
-                <Tag color={dataset.annotationSystem === 'fedo' ? 'purple' : 'cyan'}>
-                  {dataset.annotationSystem}
-                </Tag>
-              </div>
-              <div>
-                <Text strong>{t('datasetDetail.createdAt')}:</Text>{' '}
-                {new Date(dataset.createdAt).toLocaleString()}
-              </div>
-            </Space>
-          </Card>
-          
-          <Card title={t('datasetDetail.dangerZone')} style={{ marginTop: 16, borderColor: '#ff4d4f' }}>
-            <Popconfirm
-              title={t('datasetDetail.deleteConfirm')}
-              description={t('datasetDetail.deleteConfirmDesc')}
-              onConfirm={handleDelete}
-              okText={t('common.yes')}
-              cancelText={t('common.no')}
-              okButtonProps={{ danger: true }}
-            >
-              <Button danger icon={<DeleteOutlined />}>
-                {t('datasetDetail.deleteDataset')}
-              </Button>
-            </Popconfirm>
-          </Card>
+          <DatasetSettings 
+            dataset={dataset} 
+            onUpdate={(updatedDataset: Dataset) => setDataset(updatedDataset)} 
+          />
         </div>
       ),
     },

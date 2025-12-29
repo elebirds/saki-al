@@ -10,13 +10,6 @@ from core import security
 router = APIRouter()
 
 # ============================================================================
-# In-memory store for registered frontend capabilities
-# ============================================================================
-
-_registered_annotation_systems: Dict[str, Dict[str, Any]] = {}
-
-
-# ============================================================================
 # Pydantic Models for API
 # ============================================================================
 
@@ -26,24 +19,10 @@ class TypeInfo(BaseModel):
     label: str
     description: str
 
-
-class AnnotationSystemCapability(BaseModel):
-    """Frontend capability registration for an annotation system."""
-    system_type: str
-    version: str
-    features: List[str] = []
-    client_id: str
-
-
 class AvailableTypesResponse(BaseModel):
     """Response with all available types."""
     task_types: List[TypeInfo]
     annotation_systems: List[TypeInfo]
-
-
-class RegisteredSystemsResponse(BaseModel):
-    """Response with registered annotation system capabilities."""
-    systems: Dict[str, Dict[str, Any]]
 
 
 # ============================================================================
@@ -107,54 +86,6 @@ def get_available_types() -> AvailableTypesResponse:
         task_types=[info for info in TASK_TYPE_INFO.values()],
         annotation_systems=[info for info in ANNOTATION_SYSTEM_INFO.values()],
     )
-
-
-@router.post("/annotation-systems/register")
-def register_annotation_system(
-    capability: AnnotationSystemCapability,
-) -> Dict[str, str]:
-    """
-    Register a frontend's annotation system capability.
-    Frontend calls this on startup to report which systems it supports.
-    """
-    system_type = capability.system_type
-    
-    # Validate system type
-    valid_types = [e.value for e in AnnotationSystemType]
-    if system_type not in valid_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown annotation system type: {system_type}. Valid types: {valid_types}"
-        )
-    
-    # Store the capability
-    _registered_annotation_systems[capability.client_id] = {
-        "system_type": system_type,
-        "version": capability.version,
-        "features": capability.features,
-        "registered_at": "now",  # TODO: Use actual timestamp
-    }
-    
-    return {"status": "registered", "client_id": capability.client_id}
-
-
-@router.get("/annotation-systems/registered", response_model=RegisteredSystemsResponse)
-def get_registered_systems() -> RegisteredSystemsResponse:
-    """
-    Get all registered annotation system capabilities from frontends.
-    """
-    return RegisteredSystemsResponse(systems=_registered_annotation_systems)
-
-
-@router.delete("/annotation-systems/{client_id}")
-def unregister_annotation_system(client_id: str) -> Dict[str, str]:
-    """
-    Unregister a frontend's annotation system capability.
-    """
-    if client_id in _registered_annotation_systems:
-        del _registered_annotation_systems[client_id]
-        return {"status": "unregistered", "client_id": client_id}
-    raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
 
 
 @router.post("/setup", response_model=UserRead)

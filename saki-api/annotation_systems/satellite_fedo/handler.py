@@ -17,8 +17,6 @@ from annotation_systems.base import (
 )
 from annotation_systems.registry import register_handler
 from .processor import FedoProcessor
-
-
 @register_handler
 class FedoHandler(AnnotationSystemHandler):
     """
@@ -43,14 +41,14 @@ class FedoHandler(AnnotationSystemHandler):
             self._processors[storage_path] = FedoProcessor(storage_path)
         return self._processors[storage_path]
     
+    @property
+    def support_extensions(self) -> set[str]:
+        return {'.txt'}
+    
     def validate_file(self, file_path: Path, context: UploadContext) -> tuple[bool, str]:
-        """Validate that the file is a valid FEDO text file."""
-        if not file_path.exists():
-            return False, "File does not exist"
-        
-        # Check file extension
-        if file_path.suffix.lower() not in ['.txt', '.csv', '.dat']:
-            return False, f"Unsupported file extension: {file_path.suffix}"
+        state, reason = super().validate_file(file_path, context)
+        if state != True:
+            return state, reason
         
         # Basic validation: check if file starts with expected format
         try:

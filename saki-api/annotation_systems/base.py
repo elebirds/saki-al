@@ -168,6 +168,11 @@ class AnnotationSystemHandler(ABC):
         pass
     
     # ==================== Optional Overrides ====================
+
+    @property
+    @abstractmethod
+    def support_extensions(self) -> set[str]:
+        pass
     
     def validate_file(self, file_path: Path, context: UploadContext) -> tuple[bool, str]:
         """
@@ -180,6 +185,13 @@ class AnnotationSystemHandler(ABC):
         Returns:
             Tuple of (is_valid, error_message)
         """
+        if not file_path.exists():
+            return False, "File does not exist"
+        
+        # Check file extension
+        if file_path.suffix.lower() not in self.support_extensions:
+            return False, f"Unsupported file extension: {file_path.suffix}"
+        
         return True, ""
     
     def pre_upload(self, context: UploadContext) -> None:

@@ -4,6 +4,7 @@ Handles standard image annotation (classification, detection, segmentation).
 """
 
 from pathlib import Path
+from turtle import st
 from typing import Any, Dict, Optional
 import uuid
 
@@ -18,11 +19,6 @@ from annotation_systems.base import (
 )
 from annotation_systems.registry import register_handler
 
-
-# Supported image extensions
-SUPPORTED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'}
-
-
 @register_handler
 class ClassicHandler(AnnotationSystemHandler):
     """
@@ -35,16 +31,16 @@ class ClassicHandler(AnnotationSystemHandler):
     """
     
     system_type = AnnotationSystemType.CLASSIC
+
+    @property
+    def support_extensions(self) -> set[str]:
+        return {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'}
     
     def validate_file(self, file_path: Path, context: UploadContext) -> tuple[bool, str]:
-        """Validate that the file is a supported image format."""
-        if not file_path.exists():
-            return False, "File does not exist"
-        
-        ext = file_path.suffix.lower()
-        if ext not in SUPPORTED_IMAGE_EXTENSIONS:
-            return False, f"Unsupported image format: {ext}. Supported: {', '.join(SUPPORTED_IMAGE_EXTENSIONS)}"
-        
+        state, reason = super().validate_file(file_path, context)
+        if state != True:
+            return state, reason
+
         # Check file size (max 50MB)
         max_size = 50 * 1024 * 1024
         if file_path.stat().st_size > max_size:

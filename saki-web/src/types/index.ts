@@ -31,17 +31,6 @@ export interface AvailableTypes {
 }
 
 // ============================================================================
-// Frontend Capability Registration
-// ============================================================================
-
-export interface AnnotationSystemCapability {
-  systemType: AnnotationSystemType;
-  version: string;
-  features: string[];
-  clientId: string;
-}
-
-// ============================================================================
 // Project
 // ============================================================================
 
@@ -188,7 +177,7 @@ export type ALStrategy = QueryStrategy;
 export interface BaseModel {
   id: string;
   name: string;
-  taskType: 'classification' | 'detection';
+  taskType: TaskType;
   framework?: string;
   provider?: string;
   description?: string;

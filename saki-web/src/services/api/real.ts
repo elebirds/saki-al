@@ -171,14 +171,6 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async registerAnnotationCapability(capability: AnnotationSystemCapability): Promise<{ status: string; clientId: string }> {
-    const response = await this.client.post<{ status: string; clientId: string }>(
-      '/system/annotation-systems/register', 
-      capability
-    );
-    return response.data;
-  }
-
   // ==========================================================================
   // Project APIs
   // ==========================================================================

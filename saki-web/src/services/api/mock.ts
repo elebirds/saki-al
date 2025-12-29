@@ -1,19 +1,19 @@
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, AvailableTypes, AnnotationSystemCapability, User, LoginResponse, QueryStrategy, BaseModel, ModelVersion } from '../../types';
+import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, AvailableTypes, User, LoginResponse } from '../../types';
 import { ApiService } from './interface';
 
 const mockStrategies: ALStrategy[] = [
-  { id: 'least_confidence', name: 'Least Confidence', description: 'Selects samples where the model is least confident.' },
-  { id: 'margin_sampling', name: 'Margin Sampling', description: 'Selects samples with the smallest margin between top two predictions.' },
-  { id: 'entropy_sampling', name: 'Entropy Sampling', description: 'Selects samples with the highest entropy.' },
-  { id: 'random', name: 'Random Sampling', description: 'Selects samples randomly.' },
+  { enabled: true, id: 'least_confidence', name: 'Least Confidence', description: 'Selects samples where the model is least confident.' },
+  { enabled: true, id: 'margin_sampling', name: 'Margin Sampling', description: 'Selects samples with the smallest margin between top two predictions.' },
+  { enabled: true, id: 'entropy_sampling', name: 'Entropy Sampling', description: 'Selects samples with the highest entropy.' },
+  { enabled: true, id: 'random', name: 'Random Sampling', description: 'Selects samples randomly.' },
 ];
 
 const mockArchitectures: ModelArchitecture[] = [
-  { id: 'resnet18', name: 'ResNet-18', taskType: 'classification' },
-  { id: 'resnet50', name: 'ResNet-50', taskType: 'classification' },
-  { id: 'efficientnet_b0', name: 'EfficientNet-B0', taskType: 'classification' },
-  { id: 'yolov5', name: 'YOLOv5', taskType: 'detection' },
-  { id: 'faster_rcnn', name: 'Faster R-CNN', taskType: 'detection' },
+  { enabled: true, id: 'resnet18', name: 'ResNet-18', taskType: 'classification' },
+  { enabled: true, id: 'resnet50', name: 'ResNet-50', taskType: 'classification' },
+  { enabled: true, id: 'efficientnet_b0', name: 'EfficientNet-B0', taskType: 'classification' },
+  { enabled: true, id: 'yolov5', name: 'YOLOv5', taskType: 'detection' },
+  { enabled: true, id: 'faster_rcnn', name: 'Faster R-CNN', taskType: 'detection' },
 ];
 
 const mockAvailableTypes: AvailableTypes = {
@@ -165,10 +165,6 @@ export class MockApiService implements ApiService {
     return mockAvailableTypes;
   }
 
-  async registerAnnotationCapability(capability: AnnotationSystemCapability): Promise<{ status: string; clientId: string }> {
-    console.log('Mock: Registered annotation capability:', capability);
-    return { status: 'registered', clientId: capability.clientId };
-  }
 
   async getProjects(): Promise<Project[]> {
     return new Promise((resolve) => setTimeout(() => resolve(mockProjects), 500));

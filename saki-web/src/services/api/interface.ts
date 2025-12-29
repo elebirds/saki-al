@@ -1,4 +1,4 @@
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse } from '../../types';
 
 /**
  * Callback type for upload progress events
@@ -54,8 +54,10 @@ export interface ApiService {
   ): Promise<UploadResult>;
   
   // Annotation APIs
-  getSampleAnnotations(sampleId: string): Promise<Annotation[]>;
-  saveSampleAnnotations(sampleId: string, annotations: Annotation[]): Promise<void>;
+  getSampleAnnotations(sampleId: string): Promise<SampleAnnotationsResponse>;
+  syncAnnotations(sampleId: string, actions: SyncAction[]): Promise<SyncResponse>;
+  saveAnnotations(sampleId: string, annotations: Annotation[], updateStatus?: 'labeled' | 'skipped'): Promise<BatchSaveResult>;
+  deleteAnnotations(sampleId: string): Promise<{ deleted: number; sampleId: string }>;
   
   // Config APIs
   getStrategies(): Promise<QueryStrategy[]>;

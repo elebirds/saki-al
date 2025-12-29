@@ -15,29 +15,23 @@ logger = logging.getLogger(__name__)
 
 class HandlerRegistry:
     """
-    Registry for annotation system handlers.
+    Singleton registry for annotation system handlers.
     
-    Handlers can be registered either via decorator or manually.
-    The registry is a singleton that manages all available handlers.
+    Handlers can be registered via decorator or manually.
     
     Example:
-        # Using decorator
         @register_handler
         class FedoHandler(AnnotationSystemHandler):
             system_type = AnnotationSystemType.FEDO
             ...
         
-        # Manual registration
-        registry = HandlerRegistry.get_instance()
-        registry.register(FedoHandler)
-        
         # Getting a handler
-        handler = registry.get_handler(AnnotationSystemType.FEDO)
+        handler = get_handler(AnnotationSystemType.FEDO)
     """
 
     _instance: Optional["HandlerRegistry"] = None
     _handlers: Dict[AnnotationSystemType, Type[AnnotationSystemHandler]] = {}
-    _handler_instances: Dict[AnnotationSystemType, AnnotationSystemHandler] = {}
+    _cached_instances: Dict[AnnotationSystemType, AnnotationSystemHandler] = {}
 
     def __new__(cls) -> "HandlerRegistry":
         if cls._instance is None:
@@ -52,115 +46,76 @@ class HandlerRegistry:
         return cls._instance
 
     def register(self, handler_class: Type[AnnotationSystemHandler]) -> Type[AnnotationSystemHandler]:
-        """
-        Register a handler class.
-        
-        Args:
-            handler_class: The handler class to register
-            
-        Returns:
-            The handler class (for use as decorator)
-        """
+        """Register a handler class."""
         if not hasattr(handler_class, 'system_type'):
-            raise ValueError(
-                f"Handler class {handler_class.__name__} must define 'system_type' class attribute"
-            )
+            raise ValueError(f"Handler {handler_class.__name__} must define 'system_type'")
 
         system_type = handler_class.system_type
         self._handlers[system_type] = handler_class
         logger.info(f"Registered handler: {handler_class.__name__} for {system_type.value}")
         return handler_class
 
-    def get_handler(
-            self,
-            system_type: AnnotationSystemType,
-            cached: bool = True,
-    ) -> AnnotationSystemHandler:
+    def get(self, system_type: AnnotationSystemType, cached: bool = True) -> AnnotationSystemHandler:
         """
         Get a handler instance for the given system type.
         
         Args:
             system_type: The annotation system type
-            cached: Whether to return a cached instance (default True)
+            cached: Whether to return cached instance (default True)
             
         Returns:
             Handler instance
             
         Raises:
-            ValueError: If no handler is registered for the system type
+            ValueError: If no handler registered for the system type
         """
         if system_type not in self._handlers:
-            raise ValueError(f"No handler registered for system type: {system_type.value}")
+            raise ValueError(f"No handler for system type: {system_type.value}")
 
-        if cached and system_type in self._handler_instances:
-            return self._handler_instances[system_type]
+        if cached and system_type in self._cached_instances:
+            return self._cached_instances[system_type]
 
-        handler_class = self._handlers[system_type]
-        handler = handler_class()
-
+        handler = self._handlers[system_type]()
         if cached:
-            self._handler_instances[system_type] = handler
-
+            self._cached_instances[system_type] = handler
         return handler
 
-    def has_handler(self, system_type: AnnotationSystemType) -> bool:
-        """Check if a handler is registered for the given system type."""
+    def has(self, system_type: AnnotationSystemType) -> bool:
+        """Check if a handler is registered."""
         return system_type in self._handlers
 
-    def list_handlers(self) -> Dict[str, str]:
+    def list_all(self) -> Dict[str, str]:
         """List all registered handlers."""
-        return {
-            st.value: hc.__name__
-            for st, hc in self._handlers.items()
-        }
+        return {st.value: hc.__name__ for st, hc in self._handlers.items()}
 
-    def clear(self) -> None:
-        """Clear all registered handlers (mainly for testing)."""
-        self._handlers.clear()
-        self._handler_instances.clear()
 
+# ============================================================================
+# Module-level convenience functions
+# ============================================================================
 
 def register_handler(cls: Type[AnnotationSystemHandler]) -> Type[AnnotationSystemHandler]:
-    """
-    Decorator to register a handler class.
-    
-    Example:
-        @register_handler
-        class FedoHandler(AnnotationSystemHandler):
-            system_type = AnnotationSystemType.FEDO
-            ...
-    """
-    registry = HandlerRegistry.get_instance()
-    return registry.register(cls)
+    """Decorator to register a handler class."""
+    return HandlerRegistry.get_instance().register(cls)
 
 
 def get_handler(system_type: AnnotationSystemType) -> AnnotationSystemHandler:
-    """
-    Convenience function to get a handler for a system type.
-    
-    Args:
-        system_type: The annotation system type
-        
-    Returns:
-        Handler instance
-    """
-    registry = HandlerRegistry.get_instance()
-    return registry.get_handler(system_type)
+    """Get a handler instance for a system type."""
+    return HandlerRegistry.get_instance().get(system_type)
 
 
 def discover_handlers() -> None:
     """
-    Discover and load all handler modules.
-    This imports handler modules to trigger registration.
+    Import all handler modules to trigger registration.
+    Call during application startup.
     """
     handler_modules = [
         "saki_api.annotation_systems.handlers.classic",
-        "saki_api.annotation_systems.satellite_fedo.handler",
+        "saki_api.annotation_systems.handlers.fedo",
     ]
 
     for module_name in handler_modules:
         try:
             importlib.import_module(module_name)
-            logger.info(f"Loaded handler module: {module_name}")
+            logger.info(f"Loaded handler: {module_name}")
         except ImportError as e:
-            logger.warning(f"Could not load handler module {module_name}: {e}")
+            logger.warning(f"Could not load handler {module_name}: {e}")

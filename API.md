@@ -197,31 +197,159 @@ System-level options that every project references. Only admins should mutate th
 ## 5. Annotation
 
 ### Get Annotation
-- **Endpoint**: `GET /samples/{sampleId}/annotation`
+## 5. Annotations (Real-time Sync & Batch Save)
+
+The annotation system supports two workflows:
+1. **Real-time Sync**: Each create/update/delete action is synced to the backend for processing (especially for FEDO dual-view mapping)
+2. **Batch Save**: All annotations are persisted when user clicks "Save"
+
+### Get Sample Annotations
+- **Endpoint**: `GET /annotations/{sampleId}`
 - **Response**:
   ```json
   {
-    "id": "string",
-    "sampleId": "string",
-    "data": {
-        // Task specific data
-        // Detection: list of bboxes
-        // Classification: classId
-    },
-    "annotatorId": "string"
+    "sample_id": "string",
+    "dataset_id": "string",
+    "annotation_system": "classic" | "fedo",
+    "annotations": [
+      {
+        "id": "string",
+        "type": "rect" | "obb" | "polygon" | "polyline" | "point",
+        "source": "manual" | "auto" | "imported",
+        "label_id": "string",
+        "label_name": "string",
+        "label_color": "#1890ff",
+        "parent_id": "string | null",
+        "view": "time-energy" | "L-omegad" | null,
+        "data": {
+          "x": 100, "y": 100, "width": 50, "height": 30, "rotation": 0
+        }
+      }
+    ]
   }
   ```
 
-### Save Annotation
-- **Endpoint**: `POST /samples/{sampleId}/annotation`
+### Sync Annotation Actions (Real-time)
+- **Endpoint**: `POST /annotations/sync`
+- **Description**: Sync annotation actions during annotation session. Does NOT persist to database. For FEDO, returns auto-generated linked annotations.
 - **Body**:
   ```json
   {
-    "data": object,
-    "status": "labeled" | "skipped"
+    "sample_id": "string",
+    "actions": [
+      {
+        "action": "create" | "update" | "delete",
+        "annotation_id": "string",
+        "label_id": "string",
+        "type": "obb",
+        "view": "time-energy",
+        "data": {"x": 100, "y": 100, "width": 50, "height": 30, "rotation": 0}
+      }
+    ]
   }
   ```
-- **Response**: `Annotation` object.
+- **Response**:
+  ```json
+  {
+    "sample_id": "string",
+    "results": [
+      {
+        "action": "create",
+        "annotation_id": "string",
+        "success": true,
+        "error": null,
+        "generated": [
+          {
+            "id": "auto-gen-id",
+            "type": "obb",
+            "source": "auto",
+            "label_id": "string",
+            "parent_id": "original-annotation-id",
+            "view": "L-omegad",
+            "data": {"x": 80, "y": 60, "width": 25, "height": 21, "rotation": 15}
+          }
+        ]
+      }
+    ],
+    "ready": true
+  }
+  ```
+
+### Batch Save Annotations
+- **Endpoint**: `POST /annotations/save`
+- **Description**: Persist all annotations to database. Called when user clicks "Save".
+- **Body**:
+  ```json
+  {
+    "sample_id": "string",
+    "annotations": [
+      {
+        "id": "string",
+        "type": "obb",
+        "source": "manual",
+        "label_id": "string",
+        "parent_id": null,
+        "view": "time-energy",
+        "data": {"x": 100, "y": 100, "width": 50, "height": 30, "rotation": 0}
+      },
+      {
+        "id": "auto-gen-id",
+        "type": "obb",
+        "source": "auto",
+        "label_id": "string",
+        "parent_id": "manual-annotation-id",
+        "view": "L-omegad",
+        "data": {"x": 80, "y": 60, "width": 25, "height": 21, "rotation": 15}
+      }
+    ],
+    "update_status": "labeled" | "skipped" | null
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "sample_id": "string",
+    "saved_count": 2,
+    "success": true,
+    "error": null
+  }
+  ```
+
+### Delete All Sample Annotations
+- **Endpoint**: `DELETE /annotations/{sampleId}`
+- **Response**:
+  ```json
+  {
+    "deleted": 5,
+    "sample_id": "string"
+  }
+  ```
+
+### Get Child Annotations (FEDO linked annotations)
+- **Endpoint**: `GET /annotations/children/{parentId}`
+- **Response**: Array of `AnnotationItem` objects linked to the parent.
+
+### Annotation Data Types
+
+| Type | Data Format |
+|------|-------------|
+| `rect` | `{x, y, width, height}` |
+| `obb` | `{x, y, width, height, rotation}` (rotation in degrees) |
+| `polygon` | `{points: [[x1,y1], [x2,y2], ...]}` |
+| `polyline` | `{points: [[x1,y1], [x2,y2], ...]}` |
+| `point` | `{x, y}` |
+
+### FEDO Dual-View Annotation Flow
+
+1. User creates annotation in `time-energy` or `L-omegad` view
+2. Frontend calls `POST /annotations/sync` with the create action
+3. Backend processes the annotation through `FedoAnnotationProcessor`
+4. Backend returns auto-generated mapped annotations for the other view
+5. Frontend displays both manual and auto-generated annotations
+6. User can continue editing (each edit triggers sync)
+7. User clicks "Save" → `POST /annotations/save` persists all annotations
+8. Manual annotations have `source: "manual"`, auto-generated have `source: "auto"` with `parent_id` linking to the manual annotation
+
 
 ## 6. Active Learning & Models
 

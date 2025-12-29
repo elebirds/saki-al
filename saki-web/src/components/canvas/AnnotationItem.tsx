@@ -1,7 +1,27 @@
-import { FC, Fragment } from 'react';
+import { FC, Fragment, useMemo } from 'react';
 import { Rect, Text as KonvaText } from 'react-konva';
 import Konva from 'konva';
 import { Annotation } from '../../types';
+
+// Helper to extract bbox from Annotation.data
+interface BBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+}
+
+function getBBox(ann: Annotation): BBox {
+  const data = ann.data || {};
+  return {
+    x: data.x || 0,
+    y: data.y || 0,
+    width: data.width || 0,
+    height: data.height || 0,
+    rotation: data.rotation,
+  };
+}
 
 interface AnnotationItemProps {
   annotation: Annotation;
@@ -26,6 +46,11 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
   onSelect,
   onUpdate,
 }) => {
+  // Extract bbox from data field
+  const bbox = useMemo(() => getBBox(ann), [ann]);
+  const color = ann.labelColor || '#ff0000';
+  const label = ann.labelName || '';
+
   const handleTransformEnd = (e: Konva.KonvaEventObject<Event>) => {
     const node = e.target;
     const scaleX = node.scaleX();
@@ -53,7 +78,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
 
     onUpdate({
       ...ann,
-      bbox: {
+      data: {
         x,
         y,
         width: Math.max(5, width),
@@ -67,8 +92,8 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
     const node = e.target;
     onUpdate({
       ...ann,
-      bbox: {
-        ...ann.bbox,
+      data: {
+        ...ann.data,
         x: node.x(),
         y: node.y(),
       }
@@ -93,14 +118,14 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
     <Fragment>
       <Rect
         id={ann.id}
-        x={ann.bbox.x}
-        y={ann.bbox.y}
-        width={ann.bbox.width}
-        height={ann.bbox.height}
-        rotation={ann.bbox.rotation || 0}
-        stroke={ann.color || '#ff0000'}
+        x={bbox.x}
+        y={bbox.y}
+        width={bbox.width}
+        height={bbox.height}
+        rotation={bbox.rotation || 0}
+        stroke={color}
         strokeWidth={isSelected ? 4 / scale : 2 / scale}
-        shadowColor={ann.color || '#ff0000'}
+        shadowColor={color}
         shadowBlur={isSelected ? 10 : 0}
         shadowOpacity={0.6}
         draggable={currentTool === 'select'}
@@ -121,8 +146,8 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
           let y = (pos.y - stageY) / scale;
           
           if (ann.type === 'rect') {
-            const w = ann.bbox.width;
-            const h = ann.bbox.height;
+            const w = bbox.width;
+            const h = bbox.height;
             if (x < 0) x = 0;
             if (y < 0) y = 0;
             if (x + w > image.width) x = image.width - w;
@@ -144,12 +169,12 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
       {/* Label Text */}
       <KonvaText
         id={`text-${ann.id}`}
-        x={ann.bbox.x}
-        y={ann.bbox.y - (20 / scale)}
-        text={ann.label}
+        x={bbox.x}
+        y={bbox.y - (20 / scale)}
+        text={label}
         fontSize={16 / scale}
-        fill={ann.color || '#ff0000'}
-        rotation={ann.bbox.rotation || 0}
+        fill={color}
+        rotation={bbox.rotation || 0}
         shadowColor="black"
         shadowBlur={2}
         shadowOpacity={1}

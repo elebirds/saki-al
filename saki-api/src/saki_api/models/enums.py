@@ -11,6 +11,38 @@ class TaskType(str, Enum):
     SEGMENTATION = "segmentation"
 
 
+class AnnotationType(str, Enum):
+    """
+    Enum for the geometric type of an annotation.
+    Determines how the annotation data should be interpreted.
+    """
+    # Bounding box - axis-aligned rectangle
+    RECT = "rect"
+    # Oriented bounding box - rotated rectangle
+    OBB = "obb"
+    # Polygon - arbitrary closed shape
+    POLYGON = "polygon"
+    # Polyline - open path
+    POLYLINE = "polyline"
+    # Point - single coordinate
+    POINT = "point"
+    # Keypoints - multiple named points
+    KEYPOINTS = "keypoints"
+
+
+class AnnotationSource(str, Enum):
+    """
+    Enum for the source/origin of an annotation.
+    Used to distinguish human annotations from auto-generated ones.
+    """
+    # Manual annotation by human annotator
+    MANUAL = "manual"
+    # Auto-generated annotation (e.g., FEDO mapping, model prediction)
+    AUTO = "auto"
+    # Imported from external source
+    IMPORTED = "imported"
+
+
 class AnnotationSystemType(str, Enum):
     """
     Enum for the type of annotation system/interface.

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { LeftOutlined, RightOutlined, CheckOutlined, DragOutlined, BorderOutlined, RotateRightOutlined, DeleteOutlined, UndoOutlined, RedoOutlined, ZoomInOutlined, ZoomOutOutlined, ExpandOutlined } from '@ant-design/icons';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
 import { api } from '../../services/api';
-import { Sample, Annotation, Dataset, Label } from '../../types';
+import { Sample, Annotation, Dataset, Label, AnnotationType } from '../../types';
 
 const { Sider, Content } = Layout;
 const { Title } = Typography;
@@ -48,9 +48,9 @@ const AnnotationWorkspace: React.FC = () => {
 
   useEffect(() => {
     if (currentSample) {
-      api.getSampleAnnotations(currentSample.id).then((anns) => {
-        setAnnotations(anns);
-        setHistory([anns]);
+      api.getSampleAnnotations(currentSample.id).then((response) => {
+        setAnnotations(response.annotations);
+        setHistory([response.annotations]);
         setHistoryIndex(0);
       });
     }
@@ -91,8 +91,16 @@ const AnnotationWorkspace: React.FC = () => {
       labelId: selectedLabel.id,
       labelName: selectedLabel.name,
       labelColor: selectedLabel.color,
-      type: event.type,
-      bbox: event.bbox,
+      type: event.type as AnnotationType,
+      source: 'manual',
+      data: {
+        x: event.bbox.x,
+        y: event.bbox.y,
+        width: event.bbox.width,
+        height: event.bbox.height,
+        rotation: event.bbox.rotation,
+      },
+      extra: {},
     };
     addToHistory([...annotations, newAnn]);
   };
@@ -128,7 +136,7 @@ const AnnotationWorkspace: React.FC = () => {
   const handleSubmit = useCallback(async () => {
     if (!currentSample) return;
     try {
-      await api.saveSampleAnnotations(currentSample.id, annotations);
+      await api.saveAnnotations(currentSample.id, annotations, 'labeled');
       message.success(t('annotation.saved') || 'Saved');
       handleNext();
     } catch (error) {

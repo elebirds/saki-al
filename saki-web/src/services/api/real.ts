@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse } from '../../types';
 import { ApiService, UploadProgressCallback } from './interface';
 import { useAuthStore } from '../../store/authStore';
 
@@ -356,16 +356,31 @@ export class RealApiService implements ApiService {
     return finalResult;
   }
 
-  async getSampleAnnotations(sampleId: string): Promise<Annotation[]> {
-    const response = await this.client.get<{ data: Annotation[] }>(`/annotations/${sampleId}`);
-    return response.data.data || [];
+  async getSampleAnnotations(sampleId: string): Promise<SampleAnnotationsResponse> {
+    const response = await this.client.get<SampleAnnotationsResponse>(`/annotations/${sampleId}`);
+    return response.data;
   }
 
-  async saveSampleAnnotations(sampleId: string, annotations: Annotation[]): Promise<void> {
-    await this.client.post(`/annotations/${sampleId}`, {
-      data: annotations,
-      status: 'labeled',
+  async syncAnnotations(sampleId: string, actions: SyncAction[]): Promise<SyncResponse> {
+    const response = await this.client.post<SyncResponse>('/annotations/sync', {
+      sampleId,
+      actions,
     });
+    return response.data;
+  }
+
+  async saveAnnotations(sampleId: string, annotations: Annotation[], updateStatus?: 'labeled' | 'skipped'): Promise<BatchSaveResult> {
+    const response = await this.client.post<BatchSaveResult>('/annotations/save', {
+      sampleId,
+      annotations,
+      updateStatus,
+    });
+    return response.data;
+  }
+
+  async deleteAnnotations(sampleId: string): Promise<{ deleted: number; sampleId: string }> {
+    const response = await this.client.delete(`/annotations/${sampleId}`);
+    return response.data;
   }
 
   // ==========================================================================

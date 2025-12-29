@@ -1,4 +1,4 @@
-import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, AvailableTypes, User, LoginResponse, UploadProgressEvent, UploadResult, UploadFileResult } from '../../types';
+import { Project, Sample, Annotation, ALStrategy, ModelArchitecture, AvailableTypes, User, LoginResponse, UploadProgressEvent, UploadResult, UploadFileResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse } from '../../types';
 import { ApiService, UploadProgressCallback } from './interface';
 
 const mockStrategies: ALStrategy[] = [
@@ -280,20 +280,52 @@ export class MockApiService implements ApiService {
     return uploadResult;
   }
 
-  async getSampleAnnotations(sampleId: string): Promise<Annotation[]> {
+  async getSampleAnnotations(sampleId: string): Promise<SampleAnnotationsResponse> {
     return new Promise((resolve) => 
-        setTimeout(() => resolve(mockAnnotations[sampleId] || []), 300)
+        setTimeout(() => resolve({
+          sampleId,
+          datasetId: 'mock-dataset',
+          annotationSystem: 'classic',
+          annotations: mockAnnotations[sampleId] || [],
+        }), 300)
     );
   }
 
-  async saveSampleAnnotations(sampleId: string, annotations: Annotation[]): Promise<void> {
+  async syncAnnotations(sampleId: string, actions: SyncAction[]): Promise<SyncResponse> {
+    // Mock sync - just return success for each action
+    const results = actions.map(action => ({
+      action: action.action,
+      annotationId: action.annotationId,
+      success: true,
+      generated: [],
+    }));
+    return new Promise((resolve) => 
+      setTimeout(() => resolve({
+        sampleId,
+        results,
+        ready: true,
+      }), 100)
+    );
+  }
+
+  async saveAnnotations(sampleId: string, annotations: Annotation[], updateStatus?: 'labeled' | 'skipped'): Promise<BatchSaveResult> {
     mockAnnotations[sampleId] = annotations;
     // Update sample status
     const sample = mockSamples.find(s => s.id === sampleId);
-    if (sample) {
-        sample.status = 'labeled';
+    if (sample && updateStatus) {
+        sample.status = updateStatus;
     }
-    return new Promise((resolve) => setTimeout(resolve, 500));
+    return new Promise((resolve) => setTimeout(() => resolve({
+      sampleId,
+      savedCount: annotations.length,
+      success: true,
+    }), 500));
+  }
+
+  async deleteAnnotations(sampleId: string): Promise<{ deleted: number; sampleId: string }> {
+    const count = (mockAnnotations[sampleId] || []).length;
+    mockAnnotations[sampleId] = [];
+    return new Promise((resolve) => setTimeout(() => resolve({ deleted: count, sampleId }), 300));
   }
 
   async getStrategies(): Promise<ALStrategy[]> {

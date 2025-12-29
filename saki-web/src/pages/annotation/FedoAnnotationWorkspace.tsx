@@ -50,7 +50,8 @@ import {
   Label, 
   DualViewAnnotation, 
   MappedRegion,
-  BoundingBox
+  BoundingBox,
+  AnnotationType
 } from '../../types';
 import { useDualViewSync } from '../../hooks/useDualViewSync';
 
@@ -73,25 +74,42 @@ function dualToAnnotation(dual: DualViewAnnotation): Annotation {
     labelId: dual.labelId,
     labelName: dual.labelName,
     labelColor: dual.labelColor,
-    type: dual.primary.type,
-    bbox: dual.primary.bbox,
+    type: dual.primary.type as AnnotationType,
+    source: 'manual',
+    data: dual.primary.bbox,
+    extra: {
+      view: 'primary',
+      secondary: dual.secondary,
+    },
   };
 }
 
 /** Convert Annotation to DualViewAnnotation */
 function annotationToDual(ann: Annotation, regions: MappedRegion[] = []): DualViewAnnotation {
+  // Extract bbox from data field
+  const bbox: BoundingBox = {
+    x: ann.data.x || 0,
+    y: ann.data.y || 0,
+    width: ann.data.width || 0,
+    height: ann.data.height || 0,
+    rotation: ann.data.rotation,
+  };
+  
+  // Use regions from extra if available
+  const extraRegions = ann.extra?.secondary?.regions || regions;
+  
   return {
     id: ann.id,
-    sampleId: ann.sampleId,
+    sampleId: ann.sampleId || '',
     labelId: ann.labelId,
-    labelName: ann.labelName,
-    labelColor: ann.labelColor,
+    labelName: ann.labelName || '',
+    labelColor: ann.labelColor || '#ff0000',
     primary: {
-      type: ann.type,
-      bbox: ann.bbox,
+      type: ann.type as 'rect' | 'obb',
+      bbox,
     },
     secondary: {
-      regions,
+      regions: extraRegions,
     },
   };
 }
@@ -181,9 +199,9 @@ const FedoAnnotationWorkspace: React.FC = () => {
   useEffect(() => {
     if (currentSample?.id) {
       // Load annotations for this sample
-      api.getSampleAnnotations(currentSample.id).then((anns) => {
+      api.getSampleAnnotations(currentSample.id).then((response) => {
         // Convert to DualViewAnnotation format
-        const dualAnns: DualViewAnnotation[] = anns.map(ann => annotationToDual(ann, []));
+        const dualAnns: DualViewAnnotation[] = response.annotations.map(ann => annotationToDual(ann, []));
         setAnnotations(dualAnns);
         setHistory([dualAnns]);
         setHistoryIndex(0);
@@ -272,11 +290,21 @@ const FedoAnnotationWorkspace: React.FC = () => {
   }, [currentSample?.id, selectedLabel, isSyncReady, mapBboxToLWd, addToHistory, annotations]);
 
   const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
+    // Extract bbox from data field
+    const bboxData = updatedAnn.data || {};
+    const bbox: BoundingBox = {
+      x: bboxData.x || 0,
+      y: bboxData.y || 0,
+      width: bboxData.width || 0,
+      height: bboxData.height || 0,
+      rotation: bboxData.rotation,
+    };
+    
     // Re-map bbox when annotation is updated
     let regions: MappedRegion[] = [];
-    if (isSyncReady && updatedAnn.bbox) {
+    if (isSyncReady && bbox.width > 0 && bbox.height > 0) {
       try {
-        const result = await mapBboxToLWd(updatedAnn.bbox as BoundingBox);
+        const result = await mapBboxToLWd(bbox);
         regions = result.regions;
       } catch (err) {
         console.warn('Failed to map bbox:', err);
@@ -324,7 +352,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
     try {
       // Convert DualViewAnnotation back to Annotation for saving
       const annsToSave: Annotation[] = annotations.map(dualToAnnotation);
-      await api.saveSampleAnnotations(currentSample.id, annsToSave);
+      await api.saveAnnotations(currentSample.id, annsToSave, 'labeled');
       message.success(t('annotation.saved') || 'Saved');
       handleNext();
     } catch (error) {

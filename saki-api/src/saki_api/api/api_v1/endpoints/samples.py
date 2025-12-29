@@ -106,10 +106,9 @@ async def upload_samples_with_progress(
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     context = UploadContext(
-        project_id=dataset_id,  # Using dataset_id as the context identifier
+        dataset_id=dataset_id,
         upload_dir=upload_dir,
-        project_config={},
-        annotation_config={},
+        config={},
     )
 
     async def generate_progress():
@@ -134,7 +133,7 @@ async def upload_samples_with_progress(
                 result = handler.process_upload(file_path, context)
 
                 if result.success:
-                    sample_fields = handler.get_sample_fields(result)
+                    sample_fields = result.sample_fields
                     sample = Sample(
                         dataset_id=dataset_id,
                         name=file.filename,

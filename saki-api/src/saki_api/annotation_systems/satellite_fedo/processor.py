@@ -82,6 +82,7 @@ class FedoProcessor:
 
         # Step 4: Generate images
         base_name = "view"
+        # TODO: 需要根据数据实际尺寸
         # 获取图像尺寸（与 visualizer 中的默认值一致）
         figsize = (6.0, 4.0)  # 默认图像尺寸（英寸）
         image_width = figsize[0] * dpi

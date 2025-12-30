@@ -106,21 +106,25 @@ function generatedToAnnotations(
   return generated.map((gen) => {
     const data = gen.data || {};
     const view = gen.extra?.view || gen.view || VIEW_L_OMEGAD;
+    const type = (gen.type || 'obb') as AnnotationType;
+    
+    // 后端返回的是中心点坐标，前端也使用中心点
+    const bboxData = {
+      x: data.x || 0,
+      y: data.y || 0,
+      width: data.width || 0,
+      height: data.height || 0,
+      rotation: data.rotation || 0,
+    };
     
     return {
       id: gen.id || `generated-${Date.now()}-${Math.random()}`,
       labelId: gen.label_id || labelId,
       labelName: gen.label_name || labelName,
       labelColor: gen.label_color || labelColor,
-      type: (gen.type || 'obb') as AnnotationType,
+      type: type,
       source: (gen.source || 'auto') as any,
-      data: {
-        x: data.x || 0,
-        y: data.y || 0,
-        width: data.width || 0,
-        height: data.height || 0,
-        rotation: data.rotation || 0,
-      },
+      data: bboxData,
       extra: {
         parent_id: parentId,
         view: view,
@@ -354,6 +358,8 @@ const FedoAnnotationWorkspace: React.FC = () => {
             source === 'fedo_mapping' || 
             !!parentId;
           
+          // 后端返回的是中心点坐标，前端也使用中心点，无需转换
+          
           if (isGenerated) {
             generated.push(ann);
           } else {
@@ -455,6 +461,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
       const newId = Date.now().toString();
       const view = event.view || VIEW_TIME_ENERGY;
 
+      // 前端使用中心点坐标，直接发送给后端
       // 调用后端 sync 接口
       const syncAction: SyncAction = {
         action: 'create',
@@ -555,6 +562,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
     async (updatedAnn: Annotation) => {
       if (!currentSample) return;
 
+      // 前端使用中心点坐标，直接发送给后端
       // 调用后端 sync
       const syncAction: SyncAction = {
         action: 'update',

@@ -53,6 +53,8 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   useEffect(() => {
     if (currentSample) {
       api.getSampleAnnotations(currentSample.id).then((response) => {
+        // 后端返回的是中心点坐标，前端也使用中心点，无需转换
+        
         // 重置历史记录
         annotationState.resetHistory();
         // 设置初始标注并添加到历史记录
@@ -96,6 +98,7 @@ const ClassicAnnotationWorkspace: React.FC = () => {
       extra: {},
     };
 
+    // 前端使用中心点坐标，直接发送给后端
     // 调用 sync 接口
     const syncAction: SyncAction = {
       action: 'create',
@@ -121,6 +124,7 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
     if (!currentSample) return;
 
+    // 前端使用中心点坐标，直接发送给后端
     const syncAction: SyncAction = {
       action: 'update',
       annotationId: updatedAnn.id,

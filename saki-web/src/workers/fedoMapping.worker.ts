@@ -99,39 +99,46 @@ function parseLookupBinary(buffer: ArrayBuffer): LookupData {
 
 /**
  * Convert normalized bbox [0,1] to index ranges
+ * Note: bbox.x and bbox.y are center point coordinates.
  */
 function bboxToIndexRange(bbox: BoundingBox, nTime: number, nEnergy: number): {
   iMin: number; iMax: number; jMin: number; jMax: number;
 } {
   // For now, handle axis-aligned case
   // TODO: Handle rotation with OBB
-  let { x, y, width, height } = bbox;
+  // bbox.x and bbox.y are center point, so convert to origin point for range calculation
+  const xMin = bbox.x - bbox.width / 2;
+  const xMax = bbox.x + bbox.width / 2;
+  const yMin = bbox.y - bbox.height / 2;
+  const yMax = bbox.y + bbox.height / 2;
 
   // Clamp to [0, 1]
-  const xMin = Math.max(0, Math.min(1, x));
-  const xMax = Math.max(0, Math.min(1, x + width));
-  const yMin = Math.max(0, Math.min(1, y));
-  const yMax = Math.max(0, Math.min(1, y + height));
+  const xMinClamped = Math.max(0, Math.min(1, xMin));
+  const xMaxClamped = Math.max(0, Math.min(1, xMax));
+  const yMinClamped = Math.max(0, Math.min(1, yMin));
+  const yMaxClamped = Math.max(0, Math.min(1, yMax));
 
   // Convert to indices
-  const iMin = Math.max(0, Math.min(nTime - 1, Math.floor(xMin * nTime)));
-  const iMax = Math.max(0, Math.min(nTime - 1, Math.floor(xMax * nTime)));
-  const jMin = Math.max(0, Math.min(nEnergy - 1, Math.floor(yMin * nEnergy)));
-  const jMax = Math.max(0, Math.min(nEnergy - 1, Math.floor(yMax * nEnergy)));
+  const iMin = Math.max(0, Math.min(nTime - 1, Math.floor(xMinClamped * nTime)));
+  const iMax = Math.max(0, Math.min(nTime - 1, Math.floor(xMaxClamped * nTime)));
+  const jMin = Math.max(0, Math.min(nEnergy - 1, Math.floor(yMinClamped * nEnergy)));
+  const jMax = Math.max(0, Math.min(nEnergy - 1, Math.floor(yMaxClamped * nEnergy)));
 
   return { iMin, iMax, jMin, jMax };
 }
 
 /**
  * Check if a point is inside a rotated rectangle (OBB)
+ * Note: This function expects bbox.x and bbox.y to be the center point.
  */
 function isPointInOBB(
   px: number, py: number,  // Point in normalized coords
   bbox: BoundingBox
 ): boolean {
   const rotation = (bbox.rotation || 0) * Math.PI / 180;
-  const cx = bbox.x + bbox.width / 2;
-  const cy = bbox.y + bbox.height / 2;
+  // bbox.x and bbox.y are already the center point
+  const cx = bbox.x;
+  const cy = bbox.y;
 
   // Translate point to origin
   const dx = px - cx;

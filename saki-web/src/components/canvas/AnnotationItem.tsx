@@ -2,6 +2,7 @@ import { FC, Fragment, useMemo } from 'react';
 import { Rect, Text as KonvaText } from 'react-konva';
 import Konva from 'konva';
 import { Annotation } from '../../types';
+import { centerToOriginForDisplay, originToCenterForStorage } from '../../utils/canvasUtils';
 
 // Helper to extract bbox from Annotation.data
 interface BBox {
@@ -12,15 +13,22 @@ interface BBox {
   rotation?: number;
 }
 
-function getBBox(ann: Annotation): BBox {
+function getBBox(ann: Annotation, forDisplay: boolean = true): BBox {
   const data = ann.data || {};
-  return {
+  const bbox = {
     x: data.x || 0,
     y: data.y || 0,
     width: data.width || 0,
     height: data.height || 0,
     rotation: data.rotation,
   };
+  
+  // For OBB, data is stored as center point, but Konva Rect needs origin point for display
+  if (ann.type === 'obb' && forDisplay) {
+    return centerToOriginForDisplay(bbox);
+  }
+  
+  return bbox;
 }
 
 interface AnnotationItemProps {
@@ -83,27 +91,54 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
       height = Math.abs(height);
     }
 
+    // For OBB, Konva gives us origin point, but we need to store center point
+    let dataToStore = {
+      x,
+      y,
+      width: Math.max(5, width),
+      height: Math.max(5, height),
+      rotation,
+    };
+    
+    if (ann.type === 'obb') {
+      dataToStore = originToCenterForStorage(dataToStore);
+    }
+
     onUpdate({
       ...ann,
-      data: {
-        x,
-        y,
-        width: Math.max(5, width),
-        height: Math.max(5, height),
-        rotation,
-      }
+      data: dataToStore,
     });
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
-    onUpdate({
-      ...ann,
-      data: {
-        ...ann.data,
+    
+    // For OBB, Konva gives us origin point, but we need to store center point
+    let dataToStore = {
+      ...ann.data,
+      x: node.x(),
+      y: node.y(),
+    };
+    
+    if (ann.type === 'obb' && ann.data) {
+      const originPoint = {
         x: node.x(),
         y: node.y(),
-      }
+        width: ann.data.width || 0,
+        height: ann.data.height || 0,
+        rotation: ann.data.rotation || 0,
+      };
+      const centerPoint = originToCenterForStorage(originPoint);
+      dataToStore = {
+        ...ann.data,
+        x: centerPoint.x,
+        y: centerPoint.y,
+      };
+    }
+    
+    onUpdate({
+      ...ann,
+      data: dataToStore,
     });
   };
 
@@ -113,6 +148,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
     const stage = e.target.getStage();
     const textNode = stage?.findOne(`#text-${ann.id}`);
     if (textNode) {
+      // Text should be positioned relative to the displayed origin point (top-left of rect)
       textNode.position({
         x: e.target.x(),
         y: e.target.y() - (20 / scale)
@@ -174,6 +210,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
         }}
       />
       {/* Label Text */}
+      {/* For OBB, bbox is already converted to origin point for display */}
       <KonvaText
         id={`text-${ann.id}`}
         x={bbox.x}

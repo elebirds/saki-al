@@ -31,6 +31,7 @@ import {
   SyncAction,
 } from '../../types';
 import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../../components/annotation/DualCanvasArea';
+import { originToCenter, centerToOrigin } from '../../utils/canvasUtils';
 
 const { Content } = Layout;
 
@@ -108,14 +109,19 @@ function generatedToAnnotations(
     const view = gen.extra?.view || gen.view || VIEW_L_OMEGAD;
     const type = (gen.type || 'obb') as AnnotationType;
     
-    // 后端返回的是中心点坐标，前端也使用中心点
-    const bboxData = {
+    // 后端返回的是中心点坐标，需要转换为起始点坐标用于前端显示
+    let bboxData = {
       x: data.x || 0,
       y: data.y || 0,
       width: data.width || 0,
       height: data.height || 0,
       rotation: data.rotation || 0,
     };
+    
+    // 对于 OBB 类型，将中心点转换为起始点
+    if (type === 'obb') {
+      bboxData = centerToOrigin(bboxData);
+    }
     
     return {
       id: gen.id || `generated-${Date.now()}-${Math.random()}`,
@@ -358,7 +364,15 @@ const FedoAnnotationWorkspace: React.FC = () => {
             source === 'fedo_mapping' || 
             !!parentId;
           
-          // 后端返回的是中心点坐标，前端也使用中心点，无需转换
+          // 后端返回的是中心点坐标，需要转换为起始点坐标用于前端显示
+          // 对于 OBB 类型，将中心点转换为起始点
+          if (ann.type === 'obb' && ann.data) {
+            const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
+            ann = {
+              ...ann,
+              data: centerToOrigin(bboxData)
+            };
+          }
           
           if (isGenerated) {
             generated.push(ann);
@@ -461,14 +475,19 @@ const FedoAnnotationWorkspace: React.FC = () => {
       const newId = Date.now().toString();
       const view = event.view || VIEW_TIME_ENERGY;
 
-      // 前端使用中心点坐标，直接发送给后端
+      // 对于 OBB 类型，将起始点转换为中心点再发送给后端
+      let bboxData = event.bbox;
+      if (event.type === 'obb') {
+        bboxData = originToCenter(event.bbox);
+      }
+      
       // 调用后端 sync 接口
       const syncAction: SyncAction = {
         action: 'create',
         annotationId: newId,
         labelId: annotationState.selectedLabel.id,
         type: event.type as AnnotationType,
-        data: event.bbox,
+        data: bboxData,
         extra: { view },
       };
 
@@ -562,14 +581,20 @@ const FedoAnnotationWorkspace: React.FC = () => {
     async (updatedAnn: Annotation) => {
       if (!currentSample) return;
 
-      // 前端使用中心点坐标，直接发送给后端
+      // 对于 OBB 类型，将起始点转换为中心点再发送给后端
+      let bboxData = updatedAnn.data;
+      if (updatedAnn.type === 'obb' && bboxData) {
+        const bboxDataTyped = bboxData as { x: number; y: number; width: number; height: number; rotation?: number };
+        bboxData = originToCenter(bboxDataTyped);
+      }
+
       // 调用后端 sync
       const syncAction: SyncAction = {
         action: 'update',
         annotationId: updatedAnn.id,
         labelId: updatedAnn.labelId,
         type: updatedAnn.type,
-        data: updatedAnn.data,
+        data: bboxData,
         extra: updatedAnn.extra || {},
       };
 

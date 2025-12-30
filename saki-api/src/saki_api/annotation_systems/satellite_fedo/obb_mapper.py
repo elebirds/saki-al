@@ -10,7 +10,8 @@
 3. 目标 OBB 拟合（cv2.minAreaRect）
 """
 
-from typing import List
+import os
+from typing import List, Optional
 
 import cv2
 import numpy as np
@@ -22,6 +23,7 @@ def map_obb_annotations(
     lut_src: np.ndarray,
     lut_dst: np.ndarray,
     time_gap_threshold: int = 50,
+    debug_output_dir: Optional[str] = None,
 ) -> List[np.ndarray]:
     """
     从源视图的 OBB 标注推导出目标视图对应的 OBB 标注。
@@ -36,6 +38,9 @@ def map_obb_annotations(
         lut_dst: 目标图的像素映射表矩阵，形状为 (N, M, 2)
                  lut_dst[i, j] = [x_pixel, y_pixel] 表示数据索引 (i, j) 在目标图中的像素坐标
         time_gap_threshold: 时间轴跳变阈值，用于判断点云是否在时间上断开（默认 50）
+        debug_output_dir: 可选的调试输出目录。如果提供，将生成两张调试图片：
+                          - src_debug.png: 显示源图中筛选出的点集（高亮显示）
+                          - dst_debug.png: 显示目标图中对应的点集（高亮显示）
 
     Returns:
         目标 OBB 顶点列表，每个元素是一个 (4, 2) 的数组，表示一个目标 OBB 的四个顶点坐标。
@@ -95,6 +100,15 @@ def map_obb_annotations(
     candidate_1d_indices = np.where(in_aabb_mask)[0]
     
     if len(candidate_1d_indices) == 0:
+        # 如果没有候选点，但仍然生成调试图片（如果启用）
+        if debug_output_dir is not None:
+            _generate_debug_images(
+                src_selected_pixels=np.array([], dtype=np.float32).reshape(0, 2),
+                all_target_pixels_list=[],
+                lut_src=lut_src,
+                lut_dst=lut_dst,
+                output_dir=debug_output_dir,
+            )
         return []
     
     # 转换回二维索引 (rows, cols)
@@ -113,7 +127,19 @@ def map_obb_annotations(
     rows = candidate_rows[in_polygon_mask]  # (K',)
     cols = candidate_cols[in_polygon_mask]  # (K',)
     
+    # 保存筛选出的源图点集坐标（用于调试图片生成）
+    src_selected_pixels = candidate_pixels[in_polygon_mask]  # (K', 2)
+    
     if len(rows) == 0:
+        # 如果没有有效点，但仍然生成调试图片（如果启用）
+        if debug_output_dir is not None:
+            _generate_debug_images(
+                src_selected_pixels=np.array([], dtype=np.float32).reshape(0, 2),
+                all_target_pixels_list=[],
+                lut_src=lut_src,
+                lut_dst=lut_dst,
+                output_dir=debug_output_dir,
+            )
         return []
     
     # ============================================
@@ -167,6 +193,9 @@ def map_obb_annotations(
     # 步骤 3: 目标 OBB 拟合
     # ============================================
     
+    # 收集所有目标图的点集（用于调试图片生成）
+    all_target_pixels_list = []
+    
     result_obbs = []
     min_points_threshold = 5  # 最少点数阈值
     
@@ -179,6 +208,11 @@ def map_obb_annotations(
         # 注意：cluster_rows 和 cluster_cols 可能包含重复的 (row, col) 对
         # 但我们需要保持一一对应关系
         target_pixels = lut_dst[cluster_rows, cluster_cols]  # (K, 2)
+
+        print(f"lut_dst: {lut_dst}")
+        
+        # 收集目标图点集（用于调试）
+        all_target_pixels_list.append(target_pixels)
         
         # 使用 cv2.minAreaRect 拟合最小面积矩形
         # cv2.minAreaRect 需要输入 shape 为 (N, 1, 2) 的数组
@@ -193,5 +227,95 @@ def map_obb_annotations(
         # 添加到结果列表
         result_obbs.append(box_points)
     
+    # ============================================
+    # 步骤 4: 生成调试图片（如果启用）
+    # ============================================
+    if debug_output_dir is not None:
+        _generate_debug_images(
+            src_selected_pixels=src_selected_pixels,
+            all_target_pixels_list=all_target_pixels_list,
+            lut_src=lut_src,
+            lut_dst=lut_dst,
+            output_dir=debug_output_dir,
+        )
+    
     return result_obbs
+
+
+def _generate_debug_images(
+    src_selected_pixels: np.ndarray,
+    all_target_pixels_list: List[np.ndarray],
+    lut_src: np.ndarray,
+    lut_dst: np.ndarray,
+    output_dir: str,
+) -> None:
+    """
+    生成调试图片，显示源图和目标图中的高亮点集。
+    
+    Args:
+        src_selected_pixels: 源图中筛选出的点集，形状为 (K, 2)
+        all_target_pixels_list: 目标图中所有点云组的列表，每个元素形状为 (K_i, 2)
+        lut_src: 源图的像素映射表矩阵，形状为 (N, M, 2)
+        lut_dst: 目标图的像素映射表矩阵，形状为 (N, M, 2)
+        output_dir: 输出目录路径
+    """
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 计算图像尺寸（从 LUT 中获取最大像素坐标，并添加一些边距）
+    src_pixels_flat = lut_src.reshape(-1, 2)
+    dst_pixels_flat = lut_dst.reshape(-1, 2)
+    
+    # 获取有效像素坐标（排除 NaN 或无效值）
+    src_valid = src_pixels_flat[np.isfinite(src_pixels_flat).all(axis=1)]
+    dst_valid = dst_pixels_flat[np.isfinite(dst_pixels_flat).all(axis=1)]
+    
+    if len(src_valid) == 0 or len(dst_valid) == 0:
+        return  # 如果没有有效点，跳过图片生成
+    
+    # 计算图像尺寸（添加 50 像素边距）
+    margin = 50
+    src_width = int(np.max(src_valid[:, 0]) + margin)
+    src_height = int(np.max(src_valid[:, 1]) + margin)
+    dst_width = int(np.max(dst_valid[:, 0]) + margin)
+    dst_height = int(np.max(dst_valid[:, 1]) + margin)
+    
+    # 创建源图调试图片（黑色背景）
+    src_debug_img = np.zeros((src_height, src_width), dtype=np.uint8)
+    
+    # 将筛选出的点设置为白色（255）
+    if len(src_selected_pixels) > 0:
+        valid_src_mask = np.isfinite(src_selected_pixels).all(axis=1)
+        valid_src_pixels = src_selected_pixels[valid_src_mask]
+        
+        # 将坐标转换为整数索引，并确保在图像范围内
+        src_x = np.clip(valid_src_pixels[:, 0].astype(int), 0, src_width - 1)
+        src_y = np.clip(valid_src_pixels[:, 1].astype(int), 0, src_height - 1)
+        
+        # 设置点集位置为白色
+        src_debug_img[src_y, src_x] = 255
+    
+    # 保存源图调试图片
+    src_debug_path = os.path.join(output_dir, "src_debug.png")
+    cv2.imwrite(src_debug_path, src_debug_img)
+    
+    # 创建目标图调试图片（黑色背景）
+    dst_debug_img = np.zeros((dst_height, dst_width), dtype=np.uint8)
+    
+    # 将所有目标点云组的点设置为白色
+    for target_pixels in all_target_pixels_list:
+        if len(target_pixels) > 0:
+            valid_dst_mask = np.isfinite(target_pixels).all(axis=1)
+            valid_dst_pixels = target_pixels[valid_dst_mask]
+            
+            # 将坐标转换为整数索引，并确保在图像范围内
+            dst_x = np.clip(valid_dst_pixels[:, 0].astype(int), 0, dst_width - 1)
+            dst_y = np.clip(valid_dst_pixels[:, 1].astype(int), 0, dst_height - 1)
+            
+            # 设置点集位置为白色
+            dst_debug_img[dst_y, dst_x] = 255
+    
+    # 保存目标图调试图片
+    dst_debug_path = os.path.join(output_dir, "dst_debug.png")
+    cv2.imwrite(dst_debug_path, dst_debug_img)
 

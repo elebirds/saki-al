@@ -76,6 +76,21 @@ class FedoProcessor:
         # Step 2: Calculate physics
         data = calculate_physics_data(df, e_centers, e_cols)
 
+        # 如果未指定范围，则从数据中计算实际范围
+        if l_xlim is None:
+            L_valid = data['L'][np.isfinite(data['L'])]
+            if len(L_valid) > 0:
+                l_xlim = (float(np.nanmin(L_valid)), float(np.nanmax(L_valid)))
+            else:
+                l_xlim = (1.0, 2.0)  # 默认范围作为后备
+        
+        if wd_ylim is None:
+            Wd_valid = data['Wd'][np.isfinite(data['Wd'])]
+            if len(Wd_valid) > 0:
+                wd_ylim = (float(np.nanmin(Wd_valid)), float(np.nanmax(Wd_valid)))
+            else:
+                wd_ylim = (0.0, 4.0)  # 默认范围作为后备
+
         # Step 3: Save processed data as npz
         data_path = os.path.join(output_dir, "data.npz")
         self._save_data_npz(data, data_path)

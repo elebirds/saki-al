@@ -14,10 +14,18 @@ const CanvasTransformer = forwardRef<Konva.Transformer, CanvasTransformerProps>(
   currentTool,
   image
 }, ref) => {
+  // 判断是否为生成的标注（auto-generated）
+  const isGenerated = selectedAnnotation?.source === 'auto' || !!selectedAnnotation?.extra?.parent_id;
+  
+  // 只有主标注（非生成的）可以调整大小
+  const canResize = !isGenerated && currentTool === 'select';
+  
   return (
     <Transformer
       ref={ref}
-      rotateEnabled={currentTool === 'select' && selectedAnnotation?.type === 'obb'}
+      rotateEnabled={canResize && selectedAnnotation?.type === 'obb'}
+      enabledAnchors={canResize ? undefined : []} // 如果是生成的标注，禁用所有锚点（无法调整大小）
+      resizeEnabled={canResize}
       keepRatio={false}
       ignoreStroke={true}
       boundBoxFunc={(_oldBox, newBox) => {

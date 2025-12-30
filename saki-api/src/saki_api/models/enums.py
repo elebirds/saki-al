@@ -37,8 +37,10 @@ class AnnotationSource(str, Enum):
     """
     # Manual annotation by human annotator
     MANUAL = "manual"
-    # Auto-generated annotation (e.g., FEDO mapping, model prediction)
-    AUTO = "auto"
+    # FEDO dual-view mapping annotation
+    FEDO_MAPPING = "fedo_mapping"
+    # Model prediction
+    PREDICTION = "prediction"
     # Imported from external source
     IMPORTED = "imported"
 

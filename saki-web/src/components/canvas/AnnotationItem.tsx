@@ -50,6 +50,13 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
   const bbox = useMemo(() => getBBox(ann), [ann]);
   const color = ann.labelColor || '#ff0000';
   const label = ann.labelName || '';
+  
+  // 判断是否为生成的标注（auto-generated）
+  const isGenerated = ann.source === 'auto' || !!ann.extra?.parent_id;
+  
+  // 生成的标注不能拖拽和变换
+  const canDrag = currentTool === 'select' && !isGenerated;
+  const canTransform = !isGenerated;
 
   const handleTransformEnd = (e: Konva.KonvaEventObject<Event>) => {
     const node = e.target;
@@ -128,13 +135,13 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
         shadowColor={color}
         shadowBlur={isSelected ? 10 : 0}
         shadowOpacity={0.6}
-        draggable={currentTool === 'select'}
+        draggable={canDrag}
         onClick={() => currentTool === 'select' && onSelect(ann.id)}
         onTap={() => currentTool === 'select' && onSelect(ann.id)}
-        onDragMove={updateTextPosition}
-        onTransform={updateTextPosition}
-        onTransformEnd={handleTransformEnd}
-        onDragEnd={handleDragEnd}
+        onDragMove={canDrag ? updateTextPosition : undefined}
+        onTransform={canTransform ? updateTextPosition : undefined}
+        onTransformEnd={canTransform ? handleTransformEnd : undefined}
+        onDragEnd={canDrag ? handleDragEnd : undefined}
         dragBoundFunc={(pos) => {
           if (!image) return pos;
           

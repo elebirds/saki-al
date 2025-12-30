@@ -47,6 +47,8 @@ export interface AnnotationCanvasProps extends AnnotationCanvasCallbacks {
   labelColor?: string;
   /** 当前选中的标注 ID */
   selectedId: string | null;
+  /** 所有应该被选中的标注 ID 集合（用于关联标注的高亮显示） */
+  selectedAnnotationIds?: Set<string>;
 }
 
 export type { AnnotationCreateEvent, ToolType };
@@ -69,6 +71,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
   currentTool,
   labelColor = '#ff0000',
   selectedId,
+  selectedAnnotationIds,
   onAnnotationCreate,
   onAnnotationUpdate,
   onAnnotationDelete,
@@ -154,20 +157,24 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
           {image && <KonvaImage image={image} />}
           
           {/* 已有标注 */}
-          {annotations.map(ann => (
-            <AnnotationItem
-              key={ann.id}
-              annotation={ann}
-              isSelected={selectedId === ann.id}
-              scale={scale}
-              image={image}
-              stageX={position.x}
-              stageY={position.y}
-              currentTool={currentTool}
-              onSelect={id => onSelect?.(id)}
-              onUpdate={updated => onAnnotationUpdate?.(updated)}
-            />
-          ))}
+          {annotations.map(ann => {
+            // 判断标注是否被选中：要么是主选中标注，要么在 selectedAnnotationIds 中
+            const isSelected = selectedId === ann.id || (selectedAnnotationIds?.has(ann.id) ?? false);
+            return (
+              <AnnotationItem
+                key={ann.id}
+                annotation={ann}
+                isSelected={isSelected}
+                scale={scale}
+                image={image}
+                stageX={position.x}
+                stageY={position.y}
+                currentTool={currentTool}
+                onSelect={id => onSelect?.(id)}
+                onUpdate={updated => onAnnotationUpdate?.(updated)}
+              />
+            );
+          })}
 
           {/* 正在绘制的标注 */}
           <NewAnnotationLayer newRect={drawingRect} labelColor={labelColor} scale={scale} />

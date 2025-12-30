@@ -24,15 +24,28 @@ export function useTransformer(options: UseTransformerOptions): UseTransformerRe
   const transformerRef = useRef<Konva.Transformer>(null);
 
   useEffect(() => {
-    if (selectedId && transformerRef.current && stageRef.current) {
+    if (!transformerRef.current || !stageRef.current) {
+      return;
+    }
+
+    // 检查选中的标注是否在当前画布的标注列表中
+    const annotationExists = annotations.some(ann => ann.id === selectedId);
+    
+    if (selectedId && annotationExists) {
+      // 只有在当前画布中存在该标注时才附加 transformer
       const node = stageRef.current.findOne('#' + selectedId);
       if (node) {
         transformerRef.current.nodes([node]);
         transformerRef.current.getLayer()?.batchDraw();
+      } else {
+        // 如果找不到节点，清除 transformer
+        transformerRef.current.nodes([]);
+        transformerRef.current.getLayer()?.batchDraw();
       }
     } else {
-      transformerRef.current?.nodes([]);
-      transformerRef.current?.getLayer()?.batchDraw();
+      // 如果没有选中或标注不在当前画布，清除 transformer
+      transformerRef.current.nodes([]);
+      transformerRef.current.getLayer()?.batchDraw();
     }
   }, [selectedId, annotations, stageRef]);
 

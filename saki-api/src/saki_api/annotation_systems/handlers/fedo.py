@@ -316,7 +316,7 @@ class FedoHandler(AnnotationSystemHandler):
                 "id": generated_id,
                 "label_id": label_id,
                 "type": AnnotationType.OBB.value,
-                "source": AnnotationSource.AUTO.value,
+                "source": AnnotationSource.FEDO_MAPPING.value,
                 "data": {
                     "x": data.get('x', 0) * 0.8,
                     "y": data.get('y', 0) * 0.6,

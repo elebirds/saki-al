@@ -203,9 +203,21 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   const handleSubmit = useCallback(async () => {
     if (!currentSample) return;
     try {
+      // 对于 OBB 类型，将起始点转换为中心点（后端期望中心点坐标）
+      const annsToSave = annotationState.annotations.map(ann => {
+        if (ann.type === 'obb' && ann.data) {
+          const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
+          return {
+            ...ann,
+            data: originToCenter(bboxData)
+          };
+        }
+        return ann;
+      });
+      
       await api.saveAnnotations(
         currentSample.id,
-        annotationState.annotations,
+        annsToSave,
         'labeled'
       );
       message.success(t('annotation.saved') || 'Saved');

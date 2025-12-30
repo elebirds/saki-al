@@ -731,16 +731,41 @@ const FedoAnnotationWorkspace: React.FC = () => {
       // 添加主标注，确保使用正确的 view 信息
       annotationState.annotations.forEach(dual => {
         const anns = dualToAnnotations(dual);
-        // 从 annotationViews 中获取正确的 view 信息
-        anns.forEach(ann => {
+        // 从 annotationViews 中获取正确的 view 信息，并转换坐标
+        const convertedAnns = anns.map(ann => {
           const view = annotationViews.get(ann.id) || VIEW_TIME_ENERGY;
-          ann.extra = { ...ann.extra, view };
+          
+          // 对于 OBB 类型，将起始点转换为中心点（后端期望中心点坐标）
+          if (ann.type === 'obb' && ann.data) {
+            const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
+            return {
+              ...ann,
+              extra: { ...ann.extra, view },
+              data: originToCenter(bboxData)
+            };
+          }
+          
+          return {
+            ...ann,
+            extra: { ...ann.extra, view }
+          };
         });
-        annsToSave.push(...anns);
+        annsToSave.push(...convertedAnns);
       });
       
-      // 添加生成的标注
-      annsToSave.push(...generatedAnnotations);
+      // 添加生成的标注，也需要转换为中心点
+      generatedAnnotations.forEach(ann => {
+        // 对于 OBB 类型，将起始点转换为中心点（后端期望中心点坐标）
+        if (ann.type === 'obb' && ann.data) {
+          const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
+          annsToSave.push({
+            ...ann,
+            data: originToCenter(bboxData)
+          });
+        } else {
+          annsToSave.push(ann);
+        }
+      });
       
       await api.saveAnnotations(currentSample.id, annsToSave, 'labeled');
       message.success(t('annotation.saved') || 'Saved');

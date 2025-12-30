@@ -1,6 +1,10 @@
 """
-Lookup table generation for coordinate mapping.
-Pre-computes (L, ωd) values for each data index (i, j).
+高效的 LUT 查找表生成模块，使用 NumPy 矢量化实现。
+生成两个独立的像素坐标矩阵用于双视图标注系统。
+
+核心数据结构：
+- lut_te: (N, M, 2) float32 数组，存储 T-E 图的 [x_pixel, y_pixel]
+- lut_lw: (N, M, 2) float32 数组，存储 L-Wd 图的 [x_pixel, y_pixel]
 """
 
 import os
@@ -8,145 +12,293 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional, Tuple
 
 import numpy as np
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 
 @dataclass
 class LookupTable:
     """
-    Pre-computed lookup table for bidirectional coordinate mapping.
+    像素坐标查找表。
     
-    For each index (i, j) in the N x M data matrix:
-    - L[i]: L-shell value (same for all j at time i)
-    - Wd[i, j]: Drift frequency value
-    
-    This enables fast conversion between:
-    - Screen pixels → Data indices (i, j)
-    - Data indices (i, j) → Physical coordinates (L, ωd)
+    只存储两个核心矩阵，用于从数据索引 (i, j) 直接映射到像素坐标。
     """
-    n_time: int  # N - number of time points
-    n_energy: int  # M - number of energy channels
-    L: np.ndarray  # (N,) L-shell values
-    Wd: np.ndarray  # (N, M) drift frequency matrix
-    E: np.ndarray  # (M,) energy centers in keV
-    time_stamps: np.ndarray  # (N,) datetime values as int64 (nanoseconds since epoch)
-
-    # Physical bounds for normalization
-    L_min: float
-    L_max: float
-    Wd_min: float
-    Wd_max: float
+    n_time: int  # N - 时间点数
+    n_energy: int  # M - 能量通道数
+    lut_te: np.ndarray  # (N, M, 2) T-E 图像素坐标 [x, y]
+    lut_lw: np.ndarray  # (N, M, 2) L-Wd 图像素坐标 [x, y]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+        """转换为字典用于 JSON 序列化。"""
         return {
             'n_time': self.n_time,
             'n_energy': self.n_energy,
-            'L': self.L.tolist(),
-            'Wd': self.Wd.tolist(),
-            'E': self.E.tolist(),
-            'time_stamps': self.time_stamps.tolist(),
-            'L_min': self.L_min,
-            'L_max': self.L_max,
-            'Wd_min': self.Wd_min,
-            'Wd_max': self.Wd_max,
+            'lut_te': self.lut_te.tolist(),
+            'lut_lw': self.lut_lw.tolist(),
         }
 
     def to_binary(self) -> bytes:
         """
-        Convert to compact binary format for efficient frontend transfer.
-        Format:
-        - Header: n_time (4B), n_energy (4B), L_min (8B), L_max (8B), Wd_min (8B), Wd_max (8B)
-        - L array: float32 (N * 4B)
-        - Wd matrix: float32 (N * M * 4B)
-        - E array: float32 (M * 4B)
+        转换为紧凑二进制格式用于高效传输。
+        格式：
+        - Header: n_time (4B), n_energy (4B)
+        - lut_te: float32 (N * M * 2 * 4B)
+        - lut_lw: float32 (N * M * 2 * 4B)
         """
         import struct
 
         header = struct.pack(
-            '<II4d',  # 2 uint32 + 4 float64
+            '<II',  # 2 uint32
             self.n_time,
             self.n_energy,
-            self.L_min,
-            self.L_max,
-            self.Wd_min,
-            self.Wd_max,
         )
 
-        L_bytes = self.L.astype(np.float32).tobytes()
-        Wd_bytes = self.Wd.astype(np.float32).tobytes()
-        E_bytes = self.E.astype(np.float32).tobytes()
+        lut_te_bytes = self.lut_te.tobytes()
+        lut_lw_bytes = self.lut_lw.tobytes()
 
-        return header + L_bytes + Wd_bytes + E_bytes
+        return header + lut_te_bytes + lut_lw_bytes
 
     @classmethod
     def from_binary(cls, data: bytes) -> 'LookupTable':
-        """Reconstruct lookup table from binary data."""
+        """从二进制数据重构查找表。"""
         import struct
 
-        header_size = 2 * 4 + 4 * 8  # 2 uint32 + 4 float64
-        n_time, n_energy, L_min, L_max, Wd_min, Wd_max = struct.unpack(
-            '<II4d', data[:header_size]
-        )
+        n_time, n_energy = struct.unpack('<II', data[:8])
+        offset = 8
 
-        offset = header_size
-        L = np.frombuffer(data[offset:offset + n_time * 4], dtype=np.float32)
-        offset += n_time * 4
+        lut_te_size = n_time * n_energy * 2 * 4  # float32 = 4 bytes
+        lut_te = np.frombuffer(data[offset:offset + lut_te_size], dtype=np.float32)
+        lut_te = lut_te.reshape(n_time, n_energy, 2)
+        offset += lut_te_size
 
-        Wd = np.frombuffer(data[offset:offset + n_time * n_energy * 4], dtype=np.float32)
-        Wd = Wd.reshape(n_time, n_energy)
-        offset += n_time * n_energy * 4
-
-        E = np.frombuffer(data[offset:offset + n_energy * 4], dtype=np.float32)
+        lut_lw_size = n_time * n_energy * 2 * 4
+        lut_lw = np.frombuffer(data[offset:offset + lut_lw_size], dtype=np.float32)
+        lut_lw = lut_lw.reshape(n_time, n_energy, 2)
 
         return cls(
             n_time=n_time,
             n_energy=n_energy,
-            L=L.astype(np.float64),
-            Wd=Wd.astype(np.float64),
-            E=E.astype(np.float64),
-            time_stamps=np.array([]),  # Not stored in binary
-            L_min=L_min,
-            L_max=L_max,
-            Wd_min=Wd_min,
-            Wd_max=Wd_max,
+            lut_te=lut_te,
+            lut_lw=lut_lw,
         )
 
 
-def generate_lookup_table(
-        data: Dict[str, Any],
-        output_path: Optional[str] = None
-) -> LookupTable:
+def generate_pixel_lut(
+    data: Dict[str, Any],
+    image_width: float,
+    image_height: float,
+    l_xlim: Optional[Tuple[float, float]] = None,
+    wd_ylim: Optional[Tuple[float, float]] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Generate pre-computed lookup table for coordinate mapping.
+    使用 NumPy 矢量化生成像素坐标查找表。
+    
+    此函数完全使用广播和矢量化操作，无任何 Python 循环。
+    目标是在 10ms 内完成 2700 × 140 规模的计算。
     
     Args:
-        data: Physics data dictionary from calculate_physics_data
-        output_path: Optional path to save as parquet file
+        data: 物理数据字典，包含：
+            - L: (N,) L-shell 值
+            - E: (M,) 能量中心值（keV）
+            - Wd: (N, M) 漂移频率矩阵
+        image_width: 图像宽度（像素）
+        image_height: 图像高度（像素）
+        l_xlim: L-shell 轴范围 [L_min, L_max]（用于 L-Wd 图）
+        wd_ylim: 漂移频率轴范围 [Wd_min, Wd_max]（用于 L-Wd 图）
         
     Returns:
-        LookupTable object
+        Tuple of (lut_te, lut_lw):
+            - lut_te: (N, M, 2) float32 数组，存储 [x_pixel, y_pixel] for T-E 图
+            - lut_lw: (N, M, 2) float32 数组，存储 [x_pixel, y_pixel] for L-Wd 图
     """
-    L = data['L']
-    Wd = data['Wd']
-    E = data['E']
-    time_vals = data['time']
+    # 提取数据维度
+    L = np.asarray(data['L'], dtype=np.float64)  # (N,)
+    E = np.asarray(data['E'], dtype=np.float64)  # (M,)
+    Wd = np.asarray(data['Wd'], dtype=np.float64)  # (N, M)
+    
+    N = L.shape[0]  # 时间采样点数
+    M = E.shape[0]  # 能量通道数
+    
+    # 初始化输出数组 (N, M, 2)
+    lut_te = np.zeros((N, M, 2), dtype=np.float32)
+    lut_lw = np.zeros((N, M, 2), dtype=np.float32)
+    
+    # ============================================
+    # T-E 图 (Plot A): 时间 vs 能量
+    # ============================================
+    # X 轴：时间（线性映射）
+    # 时间索引 i ∈ [0, N-1] → 像素 x ∈ [0, width]
+    # 使用广播：从 (N,) 扩展到 (N, M)
+    time_indices = np.arange(N, dtype=np.float64)  # (N,)
+    if N > 1:
+        # 线性归一化：i / (N-1) → [0, 1]
+        x_norm_te = time_indices[:, np.newaxis] / (N - 1)  # (N, 1) 广播到 (N, M)
+    else:
+        x_norm_te = np.zeros((N, 1), dtype=np.float64)
+    x_pixel_te = x_norm_te * image_width  # (N, M)
+    
+    # Y 轴：能量（对数 log10 映射）
+    # 能量 E ∈ [E_min, E_max] → log10(E) ∈ [log10(E_min), log10(E_max)] → 像素 y
+    # 注意：需要翻转 Y 坐标（图像原点在左上角，物理绘图原点在左下角）
+    E_valid = E[(E > 0) & np.isfinite(E)]  # 只考虑有效的正能量值
+    if len(E_valid) > 0:
+        E_min = np.min(E_valid)
+        E_max = np.max(E_valid)
+    else:
+        # 如果没有有效值，使用默认范围
+        E_min = 1.0
+        E_max = 1000.0
+    
+    # 确保 E_min > 0 且有效，E_max > E_min
+    if not np.isfinite(E_min) or E_min <= 0:
+        E_min = 1.0
+    if not np.isfinite(E_max) or E_max <= E_min:
+        E_max = E_min * 10.0  # 默认范围
+    
+    log_E_min = np.log10(E_min)
+    log_E_max = np.log10(E_max)
+    log_E_range = log_E_max - log_E_min
+    
+    # 计算 log10(E)，处理无效值和边界
+    # E 是 (M,) 数组，需要广播到 (N, M)
+    E_broadcast = E[np.newaxis, :]  # (1, M) 广播到 (N, M)
+    
+    # 安全地计算 log10，避免 inf/NaN
+    E_clipped = np.clip(E_broadcast, E_min, E_max)  # (N, M)
+    log_E = np.log10(E_clipped)  # (N, M)
+    
+    # 替换任何 inf/NaN 为边界值
+    log_E = np.where(np.isfinite(log_E), log_E, log_E_min)
+    
+    # 归一化到 [0, 1]：y_norm = 1 - (log_E - log_E_min) / range
+    # 翻转：y=0（顶部，最大能量）→ y_norm=0, y=height（底部，最小能量）→ y_norm=1
+    if log_E_range > 0:
+        y_norm_te = 1.0 - (log_E - log_E_min) / log_E_range  # (N, M)
+    else:
+        y_norm_te = np.full((N, M), 0.5, dtype=np.float64)
+    
+    y_norm_te = np.clip(y_norm_te, 0.0, 1.0)
+    y_pixel_te_physical = y_norm_te * image_height  # (N, M) 物理坐标（原点在左下）
+    
+    # Y 坐标翻转：Py_pixel = Height - Py_physical
+    y_pixel_te = image_height - y_pixel_te_physical  # (N, M)
+    
+    # 组装 lut_te: (N, M, 2)
+    lut_te[:, :, 0] = x_pixel_te.astype(np.float32)
+    lut_te[:, :, 1] = y_pixel_te.astype(np.float32)
+    
+    # ============================================
+    # L-Wd 图 (Plot B): L-shell vs 漂移频率
+    # ============================================
+    # X 轴：L（线性映射）
+    # L ∈ [L_min, L_max] → 像素 x ∈ [0, width]
+    if l_xlim is not None:
+        L_min_plot, L_max_plot = l_xlim
+    else:
+        L_min_plot = np.nanmin(L)
+        L_max_plot = np.nanmax(L)
+        if not np.isfinite(L_min_plot) or not np.isfinite(L_max_plot):
+            L_min_plot, L_max_plot = 1.0, 2.0  # 默认范围
+    
+    L_range = L_max_plot - L_min_plot
+    
+    # L 是 (N,) 数组，需要广播到 (N, M)
+    L_broadcast = L[:, np.newaxis]  # (N, 1) 广播到 (N, M)
+    L_clipped = np.clip(L_broadcast, L_min_plot, L_max_plot)
+    
+    # 归一化：x_norm = (L - L_min) / range
+    if L_range > 0:
+        x_norm_lw = (L_clipped - L_min_plot) / L_range  # (N, M)
+    else:
+        x_norm_lw = np.full((N, M), 0.5, dtype=np.float64)
+    
+    x_norm_lw = np.clip(x_norm_lw, 0.0, 1.0)
+    x_pixel_lw = x_norm_lw * image_width  # (N, M)
+    
+    # Y 轴：Wd（线性映射）
+    # Wd ∈ [Wd_min, Wd_max] → 像素 y ∈ [0, height]
+    if wd_ylim is not None:
+        Wd_min_plot, Wd_max_plot = wd_ylim
+    else:
+        Wd_min_plot = np.nanmin(Wd)
+        Wd_max_plot = np.nanmax(Wd)
+        if not np.isfinite(Wd_min_plot) or not np.isfinite(Wd_max_plot):
+            Wd_min_plot, Wd_max_plot = 0.0, 4.0  # 默认范围
+    
+    Wd_range = Wd_max_plot - Wd_min_plot
+    
+    # Wd 已经是 (N, M) 矩阵
+    Wd_clipped = np.clip(Wd, Wd_min_plot, Wd_max_plot)
+    
+    # 替换任何 inf/NaN
+    Wd_clipped = np.where(np.isfinite(Wd_clipped), Wd_clipped, Wd_min_plot)
+    
+    # 归一化：y_norm = 1 - (Wd - Wd_min) / range（翻转）
+    if Wd_range > 0:
+        y_norm_lw = 1.0 - (Wd_clipped - Wd_min_plot) / Wd_range  # (N, M)
+    else:
+        y_norm_lw = np.full((N, M), 0.5, dtype=np.float64)
+    
+    y_norm_lw = np.clip(y_norm_lw, 0.0, 1.0)
+    y_pixel_lw_physical = y_norm_lw * image_height  # (N, M) 物理坐标
+    
+    # Y 坐标翻转：Py_pixel = Height - Py_physical
+    y_pixel_lw = image_height - y_pixel_lw_physical  # (N, M)
+    
+    # 组装 lut_lw: (N, M, 2)
+    lut_lw[:, :, 0] = x_pixel_lw.astype(np.float32)
+    lut_lw[:, :, 1] = y_pixel_lw.astype(np.float32)
+    
+    return lut_te, lut_lw
 
-    # Convert datetime to int64 nanoseconds
-    time_stamps = time_vals.astype('datetime64[ns]').astype(np.int64)
+
+def generate_lookup_table(
+    data: Dict[str, Any],
+    output_path: Optional[str] = None,
+    image_width: Optional[float] = None,
+    image_height: Optional[float] = None,
+    l_xlim: Optional[Tuple[float, float]] = None,
+    wd_ylim: Optional[Tuple[float, float]] = None,
+) -> LookupTable:
+    """
+    生成像素坐标查找表。
+    
+    Args:
+        data: 来自 calculate_physics_data 的物理数据字典
+        output_path: 保存为文件的路径（可选，使用 .npz 格式）
+        image_width: 图像宽度（像素）。如果未提供，将根据默认配置计算
+        image_height: 图像高度（像素）。如果未提供，将根据默认配置计算
+        l_xlim: L-shell 轴范围 [L_min, L_max]（可选）
+        wd_ylim: 漂移频率轴范围 [Wd_min, Wd_max]（可选）
+        
+    Returns:
+        LookupTable 对象，只包含两个 LUT 矩阵
+    """
+    N = len(data['L'])
+    M = len(data['E'])
+    
+    # 计算图像尺寸（如果未提供）
+    if image_width is None or image_height is None:
+        # 默认配置：figsize=(6, 4) 英寸, dpi=200
+        default_figsize = (6.0, 4.0)
+        default_dpi = 200
+        if image_width is None:
+            image_width = default_figsize[0] * default_dpi
+        if image_height is None:
+            image_height = default_figsize[1] * default_dpi
+    
+    # 生成像素坐标查找表（矢量化实现）
+    lut_te, lut_lw = generate_pixel_lut(
+        data,
+        image_width=image_width,
+        image_height=image_height,
+        l_xlim=l_xlim,
+        wd_ylim=wd_ylim,
+    )
 
     lookup = LookupTable(
-        n_time=len(L),
-        n_energy=len(E),
-        L=L,
-        Wd=Wd,
-        E=E,
-        time_stamps=time_stamps,
-        L_min=float(np.nanmin(L)),
-        L_max=float(np.nanmax(L)),
-        Wd_min=float(np.nanmin(Wd)),
-        Wd_max=float(np.nanmax(Wd)),
+        n_time=N,
+        n_energy=M,
+        lut_te=lut_te,
+        lut_lw=lut_lw,
     )
 
     if output_path:
@@ -156,87 +308,66 @@ def generate_lookup_table(
 
 
 def save_lookup_table(lookup: LookupTable, output_path: str) -> None:
-    """Save lookup table to parquet file."""
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    # PyArrow tables require all columns to have the same length.
-    # We store arrays of different lengths by padding with NaN.
-    n_time = lookup.n_time
-    n_energy = lookup.n_energy
-    max_len = max(n_time, n_energy, n_time * n_energy)
-
-    # Pad arrays to max_len
-    def pad_array(arr, target_len, dtype=np.float64):
-        padded = np.full(target_len, np.nan, dtype=dtype)
-        padded[:len(arr)] = arr
-        return padded
-
-    # Convert time_stamps (int64) separately - use 0 for padding
-    time_stamps_padded = np.zeros(max_len, dtype=np.int64)
-    time_stamps_padded[:n_time] = lookup.time_stamps
-
-    table = pa.table({
-        'L': pad_array(lookup.L, max_len),
-        'E': pad_array(lookup.E, max_len),
-        'time_stamps': time_stamps_padded,
-        'Wd_flat': pad_array(lookup.Wd.flatten(), max_len),
-        'n_time': np.array([lookup.n_time] + [0] * (max_len - 1), dtype=np.int32),
-        'n_energy': np.array([lookup.n_energy] + [0] * (max_len - 1), dtype=np.int32),
-        'L_min': pad_array(np.array([lookup.L_min]), max_len),
-        'L_max': pad_array(np.array([lookup.L_max]), max_len),
-        'Wd_min': pad_array(np.array([lookup.Wd_min]), max_len),
-        'Wd_max': pad_array(np.array([lookup.Wd_max]), max_len),
-    })
-
-    pq.write_table(table, output_path, compression='snappy')
-
-
-def load_lookup_table(file_path: str) -> LookupTable:
-    """Load lookup table from parquet file."""
-    table = pq.read_table(file_path)
-
-    n_time = table['n_time'][0].as_py()
-    n_energy = table['n_energy'][0].as_py()
-
-    Wd_flat = table['Wd_flat'].to_numpy()
-    Wd = Wd_flat[:n_time * n_energy].reshape(n_time, n_energy)
-
-    return LookupTable(
-        n_time=n_time,
-        n_energy=n_energy,
-        L=table['L'].to_numpy()[:n_time],
-        Wd=Wd,
-        E=table['E'].to_numpy()[:n_energy],
-        time_stamps=table['time_stamps'].to_numpy()[:n_time],
-        L_min=table['L_min'][0].as_py(),
-        L_max=table['L_max'][0].as_py(),
-        Wd_min=table['Wd_min'][0].as_py(),
-        Wd_max=table['Wd_max'][0].as_py(),
+    """
+    保存查找表到文件。
+    
+    使用 .npz 格式（NumPy 压缩数组格式）以高效存储两个矩阵。
+    """
+    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
+    
+    # 确保使用 .npz 格式
+    if not output_path.endswith('.npz'):
+        output_path = output_path + '.npz'
+    
+    np.savez_compressed(
+        output_path,
+        n_time=lookup.n_time,
+        n_energy=lookup.n_energy,
+        lut_te=lookup.lut_te,
+        lut_lw=lookup.lut_lw,
     )
 
 
-def indices_to_physical(
-        lookup: LookupTable,
-        indices: np.ndarray  # (K, 2) array of (i, j) pairs
-) -> Tuple[np.ndarray, np.ndarray]:
+def load_lookup_table(file_path: str) -> LookupTable:
     """
-    Convert data indices to physical coordinates.
+    从文件加载查找表。
+    
+    只支持 .npz 格式。
+    """
+    if not file_path.endswith('.npz'):
+        raise ValueError(f"查找表文件必须是 .npz 格式: {file_path}")
+    
+    data = np.load(file_path)
+    return LookupTable(
+        n_time=int(data['n_time']),
+        n_energy=int(data['n_energy']),
+        lut_te=data['lut_te'],
+        lut_lw=data['lut_lw'],
+    )
+
+
+def get_pixel_coordinates(
+    lookup: LookupTable,
+    indices: np.ndarray,
+    view: str = 'te'
+) -> np.ndarray:
+    """
+    从数据索引获取像素坐标。
     
     Args:
-        lookup: LookupTable object
-        indices: Array of (time_idx, energy_idx) pairs
+        lookup: LookupTable 对象
+        indices: (K, 2) 数组，存储 (time_idx, energy_idx) 对
+        view: 视图类型，'te' 或 'lw'
         
     Returns:
-        Tuple of (L_values, Wd_values) arrays
+        (K, 2) 数组，存储 [x_pixel, y_pixel]
     """
-    i = indices[:, 0].astype(int)
-    j = indices[:, 1].astype(int)
-
-    # Clamp to valid range
-    i = np.clip(i, 0, lookup.n_time - 1)
-    j = np.clip(j, 0, lookup.n_energy - 1)
-
-    L_values = lookup.L[i]
-    Wd_values = lookup.Wd[i, j]
-
-    return L_values, Wd_values
+    i = np.clip(indices[:, 0].astype(int), 0, lookup.n_time - 1)
+    j = np.clip(indices[:, 1].astype(int), 0, lookup.n_energy - 1)
+    
+    if view == 'te':
+        return lookup.lut_te[i, j, :]  # (K, 2)
+    elif view == 'lw':
+        return lookup.lut_lw[i, j, :]  # (K, 2)
+    else:
+        raise ValueError(f"未知视图类型: {view}。必须是 'te' 或 'lw'")

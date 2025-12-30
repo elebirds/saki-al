@@ -7,8 +7,7 @@ import os
 import uuid
 from typing import Dict, Any, Tuple, Optional
 
-import pyarrow as pa
-import pyarrow.parquet as pq
+import numpy as np
 
 from .lookup import generate_lookup_table
 from .parser import load_fedo_data
@@ -23,7 +22,7 @@ class FedoProcessor:
     Handles the complete pipeline:
     1. Parse raw text file
     2. Calculate physics (L, ωd)
-    3. Save processed data as parquet
+    3. Save processed data as npz
     4. Generate visualization images
     5. Generate coordinate lookup table
     """
@@ -58,10 +57,10 @@ class FedoProcessor:
         Returns:
             Dictionary with paths and metadata:
             - sample_id: Unique identifier
-            - parquet_path: Path to processed data
+            - data_path: Path to processed data (npz)
             - time_energy_image_path: Path to Time-Energy view
             - l_wd_image_path: Path to L-ωd view
-            - lookup_table_path: Path to lookup table
+            - lookup_table_path: Path to lookup table (npz)
             - metadata: Data dimensions and bounds
         """
         if sample_id is None:
@@ -77,12 +76,17 @@ class FedoProcessor:
         # Step 2: Calculate physics
         data = calculate_physics_data(df, e_centers, e_cols)
 
-        # Step 3: Save processed data as parquet
-        parquet_path = os.path.join(output_dir, "data.parquet")
-        self._save_parquet(data, parquet_path)
+        # Step 3: Save processed data as npz
+        data_path = os.path.join(output_dir, "data.npz")
+        self._save_data_npz(data, data_path)
 
         # Step 4: Generate images
         base_name = "view"
+        # 获取图像尺寸（与 visualizer 中的默认值一致）
+        figsize = (6.0, 4.0)  # 默认图像尺寸（英寸）
+        image_width = figsize[0] * dpi
+        image_height = figsize[1] * dpi
+        
         te_path, lwd_path = generate_views(
             data, output_dir, base_name,
             dpi=dpi,
@@ -90,21 +94,28 @@ class FedoProcessor:
             wd_ylim=wd_ylim,
         )
 
-        # Step 5: Generate lookup table
-        lookup_path = os.path.join(output_dir, "lookup.parquet")
-        lookup = generate_lookup_table(data, lookup_path)
+        # Step 5: Generate lookup table (使用新的高效矢量化实现)
+        lookup_path = os.path.join(output_dir, "lookup.npz")
+        lookup = generate_lookup_table(
+            data,
+            lookup_path,
+            image_width=image_width,
+            image_height=image_height,
+            l_xlim=l_xlim,
+            wd_ylim=wd_ylim,
+        )
 
         return {
             'sample_id': sample_id,
-            'parquet_path': parquet_path,
+            'data_path': data_path,
             'time_energy_image_path': te_path,
             'l_wd_image_path': lwd_path,
             'lookup_table_path': lookup_path,
             'metadata': {
                 'n_time': lookup.n_time,
                 'n_energy': lookup.n_energy,
-                'L_range': [lookup.L_min, lookup.L_max],
-                'Wd_range': [lookup.Wd_min, lookup.Wd_max],
+                'L_range': [float(np.nanmin(data['L'])), float(np.nanmax(data['L']))],
+                'Wd_range': [float(np.nanmin(data['Wd'])), float(np.nanmax(data['Wd']))],
                 'visualization_config': {
                     'dpi': dpi,
                     'l_xlim': l_xlim,
@@ -113,23 +124,20 @@ class FedoProcessor:
             }
         }
 
-    def _save_parquet(self, data: Dict[str, Any], output_path: str) -> None:
-        """Save physics data to parquet file."""
+    def _save_data_npz(self, data: Dict[str, Any], output_path: str) -> None:
+        """Save physics data to npz file."""
         # Convert datetime to int64 for storage
         time_ns = data['time'].astype('datetime64[ns]').astype('int64')
-
-        # Create table with essential data
-        table = pa.table({
-            'time_ns': time_ns,
-            'L': data['L'],
-        })
-
-        # Add flux columns
-        for j, e in enumerate(data['E']):
-            table = table.append_column(f'flux_{j}', pa.array(data['Flux'][:, j]))
-            table = table.append_column(f'wd_{j}', pa.array(data['Wd'][:, j]))
-
-        pq.write_table(table, output_path, compression='snappy')
+        
+        # Save all data arrays to npz
+        np.savez_compressed(
+            output_path,
+            time_ns=time_ns,
+            L=data['L'],
+            E=data['E'],
+            Flux=data['Flux'],
+            Wd=data['Wd'],
+        )
 
     def get_lookup_binary(self, sample_id: str) -> bytes:
         """
@@ -143,6 +151,6 @@ class FedoProcessor:
         """
         from .lookup import load_lookup_table
 
-        lookup_path = os.path.join(self.base_storage_path, sample_id, "lookup.parquet")
+        lookup_path = os.path.join(self.base_storage_path, sample_id, "lookup.npz")
         lookup = load_lookup_table(lookup_path)
         return lookup.to_binary()

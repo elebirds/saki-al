@@ -163,8 +163,8 @@ class FedoHandler(AnnotationSystemHandler):
                         'original_filename': filename,
                         'time_energy_image_url': f"{base_url}/view_time_energy.png",
                         'l_wd_image_url': f"{base_url}/view_l_wd.png",
-                        'lookup_table_url': f"{base_url}/lookup.parquet",
-                        'parquet_url': f"{base_url}/data.parquet",
+                        'lookup_table_url': f"{base_url}/lookup.npz",
+                        'data_url': f"{base_url}/data.npz",
                         **result['metadata'],
                     },
                 },
@@ -335,11 +335,15 @@ class FedoHandler(AnnotationSystemHandler):
                 return None
             
             # Convert URL to file path
-            # URL format: /static/{dataset_id}/processed/{sample_id}/lookup.parquet
+            # URL format: /static/{dataset_id}/processed/{sample_id}/lookup.npz
             # Need to resolve to actual file path
             # Assuming UPLOAD_DIR is configured in settings
             from saki_api.core.config import settings
             lookup_path = os.path.join(settings.UPLOAD_DIR, lookup_url.lstrip('/static/'))
+            
+            # Ensure .npz extension
+            if not lookup_path.endswith('.npz'):
+                lookup_path = lookup_path.replace('.parquet', '.npz').replace('.npy', '.npz') + '.npz'
             
             if not os.path.exists(lookup_path):
                 self.logger.error(f"Lookup table not found: {lookup_path}")

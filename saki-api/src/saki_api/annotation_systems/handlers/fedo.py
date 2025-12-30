@@ -244,15 +244,59 @@ class FedoHandler(AnnotationSystemHandler):
         
         If geometry changed, linked annotations need to be regenerated.
         """
-        # If data changed, regenerated annotations should replace old ones
-        regenerate = data is not None
+        # If data is None, no geometry change, no need to regenerate
+        if data is None:
+            return SyncResult(
+                success=True,
+                annotation_id=annotation_id,
+                action="update",
+                generated=[],
+            )
+        
+        # Get the view from extra
+        view = extra.get('view') if extra else None
+        if view not in (VIEW_TIME_ENERGY, VIEW_L_OMEGAD):
+            # Default to time-energy if view is not provided
+            view = VIEW_TIME_ENERGY
+        
+        # Determine target view
+        target_view = VIEW_L_OMEGAD if view == VIEW_TIME_ENERGY else VIEW_TIME_ENERGY
+        
+        # For update, we need label_id and ann_type to regenerate annotations
+        # If not provided, we cannot regenerate, so return signal
+        if not label_id or not ann_type:
+            self.logger.warning(
+                f"FEDO annotation update: {annotation_id} missing label_id or ann_type, "
+                f"cannot regenerate mapped annotations"
+            )
+            return SyncResult(
+                success=True,
+                annotation_id=annotation_id,
+                action="update",
+                generated=[{"_action": "regenerate_children"}],  # Signal frontend to handle
+            )
+        
+        # Generate mapped annotations (same logic as create)
+        generated = self._generate_mapped_annotations(
+            parent_id=annotation_id,
+            label_id=label_id,
+            ann_type=ann_type,
+            source_view=view,
+            target_view=target_view,
+            data=data,
+            context=context,
+        )
+        
+        self.logger.info(
+            f"FEDO annotation updated: {annotation_id} in {view}, "
+            f"regenerated {len(generated)} mapped annotations in {target_view}"
+        )
         
         return SyncResult(
             success=True,
             annotation_id=annotation_id,
             action="update",
-            # Extra info for frontend to know regeneration is needed
-            generated=[{"_action": "regenerate_children"}] if regenerate else [],
+            generated=generated,
         )
 
     def on_annotation_delete(

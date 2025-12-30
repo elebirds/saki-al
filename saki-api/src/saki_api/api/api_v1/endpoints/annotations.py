@@ -223,10 +223,31 @@ def sync_annotations(
             ))
         
         elif action.action == "update":
+            # For update, if label_id or type is missing, try to get from existing annotation
+            update_label_id = action.label_id
+            update_ann_type = ann_type if action.type else None
+            
+            if not update_label_id or not update_ann_type:
+                # Try to get from existing annotation in database
+                existing_ann = session.get(Annotation, action.annotation_id)
+                if existing_ann:
+                    if not update_label_id:
+                        update_label_id = existing_ann.label_id
+                    if not update_ann_type:
+                        update_ann_type = existing_ann.type
+                    # Also merge extra data if not provided
+                    if not action.extra and existing_ann.extra:
+                        action.extra = existing_ann.extra.copy()
+                    elif action.extra and existing_ann.extra:
+                        # Merge extra data, with action.extra taking precedence
+                        merged_extra = existing_ann.extra.copy()
+                        merged_extra.update(action.extra)
+                        action.extra = merged_extra
+            
             result = handler.on_annotation_update(
                 annotation_id=action.annotation_id,
-                label_id=action.label_id,
-                ann_type=ann_type if action.type else None,
+                label_id=update_label_id,
+                ann_type=update_ann_type,
                 data=action.data,
                 extra=action.extra,
                 context=context,

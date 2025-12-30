@@ -574,28 +574,54 @@ const FedoAnnotationWorkspace: React.FC = () => {
         const generatedAnnotations: Annotation[] = [];
         
         if (syncResult?.generated) {
-          regions = generatedToRegions(syncResult.generated);
-          
-          // 将生成的标注转换为 Annotation 格式
-          const generated = generatedToAnnotations(
-            syncResult.generated,
-            updatedAnn.id,
-            updatedAnn.labelId,
-            updatedAnn.labelName || 'unknown',
-            updatedAnn.labelColor || '#ff0000'
+          // 过滤掉 regenerate_children 信号，只处理实际的生成标注
+          const actualGenerated = syncResult.generated.filter(
+            (gen: any) => !gen._action || gen._action !== 'regenerate_children'
           );
-          generatedAnnotations.push(...generated);
           
-          // 更新生成的标注：删除旧的，添加新的
-          setGeneratedAnnotations(prev => {
-            // 删除该 parent_id 对应的旧生成标注
-            const filtered = prev.filter(ann => {
-              const parentId = ann.extra?.parent_id || ann.extra?.parentId;
-              return parentId !== updatedAnn.id;
+          if (actualGenerated.length > 0) {
+            regions = generatedToRegions(actualGenerated);
+            
+            // 将生成的标注转换为 Annotation 格式
+            const generated = generatedToAnnotations(
+              actualGenerated,
+              updatedAnn.id,
+              updatedAnn.labelId,
+              updatedAnn.labelName || 'unknown',
+              updatedAnn.labelColor || '#ff0000'
+            );
+            generatedAnnotations.push(...generated);
+            
+            // 更新生成的标注：删除旧的，添加新的
+            setGeneratedAnnotations(prev => {
+              // 删除该 parent_id 对应的旧生成标注
+              const filtered = prev.filter(ann => {
+                const parentId = ann.extra?.parent_id || ann.extra?.parentId;
+                return parentId !== updatedAnn.id;
+              });
+              // 添加新的生成标注
+              return [...filtered, ...generatedAnnotations];
             });
-            // 添加新的生成标注
-            return [...filtered, ...generatedAnnotations];
-          });
+            
+            // 如果当前选中的是主标注或其关联的生成标注，更新选中状态
+            // 保持主标注的选中状态，并更新关联的生成标注 ID
+            if (annotationState.selectedId === updatedAnn.id || 
+                selectedAnnotationIds.has(updatedAnn.id)) {
+              const newRelatedIds = new Set([updatedAnn.id]);
+              generatedAnnotations.forEach(genAnn => {
+                newRelatedIds.add(genAnn.id);
+              });
+              setSelectedAnnotationIds(newRelatedIds);
+            }
+          } else {
+            // 如果只有 regenerate_children 信号，删除旧的生成标注
+            setGeneratedAnnotations(prev => {
+              return prev.filter(ann => {
+                const parentId = ann.extra?.parent_id || ann.extra?.parentId;
+                return parentId !== updatedAnn.id;
+              });
+            });
+          }
         }
 
         const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, regions);

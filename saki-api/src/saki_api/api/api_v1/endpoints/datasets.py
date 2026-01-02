@@ -106,8 +106,8 @@ def create_dataset(
     Create a new dataset for data annotation.
     The current user will be set as the owner.
     """
-    db_dataset = Dataset.model_validate(dataset)
-    db_dataset.owner_id = current_user.id  # Set current user as owner
+    # Create Dataset instance with owner_id from current user
+    db_dataset = Dataset(**dataset.model_dump(), owner_id=current_user.id)
     session.add(db_dataset)
     session.commit()
     session.refresh(db_dataset)

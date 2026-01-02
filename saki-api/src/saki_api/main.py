@@ -1,11 +1,14 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import HTTPException
 
 from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
+from saki_api.core.exceptions import http_exception_handler, general_exception_handler
+from saki_api.core.middleware import ResponseWrapperMiddleware
 from saki_api.db.session import init_db
 
 app = FastAPI(
@@ -42,12 +45,26 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_headers=["*"],
     )
 
+# 添加响应包装中间件（在CORS之后，这样CORS头会被保留）
+app.add_middleware(ResponseWrapperMiddleware)
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# 注册全局异常处理器
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 
 @app.get("/")
 def root():
-    return {"message": "Welcome to Saki Active Learning API"}
+    from saki_api.core.response import success_response
+    return success_response(data={"message": "Welcome to Saki Active Learning API"})
+
+
+@app.get("/test-middleware")
+def test_middleware():
+    """测试中间件的端点 - 返回普通dict，应该被中间件包装"""
+    return {"test": "data", "message": "This should be wrapped by middleware"}
 
 # Import and include routers here later
 # from saki_api.api import api_router

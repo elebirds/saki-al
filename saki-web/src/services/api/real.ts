@@ -48,6 +48,85 @@ function convertKeysToSnake<T>(obj: unknown): T {
 }
 
 // ============================================================================
+// Error Handling Utilities
+// ============================================================================
+
+/**
+ * 统一提取错误消息的函数
+ * 支持多种错误响应格式：
+ * 1. 统一格式：{ success: false, message: "..." }
+ * 2. FastAPI默认格式：{ detail: "..." }（包括权限错误 403）
+ * 3. 其他格式：{ message: "..." } 或字符串
+ */
+function extractErrorMessage(error: any): string {
+  // 处理网络错误（没有响应的情况）
+  if (!error.response) {
+    if (error.code === 'ERR_NETWORK') {
+      return 'Network error. Please check your connection.';
+    }
+    // 没有响应但也不是网络错误，返回原始错误消息
+    return error.message || 'API Error';
+  }
+
+  // 尝试从响应数据中提取错误消息
+  if (error.response.data) {
+    // 如果响应体是字符串，直接返回
+    if (typeof error.response.data === 'string') {
+      return error.response.data;
+    }
+    
+    const data = convertKeysToCamel(error.response.data) as any;
+    
+    // 检查是否为统一格式的错误响应
+    if (data && typeof data === 'object' && 'success' in data && data.success === false) {
+      return data.message || 'API Error';
+    }
+    
+    // FastAPI 默认错误格式（包括权限错误 403）
+    if (data && typeof data === 'object' && 'detail' in data) {
+      const detail = data.detail;
+      // detail 可能是字符串或数组
+      if (Array.isArray(detail)) {
+        // 处理验证错误数组（Pydantic 验证错误）
+        const messages = detail.map((item: any) => {
+          if (typeof item === 'object' && item.msg) {
+            return `${item.loc?.join('.') || ''}: ${item.msg}`;
+          }
+          return String(item);
+        });
+        return messages.join('; ');
+      }
+      return String(detail);
+    }
+    
+    // 其他可能的错误消息字段
+    if (data && typeof data === 'object' && 'message' in data) {
+      return String(data.message);
+    }
+    
+    // 如果转换后的数据是字符串
+    if (typeof data === 'string') {
+      return data;
+    }
+  }
+
+  // 回退到错误对象的消息
+  return error.message || 'API Error';
+}
+
+/**
+ * 创建标准化的错误对象
+ */
+function createApiError(error: any): Error {
+  const message = extractErrorMessage(error);
+  const apiError = new Error(message);
+  // 保留原始错误信息以便调试
+  (apiError as any).originalError = error;
+  (apiError as any).statusCode = error.response?.status;
+  return apiError;
+}
+
+// ============================================================================
 // API Service Implementation
 // ============================================================================
 
@@ -96,28 +175,47 @@ export class RealApiService implements ApiService {
     // Response Interceptors
     // ========================================================================
     
-    // 1. Convert response data from snake_case to camelCase
+    // 1. Handle unified response format and convert snake_case to camelCase
     this.client.interceptors.response.use(
       (response) => {
         if (response.data) {
-          response.data = convertKeysToCamel(response.data);
+          // Convert snake_case to camelCase first
+          const convertedData = convertKeysToCamel(response.data);
+          
+          // Check if this is a unified response format (has success field)
+          if (convertedData && typeof convertedData === 'object' && 'success' in convertedData) {
+            // This is a unified response format
+            const unifiedData = convertedData as any;
+            if (unifiedData.success === false) {
+              // Error response in unified format - should not happen in success response
+              // but handle it gracefully
+              return Promise.reject(createApiError({ response: { data: unifiedData } }));
+            }
+            // Success response: extract data field
+            response.data = unifiedData.data;
+          } else {
+            // Not unified format, use converted data as-is
+            response.data = convertedData;
+          }
         }
         return response;
       },
       (error) => {
+        // Handle 401 Unauthorized - logout user
         if (error.response?.status === 401) {
           useAuthStore.getState().logout();
         }
         
-        // Check for network error
+        // Handle network errors - redirect to network error page
         if ((!error.response || error.code === 'ERR_NETWORK') && window.location.pathname !== '/network-error') {
           window.location.href = '/network-error';
           return new Promise(() => {});
         }
 
-        const message = error.response?.data?.detail || error.message || 'API Error';
-        console.error('API Request Failed:', message);
-        return Promise.reject(new Error(message));
+        // Extract and reject with standardized error
+        const apiError = createApiError(error);
+        // 不在这里输出日志，由全局错误处理器统一处理
+        return Promise.reject(apiError);
       }
     );
   }
@@ -347,7 +445,11 @@ export class RealApiService implements ApiService {
               };
             }
           } catch (e) {
-            console.error('Failed to parse SSE event:', e);
+            // 静默处理 SSE 解析错误，避免控制台噪音
+            // 如果需要调试，可以在开发环境下启用
+            if (import.meta.env.DEV) {
+              console.warn('Failed to parse SSE event:', e);
+            }
           }
         }
       }

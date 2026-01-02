@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse, DatasetMember, DatasetMemberCreate, DatasetMemberUpdate, GlobalRole } from '../../types';
 import { ApiService, UploadProgressCallback } from './interface';
 import { useAuthStore } from '../../store/authStore';
 
@@ -378,8 +378,27 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async deleteAnnotations(sampleId: string): Promise<{ deleted: number; sampleId: string }> {
-    const response = await this.client.delete(`/annotations/${sampleId}`);
+  // ==========================================================================
+  // Dataset Member APIs (for permission management)
+  // ==========================================================================
+
+  async getDatasetMembers(datasetId: string): Promise<DatasetMember[]> {
+    const response = await this.client.get<DatasetMember[]>(`/datasets/${datasetId}/members`);
+    return response.data;
+  }
+
+  async addDatasetMember(datasetId: string, member: DatasetMemberCreate): Promise<DatasetMember> {
+    const response = await this.client.post<DatasetMember>(`/datasets/${datasetId}/members`, member);
+    return response.data;
+  }
+
+  async updateDatasetMemberRole(datasetId: string, userId: string, memberUpdate: DatasetMemberUpdate): Promise<DatasetMember> {
+    const response = await this.client.put<DatasetMember>(`/datasets/${datasetId}/members/${userId}`, memberUpdate);
+    return response.data;
+  }
+
+  async removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.client.delete(`/datasets/${datasetId}/members/${userId}`);
     return response.data;
   }
 
@@ -424,12 +443,12 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async createUser(user: Partial<User> & { password: string }): Promise<User> {
+  async createUser(user: Partial<User> & { password: string; globalRole?: GlobalRole }): Promise<User> {
     const response = await this.client.post<User>('/users/', user);
     return response.data;
   }
 
-  async updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User> {
+  async updateUser(id: string, user: Partial<User> & { password?: string; globalRole?: GlobalRole }): Promise<User> {
     const response = await this.client.put<User>(`/users/${id}`, user);
     return response.data;
   }

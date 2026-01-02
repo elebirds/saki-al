@@ -1,16 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag } from 'antd';
-import { User } from '../../types';
+import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select } from 'antd';
+import { User, GlobalRole } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '../../store/authStore';
 
 const UserManagement: React.FC = () => {
   const { t } = useTranslation();
+  const currentUser = useAuthStore((state) => state.user);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form] = Form.useForm();
+  
+  // Check if current user can manage roles
+  const canManageRoles = currentUser?.globalRole === 'super_admin' || currentUser?.globalRole === 'admin';
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -56,6 +61,10 @@ const UserManagement: React.FC = () => {
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      // Remove password if empty
+      if (values.password === '') {
+        delete values.password;
+      }
       if (editingUser) {
         await api.updateUser(editingUser.id, values);
         message.success(t('User updated successfully'));
@@ -65,8 +74,8 @@ const UserManagement: React.FC = () => {
       }
       setIsModalOpen(false);
       fetchUsers();
-    } catch (error) {
-      message.error(t('Operation failed'));
+    } catch (error: any) {
+      message.error(error.message || t('Operation failed'));
     }
   };
 
@@ -93,13 +102,27 @@ const UserManagement: React.FC = () => {
     },
     {
       title: t('Role'),
-      key: 'isSuperuser',
-      dataIndex: 'isSuperuser',
-      render: (isSuperuser: boolean) => (
-        <Tag color={isSuperuser ? 'gold' : 'blue'}>
-          {isSuperuser ? t('Admin') : t('User')}
-        </Tag>
-      ),
+      key: 'globalRole',
+      dataIndex: 'globalRole',
+      render: (role: GlobalRole) => {
+        const roleColors: Record<GlobalRole, string> = {
+          'super_admin': 'red',
+          'admin': 'gold',
+          'annotator': 'blue',
+          'viewer': 'default',
+        };
+        const roleLabels: Record<GlobalRole, string> = {
+          'super_admin': t('Super Admin'),
+          'admin': t('Admin'),
+          'annotator': t('Annotator'),
+          'viewer': t('Viewer'),
+        };
+        return (
+          <Tag color={roleColors[role]}>
+            {roleLabels[role]}
+          </Tag>
+        );
+      },
     },
     {
       title: t('Actions'),
@@ -169,13 +192,22 @@ const UserManagement: React.FC = () => {
           >
             <Checkbox>{t('Active')}</Checkbox>
           </Form.Item>
-          <Form.Item
-            name="isSuperuser"
-            valuePropName="checked"
-            initialValue={false}
-          >
-            <Checkbox>{t('Superuser')}</Checkbox>
-          </Form.Item>
+          {canManageRoles && (
+            <Form.Item
+              name="globalRole"
+              label={t('Global Role')}
+              initialValue="viewer"
+            >
+              <Select>
+                <Select.Option value="viewer">{t('Viewer')}</Select.Option>
+                <Select.Option value="annotator">{t('Annotator')}</Select.Option>
+                <Select.Option value="admin">{t('Admin')}</Select.Option>
+                {currentUser?.globalRole === 'super_admin' && (
+                  <Select.Option value="super_admin">{t('Super Admin')}</Select.Option>
+                )}
+              </Select>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </div>

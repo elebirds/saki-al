@@ -1,19 +1,34 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.models.base import TimestampMixin, UUIDMixin
+from saki_api.models.permission import GlobalRole
+
+if TYPE_CHECKING:
+    from saki_api.models.permission import DatasetMember
 
 
 class UserBase(SQLModel):
     email: str = Field(unique=True, index=True, description="User email address")
     is_active: bool = Field(default=True, description="Whether the user account is active")
-    is_superuser: bool = Field(default=False, description="Whether the user has superuser privileges")
     full_name: Optional[str] = Field(default=None, description="Full name of the user")
+    global_role: GlobalRole = Field(
+        default=GlobalRole.VIEWER,
+        description="Global role of the user"
+    )
 
 
 class User(UserBase, TimestampMixin, UUIDMixin, table=True):
     hashed_password: str = Field(description="Hashed password")
+    
+    # Relationships
+    dataset_memberships: list["DatasetMember"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={
+            "foreign_keys": "[DatasetMember.user_id]"
+        }
+    )
 
 
 class UserCreate(UserBase):
@@ -28,5 +43,5 @@ class UserUpdate(SQLModel):
     email: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
-    is_superuser: Optional[bool] = None
+    global_role: Optional[GlobalRole] = None
     full_name: Optional[str] = None

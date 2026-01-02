@@ -73,6 +73,9 @@ export interface Dataset {
   // Annotation system - determines UI for this dataset
   annotationSystem: AnnotationSystemType;
   
+  // Owner information
+  ownerId: string;
+  
   createdAt: string;
   updatedAt?: string;
   
@@ -271,12 +274,38 @@ export interface ModelVersion {
   createdAt: string;
 }
 
+// ============================================================================
+// Permission System Types
+// ============================================================================
+
+export type GlobalRole = 'super_admin' | 'admin' | 'annotator' | 'viewer';
+export type ResourceRole = 'owner' | 'manager' | 'annotator' | 'reviewer' | 'viewer';
+
 export interface User {
   id: string;
   email: string;
   fullName?: string;
   isActive: boolean;
-  isSuperuser: boolean;
+  globalRole: GlobalRole;
+}
+
+export interface DatasetMember {
+  datasetId: string;
+  userId: string;
+  role: ResourceRole;
+  createdAt: string;
+  createdBy: string;
+  userEmail?: string;
+  userFullName?: string;
+}
+
+export interface DatasetMemberCreate {
+  userId: string;
+  role: ResourceRole;
+}
+
+export interface DatasetMemberUpdate {
+  role: ResourceRole;
 }
 
 export interface LoginResponse {

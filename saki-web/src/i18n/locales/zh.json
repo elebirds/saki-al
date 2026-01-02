@@ -12,7 +12,8 @@
     "yes": "是",
     "no": "否",
     "save": "保存",
-    "cancel": "取消"
+    "cancel": "取消",
+    "unknown": "未知"
   },
   "datasetList": {
     "title": "数据集列表",
@@ -44,6 +45,7 @@
     "dataPool": "数据池",
     "noSamples": "暂无数据",
     "backToList": "返回列表",
+    "owner": "所有者",
     "basicInfo": "基本信息",
     "name": "名称",
     "description": "描述",
@@ -57,6 +59,29 @@
     "deleteError": "删除数据集失败",
     "exportSuccess": "导出成功",
     "exportError": "导出失败"
+  },
+  "permissions": {
+    "Super Admin": "超级管理员",
+    "Admin": "管理员",
+    "Annotator": "标注员",
+    "Viewer": "查看者",
+    "Owner": "所有者",
+    "Manager": "管理员",
+    "Reviewer": "审核员",
+    "Dataset Members": "数据集成员",
+    "Add Member": "添加成员",
+    "Edit Member Role": "编辑成员角色",
+    "Add Member": "添加成员",
+    "Member removed successfully": "成员移除成功",
+    "Failed to remove member": "移除成员失败",
+    "Member role updated successfully": "成员角色更新成功",
+    "Member added successfully": "成员添加成功",
+    "Are you sure to remove this member?": "确定要移除此成员吗？",
+    "Remove": "移除",
+    "Basic Info": "基本信息",
+    "Labels": "标签",
+    "Members": "成员",
+    "Danger Zone": "危险操作"
   },
   "workspace": {
     "annotations": "标注列表",

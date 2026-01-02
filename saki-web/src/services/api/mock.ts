@@ -126,7 +126,7 @@ export class MockApiService implements ApiService {
       email,
       fullName: fullName,
       isActive: true,
-      isSuperuser: false,
+      globalRole: 'viewer' as const,
     };
   }
 
@@ -136,7 +136,7 @@ export class MockApiService implements ApiService {
       email: 'admin@example.com',
       fullName: 'Admin User',
       isActive: true,
-      isSuperuser: true,
+      globalRole: 'super_admin' as const,
     };
   }
 
@@ -150,7 +150,7 @@ export class MockApiService implements ApiService {
       email,
       fullName: fullName,
       isActive: true,
-      isSuperuser: true,
+      globalRole: 'super_admin' as const,
     };
   }
 

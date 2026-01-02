@@ -7,6 +7,8 @@ from sqlmodel import Session
 from saki_api.core.config import settings
 from saki_api.db.session import get_session
 from saki_api.models.user import User
+from saki_api.models.permission import GlobalRole, Permission
+from saki_api.core.permissions import check_permission
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
@@ -36,11 +38,26 @@ def get_current_user(
     return user
 
 
+def get_current_active_admin(
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session)
+) -> User:
+    """检查用户是否为管理员（ADMIN或SUPER_ADMIN）"""
+    if current_user.global_role not in [GlobalRole.ADMIN, GlobalRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=403,
+            detail="The user doesn't have enough privileges"
+        )
+    return current_user
+
+
 def get_current_active_superuser(
         current_user: User = Depends(get_current_user),
 ) -> User:
-    if not current_user.is_superuser:
+    """检查用户是否为超级管理员（向后兼容，但使用新的global_role）"""
+    if current_user.global_role != GlobalRole.SUPER_ADMIN:
         raise HTTPException(
-            status_code=400, detail="The user doesn't have enough privileges"
+            status_code=403,
+            detail="The user doesn't have enough privileges"
         )
     return current_user

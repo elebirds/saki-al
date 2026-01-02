@@ -1,4 +1,4 @@
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse } from '../../types';
+import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse, DatasetMember, DatasetMemberCreate, DatasetMemberUpdate, GlobalRole } from '../../types';
 
 /**
  * Callback type for upload progress events
@@ -57,7 +57,12 @@ export interface ApiService {
   getSampleAnnotations(sampleId: string): Promise<SampleAnnotationsResponse>;
   syncAnnotations(sampleId: string, actions: SyncAction[]): Promise<SyncResponse>;
   saveAnnotations(sampleId: string, annotations: Annotation[], updateStatus?: 'labeled' | 'skipped'): Promise<BatchSaveResult>;
-  deleteAnnotations(sampleId: string): Promise<{ deleted: number; sampleId: string }>;
+  
+  // Dataset Member APIs (for permission management)
+  getDatasetMembers(datasetId: string): Promise<DatasetMember[]>;
+  addDatasetMember(datasetId: string, member: DatasetMemberCreate): Promise<DatasetMember>;
+  updateDatasetMemberRole(datasetId: string, userId: string, memberUpdate: DatasetMemberUpdate): Promise<DatasetMember>;
+  removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }>;
   
   // Config APIs
   getStrategies(): Promise<QueryStrategy[]>;
@@ -75,7 +80,7 @@ export interface ApiService {
 
   // User Management
   getUsers(skip?: number, limit?: number): Promise<User[]>;
-  createUser(user: Partial<User> & { password: string }): Promise<User>;
-  updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User>;
+  createUser(user: Partial<User> & { password: string; globalRole?: GlobalRole }): Promise<User>;
+  updateUser(id: string, user: Partial<User> & { password?: string; globalRole?: GlobalRole }): Promise<User>;
   deleteUser(id: string): Promise<void>;
 }

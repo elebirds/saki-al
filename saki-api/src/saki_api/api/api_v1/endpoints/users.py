@@ -6,6 +6,8 @@ from sqlmodel import Session, select
 from saki_api.api import deps
 from saki_api.core import security
 from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
+from saki_api.models.permission import Permission, GlobalRole
+from saki_api.core.permissions import require_permission
 
 router = APIRouter()
 
@@ -25,7 +27,7 @@ def read_users(
         session: Session = Depends(deps.get_session),
         skip: int = 0,
         limit: int = 100,
-        current_user: User = Depends(deps.get_current_active_superuser),
+        current_user: User = Depends(require_permission(Permission.USER_READ)),
 ) -> Any:
     """
     Retrieve users.
@@ -39,7 +41,7 @@ def create_user(
         *,
         session: Session = Depends(deps.get_session),
         user_in: UserCreate,
-        current_user: User = Depends(deps.get_current_active_superuser),
+        current_user: User = Depends(require_permission(Permission.USER_CREATE)),
 ) -> Any:
     """
     Create new user.
@@ -69,7 +71,7 @@ def update_user(
         session: Session = Depends(deps.get_session),
         user_id: str,
         user_in: UserUpdate,
-        current_user: User = Depends(deps.get_current_active_superuser),
+        current_user: User = Depends(require_permission(Permission.USER_UPDATE)),
 ) -> Any:
     """
     Update a user.
@@ -82,6 +84,14 @@ def update_user(
         )
 
     user_data = user_in.dict(exclude_unset=True)
+    
+    # Check if trying to modify global_role - requires USER_MANAGE_ROLES permission
+    if "global_role" in user_data:
+        from saki_api.core.permissions import check_permission
+        if not check_permission(current_user, Permission.USER_MANAGE_ROLES, session=session):
+            # Remove global_role from update if user doesn't have permission
+            user_data.pop("global_role")
+    
     if "password" in user_data:
         password = user_data.pop("password")
         if password:
@@ -101,7 +111,7 @@ def delete_user(
         *,
         session: Session = Depends(deps.get_session),
         user_id: str,
-        current_user: User = Depends(deps.get_current_active_superuser),
+        current_user: User = Depends(require_permission(Permission.USER_DELETE)),
 ) -> Any:
     """
     Delete a user.

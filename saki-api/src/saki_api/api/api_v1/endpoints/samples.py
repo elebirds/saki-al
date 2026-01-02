@@ -29,6 +29,8 @@ from saki_api.models import (
 )
 from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.user import User
+from saki_api.models.permission import Permission
+from saki_api.core.permissions import require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,9 @@ def read_samples(
         skip: int = 0,
         limit: int = 100,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(
+            Permission.SAMPLE_READ, "dataset", "dataset_id"
+        ))
 ):
     """
     Get samples for a dataset.
@@ -84,7 +88,9 @@ async def upload_samples_with_progress(
         dataset_id: str,
         files: List[UploadFile] = File(...),
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(
+            Permission.DATASET_UPLOAD, "dataset", "dataset_id"
+        ))
 ):
     """
     Upload samples with SSE progress streaming.

@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from saki_api.models.sample import Sample
     from saki_api.models.project import ProjectDataset
     from saki_api.models.label import Label
+    from saki_api.models.permission import DatasetMember
 
 
 class DatasetBase(SQLModel):
@@ -35,6 +36,12 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
     Database model for Dataset.
     Independent entity for data annotation that can be linked to multiple projects.
     """
+    owner_id: str = Field(
+        foreign_key="user.id",
+        index=True,
+        description="Owner of the dataset"
+    )
+    
     # Relationship to samples (one-to-many)
     samples: List["Sample"] = Relationship(back_populates="dataset")
     
@@ -43,6 +50,9 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
     
     # Relationship to projects through link table (many-to-many)
     project_links: List["ProjectDataset"] = Relationship(back_populates="dataset")
+    
+    # Relationship to members (resource-level permissions)
+    members: List["DatasetMember"] = Relationship(back_populates="dataset")
 
 
 class DatasetCreate(SQLModel):
@@ -52,6 +62,7 @@ class DatasetCreate(SQLModel):
     name: str
     description: Optional[str] = None
     annotation_system: AnnotationSystemType = AnnotationSystemType.CLASSIC
+    # owner_id 在创建时自动设置为当前用户，不需要在请求中提供
 
 
 class DatasetRead(DatasetBase, TimestampMixin, UUIDMixin):

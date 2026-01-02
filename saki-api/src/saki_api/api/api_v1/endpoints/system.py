@@ -107,9 +107,11 @@ def setup_system(
             detail="System already initialized",
         )
 
+    from saki_api.models.permission import GlobalRole
+    
     user_data = user_in.model_dump(exclude={"password"})
     user_data["hashed_password"] = security.get_password_hash(user_in.password)
-    user_data["is_superuser"] = True
+    user_data["global_role"] = GlobalRole.SUPER_ADMIN  # Set as super admin
     user_data["is_active"] = True
     user = User.model_validate(user_data)
 

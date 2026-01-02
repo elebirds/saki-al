@@ -13,6 +13,11 @@ from saki_api.models.system_config import (
     BaseModel, BaseModelCreate, BaseModelRead, BaseModelUpdate,
 )
 from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
+from saki_api.models.permission import (
+    GlobalRole, ResourceRole, Permission,
+    RolePermission, DatasetMember,
+    DatasetMemberCreate, DatasetMemberRead, DatasetMemberUpdate
+)
 
 __all__ = [
     # Dataset models (independent, for data annotation)
@@ -35,5 +40,9 @@ __all__ = [
     # Enums
     "TaskType", "SampleStatus", "ProjectStatus", "ModelStatus", "AnnotationSystemType",
     # User models
-    "User", "UserCreate", "UserRead", "UserUpdate"
+    "User", "UserCreate", "UserRead", "UserUpdate",
+    # Permission models
+    "GlobalRole", "ResourceRole", "Permission",
+    "RolePermission", "DatasetMember",
+    "DatasetMemberCreate", "DatasetMemberRead", "DatasetMemberUpdate"
 ]

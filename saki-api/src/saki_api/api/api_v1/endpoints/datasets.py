@@ -18,6 +18,8 @@ from saki_api.models import (
     Annotation,
 )
 from saki_api.models.user import User
+from saki_api.models.permission import Permission
+from saki_api.core.permissions import require_permission, check_permission
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +39,42 @@ def list_datasets(
 ):
     """
     List all datasets with sample statistics.
+    Only shows datasets the user has permission to read.
     """
-    datasets = session.exec(select(Dataset).offset(skip).limit(limit)).all()
-    result = []
+    # Check if user has global read_all permission
+    has_read_all = check_permission(
+        current_user, Permission.DATASET_READ_ALL, session=session
+    )
     
+    if has_read_all:
+        # User can see all datasets
+        datasets = session.exec(select(Dataset).offset(skip).limit(limit)).all()
+    else:
+        # User can only see datasets they own or are members of
+        from saki_api.models.permission import DatasetMember
+        
+        # Get dataset IDs where user is owner or member
+        owned_datasets = session.exec(
+            select(Dataset.id).where(Dataset.owner_id == current_user.id)
+        ).all()
+        
+        member_datasets = session.exec(
+            select(DatasetMember.dataset_id).where(DatasetMember.user_id == current_user.id)
+        ).all()
+        
+        accessible_dataset_ids = list(set(owned_datasets + member_datasets))
+        
+        if not accessible_dataset_ids:
+            return []
+        
+        datasets = session.exec(
+            select(Dataset)
+            .where(Dataset.id.in_(accessible_dataset_ids))
+            .offset(skip)
+            .limit(limit)
+        ).all()
+    
+    result = []
     for ds in datasets:
         ds_read = DatasetRead.model_validate(ds)
         
@@ -66,12 +100,14 @@ def list_datasets(
 def create_dataset(
         dataset: DatasetCreate,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(Permission.DATASET_CREATE))
 ):
     """
     Create a new dataset for data annotation.
+    The current user will be set as the owner.
     """
     db_dataset = Dataset.model_validate(dataset)
+    db_dataset.owner_id = current_user.id  # Set current user as owner
     session.add(db_dataset)
     session.commit()
     session.refresh(db_dataset)
@@ -86,7 +122,9 @@ def create_dataset(
 def get_dataset(
         dataset_id: str,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(
+            Permission.DATASET_READ, "dataset", "dataset_id"
+        ))
 ):
     """
     Get dataset by ID with sample statistics.
@@ -119,7 +157,9 @@ def update_dataset(
         dataset_id: str,
         dataset_in: DatasetUpdate,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(
+            Permission.DATASET_UPDATE, "dataset", "dataset_id"
+        ))
 ):
     """
     Update a dataset.
@@ -143,7 +183,9 @@ def update_dataset(
 def delete_dataset(
         dataset_id: str,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(
+            Permission.DATASET_DELETE, "dataset", "dataset_id"
+        ))
 ):
     """
     Delete a dataset and all its samples and annotations.
@@ -189,7 +231,9 @@ def delete_dataset(
 def get_dataset_stats(
         dataset_id: str,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(
+            Permission.DATASET_READ, "dataset", "dataset_id"
+        ))
 ) -> Dict[str, Any]:
     """
     Get detailed statistics for a dataset.
@@ -253,7 +297,9 @@ def export_dataset(
         format: str = "json",
         include_unlabeled: bool = False,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        current_user: User = Depends(require_permission(
+            Permission.DATASET_EXPORT, "dataset", "dataset_id"
+        ))
 ) -> Dict[str, Any]:
     """
     Export dataset annotations in various formats.

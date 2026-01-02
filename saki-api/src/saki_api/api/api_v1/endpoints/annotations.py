@@ -5,7 +5,6 @@ Provides:
 1. GET /{sample_id} - Get all annotations for a sample
 2. POST /sync - Real-time sync during annotation session
 3. POST /save - Batch save annotations when user clicks Save
-4. DELETE /{sample_id} - Clear all annotations for a sample
 
 Workflow:
 1. User opens sample for annotation
@@ -21,12 +20,16 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from saki_api.api import deps
 from saki_api.db.session import get_session
 from saki_api.models.annotation import Annotation
 from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.dataset import Dataset
 from saki_api.models.label import Label
+from saki_api.models.user import User
 from saki_api.models.enums import AnnotationType, AnnotationSource
+from saki_api.models.permission import Permission
+from saki_api.core.permissions import require_permission
 from saki_api.annotation_systems import get_handler, AnnotationContext
 
 router = APIRouter()
@@ -142,6 +145,9 @@ def _to_item(ann: Annotation, label: Optional[Label] = None) -> AnnotationItem:
 def get_sample_annotations(
     sample_id: str,
     session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(
+        Permission.ANNOTATION_READ, "sample", "sample_id"
+    )),
 ):
     """Get all annotations for a sample."""
     sample = session.get(Sample, sample_id)
@@ -174,6 +180,7 @@ def get_sample_annotations(
 def sync_annotations(
     request: SyncRequest,
     session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
 ):
     """
     Sync annotation actions in real-time.
@@ -181,6 +188,13 @@ def sync_annotations(
     Does NOT persist to database. For FEDO, returns auto-generated
     mapped annotations. Frontend maintains state locally until Save.
     """
+    # Check permission for the sample
+    from saki_api.core.permissions import check_permission
+    if not check_permission(
+        current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
+    ):
+        raise HTTPException(status_code=403, detail="Permission denied")
+    
     sample = session.get(Sample, request.sample_id)
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
@@ -295,12 +309,20 @@ def sync_annotations(
 def save_annotations(
     request: BatchSaveRequest,
     session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
 ):
     """
     Batch save all annotations for a sample.
     
     Replaces existing annotations. Called when user clicks Save.
     """
+    # Check permission for the sample
+    from saki_api.core.permissions import check_permission
+    if not check_permission(
+        current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
+    ):
+        raise HTTPException(status_code=403, detail="Permission denied")
+    
     sample = session.get(Sample, request.sample_id)
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
@@ -391,38 +413,23 @@ def save_annotations(
         )
 
 
-@router.delete("/{sample_id}")
-def delete_sample_annotations(
-    sample_id: str,
-    session: Session = Depends(get_session),
-):
-    """Delete all annotations for a sample."""
-    sample = session.get(Sample, sample_id)
-    if not sample:
-        raise HTTPException(status_code=404, detail="Sample not found")
-    
-    statement = select(Annotation).where(Annotation.sample_id == sample_id)
-    annotations = session.exec(statement).all()
-    
-    deleted_count = len(annotations)
-    for ann in annotations:
-        session.delete(ann)
-    
-    sample.status = SampleStatus.UNLABELED
-    session.commit()
-    
-    return {"deleted": deleted_count, "sample_id": sample_id}
-
-
 @router.get("/detail/{annotation_id}", response_model=AnnotationItem)
 def get_annotation(
     annotation_id: str,
     session: Session = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
 ):
     """Get a single annotation by ID."""
     annotation = session.get(Annotation, annotation_id)
     if not annotation:
         raise HTTPException(status_code=404, detail="Annotation not found")
+    
+    # Check permission through sample
+    from saki_api.core.permissions import check_permission
+    if not check_permission(
+        current_user, Permission.ANNOTATION_READ, "sample", annotation.sample_id, session
+    ):
+        raise HTTPException(status_code=403, detail="Permission denied")
     
     label = session.get(Label, annotation.label_id)
     return _to_item(annotation, label)

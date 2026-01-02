@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Form, Input, Button, Card, Select, Space, Tag, message, ColorPicker, Popconfirm, Tooltip, Modal, Badge, Spin } from 'antd';
-import { PlusOutlined, DeleteOutlined, LockOutlined, EditOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Card, Select, Space, Tag, message, ColorPicker, Popconfirm, Tooltip, Modal, Badge, Spin, Tabs } from 'antd';
+import { PlusOutlined, DeleteOutlined, LockOutlined, EditOutlined, ExclamationCircleOutlined, TeamOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Dataset, Label, LabelCreate, TypeInfo } from '../../types';
 import { api } from '../../services/api';
 import { useSystemCapabilities } from '../../hooks/useSystemCapabilities';
+import DatasetMembers from './DatasetMembers';
+import { useAuthStore } from '../../store/authStore';
 
 interface DatasetSettingsProps {
   dataset: Dataset;
@@ -15,6 +17,7 @@ interface DatasetSettingsProps {
 const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const currentUser = useAuthStore((state) => state.user);
   const [form] = Form.useForm();
   const [labels, setLabels] = useState<Label[]>([]);
   const [loadingLabels, setLoadingLabels] = useState(true);
@@ -24,6 +27,11 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
   const { availableTypes } = useSystemCapabilities();
+  
+  // Check if user can manage members (owner or has manage_members permission)
+  const canManageMembers = currentUser?.id === dataset.ownerId || 
+    currentUser?.globalRole === 'super_admin' || 
+    currentUser?.globalRole === 'admin';
 
   // Load labels on mount
   const loadLabels = useCallback(async () => {
@@ -136,9 +144,12 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
     setEditColor(label.color);
   };
 
-  return (
-    <div style={{ maxWidth: 800 }}>
-      <Form
+  const tabItems = [
+    {
+      key: 'basic',
+      label: t('Basic Info'),
+      children: (
+        <Form
         form={form}
         layout="vertical"
         initialValues={{
@@ -187,8 +198,13 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
           </Form.Item>
         </Card>
       </Form>
-
-      <Card title={t('datasetSettings.labelManagement')} style={{ marginBottom: 24 }}>
+      ),
+    },
+    {
+      key: 'labels',
+      label: t('Labels'),
+      children: (
+        <Card title={t('datasetSettings.labelManagement')} style={{ marginBottom: 24 }}>
         <Spin spinning={loadingLabels}>
           <div style={{ marginBottom: 16 }}>
             {labels.length === 0 ? (
@@ -259,7 +275,26 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
           </Button>
         </Space>
       </Card>
+      ),
+    },
+  ];
 
+  if (canManageMembers) {
+    tabItems.push({
+      key: 'members',
+      label: (
+        <span>
+          <TeamOutlined /> {t('Members')}
+        </span>
+      ),
+      children: <DatasetMembers datasetId={dataset.id} />,
+    });
+  }
+
+  tabItems.push({
+    key: 'danger',
+    label: t('Danger Zone'),
+    children: (
       <Card title={t('datasetSettings.dangerZone')} style={{ marginBottom: 24, borderColor: '#ff4d4f' }}>
         <Popconfirm
           title={t('datasetDetail.deleteConfirm')}
@@ -274,7 +309,13 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
           </Button>
         </Popconfirm>
       </Card>
+    ),
+  });
 
+  return (
+    <div style={{ maxWidth: 800 }}>
+      <Tabs items={tabItems} defaultActiveKey="basic" />
+      
       {/* Edit Label Modal */}
       <Modal
         title={t('datasetSettings.editLabel')}

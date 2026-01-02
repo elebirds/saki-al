@@ -12,7 +12,8 @@
     "yes": "Yes",
     "no": "No",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "unknown": "Unknown"
   },
   "datasetList": {
     "title": "Datasets",
@@ -56,7 +57,8 @@
     "deleteSuccess": "Dataset deleted",
     "deleteError": "Failed to delete dataset",
     "exportSuccess": "Export successful",
-    "exportError": "Export failed"
+    "exportError": "Export failed",
+    "owner": "Owner"
   },
   "workspace": {
     "annotations": "Annotations",
@@ -171,5 +173,27 @@
     "successCount": "{{count}} succeeded",
     "errorCount": "{{count}} failed",
     "completeMessage": "Uploaded {{success}} of {{total}} files"
+  },
+  "permissions": {
+    "Super Admin": "Super Admin",
+    "Admin": "Admin",
+    "Annotator": "Annotator",
+    "Viewer": "Viewer",
+    "Owner": "Owner",
+    "Manager": "Manager",
+    "Reviewer": "Reviewer",
+    "Dataset Members": "Dataset Members",
+    "Add Member": "Add Member",
+    "Edit Member Role": "Edit Member Role",
+    "Member removed successfully": "Member removed successfully",
+    "Failed to remove member": "Failed to remove member",
+    "Member role updated successfully": "Member role updated successfully",
+    "Member added successfully": "Member added successfully",
+    "Are you sure to remove this member?": "Are you sure to remove this member?",
+    "Remove": "Remove",
+    "Basic Info": "Basic Info",
+    "Labels": "Labels",
+    "Members": "Members",
+    "Danger Zone": "Danger Zone"
   }
 }

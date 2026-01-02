@@ -2,12 +2,13 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { Dataset, Sample } from '../../types';
+import { Dataset, Sample, User } from '../../types';
 import { api } from '../../services/api';
 import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
 import { useUpload } from '../../hooks';
+import { useAuthStore } from '../../store/authStore';
 
 
 const { Title } = Typography;
@@ -17,10 +18,12 @@ const DatasetDetail: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const currentUser = useAuthStore((state) => state.user);
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [activeTab, setActiveTab] = useState('data');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [owner, setOwner] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize upload hook
@@ -52,7 +55,16 @@ const DatasetDetail: React.FC = () => {
   useEffect(() => {
     if (id) {
       api.getDataset(id).then((d) => {
-        if (d) setDataset(d);
+        if (d) {
+          setDataset(d);
+          // Fetch owner info if available
+          if (d.ownerId) {
+            api.getUsers().then(users => {
+              const ownerUser = users.find(u => u.id === d.ownerId);
+              if (ownerUser) setOwner(ownerUser);
+            }).catch(() => {});
+          }
+        }
       });
       api.getSamples(id).then(setSamples);
     }
@@ -219,9 +231,12 @@ const DatasetDetail: React.FC = () => {
         </Button>
         
         <Title level={4}>{dataset.name}</Title>
-        <Tag color={dataset.annotationSystem === 'fedo' ? 'purple' : 'cyan'} style={{ marginBottom: 16 }}>
+        <Tag color={dataset.annotationSystem === 'fedo' ? 'purple' : 'cyan'} style={{ marginBottom: 8 }}>
           {dataset.annotationSystem}
         </Tag>
+        <div style={{ marginBottom: 16, fontSize: 12, color: '#666' }}>
+          {t('datasetDetail.owner')}: {dataset.ownerId ? '...' + dataset.ownerId.slice(-8) : t('common.unknown')}
+        </div>
         
         <Space direction="vertical" style={{ width: '100%' }} size="large">
           <Card size="small" title={t('datasetDetail.progress')}>

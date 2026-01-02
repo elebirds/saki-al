@@ -235,7 +235,7 @@ const DatasetDetail: React.FC = () => {
           {dataset.annotationSystem}
         </Tag>
         <div style={{ marginBottom: 16, fontSize: 12, color: '#666' }}>
-          {t('datasetDetail.owner')}: {dataset.ownerId ? '...' + dataset.ownerId.slice(-8) : t('common.unknown')}
+          {t('datasetDetail.owner')}: {owner ? (owner.fullName || owner.email) : (dataset.ownerId ? '...' + dataset.ownerId.slice(-8) : t('common.unknown'))}
         </div>
         
         <Space direction="vertical" style={{ width: '100%' }} size="large">

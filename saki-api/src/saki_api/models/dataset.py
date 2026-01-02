@@ -69,6 +69,7 @@ class DatasetRead(DatasetBase, TimestampMixin, UUIDMixin):
     """
     Model for reading Dataset data.
     """
+    owner_id: str = Field(description="Owner of the dataset")
     sample_count: int = Field(default=0, description="Number of samples in the dataset.")
     labeled_count: int = Field(default=0, description="Number of labeled samples.")
 

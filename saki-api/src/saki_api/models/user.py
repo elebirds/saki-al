@@ -17,6 +17,10 @@ class UserBase(SQLModel):
         default=GlobalRole.VIEWER,
         description="Global role of the user"
     )
+    must_change_password: bool = Field(
+        default=False,
+        description="Whether the user must change password on next login"
+    )
 
 
 class User(UserBase, TimestampMixin, UUIDMixin, table=True):
@@ -45,3 +49,4 @@ class UserUpdate(SQLModel):
     is_active: Optional[bool] = None
     global_role: Optional[GlobalRole] = None
     full_name: Optional[str] = None
+    must_change_password: Optional[bool] = None

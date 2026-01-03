@@ -288,6 +288,7 @@ export interface User {
   fullName?: string;
   isActive: boolean;
   globalRole: GlobalRole;
+  mustChangePassword?: boolean;
 }
 
 export interface DatasetMember {
@@ -312,6 +313,7 @@ export interface DatasetMemberUpdate {
 export interface LoginResponse {
   accessToken: string;
   tokenType: string;
+  mustChangePassword?: boolean;
 }
 
 // ============================================================================

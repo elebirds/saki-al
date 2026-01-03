@@ -2,6 +2,7 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse, DatasetMember, DatasetMemberCreate, DatasetMemberUpdate, GlobalRole } from '../../types';
 import { ApiService, UploadProgressCallback } from './interface';
 import { useAuthStore } from '../../store/authStore';
+import { hashPassword, enforceHttps } from '../../utils/security';
 
 // ============================================================================
 // Case Conversion Utilities
@@ -225,9 +226,15 @@ export class RealApiService implements ApiService {
   // ==========================================================================
 
   async login(username: string, password: string): Promise<LoginResponse> {
+    // 在生产环境强制使用 HTTPS
+    enforceHttps();
+    
+    // 对密码进行 SHA-256 哈希，避免明文传输
+    const hashedPassword = await hashPassword(password);
+    
     const formData = new URLSearchParams();
     formData.append('username', username);
-    formData.append('password', password);
+    formData.append('password', hashedPassword);
     
     const response = await this.client.post<LoginResponse>('/login/access-token', formData, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
@@ -236,12 +243,33 @@ export class RealApiService implements ApiService {
   }
 
   async register(email: string, password: string, fullName?: string): Promise<User> {
-    const response = await this.client.post<User>('/register', { email, password, fullName });
+    // 在生产环境强制使用 HTTPS
+    enforceHttps();
+    
+    // 对密码进行 SHA-256 哈希，避免明文传输
+    const hashedPassword = await hashPassword(password);
+    
+    const response = await this.client.post<User>('/register', { email, password: hashedPassword, fullName });
     return response.data;
   }
 
   async getCurrentUser(): Promise<User> {
     const response = await this.client.get<User>('/users/me');
+    return response.data;
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
+    // 在生产环境强制使用 HTTPS
+    enforceHttps();
+    
+    // 对密码进行 SHA-256 哈希，避免明文传输
+    const hashedOldPassword = await hashPassword(oldPassword);
+    const hashedNewPassword = await hashPassword(newPassword);
+    
+    const response = await this.client.post<{ message: string }>('/login/change-password', {
+      old_password: hashedOldPassword,
+      new_password: hashedNewPassword
+    });
     return response.data;
   }
 
@@ -251,7 +279,13 @@ export class RealApiService implements ApiService {
   }
 
   async setupSystem(email: string, password: string, fullName?: string): Promise<User> {
-    const response = await this.client.post<User>('/system/setup', { email, password, fullName });
+    // 在生产环境强制使用 HTTPS
+    enforceHttps();
+    
+    // 对密码进行 SHA-256 哈希，避免明文传输
+    const hashedPassword = await hashPassword(password);
+    
+    const response = await this.client.post<User>('/system/setup', { email, password: hashedPassword, fullName });
     return response.data;
   }
 
@@ -475,7 +509,8 @@ export class RealApiService implements ApiService {
           } catch (e) {
             // 静默处理 SSE 解析错误，避免控制台噪音
             // 如果需要调试，可以在开发环境下启用
-            if (import.meta.env.DEV) {
+            if (typeof window !== 'undefined' && 
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
               console.warn('Failed to parse SSE event:', e);
             }
           }
@@ -574,12 +609,28 @@ export class RealApiService implements ApiService {
   }
 
   async createUser(user: Partial<User> & { password: string; globalRole?: GlobalRole }): Promise<User> {
-    const response = await this.client.post<User>('/users/', user);
+    // 在生产环境强制使用 HTTPS
+    enforceHttps();
+    
+    // 对密码进行 SHA-256 哈希，避免明文传输
+    const userData = { ...user };
+    if (userData.password) {
+      userData.password = await hashPassword(userData.password);
+    }
+    const response = await this.client.post<User>('/users/', userData);
     return response.data;
   }
 
   async updateUser(id: string, user: Partial<User> & { password?: string; globalRole?: GlobalRole }): Promise<User> {
-    const response = await this.client.put<User>(`/users/${id}`, user);
+    // 在生产环境强制使用 HTTPS
+    enforceHttps();
+    
+    // 对密码进行 SHA-256 哈希，避免明文传输
+    const userData = { ...user };
+    if (userData.password) {
+      userData.password = await hashPassword(userData.password);
+    }
+    const response = await this.client.put<User>(`/users/${id}`, userData);
     return response.data;
   }
 

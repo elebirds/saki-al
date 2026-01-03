@@ -10,6 +10,7 @@ export interface ApiService {
   login(username: string, password: string): Promise<LoginResponse>;
   register(email: string, password: string, fullName?: string): Promise<User>;
   getCurrentUser(): Promise<User>;
+  changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }>;
 
   // System
   getSystemStatus(): Promise<{ initialized: boolean }>;

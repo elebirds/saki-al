@@ -7,6 +7,7 @@ import WorkspaceRouter from './pages/annotation/WorkspaceRouter';
 import UserManagement from './pages/user/UserManagement';
 import Login from './pages/user/Login';
 import Register from './pages/user/Register';
+import ChangePassword from './pages/user/ChangePassword';
 import Setup from './pages/base/Setup';
 import NetworkError from './pages/base/NetworkError';
 import SystemCheck from './components/SystemCheck';
@@ -22,6 +23,7 @@ const App: React.FC = () => {
           <Route path="/setup" element={<Setup />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/change-password" element={<ChangePassword />} />
           
           <Route element={<ProtectedLayout />}>
             <Route path="/" element={<DatasetList />} />

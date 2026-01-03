@@ -65,7 +65,8 @@ def create_user(
     hashed_password = security.get_password_hash(user_in.password)
 
     user_data = user_in.dict(exclude={"password"})
-    db_user = User(**user_data, hashed_password=hashed_password)
+    # 手动创建的用户需要首次登录时更改密码
+    db_user = User(**user_data, hashed_password=hashed_password, must_change_password=True)
 
     session.add(db_user)
     session.commit()

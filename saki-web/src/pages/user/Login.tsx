@@ -18,12 +18,19 @@ const Login: React.FC = () => {
   const onFinish = async (values: any) => {
     setLoading(true);
     try {
-      const { accessToken } = await api.login(values.email, values.password);
-      setToken(accessToken);
+      const loginResponse = await api.login(values.email, values.password);
+      setToken(loginResponse.accessToken);
       
       // Fetch user details
       const user = await api.getCurrentUser();
       setUser(user);
+      
+      // 如果用户需要更改密码，跳转到更改密码页面
+      if (loginResponse.mustChangePassword) {
+        message.warning(t('auth.login.mustChangePassword'));
+        navigate('/change-password');
+        return;
+      }
       
       message.success(t('auth.login.loginSuccess'));
       navigate('/');

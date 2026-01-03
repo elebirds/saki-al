@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout, Menu, theme, Select, Button } from 'antd';
-import { Link, Navigate, Outlet } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LogoutOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
@@ -11,6 +11,7 @@ const { Header, Content, Footer } = Layout;
 
 const ProtectedLayout: React.FC = () => {
   const { t, i18n } = useTranslation();
+  const location = useLocation();
   const {
     token: { colorBgContainer },
   } = theme.useToken();
@@ -42,6 +43,11 @@ const ProtectedLayout: React.FC = () => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // 如果用户需要更改密码，且不在更改密码页面，强制跳转
+  if (user?.mustChangePassword && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
   }
 
   const changeLanguage = (lng: string) => {

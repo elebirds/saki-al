@@ -176,10 +176,6 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
       )}
 
       <div style={{ flex: 1 }} />
-
-      <span style={{ lineHeight: '32px', color: '#888' }}>
-        {t('workspace.help')}
-      </span>
     </div>
   );
 };

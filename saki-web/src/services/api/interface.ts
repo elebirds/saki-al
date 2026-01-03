@@ -44,7 +44,13 @@ export interface ApiService {
   deleteLabel(labelId: string, force?: boolean): Promise<{ ok: boolean; deletedLabel: string; deletedAnnotations: number }>;
 
   // Sample APIs (belong to Dataset)
-  getSamples(datasetId: string): Promise<Sample[]>;
+  getSamples(datasetId: string, options?: {
+    status?: 'unlabeled' | 'labeled' | 'skipped';
+    skip?: number;
+    limit?: number;
+    sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<Sample[]>;
   getSample(sampleId: string): Promise<Sample | undefined>;
   uploadSamplesWithProgress(
     datasetId: string,

@@ -3,13 +3,13 @@ import { useParams } from 'react-router-dom';
 import { Layout, message, Empty } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
-import { AnnotationToolbar, AnnotationSidebar } from '../../components/annotation';
+import { AnnotationToolbar, AnnotationSidebar, SampleList } from '../../components/annotation';
 import { api } from '../../services/api';
 import { useAnnotationState, useAnnotationSync, useAnnotationShortcuts } from '../../hooks';
 import { Sample, Annotation, Dataset, Label, AnnotationType, SyncAction } from '../../types';
 import { originToCenter, centerToOrigin } from '../../utils/canvasUtils';
 
-const { Content } = Layout;
+const { Content, Sider } = Layout;
 
 const ClassicAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
@@ -45,8 +45,26 @@ const ClassicAnnotationWorkspace: React.FC = () => {
           annotationState.setSelectedLabel(loadedLabels[0]);
         }
       });
-      // Load samples
-      api.getSamples(datasetId).then(setSamples);
+      // Load samples with sort settings from localStorage
+      const sortSettingsStr = localStorage.getItem(`dataset_${datasetId}_sort`);
+      let sortOptions: {
+        sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
+        sortOrder?: 'asc' | 'desc';
+      } = {};
+      
+      if (sortSettingsStr) {
+        try {
+          const sortSettings = JSON.parse(sortSettingsStr);
+          sortOptions = {
+            sortBy: sortSettings.sortBy,
+            sortOrder: sortSettings.sortOrder,
+          };
+        } catch (e) {
+          console.error('Failed to parse sort settings:', e);
+        }
+      }
+      
+      api.getSamples(datasetId, sortOptions).then(setSamples);
     }
   }, [datasetId]);
 
@@ -239,6 +257,11 @@ const ClassicAnnotationWorkspace: React.FC = () => {
     disabled: isSyncing, // 同步时禁用快捷键
   });
 
+  const handleSampleSelect = useCallback((index: number) => {
+    setCurrentIndex(index);
+    annotationState.resetHistory();
+  }, [annotationState]);
+
   if (!currentSample || !dataset) {
     return <div>{t('workspace.loading')}</div>;
   }
@@ -261,6 +284,15 @@ const ClassicAnnotationWorkspace: React.FC = () => {
 
   return (
     <Layout style={{ height: '100%' }}>
+      {/* Left Sidebar - Sample List */}
+      <Sider width={250} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
+        <SampleList
+          samples={samples}
+          currentIndex={currentIndex}
+          onSampleSelect={handleSampleSelect}
+        />
+      </Sider>
+
       <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Toolbar */}
         <AnnotationToolbar

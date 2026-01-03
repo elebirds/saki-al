@@ -380,8 +380,36 @@ export class RealApiService implements ApiService {
   // Sample APIs (belong to Dataset)
   // ==========================================================================
 
-  async getSamples(datasetId: string): Promise<Sample[]> {
-    const response = await this.client.get<{ items: Sample[] }>(`/samples/${datasetId}`);
+  async getSamples(
+    datasetId: string,
+    options?: {
+      status?: 'unlabeled' | 'labeled' | 'skipped';
+      skip?: number;
+      limit?: number;
+      sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<Sample[]> {
+    const params = new URLSearchParams();
+    if (options?.status) {
+      params.append('status', options.status);
+    }
+    if (options?.skip !== undefined) {
+      params.append('skip', options.skip.toString());
+    }
+    if (options?.limit !== undefined) {
+      params.append('limit', options.limit.toString());
+    }
+    if (options?.sortBy) {
+      params.append('sort_by', options.sortBy);
+    }
+    if (options?.sortOrder) {
+      params.append('sort_order', options.sortOrder);
+    }
+    
+    const queryString = params.toString();
+    const url = `/samples/${datasetId}${queryString ? `?${queryString}` : ''}`;
+    const response = await this.client.get<{ items: Sample[] }>(url);
     return response.data.items;
   }
 

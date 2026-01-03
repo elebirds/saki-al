@@ -58,7 +58,15 @@
     "deleteError": "Failed to delete dataset",
     "exportSuccess": "Export successful",
     "exportError": "Export failed",
-    "owner": "Owner"
+    "owner": "Owner",
+    "loadSamplesError": "Failed to load samples",
+    "sortByName": "By Name",
+    "sortByStatus": "By Status",
+    "sortByCreatedAt": "By Created At",
+    "sortByUpdatedAt": "By Updated At",
+    "sortByRemark": "By Remark",
+    "sortAsc": "Ascending",
+    "sortDesc": "Descending"
   },
   "workspace": {
     "annotations": "Annotations",
@@ -68,6 +76,11 @@
     "label": "Label:",
     "noLabelSelected": "Please select a label first",
     "noLabelsConfigured": "No labels configured. Please configure labels in dataset settings first.",
+    "sampleList": "Sample List",
+    "samples": "samples",
+    "statusLabeled": "Labeled",
+    "statusUnlabeled": "Unlabeled",
+    "statusSkipped": "Skipped",
     "tools": {
       "select": "Select (V)",
       "rect": "Rectangle (R)",

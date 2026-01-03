@@ -201,9 +201,60 @@ export class MockApiService implements ApiService {
     return new Promise((resolve) => setTimeout(() => resolve(), 500));
   }
 
-  async getSamples(projectId: string): Promise<Sample[]> {
-    console.log(`Fetching samples for project ${projectId}`);
-    return new Promise((resolve) => setTimeout(() => resolve(mockSamples), 400));
+  async getSamples(
+    datasetId: string,
+    options?: {
+      status?: 'unlabeled' | 'labeled' | 'skipped';
+      skip?: number;
+      limit?: number;
+      sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<Sample[]> {
+    console.log(`Fetching samples for dataset ${datasetId}`, options);
+    let result = [...mockSamples];
+    
+    // Apply status filter
+    if (options?.status) {
+      result = result.filter(s => s.status === options.status);
+    }
+    
+    // Apply sorting
+    if (options?.sortBy) {
+      const sortField = options.sortBy;
+      const sortOrder = options.sortOrder || 'asc';
+      
+      result.sort((a, b) => {
+        let aVal: any = (a as any)[sortField];
+        let bVal: any = (b as any)[sortField];
+        
+        // Handle date fields
+        if (sortField === 'created_at' || sortField === 'updated_at') {
+          aVal = aVal ? new Date(aVal).getTime() : 0;
+          bVal = bVal ? new Date(bVal).getTime() : 0;
+        }
+        
+        // Handle string comparison
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+        
+        if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    
+    // Apply pagination
+    if (options?.skip !== undefined) {
+      result = result.slice(options.skip);
+    }
+    if (options?.limit !== undefined) {
+      result = result.slice(0, options.limit);
+    }
+    
+    return new Promise((resolve) => setTimeout(() => resolve(result), 400));
   }
 
   async getSample(sampleId: string): Promise<Sample | undefined> {

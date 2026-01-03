@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message } from 'antd';
+import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message, Select } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Dataset, Sample, User } from '../../types';
 import { api } from '../../services/api';
-import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
 import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
 import { useUpload } from '../../hooks';
@@ -13,6 +13,7 @@ import { useAuthStore } from '../../store/authStore';
 
 const { Title } = Typography;
 const { Sider, Content } = Layout;
+const { Option } = Select;
 
 const DatasetDetail: React.FC = () => {
   const { t } = useTranslation();
@@ -25,6 +26,40 @@ const DatasetDetail: React.FC = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [owner, setOwner] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Load sorting state from localStorage helper
+  const getSortSettingsFromStorage = (datasetId: string | undefined) => {
+    if (!datasetId) {
+      return { sortBy: 'created_at' as const, sortOrder: 'desc' as const };
+    }
+    const sortSettingsStr = localStorage.getItem(`dataset_${datasetId}_sort`);
+    if (sortSettingsStr) {
+      try {
+        const sortSettings = JSON.parse(sortSettingsStr);
+        return {
+          sortBy: sortSettings.sortBy || 'created_at',
+          sortOrder: sortSettings.sortOrder || 'desc',
+        };
+      } catch (e) {
+        console.error('Failed to parse sort settings:', e);
+      }
+    }
+    return { sortBy: 'created_at' as const, sortOrder: 'desc' as const };
+  };
+  
+  // Sorting state - initialize from localStorage
+  const initialSortSettings = getSortSettingsFromStorage(id);
+  const [sortBy, setSortBy] = useState<'name' | 'status' | 'created_at' | 'updated_at' | 'remark'>(initialSortSettings.sortBy);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialSortSettings.sortOrder);
+
+  // Reload sort settings when dataset ID changes
+  useEffect(() => {
+    if (id) {
+      const savedSettings = getSortSettingsFromStorage(id);
+      setSortBy(savedSettings.sortBy);
+      setSortOrder(savedSettings.sortOrder);
+    }
+  }, [id]);
 
   // Initialize upload hook
   const { progress, upload, cancel, reset, isUploading } = useUpload(id || '', {
@@ -40,7 +75,7 @@ const DatasetDetail: React.FC = () => {
       }));
       // Refresh samples after upload
       if (id) {
-        api.getSamples(id).then(setSamples);
+        loadSamples(id);
         api.getDataset(id).then((d) => {
           if (d) setDataset(d);
         });
@@ -51,6 +86,28 @@ const DatasetDetail: React.FC = () => {
     },
   });
 
+
+  // Load samples with current sort settings
+  const loadSamples = useCallback((datasetId: string) => {
+    api.getSamples(datasetId, {
+      sortBy,
+      sortOrder,
+    }).then(setSamples).catch((error) => {
+      console.error('Failed to load samples:', error);
+      message.error(t('datasetDetail.loadSamplesError'));
+    });
+  }, [sortBy, sortOrder, t]);
+
+  // Save sort settings to localStorage when they change
+  useEffect(() => {
+    if (id) {
+      const sortSettings = {
+        sortBy,
+        sortOrder,
+      };
+      localStorage.setItem(`dataset_${id}_sort`, JSON.stringify(sortSettings));
+    }
+  }, [id, sortBy, sortOrder]);
 
   useEffect(() => {
     if (id) {
@@ -66,9 +123,17 @@ const DatasetDetail: React.FC = () => {
           }
         }
       });
-      api.getSamples(id).then(setSamples);
+      loadSamples(id);
     }
-  }, [id]);
+  }, [id, loadSamples]);
+
+  // Reload samples when sort settings change (but not on initial mount)
+  useEffect(() => {
+    if (id) {
+      loadSamples(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy, sortOrder]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -169,7 +234,30 @@ const DatasetDetail: React.FC = () => {
       label: t('datasetDetail.dataPool'),
       children: (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <Title level={5} style={{ flexShrink: 0 }}>{t('datasetDetail.dataPool')}</Title>
+          <div style={{ flexShrink: 0, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Title level={5} style={{ margin: 0 }}>{t('datasetDetail.dataPool')}</Title>
+            <Space>
+              <Select
+                value={sortBy}
+                onChange={setSortBy}
+                style={{ width: 140 }}
+                size="small"
+              >
+                <Option value="name">{t('datasetDetail.sortByName')}</Option>
+                <Option value="status">{t('datasetDetail.sortByStatus')}</Option>
+                <Option value="created_at">{t('datasetDetail.sortByCreatedAt')}</Option>
+                <Option value="updated_at">{t('datasetDetail.sortByUpdatedAt')}</Option>
+                <Option value="remark">{t('datasetDetail.sortByRemark')}</Option>
+              </Select>
+              <Button
+                icon={sortOrder === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                size="small"
+              >
+                {sortOrder === 'asc' ? t('datasetDetail.sortAsc') : t('datasetDetail.sortDesc')}
+              </Button>
+            </Space>
+          </div>
           <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
             {samples.length === 0 ? (
               <Card>
@@ -250,7 +338,15 @@ const DatasetDetail: React.FC = () => {
             type="primary" 
             block 
             icon={<HighlightOutlined />} 
-            onClick={() => navigate(`/workspace/${dataset.id}`)}
+            onClick={() => {
+              // 保存当前排序设置到localStorage
+              const sortSettings = {
+                sortBy,
+                sortOrder,
+              };
+              localStorage.setItem(`dataset_${dataset.id}_sort`, JSON.stringify(sortSettings));
+              navigate(`/workspace/${dataset.id}`);
+            }}
             disabled={samples.length === 0}
           >
             {t('datasetDetail.startLabeling')}

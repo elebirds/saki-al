@@ -8,10 +8,11 @@ import logging
 import shutil
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, desc, asc
 from sqlmodel import Session, select
 
 # Import annotation_systems module for handler registry
@@ -44,6 +45,20 @@ router = APIRouter()
 # Request/Response Models
 # ============================================================================
 
+class SortOrder(str, Enum):
+    """Sort order options."""
+    ASC = "asc"
+    DESC = "desc"
+
+
+class SampleSortField(str, Enum):
+    """Available fields for sorting samples."""
+    NAME = "name"
+    STATUS = "status"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+    REMARK = "remark"
+
 
 # ============================================================================
 # API Endpoints
@@ -55,6 +70,8 @@ def read_samples(
         status: Optional[SampleStatus] = None,
         skip: int = 0,
         limit: int = 100,
+        sort_by: Optional[SampleSortField] = None,
+        sort_order: SortOrder = SortOrder.ASC,
         session: Session = Depends(get_session),
         current_user: User = Depends(require_permission(
             Permission.SAMPLE_READ, "dataset", "dataset_id"
@@ -62,6 +79,14 @@ def read_samples(
 ):
     """
     Get samples for a dataset.
+    
+    Args:
+        dataset_id: ID of the dataset
+        status: Filter by sample status (optional)
+        skip: Number of records to skip for pagination
+        limit: Maximum number of records to return
+        sort_by: Field to sort by (name, status, created_at, updated_at, remark)
+        sort_order: Sort order (asc or desc)
     """
     # Verify dataset exists
     dataset = session.get(Dataset, dataset_id)
@@ -71,6 +96,23 @@ def read_samples(
     query = select(Sample).where(Sample.dataset_id == dataset_id)
     if status:
         query = query.where(Sample.status == status)
+
+    # Apply sorting
+    if sort_by:
+        sort_field = getattr(Sample, sort_by.value, None)
+        if sort_field is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid sort field: {sort_by}. Valid fields are: name, status, created_at, updated_at, remark"
+            )
+        
+        if sort_order == SortOrder.DESC:
+            query = query.order_by(desc(sort_field))
+        else:
+            query = query.order_by(asc(sort_field))
+    else:
+        # Default sorting by created_at descending (newest first)
+        query = query.order_by(desc(Sample.created_at))
 
     # Calculate total count for pagination
     count_query = select(func.count()).select_from(Sample).where(Sample.dataset_id == dataset_id)

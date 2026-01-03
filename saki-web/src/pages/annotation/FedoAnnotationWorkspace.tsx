@@ -12,7 +12,7 @@ import { useParams } from 'react-router-dom';
 import { Layout, message, Spin, Empty, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { DeleteOutlined, RotateRightOutlined, BorderOutlined } from '@ant-design/icons';
-import { AnnotationToolbar, AnnotationSidebar, DualCanvasArea, DualCanvasAreaRef } from '../../components/annotation';
+import { AnnotationToolbar, AnnotationSidebar, DualCanvasArea, DualCanvasAreaRef, SampleList } from '../../components/annotation';
 import { api } from '../../services/api';
 import {
   useAnnotationState,
@@ -33,7 +33,7 @@ import {
 import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../../components/annotation/DualCanvasArea';
 import { originToCenter, centerToOrigin } from '../../utils/canvasUtils';
 
-const { Content } = Layout;
+const { Content, Sider } = Layout;
 
 // ============================================================================
 // Helper Functions
@@ -323,10 +323,30 @@ const FedoAnnotationWorkspace: React.FC = () => {
   useEffect(() => {
     if (datasetId) {
       setLoading(true);
+      
+      // Load samples with sort settings from localStorage
+      const sortSettingsStr = localStorage.getItem(`dataset_${datasetId}_sort`);
+      let sortOptions: {
+        sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
+        sortOrder?: 'asc' | 'desc';
+      } = {};
+      
+      if (sortSettingsStr) {
+        try {
+          const sortSettings = JSON.parse(sortSettingsStr);
+          sortOptions = {
+            sortBy: sortSettings.sortBy,
+            sortOrder: sortSettings.sortOrder,
+          };
+        } catch (e) {
+          console.error('Failed to parse sort settings:', e);
+        }
+      }
+      
       Promise.all([
         api.getDataset(datasetId),
         api.getLabels(datasetId),
-        api.getSamples(datasetId),
+        api.getSamples(datasetId, sortOptions),
       ])
         .then(([ds, loadedLabels, samps]) => {
           if (ds) setDataset(ds);
@@ -790,6 +810,11 @@ const FedoAnnotationWorkspace: React.FC = () => {
     disabled: isSyncing, // 同步时禁用快捷键
   });
 
+  const handleSampleSelect = useCallback((index: number) => {
+    setCurrentIndex(index);
+    annotationState.resetHistory();
+  }, [annotationState]);
+
   // ========================================================================
   // Get Image URLs from sample metadata
   // ========================================================================
@@ -866,6 +891,15 @@ const FedoAnnotationWorkspace: React.FC = () => {
 
   return (
     <Layout style={{ height: '100%' }}>
+      {/* Left Sidebar - Sample List */}
+      <Sider width={250} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
+        <SampleList
+          samples={samples}
+          currentIndex={currentIndex}
+          onSampleSelect={handleSampleSelect}
+        />
+      </Sider>
+
       <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Toolbar */}
         <AnnotationToolbar

@@ -58,7 +58,15 @@
     "deleteSuccess": "数据集已删除",
     "deleteError": "删除数据集失败",
     "exportSuccess": "导出成功",
-    "exportError": "导出失败"
+    "exportError": "导出失败",
+    "loadSamplesError": "加载样本失败",
+    "sortByName": "按名称",
+    "sortByStatus": "按状态",
+    "sortByCreatedAt": "按创建时间",
+    "sortByUpdatedAt": "按更新时间",
+    "sortByRemark": "按备注",
+    "sortAsc": "升序",
+    "sortDesc": "降序"
   },
   "permissions": {
     "Super Admin": "超级管理员",
@@ -91,6 +99,11 @@
     "label": "标签:",
     "noLabelSelected": "请先选择一个标签",
     "noLabelsConfigured": "未配置标签，请先在数据集设置中配置标签",
+    "sampleList": "样本列表",
+    "samples": "个样本",
+    "statusLabeled": "已标注",
+    "statusUnlabeled": "未标注",
+    "statusSkipped": "已跳过",
     "tools": {
       "select": "选择 (V)",
       "rect": "矩形 (R)",

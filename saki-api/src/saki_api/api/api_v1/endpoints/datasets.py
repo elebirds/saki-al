@@ -334,12 +334,7 @@ def export_dataset(
             "status": sample.status.value,
             "meta_data": sample.meta_data,
             "annotations": [
-                {
-                    "id": ann.id,
-                    "data": ann.data,
-                    "annotator_id": ann.annotator_id,
-                    "created_at": ann.created_at.isoformat() if ann.created_at else None,
-                }
+                ann.model_dump(exclude={"sample_id"})
                 for ann in annotations
             ]
         })

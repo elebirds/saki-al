@@ -6,6 +6,7 @@ import AnnotationItem from './AnnotationItem';
 import Crosshair from './Crosshair';
 import CanvasTransformer from './CanvasTransformer';
 import NewAnnotationLayer from './NewAnnotationLayer';
+import CoordinateDisplay from './CoordinateDisplay';
 import { 
   useDrawingTools, 
   useCanvasView, 
@@ -197,6 +198,12 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
           />
         </Layer>
       </Stage>
+      
+      {/* 坐标显示 */}
+      <CoordinateDisplay
+        cursorPos={cursorPos}
+        visible={showCrosshair && !!image}
+      />
     </div>
   );
 });

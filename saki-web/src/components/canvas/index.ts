@@ -17,6 +17,7 @@ export { default as AnnotationItem } from './AnnotationItem';
 export { default as Crosshair } from './Crosshair';
 export { default as CanvasTransformer } from './CanvasTransformer';
 export { default as NewAnnotationLayer } from './NewAnnotationLayer';
+export { default as CoordinateDisplay } from './CoordinateDisplay';
 
 // Hooks
 export { useDrawingTools } from './hooks';

@@ -144,10 +144,10 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
     setEditColor(label.color);
   };
 
-  const tabItems = [
+  const tabItems: Array<{ key: string; label: React.ReactNode; children: React.ReactNode }> = [
     {
       key: 'basic',
-      label: t('Basic Info'),
+      label: t('permissions.tabs.basicInfo'),
       children: (
         <Form
         form={form}
@@ -202,7 +202,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
     },
     {
       key: 'labels',
-      label: t('Labels'),
+      label: t('permissions.tabs.labels'),
       children: (
         <Card title={t('datasetSettings.labelManagement')} style={{ marginBottom: 24 }}>
         <Spin spinning={loadingLabels}>
@@ -284,7 +284,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
       key: 'members',
       label: (
         <span>
-          <TeamOutlined /> {t('Members')}
+          <TeamOutlined /> {t('permissions.tabs.members')}
         </span>
       ),
       children: <DatasetMembers datasetId={dataset.id} />,
@@ -293,7 +293,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
 
   tabItems.push({
     key: 'danger',
-    label: t('Danger Zone'),
+    label: t('permissions.tabs.dangerZone'),
     children: (
       <Card title={t('datasetSettings.dangerZone')} style={{ marginBottom: 24, borderColor: '#ff4d4f' }}>
         <Popconfirm

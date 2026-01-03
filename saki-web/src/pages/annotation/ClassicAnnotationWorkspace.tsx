@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Layout, message, Empty } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
@@ -14,6 +14,7 @@ const { Content, Sider } = Layout;
 const ClassicAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
+  const [searchParams] = useSearchParams();
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [labels, setLabels] = useState<Label[]>([]);
   const [samples, setSamples] = useState<Sample[]>([]);
@@ -64,9 +65,19 @@ const ClassicAnnotationWorkspace: React.FC = () => {
         }
       }
       
-      api.getSamples(datasetId, sortOptions).then(setSamples);
+      api.getSamples(datasetId, sortOptions).then((loadedSamples) => {
+        setSamples(loadedSamples);
+        // 如果URL中有sampleId参数，跳转到对应的sample
+        const sampleId = searchParams.get('sampleId');
+        if (sampleId && loadedSamples.length > 0) {
+          const index = loadedSamples.findIndex(s => s.id === sampleId);
+          if (index !== -1) {
+            setCurrentIndex(index);
+          }
+        }
+      });
     }
-  }, [datasetId]);
+  }, [datasetId, searchParams]);
 
   // 加载当前样本的标注
   useEffect(() => {

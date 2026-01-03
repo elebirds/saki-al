@@ -197,9 +197,23 @@ const DatasetDetail: React.FC = () => {
 
   // Render sample item - uses sample.url for all annotation systems
   const renderSampleItem = (item: Sample) => {
+    const handleSampleClick = () => {
+      if (!dataset) return;
+      // 保存当前排序设置到localStorage
+      const sortSettings = {
+        sortBy,
+        sortOrder,
+      };
+      localStorage.setItem(`dataset_${dataset.id}_sort`, JSON.stringify(sortSettings));
+      // 导航到工作区，并传递sampleId作为URL参数
+      navigate(`/workspace/${dataset.id}?sampleId=${item.id}`);
+    };
+
     return (
       <Card
         hoverable
+        onClick={handleSampleClick}
+        style={{ cursor: 'pointer' }}
         cover={
           <img 
             alt="sample" 

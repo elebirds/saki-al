@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Layout, message, Spin, Empty, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { DeleteOutlined, RotateRightOutlined, BorderOutlined } from '@ant-design/icons';
@@ -181,6 +181,7 @@ function generatedToRegions(generated: Array<Record<string, any>>): MappedRegion
 const FedoAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
+  const [searchParams] = useSearchParams();
 
   // Dataset & Samples State
   const [dataset, setDataset] = useState<Dataset | null>(null);
@@ -355,6 +356,14 @@ const FedoAnnotationWorkspace: React.FC = () => {
             annotationState.setSelectedLabel(loadedLabels[0]);
           }
           setSamples(samps);
+          // 如果URL中有sampleId参数，跳转到对应的sample
+          const sampleId = searchParams.get('sampleId');
+          if (sampleId && samps.length > 0) {
+            const index = samps.findIndex(s => s.id === sampleId);
+            if (index !== -1) {
+              setCurrentIndex(index);
+            }
+          }
           setLoading(false);
         })
         .catch((err) => {
@@ -363,7 +372,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
           setLoading(false);
         });
     }
-  }, [datasetId]);
+  }, [datasetId, searchParams]);
 
   // Load sample data
   useEffect(() => {

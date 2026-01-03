@@ -50,12 +50,16 @@ export function isProduction(): boolean {
 }
 
 /**
- * 在生产环境强制使用 HTTPS
+ * 根据环境变量强制使用 HTTPS
+ * 只有当 VITE_FORCE_HTTPS 环境变量存在且为 'true' 时才会强制使用 HTTPS
  * 如果不是 HTTPS，会抛出错误
  */
 export function enforceHttps(): void {
-  if (isProduction() && !isHttps()) {
-    throw new Error('生产环境必须使用 HTTPS 协议以确保安全');
+  // 检查环境变量 VITE_FORCE_HTTPS 是否存在且为 'true'
+  const forceHttps = import.meta.env.VITE_FORCE_HTTPS === 'true';
+  
+  if (forceHttps && !isHttps()) {
+    throw new Error('必须使用 HTTPS 协议以确保安全');
   }
 }
 

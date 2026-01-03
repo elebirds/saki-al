@@ -133,13 +133,14 @@ function createApiError(error: any): Error {
 
 export class RealApiService implements ApiService {
   private client: AxiosInstance;
+  private readonly apiBaseUrl: string;
 
   constructor() {
     // 从环境变量读取 API 地址，如果没有则使用默认值
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+    this.apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
     
     this.client = axios.create({
-      baseURL: apiBaseUrl,
+      baseURL: this.apiBaseUrl,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -470,7 +471,7 @@ export class RealApiService implements ApiService {
     files.forEach(file => formData.append('files', file));
 
     const token = useAuthStore.getState().token;
-    const response = await fetch(`http://localhost:8000/api/v1/samples/${datasetId}/stream`, {
+    const response = await fetch(`${this.apiBaseUrl}/samples/${datasetId}/stream`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -644,5 +645,17 @@ export class RealApiService implements ApiService {
 
   async deleteUser(id: string): Promise<void> {
     await this.client.delete(`/users/${id}`);
+  }
+
+  // ==========================================================================
+  // Utility Methods
+  // ==========================================================================
+
+  /**
+   * 获取 API 基础 URL
+   * @returns API 基础 URL
+   */
+  getApiBaseUrl(): string {
+    return this.apiBaseUrl;
   }
 }

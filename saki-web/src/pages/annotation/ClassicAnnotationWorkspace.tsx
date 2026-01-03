@@ -8,6 +8,7 @@ import { api } from '../../services/api';
 import { useAnnotationState, useAnnotationSync, useAnnotationShortcuts } from '../../hooks';
 import { Sample, Annotation, Dataset, Label, AnnotationType, SyncAction } from '../../types';
 import { originToCenter, centerToOrigin } from '../../utils/canvasUtils';
+import { generateUUID } from '../../utils/uuid';
 
 const { Content, Sider } = Layout;
 
@@ -121,7 +122,7 @@ const ClassicAnnotationWorkspace: React.FC = () => {
     if (!currentSample) return;
 
     // 使用UUID格式生成ID，与后端生成的ID格式保持一致
-    const newId = crypto.randomUUID();
+    const newId = generateUUID();
     const newAnn: Annotation = {
       id: newId,
       sampleId: currentSample.id,

@@ -19,6 +19,7 @@ import {
   useAnnotationSync,
   useAnnotationShortcuts,
 } from '../../hooks';
+import { generateUUID } from '../../utils/uuid';
 import {
   Sample,
   Annotation,
@@ -502,7 +503,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
       if (!currentSample) return;
 
       // 使用UUID格式生成ID，与后端生成的ID格式保持一致
-      const newId = crypto.randomUUID();
+      const newId = generateUUID();
       const view = event.view || VIEW_TIME_ENERGY;
 
       // 将起始点转换为中心点再发送给后端（后端期望中心点坐标，无论rect还是obb）

@@ -58,6 +58,16 @@ sudo systemctl enable docker
 # 验证安装
 sudo docker --version
 sudo docker compose version
+
+# 配置 Docker 权限（可选，但推荐）
+# 将当前用户添加到 docker 组，这样就不需要每次都使用 sudo
+sudo usermod -aG docker $USER
+# 注意：需要注销并重新登录，或运行以下命令使更改生效
+newgrp docker
+
+# 验证权限配置
+docker --version
+docker compose version
 ```
 
 #### CentOS/RHEL
@@ -81,9 +91,42 @@ sudo systemctl enable docker
 # 验证安装
 sudo docker --version
 sudo docker compose version
+
+# 配置 Docker 权限（可选，但推荐）
+# 将当前用户添加到 docker 组，这样就不需要每次都使用 sudo
+sudo usermod -aG docker $USER
+# 注意：需要注销并重新登录，或运行以下命令使更改生效
+newgrp docker
+
+# 验证权限配置
+docker --version
+docker compose version
 ```
 
 ## 快速开始
+
+### 0. 配置 Docker 镜像加速器（推荐，特别是中国大陆用户）
+
+如果遇到镜像拉取超时问题，请先配置镜像加速器：
+
+```bash
+# 运行镜像加速器配置脚本
+./configure-docker-mirror.sh
+
+# 或手动配置
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.mirrors.ustc.edu.cn",
+    "https://hub-mirror.c.163.com",
+    "https://mirror.baidubce.com"
+  ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
 
 ### 1. 上传代码到服务器
 
@@ -406,7 +449,79 @@ services:
 
 ### 常见问题
 
-#### 1. 服务无法启动
+#### 1. Docker 权限问题
+
+如果遇到 `permission denied while trying to connect to the Docker daemon socket` 错误：
+
+**解决方案 1: 将用户添加到 docker 组（推荐）**
+
+```bash
+# 将当前用户添加到 docker 组
+sudo usermod -aG docker $USER
+
+# 使更改生效（选择以下方式之一）
+# 方式 1: 注销并重新登录
+# 方式 2: 运行以下命令
+newgrp docker
+
+# 验证权限
+docker --version
+docker ps
+```
+
+**解决方案 2: 使用 sudo**
+
+```bash
+# 使用 sudo 运行部署脚本
+sudo ./deploy.sh
+
+# 或使用 sudo 运行 docker compose 命令
+sudo docker compose up -d
+```
+
+**注意**: 如果使用 sudo，确保后续所有 docker 命令都使用 sudo，否则可能遇到权限问题。
+
+#### 2. Docker 镜像拉取超时
+
+如果遇到 `DeadlineExceeded` 或 `i/o timeout` 错误：
+
+**解决方案：配置 Docker 镜像加速器**
+
+```bash
+# 使用配置脚本（推荐）
+./configure-docker-mirror.sh
+
+# 或手动配置
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.mirrors.ustc.edu.cn",
+    "https://hub-mirror.c.163.com",
+    "https://mirror.baidubce.com"
+  ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
+# 验证配置
+docker info | grep -A 10 "Registry Mirrors"
+```
+
+**其他解决方案：**
+
+```bash
+# 增加超时时间重试
+docker compose build --progress=plain
+
+# 或使用代理（如果有）
+export HTTP_PROXY=http://your-proxy:port
+export HTTPS_PROXY=http://your-proxy:port
+docker compose build
+```
+
+#### 3. 服务无法启动
 
 ```bash
 # 查看详细错误信息
@@ -421,13 +536,13 @@ sudo netstat -tulpn | grep :80
 docker compose restart
 ```
 
-#### 2. 前端无法连接后端
+#### 4. 前端无法连接后端
 
 - 检查 `VITE_API_BASE_URL` 配置是否正确
 - 检查 CORS 配置是否包含前端域名
 - 检查防火墙设置
 
-#### 3. 数据库连接失败
+#### 5. 数据库连接失败
 
 ```bash
 # 检查数据库文件权限
@@ -439,7 +554,7 @@ sudo chown -R $USER:$USER saki-api/data
 sudo chown -R $USER:$USER saki-api/saki.db
 ```
 
-#### 4. 上传文件失败
+#### 6. 上传文件失败
 
 ```bash
 # 检查上传目录权限
@@ -449,7 +564,7 @@ ls -la saki-api/data/uploads/
 sudo chmod -R 755 saki-api/data/uploads/
 ```
 
-#### 5. 内存不足
+#### 7. 内存不足
 
 ```bash
 # 查看容器资源使用

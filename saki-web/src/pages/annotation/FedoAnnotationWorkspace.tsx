@@ -501,14 +501,13 @@ const FedoAnnotationWorkspace: React.FC = () => {
 
       if (!currentSample) return;
 
-      const newId = Date.now().toString();
+      // 使用UUID格式生成ID，与后端生成的ID格式保持一致
+      const newId = crypto.randomUUID();
       const view = event.view || VIEW_TIME_ENERGY;
 
-      // 对于 OBB 类型，将起始点转换为中心点再发送给后端
-      let bboxData = event.bbox;
-      if (event.type === 'obb') {
-        bboxData = originToCenter(event.bbox);
-      }
+      // 将起始点转换为中心点再发送给后端（后端期望中心点坐标，无论rect还是obb）
+      // 对于rect类型，rotation为0或undefined，originToCenter仍然能正确处理
+      let bboxData = originToCenter(event.bbox);
       
       // 调用后端 sync 接口
       const syncAction: SyncAction = {
@@ -610,9 +609,9 @@ const FedoAnnotationWorkspace: React.FC = () => {
     async (updatedAnn: Annotation) => {
       if (!currentSample) return;
 
-      // 对于 OBB 类型，将起始点转换为中心点再发送给后端
+      // 将起始点转换为中心点再发送给后端（后端期望中心点坐标，无论rect还是obb）
       let bboxData = updatedAnn.data;
-      if (updatedAnn.type === 'obb' && bboxData) {
+      if (bboxData) {
         const bboxDataTyped = bboxData as { x: number; y: number; width: number; height: number; rotation?: number };
         bboxData = originToCenter(bboxDataTyped);
       }
@@ -764,13 +763,13 @@ const FedoAnnotationWorkspace: React.FC = () => {
         const convertedAnns = anns.map(ann => {
           const view = annotationViews.get(ann.id) || VIEW_TIME_ENERGY;
           
-          // 对于 OBB 类型，将起始点转换为中心点（后端期望中心点坐标）
-          if (ann.type === 'obb' && ann.data) {
+          // 将起始点转换为中心点（后端期望中心点坐标，无论rect还是obb）
+          if (ann.data) {
             const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
             return {
               ...ann,
               extra: { ...ann.extra, view },
-              data: originToCenter(bboxData)
+              data: originToCenter(bboxData),
             };
           }
           
@@ -783,13 +782,15 @@ const FedoAnnotationWorkspace: React.FC = () => {
       });
       
       // 添加生成的标注，也需要转换为中心点
+      // 注意：生成的标注的annotatorId应该保持为null或系统标识，因为它们不是手动创建的
       generatedAnnotations.forEach(ann => {
-        // 对于 OBB 类型，将起始点转换为中心点（后端期望中心点坐标）
-        if (ann.type === 'obb' && ann.data) {
+        // 将起始点转换为中心点（后端期望中心点坐标，无论rect还是obb）
+        if (ann.data) {
           const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
           annsToSave.push({
             ...ann,
-            data: originToCenter(bboxData)
+            data: originToCenter(bboxData),
+            // 生成的标注不设置annotatorId，因为它们是由系统自动生成的
           });
         } else {
           annsToSave.push(ann);

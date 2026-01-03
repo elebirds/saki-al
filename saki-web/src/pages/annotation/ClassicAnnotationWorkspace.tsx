@@ -120,7 +120,8 @@ const ClassicAnnotationWorkspace: React.FC = () => {
 
     if (!currentSample) return;
 
-    const newId = Date.now().toString();
+    // 使用UUID格式生成ID，与后端生成的ID格式保持一致
+    const newId = crypto.randomUUID();
     const newAnn: Annotation = {
       id: newId,
       sampleId: currentSample.id,
@@ -232,13 +233,13 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   const handleSubmit = useCallback(async () => {
     if (!currentSample) return;
     try {
-      // 对于 OBB 类型，将起始点转换为中心点（后端期望中心点坐标）
+      // 将起始点转换为中心点（后端期望中心点坐标，无论rect还是obb）
       const annsToSave = annotationState.annotations.map(ann => {
-        if (ann.type === 'obb' && ann.data) {
+        if (ann.data) {
           const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
           return {
             ...ann,
-            data: originToCenter(bboxData)
+            data: originToCenter(bboxData),
           };
         }
         return ann;

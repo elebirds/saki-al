@@ -196,6 +196,7 @@ export interface Annotation {
   source?: AnnotationSource;
   data: Record<string, any>;  // Geometry data (bbox, points, etc.)
   extra?: Record<string, any>;  // System-specific (e.g., parentId, view for FEDO)
+  annotatorId?: string | null;  // ID of the user who created the annotation
 }
 
 // ============================================================================

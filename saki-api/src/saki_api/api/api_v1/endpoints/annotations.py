@@ -49,6 +49,7 @@ class AnnotationItem(BaseModel):
     label_color: Optional[str] = None
     data: Dict[str, Any] = {}
     extra: Dict[str, Any] = {}  # System-specific (e.g., parent_id, view for FEDO)
+    annotator_id: Optional[str] = None  # ID of the user who created the annotation
 
 
 class SampleAnnotationsResponse(BaseModel):
@@ -110,7 +111,7 @@ class BatchSaveResponse(BaseModel):
 # Helpers
 # ============================================================================
 
-def _get_context(sample: Sample, session: Session) -> AnnotationContext:
+def _get_context(sample: Sample, session: Session, current_user: Optional[User] = None) -> AnnotationContext:
     """Build annotation context for a sample."""
     dataset = session.get(Dataset, sample.dataset_id)
     if not dataset:
@@ -120,6 +121,7 @@ def _get_context(sample: Sample, session: Session) -> AnnotationContext:
         sample_id=sample.id,
         dataset_id=sample.dataset_id,
         sample_meta=sample.meta_data or {},
+        annotator_id=current_user.id if current_user else None,
     )
 
 
@@ -134,6 +136,7 @@ def _to_item(ann: Annotation, label: Optional[Label] = None) -> AnnotationItem:
         label_color=label.color if label else None,
         data=ann.data or {},
         extra=ann.extra or {},
+        annotator_id=ann.annotator_id,
     )
 
 
@@ -203,7 +206,7 @@ def sync_annotations(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
-    context = _get_context(sample, session)
+    context = _get_context(sample, session, current_user)
     
     # Get handler for this annotation system
     try:
@@ -331,7 +334,7 @@ def save_annotations(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
-    context = _get_context(sample, session)
+    context = _get_context(sample, session, current_user)
     
     # Get handler for pre-save processing
     try:
@@ -347,6 +350,7 @@ def save_annotations(
             session.delete(ann)
         
         # Prepare annotations
+        # 注意：annotator_id 由后端自动设置，不从请求中读取
         annotations_to_save = [
             {
                 "id": a.id,
@@ -375,14 +379,23 @@ def save_annotations(
                     detail=f"Label '{ann_data['label_id']}' not found"
                 )
             
+            # 根据source设置annotator_id：
+            # - manual标注：使用当前用户ID
+            # - auto/fedo_mapping标注：设置为None（系统自动生成）
+            source = AnnotationSource(ann_data["source"]) if ann_data.get("source") else AnnotationSource.MANUAL
+            annotator_id = None
+            if source == AnnotationSource.MANUAL and current_user:
+                annotator_id = current_user.id
+            
             new_ann = Annotation(
                 id=ann_data.get("id") or str(uuid.uuid4()),
                 sample_id=request.sample_id,
                 label_id=ann_data["label_id"],
                 type=AnnotationType(ann_data["type"]) if ann_data.get("type") else AnnotationType.RECT,
-                source=AnnotationSource(ann_data["source"]) if ann_data.get("source") else AnnotationSource.MANUAL,
+                source=source,
                 data=ann_data.get("data") or {},
                 extra=ann_data.get("extra") or {},
+                annotator_id=annotator_id,
             )
             session.add(new_ann)
             saved_count += 1

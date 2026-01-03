@@ -37,17 +37,17 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
       onUpdate(updatedProject);
       message.success(t('projectSettings.successMessage'));
     } catch (error) {
-      message.error('Failed to update project');
+      message.error(t('projectSettings.updateError'));
     }
   };
 
   const handleDelete = async () => {
     try {
       await api.deleteProject(project.id);
-      message.success('Project deleted');
+      message.success(t('projectSettings.deleteSuccess'));
       navigate('/');
     } catch (error) {
-      message.error('Failed to delete project');
+      message.error(t('projectSettings.deleteError'));
     }
   };
 
@@ -118,9 +118,9 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
         </Card>
 
         {project.annotationSystem === 'fedo' && (
-          <Card title={t('projectSettings.fedoConfig') || 'FEDO Settings'} style={{ marginBottom: 24 }}>
+          <Card title={t('projectSettings.fedoConfig')} style={{ marginBottom: 24 }}>
             <Form.Item 
-              label={t('projectSettings.thumbnailView') || 'Thumbnail View'}
+              label={t('projectSettings.thumbnailView')}
               name={['annotationConfig', 'thumbnailView']}
               initialValue={project.annotationConfig?.thumbnailView || 'time_energy'}
             >
@@ -206,14 +206,14 @@ const ProjectSettings: React.FC<ProjectSettingsProps> = ({ project, onUpdate }) 
               {t('projectSettings.saveSettings')}
             </Button>
             <Popconfirm
-              title="Are you sure you want to delete this project?"
-              description="This action cannot be undone."
+              title={t('projectSettings.deleteConfirm')}
+              description={t('projectSettings.deleteConfirmDesc')}
               onConfirm={handleDelete}
-              okText="Yes"
-              cancelText="No"
+              okText={t('common.yes')}
+              cancelText={t('common.no')}
             >
               <Button type="primary" danger icon={<DeleteOutlined />}>
-                Delete Project
+                {t('projectSettings.deleteProject')}
               </Button>
             </Popconfirm>
           </div>

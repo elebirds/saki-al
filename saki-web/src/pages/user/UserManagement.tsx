@@ -23,7 +23,7 @@ const UserManagement: React.FC = () => {
       const data = await api.getUsers();
       setUsers(data);
     } catch (error) {
-      message.error(t('Failed to fetch users'));
+      message.error(t('userManagement.fetchError'));
     } finally {
       setLoading(false);
     }
@@ -51,10 +51,10 @@ const UserManagement: React.FC = () => {
   const handleDelete = async (id: string) => {
     try {
       await api.deleteUser(id);
-      message.success(t('User deleted successfully'));
+      message.success(t('userManagement.deleteSuccess'));
       fetchUsers();
     } catch (error) {
-      message.error(t('Failed to delete user'));
+      message.error(t('userManagement.deleteError'));
     }
   };
 
@@ -67,41 +67,41 @@ const UserManagement: React.FC = () => {
       }
       if (editingUser) {
         await api.updateUser(editingUser.id, values);
-        message.success(t('User updated successfully'));
+        message.success(t('userManagement.updateSuccess'));
       } else {
         await api.createUser(values);
-        message.success(t('User created successfully'));
+        message.success(t('userManagement.createSuccess'));
       }
       setIsModalOpen(false);
       fetchUsers();
     } catch (error: any) {
-      message.error(error.message || t('Operation failed'));
+      message.error(error.message || t('common.operationFailed'));
     }
   };
 
   const columns = [
     {
-      title: t('Email'),
+      title: t('common.email'),
       dataIndex: 'email',
       key: 'email',
     },
     {
-      title: t('Full Name'),
+      title: t('common.fullName'),
       dataIndex: 'fullName',
       key: 'fullName',
     },
     {
-      title: t('Status'),
+      title: t('common.status'),
       key: 'isActive',
       dataIndex: 'isActive',
       render: (isActive: boolean) => (
         <Tag color={isActive ? 'green' : 'red'}>
-          {isActive ? t('Active') : t('Inactive')}
+          {isActive ? t('common.active') : t('common.inactive')}
         </Tag>
       ),
     },
     {
-      title: t('Role'),
+      title: t('common.role'),
       key: 'globalRole',
       dataIndex: 'globalRole',
       render: (role: GlobalRole) => {
@@ -112,10 +112,10 @@ const UserManagement: React.FC = () => {
           'viewer': 'default',
         };
         const roleLabels: Record<GlobalRole, string> = {
-          'super_admin': t('Super Admin'),
-          'admin': t('Admin'),
-          'annotator': t('Annotator'),
-          'viewer': t('Viewer'),
+          'super_admin': t('userManagement.roles.superAdmin'),
+          'admin': t('userManagement.roles.admin'),
+          'annotator': t('userManagement.roles.annotator'),
+          'viewer': t('userManagement.roles.viewer'),
         };
         return (
           <Tag color={roleColors[role]}>
@@ -125,21 +125,21 @@ const UserManagement: React.FC = () => {
       },
     },
     {
-      title: t('Actions'),
+      title: t('common.actions'),
       key: 'action',
       render: (_: any, record: User) => (
         <Space size="middle">
           <Button type="link" onClick={() => handleEdit(record)}>
-            {t('Edit')}
+            {t('common.edit')}
           </Button>
           <Popconfirm
-            title={t('Are you sure to delete this user?')}
+            title={t('userManagement.deleteConfirm')}
             onConfirm={() => handleDelete(record.id)}
-            okText={t('Yes')}
-            cancelText={t('No')}
+            okText={t('common.yes')}
+            cancelText={t('common.no')}
           >
             <Button type="link" danger>
-              {t('Delete')}
+              {t('common.delete')}
             </Button>
           </Popconfirm>
         </Space>
@@ -150,15 +150,15 @@ const UserManagement: React.FC = () => {
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2>{t('User Management')}</h2>
+        <h2>{t('userManagement.title')}</h2>
         <Button type="primary" onClick={handleAdd}>
-          {t('Add User')}
+          {t('userManagement.addUser')}
         </Button>
       </div>
       <Table columns={columns} dataSource={users} rowKey="id" loading={loading} />
 
       <Modal
-        title={editingUser ? t('Edit User') : t('Add User')}
+        title={editingUser ? t('userManagement.editUser') : t('userManagement.addUser')}
         open={isModalOpen}
         onOk={handleOk}
         onCancel={() => setIsModalOpen(false)}
@@ -166,22 +166,22 @@ const UserManagement: React.FC = () => {
         <Form form={form} layout="vertical">
           <Form.Item
             name="email"
-            label={t('Email')}
-            rules={[{ required: true, type: 'email', message: t('Please input a valid email!') }]}
+            label={t('common.email')}
+            rules={[{ required: true, type: 'email', message: t('userManagement.emailRequired') }]}
           >
             <Input disabled={!!editingUser} />
           </Form.Item>
           <Form.Item
             name="fullName"
-            label={t('Full Name')}
+            label={t('common.fullName')}
           >
             <Input />
           </Form.Item>
           <Form.Item
             name="password"
-            label={t('Password')}
-            rules={[{ required: !editingUser, message: t('Please input password!') }]}
-            help={editingUser ? t('Leave empty to keep current password') : undefined}
+            label={t('common.password')}
+            rules={[{ required: !editingUser, message: t('userManagement.passwordRequired') }]}
+            help={editingUser ? t('userManagement.passwordHelp') : undefined}
           >
             <Input.Password />
           </Form.Item>
@@ -190,20 +190,20 @@ const UserManagement: React.FC = () => {
             valuePropName="checked"
             initialValue={true}
           >
-            <Checkbox>{t('Active')}</Checkbox>
+            <Checkbox>{t('common.active')}</Checkbox>
           </Form.Item>
           {canManageRoles && (
             <Form.Item
               name="globalRole"
-              label={t('Global Role')}
+              label={t('userManagement.globalRole')}
               initialValue="viewer"
             >
               <Select>
-                <Select.Option value="viewer">{t('Viewer')}</Select.Option>
-                <Select.Option value="annotator">{t('Annotator')}</Select.Option>
-                <Select.Option value="admin">{t('Admin')}</Select.Option>
+                <Select.Option value="viewer">{t('userManagement.roles.viewer')}</Select.Option>
+                <Select.Option value="annotator">{t('userManagement.roles.annotator')}</Select.Option>
+                <Select.Option value="admin">{t('userManagement.roles.admin')}</Select.Option>
                 {currentUser?.globalRole === 'super_admin' && (
-                  <Select.Option value="super_admin">{t('Super Admin')}</Select.Option>
+                  <Select.Option value="super_admin">{t('userManagement.roles.superAdmin')}</Select.Option>
                 )}
               </Select>
             </Form.Item>

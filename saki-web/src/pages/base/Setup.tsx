@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message, Steps } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined, RocketOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../../services/api';
 
 const { Title, Paragraph } = Typography;
 
 const Setup: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
@@ -14,10 +16,10 @@ const Setup: React.FC = () => {
     setLoading(true);
     try {
       await api.setupSystem(values.email, values.password, values.fullName);
-      message.success('System initialized successfully! Please log in with your admin account.');
+      message.success(t('auth.setup.initializeSuccess'));
       navigate('/login');
     } catch (error: any) {
-      message.error(error.message || 'Setup failed');
+      message.error(error.message || t('auth.setup.initializeFailed'));
     } finally {
       setLoading(false);
     }
@@ -28,19 +30,18 @@ const Setup: React.FC = () => {
       <Card style={{ width: 600, padding: '20px' }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <RocketOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
-          <Title level={2}>Welcome to Saki</Title>
+          <Title level={2}>{t('auth.setup.title')}</Title>
           <Paragraph type="secondary">
-            It looks like this is your first time running Saki. <br />
-            Let's set up your administrator account to get started.
+            {t('auth.setup.subtitle')}
           </Paragraph>
         </div>
 
         <Steps
           current={0}
           items={[
-            { title: 'Welcome', status: 'finish' },
-            { title: 'Create Admin', status: 'process' },
-            { title: 'Ready', status: 'wait' },
+            { title: t('auth.setup.stepWelcome'), status: 'finish' },
+            { title: t('auth.setup.stepCreateAdmin'), status: 'process' },
+            { title: t('auth.setup.stepReady'), status: 'wait' },
           ]}
           style={{ marginBottom: 40 }}
         />
@@ -53,10 +54,10 @@ const Setup: React.FC = () => {
         >
           <Form.Item
             name="email"
-            label="Admin Email"
+            label={t('auth.setup.adminEmail')}
             rules={[
-              { required: true, message: 'Please input your Email!' },
-              { type: 'email', message: 'Please enter a valid email!' }
+              { required: true, message: t('auth.setup.emailRequired') },
+              { type: 'email', message: t('auth.setup.emailInvalid') }
             ]}
           >
             <Input prefix={<MailOutlined />} placeholder="admin@example.com" />
@@ -64,43 +65,43 @@ const Setup: React.FC = () => {
 
           <Form.Item
             name="fullName"
-            label="Full Name"
-            rules={[{ required: true, message: 'Please input your full name!' }]}
+            label={t('auth.setup.fullName')}
+            rules={[{ required: true, message: t('auth.setup.fullNameRequired') }]}
           >
             <Input prefix={<UserOutlined />} placeholder="Administrator" />
           </Form.Item>
 
           <Form.Item
             name="password"
-            label="Password"
-            rules={[{ required: true, message: 'Please input your Password!' }]}
+            label={t('auth.setup.password')}
+            rules={[{ required: true, message: t('auth.setup.passwordRequired') }]}
           >
             <Input.Password prefix={<LockOutlined />} placeholder="Strong Password" />
           </Form.Item>
           
           <Form.Item
             name="confirm"
-            label="Confirm Password"
+            label={t('auth.setup.confirmPassword')}
             dependencies={['password']}
             hasFeedback
             rules={[
-              { required: true, message: 'Please confirm your password!' },
+              { required: true, message: t('auth.setup.confirmPasswordRequired') },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue('password') === value) {
                     return Promise.resolve();
                   }
-                  return Promise.reject(new Error('The two passwords that you entered do not match!'));
+                  return Promise.reject(new Error(t('auth.setup.passwordMismatch')));
                 },
               }),
             ]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Confirm Password" />
+            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.setup.confirmPassword')} />
           </Form.Item>
 
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading} size="large">
-              Initialize System
+              {t('auth.setup.initializeButton')}
             </Button>
           </Form.Item>
         </Form>

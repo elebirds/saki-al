@@ -368,7 +368,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
         })
         .catch((err) => {
           console.error('Failed to load dataset:', err);
-          message.error('Failed to load dataset');
+          message.error(t('annotation.loadError'));
           setLoading(false);
         });
     }
@@ -801,7 +801,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
       message.success(t('annotation.saved') || 'Saved');
       handleNext();
     } catch (error) {
-      message.error('Failed to save annotations');
+      message.error(t('annotation.saveError'));
     }
   }, [currentSample, annotationState.annotations, generatedAnnotations, annotationViews, handleNext, t]);
 
@@ -874,7 +874,7 @@ const FedoAnnotationWorkspace: React.FC = () => {
           height: '100%',
         }}
       >
-        <Empty description="No samples found for this dataset" />
+        <Empty description={t('workspace.noSamples')} />
       </div>
     );
   }

@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 
 const { Title } = Typography;
 
 const Login: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const setToken = useAuthStore((state) => state.setToken);
   const setUser = useAuthStore((state) => state.setUser);
@@ -23,10 +25,10 @@ const Login: React.FC = () => {
       const user = await api.getCurrentUser();
       setUser(user);
       
-      message.success('Login successful');
+      message.success(t('auth.login.loginSuccess'));
       navigate('/');
     } catch (error: any) {
-      message.error(error.message || 'Login failed');
+      message.error(error.message || t('auth.login.loginFailed'));
     } finally {
       setLoading(false);
     }
@@ -36,8 +38,8 @@ const Login: React.FC = () => {
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
       <Card style={{ width: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Title level={2}>Saki AL</Title>
-          <Typography.Text type="secondary">Visual Active Learning Platform</Typography.Text>
+          <Title level={2}>{t('app.title')}</Title>
+          <Typography.Text type="secondary">{t('auth.login.subtitle')}</Typography.Text>
         </div>
         
         <Form
@@ -48,26 +50,26 @@ const Login: React.FC = () => {
         >
           <Form.Item
             name="email"
-            rules={[{ required: true, message: 'Please input your Email!' }]}
+            rules={[{ required: true, message: t('auth.login.emailRequired') }]}
           >
-            <Input prefix={<UserOutlined />} placeholder="Email" />
+            <Input prefix={<UserOutlined />} placeholder={t('auth.login.email')} />
           </Form.Item>
 
           <Form.Item
             name="password"
-            rules={[{ required: true, message: 'Please input your Password!' }]}
+            rules={[{ required: true, message: t('auth.login.passwordRequired') }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Password" />
+            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.login.password')} />
           </Form.Item>
 
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
-              Log in
+              {t('auth.login.loginButton')}
             </Button>
           </Form.Item>
           
           <div style={{ textAlign: 'center' }}>
-            Or <Link to="/register">register now!</Link>
+            {t('auth.login.or')} <Link to="/register">{t('auth.login.registerLink')}</Link>
           </div>
         </Form>
       </Card>

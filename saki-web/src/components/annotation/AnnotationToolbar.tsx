@@ -123,17 +123,17 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
       >
         <Radio.Button value="select">
           <Tooltip title={t('workspace.tools.select')}>
-            <DragOutlined /> Select
+            <DragOutlined /> {t('workspace.tools.select').split(' (')[0]}
           </Tooltip>
         </Radio.Button>
         <Radio.Button value="rect">
           <Tooltip title={t('workspace.tools.rect')}>
-            <BorderOutlined /> Rect
+            <BorderOutlined /> {t('workspace.tools.rect').split(' (')[0]}
           </Tooltip>
         </Radio.Button>
         <Radio.Button value="obb">
           <Tooltip title={t('workspace.tools.obb')}>
-            <RotateRightOutlined /> OBB
+            <RotateRightOutlined /> {t('workspace.tools.obb').split(' (')[0]}
           </Tooltip>
         </Radio.Button>
       </Radio.Group>
@@ -166,10 +166,10 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
               icon={<SyncOutlined spin={syncStatus.isSyncing} />}
             >
               {syncStatus.isSyncing
-                ? 'Syncing...'
+                ? t('workspace.sync.syncing')
                 : syncStatus.isSyncReady
-                ? 'Sync Ready'
-                : 'Initializing...'}
+                ? t('workspace.sync.ready')
+                : t('workspace.sync.initializing')}
             </Tag>
           </Space>
         </>

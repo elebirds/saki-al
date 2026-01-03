@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../../services/api';
 
 const { Title } = Typography;
 
 const Register: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
@@ -14,10 +16,10 @@ const Register: React.FC = () => {
     setLoading(true);
     try {
       await api.register(values.email, values.password, values.fullName);
-      message.success('Registration successful! Please log in.');
+      message.success(t('auth.register.registerSuccess'));
       navigate('/login');
     } catch (error: any) {
-      message.error(error.message || 'Registration failed');
+      message.error(error.message || t('auth.register.registerFailed'));
     } finally {
       setLoading(false);
     }
@@ -27,8 +29,8 @@ const Register: React.FC = () => {
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
       <Card style={{ width: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Title level={2}>Sign Up</Title>
-          <Typography.Text type="secondary">Create your Saki account</Typography.Text>
+          <Title level={2}>{t('auth.register.title')}</Title>
+          <Typography.Text type="secondary">{t('auth.register.subtitle')}</Typography.Text>
         </div>
         
         <Form
@@ -39,59 +41,59 @@ const Register: React.FC = () => {
         >
           <Form.Item
             name="email"
-            label="Email"
+            label={t('auth.register.email')}
             rules={[
-              { required: true, message: 'Please input your Email!' },
-              { type: 'email', message: 'Please enter a valid email!' }
+              { required: true, message: t('auth.register.emailRequired') },
+              { type: 'email', message: t('auth.register.emailInvalid') }
             ]}
           >
-            <Input prefix={<MailOutlined />} placeholder="Email" />
+            <Input prefix={<MailOutlined />} placeholder={t('auth.register.email')} />
           </Form.Item>
 
           <Form.Item
             name="fullName"
-            label="Full Name"
-            rules={[{ required: true, message: 'Please input your full name!' }]}
+            label={t('auth.register.fullName')}
+            rules={[{ required: true, message: t('auth.register.fullNameRequired') }]}
           >
-            <Input prefix={<UserOutlined />} placeholder="Full Name" />
+            <Input prefix={<UserOutlined />} placeholder={t('auth.register.fullName')} />
           </Form.Item>
 
           <Form.Item
             name="password"
-            label="Password"
-            rules={[{ required: true, message: 'Please input your Password!' }]}
+            label={t('auth.register.password')}
+            rules={[{ required: true, message: t('auth.register.passwordRequired') }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Password" />
+            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.register.password')} />
           </Form.Item>
           
           <Form.Item
             name="confirm"
-            label="Confirm Password"
+            label={t('auth.register.confirmPassword')}
             dependencies={['password']}
             hasFeedback
             rules={[
-              { required: true, message: 'Please confirm your password!' },
+              { required: true, message: t('auth.register.confirmPasswordRequired') },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue('password') === value) {
                     return Promise.resolve();
                   }
-                  return Promise.reject(new Error('The two passwords that you entered do not match!'));
+                  return Promise.reject(new Error(t('auth.register.passwordMismatch')));
                 },
               }),
             ]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Confirm Password" />
+            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.register.confirmPassword')} />
           </Form.Item>
 
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
-              Register
+              {t('auth.register.registerButton')}
             </Button>
           </Form.Item>
           
           <div style={{ textAlign: 'center' }}>
-            Already have an account? <Link to="/login">Log in</Link>
+            {t('auth.register.alreadyHaveAccount')} <Link to="/login">{t('auth.register.loginLink')}</Link>
           </div>
         </Form>
       </Card>

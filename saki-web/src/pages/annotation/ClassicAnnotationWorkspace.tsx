@@ -253,7 +253,7 @@ const ClassicAnnotationWorkspace: React.FC = () => {
       message.success(t('annotation.saved') || 'Saved');
       handleNext();
     } catch (error) {
-      message.error('Failed to save annotations');
+      message.error(t('annotation.saveError'));
     }
   }, [currentSample, annotationState.annotations, handleNext, t]);
 

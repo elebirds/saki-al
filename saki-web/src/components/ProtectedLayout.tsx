@@ -62,7 +62,7 @@ const ProtectedLayout: React.FC = () => {
             items={[
               { key: '1', label: <Link to="/">{t('app.projects')}</Link> },
               ...(user?.globalRole === 'super_admin' || user?.globalRole === 'admin' 
-                ? [{ key: '3', label: <Link to="/users">{t('Users')}</Link> }] 
+                ? [{ key: '3', label: <Link to="/users">{t('userManagement.title')}</Link> }] 
                 : []),
               { key: '2', label: <Link to="/about">{t('app.about')}</Link> },
             ]}

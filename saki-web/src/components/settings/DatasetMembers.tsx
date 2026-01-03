@@ -28,7 +28,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
       const data = await api.getDatasetMembers(datasetId);
       setMembers(data);
     } catch (error: any) {
-      message.error(error.message || t('Failed to fetch members'));
+      message.error(error.message || t('datasetMembers.fetchError'));
     } finally {
       setLoading(false);
     }
@@ -65,10 +65,10 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
   const handleDelete = async (userId: string) => {
     try {
       await api.removeDatasetMember(datasetId, userId);
-      message.success(t('Member removed successfully'));
+      message.success(t('datasetMembers.removeSuccess'));
       fetchMembers();
     } catch (error: any) {
-      message.error(error.message || t('Failed to remove member'));
+      message.error(error.message || t('datasetMembers.removeError'));
     }
   };
 
@@ -77,15 +77,15 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
       const values = await form.validateFields();
       if (editingMember) {
         await api.updateDatasetMemberRole(datasetId, editingMember.userId, { role: values.role });
-        message.success(t('Member role updated successfully'));
+        message.success(t('datasetMembers.updateRoleSuccess'));
       } else {
         await api.addDatasetMember(datasetId, { userId: values.userId, role: values.role });
-        message.success(t('Member added successfully'));
+        message.success(t('datasetMembers.addMemberSuccess'));
       }
       setIsModalOpen(false);
       fetchMembers();
     } catch (error: any) {
-      message.error(error.message || t('Operation failed'));
+      message.error(error.message || t('common.operationFailed'));
     }
   };
 
@@ -98,11 +98,11 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
   };
 
   const roleLabels: Record<ResourceRole, string> = {
-    'owner': t('Owner'),
-    'manager': t('Manager'),
-    'annotator': t('Annotator'),
-    'reviewer': t('Reviewer'),
-    'viewer': t('Viewer'),
+    'owner': t('datasetMembers.roles.owner'),
+    'manager': t('datasetMembers.roles.manager'),
+    'annotator': t('datasetMembers.roles.annotator'),
+    'reviewer': t('datasetMembers.roles.reviewer'),
+    'viewer': t('datasetMembers.roles.viewer'),
   };
 
   // Get member user IDs to filter available users
@@ -110,17 +110,17 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
 
   const columns = [
     {
-      title: t('Email'),
+      title: t('common.email'),
       dataIndex: 'userEmail',
       key: 'userEmail',
     },
     {
-      title: t('Full Name'),
+      title: t('common.fullName'),
       dataIndex: 'userFullName',
       key: 'userFullName',
     },
     {
-      title: t('Role'),
+      title: t('common.role'),
       dataIndex: 'role',
       key: 'role',
       render: (role: ResourceRole) => (
@@ -130,7 +130,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
       ),
     },
     {
-      title: t('Actions'),
+      title: t('common.actions'),
       key: 'action',
       render: (_: any, record: DatasetMember) => (
         <Space size="middle">
@@ -140,13 +140,13 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
             onClick={() => handleEdit(record)}
             disabled={record.role === 'owner'}
           >
-            {t('Edit')}
+            {t('common.edit')}
           </Button>
           <Popconfirm
-            title={t('Are you sure to remove this member?')}
+            title={t('datasetMembers.removeConfirm')}
             onConfirm={() => handleDelete(record.userId)}
-            okText={t('Yes')}
-            cancelText={t('No')}
+            okText={t('common.yes')}
+            cancelText={t('common.no')}
             disabled={record.role === 'owner'}
           >
             <Button 
@@ -155,7 +155,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
               icon={<DeleteOutlined />}
               disabled={record.role === 'owner'}
             >
-              {t('Remove')}
+              {t('common.delete')}
             </Button>
           </Popconfirm>
         </Space>
@@ -166,9 +166,9 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Title level={5}>{t('Dataset Members')}</Title>
+        <Title level={5}>{t('datasetMembers.title')}</Title>
         <Button type="primary" icon={<UserAddOutlined />} onClick={handleAdd}>
-          {t('Add Member')}
+          {t('datasetMembers.addMember')}
         </Button>
       </div>
       <Table 
@@ -180,7 +180,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
       />
 
       <Modal
-        title={editingMember ? t('Edit Member Role') : t('Add Member')}
+        title={editingMember ? t('datasetMembers.editMemberRole') : t('datasetMembers.addMember')}
         open={isModalOpen}
         onOk={handleOk}
         onCancel={() => setIsModalOpen(false)}
@@ -189,12 +189,12 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
           {!editingMember && (
             <Form.Item
               name="userId"
-              label={t('User')}
-              rules={[{ required: true, message: t('Please select a user!') }]}
+              label={t('datasetMembers.user')}
+              rules={[{ required: true, message: t('datasetMembers.selectUserRequired') }]}
             >
               <Select
                 showSearch
-                placeholder={t('Select a user')}
+                placeholder={t('datasetMembers.selectUser')}
                 optionFilterProp="children"
                 filterOption={(input, option) =>
                   (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -210,17 +210,17 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
           )}
           <Form.Item
             name="role"
-            label={t('Role')}
-            rules={[{ required: true, message: t('Please select a role!') }]}
+            label={t('common.role')}
+            rules={[{ required: true, message: t('datasetMembers.selectRoleRequired') }]}
             initialValue="viewer"
           >
             <Select disabled={editingMember?.role === 'owner'}>
-              <Select.Option value="viewer">{t('Viewer')}</Select.Option>
-              <Select.Option value="reviewer">{t('Reviewer')}</Select.Option>
-              <Select.Option value="annotator">{t('Annotator')}</Select.Option>
-              <Select.Option value="manager">{t('Manager')}</Select.Option>
+              <Select.Option value="viewer">{t('datasetMembers.roles.viewer')}</Select.Option>
+              <Select.Option value="reviewer">{t('datasetMembers.roles.reviewer')}</Select.Option>
+              <Select.Option value="annotator">{t('datasetMembers.roles.annotator')}</Select.Option>
+              <Select.Option value="manager">{t('datasetMembers.roles.manager')}</Select.Option>
               {!editingMember && (
-                <Select.Option value="owner">{t('Owner')}</Select.Option>
+                <Select.Option value="owner">{t('datasetMembers.roles.owner')}</Select.Option>
               )}
             </Select>
           </Form.Item>

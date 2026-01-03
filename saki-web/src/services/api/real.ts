@@ -209,6 +209,11 @@ export class RealApiService implements ApiService {
         
         // Handle network errors - redirect to network error page
         if ((!error.response || error.code === 'ERR_NETWORK') && window.location.pathname !== '/network-error') {
+          // 保存当前路径，以便恢复后可以返回
+          const currentPath = window.location.pathname;
+          if (currentPath !== '/network-error') {
+            sessionStorage.setItem('networkErrorReturnPath', currentPath);
+          }
           window.location.href = '/network-error';
           return new Promise(() => {});
         }

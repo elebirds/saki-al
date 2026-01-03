@@ -8,6 +8,7 @@
   },
   "common": {
     "networkError": "无法连接到服务器。请检查您的网络连接或稍后重试。",
+    "checkingConnection": "正在检查连接...",
     "retry": "重试",
     "loading": "加载中...",
     "yes": "是",

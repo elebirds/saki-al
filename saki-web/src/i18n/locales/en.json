@@ -8,6 +8,7 @@
   },
   "common": {
     "networkError": "Cannot connect to the server. Please check your network connection or try again later.",
+    "checkingConnection": "Checking connection...",
     "retry": "Retry",
     "loading": "Loading...",
     "yes": "Yes",

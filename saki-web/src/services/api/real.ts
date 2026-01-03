@@ -325,7 +325,7 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async createDataset(dataset: Omit<Dataset, 'id' | 'createdAt' | 'updatedAt' | 'sampleCount' | 'labeledCount'>): Promise<Dataset> {
+  async createDataset(dataset: Omit<Dataset, 'id' | 'createdAt' | 'updatedAt' | 'sampleCount' | 'labeledCount' | 'ownerId'>): Promise<Dataset> {
     const response = await this.client.post<Dataset>('/datasets', dataset);
     return response.data;
   }

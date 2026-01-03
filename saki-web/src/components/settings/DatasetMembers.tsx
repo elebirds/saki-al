@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Select, message, Space, Popconfirm, Tag, Typography } from 'antd';
 import { UserAddOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { DatasetMember, DatasetMemberCreate, DatasetMemberUpdate, ResourceRole, User } from '../../types';
+import { DatasetMember, ResourceRole, User } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
-import { useAuthStore } from '../../store/authStore';
 
 const { Title } = Typography;
 
@@ -14,7 +13,6 @@ interface DatasetMembersProps {
 
 const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
   const { t } = useTranslation();
-  const currentUser = useAuthStore((state) => state.user);
   const [members, setMembers] = useState<DatasetMember[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);

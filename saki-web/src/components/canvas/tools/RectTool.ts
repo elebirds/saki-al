@@ -42,9 +42,6 @@ export class RectTool extends BaseTool {
       const normalizedRect = normalizeRect(this.drawingRect);
       
       this.completedAnnotation = {
-        id: Date.now().toString(),
-        sampleId: 'current',
-        label: 'Object',
         type: 'rect',
         bbox: normalizedRect,
       };

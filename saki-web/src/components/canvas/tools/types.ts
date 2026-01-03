@@ -57,7 +57,7 @@ export interface DrawingTool {
   onMouseUp(ctx: ToolEventContext): void;
   
   /** 获取绘制完成的标注（如果有） */
-  getCompletedAnnotation(): Partial<Annotation> | null;
+  getCompletedAnnotation(): AnnotationCreateEvent | null;
   
   /** 是否显示十字准线 */
   showCrosshair(): boolean;

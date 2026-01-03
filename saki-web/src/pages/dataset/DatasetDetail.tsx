@@ -8,7 +8,6 @@ import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, E
 import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
 import { useUpload } from '../../hooks';
-import { useAuthStore } from '../../store/authStore';
 
 
 const { Title } = Typography;
@@ -19,7 +18,6 @@ const DatasetDetail: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const currentUser = useAuthStore((state) => state.user);
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [activeTab, setActiveTab] = useState('data');

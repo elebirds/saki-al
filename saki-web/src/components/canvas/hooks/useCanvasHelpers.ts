@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Konva from 'konva';
+import { Annotation } from '../../../types';
 
 interface UseTransformerOptions {
   /** 选中的标注 ID */
@@ -29,7 +30,7 @@ export function useTransformer(options: UseTransformerOptions): UseTransformerRe
     }
 
     // 检查选中的标注是否在当前画布的标注列表中
-    const annotationExists = annotations.some(ann => ann.id === selectedId);
+    const annotationExists = (annotations as Annotation[]).some((ann: Annotation) => ann.id === selectedId);
     
     if (selectedId && annotationExists) {
       // 只有在当前画布中存在该标注时才附加 transformer

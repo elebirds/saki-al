@@ -23,7 +23,7 @@ export interface ApiService {
   // Dataset APIs (for data annotation)
   getDatasets(): Promise<Dataset[]>;
   getDataset(id: string): Promise<Dataset | undefined>;
-  createDataset(dataset: Omit<Dataset, 'id' | 'createdAt' | 'updatedAt' | 'sampleCount' | 'labeledCount'>): Promise<Dataset>;
+  createDataset(dataset: Omit<Dataset, 'id' | 'createdAt' | 'updatedAt' | 'sampleCount' | 'labeledCount' | 'ownerId'>): Promise<Dataset>;
   updateDataset(id: string, dataset: Partial<Dataset>): Promise<Dataset>;
   deleteDataset(id: string): Promise<void>;
   getDatasetStats(id: string): Promise<{

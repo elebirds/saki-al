@@ -97,11 +97,8 @@ export function useDrawingTools(options: UseDrawingToolsOptions): UseDrawingTool
   // 检查并处理完成的标注
   const checkCompletedAnnotation = useCallback(() => {
     const completed = activeTool.getCompletedAnnotation();
-    if (completed && completed.type && completed.bbox) {
-      onAnnotationCreate?.({
-        type: completed.type,
-        bbox: completed.bbox,
-      });
+    if (completed) {
+      onAnnotationCreate?.(completed);
     }
   }, [activeTool, onAnnotationCreate]);
   

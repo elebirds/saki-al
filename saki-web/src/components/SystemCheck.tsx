@@ -6,7 +6,7 @@ import { api } from '../services/api';
 // Component to handle system initialization check
 const SystemCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(true);
+  const [_initialized, setInitialized] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 

@@ -49,9 +49,6 @@ export class ObbTool extends BaseTool {
         const finalRect = finalizeObbRect(this.drawingRect);
         
         this.completedAnnotation = {
-          id: Date.now().toString(),
-          sampleId: 'current',
-          label: 'Object',
           type: 'obb',
           bbox: finalRect,
         };

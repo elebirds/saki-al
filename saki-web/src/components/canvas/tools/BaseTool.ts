@@ -1,5 +1,4 @@
-import { Annotation } from '../../../types';
-import { DrawingTool, ToolState, ToolEventContext, DrawingRect } from './types';
+import { DrawingTool, ToolState, ToolEventContext, DrawingRect, AnnotationCreateEvent } from './types';
 
 /**
  * 绘制工具基类
@@ -11,7 +10,7 @@ export abstract class BaseTool implements DrawingTool {
   protected drawingRect: DrawingRect | null = null;
   protected isDrawing: boolean = false;
   protected startPos: { x: number; y: number } | null = null;
-  protected completedAnnotation: Partial<Annotation> | null = null;
+  protected completedAnnotation: AnnotationCreateEvent | null = null;
 
   getState(): ToolState {
     return {
@@ -31,7 +30,7 @@ export abstract class BaseTool implements DrawingTool {
   abstract onMouseMove(ctx: ToolEventContext): void;
   abstract onMouseUp(ctx: ToolEventContext): void;
 
-  getCompletedAnnotation(): Partial<Annotation> | null {
+  getCompletedAnnotation(): AnnotationCreateEvent | null {
     const annotation = this.completedAnnotation;
     this.completedAnnotation = null;
     return annotation;

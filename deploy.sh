@@ -21,24 +21,15 @@ fi
 # 检测 Docker 权限问题
 DOCKER_CMD="docker"
 if ! docker info &> /dev/null; then
-    echo "⚠️  检测到 Docker 权限问题"
-    echo "   尝试使用 sudo..."
-    if sudo docker info &> /dev/null; then
-        DOCKER_CMD="sudo docker"
-        echo "✅ 将使用 sudo 运行 Docker 命令"
-    else
-        echo ""
-        echo "❌ Docker 权限问题，请选择以下解决方案之一："
-        echo ""
-        echo "方案 1: 将当前用户添加到 docker 组（推荐）"
-        echo "   sudo usermod -aG docker $USER"
-        echo "   然后注销并重新登录，或运行: newgrp docker"
-        echo ""
-        echo "方案 2: 使用 sudo 运行此脚本"
-        echo "   sudo $0"
-        echo ""
-        exit 1
-    fi
+    echo ""
+    echo "❌ Docker 权限问题，请将当前用户添加到 docker 组："
+    echo ""
+    echo "   sudo usermod -aG docker $USER"
+    echo "   然后注销并重新登录，或运行: newgrp docker"
+    echo ""
+    echo "   验证权限: docker info"
+    echo ""
+    exit 1
 fi
 
 # 根据检测到的命令设置 docker compose 命令

@@ -135,8 +135,11 @@ export class RealApiService implements ApiService {
   private client: AxiosInstance;
 
   constructor() {
+    // 从环境变量读取 API 地址，如果没有则使用默认值
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+    
     this.client = axios.create({
-      baseURL: 'http://localhost:8000/api/v1',
+      baseURL: apiBaseUrl,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -271,7 +274,7 @@ export class RealApiService implements ApiService {
     const hashedOldPassword = await hashPassword(oldPassword);
     const hashedNewPassword = await hashPassword(newPassword);
     
-    const response = await this.client.post<{ message: string }>('/login/change-password', {
+    const response = await this.client.post<{ message: string }>('/change-password', {
       old_password: hashedOldPassword,
       new_password: hashedNewPassword
     });

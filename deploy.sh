@@ -72,33 +72,6 @@ if grep -q "YOUR_SUPER_SECRET_KEY_CHANGE_ME" .env; then
     fi
 fi
 
-# 测试 Docker 镜像拉取（检测网络问题）
-echo "🌐 测试 Docker 镜像拉取..."
-if ! timeout 10 $DOCKER_CMD pull alpine:latest > /dev/null 2>&1; then
-    echo ""
-    echo "⚠️  检测到 Docker 镜像拉取可能存在问题（网络超时）"
-    echo "   这通常是因为访问 Docker Hub 较慢"
-    echo ""
-    echo "💡 解决方案：配置 Docker 镜像加速器"
-    echo ""
-    echo "   运行以下命令配置镜像加速器："
-    echo "   ./configure-docker-mirror.sh"
-    echo ""
-    echo "   或手动配置："
-    echo "   1. 编辑 /etc/docker/daemon.json"
-    echo "   2. 添加镜像加速器配置"
-    echo "   3. 重启 Docker: sudo systemctl restart docker"
-    echo ""
-    read -p "是否继续尝试构建? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
-else
-    # 清理测试镜像
-    $DOCKER_CMD rmi alpine:latest > /dev/null 2>&1 || true
-fi
-
 # 构建镜像
 echo "🔨 构建 Docker 镜像..."
 if ! timeout 300 $DOCKER_COMPOSE_CMD build; then

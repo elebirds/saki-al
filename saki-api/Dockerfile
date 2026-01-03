@@ -1,5 +1,5 @@
 # saki-api Dockerfile
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --no-cache-dir uv
 
 # 复制项目文件
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 
 # 安装依赖

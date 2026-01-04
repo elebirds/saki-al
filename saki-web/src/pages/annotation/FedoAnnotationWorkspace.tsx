@@ -8,23 +8,23 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { Layout, message, Spin, Empty, Tag } from 'antd';
+import { useParams } from 'react-router-dom';
+import { Layout, message, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { DeleteOutlined, RotateRightOutlined, BorderOutlined } from '@ant-design/icons';
 import { AnnotationToolbar, AnnotationSidebar, DualCanvasArea, DualCanvasAreaRef, SampleList } from '../../components/annotation';
+import { LoadingState, EmptyState } from '../../components/common';
 import { api } from '../../services/api';
 import {
   useAnnotationState,
   useAnnotationSync,
   useAnnotationShortcuts,
+  useDatasetLoader,
+  useSampleNavigation,
 } from '../../hooks';
 import { generateUUID } from '../../utils/uuid';
 import {
-  Sample,
   Annotation,
-  Dataset,
-  Label,
   DualViewAnnotation,
   MappedRegion,
   BoundingBox,
@@ -182,20 +182,21 @@ function generatedToRegions(generated: Array<Record<string, any>>): MappedRegion
 const FedoAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
-  const [searchParams] = useSearchParams();
 
-  // Dataset & Samples State
-  const [dataset, setDataset] = useState<Dataset | null>(null);
-  const [samples, setSamples] = useState<Sample[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [labels, setLabels] = useState<Label[]>([]);
+  // 使用数据集加载器 hook
+  const {
+    dataset,
+    labels,
+    samples,
+    loading,
+    currentIndex,
+    setCurrentIndex,
+    currentSample,
+    updateSampleStatus,
+  } = useDatasetLoader({ datasetId });
 
   // Dual Canvas Area Ref
   const dualCanvasAreaRef = useRef<DualCanvasAreaRef>(null);
-
-  // Current sample
-  const currentSample = samples[currentIndex];
 
   // 使用公共的状态管理 hook（适配 DualViewAnnotation）
   const annotationState = useAnnotationState<DualViewAnnotation>({
@@ -204,6 +205,13 @@ const FedoAnnotationWorkspace: React.FC = () => {
 
   // 使用同步 hook（调用后端 sync 接口）
   const { isSyncing, isSyncReady, sync: syncBackend } = useAnnotationSync({ enabled: true });
+
+  // 初始化默认标签选择
+  useEffect(() => {
+    if (labels.length > 0 && !annotationState.selectedLabel) {
+      annotationState.setSelectedLabel(labels[0]);
+    }
+  }, [labels, annotationState]);
 
   // 存储生成的标注（由 sync 返回的 generated 标注）
   const [generatedAnnotations, setGeneratedAnnotations] = useState<Annotation[]>([]);
@@ -321,59 +329,6 @@ const FedoAnnotationWorkspace: React.FC = () => {
   // ========================================================================
   // Data Loading
   // ========================================================================
-
-  useEffect(() => {
-    if (datasetId) {
-      setLoading(true);
-      
-      // Load samples with sort settings from localStorage
-      const sortSettingsStr = localStorage.getItem(`dataset_${datasetId}_sort`);
-      let sortOptions: {
-        sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
-        sortOrder?: 'asc' | 'desc';
-      } = {};
-      
-      if (sortSettingsStr) {
-        try {
-          const sortSettings = JSON.parse(sortSettingsStr);
-          sortOptions = {
-            sortBy: sortSettings.sortBy,
-            sortOrder: sortSettings.sortOrder,
-          };
-        } catch (e) {
-          console.error('Failed to parse sort settings:', e);
-        }
-      }
-      
-      Promise.all([
-        api.getDataset(datasetId),
-        api.getLabels(datasetId),
-        api.getSamples(datasetId, sortOptions),
-      ])
-        .then(([ds, loadedLabels, samps]) => {
-          if (ds) setDataset(ds);
-          setLabels(loadedLabels);
-          if (loadedLabels.length > 0 && !annotationState.selectedLabel) {
-            annotationState.setSelectedLabel(loadedLabels[0]);
-          }
-          setSamples(samps);
-          // 如果URL中有sampleId参数，跳转到对应的sample
-          const sampleId = searchParams.get('sampleId');
-          if (sampleId && samps.length > 0) {
-            const index = samps.findIndex(s => s.id === sampleId);
-            if (index !== -1) {
-              setCurrentIndex(index);
-            }
-          }
-          setLoading(false);
-        })
-        .catch((err) => {
-          console.error('Failed to load dataset:', err);
-          message.error(t('annotation.loadError'));
-          setLoading(false);
-        });
-    }
-  }, [datasetId, searchParams]);
 
   // Load sample data
   useEffect(() => {
@@ -737,19 +692,22 @@ const FedoAnnotationWorkspace: React.FC = () => {
   // Navigation
   // ========================================================================
 
+  // 使用样本导航 hook
+  const { handleNext: navigateNext, handlePrev: navigatePrev } = useSampleNavigation({
+    currentIndex,
+    totalSamples: samples.length,
+    setCurrentIndex,
+    onBeforeNext: () => annotationState.resetHistory(),
+    onBeforePrev: () => annotationState.resetHistory(),
+  });
+
   const handleNext = useCallback(() => {
-    if (currentIndex < samples.length - 1) {
-      setCurrentIndex((c) => c + 1);
-      annotationState.resetHistory();
-    }
-  }, [currentIndex, samples.length, annotationState]);
+    navigateNext();
+  }, [navigateNext]);
 
   const handlePrev = useCallback(() => {
-    if (currentIndex > 0) {
-      setCurrentIndex((c) => c - 1);
-      annotationState.resetHistory();
-    }
-  }, [currentIndex, annotationState]);
+    navigatePrev();
+  }, [navigatePrev]);
 
   const handleSubmit = useCallback(async () => {
     if (!currentSample) return;
@@ -799,12 +757,14 @@ const FedoAnnotationWorkspace: React.FC = () => {
       });
       
       await api.saveAnnotations(currentSample.id, annsToSave, 'labeled');
+      // 更新样本状态
+      updateSampleStatus(currentSample.id, 'labeled');
       message.success(t('annotation.saved') || 'Saved');
       handleNext();
     } catch (error) {
       message.error(t('annotation.saveError'));
     }
-  }, [currentSample, annotationState.annotations, generatedAnnotations, annotationViews, handleNext, t]);
+  }, [currentSample, annotationState.annotations, generatedAnnotations, annotationViews, handleNext, updateSampleStatus, t]);
 
   // ========================================================================
   // Keyboard Shortcuts
@@ -848,56 +808,19 @@ const FedoAnnotationWorkspace: React.FC = () => {
   // Render
   // ========================================================================
 
-  if (loading) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: '100%',
-        }}
-      >
-        <Spin size="large">
-          <div style={{ minHeight: 200 }} />
-        </Spin>
-      </div>
-    );
+  // 加载状态
+  if (loading || !dataset) {
+    return <LoadingState tip={t('workspace.loading')} />;
   }
 
-  if (!dataset || samples.length === 0) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: '100%',
-        }}
-      >
-        <Empty description={t('workspace.noSamples')} />
-      </div>
-    );
+  // 空状态检查
+  if (!currentSample || samples.length === 0) {
+    return <EmptyState description={t('workspace.noSamples')} />;
   }
 
-  if (!currentSample) {
-    return <div>{t('workspace.loading')}</div>;
-  }
-
-  // Check if labels are configured
+  // 检查标签配置
   if (labels.length === 0) {
-    return (
-      <Layout
-        style={{
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Empty description={t('workspace.noLabelsConfigured')} />
-      </Layout>
-    );
+    return <EmptyState description={t('workspace.noLabelsConfigured')} />;
   }
 
   return (

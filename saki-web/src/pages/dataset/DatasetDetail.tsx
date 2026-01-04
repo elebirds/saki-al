@@ -7,7 +7,7 @@ import { api } from '../../services/api';
 import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
 import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
-import { useUpload } from '../../hooks';
+import { useUpload, useSortSettings } from '../../hooks';
 
 
 const { Title } = Typography;
@@ -25,39 +25,8 @@ const DatasetDetail: React.FC = () => {
   const [owner, setOwner] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Load sorting state from localStorage helper
-  const getSortSettingsFromStorage = (datasetId: string | undefined) => {
-    if (!datasetId) {
-      return { sortBy: 'created_at' as const, sortOrder: 'desc' as const };
-    }
-    const sortSettingsStr = localStorage.getItem(`dataset_${datasetId}_sort`);
-    if (sortSettingsStr) {
-      try {
-        const sortSettings = JSON.parse(sortSettingsStr);
-        return {
-          sortBy: sortSettings.sortBy || 'created_at',
-          sortOrder: sortSettings.sortOrder || 'desc',
-        };
-      } catch (e) {
-        console.error('Failed to parse sort settings:', e);
-      }
-    }
-    return { sortBy: 'created_at' as const, sortOrder: 'desc' as const };
-  };
-  
-  // Sorting state - initialize from localStorage
-  const initialSortSettings = getSortSettingsFromStorage(id);
-  const [sortBy, setSortBy] = useState<'name' | 'status' | 'created_at' | 'updated_at' | 'remark'>(initialSortSettings.sortBy);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialSortSettings.sortOrder);
-
-  // Reload sort settings when dataset ID changes
-  useEffect(() => {
-    if (id) {
-      const savedSettings = getSortSettingsFromStorage(id);
-      setSortBy(savedSettings.sortBy);
-      setSortOrder(savedSettings.sortOrder);
-    }
-  }, [id]);
+  // 使用排序设置 hook
+  const { sortBy, sortOrder, setSortBy, setSortOrder, sortOptions } = useSortSettings(id);
 
   // Initialize upload hook
   const { progress, upload, cancel, reset, isUploading } = useUpload(id || '', {
@@ -87,26 +56,13 @@ const DatasetDetail: React.FC = () => {
 
   // Load samples with current sort settings
   const loadSamples = useCallback((datasetId: string) => {
-    api.getSamples(datasetId, {
-      sortBy,
-      sortOrder,
-    }).then(setSamples).catch((error) => {
+    api.getSamples(datasetId, sortOptions).then(setSamples).catch((error) => {
       console.error('Failed to load samples:', error);
       message.error(t('datasetDetail.loadSamplesError'));
     });
-  }, [sortBy, sortOrder, t]);
+  }, [sortOptions, t]);
 
-  // Save sort settings to localStorage when they change
-  useEffect(() => {
-    if (id) {
-      const sortSettings = {
-        sortBy,
-        sortOrder,
-      };
-      localStorage.setItem(`dataset_${id}_sort`, JSON.stringify(sortSettings));
-    }
-  }, [id, sortBy, sortOrder]);
-
+  // Load dataset and samples
   useEffect(() => {
     if (id) {
       api.getDataset(id).then((d) => {
@@ -126,12 +82,16 @@ const DatasetDetail: React.FC = () => {
   }, [id, loadSamples]);
 
   // Reload samples when sort settings change (but not on initial mount)
+  const isInitialMountRef = useRef(true);
   useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
     if (id) {
       loadSamples(id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy, sortOrder]);
+  }, [sortBy, sortOrder, id, loadSamples]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();

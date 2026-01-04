@@ -208,8 +208,6 @@ def map_obb_annotations(
         # 注意：cluster_rows 和 cluster_cols 可能包含重复的 (row, col) 对
         # 但我们需要保持一一对应关系
         target_pixels = lut_dst[cluster_rows, cluster_cols]  # (K, 2)
-
-        print(f"lut_dst: {lut_dst}")
         
         # 收集目标图点集（用于调试）
         all_target_pixels_list.append(target_pixels)

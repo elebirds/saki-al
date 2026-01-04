@@ -1,12 +1,19 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { Layout, message, Empty } from 'antd';
+import React, { useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import { Layout, message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
 import { AnnotationToolbar, AnnotationSidebar, SampleList } from '../../components/annotation';
+import { LoadingState, EmptyState } from '../../components/common';
 import { api } from '../../services/api';
-import { useAnnotationState, useAnnotationSync, useAnnotationShortcuts } from '../../hooks';
-import { Sample, Annotation, Dataset, Label, AnnotationType, SyncAction } from '../../types';
+import {
+  useAnnotationState,
+  useAnnotationSync,
+  useAnnotationShortcuts,
+  useDatasetLoader,
+  useSampleNavigation,
+} from '../../hooks';
+import { Annotation, AnnotationType, SyncAction } from '../../types';
 import { originToCenter, centerToOrigin } from '../../utils/canvasUtils';
 import { generateUUID } from '../../utils/uuid';
 
@@ -15,12 +22,19 @@ const { Content, Sider } = Layout;
 const ClassicAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
-  const [searchParams] = useSearchParams();
-  const [dataset, setDataset] = useState<Dataset | null>(null);
-  const [labels, setLabels] = useState<Label[]>([]);
-  const [samples, setSamples] = useState<Sample[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const canvasRef = useRef<AnnotationCanvasRef>(null);
+
+  // 使用数据集加载器 hook
+  const {
+    dataset,
+    labels,
+    samples,
+    loading,
+    currentIndex,
+    setCurrentIndex,
+    currentSample,
+    updateSampleStatus,
+  } = useDatasetLoader({ datasetId });
 
   // 使用公共的状态管理 hook
   const annotationState = useAnnotationState<Annotation>({
@@ -30,55 +44,13 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   // 使用同步 hook
   const { isSyncing, isSyncReady, sync } = useAnnotationSync({ enabled: true });
 
-  const currentSample = samples[currentIndex];
-
-  // 加载数据集、标签和样本
+  // 初始化默认标签选择
   useEffect(() => {
-    if (datasetId) {
-      // Load dataset
-      api.getDataset(datasetId).then((d) => {
-        if (d) setDataset(d);
-      });
-      // Load labels for this dataset
-      api.getLabels(datasetId).then((loadedLabels) => {
-        setLabels(loadedLabels);
-        // Set default selected label
-        if (loadedLabels.length > 0 && !annotationState.selectedLabel) {
-          annotationState.setSelectedLabel(loadedLabels[0]);
-        }
-      });
-      // Load samples with sort settings from localStorage
-      const sortSettingsStr = localStorage.getItem(`dataset_${datasetId}_sort`);
-      let sortOptions: {
-        sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
-        sortOrder?: 'asc' | 'desc';
-      } = {};
-      
-      if (sortSettingsStr) {
-        try {
-          const sortSettings = JSON.parse(sortSettingsStr);
-          sortOptions = {
-            sortBy: sortSettings.sortBy,
-            sortOrder: sortSettings.sortOrder,
-          };
-        } catch (e) {
-          console.error('Failed to parse sort settings:', e);
-        }
-      }
-      
-      api.getSamples(datasetId, sortOptions).then((loadedSamples) => {
-        setSamples(loadedSamples);
-        // 如果URL中有sampleId参数，跳转到对应的sample
-        const sampleId = searchParams.get('sampleId');
-        if (sampleId && loadedSamples.length > 0) {
-          const index = loadedSamples.findIndex(s => s.id === sampleId);
-          if (index !== -1) {
-            setCurrentIndex(index);
-          }
-        }
-      });
+    if (labels.length > 0 && !annotationState.selectedLabel) {
+      annotationState.setSelectedLabel(labels[0]);
     }
-  }, [datasetId, searchParams]);
+  }, [labels, annotationState]);
+
 
   // 加载当前样本的标注
   useEffect(() => {
@@ -217,19 +189,22 @@ const ClassicAnnotationWorkspace: React.FC = () => {
     }
   }, [currentSample, annotationState, sync]);
 
+  // 使用样本导航 hook
+  const { handleNext: navigateNext, handlePrev: navigatePrev } = useSampleNavigation({
+    currentIndex,
+    totalSamples: samples.length,
+    setCurrentIndex,
+    onBeforeNext: () => annotationState.resetHistory(),
+    onBeforePrev: () => annotationState.resetHistory(),
+  });
+
   const handleNext = useCallback(() => {
-    if (currentIndex < samples.length - 1) {
-      setCurrentIndex((c) => c + 1);
-      annotationState.resetHistory();
-    }
-  }, [currentIndex, samples.length, annotationState]);
+    navigateNext();
+  }, [navigateNext]);
 
   const handlePrev = useCallback(() => {
-    if (currentIndex > 0) {
-      setCurrentIndex((c) => c - 1);
-      annotationState.resetHistory();
-    }
-  }, [currentIndex, annotationState]);
+    navigatePrev();
+  }, [navigatePrev]);
 
   const handleSubmit = useCallback(async () => {
     if (!currentSample) return;
@@ -251,12 +226,14 @@ const ClassicAnnotationWorkspace: React.FC = () => {
         annsToSave,
         'labeled'
       );
+      // 更新样本状态
+      updateSampleStatus(currentSample.id, 'labeled');
       message.success(t('annotation.saved') || 'Saved');
       handleNext();
     } catch (error) {
       message.error(t('annotation.saveError'));
     }
-  }, [currentSample, annotationState.annotations, handleNext, t]);
+  }, [currentSample, annotationState.annotations, handleNext, updateSampleStatus, t]);
 
   // 使用快捷键 hook
   useAnnotationShortcuts({
@@ -273,26 +250,21 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   const handleSampleSelect = useCallback((index: number) => {
     setCurrentIndex(index);
     annotationState.resetHistory();
-  }, [annotationState]);
+  }, [annotationState, setCurrentIndex]);
 
-  if (!currentSample || !dataset) {
-    return <div>{t('workspace.loading')}</div>;
+  // 加载状态
+  if (loading || !dataset) {
+    return <LoadingState tip={t('workspace.loading')} />;
   }
 
-  // Check if labels are configured
+  // 空状态检查
+  if (!currentSample || samples.length === 0) {
+    return <EmptyState description={t('workspace.noSamples')} />;
+  }
+
+  // 检查标签配置
   if (labels.length === 0) {
-    return (
-      <Layout
-        style={{
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Empty description={t('workspace.noLabelsConfigured')} />
-      </Layout>
-    );
+    return <EmptyState description={t('workspace.noLabelsConfigured')} />;
   }
 
   return (

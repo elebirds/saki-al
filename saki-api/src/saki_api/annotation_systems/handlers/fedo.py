@@ -9,11 +9,11 @@ This handler provides:
 """
 
 import os
-import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-import numpy as np
 
+import cv2
+import numpy as np
 from saki_api.annotation_systems.base import (
     AnnotationSystemHandler,
     AnnotationContext,
@@ -25,14 +25,11 @@ from saki_api.annotation_systems.base import (
     UploadContext,
 )
 from saki_api.annotation_systems.registry import register_handler
-from saki_api.models.enums import AnnotationSystemType, AnnotationType, AnnotationSource
-
-# FEDO data processing utilities (in satellite_fedo submodule)
-from saki_api.annotation_systems.satellite_fedo.processor import FedoProcessor
 from saki_api.annotation_systems.satellite_fedo.lookup import load_lookup_table, LookupTable
 from saki_api.annotation_systems.satellite_fedo.obb_mapper import map_obb_annotations
-import cv2
-
+# FEDO data processing utilities (in satellite_fedo submodule)
+from saki_api.annotation_systems.satellite_fedo.processor import FedoProcessor
+from saki_api.models.enums import AnnotationSystemType, AnnotationType, AnnotationSource
 
 # FEDO view identifiers
 VIEW_TIME_ENERGY = "time-energy"
@@ -93,10 +90,10 @@ class FedoHandler(AnnotationSystemHandler):
     # ==================== Upload & Processing ====================
 
     def process_upload(
-        self,
-        file_path: Path,
-        context: UploadContext,
-        progress_callback: Optional[ProgressCallback] = None,
+            self,
+            file_path: Path,
+            context: UploadContext,
+            progress_callback: Optional[ProgressCallback] = None,
     ) -> ProcessResult:
         """
         Process a FEDO data file.
@@ -185,13 +182,13 @@ class FedoHandler(AnnotationSystemHandler):
     # ==================== Annotation Sync (Dual-View Mapping) ====================
 
     def on_annotation_create(
-        self,
-        annotation_id: str,
-        label_id: str,
-        ann_type: AnnotationType,
-        data: Dict[str, Any],
-        extra: Dict[str, Any],
-        context: AnnotationContext,
+            self,
+            annotation_id: str,
+            label_id: str,
+            ann_type: AnnotationType,
+            data: Dict[str, Any],
+            extra: Dict[str, Any],
+            context: AnnotationContext,
     ) -> SyncResult:
         """
         Handle FEDO annotation creation with dual-view mapping.
@@ -202,7 +199,7 @@ class FedoHandler(AnnotationSystemHandler):
         3. Generate linked auto-annotation(s)
         """
         view = extra.get('view')
-        
+
         if view not in (VIEW_TIME_ENERGY, VIEW_L_OMEGAD):
             return SyncResult(
                 success=False,
@@ -238,13 +235,13 @@ class FedoHandler(AnnotationSystemHandler):
         )
 
     def on_annotation_update(
-        self,
-        annotation_id: str,
-        label_id: Optional[str],
-        ann_type: Optional[AnnotationType],
-        data: Optional[Dict[str, Any]],
-        extra: Optional[Dict[str, Any]],
-        context: AnnotationContext,
+            self,
+            annotation_id: str,
+            label_id: Optional[str],
+            ann_type: Optional[AnnotationType],
+            data: Optional[Dict[str, Any]],
+            extra: Optional[Dict[str, Any]],
+            context: AnnotationContext,
     ) -> SyncResult:
         """
         Handle FEDO annotation update.
@@ -259,16 +256,16 @@ class FedoHandler(AnnotationSystemHandler):
                 action="update",
                 generated=[],
             )
-        
+
         # Get the view from extra
         view = extra.get('view') if extra else None
         if view not in (VIEW_TIME_ENERGY, VIEW_L_OMEGAD):
             # Default to time-energy if view is not provided
             view = VIEW_TIME_ENERGY
-        
+
         # Determine target view
         target_view = VIEW_L_OMEGAD if view == VIEW_TIME_ENERGY else VIEW_TIME_ENERGY
-        
+
         # For update, we need label_id and ann_type to regenerate annotations
         # If not provided, we cannot regenerate, so return signal
         if not label_id or not ann_type:
@@ -282,7 +279,7 @@ class FedoHandler(AnnotationSystemHandler):
                 action="update",
                 generated=[{"_action": "regenerate_children"}],  # Signal frontend to handle
             )
-        
+
         # Generate mapped annotations (same logic as create)
         generated = self._generate_mapped_annotations(
             parent_id=annotation_id,
@@ -293,12 +290,12 @@ class FedoHandler(AnnotationSystemHandler):
             data=data,
             context=context,
         )
-        
+
         self.logger.info(
             f"FEDO annotation updated: {annotation_id} in {view}, "
             f"regenerated {len(generated)} mapped annotations in {target_view}"
         )
-        
+
         return SyncResult(
             success=True,
             annotation_id=annotation_id,
@@ -307,10 +304,10 @@ class FedoHandler(AnnotationSystemHandler):
         )
 
     def on_annotation_delete(
-        self,
-        annotation_id: str,
-        extra: Dict[str, Any],
-        context: AnnotationContext,
+            self,
+            annotation_id: str,
+            extra: Dict[str, Any],
+            context: AnnotationContext,
     ) -> SyncResult:
         """
         Handle FEDO annotation deletion.
@@ -336,22 +333,22 @@ class FedoHandler(AnnotationSystemHandler):
             if not lookup_url:
                 self.logger.warning(f"No lookup_table_url in sample_meta for {context.sample_id}")
                 return None
-            
+
             # Convert URL to file path
             # URL format: /static/{dataset_id}/processed/{sample_id}/lookup.npz
             # Need to resolve to actual file path
             # Assuming UPLOAD_DIR is configured in settings
             from saki_api.core.config import settings
             lookup_path = os.path.join(settings.UPLOAD_DIR, lookup_url.lstrip('/static/'))
-            
+
             # Ensure .npz extension
             if not lookup_path.endswith('.npz'):
                 lookup_path = lookup_path.replace('.parquet', '.npz').replace('.npy', '.npz') + '.npz'
-            
+
             if not os.path.exists(lookup_path):
                 self.logger.error(f"Lookup table not found: {lookup_path}")
                 return None
-            
+
             return load_lookup_table(lookup_path)
         except Exception as e:
             self.logger.error(f"Error loading lookup table: {e}")
@@ -368,25 +365,25 @@ class FedoHandler(AnnotationSystemHandler):
         }
 
     def _pixel_to_physical_te(
-        self, 
-        x: float, 
-        y: float, 
-        image_width: float, 
-        image_height: float,
-        lookup: LookupTable
+            self,
+            x: float,
+            y: float,
+            image_width: float,
+            image_height: float,
+            lookup: LookupTable
     ) -> Tuple[float, float]:
         """Convert pixel coordinates to Time-Energy physical coordinates."""
         # Time axis: x pixel -> time index -> datetime
         # Energy axis: y pixel -> energy index (log scale)
-        
+
         # Normalize pixel coordinates to [0, 1]
         x_norm = x / image_width
         y_norm = y / image_height
-        
+
         # Time: linear mapping from [0, 1] to [0, n_time-1]
         time_idx = x_norm * (lookup.n_time - 1)
         time_idx = np.clip(time_idx, 0, lookup.n_time - 1)
-        
+
         # Energy: log scale mapping from [0, 1] to energy range
         # Energy is displayed on log scale, so we need to map y_norm to log space
         E_min = lookup.E.min()
@@ -395,55 +392,55 @@ class FedoHandler(AnnotationSystemHandler):
         log_E_max = np.log10(E_max)
         log_E = log_E_min + (1 - y_norm) * (log_E_max - log_E_min)  # y=0 is top (max energy)
         E = 10 ** log_E
-        
+
         # Get time value (convert index to datetime)
         time_idx_int = int(np.clip(time_idx, 0, lookup.n_time - 1))
         time_ns = lookup.time_stamps[time_idx_int]
         time_val = time_ns  # Keep as nanoseconds for now
-        
+
         return time_val, E
 
     def _pixel_to_physical_lwd(
-        self,
-        x: float,
-        y: float,
-        image_width: float,
-        image_height: float,
-        lookup: LookupTable,
-        config: Dict[str, Any]
+            self,
+            x: float,
+            y: float,
+            image_width: float,
+            image_height: float,
+            lookup: LookupTable,
+            config: Dict[str, Any]
     ) -> Tuple[float, float]:
         """Convert pixel coordinates to L-ωd physical coordinates."""
         # L axis: x pixel -> L value (linear)
         # ωd axis: y pixel -> ωd value (linear)
-        
+
         x_norm = x / image_width
         y_norm = y / image_height
-        
+
         l_xlim = config['l_xlim']
         wd_ylim = config['wd_ylim']
-        
+
         # L: linear mapping
         L = l_xlim[0] + x_norm * (l_xlim[1] - l_xlim[0])
-        
+
         # ωd: linear mapping (y=0 is bottom, y=1 is top)
         Wd = wd_ylim[0] + (1 - y_norm) * (wd_ylim[1] - wd_ylim[0])
-        
+
         return L, Wd
 
     def _physical_to_pixel_te(
-        self,
-        time_val: float,
-        E: float,
-        image_width: float,
-        image_height: float,
-        lookup: LookupTable
+            self,
+            time_val: float,
+            E: float,
+            image_width: float,
+            image_height: float,
+            lookup: LookupTable
     ) -> Tuple[float, float]:
         """Convert Time-Energy physical coordinates to pixel coordinates."""
         # Find closest time index
         time_idx = np.searchsorted(lookup.time_stamps, time_val)
         time_idx = np.clip(time_idx, 0, lookup.n_time - 1)
         x_norm = time_idx / (lookup.n_time - 1) if lookup.n_time > 1 else 0
-        
+
         # Energy: log scale
         E_min = lookup.E.min()
         E_max = lookup.E.max()
@@ -451,29 +448,29 @@ class FedoHandler(AnnotationSystemHandler):
         log_E_max = np.log10(E_max)
         log_E = np.log10(np.clip(E, E_min, E_max))
         y_norm = 1 - (log_E - log_E_min) / (log_E_max - log_E_min) if log_E_max > log_E_min else 0.5
-        
+
         return x_norm * image_width, y_norm * image_height
 
     def _physical_to_pixel_lwd(
-        self,
-        L: float,
-        Wd: float,
-        image_width: float,
-        image_height: float,
-        config: Dict[str, Any]
+            self,
+            L: float,
+            Wd: float,
+            image_width: float,
+            image_height: float,
+            config: Dict[str, Any]
     ) -> Tuple[float, float]:
         """Convert L-ωd physical coordinates to pixel coordinates."""
         l_xlim = config['l_xlim']
         wd_ylim = config['wd_ylim']
-        
+
         # L: linear mapping
         x_norm = (L - l_xlim[0]) / (l_xlim[1] - l_xlim[0]) if l_xlim[1] > l_xlim[0] else 0.5
         x_norm = np.clip(x_norm, 0, 1)
-        
+
         # ωd: linear mapping (y=0 is bottom)
         y_norm = 1 - (Wd - wd_ylim[0]) / (wd_ylim[1] - wd_ylim[0]) if wd_ylim[1] > wd_ylim[0] else 0.5
         y_norm = np.clip(y_norm, 0, 1)
-        
+
         return x_norm * image_width, y_norm * image_height
 
     def _bbox_to_obb_vertices(self, data: Dict[str, Any]) -> np.ndarray:
@@ -491,15 +488,15 @@ class FedoHandler(AnnotationSystemHandler):
         width = data.get('width', 0)
         height = data.get('height', 0)
         rotation = data.get('rotation', 0)
-        
+
         # 创建矩形的四个角点（相对于中心点）
         corners = np.array([
-            [-width/2, -height/2],
-            [width/2, -height/2],
-            [width/2, height/2],
-            [-width/2, height/2]
+            [-width / 2, -height / 2],
+            [width / 2, -height / 2],
+            [width / 2, height / 2],
+            [-width / 2, height / 2]
         ], dtype=np.float32)
-        
+
         # 应用旋转
         if rotation != 0:
             angle_rad = np.deg2rad(rotation)
@@ -507,13 +504,13 @@ class FedoHandler(AnnotationSystemHandler):
             sin_a = np.sin(angle_rad)
             rotation_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]], dtype=np.float32)
             corners = corners @ rotation_matrix.T
-        
+
         # 平移到中心点
         corners[:, 0] += x
         corners[:, 1] += y
-        
+
         return corners
-    
+
     def _obb_vertices_to_bbox(self, vertices: np.ndarray) -> Dict[str, float]:
         """
         从 OBB 四个顶点转换为标注数据格式。
@@ -528,23 +525,23 @@ class FedoHandler(AnnotationSystemHandler):
         # 输入需要是 shape 为 (N, 1, 2) 的数组
         points = vertices.reshape(-1, 1, 2).astype(np.float32)
         rect = cv2.minAreaRect(points)
-        
+
         # rect 是一个元组: ((center_x, center_y), (width, height), angle)
         # 注意：cv2.minAreaRect 返回的角度范围是 [-90, 0)，单位是度
         center, size, angle = rect
-        
+
         # 确保宽度 >= 高度（cv2.minAreaRect 可能返回 width < height）
         width, height = size
         if width < height:
             width, height = height, width
             angle += 90
-        
+
         # 将角度归一化到 [-90, 90] 范围
         while angle > 90:
             angle -= 180
         while angle < -90:
             angle += 180
-        
+
         return {
             'x': float(center[0]),
             'y': float(center[1]),
@@ -554,14 +551,14 @@ class FedoHandler(AnnotationSystemHandler):
         }
 
     def _generate_mapped_annotations(
-        self,
-        parent_id: str,
-        label_id: str,
-        ann_type: AnnotationType,
-        source_view: str,
-        target_view: str,
-        data: Dict[str, Any],
-        context: AnnotationContext,
+            self,
+            parent_id: str,
+            label_id: str,
+            ann_type: AnnotationType,
+            source_view: str,
+            target_view: str,
+            data: Dict[str, Any],
+            context: AnnotationContext,
     ) -> List[Dict[str, Any]]:
         """
         使用新的高性能 OBB 映射函数生成目标视图的映射标注。
@@ -580,10 +577,10 @@ class FedoHandler(AnnotationSystemHandler):
             raise ValueError("Cannot load lookup table")
 
         self.logger.warning(f"data: {data}")
-        
+
         # 从标注数据获取源 OBB 四个顶点
         src_obb_vertices = self._bbox_to_obb_vertices(data)
-        
+
         self.logger.warning(f"Source OBB vertices: {src_obb_vertices}")
         # 根据源视图和目标视图选择正确的 LUT
         if source_view == VIEW_TIME_ENERGY and target_view == VIEW_L_OMEGAD:
@@ -595,7 +592,7 @@ class FedoHandler(AnnotationSystemHandler):
         else:
             self.logger.error(f"Invalid source_view: {source_view}")
             raise ValueError("Invalid source_view")
-        
+
         self.logger.warning(f"Source view: {source_view}")
         self.logger.warning(f"Target view: {target_view}")
 
@@ -627,13 +624,13 @@ class FedoHandler(AnnotationSystemHandler):
         )
 
         self.logger.warning(f"Target OBB vertices list: {target_obb_vertices_list}")
-        
+
         # 将返回的 OBB 顶点列表转换为标注格式
         generated = []
         for target_vertices in target_obb_vertices_list:
             # 从 OBB 顶点转换为标注数据格式
             bbox_data = self._obb_vertices_to_bbox(target_vertices)
-            
+
             generated_id = self.generate_id()
             generated.append({
                 "id": generated_id,
@@ -653,23 +650,23 @@ class FedoHandler(AnnotationSystemHandler):
                     "mapping_method": "fedo_obb_mapper",
                 },
             })
-        
+
         if not generated:
             # Fallback to placeholder if no boxes generated
             raise ValueError("No boxes generated")
-        
+
         return generated
 
     def on_batch_save(
-        self,
-        annotations: List[Dict[str, Any]],
-        context: AnnotationContext,
+            self,
+            annotations: List[Dict[str, Any]],
+            context: AnnotationContext,
     ) -> List[Dict[str, Any]]:
         """
         Validate parent-child relationships before batch save.
         """
         annotation_ids = {a.get('id') for a in annotations}
-        
+
         for ann in annotations:
             parent_id = ann.get('extra', {}).get('parent_id')
             if parent_id and parent_id not in annotation_ids:

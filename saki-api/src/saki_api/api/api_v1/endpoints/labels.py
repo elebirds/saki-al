@@ -4,12 +4,9 @@ Labels belong to Datasets and are used for annotation.
 """
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
-from sqlmodel import Session, select
-
 from saki_api.api import deps
 from saki_api.db.session import get_session
 from saki_api.models import (
@@ -17,6 +14,8 @@ from saki_api.models import (
     Dataset, Annotation,
 )
 from saki_api.models.user import User
+from sqlalchemy import func
+from sqlmodel import Session, select
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +39,14 @@ def list_labels(
     dataset = session.get(Dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     # Get labels with annotation counts
     labels = session.exec(
         select(Label)
         .where(Label.dataset_id == dataset_id)
         .order_by(Label.sort_order, Label.created_at)
     ).all()
-    
+
     result = []
     for label in labels:
         label_read = LabelRead.model_validate(label)
@@ -57,7 +56,7 @@ def list_labels(
         ).one()
         label_read.annotation_count = annotation_count
         result.append(label_read)
-    
+
     return result
 
 
@@ -75,7 +74,7 @@ def create_label(
     dataset = session.get(Dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     # Check for duplicate name in this dataset
     existing = session.exec(
         select(Label).where(
@@ -85,10 +84,10 @@ def create_label(
     ).first()
     if existing:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Label with name '{label_in.name}' already exists in this dataset"
         )
-    
+
     # Create the label
     db_label = Label(
         dataset_id=dataset_id,
@@ -97,7 +96,7 @@ def create_label(
     session.add(db_label)
     session.commit()
     session.refresh(db_label)
-    
+
     label_read = LabelRead.model_validate(db_label)
     label_read.annotation_count = 0
     return label_read
@@ -115,14 +114,14 @@ def get_label(
     label = session.get(Label, label_id)
     if not label:
         raise HTTPException(status_code=404, detail="Label not found")
-    
+
     label_read = LabelRead.model_validate(label)
     # Count annotations
     annotation_count = session.exec(
         select(func.count()).select_from(Annotation).where(Annotation.label_id == label.id)
     ).one()
     label_read.annotation_count = annotation_count
-    
+
     return label_read
 
 
@@ -140,7 +139,7 @@ def update_label(
     label = session.get(Label, label_id)
     if not label:
         raise HTTPException(status_code=404, detail="Label not found")
-    
+
     # Check for duplicate name if name is being changed
     update_data = label_in.model_dump(exclude_unset=True)
     if "name" in update_data and update_data["name"] != label.name:
@@ -156,21 +155,21 @@ def update_label(
                 status_code=400,
                 detail=f"Label with name '{update_data['name']}' already exists in this dataset"
             )
-    
+
     # Update fields
     for key, value in update_data.items():
         setattr(label, key, value)
-    
+
     session.add(label)
     session.commit()
     session.refresh(label)
-    
+
     label_read = LabelRead.model_validate(label)
     annotation_count = session.exec(
         select(func.count()).select_from(Annotation).where(Annotation.label_id == label.id)
     ).one()
     label_read.annotation_count = annotation_count
-    
+
     return label_read
 
 
@@ -191,12 +190,12 @@ def delete_label(
     label = session.get(Label, label_id)
     if not label:
         raise HTTPException(status_code=404, detail="Label not found")
-    
+
     # Count annotations using this label
     annotation_count = session.exec(
         select(func.count()).select_from(Annotation).where(Annotation.label_id == label.id)
     ).one()
-    
+
     if annotation_count > 0 and not force:
         raise HTTPException(
             status_code=409,
@@ -206,7 +205,7 @@ def delete_label(
                 "require_confirmation": True
             }
         )
-    
+
     # Delete associated annotations if any
     if annotation_count > 0:
         annotations = session.exec(
@@ -214,11 +213,11 @@ def delete_label(
         ).all()
         for ann in annotations:
             session.delete(ann)
-    
+
     # Delete the label
     session.delete(label)
     session.commit()
-    
+
     return {
         "ok": True,
         "deleted_label": label.name,
@@ -244,19 +243,19 @@ def create_labels_batch(
     dataset = session.get(Dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     # Get existing label names
     existing_names = set(
         session.exec(
             select(Label.name).where(Label.dataset_id == dataset_id)
         ).all()
     )
-    
+
     result = []
     for i, label_in in enumerate(labels_in):
         if label_in.name in existing_names:
             continue  # Skip duplicates
-        
+
         db_label = Label(
             dataset_id=dataset_id,
             sort_order=label_in.sort_order if label_in.sort_order else i,
@@ -265,9 +264,9 @@ def create_labels_batch(
         session.add(db_label)
         existing_names.add(label_in.name)
         result.append(db_label)
-    
+
     session.commit()
-    
+
     # Refresh and return
     label_reads = []
     for label in result:
@@ -275,5 +274,5 @@ def create_labels_batch(
         label_read = LabelRead.model_validate(label)
         label_read.annotation_count = 0
         label_reads.append(label_read)
-    
+
     return label_reads

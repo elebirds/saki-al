@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from saki_api.api.api_v1.endpoints import (
-    projects, login, users, system, configs, 
+    projects, login, users, system, configs,
     samples, annotations, al, model_versions, datasets, labels, dataset_members
 )
 

@@ -1,10 +1,9 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
+from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.exceptions import HTTPException
-
 from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
 from saki_api.core.exceptions import http_exception_handler, general_exception_handler
@@ -26,7 +25,7 @@ def on_startup():
     Initializes the database tables.
     """
     init_db()
-    
+
     # Ensure upload directory exists for static file serving
     upload_path = Path(settings.UPLOAD_DIR)
     upload_path.mkdir(parents=True, exist_ok=True)
@@ -59,13 +58,3 @@ app.add_exception_handler(Exception, general_exception_handler)
 def root():
     from saki_api.core.response import success_response
     return success_response(data={"message": "Welcome to Saki Active Learning API"})
-
-
-@app.get("/test-middleware")
-def test_middleware():
-    """测试中间件的端点 - 返回普通dict，应该被中间件包装"""
-    return {"test": "data", "message": "This should be wrapped by middleware"}
-
-# Import and include routers here later
-# from saki_api.api import api_router
-# app.include_router(api_router, prefix=settings.API_V1_STR)

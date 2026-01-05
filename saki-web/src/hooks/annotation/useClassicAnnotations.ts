@@ -6,11 +6,11 @@
 
 import { useEffect, useCallback } from 'react';
 import { message } from 'antd';
-import { api } from '../services/api';
-import { Annotation, AnnotationType, SyncAction } from '../types';
+import { api } from '../../services/api';
+import { Annotation, AnnotationType, SyncAction } from '../../types';
 import { UseAnnotationStateReturn } from './useAnnotationState';
 import { UseAnnotationSyncReturn } from './useAnnotationSync';
-import { generateUUID } from '../utils/uuid';
+import { generateUUID } from '../../utils/uuid';
 
 export interface UseClassicAnnotationsOptions {
   /** 当前样本 ID */

@@ -88,19 +88,19 @@ def generate_pure_image(
 
     norm = _get_color_norm(Flux)
 
-    fig = plt.figure(figsize=figsize, dpi=dpi) # 强制 Axes 占用 100% 的画布空间，不留边距
+    fig = plt.figure(figsize=figsize, dpi=dpi)  # 强制 Axes 占用 100% 的画布空间，不留边距
     ax = fig.add_axes([0, 0, 1, 1])
 
     # P.S. / TODO: 这里这样修改好像没啥意义
     if view == 'time_energy':
         # 关键修改 2：将时间转换为数值以避免 add 报错
         time_numeric = Time.astype('datetime64[ns]').view('int64').astype(np.float64)
-        
+
         # 构造 2D 网格并计算精确边缘
         T_grid, E_grid = np.meshgrid(time_numeric, E)
         T_edge = centers_to_edges_2d(T_grid)
         E_edge = centers_to_edges_2d(E_grid)
-        
+
         # 使用 flat 模式配合 edges，实现像素级对齐
         ax.pcolormesh(T_edge, E_edge, Flux.T, norm=norm, cmap=cmap, shading='flat')
         ax.set_yscale('log')
@@ -129,14 +129,14 @@ def generate_pure_image(
                 l_xlim = (float(np.nanmin(L_valid)), float(np.nanmax(L_valid)))
             else:
                 l_xlim = (1.0, 2.0)  # 默认范围作为后备
-        
+
         if wd_ylim is None:
             Wd_valid = Wd[np.isfinite(Wd)]
             if len(Wd_valid) > 0:
                 wd_ylim = (float(np.nanmin(Wd_valid)), float(np.nanmax(Wd_valid)))
             else:
                 wd_ylim = (0.0, 4.0)  # 默认范围作为后备
-        
+
         ax.set_xlim(*l_xlim)
         ax.set_ylim(*wd_ylim)
     else:

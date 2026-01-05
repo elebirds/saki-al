@@ -3,6 +3,11 @@ from saki_api.models.dataset import Dataset, DatasetCreate, DatasetRead, Dataset
 from saki_api.models.enums import TaskType, SampleStatus, ProjectStatus, ModelStatus, AnnotationSystemType
 from saki_api.models.label import Label, LabelCreate, LabelRead, LabelUpdate
 from saki_api.models.model_version import ModelVersion, ModelVersionCreate, ModelVersionRead, ModelVersionUpdate
+from saki_api.models.permission import (
+    GlobalRole, ResourceRole, Permission,
+    RolePermission, DatasetMember,
+    DatasetMemberCreate, DatasetMemberRead, DatasetMemberUpdate
+)
 from saki_api.models.project import (
     Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats,
     ProjectDataset, ProjectDatasetCreate, ProjectDatasetRead
@@ -13,11 +18,6 @@ from saki_api.models.system_config import (
     BaseModel, BaseModelCreate, BaseModelRead, BaseModelUpdate,
 )
 from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
-from saki_api.models.permission import (
-    GlobalRole, ResourceRole, Permission,
-    RolePermission, DatasetMember,
-    DatasetMemberCreate, DatasetMemberRead, DatasetMemberUpdate
-)
 
 __all__ = [
     # Dataset models (independent, for data annotation)

@@ -55,10 +55,10 @@ class ClassicHandler(AnnotationSystemHandler):
         return True, ""
 
     def process_upload(
-        self,
-        file_path: Path,
-        context: UploadContext,
-        progress_callback: Optional[ProgressCallback] = None,
+            self,
+            file_path: Path,
+            context: UploadContext,
+            progress_callback: Optional[ProgressCallback] = None,
     ) -> ProcessResult:
         """
         Process a classic image file.
@@ -92,7 +92,7 @@ class ClassicHandler(AnnotationSystemHandler):
             # Prepare storage path
             output_dir = context.upload_dir / sample_id
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Copy image to storage
             stored_path = output_dir / filename
             shutil.copy2(file_path, stored_path)

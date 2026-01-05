@@ -1,10 +1,9 @@
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON
-from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import TaskType, ProjectStatus
+from sqlalchemy import Column, JSON
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.system_config import QueryStrategy, BaseModel
@@ -27,15 +26,15 @@ class ProjectDataset(ProjectDatasetBase, TimestampMixin, table=True):
     A Dataset can be used in multiple Projects.
     """
     __tablename__ = "project_dataset"
-    
+
     # Relationship back to Project and Dataset
     project: "Project" = Relationship(back_populates="dataset_links")
     dataset: "Dataset" = Relationship(back_populates="project_links")
-    
+
     # Score for samples from this dataset in this project context
     # This allows different scores for the same sample in different projects
     sample_scores: Dict[str, float] = Field(
-        default={}, 
+        default={},
         sa_column=Column(JSON),
         description="Sample ID to informativeness score mapping for this project-dataset combination."
     )

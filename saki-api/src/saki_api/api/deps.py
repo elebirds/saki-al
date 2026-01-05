@@ -2,13 +2,12 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from pydantic import ValidationError
-from sqlmodel import Session
-
 from saki_api.core.config import settings
-from saki_api.db.session import get_session
-from saki_api.models.user import User
-from saki_api.models.permission import GlobalRole, Permission
 from saki_api.core.permissions import check_permission
+from saki_api.db.session import get_session
+from saki_api.models.permission import GlobalRole, Permission
+from saki_api.models.user import User
+from sqlmodel import Session
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"

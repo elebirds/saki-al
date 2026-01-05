@@ -6,8 +6,8 @@
 
 import { useCallback } from 'react';
 import { message } from 'antd';
-import { api } from '../services/api';
-import { Annotation } from '../types';
+import { api } from '../../services/api';
+import { Annotation } from '../../types';
 
 export interface UseAnnotationSubmitOptions {
   /** 当前样本 ID */

@@ -43,6 +43,7 @@
 
 from datetime import datetime
 from typing import Optional, Generic, TypeVar, Any
+
 from fastapi import status
 from pydantic import BaseModel, Field
 
@@ -69,9 +70,9 @@ class ApiResponse(BaseModel, Generic[T]):
 
 
 def success_response(
-    data: Any = None,
-    message: str = "Success",
-    code: int = status.HTTP_200_OK
+        data: Any = None,
+        message: str = "Success",
+        code: int = status.HTTP_200_OK
 ) -> ApiResponse:
     """
     创建成功响应。
@@ -93,9 +94,9 @@ def success_response(
 
 
 def error_response(
-    message: str,
-    code: int = status.HTTP_400_BAD_REQUEST,
-    data: Any = None
+        message: str,
+        code: int = status.HTTP_400_BAD_REQUEST,
+        data: Any = None
 ) -> ApiResponse:
     """
     创建错误响应。
@@ -114,4 +115,3 @@ def error_response(
         message=message,
         data=data
     )
-

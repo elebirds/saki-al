@@ -6,10 +6,10 @@
 
 import { useCallback } from 'react';
 import { message } from 'antd';
-import { api } from '../services/api';
-import { Annotation, DualViewAnnotation } from '../types';
-import { dualToAnnotations } from '../utils/fedoAnnotations';
-import { VIEW_TIME_ENERGY } from '../components/annotation/DualCanvasArea';
+import { api } from '../../services/api';
+import { Annotation, DualViewAnnotation } from '../../types';
+import { dualToAnnotations } from '../../utils/fedoAnnotations';
+import { VIEW_TIME_ENERGY } from '../../components/annotation/DualCanvasArea';
 
 export interface UseFedoSubmitOptions {
   /** 当前样本 ID */

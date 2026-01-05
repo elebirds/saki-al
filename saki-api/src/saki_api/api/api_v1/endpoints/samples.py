@@ -6,15 +6,12 @@ Samples belong to Datasets, not directly to Projects.
 import json
 import logging
 import shutil
+from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, desc, asc
-from sqlmodel import Session, select
-
 # Import annotation_systems module for handler registry
 from saki_api.annotation_systems import (
     get_handler,
@@ -24,14 +21,16 @@ from saki_api.annotation_systems import (
 )
 from saki_api.api import deps
 from saki_api.core.config import settings
+from saki_api.core.permissions import require_permission
 from saki_api.db.session import get_session
 from saki_api.models import (
     Dataset,
 )
+from saki_api.models.permission import Permission
 from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.user import User
-from saki_api.models.permission import Permission
-from saki_api.core.permissions import require_permission
+from sqlalchemy import func, desc, asc
+from sqlmodel import Session, select
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +91,7 @@ def read_samples(
     dataset = session.get(Dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     query = select(Sample).where(Sample.dataset_id == dataset_id)
     if status:
         query = query.where(Sample.status == status)
@@ -105,7 +104,7 @@ def read_samples(
                 status_code=400,
                 detail=f"Invalid sort field: {sort_by}. Valid fields are: name, status, created_at, updated_at, remark"
             )
-        
+
         if sort_order == SortOrder.DESC:
             query = query.order_by(desc(sort_field))
         else:

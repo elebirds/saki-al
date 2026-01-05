@@ -8,13 +8,12 @@ Includes:
 - DatasetMember table for resource-level permissions
 """
 
-from enum import Enum
 from datetime import datetime
+from enum import Enum
 from typing import Optional, TYPE_CHECKING
 
-from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.user import User
@@ -54,13 +53,13 @@ class Permission(str, Enum):
     USER_UPDATE = "user:update"
     USER_DELETE = "user:delete"
     USER_MANAGE_ROLES = "user:manage_roles"
-    
+
     # 数据集全局权限
     DATASET_CREATE = "dataset:create"
     DATASET_READ_ALL = "dataset:read_all"
     DATASET_UPDATE_ALL = "dataset:update_all"
     DATASET_DELETE_ALL = "dataset:delete_all"
-    
+
     # 数据集资源权限
     DATASET_READ = "dataset:read"
     DATASET_UPDATE = "dataset:update"
@@ -68,17 +67,17 @@ class Permission(str, Enum):
     DATASET_MANAGE_MEMBERS = "dataset:manage_members"
     DATASET_UPLOAD = "dataset:upload"
     DATASET_EXPORT = "dataset:export"
-    
+
     # 样本权限（继承自数据集）
     SAMPLE_READ = "sample:read"
     SAMPLE_UPDATE = "sample:update"
     SAMPLE_DELETE = "sample:delete"
-    
+
     # 标注权限（继承自数据集）
     ANNOTATION_READ = "annotation:read"
     ANNOTATION_MODIFY = "annotation:modify"  # 合并create/update/delete
     ANNOTATION_REVIEW = "annotation:review"
-    
+
     # 系统配置
     SYSTEM_CONFIG = "system:config"
 
@@ -96,7 +95,7 @@ class RolePermission(SQLModel, table=True):
     - "dataset": 数据集资源权限
     """
     __tablename__ = "role_permission"
-    
+
     role: str = Field(primary_key=True, description="角色名称（GlobalRole或ResourceRole）")
     permission: Permission = Field(primary_key=True, description="权限")
     resource_type: Optional[str] = Field(
@@ -116,7 +115,7 @@ class DatasetMember(SQLModel, table=True):
     用于实现数据集级别的细粒度权限控制
     """
     __tablename__ = "dataset_member"
-    
+
     dataset_id: str = Field(
         foreign_key="dataset.id",
         primary_key=True,
@@ -138,7 +137,7 @@ class DatasetMember(SQLModel, table=True):
         foreign_key="user.id",
         description="谁添加的这个成员"
     )
-    
+
     # Relationships
     dataset: "Dataset" = Relationship(back_populates="members")
     user: "User" = Relationship(
@@ -179,4 +178,3 @@ class DatasetMemberRead(SQLModel):
 class DatasetMemberUpdate(SQLModel):
     """更新数据集成员的请求模型"""
     role: ResourceRole = Field(description="新角色")
-

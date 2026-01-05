@@ -1,10 +1,9 @@
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON
-from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import ModelStatus
+from sqlalchemy import Column, JSON
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.system_config import BaseModel

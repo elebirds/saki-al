@@ -1,6 +1,5 @@
-from sqlmodel import create_engine, Session, SQLModel
-
 from saki_api.core.config import settings
+from sqlmodel import create_engine, Session, SQLModel
 
 # SQLite requires specific connection arguments to work with multi-threaded applications
 connect_args = {}
@@ -26,5 +25,4 @@ def init_db():
     This should be called on application startup.
     """
     # Import models to ensure they are registered with SQLModel
-    import saki_api.models
     SQLModel.metadata.create_all(engine)

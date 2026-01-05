@@ -1,9 +1,8 @@
 from typing import List, Optional, TYPE_CHECKING
 
-from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import AnnotationSystemType
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.sample import Sample
@@ -23,7 +22,7 @@ class DatasetBase(SQLModel):
     """
     name: str = Field(description="Name of the dataset/batch.")
     description: Optional[str] = Field(default=None, description="Description of the dataset.")
-    
+
     # Annotation system type - determines which annotation UI to use
     annotation_system: AnnotationSystemType = Field(
         default=AnnotationSystemType.CLASSIC,
@@ -41,16 +40,16 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
         index=True,
         description="Owner of the dataset"
     )
-    
+
     # Relationship to samples (one-to-many)
     samples: List["Sample"] = Relationship(back_populates="dataset")
-    
+
     # Relationship to labels (one-to-many)
     labels: List["Label"] = Relationship(back_populates="dataset")
-    
+
     # Relationship to projects through link table (many-to-many)
     project_links: List["ProjectDataset"] = Relationship(back_populates="dataset")
-    
+
     # Relationship to members (resource-level permissions)
     members: List["DatasetMember"] = Relationship(back_populates="dataset")
 

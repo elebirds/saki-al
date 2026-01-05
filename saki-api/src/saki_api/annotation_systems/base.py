@@ -108,6 +108,7 @@ class SyncResult:
 
 class ProgressCallback(Protocol):
     """Protocol for progress callback functions."""
+
     def __call__(self, event: EventType, progress: ProgressInfo) -> None: ...
 
 
@@ -205,10 +206,10 @@ class AnnotationSystemHandler(ABC):
 
     @abstractmethod
     def process_upload(
-        self,
-        file_path: Path,
-        context: UploadContext,
-        progress_callback: Optional[ProgressCallback] = None,
+            self,
+            file_path: Path,
+            context: UploadContext,
+            progress_callback: Optional[ProgressCallback] = None,
     ) -> ProcessResult:
         """
         Process an uploaded file.
@@ -226,13 +227,13 @@ class AnnotationSystemHandler(ABC):
     # ==================== Annotation Sync (Real-time) ====================
 
     def on_annotation_create(
-        self,
-        annotation_id: str,
-        label_id: str,
-        ann_type: AnnotationType,
-        data: Dict[str, Any],
-        extra: Dict[str, Any],
-        context: AnnotationContext,
+            self,
+            annotation_id: str,
+            label_id: str,
+            ann_type: AnnotationType,
+            data: Dict[str, Any],
+            extra: Dict[str, Any],
+            context: AnnotationContext,
     ) -> SyncResult:
         """
         Handle annotation creation during real-time sync.
@@ -254,13 +255,13 @@ class AnnotationSystemHandler(ABC):
         return SyncResult(success=True, annotation_id=annotation_id, action="create")
 
     def on_annotation_update(
-        self,
-        annotation_id: str,
-        label_id: Optional[str],
-        ann_type: Optional[AnnotationType],
-        data: Optional[Dict[str, Any]],
-        extra: Optional[Dict[str, Any]],
-        context: AnnotationContext,
+            self,
+            annotation_id: str,
+            label_id: Optional[str],
+            ann_type: Optional[AnnotationType],
+            data: Optional[Dict[str, Any]],
+            extra: Optional[Dict[str, Any]],
+            context: AnnotationContext,
     ) -> SyncResult:
         """
         Handle annotation update during real-time sync.
@@ -271,10 +272,10 @@ class AnnotationSystemHandler(ABC):
         return SyncResult(success=True, annotation_id=annotation_id, action="update")
 
     def on_annotation_delete(
-        self,
-        annotation_id: str,
-        extra: Dict[str, Any],
-        context: AnnotationContext,
+            self,
+            annotation_id: str,
+            extra: Dict[str, Any],
+            context: AnnotationContext,
     ) -> SyncResult:
         """
         Handle annotation deletion during real-time sync.
@@ -291,9 +292,9 @@ class AnnotationSystemHandler(ABC):
     # ==================== Batch Save ====================
 
     def on_batch_save(
-        self,
-        annotations: List[Dict[str, Any]],
-        context: AnnotationContext,
+            self,
+            annotations: List[Dict[str, Any]],
+            context: AnnotationContext,
     ) -> List[Dict[str, Any]]:
         """
         Process annotations before batch save to database.
@@ -319,4 +320,3 @@ class AnnotationSystemHandler(ABC):
     def create_progress(self, total: int, message: str = "") -> ProgressInfo:
         """Create a new ProgressInfo instance."""
         return ProgressInfo(total=total, message=message)
-

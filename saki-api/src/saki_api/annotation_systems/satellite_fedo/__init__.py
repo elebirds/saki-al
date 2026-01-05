@@ -11,10 +11,10 @@ Note: The FedoHandler (annotation system handler) is in handlers/fedo.py
 and uses these utilities for processing.
 """
 
-from .processor import FedoProcessor
 from .lookup import generate_lookup_table, load_lookup_table, LookupTable
 from .parser import load_fedo_data, parse_energy_bins
 from .physics import calculate_physics_data, CONSTANTS
+from .processor import FedoProcessor
 from .visualizer import generate_views, generate_pure_image
 
 __all__ = [

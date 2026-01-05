@@ -1,10 +1,9 @@
+import re
 from datetime import datetime, timedelta
 from typing import Any, Union
-import re
 
 from jose import jwt
 from passlib.context import CryptContext
-
 from saki_api.core.config import settings
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -38,7 +37,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     # 只接受前端哈希后的密码
     if not is_frontend_hashed_password(plain_password):
         return False
-    
+
     # 数据库中的哈希值应该是前端哈希值经过 Argon2 哈希后的结果
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -52,6 +51,6 @@ def get_password_hash(password: str) -> str:
     # 只接受前端哈希后的密码
     if not is_frontend_hashed_password(password):
         raise ValueError("密码必须是前端哈希后的格式（64字符十六进制字符串）")
-    
+
     # 对前端哈希后的密码进行 Argon2 哈希
     return pwd_context.hash(password)

@@ -1,9 +1,6 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
-from sqlmodel import Session, select
-
 from saki_api.api import deps
 from saki_api.db.session import get_session
 from saki_api.models import (
@@ -13,6 +10,8 @@ from saki_api.models import (
     ModelVersion, Dataset
 )
 from saki_api.models.user import User
+from sqlalchemy import func
+from sqlmodel import Session, select
 
 router = APIRouter()
 
@@ -25,21 +24,21 @@ def _get_project_stats(session: Session, project: Project) -> ProjectStats:
     dataset_ids = session.exec(
         select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project.id)
     ).all()
-    
+
     if not dataset_ids:
         return ProjectStats(total_datasets=0, total_samples=0, labeled_samples=0, accuracy=0.0)
-    
+
     total_samples = session.exec(
         select(func.count()).select_from(Sample).where(Sample.dataset_id.in_(dataset_ids))
     ).one()
-    
+
     labeled_samples = session.exec(
         select(func.count()).select_from(Sample).where(
             Sample.dataset_id.in_(dataset_ids),
             Sample.status == SampleStatus.LABELED
         )
     ).one()
-    
+
     return ProjectStats(
         total_datasets=len(dataset_ids),
         total_samples=total_samples,
@@ -80,7 +79,7 @@ def create_project(
     session.add(db_project)
     session.commit()
     session.refresh(db_project)
-    
+
     p_read = ProjectRead.model_validate(db_project)
     p_read.stats = ProjectStats()
     return p_read
@@ -126,7 +125,7 @@ def update_project(
     session.add(project)
     session.commit()
     session.refresh(project)
-    
+
     p_read = ProjectRead.model_validate(project)
     p_read.stats = _get_project_stats(session, project)
     return p_read
@@ -210,12 +209,12 @@ def get_project_datasets(
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     # Get linked datasets with their info
     links = session.exec(
         select(ProjectDataset).where(ProjectDataset.project_id == project_id)
     ).all()
-    
+
     result = []
     for link in links:
         dataset = session.get(Dataset, link.dataset_id)
@@ -230,7 +229,7 @@ def get_project_datasets(
                     Sample.status == SampleStatus.LABELED
                 )
             ).one()
-            
+
             result.append({
                 "dataset_id": dataset.id,
                 "name": dataset.name,
@@ -240,7 +239,7 @@ def get_project_datasets(
                 "labeled_count": labeled_count,
                 "linked_at": link.created_at.isoformat() if link.created_at else None,
             })
-    
+
     return {"datasets": result, "total": len(result)}
 
 
@@ -257,11 +256,11 @@ def link_dataset_to_project(
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     dataset = session.get(Dataset, link_data.dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     # Check if already linked
     existing = session.exec(
         select(ProjectDataset).where(
@@ -269,10 +268,10 @@ def link_dataset_to_project(
             ProjectDataset.dataset_id == link_data.dataset_id
         )
     ).first()
-    
+
     if existing:
         raise HTTPException(status_code=400, detail="Dataset already linked to this project")
-    
+
     # Create link
     link = ProjectDataset(
         project_id=project_id,
@@ -280,7 +279,7 @@ def link_dataset_to_project(
     )
     session.add(link)
     session.commit()
-    
+
     return {"ok": True, "message": f"Dataset '{dataset.name}' linked to project '{project.name}'"}
 
 
@@ -301,13 +300,13 @@ def unlink_dataset_from_project(
             ProjectDataset.dataset_id == dataset_id
         )
     ).first()
-    
+
     if not link:
         raise HTTPException(status_code=404, detail="Dataset is not linked to this project")
-    
+
     session.delete(link)
     session.commit()
-    
+
     return {"ok": True, "message": "Dataset unlinked from project"}
 
 
@@ -327,26 +326,26 @@ def get_project_samples(
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     # Get all dataset IDs linked to this project
     dataset_ids = session.exec(
         select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
     ).all()
-    
+
     if not dataset_ids:
         return {"items": [], "total": 0}
-    
+
     # Build query for samples
     query = select(Sample).where(Sample.dataset_id.in_(dataset_ids))
     if status:
         query = query.where(Sample.status == status)
-    
+
     # Count total
     count_query = select(func.count()).select_from(Sample).where(Sample.dataset_id.in_(dataset_ids))
     if status:
         count_query = count_query.where(Sample.status == status)
     total = session.exec(count_query).one()
-    
+
     samples = session.exec(query.offset(skip).limit(limit)).all()
-    
+
     return {"items": samples, "total": total}

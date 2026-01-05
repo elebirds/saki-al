@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useCallback } from 'react';
-import { Label } from '../types';
+import { Label } from '../../types';
 import { AnnotationLike, UseAnnotationStateReturn } from './useAnnotationState';
 
 export interface UseWorkspaceCommonOptions<T extends AnnotationLike> {

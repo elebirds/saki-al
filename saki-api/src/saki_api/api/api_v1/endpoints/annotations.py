@@ -13,30 +13,29 @@ Workflow:
 4. User clicks Save → POST /save persists to database
 """
 
-from typing import List, Optional, Dict, Any
 import uuid
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from sqlmodel import Session, select
-
+from saki_api.annotation_systems import get_handler, AnnotationContext
 from saki_api.api import deps
+from saki_api.core.permissions import require_permission
 from saki_api.db.session import get_session
 from saki_api.models.annotation import Annotation
-from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.dataset import Dataset
-from saki_api.models.label import Label
-from saki_api.models.user import User
 from saki_api.models.enums import AnnotationType, AnnotationSource
+from saki_api.models.label import Label
 from saki_api.models.permission import Permission
-from saki_api.core.permissions import require_permission
-from saki_api.annotation_systems import get_handler, AnnotationContext
+from saki_api.models.sample import Sample, SampleStatus
+from saki_api.models.user import User
 from saki_api.utils.coordinate_converter import (
     convert_annotation_data_to_backend,
     convert_annotation_data_to_frontend,
     convert_annotations_to_backend,
     convert_annotations_to_frontend,
 )
+from sqlmodel import Session, select
 
 router = APIRouter()
 
@@ -122,7 +121,7 @@ def _get_context(sample: Sample, session: Session, current_user: Optional[User] 
     dataset = session.get(Dataset, sample.dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     return AnnotationContext(
         sample_id=sample.id,
         dataset_id=sample.dataset_id,
@@ -134,10 +133,10 @@ def _get_context(sample: Sample, session: Session, current_user: Optional[User] 
 def _to_item(ann: Annotation, label: Optional[Label] = None) -> AnnotationItem:
     """Convert Annotation model to API response item."""
     annotation_type = ann.type.value if ann.type else AnnotationType.RECT.value
-    
+
     # 转换数据格式：后端存储（中心点）→ 前端显示（左上角）
     data = convert_annotation_data_to_frontend(annotation_type, ann.data or {})
-    
+
     return AnnotationItem(
         id=ann.id,
         type=annotation_type,
@@ -157,31 +156,31 @@ def _to_item(ann: Annotation, label: Optional[Label] = None) -> AnnotationItem:
 
 @router.get("/{sample_id}", response_model=SampleAnnotationsResponse)
 def get_sample_annotations(
-    sample_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(
-        Permission.ANNOTATION_READ, "sample", "sample_id"
-    )),
+        sample_id: str,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(
+            Permission.ANNOTATION_READ, "sample", "sample_id"
+        )),
 ):
     """Get all annotations for a sample."""
     sample = session.get(Sample, sample_id)
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
-    
+
     dataset = session.get(Dataset, sample.dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     # Query annotations
     statement = select(Annotation).where(Annotation.sample_id == sample_id)
     annotations = session.exec(statement).all()
-    
+
     # Build response with label info
     items = []
     for ann in annotations:
         label = session.get(Label, ann.label_id)
         items.append(_to_item(ann, label))
-    
+
     return SampleAnnotationsResponse(
         sample_id=sample_id,
         dataset_id=sample.dataset_id,
@@ -192,9 +191,9 @@ def get_sample_annotations(
 
 @router.post("/sync", response_model=SyncResponse)
 def sync_annotations(
-    request: SyncRequest,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(deps.get_current_user),
+        request: SyncRequest,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(deps.get_current_user),
 ):
     """
     Sync annotation actions in real-time.
@@ -205,20 +204,20 @@ def sync_annotations(
     # Check permission for the sample
     from saki_api.core.permissions import check_permission
     if not check_permission(
-        current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
+            current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
     ):
         raise HTTPException(status_code=403, detail="Permission denied")
-    
+
     sample = session.get(Sample, request.sample_id)
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
-    
+
     dataset = session.get(Dataset, sample.dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     context = _get_context(sample, session, current_user)
-    
+
     # Get handler for this annotation system
     try:
         handler = get_handler(dataset.annotation_system)
@@ -226,15 +225,15 @@ def sync_annotations(
         # Fallback to classic (pass-through)
         from saki_api.annotation_systems.handlers.classic import ClassicHandler
         handler = ClassicHandler()
-    
+
     results: List[SyncResultItem] = []
-    
+
     for action in request.actions:
         ann_type = AnnotationType(action.type) if action.type else AnnotationType.RECT
-        
+
         # 转换数据格式：前端发送（左上角）→ 后端存储（中心点）
         data = convert_annotation_data_to_backend(ann_type.value, action.data or {})
-        
+
         if action.action == "create":
             result = handler.on_annotation_create(
                 annotation_id=action.annotation_id,
@@ -244,7 +243,7 @@ def sync_annotations(
                 extra=action.extra or {},
                 context=context,
             )
-            
+
             # 转换生成的标注数据：后端格式（中心点）→ 前端格式（左上角）
             if result.generated:
                 result.generated = [
@@ -257,7 +256,7 @@ def sync_annotations(
                     }
                     for gen in result.generated
                 ]
-            
+
             results.append(SyncResultItem(
                 action="create",
                 annotation_id=action.annotation_id,
@@ -265,12 +264,12 @@ def sync_annotations(
                 error=result.error,
                 generated=result.generated,
             ))
-        
+
         elif action.action == "update":
             # For update, if label_id or type is missing, try to get from existing annotation
             update_label_id = action.label_id
             update_ann_type = ann_type if action.type else None
-            
+
             if not update_label_id or not update_ann_type:
                 # Try to get from existing annotation in database
                 existing_ann = session.get(Annotation, action.annotation_id)
@@ -287,17 +286,17 @@ def sync_annotations(
                         merged_extra = existing_ann.extra.copy()
                         merged_extra.update(action.extra)
                         action.extra = merged_extra
-            
+
             # 确保有类型信息（如果还没有）
             if not update_ann_type:
                 update_ann_type = ann_type
-            
+
             # 转换数据格式：前端发送（左上角）→ 后端存储（中心点）
             update_data = convert_annotation_data_to_backend(
                 update_ann_type.value if update_ann_type else ann_type.value,
                 action.data or {}
             ) if action.data else None
-            
+
             result = handler.on_annotation_update(
                 annotation_id=action.annotation_id,
                 label_id=update_label_id,
@@ -306,7 +305,7 @@ def sync_annotations(
                 extra=action.extra,
                 context=context,
             )
-            
+
             # 转换生成的标注数据：后端格式（中心点）→ 前端格式（左上角）
             if result.generated:
                 result.generated = [
@@ -319,7 +318,7 @@ def sync_annotations(
                     }
                     for gen in result.generated
                 ]
-            
+
             results.append(SyncResultItem(
                 action="update",
                 annotation_id=action.annotation_id,
@@ -327,14 +326,14 @@ def sync_annotations(
                 error=result.error,
                 generated=result.generated,
             ))
-        
+
         elif action.action == "delete":
             result = handler.on_annotation_delete(
                 annotation_id=action.annotation_id,
                 extra=action.extra or {},
                 context=context,
             )
-            
+
             results.append(SyncResultItem(
                 action="delete",
                 annotation_id=action.annotation_id,
@@ -342,7 +341,7 @@ def sync_annotations(
                 error=result.error,
                 generated=result.generated,
             ))
-        
+
         else:
             results.append(SyncResultItem(
                 action=action.action,
@@ -350,7 +349,7 @@ def sync_annotations(
                 success=False,
                 error=f"Unknown action: {action.action}",
             ))
-    
+
     return SyncResponse(
         sample_id=request.sample_id,
         results=results,
@@ -360,9 +359,9 @@ def sync_annotations(
 
 @router.post("/save", response_model=BatchSaveResponse)
 def save_annotations(
-    request: BatchSaveRequest,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(deps.get_current_user),
+        request: BatchSaveRequest,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(deps.get_current_user),
 ):
     """
     Batch save all annotations for a sample.
@@ -372,33 +371,33 @@ def save_annotations(
     # Check permission for the sample
     from saki_api.core.permissions import check_permission
     if not check_permission(
-        current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
+            current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
     ):
         raise HTTPException(status_code=403, detail="Permission denied")
-    
+
     sample = session.get(Sample, request.sample_id)
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
-    
+
     dataset = session.get(Dataset, sample.dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     context = _get_context(sample, session, current_user)
-    
+
     # Get handler for pre-save processing
     try:
         handler = get_handler(dataset.annotation_system)
     except ValueError:
         handler = None
-    
+
     try:
         # Delete existing annotations
         statement = select(Annotation).where(Annotation.sample_id == request.sample_id)
         existing = session.exec(statement).all()
         for ann in existing:
             session.delete(ann)
-        
+
         # Prepare annotations
         # 注意：annotator_id 由后端自动设置，不从请求中读取
         # 转换数据格式：前端发送（左上角）→ 后端存储（中心点）
@@ -415,11 +414,11 @@ def save_annotations(
                 "data": backend_data,
                 "extra": a.extra,
             })
-        
+
         # Pre-save hook
         if handler:
             annotations_to_save = handler.on_batch_save(annotations_to_save, context)
-        
+
         # Create annotation records
         saved_count = 0
         for ann_data in annotations_to_save:
@@ -430,7 +429,7 @@ def save_annotations(
                     status_code=400,
                     detail=f"Label '{ann_data['label_id']}' not found"
                 )
-            
+
             # 根据source设置annotator_id：
             # - manual标注：使用当前用户ID
             # - auto/fedo_mapping标注：设置为None（系统自动生成）
@@ -438,7 +437,7 @@ def save_annotations(
             annotator_id = None
             if source == AnnotationSource.MANUAL and current_user:
                 annotator_id = current_user.id
-            
+
             new_ann = Annotation(
                 id=ann_data.get("id") or str(uuid.uuid4()),
                 sample_id=request.sample_id,
@@ -451,21 +450,21 @@ def save_annotations(
             )
             session.add(new_ann)
             saved_count += 1
-        
+
         # Update sample status
         if request.update_status == 'labeled':
             sample.status = SampleStatus.LABELED
         elif request.update_status == 'skipped':
             sample.status = SampleStatus.SKIPPED
-        
+
         session.commit()
-        
+
         return BatchSaveResponse(
             sample_id=request.sample_id,
             saved_count=saved_count,
             success=True,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -480,22 +479,21 @@ def save_annotations(
 
 @router.get("/detail/{annotation_id}", response_model=AnnotationItem)
 def get_annotation(
-    annotation_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(deps.get_current_user),
+        annotation_id: str,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(deps.get_current_user),
 ):
     """Get a single annotation by ID."""
     annotation = session.get(Annotation, annotation_id)
     if not annotation:
         raise HTTPException(status_code=404, detail="Annotation not found")
-    
+
     # Check permission through sample
     from saki_api.core.permissions import check_permission
     if not check_permission(
-        current_user, Permission.ANNOTATION_READ, "sample", annotation.sample_id, session
+            current_user, Permission.ANNOTATION_READ, "sample", annotation.sample_id, session
     ):
         raise HTTPException(status_code=403, detail="Permission denied")
-    
+
     label = session.get(Label, annotation.label_id)
     return _to_item(annotation, label)
-

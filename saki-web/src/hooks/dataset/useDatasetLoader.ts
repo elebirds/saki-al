@@ -7,9 +7,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { message } from 'antd';
-import { api } from '../services/api';
-import { Dataset, Label, Sample } from '../types';
-import { useSortSettings, SortOptions } from './useSortSettings';
+import { api } from '../../services/api';
+import { Dataset, Label, Sample } from '../../types';
+import { useSortSettings, SortOptions } from '../../hooks/dataset/useSortSettings';
 
 export interface UseDatasetLoaderOptions {
   /** 数据集 ID */

@@ -9,11 +9,10 @@ Supports:
 """
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON
-from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import AnnotationType, AnnotationSource
+from sqlalchemy import Column, JSON
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.sample import Sample
@@ -25,34 +24,34 @@ class AnnotationBase(SQLModel):
     Base model for Annotation.
     Stores the actual labeling data for a sample.
     """
-    sample_id: str = Field(foreign_key="sample.id", index=True, 
+    sample_id: str = Field(foreign_key="sample.id", index=True,
                            description="ID of the sample being annotated.")
-    label_id: str = Field(foreign_key="label.id", index=True, 
+    label_id: str = Field(foreign_key="label.id", index=True,
                           description="ID of the label for this annotation.")
-    
+
     # Annotation type determines how 'data' is interpreted
     type: AnnotationType = Field(default=AnnotationType.RECT, index=True,
-                                  description="Geometric type of the annotation (rect, obb, polygon, etc.)")
-    
+                                 description="Geometric type of the annotation (rect, obb, polygon, etc.)")
+
     # Source indicates if annotation is manual or auto-generated
     source: AnnotationSource = Field(default=AnnotationSource.MANUAL, index=True,
-                                      description="Source of annotation (manual, auto, imported)")
-    
+                                     description="Source of annotation (manual, auto, imported)")
+
     # The actual annotation geometry data
     # For RECT: {x, y, width, height}
     # For OBB: {cx, cy, width, height, rotation}
     # For POLYGON/POLYLINE: {points: [[x1,y1], [x2,y2], ...]}
     data: Optional[Dict[str, Any]] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False, default=dict),
-                                 description="The annotation geometry data.")
-    
+                                           description="The annotation geometry data.")
+
     # System-specific extra data (flexible JSON for different annotation systems)
     # Examples:
     #   - FEDO: {parent_id, view: "time-energy"|"L-omegad", mapping_info, ...}
     #   - Classic: {} (empty, no extra data needed)
     #   - Future systems can add their own fields
     extra: Optional[Dict[str, Any]] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False, default=dict),
-                                      description="System-specific extra data for this annotation.")
-    
+                                            description="System-specific extra data for this annotation.")
+
     # User who created the annotation
     annotator_id: Optional[str] = Field(default=None,
                                         description="ID of the user or system that created the annotation.")
@@ -103,7 +102,7 @@ class AnnotationAction(SQLModel):
     """
     action: str = Field(description="Action type: 'create', 'update', 'delete'")
     annotation_id: str = Field(description="ID of the annotation")
-    
+
     # For create/update actions
     label_id: Optional[str] = None
     type: Optional[AnnotationType] = None
@@ -128,7 +127,7 @@ class AnnotationSyncResult(SQLModel):
     annotation_id: str
     success: bool
     error: Optional[str] = None
-    
+
     # Auto-generated annotations (e.g., FEDO dual-view mapping)
     generated: List[Dict[str, Any]] = Field(default=[])
 

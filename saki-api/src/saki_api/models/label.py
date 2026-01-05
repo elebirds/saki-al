@@ -4,9 +4,8 @@ Labels belong to Datasets and are referenced by Annotations.
 """
 from typing import Optional, TYPE_CHECKING, List
 
-from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.dataset import Dataset
@@ -21,7 +20,7 @@ class LabelBase(SQLModel):
     name: str = Field(description="Name of the label (e.g., 'Object', 'Background').")
     color: str = Field(default="#1890ff", description="Color code for the label (hex format).")
     description: Optional[str] = Field(default=None, description="Optional description of the label.")
-    
+
     # Order for display purposes
     sort_order: int = Field(default=0, description="Order for displaying labels.")
 
@@ -32,8 +31,9 @@ class Label(LabelBase, TimestampMixin, UUIDMixin, table=True):
     Labels are defined per-dataset and referenced by annotations.
     """
     # Foreign key to Dataset
-    dataset_id: str = Field(foreign_key="dataset.id", index=True, description="ID of the dataset this label belongs to.")
-    
+    dataset_id: str = Field(foreign_key="dataset.id", index=True,
+                            description="ID of the dataset this label belongs to.")
+
     # Relationships
     dataset: "Dataset" = Relationship(back_populates="labels")
     annotations: List["Annotation"] = Relationship(back_populates="label")

@@ -6,14 +6,14 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { message } from 'antd';
-import { api } from '../services/api';
+import { api } from '../../services/api';
 import {
   Annotation,
   DualViewAnnotation,
   MappedRegion,
   AnnotationType,
   SyncAction,
-} from '../types';
+} from '../../types';
 import { UseAnnotationStateReturn } from './useAnnotationState';
 import { UseAnnotationSyncReturn } from './useAnnotationSync';
 import {
@@ -22,9 +22,9 @@ import {
   generatedToAnnotations,
   generatedToRegions,
   isGeneratedAnnotation,
-} from '../utils/fedoAnnotations';
-import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../components/annotation/DualCanvasArea';
-import { generateUUID } from '../utils/uuid';
+} from '../../utils/fedoAnnotations';
+import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../../components/annotation/DualCanvasArea';
+import { generateUUID } from '../../utils/uuid';
 
 export interface UseFedoAnnotationsOptions {
   /** 当前样本 ID */

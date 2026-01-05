@@ -7,8 +7,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '../services/api';
-import { AvailableTypes, TypeInfo } from '../types';
+import { api } from '../../services/api';
+import { AvailableTypes, TypeInfo } from '../../types';
 
 // ============================================================================
 // Hook Interface

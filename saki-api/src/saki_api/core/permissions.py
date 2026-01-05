@@ -6,16 +6,15 @@ considering both global roles and resource-level permissions.
 """
 
 from typing import Optional
-from sqlmodel import Session, select
 
-from saki_api.models.user import User
+from saki_api.models.dataset import Dataset
 from saki_api.models.permission import (
     GlobalRole, ResourceRole, Permission,
     RolePermission, DatasetMember
 )
-from saki_api.models.dataset import Dataset
 from saki_api.models.sample import Sample
-
+from saki_api.models.user import User
+from sqlmodel import Session, select
 
 # ============================================================================
 # Role-Permission Mappings (Hardcoded for now, can be moved to DB later)
@@ -111,7 +110,7 @@ def _is_dataset_owner(user_id: str, dataset_id: str, session: Session) -> bool:
 
 
 def _get_dataset_member_role(
-    user_id: str, dataset_id: str, session: Session
+        user_id: str, dataset_id: str, session: Session
 ) -> Optional[ResourceRole]:
     """获取用户在数据集中的角色"""
     member = session.exec(
@@ -124,7 +123,7 @@ def _get_dataset_member_role(
 
 
 def _check_global_permission(
-    global_role: GlobalRole, permission: Permission
+        global_role: GlobalRole, permission: Permission
 ) -> bool:
     """检查全局角色是否拥有权限"""
     if global_role == GlobalRole.SUPER_ADMIN:
@@ -134,7 +133,7 @@ def _check_global_permission(
 
 
 def _check_resource_permission(
-    resource_role: ResourceRole, permission: Permission
+        resource_role: ResourceRole, permission: Permission
 ) -> bool:
     """检查资源角色是否拥有权限"""
     permissions = RESOURCE_ROLE_PERMISSIONS.get(resource_role, [])
@@ -148,11 +147,11 @@ def _get_dataset_id_from_sample(sample_id: str, session: Session) -> Optional[st
 
 
 def check_permission(
-    user: User,
-    permission: Permission,
-    resource_type: Optional[str] = None,  # "dataset" 或 "sample"
-    resource_id: Optional[str] = None,
-    session: Optional[Session] = None
+        user: User,
+        permission: Permission,
+        resource_type: Optional[str] = None,  # "dataset" 或 "sample"
+        resource_id: Optional[str] = None,
+        session: Optional[Session] = None
 ) -> bool:
     """
     检查用户是否拥有指定权限
@@ -176,39 +175,39 @@ def check_permission(
     if not session:
         # 如果没有提供session，只能检查全局权限
         return _check_global_permission(user.global_role, permission)
-    
+
     # 1. 超级管理员拥有所有权限
     if user.global_role == GlobalRole.SUPER_ADMIN:
         return True
-    
+
     # 2. 如果是资源权限，检查所有权和资源级权限
     if resource_type and resource_id:
         dataset_id = resource_id
-        
+
         # 如果是sample，先获取dataset_id
         if resource_type == "sample":
             dataset_id = _get_dataset_id_from_sample(resource_id, session)
             if not dataset_id:
                 return False
-        
+
         # 检查是否为所有者
         if _is_dataset_owner(user.id, dataset_id, session):
             return True
-        
+
         # 检查资源级权限
         resource_role = _get_dataset_member_role(user.id, dataset_id, session)
         if resource_role and _check_resource_permission(resource_role, permission):
             return True
-    
+
     # 3. 检查全局权限
     return _check_global_permission(user.global_role, permission)
 
 
 def require_permission(
-    permission: Permission,
-    resource_type: Optional[str] = None,
-    resource_id_param: Optional[str] = None,
-    resource_id_from_body: Optional[str] = None
+        permission: Permission,
+        resource_type: Optional[str] = None,
+        resource_id_param: Optional[str] = None,
+        resource_id_from_body: Optional[str] = None
 ):
     """
     创建权限检查依赖注入函数
@@ -247,30 +246,29 @@ def require_permission(
     """
     from fastapi import Depends, HTTPException, Request
     from saki_api.api.deps import get_current_user, get_session
-    
+
     async def permission_checker(
-        request: Request,
-        current_user: User = Depends(get_current_user),
-        session: Session = Depends(get_session)
+            request: Request,
+            current_user: User = Depends(get_current_user),
+            session: Session = Depends(get_session)
     ) -> User:
         resource_id = None
-        
+
         # 优先从路径参数获取
         if resource_id_param:
             resource_id = request.path_params.get(resource_id_param)
-        
+
         # 注意：从请求体读取会消耗请求体，导致后续处理函数无法读取
         # 对于需要从请求体获取资源ID的情况，建议在函数内部进行权限检查
         # 这里我们只处理路径参数的情况
-        
+
         if not check_permission(
-            current_user, permission, resource_type, resource_id, session
+                current_user, permission, resource_type, resource_id, session
         ):
             raise HTTPException(
                 status_code=403,
                 detail=f"Permission denied: {permission.value}"
             )
         return current_user
-    
-    return permission_checker
 
+    return permission_checker

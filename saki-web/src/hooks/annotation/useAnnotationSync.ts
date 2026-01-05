@@ -7,8 +7,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { api } from '../services/api';
-import { SyncAction, SyncResponse } from '../types';
+import { api } from '../../services/api';
+import { SyncAction, SyncResponse } from '../../types';
 
 export interface UseAnnotationSyncOptions {
   /** 是否启用同步（默认 true） */

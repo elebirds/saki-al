@@ -1,9 +1,8 @@
 from typing import Optional, TYPE_CHECKING
 
-from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.permission import GlobalRole
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.permission import DatasetMember
@@ -25,7 +24,7 @@ class UserBase(SQLModel):
 
 class User(UserBase, TimestampMixin, UUIDMixin, table=True):
     hashed_password: str = Field(description="Hashed password")
-    
+
     # Relationships
     dataset_memberships: list["DatasetMember"] = Relationship(
         back_populates="user",

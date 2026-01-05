@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
-import { UploadProgress, UploadProgressEvent, UploadFileResult, UploadResult } from '../types';
-import { api } from '../services/api';
+import { UploadProgress, UploadProgressEvent, UploadFileResult, UploadResult } from '../../types';
+import { api } from '../../services/api';
 
 interface UseUploadOptions {
   /** Callback for each file completion */

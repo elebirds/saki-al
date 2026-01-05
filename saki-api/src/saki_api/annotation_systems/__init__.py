@@ -49,12 +49,6 @@ from .base import (
     SyncResult,
     UploadContext,
 )
-from .registry import (
-    HandlerRegistry,
-    register_handler,
-    get_handler,
-    discover_handlers,
-)
 from .progress import (
     ProgressTracker,
     AsyncProgressTracker,
@@ -63,6 +57,12 @@ from .progress import (
     create_tracker,
     get_tracker,
     remove_tracker,
+)
+from .registry import (
+    HandlerRegistry,
+    register_handler,
+    get_handler,
+    discover_handlers,
 )
 
 __all__ = [

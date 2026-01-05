@@ -83,7 +83,7 @@ class FedoProcessor:
                 l_xlim = (float(np.nanmin(L_valid)), float(np.nanmax(L_valid)))
             else:
                 l_xlim = (1.0, 2.0)  # 默认范围作为后备
-        
+
         if wd_ylim is None:
             Wd_valid = data['Wd'][np.isfinite(data['Wd'])]
             if len(Wd_valid) > 0:
@@ -102,7 +102,7 @@ class FedoProcessor:
         figsize = (6.0, 4.0)  # 默认图像尺寸（英寸）
         image_width = figsize[0] * dpi
         image_height = figsize[1] * dpi
-        
+
         te_path, lwd_path = generate_views(
             data, output_dir, base_name,
             dpi=dpi,
@@ -144,7 +144,7 @@ class FedoProcessor:
         """Save physics data to npz file."""
         # Convert datetime to int64 for storage
         time_ns = data['time'].astype('datetime64[ns]').astype('int64')
-        
+
         # Save all data arrays to npz
         np.savez_compressed(
             output_path,

@@ -1,8 +1,6 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
-
 from saki_api.api import deps
 from saki_api.db.session import get_session
 from saki_api.models import (
@@ -10,8 +8,10 @@ from saki_api.models import (
     ModelVersion, ModelVersionCreate, ModelVersionRead, ModelVersionUpdate,
 )
 from saki_api.models.user import User
+from sqlmodel import Session, select
 
 router = APIRouter()
+
 
 @router.get("/{project_id}", response_model=List[ModelVersionRead])
 def list_model_versions(
@@ -26,6 +26,7 @@ def list_model_versions(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return session.exec(select(ModelVersion).where(ModelVersion.project_id == project_id)).all()
+
 
 @router.post("/{project_id}", response_model=ModelVersionRead)
 def create_model_version(

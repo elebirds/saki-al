@@ -2,12 +2,11 @@ from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlmodel import Session, select
-
 from saki_api.core import security
 from saki_api.db.session import get_session
 from saki_api.models.enums import TaskType, AnnotationSystemType
 from saki_api.models.user import User, UserCreate, UserRead
+from sqlmodel import Session, select
 
 router = APIRouter()
 
@@ -108,7 +107,7 @@ def setup_system(
         )
 
     from saki_api.models.permission import GlobalRole
-    
+
     user_data = user_in.model_dump(exclude={"password"})
     user_data["hashed_password"] = security.get_password_hash(user_in.password)
     user_data["global_role"] = GlobalRole.SUPER_ADMIN  # Set as super admin

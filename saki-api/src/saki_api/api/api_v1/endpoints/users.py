@@ -1,13 +1,12 @@
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
-
 from saki_api.api import deps
 from saki_api.core import security
-from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
-from saki_api.models.permission import Permission, GlobalRole
 from saki_api.core.permissions import require_permission
+from saki_api.models.permission import Permission, GlobalRole
+from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
+from sqlmodel import Session, select
 
 router = APIRouter()
 
@@ -93,7 +92,7 @@ def update_user(
         )
 
     user_data = user_in.dict(exclude_unset=True)
-    
+
     # 保护超级管理员：只有超级管理员可以修改超级管理员账户
     if user.global_role == GlobalRole.SUPER_ADMIN:
         if current_user.global_role != GlobalRole.SUPER_ADMIN:
@@ -108,7 +107,7 @@ def update_user(
                     status_code=403,
                     detail="Super administrators cannot change their own role"
                 )
-    
+
     # Check if trying to modify global_role - requires USER_MANAGE_ROLES permission
     if "global_role" in user_data:
         from saki_api.core.permissions import check_permission
@@ -121,7 +120,7 @@ def update_user(
                 status_code=403,
                 detail="Only super administrators can assign super administrator role"
             )
-    
+
     if "password" in user_data:
         password = user_data.pop("password")
         if password:
@@ -152,7 +151,7 @@ def delete_user(
             status_code=404,
             detail="The user with this id does not exist in the system",
         )
-    
+
     # 保护超级管理员：只有超级管理员可以删除超级管理员，且不能删除自己
     if user.global_role == GlobalRole.SUPER_ADMIN:
         if current_user.global_role != GlobalRole.SUPER_ADMIN:
@@ -165,7 +164,7 @@ def delete_user(
                 status_code=403,
                 detail="Super administrators cannot delete themselves"
             )
-    
+
     session.delete(user)
     session.commit()
     return user

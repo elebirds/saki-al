@@ -1,11 +1,9 @@
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON
-from sqlmodel import Field, SQLModel, Relationship
-
-
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import SampleStatus
+from sqlalchemy import Column, JSON
+from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.dataset import Dataset
@@ -18,7 +16,8 @@ class SampleBase(SQLModel):
     A Sample represents a single data item (e.g., image, time series).
     Samples belong to a Dataset, not directly to a Project.
     """
-    dataset_id: str = Field(foreign_key="dataset.id", index=True, description="ID of the dataset this sample belongs to.")
+    dataset_id: str = Field(foreign_key="dataset.id", index=True,
+                            description="ID of the dataset this sample belongs to.")
     name: str = Field(description="Name of the sample, which is the filename by default.")
     url: str = Field(default=None, description="Public URL to access the data.")
     remark: str = Field(default="", description="Remark associated with the sample.")
@@ -31,6 +30,7 @@ class SampleBase(SQLModel):
 
     meta_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON),
                                       description="Additional metadata for the sample.")
+
 
 class Sample(SampleBase, TimestampMixin, UUIDMixin, table=True):
     """

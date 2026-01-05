@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Dataset, Label, LabelCreate, TypeInfo } from '../../types';
 import { api } from '../../services/api';
-import { useSystemCapabilities } from '../../hooks/useSystemCapabilities';
+import { useSystemCapabilities } from '../../hooks';
 import DatasetMembers from './DatasetMembers';
 import { useAuthStore } from '../../store/authStore';
 

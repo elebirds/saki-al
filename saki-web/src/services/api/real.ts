@@ -128,6 +128,52 @@ function createApiError(error: any): Error {
 }
 
 // ============================================================================
+// Password Handling Utilities
+// ============================================================================
+
+/**
+ * 包装需要密码哈希的函数
+ * 自动执行 enforceHttps 和密码哈希处理
+ */
+async function withPasswordHashing<T>(
+  fn: (hashedPassword: string) => Promise<T>,
+  password: string
+): Promise<T> {
+  enforceHttps();
+  const hashedPassword = await hashPassword(password);
+  return fn(hashedPassword);
+}
+
+/**
+ * 包装需要多个密码哈希的函数（如 changePassword）
+ */
+async function withPasswordHashingMultiple<T>(
+  fn: (hashedOldPassword: string, hashedNewPassword: string) => Promise<T>,
+  oldPassword: string,
+  newPassword: string
+): Promise<T> {
+  enforceHttps();
+  const hashedOldPassword = await hashPassword(oldPassword);
+  const hashedNewPassword = await hashPassword(newPassword);
+  return fn(hashedOldPassword, hashedNewPassword);
+}
+
+/**
+ * 包装需要可选密码哈希的用户数据函数
+ */
+async function withOptionalPasswordHashing<T>(
+  fn: (userData: any) => Promise<T>,
+  userData: any
+): Promise<T> {
+  enforceHttps();
+  const processedData = { ...userData };
+  if (processedData.password) {
+    processedData.password = await hashPassword(processedData.password);
+  }
+  return fn(processedData);
+}
+
+// ============================================================================
 // API Service Implementation
 // ============================================================================
 
@@ -235,31 +281,23 @@ export class RealApiService implements ApiService {
   // ==========================================================================
 
   async login(username: string, password: string): Promise<LoginResponse> {
-    // 在生产环境强制使用 HTTPS
-    enforceHttps();
-    
-    // 对密码进行 SHA-256 哈希，避免明文传输
-    const hashedPassword = await hashPassword(password);
-    
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', hashedPassword);
-    
-    const response = await this.client.post<LoginResponse>('/login/access-token', formData, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    });
-    return response.data;
+    return withPasswordHashing(async (hashedPassword) => {
+      const formData = new URLSearchParams();
+      formData.append('username', username);
+      formData.append('password', hashedPassword);
+      
+      const response = await this.client.post<LoginResponse>('/login/access-token', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+      return response.data;
+    }, password);
   }
 
   async register(email: string, password: string, fullName?: string): Promise<User> {
-    // 在生产环境强制使用 HTTPS
-    enforceHttps();
-    
-    // 对密码进行 SHA-256 哈希，避免明文传输
-    const hashedPassword = await hashPassword(password);
-    
-    const response = await this.client.post<User>('/register', { email, password: hashedPassword, fullName });
-    return response.data;
+    return withPasswordHashing(async (hashedPassword) => {
+      const response = await this.client.post<User>('/register', { email, password: hashedPassword, fullName });
+      return response.data;
+    }, password);
   }
 
   async getCurrentUser(): Promise<User> {
@@ -268,18 +306,13 @@ export class RealApiService implements ApiService {
   }
 
   async changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
-    // 在生产环境强制使用 HTTPS
-    enforceHttps();
-    
-    // 对密码进行 SHA-256 哈希，避免明文传输
-    const hashedOldPassword = await hashPassword(oldPassword);
-    const hashedNewPassword = await hashPassword(newPassword);
-    
-    const response = await this.client.post<{ message: string }>('/change-password', {
-      old_password: hashedOldPassword,
-      new_password: hashedNewPassword
-    });
-    return response.data;
+    return withPasswordHashingMultiple(async (hashedOldPassword, hashedNewPassword) => {
+      const response = await this.client.post<{ message: string }>('/change-password', {
+        old_password: hashedOldPassword,
+        new_password: hashedNewPassword
+      });
+      return response.data;
+    }, oldPassword, newPassword);
   }
 
   async getSystemStatus(): Promise<{ initialized: boolean }> {
@@ -288,14 +321,10 @@ export class RealApiService implements ApiService {
   }
 
   async setupSystem(email: string, password: string, fullName?: string): Promise<User> {
-    // 在生产环境强制使用 HTTPS
-    enforceHttps();
-    
-    // 对密码进行 SHA-256 哈希，避免明文传输
-    const hashedPassword = await hashPassword(password);
-    
-    const response = await this.client.post<User>('/system/setup', { email, password: hashedPassword, fullName });
-    return response.data;
+    return withPasswordHashing(async (hashedPassword) => {
+      const response = await this.client.post<User>('/system/setup', { email, password: hashedPassword, fullName });
+      return response.data;
+    }, password);
   }
 
   async refreshToken(): Promise<LoginResponse> {
@@ -618,29 +647,17 @@ export class RealApiService implements ApiService {
   }
 
   async createUser(user: Partial<User> & { password: string; globalRole?: GlobalRole }): Promise<User> {
-    // 在生产环境强制使用 HTTPS
-    enforceHttps();
-    
-    // 对密码进行 SHA-256 哈希，避免明文传输
-    const userData = { ...user };
-    if (userData.password) {
-      userData.password = await hashPassword(userData.password);
-    }
-    const response = await this.client.post<User>('/users/', userData);
-    return response.data;
+    return withOptionalPasswordHashing(async (userData) => {
+      const response = await this.client.post<User>('/users/', userData);
+      return response.data;
+    }, user);
   }
 
   async updateUser(id: string, user: Partial<User> & { password?: string; globalRole?: GlobalRole }): Promise<User> {
-    // 在生产环境强制使用 HTTPS
-    enforceHttps();
-    
-    // 对密码进行 SHA-256 哈希，避免明文传输
-    const userData = { ...user };
-    if (userData.password) {
-      userData.password = await hashPassword(userData.password);
-    }
-    const response = await this.client.put<User>(`/users/${id}`, userData);
-    return response.data;
+    return withOptionalPasswordHashing(async (userData) => {
+      const response = await this.client.put<User>(`/users/${id}`, userData);
+      return response.data;
+    }, user);
   }
 
   async deleteUser(id: string): Promise<void> {

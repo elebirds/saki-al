@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { LoadingState, EmptyState } from '../common';
 import { SampleList, AnnotationToolbar, AnnotationSidebar } from './index';
 import { Sample, Label } from '../../types';
-import { AnnotationLike, UseAnnotationStateReturn } from '../../hooks/useAnnotationState';
+import { AnnotationLike, UseAnnotationStateReturn } from '../../hooks';
 
 const { Content, Sider } = Layout;
 

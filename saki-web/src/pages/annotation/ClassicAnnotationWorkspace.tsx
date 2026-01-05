@@ -1,10 +1,8 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
 import { AnnotationWorkspaceLayout } from '../../components/annotation';
-import { api } from '../../services/api';
 import {
   useAnnotationState,
   useAnnotationSync,
@@ -13,9 +11,9 @@ import {
   useSampleNavigation,
   useWorkspaceCommon,
   useAnnotationSubmit,
+  useClassicAnnotations,
 } from '../../hooks';
-import { Annotation, AnnotationType, SyncAction } from '../../types';
-import { generateUUID } from '../../utils/uuid';
+import { Annotation } from '../../types';
 
 const ClassicAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
@@ -45,135 +43,26 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   // 使用通用工作空间逻辑
   useWorkspaceCommon({ labels, annotationState });
 
-
-  // 加载当前样本的标注
-  useEffect(() => {
-    if (currentSample) {
-      api.getSampleAnnotations(currentSample.id).then((response) => {
-        // 后端已经转换为左上角坐标，直接使用
-        // 重置历史记录
-        annotationState.resetHistory();
-        // 设置初始标注并添加到历史记录
-        if (response.annotations.length > 0) {
-          annotationState.addToHistory(response.annotations);
-        } else {
-          annotationState.setAnnotations([]);
-        }
-      });
-    }
-  }, [currentSample]);
-
-  // 创建标注时调用 sync
-  const handleAnnotationCreate = useCallback(async (event: {
-    type: 'rect' | 'obb';
-    bbox: { x: number; y: number; width: number; height: number; rotation?: number };
-  }) => {
-    if (!annotationState.selectedLabel) {
-      message.warning(t('workspace.noLabelSelected'));
-      return;
-    }
-
-    if (!currentSample) return;
-
-    // 使用UUID格式生成ID，与后端生成的ID格式保持一致
-    const newId = generateUUID();
-    const newAnn: Annotation = {
-      id: newId,
-      sampleId: currentSample.id,
-      labelId: annotationState.selectedLabel.id,
-      labelName: annotationState.selectedLabel.name,
-      labelColor: annotationState.selectedLabel.color,
-      type: event.type as AnnotationType,
-      source: 'manual',
-      data: {
-        x: event.bbox.x,
-        y: event.bbox.y,
-        width: event.bbox.width,
-        height: event.bbox.height,
-        rotation: event.bbox.rotation,
-      },
-      extra: {},
-    };
-
-    // 直接使用前端坐标（左上角），后端会自动转换
-    const syncAction: SyncAction = {
-      action: 'create',
-      annotationId: newId,
-      labelId: annotationState.selectedLabel.id,
-      type: event.type as AnnotationType,
-      data: newAnn.data,
-      extra: {},
-    };
-
-    try {
-      await sync(currentSample.id, [syncAction]);
-      // Classic 模式下，sync 不返回生成的标注，直接使用创建的标注
-      annotationState.handleAnnotationCreate(newAnn);
-    } catch (error) {
-      console.error('Sync failed:', error);
-      // 即使 sync 失败，也创建标注（降级处理）
-      annotationState.handleAnnotationCreate(newAnn);
-    }
-  }, [currentSample, annotationState, sync, t]);
-
-  // 更新标注时调用 sync
-  const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
-    if (!currentSample) return;
-
-    // 直接使用前端坐标（左上角），后端会自动转换
-    const syncAction: SyncAction = {
-      action: 'update',
-      annotationId: updatedAnn.id,
-      labelId: updatedAnn.labelId,
-      type: updatedAnn.type,
-      data: updatedAnn.data,
-      extra: updatedAnn.extra || {},
-    };
-
-    try {
-      await sync(currentSample.id, [syncAction]);
-      annotationState.handleAnnotationUpdate(updatedAnn);
-    } catch (error) {
-      console.error('Sync failed:', error);
-      annotationState.handleAnnotationUpdate(updatedAnn);
-    }
-  }, [currentSample, annotationState, sync]);
-
-  // 删除标注时调用 sync
-  const handleDeleteAnnotation = useCallback(async (id: string) => {
-    if (!currentSample) return;
-
-    const syncAction: SyncAction = {
-      action: 'delete',
-      annotationId: id,
-      extra: {},
-    };
-
-    try {
-      await sync(currentSample.id, [syncAction]);
-      annotationState.handleAnnotationDelete(id);
-    } catch (error) {
-      console.error('Sync failed:', error);
-      annotationState.handleAnnotationDelete(id);
-    }
-  }, [currentSample, annotationState, sync]);
+  // 使用 Classic 标注处理 hook
+  const {
+    handleAnnotationCreate,
+    handleUpdateAnnotation,
+    handleDeleteAnnotation,
+  } = useClassicAnnotations({
+    currentSampleId: currentSample?.id,
+    annotationState,
+    sync,
+    t,
+  });
 
   // 使用样本导航 hook
-  const { handleNext: navigateNext, handlePrev: navigatePrev } = useSampleNavigation({
+  const { handleNext, handlePrev } = useSampleNavigation({
     currentIndex,
     totalSamples: samples.length,
     setCurrentIndex,
     onBeforeNext: () => annotationState.resetHistory(),
     onBeforePrev: () => annotationState.resetHistory(),
   });
-
-  const handleNext = useCallback(() => {
-    navigateNext();
-  }, [navigateNext]);
-
-  const handlePrev = useCallback(() => {
-    navigatePrev();
-  }, [navigatePrev]);
 
   // 使用标注提交 hook
   const { handleSubmit } = useAnnotationSubmit({

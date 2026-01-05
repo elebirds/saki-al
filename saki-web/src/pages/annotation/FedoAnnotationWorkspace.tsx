@@ -7,7 +7,7 @@
  * - Real-time bidirectional synchronization
  */
 
-import React, { useCallback, useRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -82,21 +82,13 @@ const FedoAnnotationWorkspace: React.FC = () => {
   // ========================================================================
 
   // 使用样本导航 hook
-  const { handleNext: navigateNext, handlePrev: navigatePrev } = useSampleNavigation({
+  const { handleNext, handlePrev } = useSampleNavigation({
     currentIndex,
     totalSamples: samples.length,
     setCurrentIndex,
     onBeforeNext: () => annotationState.resetHistory(),
     onBeforePrev: () => annotationState.resetHistory(),
   });
-
-  const handleNext = useCallback(() => {
-    navigateNext();
-  }, [navigateNext]);
-
-  const handlePrev = useCallback(() => {
-    navigatePrev();
-  }, [navigatePrev]);
 
   // 使用 FEDO 标注提交 hook
   const { handleSubmit } = useFedoSubmit({

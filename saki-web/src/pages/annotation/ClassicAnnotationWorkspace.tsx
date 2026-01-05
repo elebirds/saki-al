@@ -1,10 +1,9 @@
 import React, { useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Layout, message } from 'antd';
+import { message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { AnnotationCanvas, AnnotationCanvasRef } from '../../components/canvas';
-import { AnnotationToolbar, AnnotationSidebar, SampleList } from '../../components/annotation';
-import { LoadingState, EmptyState } from '../../components/common';
+import { AnnotationWorkspaceLayout } from '../../components/annotation';
 import { api } from '../../services/api';
 import {
   useAnnotationState,
@@ -12,12 +11,12 @@ import {
   useAnnotationShortcuts,
   useDatasetLoader,
   useSampleNavigation,
+  useWorkspaceCommon,
+  useAnnotationSubmit,
 } from '../../hooks';
 import { Annotation, AnnotationType, SyncAction } from '../../types';
 import { originToCenter, centerToOrigin } from '../../utils/canvasUtils';
 import { generateUUID } from '../../utils/uuid';
-
-const { Content, Sider } = Layout;
 
 const ClassicAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
@@ -44,12 +43,8 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   // 使用同步 hook
   const { isSyncing, isSyncReady, sync } = useAnnotationSync({ enabled: true });
 
-  // 初始化默认标签选择
-  useEffect(() => {
-    if (labels.length > 0 && !annotationState.selectedLabel) {
-      annotationState.setSelectedLabel(labels[0]);
-    }
-  }, [labels, annotationState]);
+  // 使用通用工作空间逻辑
+  useWorkspaceCommon({ labels, annotationState });
 
 
   // 加载当前样本的标注
@@ -206,34 +201,14 @@ const ClassicAnnotationWorkspace: React.FC = () => {
     navigatePrev();
   }, [navigatePrev]);
 
-  const handleSubmit = useCallback(async () => {
-    if (!currentSample) return;
-    try {
-      // 将起始点转换为中心点（后端期望中心点坐标，无论rect还是obb）
-      const annsToSave = annotationState.annotations.map(ann => {
-        if (ann.data) {
-          const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
-          return {
-            ...ann,
-            data: originToCenter(bboxData),
-          };
-        }
-        return ann;
-      });
-      
-      await api.saveAnnotations(
-        currentSample.id,
-        annsToSave,
-        'labeled'
-      );
-      // 更新样本状态
-      updateSampleStatus(currentSample.id, 'labeled');
-      message.success(t('annotation.saved') || 'Saved');
-      handleNext();
-    } catch (error) {
-      message.error(t('annotation.saveError'));
-    }
-  }, [currentSample, annotationState.annotations, handleNext, updateSampleStatus, t]);
+  // 使用标注提交 hook
+  const { handleSubmit } = useAnnotationSubmit({
+    currentSampleId: currentSample?.id,
+    annotations: annotationState.annotations,
+    updateSampleStatus,
+    onNext: handleNext,
+    t,
+  });
 
   // 使用快捷键 hook
   useAnnotationShortcuts({
@@ -252,95 +227,44 @@ const ClassicAnnotationWorkspace: React.FC = () => {
     annotationState.resetHistory();
   }, [annotationState, setCurrentIndex]);
 
-  // 加载状态
-  if (loading || !dataset) {
-    return <LoadingState tip={t('workspace.loading')} />;
-  }
-
-  // 空状态检查
-  if (!currentSample || samples.length === 0) {
-    return <EmptyState description={t('workspace.noSamples')} />;
-  }
-
-  // 检查标签配置
-  if (labels.length === 0) {
-    return <EmptyState description={t('workspace.noLabelsConfigured')} />;
-  }
-
   return (
-    <Layout style={{ height: '100%' }}>
-      {/* Left Sidebar - Sample List */}
-      <Sider width={250} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
-        <SampleList
-          samples={samples}
-          currentIndex={currentIndex}
-          onSampleSelect={handleSampleSelect}
-        />
-      </Sider>
-
-      <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {/* Toolbar */}
-        <AnnotationToolbar
-          labels={labels}
-          selectedLabel={annotationState.selectedLabel}
-          onLabelChange={annotationState.setSelectedLabel}
-          historyIndex={annotationState.historyIndex}
-          historyLength={annotationState.history.length}
-          onUndo={annotationState.undo}
-          onRedo={annotationState.redo}
+    <AnnotationWorkspaceLayout
+      loading={loading}
+      dataset={dataset}
+      samples={samples}
+      labels={labels}
+      currentIndex={currentIndex}
+      currentSample={currentSample}
+      annotationState={annotationState}
+      isSyncing={isSyncing}
+      isSyncReady={isSyncReady}
+      onSampleSelect={handleSampleSelect}
+      onPrev={handlePrev}
+      onNext={handleNext}
+      onSubmit={handleSubmit}
+      onAnnotationSelect={(id) => {
+        annotationState.setSelectedId(id);
+        annotationState.setCurrentTool('select');
+      }}
+      onAnnotationDelete={handleDeleteAnnotation}
+      onZoomIn={() => canvasRef.current?.zoomIn()}
+      onZoomOut={() => canvasRef.current?.zoomOut()}
+      onResetView={() => canvasRef.current?.resetView()}
+      canvasArea={
+        <AnnotationCanvas
+          ref={canvasRef}
+          imageUrl={currentSample?.url || ''}
+          annotations={annotationState.annotations}
+          onAnnotationCreate={handleAnnotationCreate}
+          onAnnotationUpdate={handleUpdateAnnotation}
+          onAnnotationDelete={handleDeleteAnnotation}
           currentTool={annotationState.currentTool}
-          onToolChange={annotationState.setCurrentTool}
-          onZoomIn={() => canvasRef.current?.zoomIn()}
-          onZoomOut={() => canvasRef.current?.zoomOut()}
-          onResetView={() => canvasRef.current?.resetView()}
-          syncStatus={{
-            isSyncing,
-            isSyncReady,
-          }}
+          labelColor={annotationState.selectedLabel?.color || '#ff0000'}
+          selectedId={annotationState.selectedId}
+          onSelect={annotationState.setSelectedId}
         />
-
-        {/* Canvas Area */}
-        <div
-          style={{
-            flex: 1,
-            position: 'relative',
-            overflow: 'hidden',
-            background: '#333',
-            pointerEvents: isSyncing ? 'none' : 'auto', // 同步时禁用交互
-            opacity: isSyncing ? 0.6 : 1,
-          }}
-        >
-          <AnnotationCanvas
-            ref={canvasRef}
-            imageUrl={currentSample.url}
-            annotations={annotationState.annotations}
-            onAnnotationCreate={handleAnnotationCreate}
-            onAnnotationUpdate={handleUpdateAnnotation}
-            onAnnotationDelete={handleDeleteAnnotation}
-            currentTool={annotationState.currentTool}
-            labelColor={annotationState.selectedLabel?.color || '#ff0000'}
-            selectedId={annotationState.selectedId}
-            onSelect={annotationState.setSelectedId}
-          />
-        </div>
-      </Content>
-
-      {/* Sidebar */}
-      <AnnotationSidebar
-        annotations={annotationState.annotations}
-        selectedId={annotationState.selectedId}
-        onAnnotationSelect={(id) => {
-          annotationState.setSelectedId(id);
-          annotationState.setCurrentTool('select');
-        }}
-        onAnnotationDelete={handleDeleteAnnotation}
-        currentIndex={currentIndex}
-        totalSamples={samples.length}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        onSubmit={handleSubmit}
-      />
-    </Layout>
+      }
+    />
   );
 };
 

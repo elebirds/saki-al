@@ -1,0 +1,497 @@
+/**
+ * useFedoAnnotations Hook
+ * 
+ * 封装 FEDO 标注工作空间的标注处理逻辑
+ */
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { message } from 'antd';
+import { api } from '../services/api';
+import {
+  Annotation,
+  DualViewAnnotation,
+  MappedRegion,
+  AnnotationType,
+  SyncAction,
+} from '../types';
+import { UseAnnotationStateReturn } from './useAnnotationState';
+import { UseAnnotationSyncReturn } from './useAnnotationSync';
+import { centerToOrigin, originToCenter } from '../utils/canvasUtils';
+import {
+  dualToAnnotations,
+  annotationToDual,
+  generatedToAnnotations,
+  generatedToRegions,
+  isGeneratedAnnotation,
+} from '../utils/fedoAnnotations';
+import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../components/annotation/DualCanvasArea';
+import { generateUUID } from '../utils/uuid';
+
+export interface UseFedoAnnotationsOptions {
+  /** 当前样本 ID */
+  currentSampleId: string | undefined;
+  /** 标注状态管理 */
+  annotationState: UseAnnotationStateReturn<DualViewAnnotation>;
+  /** 同步 hook */
+  sync: UseAnnotationSyncReturn['sync'];
+  /** 样本切换时的回调 */
+  onSampleChange?: () => void;
+  /** 翻译函数 */
+  t?: (key: string) => string;
+}
+
+export interface UseFedoAnnotationsReturn {
+  // 状态
+  /** 生成的标注列表 */
+  generatedAnnotations: Annotation[];
+  /** 标注的 view 信息映射 */
+  annotationViews: Map<string, string>;
+  /** 选中的标注 ID 集合 */
+  selectedAnnotationIds: Set<string>;
+  
+  // 计算属性
+  /** 用于画布显示的标注（主标注 + 生成标注） */
+  canvasAnnotations: Annotation[];
+  /** 用于侧边栏显示的标注（只包含主标注） */
+  sidebarAnnotations: Annotation[];
+  
+  // 方法
+  /** 处理标注选中 */
+  handleAnnotationSelect: (id: string | null) => void;
+  /** 创建标注 */
+  handleAnnotationCreate: (event: {
+    type: 'rect' | 'obb';
+    bbox: { x: number; y: number; width: number; height: number; rotation?: number };
+    view: string;
+  }) => Promise<void>;
+  /** 更新标注 */
+  handleUpdateAnnotation: (updatedAnn: Annotation) => Promise<void>;
+  /** 删除标注 */
+  handleDeleteAnnotation: (id: string) => Promise<void>;
+  /** 加载样本的标注 */
+  loadSampleAnnotations: () => Promise<void>;
+}
+
+/**
+ * 使用 FEDO 标注处理 hook
+ */
+export function useFedoAnnotations(
+  options: UseFedoAnnotationsOptions
+): UseFedoAnnotationsReturn {
+  const {
+    currentSampleId,
+    annotationState,
+    sync,
+    onSampleChange,
+    t,
+  } = options;
+
+  // 状态
+  const [generatedAnnotations, setGeneratedAnnotations] = useState<Annotation[]>([]);
+  const [annotationViews, setAnnotationViews] = useState<Map<string, string>>(new Map());
+  const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<Set<string>>(new Set());
+
+  // 计算属性：用于画布显示的标注
+  const canvasAnnotations = useMemo(() => {
+    const annotations: Annotation[] = [];
+    
+    // 添加所有主标注（根据 view 显示在对应画布）
+    annotationState.annotations.forEach(dual => {
+      const anns = dualToAnnotations(dual);
+      anns.forEach(ann => {
+        const view = annotationViews.get(ann.id) || VIEW_TIME_ENERGY;
+        ann.extra = { ...ann.extra, view };
+      });
+      annotations.push(...anns);
+    });
+    
+    // 添加生成的标注
+    annotations.push(...generatedAnnotations);
+    
+    return annotations;
+  }, [annotationState.annotations, generatedAnnotations, annotationViews]);
+
+  // 计算属性：用于侧边栏显示的标注（只包含主标注）
+  const sidebarAnnotations = useMemo(() => {
+    return canvasAnnotations.filter(ann => !isGeneratedAnnotation(ann));
+  }, [canvasAnnotations]);
+
+  // 处理标注选中
+  const handleAnnotationSelect = useCallback((id: string | null) => {
+    if (!id) {
+      annotationState.setSelectedId(null);
+      setSelectedAnnotationIds(new Set());
+      return;
+    }
+
+    const selectedAnn = canvasAnnotations.find(ann => ann.id === id);
+    if (!selectedAnn) {
+      annotationState.setSelectedId(id);
+      setSelectedAnnotationIds(new Set([id]));
+      return;
+    }
+
+    const isGenerated = isGeneratedAnnotation(selectedAnn);
+    
+    if (isGenerated) {
+      // 如果选中的是生成标注，选中它的父标注
+      const parentId = selectedAnn.extra?.parent_id || selectedAnn.extra?.parentId;
+      if (parentId) {
+        const parentAnn = canvasAnnotations.find(ann => ann.id === parentId);
+        if (parentAnn) {
+          const relatedIds = new Set([parentId]);
+          canvasAnnotations.forEach(ann => {
+            const annParentId = ann.extra?.parent_id || ann.extra?.parentId;
+            if (annParentId === parentId) {
+              relatedIds.add(ann.id);
+            }
+          });
+          annotationState.setSelectedId(parentId);
+          setSelectedAnnotationIds(relatedIds);
+        } else {
+          annotationState.setSelectedId(id);
+          setSelectedAnnotationIds(new Set([id]));
+        }
+      } else {
+        annotationState.setSelectedId(id);
+        setSelectedAnnotationIds(new Set([id]));
+      }
+    } else {
+      // 如果选中的是主标注，找到所有关联的生成标注并一起选中
+      const relatedIds = new Set([id]);
+      canvasAnnotations.forEach(ann => {
+        const parentId = ann.extra?.parent_id || ann.extra?.parentId;
+        if (parentId === id) {
+          relatedIds.add(ann.id);
+        }
+      });
+      annotationState.setSelectedId(id);
+      setSelectedAnnotationIds(relatedIds);
+    }
+  }, [canvasAnnotations, annotationState]);
+
+  // 创建标注
+  const handleAnnotationCreate = useCallback(async (event: {
+    type: 'rect' | 'obb';
+    bbox: { x: number; y: number; width: number; height: number; rotation?: number };
+    view: string;
+  }) => {
+    if (!annotationState.selectedLabel) {
+      if (t) {
+        message.warning(t('workspace.noLabelSelected'));
+      }
+      return;
+    }
+
+    if (!currentSampleId) return;
+
+    const newId = generateUUID();
+    const view = event.view || VIEW_TIME_ENERGY;
+
+    // 将起始点转换为中心点再发送给后端
+    let bboxData = originToCenter(event.bbox);
+    
+    // 调用后端 sync 接口
+    const syncAction: SyncAction = {
+      action: 'create',
+      annotationId: newId,
+      labelId: annotationState.selectedLabel.id,
+      type: event.type as AnnotationType,
+      data: bboxData,
+      extra: { view },
+    };
+
+    try {
+      const syncResponse = await sync(currentSampleId, [syncAction]);
+      const syncResult = syncResponse.results[0];
+      
+      let regions: MappedRegion[] = [];
+      const newGeneratedAnnotations: Annotation[] = [];
+      
+      if (syncResult?.generated) {
+        regions = generatedToRegions(syncResult.generated);
+        
+        const generated = generatedToAnnotations(
+          syncResult.generated,
+          newId,
+          annotationState.selectedLabel.id,
+          annotationState.selectedLabel.name || 'unknown',
+          annotationState.selectedLabel.color || '#ff0000'
+        );
+        newGeneratedAnnotations.push(...generated);
+      }
+
+      const newAnn: DualViewAnnotation = {
+        id: newId,
+        sampleId: currentSampleId,
+        labelId: annotationState.selectedLabel.id,
+        labelName: annotationState.selectedLabel.name || 'unknown',
+        labelColor: annotationState.selectedLabel.color || '#ff0000',
+        primary: {
+          type: event.type,
+          bbox: event.bbox,
+        },
+        secondary: {
+          regions,
+        },
+      };
+
+      annotationState.handleAnnotationCreate(newAnn);
+      
+      setAnnotationViews(prev => {
+        const newMap = new Map(prev);
+        newMap.set(newId, view);
+        return newMap;
+      });
+      
+      if (newGeneratedAnnotations.length > 0) {
+        setGeneratedAnnotations(prev => [...prev, ...newGeneratedAnnotations]);
+      }
+    } catch (error) {
+      console.error('Sync failed:', error);
+      // 降级处理
+      const newAnn: DualViewAnnotation = {
+        id: newId,
+        sampleId: currentSampleId,
+        labelId: annotationState.selectedLabel.id,
+        labelName: annotationState.selectedLabel.name || 'unknown',
+        labelColor: annotationState.selectedLabel.color || '#ff0000',
+        primary: {
+          type: event.type,
+          bbox: event.bbox,
+        },
+        secondary: {
+          regions: [],
+        },
+      };
+      annotationState.handleAnnotationCreate(newAnn);
+      
+      setAnnotationViews(prev => {
+        const newMap = new Map(prev);
+        newMap.set(newId, view);
+        return newMap;
+      });
+    }
+  }, [currentSampleId, annotationState, sync, t]);
+
+  // 更新标注
+  const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
+    if (!currentSampleId) return;
+
+    let bboxData = updatedAnn.data;
+    if (bboxData) {
+      const bboxDataTyped = bboxData as { x: number; y: number; width: number; height: number; rotation?: number };
+      bboxData = originToCenter(bboxDataTyped);
+    }
+
+    const syncAction: SyncAction = {
+      action: 'update',
+      annotationId: updatedAnn.id,
+      labelId: updatedAnn.labelId,
+      type: updatedAnn.type,
+      data: bboxData,
+      extra: updatedAnn.extra || {},
+    };
+
+    try {
+      const syncResponse = await sync(currentSampleId, [syncAction]);
+      const syncResult = syncResponse.results[0];
+      
+      let regions: MappedRegion[] = [];
+      const generatedAnnotations: Annotation[] = [];
+      
+      if (syncResult?.generated) {
+        const actualGenerated = syncResult.generated.filter(
+          (gen: any) => !gen._action || gen._action !== 'regenerate_children'
+        );
+        
+        if (actualGenerated.length > 0) {
+          regions = generatedToRegions(actualGenerated);
+          
+          const generated = generatedToAnnotations(
+            actualGenerated,
+            updatedAnn.id,
+            updatedAnn.labelId,
+            updatedAnn.labelName || 'unknown',
+            updatedAnn.labelColor || '#ff0000'
+          );
+          generatedAnnotations.push(...generated);
+          
+          setGeneratedAnnotations(prev => {
+            const filtered = prev.filter(ann => {
+              const parentId = ann.extra?.parent_id || ann.extra?.parentId;
+              return parentId !== updatedAnn.id;
+            });
+            return [...filtered, ...generatedAnnotations];
+          });
+          
+          if (annotationState.selectedId === updatedAnn.id || 
+              selectedAnnotationIds.has(updatedAnn.id)) {
+            const newRelatedIds = new Set([updatedAnn.id]);
+            generatedAnnotations.forEach(genAnn => {
+              newRelatedIds.add(genAnn.id);
+            });
+            setSelectedAnnotationIds(newRelatedIds);
+          }
+        } else {
+          setGeneratedAnnotations(prev => {
+            return prev.filter(ann => {
+              const parentId = ann.extra?.parent_id || ann.extra?.parentId;
+              return parentId !== updatedAnn.id;
+            });
+          });
+        }
+      }
+
+      const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, regions);
+      annotationState.handleAnnotationUpdate(dualAnn);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      const existingDual = annotationState.annotations.find((a) => a.id === updatedAnn.id);
+      const existingRegions = existingDual?.secondary?.regions || [];
+      const dualAnn: DualViewAnnotation = annotationToDual(updatedAnn, existingRegions);
+      annotationState.handleAnnotationUpdate(dualAnn);
+    }
+  }, [currentSampleId, annotationState, sync, selectedAnnotationIds]);
+
+  // 删除标注
+  const handleDeleteAnnotation = useCallback(async (id: string) => {
+    if (!currentSampleId) return;
+
+    const syncAction: SyncAction = {
+      action: 'delete',
+      annotationId: id,
+      extra: {},
+    };
+
+    try {
+      await sync(currentSampleId, [syncAction]);
+      annotationState.handleAnnotationDelete(id);
+      
+      setGeneratedAnnotations(prev => prev.filter(ann => {
+        const parentId = ann.extra?.parent_id || ann.extra?.parentId;
+        return parentId !== id;
+      }));
+    } catch (error) {
+      console.error('Sync failed:', error);
+      annotationState.handleAnnotationDelete(id);
+      
+      setGeneratedAnnotations(prev => prev.filter(ann => {
+        const parentId = ann.extra?.parent_id || ann.extra?.parentId;
+        return parentId !== id;
+      }));
+    }
+  }, [currentSampleId, annotationState, sync]);
+
+  // 加载样本的标注
+  const loadSampleAnnotations = useCallback(async () => {
+    if (!currentSampleId) return;
+
+    const response = await api.getSampleAnnotations(currentSampleId);
+    
+    // 分离主标注和生成的标注
+    const mainAnnotations: Annotation[] = [];
+    const generated: Annotation[] = [];
+    
+    response.annotations.forEach((ann) => {
+      // 后端返回的是中心点坐标，需要转换为起始点坐标用于前端显示
+      // 对于所有类型（rect 和 obb），都需要进行转换
+      if (ann.data) {
+        const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
+        ann = {
+          ...ann,
+          data: centerToOrigin(bboxData)
+        };
+      }
+      
+      if (isGeneratedAnnotation(ann)) {
+        generated.push(ann);
+      } else {
+        mainAnnotations.push(ann);
+      }
+    });
+    
+    // 将生成的标注按 parent_id 分组
+    const generatedByParent = new Map<string, Annotation[]>();
+    generated.forEach(genAnn => {
+      const parentId = genAnn.extra?.parent_id || genAnn.extra?.parentId;
+      if (parentId) {
+        if (!generatedByParent.has(parentId)) {
+          generatedByParent.set(parentId, []);
+        }
+        generatedByParent.get(parentId)!.push(genAnn);
+      }
+    });
+    
+    // 将主标注转换为 DualViewAnnotation
+    const dualAnns: DualViewAnnotation[] = mainAnnotations.map((ann) => {
+      const relatedGenerated = generatedByParent.get(ann.id) || [];
+      const regions: MappedRegion[] = relatedGenerated
+        .filter(gen => gen.extra?.view === VIEW_L_OMEGAD)
+        .map((gen, index) => {
+          const data = gen.data || {};
+          const bbox = {
+            x: data.x || 0,
+            y: data.y || 0,
+            width: data.width || 0,
+            height: data.height || 0,
+            rotation: data.rotation || 0,
+          };
+          
+          const polygonPoints: [number, number][] = [
+            [bbox.x, bbox.y],
+            [bbox.x + bbox.width, bbox.y],
+            [bbox.x + bbox.width, bbox.y + bbox.height],
+            [bbox.x, bbox.y + bbox.height],
+          ];
+          
+          return {
+            timeRange: [0, 0] as [number, number],
+            polygonPoints,
+            isPrimary: index === 0,
+          };
+        });
+      
+      return annotationToDual(ann, regions);
+    });
+    
+    // 存储每个标注的 view 信息
+    const views = new Map<string, string>();
+    mainAnnotations.forEach(ann => {
+      const view = ann.extra?.view || VIEW_TIME_ENERGY;
+      views.set(ann.id, view);
+    });
+    setAnnotationViews(views);
+    
+    // 重置历史记录
+    annotationState.resetHistory();
+    if (dualAnns.length > 0) {
+      annotationState.addToHistory(dualAnns);
+    } else {
+      annotationState.setAnnotations([]);
+    }
+    
+    // 设置生成的标注
+    setGeneratedAnnotations(generated);
+  }, [currentSampleId, annotationState]);
+
+  // 当样本改变时加载标注
+  useEffect(() => {
+    loadSampleAnnotations();
+    onSampleChange?.();
+  }, [currentSampleId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return {
+    generatedAnnotations,
+    annotationViews,
+    selectedAnnotationIds,
+    canvasAnnotations,
+    sidebarAnnotations,
+    handleAnnotationSelect,
+    handleAnnotationCreate,
+    handleUpdateAnnotation,
+    handleDeleteAnnotation,
+    loadSampleAnnotations,
+  };
+}
+

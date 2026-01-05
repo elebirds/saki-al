@@ -38,9 +38,6 @@ export interface DualCanvasAreaProps {
   selectedAnnotationIds?: Set<string>; // 所有应该被选中的标注 ID（包括关联的）
   onSelect: (id: string | null) => void;
   
-  // 同步状态
-  isSyncing: boolean;
-  
   // 当前选中标注的映射区域
   currentMappedRegions: MappedRegion[];
 }
@@ -63,7 +60,6 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
   selectedId,
   selectedAnnotationIds,
   onSelect,
-  isSyncing,
   currentMappedRegions,
 }, ref) => {
   const timeEnergyCanvasRef = useRef<AnnotationCanvasRef>(null);
@@ -121,8 +117,8 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
         flex: 1,
         display: 'flex',
         overflow: 'hidden',
-        pointerEvents: isSyncing ? 'none' : 'auto',
-        opacity: isSyncing ? 0.6 : 1,
+        width: '100%',
+        height: '100%',
       }}
     >
       {/* Left: Time-Energy View */}

@@ -8,7 +8,6 @@ import { useCallback } from 'react';
 import { message } from 'antd';
 import { api } from '../services/api';
 import { Annotation, DualViewAnnotation } from '../types';
-import { originToCenter } from '../utils/canvasUtils';
 import { dualToAnnotations } from '../utils/fedoAnnotations';
 import { VIEW_TIME_ENERGY } from '../components/annotation/DualCanvasArea';
 
@@ -56,41 +55,22 @@ export function useFedoSubmit(
     try {
       const annsToSave: Annotation[] = [];
       
-      // 添加主标注
+      // 添加主标注（直接使用前端坐标，后端会自动转换）
       annotations.forEach(dual => {
         const anns = dualToAnnotations(dual);
         const convertedAnns = anns.map(ann => {
           const view = annotationViews.get(ann.id) || VIEW_TIME_ENERGY;
           
-          if (ann.data) {
-            const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
-            return {
-              ...ann,
-              extra: { ...ann.extra, view },
-              data: originToCenter(bboxData),
-            };
-          }
-          
           return {
             ...ann,
-            extra: { ...ann.extra, view }
+            extra: { ...ann.extra, view },
           };
         });
         annsToSave.push(...convertedAnns);
       });
       
-      // 添加生成的标注
-      generatedAnnotations.forEach(ann => {
-        if (ann.data) {
-          const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
-          annsToSave.push({
-            ...ann,
-            data: originToCenter(bboxData),
-          });
-        } else {
-          annsToSave.push(ann);
-        }
-      });
+      // 添加生成的标注（直接使用前端坐标，后端会自动转换）
+      annsToSave.push(...generatedAnnotations);
       
       await api.saveAnnotations(currentSampleId, annsToSave, 'labeled');
       updateSampleStatus(currentSampleId, 'labeled');

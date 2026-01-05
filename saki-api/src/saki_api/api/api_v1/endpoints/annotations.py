@@ -31,6 +31,12 @@ from saki_api.models.enums import AnnotationType, AnnotationSource
 from saki_api.models.permission import Permission
 from saki_api.core.permissions import require_permission
 from saki_api.annotation_systems import get_handler, AnnotationContext
+from saki_api.utils.coordinate_converter import (
+    convert_annotation_data_to_backend,
+    convert_annotation_data_to_frontend,
+    convert_annotations_to_backend,
+    convert_annotations_to_frontend,
+)
 
 router = APIRouter()
 
@@ -127,14 +133,19 @@ def _get_context(sample: Sample, session: Session, current_user: Optional[User] 
 
 def _to_item(ann: Annotation, label: Optional[Label] = None) -> AnnotationItem:
     """Convert Annotation model to API response item."""
+    annotation_type = ann.type.value if ann.type else AnnotationType.RECT.value
+    
+    # 转换数据格式：后端存储（中心点）→ 前端显示（左上角）
+    data = convert_annotation_data_to_frontend(annotation_type, ann.data or {})
+    
     return AnnotationItem(
         id=ann.id,
-        type=ann.type.value if ann.type else AnnotationType.RECT.value,
+        type=annotation_type,
         source=ann.source.value if ann.source else AnnotationSource.MANUAL.value,
         label_id=ann.label_id,
         label_name=label.name if label else None,
         label_color=label.color if label else None,
-        data=ann.data or {},
+        data=data,
         extra=ann.extra or {},
         annotator_id=ann.annotator_id,
     )
@@ -221,15 +232,31 @@ def sync_annotations(
     for action in request.actions:
         ann_type = AnnotationType(action.type) if action.type else AnnotationType.RECT
         
+        # 转换数据格式：前端发送（左上角）→ 后端存储（中心点）
+        data = convert_annotation_data_to_backend(ann_type.value, action.data or {})
+        
         if action.action == "create":
             result = handler.on_annotation_create(
                 annotation_id=action.annotation_id,
                 label_id=action.label_id or "",
                 ann_type=ann_type,
-                data=action.data or {},
+                data=data,
                 extra=action.extra or {},
                 context=context,
             )
+            
+            # 转换生成的标注数据：后端格式（中心点）→ 前端格式（左上角）
+            if result.generated:
+                result.generated = [
+                    {
+                        **gen,
+                        'data': convert_annotation_data_to_frontend(
+                            gen.get('type', ann_type.value),
+                            gen.get('data', {})
+                        )
+                    }
+                    for gen in result.generated
+                ]
             
             results.append(SyncResultItem(
                 action="create",
@@ -261,14 +288,37 @@ def sync_annotations(
                         merged_extra.update(action.extra)
                         action.extra = merged_extra
             
+            # 确保有类型信息（如果还没有）
+            if not update_ann_type:
+                update_ann_type = ann_type
+            
+            # 转换数据格式：前端发送（左上角）→ 后端存储（中心点）
+            update_data = convert_annotation_data_to_backend(
+                update_ann_type.value if update_ann_type else ann_type.value,
+                action.data or {}
+            ) if action.data else None
+            
             result = handler.on_annotation_update(
                 annotation_id=action.annotation_id,
                 label_id=update_label_id,
                 ann_type=update_ann_type,
-                data=action.data,
+                data=update_data,
                 extra=action.extra,
                 context=context,
             )
+            
+            # 转换生成的标注数据：后端格式（中心点）→ 前端格式（左上角）
+            if result.generated:
+                result.generated = [
+                    {
+                        **gen,
+                        'data': convert_annotation_data_to_frontend(
+                            gen.get('type', update_ann_type.value if update_ann_type else 'rect'),
+                            gen.get('data', {})
+                        )
+                    }
+                    for gen in result.generated
+                ]
             
             results.append(SyncResultItem(
                 action="update",
@@ -351,18 +401,20 @@ def save_annotations(
         
         # Prepare annotations
         # 注意：annotator_id 由后端自动设置，不从请求中读取
-        annotations_to_save = [
-            {
+        # 转换数据格式：前端发送（左上角）→ 后端存储（中心点）
+        annotations_to_save = []
+        for a in request.annotations:
+            annotation_type = a.type if isinstance(a.type, str) else a.type.value if a.type else 'rect'
+            backend_data = convert_annotation_data_to_backend(annotation_type, a.data or {})
+            annotations_to_save.append({
                 "id": a.id,
                 "sample_id": request.sample_id,
                 "label_id": a.label_id,
                 "type": a.type,
                 "source": a.source,
-                "data": a.data,
+                "data": backend_data,
                 "extra": a.extra,
-            }
-            for a in request.annotations
-        ]
+            })
         
         # Pre-save hook
         if handler:

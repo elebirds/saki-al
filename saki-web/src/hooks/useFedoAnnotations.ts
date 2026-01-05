@@ -16,7 +16,6 @@ import {
 } from '../types';
 import { UseAnnotationStateReturn } from './useAnnotationState';
 import { UseAnnotationSyncReturn } from './useAnnotationSync';
-import { centerToOrigin, originToCenter } from '../utils/canvasUtils';
 import {
   dualToAnnotations,
   annotationToDual,
@@ -187,17 +186,14 @@ export function useFedoAnnotations(
 
     const newId = generateUUID();
     const view = event.view || VIEW_TIME_ENERGY;
-
-    // 将起始点转换为中心点再发送给后端
-    let bboxData = originToCenter(event.bbox);
     
-    // 调用后端 sync 接口
+    // 直接使用前端坐标（左上角），后端会自动转换
     const syncAction: SyncAction = {
       action: 'create',
       annotationId: newId,
       labelId: annotationState.selectedLabel.id,
       type: event.type as AnnotationType,
-      data: bboxData,
+      data: event.bbox,
       extra: { view },
     };
 
@@ -278,18 +274,13 @@ export function useFedoAnnotations(
   const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
     if (!currentSampleId) return;
 
-    let bboxData = updatedAnn.data;
-    if (bboxData) {
-      const bboxDataTyped = bboxData as { x: number; y: number; width: number; height: number; rotation?: number };
-      bboxData = originToCenter(bboxDataTyped);
-    }
-
+    // 直接使用前端坐标（左上角），后端会自动转换
     const syncAction: SyncAction = {
       action: 'update',
       annotationId: updatedAnn.id,
       labelId: updatedAnn.labelId,
       type: updatedAnn.type,
-      data: bboxData,
+      data: updatedAnn.data,
       extra: updatedAnn.extra || {},
     };
 
@@ -394,16 +385,7 @@ export function useFedoAnnotations(
     const generated: Annotation[] = [];
     
     response.annotations.forEach((ann) => {
-      // 后端返回的是中心点坐标，需要转换为起始点坐标用于前端显示
-      // 对于所有类型（rect 和 obb），都需要进行转换
-      if (ann.data) {
-        const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
-        ann = {
-          ...ann,
-          data: centerToOrigin(bboxData)
-        };
-      }
-      
+      // 后端已经转换为左上角坐标，直接使用
       if (isGeneratedAnnotation(ann)) {
         generated.push(ann);
       } else {

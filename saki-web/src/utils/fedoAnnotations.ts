@@ -6,7 +6,6 @@
 
 import { Annotation, DualViewAnnotation, MappedRegion, BoundingBox, AnnotationType } from '../types';
 import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../components/annotation/DualCanvasArea';
-import { centerToOrigin } from './canvasUtils';
 
 /** Convert DualViewAnnotation to Annotation[] for AnnotationCanvas (one per view) */
 export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
@@ -70,18 +69,14 @@ export function generatedToAnnotations(
     const view = gen.extra?.view || gen.view || VIEW_L_OMEGAD;
     const type = (gen.type || 'obb') as AnnotationType;
     
-    // 后端返回的是中心点坐标，需要转换为起始点坐标用于前端显示
-    // 对于所有类型（rect 和 obb），都需要进行转换
-    let bboxData = {
+    // 后端已经转换为左上角坐标，直接使用
+    const bboxData = {
       x: data.x || 0,
       y: data.y || 0,
       width: data.width || 0,
       height: data.height || 0,
       rotation: data.rotation || 0,
     };
-    
-    // 将中心点转换为起始点
-    bboxData = centerToOrigin(bboxData);
     
     return {
       id: gen.id || `generated-${Date.now()}-${Math.random()}`,

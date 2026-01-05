@@ -15,7 +15,6 @@ import {
   useAnnotationSubmit,
 } from '../../hooks';
 import { Annotation, AnnotationType, SyncAction } from '../../types';
-import { originToCenter, centerToOrigin } from '../../utils/canvasUtils';
 import { generateUUID } from '../../utils/uuid';
 
 const ClassicAnnotationWorkspace: React.FC = () => {
@@ -51,24 +50,12 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   useEffect(() => {
     if (currentSample) {
       api.getSampleAnnotations(currentSample.id).then((response) => {
-        // 后端返回的是中心点坐标，需要转换为起始点坐标用于前端显示
-        // 对于 OBB 类型，将中心点转换为起始点
-        const convertedAnnotations = response.annotations.map(ann => {
-          if (ann.type === 'obb' && ann.data) {
-            const bboxData = ann.data as { x: number; y: number; width: number; height: number; rotation?: number };
-            return {
-              ...ann,
-              data: centerToOrigin(bboxData)
-            };
-          }
-          return ann;
-        });
-        
+        // 后端已经转换为左上角坐标，直接使用
         // 重置历史记录
         annotationState.resetHistory();
         // 设置初始标注并添加到历史记录
-        if (convertedAnnotations.length > 0) {
-          annotationState.addToHistory(convertedAnnotations);
+        if (response.annotations.length > 0) {
+          annotationState.addToHistory(response.annotations);
         } else {
           annotationState.setAnnotations([]);
         }
@@ -108,20 +95,13 @@ const ClassicAnnotationWorkspace: React.FC = () => {
       extra: {},
     };
 
-    // 对于 OBB 类型，将起始点转换为中心点再发送给后端
-    let bboxData = newAnn.data;
-    if (event.type === 'obb') {
-      const bboxDataTyped = newAnn.data as { x: number; y: number; width: number; height: number; rotation?: number };
-      bboxData = originToCenter(bboxDataTyped);
-    }
-    
-    // 调用 sync 接口
+    // 直接使用前端坐标（左上角），后端会自动转换
     const syncAction: SyncAction = {
       action: 'create',
       annotationId: newId,
       labelId: annotationState.selectedLabel.id,
       type: event.type as AnnotationType,
-      data: bboxData,
+      data: newAnn.data,
       extra: {},
     };
 
@@ -140,19 +120,13 @@ const ClassicAnnotationWorkspace: React.FC = () => {
   const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
     if (!currentSample) return;
 
-    // 对于 OBB 类型，将起始点转换为中心点再发送给后端
-    let bboxData = updatedAnn.data;
-    if (updatedAnn.type === 'obb' && bboxData) {
-      const bboxDataTyped = bboxData as { x: number; y: number; width: number; height: number; rotation?: number };
-      bboxData = originToCenter(bboxDataTyped);
-    }
-
+    // 直接使用前端坐标（左上角），后端会自动转换
     const syncAction: SyncAction = {
       action: 'update',
       annotationId: updatedAnn.id,
       labelId: updatedAnn.labelId,
       type: updatedAnn.type,
-      data: bboxData,
+      data: updatedAnn.data,
       extra: updatedAnn.extra || {},
     };
 

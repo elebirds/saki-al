@@ -8,7 +8,6 @@ import { useCallback } from 'react';
 import { message } from 'antd';
 import { api } from '../services/api';
 import { Annotation } from '../types';
-import { originToCenter } from '../utils/canvasUtils';
 
 export interface UseAnnotationSubmitOptions {
   /** 当前样本 ID */
@@ -52,24 +51,7 @@ export function useAnnotationSubmit(
       // 转换标注格式（如果有自定义转换函数）
       let annsToSave = convertAnnotations ? convertAnnotations(annotations) : annotations;
 
-      // 将起始点转换为中心点（后端期望中心点坐标）
-      annsToSave = annsToSave.map(ann => {
-        if (ann.data) {
-          const bboxData = ann.data as {
-            x: number;
-            y: number;
-            width: number;
-            height: number;
-            rotation?: number;
-          };
-          return {
-            ...ann,
-            data: originToCenter(bboxData),
-          };
-        }
-        return ann;
-      });
-
+      // 直接使用前端坐标（左上角），后端会自动转换
       await api.saveAnnotations(currentSampleId, annsToSave, 'labeled');
       updateSampleStatus(currentSampleId, 'labeled');
       message.success(t('annotation.saved') || 'Saved');

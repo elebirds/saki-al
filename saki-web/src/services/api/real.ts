@@ -1,5 +1,14 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse, AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult, SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse, DatasetMember, DatasetMemberCreate, DatasetMemberUpdate, GlobalRole } from '../../types';
+import {
+  Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse,
+  AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult,
+  SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse,
+  // Permission types
+  Role, RoleCreate, RoleUpdate, RoleType,
+  UserSystemRole, UserSystemRoleCreate,
+  ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
+  UserPermissions,
+} from '../../types';
 import { ApiService, UploadProgressCallback } from './interface';
 import { useAuthStore } from '../../store/authStore';
 import { hashPassword, enforceHttps } from '../../utils/security';
@@ -286,7 +295,7 @@ export class RealApiService implements ApiService {
       formData.append('username', username);
       formData.append('password', hashedPassword);
       
-      const response = await this.client.post<LoginResponse>('/login/access-token', formData, {
+      const response = await this.client.post<LoginResponse>('/auth/login/access-token', formData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
       return response.data;
@@ -295,7 +304,7 @@ export class RealApiService implements ApiService {
 
   async register(email: string, password: string, fullName?: string): Promise<User> {
     return withPasswordHashing(async (hashedPassword) => {
-      const response = await this.client.post<User>('/register', { email, password: hashedPassword, fullName });
+      const response = await this.client.post<User>('/auth/register', { email, password: hashedPassword, fullName });
       return response.data;
     }, password);
   }
@@ -307,7 +316,7 @@ export class RealApiService implements ApiService {
 
   async changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
     return withPasswordHashingMultiple(async (hashedOldPassword, hashedNewPassword) => {
-      const response = await this.client.post<{ message: string }>('/change-password', {
+      const response = await this.client.post<{ message: string }>('/auth/change-password', {
         old_password: hashedOldPassword,
         new_password: hashedNewPassword
       });
@@ -328,7 +337,12 @@ export class RealApiService implements ApiService {
   }
 
   async refreshToken(): Promise<LoginResponse> {
-    const response = await this.client.post<LoginResponse>('/login/refresh-token');
+    const response = await this.client.post<LoginResponse>('/auth/login/refresh-token');
+    return response.data;
+  }
+
+  async initRoles(): Promise<{ ok: boolean; roles_count: number; roles: string[] }> {
+    const response = await this.client.post('/system/init-roles');
     return response.data;
   }
 
@@ -338,6 +352,62 @@ export class RealApiService implements ApiService {
 
   async getAvailableTypes(): Promise<AvailableTypes> {
     const response = await this.client.get<AvailableTypes>('/system/types');
+    return response.data;
+  }
+
+  // ==========================================================================
+  // Permission APIs
+  // ==========================================================================
+
+  async getMyPermissions(resourceType?: string, resourceId?: string): Promise<UserPermissions> {
+    const params: Record<string, string> = {};
+    if (resourceType) params.resource_type = resourceType;
+    if (resourceId) params.resource_id = resourceId;
+    
+    const response = await this.client.get<UserPermissions>('/auth/permissions', { params });
+    return response.data;
+  }
+
+  async getRoles(type?: RoleType): Promise<Role[]> {
+    const params: Record<string, string> = {};
+    if (type) params.type = type;
+    
+    const response = await this.client.get<Role[]>('/roles', { params });
+    return response.data;
+  }
+
+  async getRole(roleId: string): Promise<Role> {
+    const response = await this.client.get<Role>(`/roles/${roleId}`);
+    return response.data;
+  }
+
+  async createRole(role: RoleCreate): Promise<Role> {
+    const response = await this.client.post<Role>('/roles', role);
+    return response.data;
+  }
+
+  async updateRole(roleId: string, role: RoleUpdate): Promise<Role> {
+    const response = await this.client.put<Role>(`/roles/${roleId}`, role);
+    return response.data;
+  }
+
+  async deleteRole(roleId: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.client.delete(`/roles/${roleId}`);
+    return response.data;
+  }
+
+  async getUserRoles(userId: string): Promise<UserSystemRole[]> {
+    const response = await this.client.get<UserSystemRole[]>(`/roles/users/${userId}/roles`);
+    return response.data;
+  }
+
+  async assignUserRole(userId: string, role: UserSystemRoleCreate): Promise<UserSystemRole> {
+    const response = await this.client.post<UserSystemRole>(`/roles/users/${userId}/roles`, role);
+    return response.data;
+  }
+
+  async revokeUserRole(userId: string, roleId: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.client.delete(`/roles/users/${userId}/roles/${roleId}`);
     return response.data;
   }
 
@@ -377,6 +447,7 @@ export class RealApiService implements ApiService {
     skippedSamples: number;
     completionRate: number;
     linkedProjects: number;
+    memberCount: number;
   }> {
     const response = await this.client.get(`/datasets/${id}/stats`);
     return response.data;
@@ -582,26 +653,31 @@ export class RealApiService implements ApiService {
   }
 
   // ==========================================================================
-  // Dataset Member APIs (for permission management)
+  // Dataset Member APIs (Resource Members)
   // ==========================================================================
 
-  async getDatasetMembers(datasetId: string): Promise<DatasetMember[]> {
-    const response = await this.client.get<DatasetMember[]>(`/datasets/${datasetId}/members`);
+  async getDatasetMembers(datasetId: string): Promise<ResourceMember[]> {
+    const response = await this.client.get<ResourceMember[]>(`/datasets/${datasetId}/members`);
     return response.data;
   }
 
-  async addDatasetMember(datasetId: string, member: DatasetMemberCreate): Promise<DatasetMember> {
-    const response = await this.client.post<DatasetMember>(`/datasets/${datasetId}/members`, member);
+  async addDatasetMember(datasetId: string, member: ResourceMemberCreate): Promise<ResourceMember> {
+    const response = await this.client.post<ResourceMember>(`/datasets/${datasetId}/members`, member);
     return response.data;
   }
 
-  async updateDatasetMemberRole(datasetId: string, userId: string, memberUpdate: DatasetMemberUpdate): Promise<DatasetMember> {
-    const response = await this.client.put<DatasetMember>(`/datasets/${datasetId}/members/${userId}`, memberUpdate);
+  async updateDatasetMemberRole(datasetId: string, userId: string, memberUpdate: ResourceMemberUpdate): Promise<ResourceMember> {
+    const response = await this.client.put<ResourceMember>(`/datasets/${datasetId}/members/${userId}`, memberUpdate);
     return response.data;
   }
 
   async removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }> {
     const response = await this.client.delete(`/datasets/${datasetId}/members/${userId}`);
+    return response.data;
+  }
+
+  async getAvailableDatasetRoles(datasetId: string): Promise<{ id: string; name: string; displayName: string; description?: string }[]> {
+    const response = await this.client.get(`/datasets/${datasetId}/available-roles`);
     return response.data;
   }
 
@@ -646,14 +722,14 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async createUser(user: Partial<User> & { password: string; globalRole?: GlobalRole }): Promise<User> {
+  async createUser(user: Partial<User> & { password: string }): Promise<User> {
     return withOptionalPasswordHashing(async (userData) => {
       const response = await this.client.post<User>('/users/', userData);
       return response.data;
     }, user);
   }
 
-  async updateUser(id: string, user: Partial<User> & { password?: string; globalRole?: GlobalRole }): Promise<User> {
+  async updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User> {
     return withOptionalPasswordHashing(async (userData) => {
       const response = await this.client.put<User>(`/users/${id}`, userData);
       return response.data;

@@ -5,9 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Dataset, Label, LabelCreate, TypeInfo } from '../../types';
 import { api } from '../../services/api';
-import { useSystemCapabilities } from '../../hooks';
+import { useSystemCapabilities, useResourcePermission } from '../../hooks';
 import DatasetMembers from './DatasetMembers';
-import { useAuthStore } from '../../store/authStore';
 
 interface DatasetSettingsProps {
   dataset: Dataset;
@@ -17,7 +16,6 @@ interface DatasetSettingsProps {
 const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const currentUser = useAuthStore((state) => state.user);
   const [form] = Form.useForm();
   const [labels, setLabels] = useState<Label[]>([]);
   const [loadingLabels, setLoadingLabels] = useState(true);
@@ -28,10 +26,11 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
   const [editColor, setEditColor] = useState('');
   const { availableTypes } = useSystemCapabilities();
   
-  // Check if user can manage members (owner or has manage_members permission)
-  const canManageMembers = currentUser?.id === dataset.ownerId || 
-    currentUser?.globalRole === 'super_admin' || 
-    currentUser?.globalRole === 'admin';
+  // Permission hook
+  const { can, isOwner } = useResourcePermission('dataset', dataset.id, dataset.ownerId);
+  const canManageMembers = can('dataset:assign');
+  const canDelete = can('dataset:delete');
+  const canManageLabels = can('label:create');
 
   // Load labels on mount
   const loadLabels = useCallback(async () => {
@@ -235,25 +234,29 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
                         {label.name}
                       </Tag>
                     </Badge>
-                    <Button 
-                      type="text" 
-                      size="small" 
-                      icon={<EditOutlined />} 
-                      onClick={() => openEditModal(label)}
-                    />
-                    <Popconfirm
-                      title={t('datasetSettings.confirmDeleteLabel')}
-                      description={label.annotationCount > 0 
-                        ? t('datasetSettings.labelHasAnnotationsWarning', { count: label.annotationCount })
-                        : undefined
-                      }
-                      onConfirm={() => handleDeleteLabel(label)}
-                      okText={t('common.yes')}
-                      cancelText={t('common.no')}
-                      okButtonProps={{ danger: true }}
-                    >
-                      <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
+                    {canManageLabels && (
+                      <>
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          icon={<EditOutlined />} 
+                          onClick={() => openEditModal(label)}
+                        />
+                        <Popconfirm
+                          title={t('datasetSettings.confirmDeleteLabel')}
+                          description={label.annotationCount > 0 
+                            ? t('datasetSettings.labelHasAnnotationsWarning', { count: label.annotationCount })
+                            : undefined
+                          }
+                          onConfirm={() => handleDeleteLabel(label)}
+                          okText={t('common.yes')}
+                          cancelText={t('common.no')}
+                          okButtonProps={{ danger: true }}
+                        >
+                          <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                        </Popconfirm>
+                      </>
+                    )}
                   </div>
                 ))}
               </Space>
@@ -261,19 +264,21 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
           </div>
         </Spin>
         
-        <Space>
-          <Input
-            placeholder={t('datasetSettings.newLabelName')}
-            value={newLabelName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabelName(e.target.value)}
-            onPressEnter={handleAddLabel}
-            style={{ width: 200 }}
-          />
-          <ColorPicker value={newLabelColor} onChange={(c: any) => setNewLabelColor(c)} />
-          <Button type="dashed" onClick={handleAddLabel} icon={<PlusOutlined />}>
-            {t('datasetSettings.addLabel')}
-          </Button>
-        </Space>
+        {canManageLabels && (
+          <Space>
+            <Input
+              placeholder={t('datasetSettings.newLabelName')}
+              value={newLabelName}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabelName(e.target.value)}
+              onPressEnter={handleAddLabel}
+              style={{ width: 200 }}
+            />
+            <ColorPicker value={newLabelColor} onChange={(c: any) => setNewLabelColor(c)} />
+            <Button type="dashed" onClick={handleAddLabel} icon={<PlusOutlined />}>
+              {t('datasetSettings.addLabel')}
+            </Button>
+          </Space>
+        )}
       </Card>
       ),
     },
@@ -287,30 +292,32 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
           <TeamOutlined /> {t('permissions.tabs.members')}
         </span>
       ),
-      children: <DatasetMembers datasetId={dataset.id} />,
+      children: <DatasetMembers datasetId={dataset.id} ownerId={dataset.ownerId} />,
     });
   }
 
-  tabItems.push({
-    key: 'danger',
-    label: t('permissions.tabs.dangerZone'),
-    children: (
-      <Card title={t('datasetSettings.dangerZone')} style={{ marginBottom: 24, borderColor: '#ff4d4f' }}>
-        <Popconfirm
-          title={t('datasetDetail.deleteConfirm')}
-          description={t('datasetDetail.deleteConfirmDesc')}
-          onConfirm={handleDeleteDataset}
-          okText={t('common.yes')}
-          cancelText={t('common.no')}
-          okButtonProps={{ danger: true }}
-        >
-          <Button type="primary" danger icon={<DeleteOutlined />}>
-            {t('datasetSettings.deleteDataset')}
-          </Button>
-        </Popconfirm>
-      </Card>
-    ),
-  });
+  if (canDelete) {
+    tabItems.push({
+      key: 'danger',
+      label: t('permissions.tabs.dangerZone'),
+      children: (
+        <Card title={t('datasetSettings.dangerZone')} style={{ marginBottom: 24, borderColor: '#ff4d4f' }}>
+          <Popconfirm
+            title={t('datasetDetail.deleteConfirm')}
+            description={t('datasetDetail.deleteConfirmDesc')}
+            onConfirm={handleDeleteDataset}
+            okText={t('common.yes')}
+            cancelText={t('common.no')}
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="primary" danger icon={<DeleteOutlined />}>
+              {t('datasetSettings.deleteDataset')}
+            </Button>
+          </Popconfirm>
+        </Card>
+      ),
+    });
+  }
 
   return (
     <div style={{ maxWidth: 800 }}>

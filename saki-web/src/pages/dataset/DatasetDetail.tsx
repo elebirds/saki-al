@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message, Select } from 'antd';
+import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message, Select, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Dataset, Sample, User } from '../../types';
 import { api } from '../../services/api';
 import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
 import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
-import { useUpload, useSortSettings } from '../../hooks';
-
+import { useUpload, useSortSettings, useResourcePermission } from '../../hooks';
+import { Authorized } from '../../components/common';
 
 const { Title } = Typography;
 const { Sider, Content } = Layout;
@@ -24,6 +24,9 @@ const DatasetDetail: React.FC = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [owner, setOwner] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Permission hook
+  const { can, role, isOwner } = useResourcePermission('dataset', id, dataset?.ownerId);
   
   // 使用排序设置 hook
   const { sortBy, sortOrder, setSortBy, setSortOrder, sortOptions } = useSortSettings(id);
@@ -200,6 +203,11 @@ const DatasetDetail: React.FC = () => {
     ? Math.round((dataset.labeledCount / dataset.sampleCount) * 100) 
     : 0;
 
+  // Check permissions for various actions
+  const canUpload = can('sample:create');
+  const canExport = can('dataset:export');
+  const canEdit = can('dataset:update');
+
   const items = [
     {
       key: 'data',
@@ -236,9 +244,17 @@ const DatasetDetail: React.FC = () => {
                 <div style={{ textAlign: 'center', padding: 40 }}>
                   <FileTextOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
                   <Title level={5} style={{ color: '#999' }}>{t('datasetDetail.noSamples')}</Title>
-                  <Button type="primary" icon={<UploadOutlined />} onClick={handleUploadClick}>
-                    {t('datasetDetail.uploadData')}
-                  </Button>
+                  {canUpload ? (
+                    <Button type="primary" icon={<UploadOutlined />} onClick={handleUploadClick}>
+                      {t('datasetDetail.uploadData')}
+                    </Button>
+                  ) : (
+                    <Tooltip title={t('common.noPermission')}>
+                      <Button type="primary" icon={<UploadOutlined />} disabled>
+                        {t('datasetDetail.uploadData')}
+                      </Button>
+                    </Tooltip>
+                  )}
                 </div>
               </Card>
             ) : (
@@ -264,7 +280,7 @@ const DatasetDetail: React.FC = () => {
         </div>
       ),
     },
-    {
+    ...(canEdit ? [{
       key: 'settings',
       label: t('datasetDetail.settings'),
       children: (
@@ -275,7 +291,7 @@ const DatasetDetail: React.FC = () => {
           />
         </div>
       ),
-    },
+    }] : []),
   ];
 
   return (
@@ -291,9 +307,13 @@ const DatasetDetail: React.FC = () => {
         </Button>
         
         <Title level={4}>{dataset.name}</Title>
-        <Tag color={dataset.annotationSystem === 'fedo' ? 'purple' : 'cyan'} style={{ marginBottom: 8 }}>
-          {dataset.annotationSystem}
-        </Tag>
+        <Space style={{ marginBottom: 8 }}>
+          <Tag color={dataset.annotationSystem === 'fedo' ? 'purple' : 'cyan'}>
+            {dataset.annotationSystem}
+          </Tag>
+          {isOwner && <Tag color="gold">{t('common.owner')}</Tag>}
+          {role && !isOwner && <Tag>{role.displayName}</Tag>}
+        </Space>
         <div style={{ marginBottom: 16, fontSize: 12, color: '#666' }}>
           {t('datasetDetail.owner')}: {owner ? (owner.fullName || owner.email) : (dataset.ownerId ? '...' + dataset.ownerId.slice(-8) : t('common.unknown'))}
         </div>
@@ -323,9 +343,19 @@ const DatasetDetail: React.FC = () => {
           >
             {t('datasetDetail.startLabeling')}
           </Button>
-          <Button block icon={<UploadOutlined />} onClick={handleUploadClick}>
-            {t('datasetDetail.uploadData')}
-          </Button>
+
+          {canUpload ? (
+            <Button block icon={<UploadOutlined />} onClick={handleUploadClick}>
+              {t('datasetDetail.uploadData')}
+            </Button>
+          ) : (
+            <Tooltip title={t('common.noPermission')}>
+              <Button block icon={<UploadOutlined />} disabled>
+                {t('datasetDetail.uploadData')}
+              </Button>
+            </Tooltip>
+          )}
+          
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -334,12 +364,24 @@ const DatasetDetail: React.FC = () => {
             accept={getAcceptType()} 
             onChange={handleFileChange} 
           />
-          <Button block icon={<ExportOutlined />} onClick={handleExport} disabled={dataset.labeledCount === 0}>
-            {t('datasetDetail.exportData')}
-          </Button>
-          <Button block icon={<SettingOutlined />} onClick={() => setActiveTab('settings')}>
-            {t('datasetDetail.settings')}
-          </Button>
+
+          {canExport ? (
+            <Button block icon={<ExportOutlined />} onClick={handleExport} disabled={dataset.labeledCount === 0}>
+              {t('datasetDetail.exportData')}
+            </Button>
+          ) : (
+            <Tooltip title={t('common.noPermission')}>
+              <Button block icon={<ExportOutlined />} disabled>
+                {t('datasetDetail.exportData')}
+              </Button>
+            </Tooltip>
+          )}
+
+          {canEdit && (
+            <Button block icon={<SettingOutlined />} onClick={() => setActiveTab('settings')}>
+              {t('datasetDetail.settings')}
+            </Button>
+          )}
         </Space>
       </Sider>
       <Content style={{ padding: '24px', height: '100%', overflow: 'hidden' }}>

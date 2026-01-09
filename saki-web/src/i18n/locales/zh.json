@@ -31,7 +31,9 @@
     "close": "关闭",
     "success": "成功",
     "error": "失败",
-    "operationFailed": "操作失败"
+    "operationFailed": "操作失败",
+    "noPermission": "您没有权限执行此操作",
+    "owner": "所有者"
   },
   "auth": {
     "login": {
@@ -136,6 +138,15 @@
     "updateSuccess": "用户更新成功",
     "createSuccess": "用户创建成功",
     "fetchError": "获取用户列表失败",
+    "cannotDeleteSelf": "不能删除自己的账户",
+    "manageRoles": "管理角色",
+    "currentRoles": "当前角色",
+    "noRoles": "暂无角色",
+    "assignRole": "分配角色",
+    "selectRole": "选择角色",
+    "assign": "分配",
+    "roleAssigned": "角色分配成功",
+    "roleRevoked": "角色已撤销",
     "roles": {
       "superAdmin": "超级管理员",
       "admin": "管理员",
@@ -232,6 +243,7 @@
     "user": "用户",
     "selectUser": "选择用户",
     "selectUserRequired": "请选择用户！",
+    "selectRole": "选择角色",
     "selectRoleRequired": "请选择角色！",
     "removeConfirm": "确定要移除此成员吗？",
     "removeSuccess": "成员移除成功",
@@ -367,5 +379,13 @@
       "members": "成员",
       "dangerZone": "危险操作"
     }
+  },
+  "roles": {
+    "owner": "所有者",
+    "manager": "管理员",
+    "annotator": "标注员",
+    "reviewer": "审核员",
+    "viewer": "查看者",
+    "seniorAnnotator": "高级标注员"
   }
 }

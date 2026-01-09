@@ -2,13 +2,15 @@ from fastapi import APIRouter
 
 from saki_api.api.api_v1.endpoints import (
     projects, login, users, system, configs,
-    samples, annotations, al, model_versions, datasets, labels, dataset_members
+    samples, annotations, al, model_versions, datasets, labels, dataset_members,
+    roles
 )
 
 api_router = APIRouter()
 api_router.include_router(system.router, prefix="/system", tags=["system"])
-api_router.include_router(login.router, tags=["login"])
+api_router.include_router(login.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+api_router.include_router(roles.router, prefix="/roles", tags=["roles"])
 api_router.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
 api_router.include_router(dataset_members.router, prefix="/datasets", tags=["dataset-members"])
 api_router.include_router(labels.router, prefix="/datasets", tags=["labels"])

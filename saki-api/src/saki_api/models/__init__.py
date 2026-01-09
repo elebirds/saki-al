@@ -1,13 +1,14 @@
+"""
+Saki API Models
+
+This module exports all database models and schemas.
+"""
+
 from saki_api.models.annotation import Annotation, AnnotationCreate, AnnotationRead, AnnotationUpdate
 from saki_api.models.dataset import Dataset, DatasetCreate, DatasetRead, DatasetUpdate
 from saki_api.models.enums import TaskType, SampleStatus, ProjectStatus, ModelStatus, AnnotationSystemType
 from saki_api.models.label import Label, LabelCreate, LabelRead, LabelUpdate
 from saki_api.models.model_version import ModelVersion, ModelVersionCreate, ModelVersionRead, ModelVersionUpdate
-from saki_api.models.permission import (
-    GlobalRole, ResourceRole, Permission,
-    RolePermission, DatasetMember,
-    DatasetMemberCreate, DatasetMemberRead, DatasetMemberUpdate
-)
 from saki_api.models.project import (
     Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats,
     ProjectDataset, ProjectDatasetCreate, ProjectDatasetRead
@@ -17,7 +18,39 @@ from saki_api.models.system_config import (
     QueryStrategy, QueryStrategyCreate, QueryStrategyRead, QueryStrategyUpdate,
     BaseModel, BaseModelCreate, BaseModelRead, BaseModelUpdate,
 )
-from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
+from saki_api.models.user import User, UserCreate, UserRead, UserUpdate, UserWithPermissions
+
+# RBAC Models (new permission system)
+from saki_api.models.rbac import (
+    # Enums
+    RoleType,
+    ResourceType,
+    Scope,
+    AuditAction,
+    # Role
+    Role,
+    RoleCreate,
+    RoleRead,
+    RoleUpdate,
+    RolePermission,
+    RolePermissionCreate,
+    RolePermissionRead,
+    # User System Role
+    UserSystemRole,
+    UserSystemRoleCreate,
+    UserSystemRoleRead,
+    # Resource Member
+    ResourceMember,
+    ResourceMemberCreate,
+    ResourceMemberRead,
+    ResourceMemberUpdate,
+    # Audit Log
+    AuditLog,
+    AuditLogRead,
+)
+
+# Permission constants
+from saki_api.models.rbac.enums import Permissions, Resource, Action
 
 __all__ = [
     # Dataset models (independent, for data annotation)
@@ -40,9 +73,19 @@ __all__ = [
     # Enums
     "TaskType", "SampleStatus", "ProjectStatus", "ModelStatus", "AnnotationSystemType",
     # User models
-    "User", "UserCreate", "UserRead", "UserUpdate",
-    # Permission models
-    "GlobalRole", "ResourceRole", "Permission",
-    "RolePermission", "DatasetMember",
-    "DatasetMemberCreate", "DatasetMemberRead", "DatasetMemberUpdate"
+    "User", "UserCreate", "UserRead", "UserUpdate", "UserWithPermissions",
+    
+    # RBAC Enums
+    "RoleType", "ResourceType", "Scope", "AuditAction",
+    # RBAC Role
+    "Role", "RoleCreate", "RoleRead", "RoleUpdate",
+    "RolePermission", "RolePermissionCreate", "RolePermissionRead",
+    # RBAC User System Role
+    "UserSystemRole", "UserSystemRoleCreate", "UserSystemRoleRead",
+    # RBAC Resource Member
+    "ResourceMember", "ResourceMemberCreate", "ResourceMemberRead", "ResourceMemberUpdate",
+    # RBAC Audit Log
+    "AuditLog", "AuditLogRead",
+    # Permission constants
+    "Permissions", "Resource", "Action",
 ]

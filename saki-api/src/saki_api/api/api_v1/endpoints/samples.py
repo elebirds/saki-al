@@ -21,12 +21,11 @@ from saki_api.annotation_systems import (
 )
 from saki_api.api import deps
 from saki_api.core.config import settings
-from saki_api.core.permissions import require_permission
+from saki_api.core.rbac import require_permission
 from saki_api.db.session import get_session
 from saki_api.models import (
     Dataset,
 )
-from saki_api.models.permission import Permission
 from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.user import User
 from sqlalchemy import func, desc, asc
@@ -73,7 +72,7 @@ def read_samples(
         sort_order: SortOrder = SortOrder.ASC,
         session: Session = Depends(get_session),
         current_user: User = Depends(require_permission(
-            Permission.SAMPLE_READ, "dataset", "dataset_id"
+            "sample:read:assigned", "dataset", "dataset_id"
         ))
 ):
     """
@@ -130,7 +129,7 @@ async def upload_samples_with_progress(
         files: List[UploadFile] = File(...),
         session: Session = Depends(get_session),
         current_user: User = Depends(require_permission(
-            Permission.DATASET_UPLOAD, "dataset", "dataset_id"
+            "sample:create:assigned", "dataset", "dataset_id"
         ))
 ):
     """

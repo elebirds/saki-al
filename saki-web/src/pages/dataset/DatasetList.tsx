@@ -4,8 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Dataset, AnnotationSystemType } from '../../types';
 import { api } from '../../services/api';
-import { useSystemCapabilities } from '../../hooks';
+import { useSystemCapabilities, usePermission } from '../../hooks';
 import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { Authorized } from '../../components/common';
 
 const { Title, Paragraph } = Typography;
 const { Option } = Select;
@@ -17,6 +18,10 @@ const DatasetList: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  
+  // Permission hook
+  const { can, isSuperAdmin } = usePermission();
+  const canCreate = can('dataset:create');
   
   // Load available types from backend
   const { availableTypes, loading: typesLoading } = useSystemCapabilities();
@@ -68,13 +73,49 @@ const DatasetList: React.FC = () => {
     return Math.round((dataset.labeledCount / dataset.sampleCount) * 100);
   };
 
+  // Get role tag for dataset
+  const getRoleTag = (dataset: Dataset) => {
+    if (dataset.userRole) {
+      const roleColors: Record<string, string> = {
+        'dataset_owner': 'gold',
+        'dataset_manager': 'blue',
+        'dataset_annotator': 'green',
+        'dataset_reviewer': 'cyan',
+        'dataset_viewer': 'default',
+        'dataset_senior_annotator': 'lime',
+      };
+      const roleLabels: Record<string, string> = {
+        'dataset_owner': t('roles.owner'),
+        'dataset_manager': t('roles.manager'),
+        'dataset_annotator': t('roles.annotator'),
+        'dataset_reviewer': t('roles.reviewer'),
+        'dataset_viewer': t('roles.viewer'),
+        'dataset_senior_annotator': t('roles.seniorAnnotator'),
+      };
+      return (
+        <Tag color={roleColors[dataset.userRole] || 'default'} style={{ marginLeft: 4 }}>
+          {roleLabels[dataset.userRole] || dataset.userRole}
+        </Tag>
+      );
+    }
+    return null;
+  };
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={2}>{t('datasetList.title')}</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
-          {t('datasetList.newDataset')}
-        </Button>
+        {canCreate ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
+            {t('datasetList.newDataset')}
+          </Button>
+        ) : (
+          <Tooltip title={t('common.noPermission')}>
+            <Button type="primary" icon={<PlusOutlined />} disabled>
+              {t('datasetList.newDataset')}
+            </Button>
+          </Tooltip>
+        )}
       </div>
       
       <Spin spinning={loading}>
@@ -90,9 +131,11 @@ const DatasetList: React.FC = () => {
                   </div>
                 }
                 extra={
-                  <Tag color={getAnnotationSystemColor(dataset.annotationSystem)}>
-                    {dataset.annotationSystem || 'classic'}
-                  </Tag>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <Tag color={getAnnotationSystemColor(dataset.annotationSystem)}>
+                      {dataset.annotationSystem || 'classic'}
+                    </Tag>
+                  </div>
                 }
                 actions={[
                   <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
@@ -100,6 +143,9 @@ const DatasetList: React.FC = () => {
                   </Button>,
                 ]}
               >
+                <div style={{ marginBottom: 8 }}>
+                  {getRoleTag(dataset)}
+                </div>
                 <Paragraph ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
                   {dataset.description || t('datasetList.noDescription')}
                 </Paragraph>
@@ -139,9 +185,11 @@ const DatasetList: React.FC = () => {
                   <DatabaseOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
                   <Title level={4} style={{ color: '#999' }}>{t('datasetList.empty')}</Title>
                   <Paragraph style={{ color: '#999' }}>{t('datasetList.emptyHint')}</Paragraph>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
-                    {t('datasetList.newDataset')}
-                  </Button>
+                  {canCreate && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
+                      {t('datasetList.newDataset')}
+                    </Button>
+                  )}
                 </div>
               </Card>
             </Col>

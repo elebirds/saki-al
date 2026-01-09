@@ -82,6 +82,9 @@ export interface Dataset {
   // Statistics
   sampleCount: number;
   labeledCount: number;
+  
+  // User's role in this dataset (populated by backend)
+  userRole?: string;
 }
 
 // ============================================================================
@@ -276,39 +279,37 @@ export interface ModelVersion {
 }
 
 // ============================================================================
-// Permission System Types
+// Permission System Types (re-exported from permission.ts)
 // ============================================================================
 
+export * from './permission';
+
+// Legacy types for compatibility
 export type GlobalRole = 'super_admin' | 'admin' | 'annotator' | 'viewer';
-export type ResourceRole = 'owner' | 'manager' | 'annotator' | 'reviewer' | 'viewer';
+
+export interface RoleInfoLegacy {
+  id: string;
+  name: string;
+  displayName: string;
+}
 
 export interface User {
   id: string;
   email: string;
   fullName?: string;
   isActive: boolean;
-  globalRole: GlobalRole;
   mustChangePassword?: boolean;
+  avatarUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
+  systemRoles?: RoleInfoLegacy[];
 }
 
-export interface DatasetMember {
-  datasetId: string;
-  userId: string;
-  role: ResourceRole;
-  createdAt: string;
-  createdBy: string;
-  userEmail?: string;
-  userFullName?: string;
-}
-
-export interface DatasetMemberCreate {
-  userId: string;
-  role: ResourceRole;
-}
-
-export interface DatasetMemberUpdate {
-  role: ResourceRole;
-}
+// Re-export from permission.ts for backward compatibility
+export type { ResourceMember as DatasetMember } from './permission';
+export type { ResourceMemberCreate as DatasetMemberCreate } from './permission';
+export type { ResourceMemberUpdate as DatasetMemberUpdate } from './permission';
 
 export interface LoginResponse {
   accessToken: string;

@@ -1,46 +1,65 @@
+"""
+API endpoints for User management.
+
+Uses the new RBAC system for permission checking.
+"""
+
+from datetime import datetime
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
-from saki_api.api import deps
-from saki_api.core import security
-from saki_api.core.permissions import require_permission
-from saki_api.models.permission import Permission, GlobalRole
-from saki_api.models.user import User, UserCreate, UserRead, UserUpdate
 from sqlmodel import Session, select
+
+from saki_api.api.deps import get_current_user, get_session
+from saki_api.core import security
+from saki_api.core.rbac import (
+    require_permission,
+    get_permission_checker,
+    PermissionChecker,
+)
+from saki_api.core.rbac.presets import get_default_role
+from saki_api.models import (
+    User, UserCreate, UserRead, UserUpdate,
+    Role, RoleType,
+    UserSystemRole,
+    Permissions,
+)
 
 router = APIRouter()
 
 
 @router.get("/me", response_model=UserRead)
 def read_user_me(
-        current_user: User = Depends(deps.get_current_user),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """
     Get current user.
     """
-    return current_user
+    return _build_user_read(current_user, session)
 
 
 @router.get("/", response_model=List[UserRead])
 def read_users(
-        session: Session = Depends(deps.get_session),
-        skip: int = 0,
-        limit: int = 100,
-        current_user: User = Depends(require_permission(Permission.USER_READ)),
+    session: Session = Depends(get_session),
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(require_permission(Permissions.USER_READ)),
 ) -> Any:
     """
     Retrieve users.
     """
     users = session.exec(select(User).offset(skip).limit(limit)).all()
-    return users
+    return [_build_user_read(u, session) for u in users]
 
 
 @router.post("/", response_model=UserRead)
 def create_user(
-        *,
-        session: Session = Depends(deps.get_session),
-        user_in: UserCreate,
-        current_user: User = Depends(require_permission(Permission.USER_CREATE)),
+    *,
+    session: Session = Depends(get_session),
+    user_in: UserCreate,
+    current_user: User = Depends(require_permission(Permissions.USER_CREATE)),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> Any:
     """
     Create new user.
@@ -52,34 +71,39 @@ def create_user(
             detail="The user with this username already exists in the system.",
         )
 
-    # 保护：只有超级管理员可以创建超级管理员账户
-    if user_in.global_role == GlobalRole.SUPER_ADMIN:
-        if current_user.global_role != GlobalRole.SUPER_ADMIN:
-            raise HTTPException(
-                status_code=403,
-                detail="Only super administrators can create super administrator accounts"
-            )
-
     # Hash password
     hashed_password = security.get_password_hash(user_in.password)
 
-    user_data = user_in.dict(exclude={"password", "must_change_password"})
-    # 手动创建的用户需要首次登录时更改密码
+    user_data = user_in.model_dump(exclude={"password"})
+    # Manually created users must change password on first login
     db_user = User(**user_data, hashed_password=hashed_password, must_change_password=True)
 
     session.add(db_user)
+    session.flush()
+
+    # Assign default role
+    default_role = get_default_role(session)
+    if default_role:
+        user_role = UserSystemRole(
+            user_id=db_user.id,
+            role_id=default_role.id,
+            assigned_by=current_user.id,
+        )
+        session.add(user_role)
+
     session.commit()
     session.refresh(db_user)
-    return db_user
+    return _build_user_read(db_user, session)
 
 
 @router.put("/{user_id}", response_model=UserRead)
 def update_user(
-        *,
-        session: Session = Depends(deps.get_session),
-        user_id: str,
-        user_in: UserUpdate,
-        current_user: User = Depends(require_permission(Permission.USER_UPDATE)),
+    *,
+    session: Session = Depends(get_session),
+    user_id: str,
+    user_in: UserUpdate,
+    current_user: User = Depends(require_permission(Permissions.USER_UPDATE)),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> Any:
     """
     Update a user.
@@ -91,34 +115,14 @@ def update_user(
             detail="The user with this id does not exist in the system",
         )
 
-    user_data = user_in.dict(exclude_unset=True)
+    user_data = user_in.model_dump(exclude_unset=True)
 
-    # 保护超级管理员：只有超级管理员可以修改超级管理员账户
-    if user.global_role == GlobalRole.SUPER_ADMIN:
-        if current_user.global_role != GlobalRole.SUPER_ADMIN:
+    # Protect super admin
+    if checker.is_super_admin(user.id):
+        if not checker.is_super_admin(current_user.id):
             raise HTTPException(
                 status_code=403,
                 detail="Only super administrators can modify super administrator accounts"
-            )
-        # 超级管理员不能修改自己的角色
-        if user_id == current_user.id and "global_role" in user_data:
-            if user_data["global_role"] != GlobalRole.SUPER_ADMIN:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Super administrators cannot change their own role"
-                )
-
-    # Check if trying to modify global_role - requires USER_MANAGE_ROLES permission
-    if "global_role" in user_data:
-        from saki_api.core.permissions import check_permission
-        if not check_permission(current_user, Permission.USER_MANAGE_ROLES, session=session):
-            # Remove global_role from update if user doesn't have permission
-            user_data.pop("global_role")
-        # 防止将用户设置为超级管理员（只有超级管理员可以创建新的超级管理员）
-        elif user_data["global_role"] == GlobalRole.SUPER_ADMIN and current_user.global_role != GlobalRole.SUPER_ADMIN:
-            raise HTTPException(
-                status_code=403,
-                detail="Only super administrators can assign super administrator role"
             )
 
     if "password" in user_data:
@@ -132,15 +136,16 @@ def update_user(
     session.add(user)
     session.commit()
     session.refresh(user)
-    return user
+    return _build_user_read(user, session)
 
 
 @router.delete("/{user_id}", response_model=UserRead)
 def delete_user(
-        *,
-        session: Session = Depends(deps.get_session),
-        user_id: str,
-        current_user: User = Depends(require_permission(Permission.USER_DELETE)),
+    *,
+    session: Session = Depends(get_session),
+    user_id: str,
+    current_user: User = Depends(require_permission(Permissions.USER_DELETE)),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> Any:
     """
     Delete a user.
@@ -152,9 +157,9 @@ def delete_user(
             detail="The user with this id does not exist in the system",
         )
 
-    # 保护超级管理员：只有超级管理员可以删除超级管理员，且不能删除自己
-    if user.global_role == GlobalRole.SUPER_ADMIN:
-        if current_user.global_role != GlobalRole.SUPER_ADMIN:
+    # Protect super admin
+    if checker.is_super_admin(user.id):
+        if not checker.is_super_admin(current_user.id):
             raise HTTPException(
                 status_code=403,
                 detail="Only super administrators can delete super administrator accounts"
@@ -165,6 +170,38 @@ def delete_user(
                 detail="Super administrators cannot delete themselves"
             )
 
+    result = _build_user_read(user, session)
     session.delete(user)
     session.commit()
-    return user
+    return result
+
+
+def _build_user_read(user: User, session: Session) -> UserRead:
+    """Build UserRead with role information."""
+    # Get system roles
+    user_roles = session.exec(
+        select(UserSystemRole).where(UserSystemRole.user_id == user.id)
+    ).all()
+
+    system_roles = []
+    for ur in user_roles:
+        role = session.get(Role, ur.role_id)
+        if role:
+            system_roles.append({
+                "id": role.id,
+                "name": role.name,
+                "displayName": role.display_name,
+            })
+
+    return UserRead(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        must_change_password=user.must_change_password,
+        avatar_url=user.avatar_url,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        last_login_at=user.last_login_at,
+        system_roles=system_roles,
+    )

@@ -33,6 +33,17 @@ export type { UseSampleNavigationReturn, UseSampleNavigationOptions } from './da
 export type { UseSortSettingsReturn, SortBy, SortOrder, SortOptions } from './dataset/useSortSettings';
 
 // ============================================================================
+// Permission Hooks
+// ============================================================================
+
+export {
+  usePermission,
+  useResourcePermission,
+  useInitPermissions,
+  useAnnotationPermission,
+} from './permission';
+
+// ============================================================================
 // System Hooks
 // ============================================================================
 

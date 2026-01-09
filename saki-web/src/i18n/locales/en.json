@@ -31,7 +31,9 @@
     "close": "Close",
     "success": "Success",
     "error": "Error",
-    "operationFailed": "Operation failed"
+    "operationFailed": "Operation failed",
+    "noPermission": "You do not have permission to perform this action",
+    "owner": "Owner"
   },
   "auth": {
     "login": {
@@ -136,6 +138,15 @@
     "updateSuccess": "User updated successfully",
     "createSuccess": "User created successfully",
     "fetchError": "Failed to fetch users",
+    "cannotDeleteSelf": "Cannot delete your own account",
+    "manageRoles": "Manage Roles",
+    "currentRoles": "Current Roles",
+    "noRoles": "No roles assigned",
+    "assignRole": "Assign Role",
+    "selectRole": "Select a role",
+    "assign": "Assign",
+    "roleAssigned": "Role assigned successfully",
+    "roleRevoked": "Role revoked successfully",
     "roles": {
       "superAdmin": "Super Admin",
       "admin": "Admin",
@@ -231,6 +242,7 @@
     "user": "User",
     "selectUser": "Select a user",
     "selectUserRequired": "Please select a user!",
+    "selectRole": "Select a role",
     "selectRoleRequired": "Please select a role!",
     "removeConfirm": "Are you sure to remove this member?",
     "removeSuccess": "Member removed successfully",
@@ -366,5 +378,13 @@
       "members": "Members",
       "dangerZone": "Danger Zone"
     }
+  },
+  "roles": {
+    "owner": "Owner",
+    "manager": "Manager",
+    "annotator": "Annotator",
+    "reviewer": "Reviewer",
+    "viewer": "Viewer",
+    "seniorAnnotator": "Senior Annotator"
   }
 }

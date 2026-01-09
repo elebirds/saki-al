@@ -20,13 +20,12 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from saki_api.annotation_systems import get_handler, AnnotationContext
 from saki_api.api import deps
-from saki_api.core.permissions import require_permission
+from saki_api.core.rbac import PermissionChecker
 from saki_api.db.session import get_session
 from saki_api.models.annotation import Annotation
 from saki_api.models.dataset import Dataset
 from saki_api.models.enums import AnnotationType, AnnotationSource
 from saki_api.models.label import Label
-from saki_api.models.permission import Permission
 from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.user import User
 from saki_api.utils.coordinate_converter import (
@@ -150,6 +149,31 @@ def _to_item(ann: Annotation, label: Optional[Label] = None) -> AnnotationItem:
     )
 
 
+def _check_annotation_permission(
+    session: Session,
+    user: User,
+    permission: str,
+    sample_id: str,
+) -> bool:
+    """Check if user has permission for annotation on sample."""
+    sample = session.get(Sample, sample_id)
+    if not sample:
+        return False
+    
+    dataset = session.get(Dataset, sample.dataset_id)
+    if not dataset:
+        return False
+    
+    checker = PermissionChecker(session)
+    return checker.check(
+        user_id=user.id,
+        permission=permission,
+        resource_type="dataset",
+        resource_id=sample.dataset_id,
+        resource_owner_id=dataset.owner_id,
+    )
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
@@ -158,9 +182,7 @@ def _to_item(ann: Annotation, label: Optional[Label] = None) -> AnnotationItem:
 def get_sample_annotations(
         sample_id: str,
         session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            Permission.ANNOTATION_READ, "sample", "sample_id"
-        )),
+        current_user: User = Depends(deps.get_current_user),
 ):
     """Get all annotations for a sample."""
     sample = session.get(Sample, sample_id)
@@ -170,6 +192,10 @@ def get_sample_annotations(
     dataset = session.get(Dataset, sample.dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
+
+    # Check permission
+    if not _check_annotation_permission(session, current_user, "annotation:read:assigned", sample_id):
+        raise HTTPException(status_code=403, detail="Permission denied")
 
     # Query annotations
     statement = select(Annotation).where(Annotation.sample_id == sample_id)
@@ -202,10 +228,7 @@ def sync_annotations(
     mapped annotations. Frontend maintains state locally until Save.
     """
     # Check permission for the sample
-    from saki_api.core.permissions import check_permission
-    if not check_permission(
-            current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
-    ):
+    if not _check_annotation_permission(session, current_user, "annotation:create:assigned", request.sample_id):
         raise HTTPException(status_code=403, detail="Permission denied")
 
     sample = session.get(Sample, request.sample_id)
@@ -369,10 +392,7 @@ def save_annotations(
     Replaces existing annotations. Called when user clicks Save.
     """
     # Check permission for the sample
-    from saki_api.core.permissions import check_permission
-    if not check_permission(
-            current_user, Permission.ANNOTATION_MODIFY, "sample", request.sample_id, session
-    ):
+    if not _check_annotation_permission(session, current_user, "annotation:create:assigned", request.sample_id):
         raise HTTPException(status_code=403, detail="Permission denied")
 
     sample = session.get(Sample, request.sample_id)
@@ -489,10 +509,7 @@ def get_annotation(
         raise HTTPException(status_code=404, detail="Annotation not found")
 
     # Check permission through sample
-    from saki_api.core.permissions import check_permission
-    if not check_permission(
-            current_user, Permission.ANNOTATION_READ, "sample", annotation.sample_id, session
-    ):
+    if not _check_annotation_permission(session, current_user, "annotation:read:assigned", annotation.sample_id):
         raise HTTPException(status_code=403, detail="Permission denied")
 
     label = session.get(Label, annotation.label_id)

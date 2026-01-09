@@ -1,24 +1,39 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Select, message, Space, Popconfirm, Tag, Typography } from 'antd';
+import { Table, Button, Modal, Form, Select, message, Space, Popconfirm, Tag, Typography, Spin } from 'antd';
 import { UserAddOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { DatasetMember, ResourceRole, User } from '../../types';
+import { ResourceMember, User } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
+import { useResourcePermission } from '../../hooks';
 
 const { Title } = Typography;
 
-interface DatasetMembersProps {
-  datasetId: string;
+interface AvailableRole {
+  id: string;
+  name: string;
+  displayName: string;
+  description?: string;
 }
 
-const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
+interface DatasetMembersProps {
+  datasetId: string;
+  ownerId?: string;
+}
+
+const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) => {
   const { t } = useTranslation();
-  const [members, setMembers] = useState<DatasetMember[]>([]);
+  const [members, setMembers] = useState<ResourceMember[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<AvailableRole[]>([]);
   const [loading, setLoading] = useState(false);
+  const [rolesLoading, setRolesLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingMember, setEditingMember] = useState<DatasetMember | null>(null);
+  const [editingMember, setEditingMember] = useState<ResourceMember | null>(null);
   const [form] = Form.useForm();
+
+  // Permission hook
+  const { can, isOwner } = useResourcePermission('dataset', datasetId, ownerId);
+  const canManageMembers = can('dataset:assign');
 
   const fetchMembers = async () => {
     setLoading(true);
@@ -41,9 +56,22 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
     }
   };
 
+  const fetchAvailableRoles = async () => {
+    setRolesLoading(true);
+    try {
+      const data = await api.getAvailableDatasetRoles(datasetId);
+      setAvailableRoles(data);
+    } catch (error) {
+      console.error('Failed to fetch available roles:', error);
+    } finally {
+      setRolesLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchMembers();
     fetchUsers();
+    fetchAvailableRoles();
   }, [datasetId]);
 
   const handleAdd = () => {
@@ -52,10 +80,10 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
     setIsModalOpen(true);
   };
 
-  const handleEdit = (member: DatasetMember) => {
+  const handleEdit = (member: ResourceMember) => {
     setEditingMember(member);
     form.setFieldsValue({
-      role: member.role,
+      roleId: member.roleId,
     });
     setIsModalOpen(true);
   };
@@ -74,10 +102,10 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
     try {
       const values = await form.validateFields();
       if (editingMember) {
-        await api.updateDatasetMemberRole(datasetId, editingMember.userId, { role: values.role });
+        await api.updateDatasetMemberRole(datasetId, editingMember.userId, { roleId: values.roleId });
         message.success(t('datasetMembers.updateRoleSuccess'));
       } else {
-        await api.addDatasetMember(datasetId, { userId: values.userId, role: values.role });
+        await api.addDatasetMember(datasetId, { userId: values.userId, roleId: values.roleId });
         message.success(t('datasetMembers.addMemberSuccess'));
       }
       setIsModalOpen(false);
@@ -87,24 +115,24 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
     }
   };
 
-  const roleColors: Record<ResourceRole, string> = {
-    'owner': 'red',
-    'manager': 'gold',
-    'annotator': 'blue',
-    'reviewer': 'cyan',
-    'viewer': 'default',
-  };
-
-  const roleLabels: Record<ResourceRole, string> = {
-    'owner': t('datasetMembers.roles.owner'),
-    'manager': t('datasetMembers.roles.manager'),
-    'annotator': t('datasetMembers.roles.annotator'),
-    'reviewer': t('datasetMembers.roles.reviewer'),
-    'viewer': t('datasetMembers.roles.viewer'),
+  // Role colors based on role name
+  const getRoleColor = (roleName?: string): string => {
+    const colors: Record<string, string> = {
+      'dataset_owner': 'gold',
+      'dataset_manager': 'blue',
+      'dataset_annotator': 'green',
+      'dataset_reviewer': 'cyan',
+      'dataset_viewer': 'default',
+      'dataset_senior_annotator': 'lime',
+    };
+    return colors[roleName || ''] || 'default';
   };
 
   // Get member user IDs to filter available users
   const memberUserIds = new Set(members.map(m => m.userId));
+
+  // Check if a member is the owner (by comparing with ownerId)
+  const isDatasetOwner = (userId: string) => userId === ownerId;
 
   const columns = [
     {
@@ -119,45 +147,47 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
     },
     {
       title: t('common.role'),
-      dataIndex: 'role',
       key: 'role',
-      render: (role: ResourceRole) => (
-        <Tag color={roleColors[role]}>
-          {roleLabels[role]}
+      render: (_: any, record: ResourceMember) => (
+        <Tag color={getRoleColor(record.roleName)}>
+          {record.roleDisplayName || record.roleName || '-'}
         </Tag>
       ),
     },
     {
       title: t('common.actions'),
       key: 'action',
-      render: (_: any, record: DatasetMember) => (
-        <Space size="middle">
-          <Button 
-            type="link" 
-            icon={<EditOutlined />} 
-            onClick={() => handleEdit(record)}
-            disabled={record.role === 'owner'}
-          >
-            {t('common.edit')}
-          </Button>
-          <Popconfirm
-            title={t('datasetMembers.removeConfirm')}
-            onConfirm={() => handleDelete(record.userId)}
-            okText={t('common.yes')}
-            cancelText={t('common.no')}
-            disabled={record.role === 'owner'}
-          >
+      render: (_: any, record: ResourceMember) => {
+        const isOwnerMember = isDatasetOwner(record.userId);
+        return (
+          <Space size="middle">
             <Button 
               type="link" 
-              danger 
-              icon={<DeleteOutlined />}
-              disabled={record.role === 'owner'}
+              icon={<EditOutlined />} 
+              onClick={() => handleEdit(record)}
+              disabled={isOwnerMember || !canManageMembers}
             >
-              {t('common.delete')}
+              {t('common.edit')}
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            <Popconfirm
+              title={t('datasetMembers.removeConfirm')}
+              onConfirm={() => handleDelete(record.userId)}
+              okText={t('common.yes')}
+              cancelText={t('common.no')}
+              disabled={isOwnerMember || !canManageMembers}
+            >
+              <Button 
+                type="link" 
+                danger 
+                icon={<DeleteOutlined />}
+                disabled={isOwnerMember || !canManageMembers}
+              >
+                {t('common.delete')}
+              </Button>
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -165,9 +195,11 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title level={5}>{t('datasetMembers.title')}</Title>
-        <Button type="primary" icon={<UserAddOutlined />} onClick={handleAdd}>
-          {t('datasetMembers.addMember')}
-        </Button>
+        {canManageMembers && (
+          <Button type="primary" icon={<UserAddOutlined />} onClick={handleAdd}>
+            {t('datasetMembers.addMember')}
+          </Button>
+        )}
       </div>
       <Table 
         columns={columns} 
@@ -183,50 +215,65 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId }) => {
         onOk={handleOk}
         onCancel={() => setIsModalOpen(false)}
       >
-        <Form form={form} layout="vertical">
-          {!editingMember && (
+        {rolesLoading ? (
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <Spin tip={t('common.loading')} />
+          </div>
+        ) : (
+          <Form form={form} layout="vertical">
+            {!editingMember && (
+              <Form.Item
+                name="userId"
+                label={t('datasetMembers.user')}
+                rules={[{ required: true, message: t('datasetMembers.selectUserRequired') }]}
+              >
+                <Select
+                  showSearch
+                  placeholder={t('datasetMembers.selectUser')}
+                  optionFilterProp="children"
+                  filterOption={(input, option) =>
+                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={users
+                    .filter(u => !memberUserIds.has(u.id))
+                    .map(u => ({
+                      value: u.id,
+                      label: `${u.email}${u.fullName ? ` (${u.fullName})` : ''}`,
+                    }))}
+                />
+              </Form.Item>
+            )}
             <Form.Item
-              name="userId"
-              label={t('datasetMembers.user')}
-              rules={[{ required: true, message: t('datasetMembers.selectUserRequired') }]}
+              name="roleId"
+              label={t('common.role')}
+              rules={[{ required: true, message: t('datasetMembers.selectRoleRequired') }]}
             >
-              <Select
-                showSearch
-                placeholder={t('datasetMembers.selectUser')}
-                optionFilterProp="children"
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                options={users
-                  .filter(u => !memberUserIds.has(u.id))
-                  .map(u => ({
-                    value: u.id,
-                    label: `${u.email}${u.fullName ? ` (${u.fullName})` : ''}`,
-                  }))}
-              />
+              <Select placeholder={t('datasetMembers.selectRole')}>
+                {availableRoles
+                  .filter(role => {
+                    // Don't show owner role when editing (owner can't be changed)
+                    if (editingMember && role.name === 'dataset_owner') return false;
+                    return true;
+                  })
+                  .map(role => (
+                    <Select.Option key={role.id} value={role.id}>
+                      <div>
+                        <span>{role.displayName}</span>
+                        {role.description && (
+                          <span style={{ color: '#999', fontSize: 12, marginLeft: 8 }}>
+                            {role.description}
+                          </span>
+                        )}
+                      </div>
+                    </Select.Option>
+                  ))}
+              </Select>
             </Form.Item>
-          )}
-          <Form.Item
-            name="role"
-            label={t('common.role')}
-            rules={[{ required: true, message: t('datasetMembers.selectRoleRequired') }]}
-            initialValue="viewer"
-          >
-            <Select disabled={editingMember?.role === 'owner'}>
-              <Select.Option value="viewer">{t('datasetMembers.roles.viewer')}</Select.Option>
-              <Select.Option value="reviewer">{t('datasetMembers.roles.reviewer')}</Select.Option>
-              <Select.Option value="annotator">{t('datasetMembers.roles.annotator')}</Select.Option>
-              <Select.Option value="manager">{t('datasetMembers.roles.manager')}</Select.Option>
-              {!editingMember && (
-                <Select.Option value="owner">{t('datasetMembers.roles.owner')}</Select.Option>
-              )}
-            </Select>
-          </Form.Item>
-        </Form>
+          </Form>
+        )}
       </Modal>
     </div>
   );
 };
 
 export default DatasetMembers;
-

@@ -6,6 +6,7 @@ import { LogoutOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
 import { api } from '../services/api';
 import { useEffect } from 'react';
+import { usePermission } from '../hooks';
 
 const { Header, Content, Footer } = Layout;
 
@@ -19,6 +20,10 @@ const ProtectedLayout: React.FC = () => {
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
   const setToken = useAuthStore((state) => state.setToken);
+  
+  // Permission check
+  const { can, isSuperAdmin } = usePermission();
+  const canManageUsers = can('user:read') || isSuperAdmin;
 
   useEffect(() => {
     let interval: number;
@@ -67,7 +72,7 @@ const ProtectedLayout: React.FC = () => {
             defaultSelectedKeys={['1']}
             items={[
               { key: '1', label: <Link to="/">{t('app.projects')}</Link> },
-              ...(user?.globalRole === 'super_admin' || user?.globalRole === 'admin' 
+              ...(canManageUsers
                 ? [{ key: '3', label: <Link to="/users">{t('userManagement.title')}</Link> }] 
                 : []),
               { key: '2', label: <Link to="/about">{t('app.about')}</Link> },

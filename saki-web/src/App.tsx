@@ -12,27 +12,36 @@ import Setup from './pages/base/Setup';
 import NetworkError from './pages/base/NetworkError';
 import SystemCheck from './components/SystemCheck';
 import ProtectedLayout from './components/ProtectedLayout';
+import { useInitPermissions } from './hooks';
+
+// Permission initialization wrapper
+const PermissionInitializer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  useInitPermissions();
+  return <>{children}</>;
+};
 
 const App: React.FC = () => {
   const { t } = useTranslation();
   return (
     <Router>
       <SystemCheck>
-        <Routes>
-          <Route path="/network-error" element={<NetworkError />} />
-          <Route path="/setup" element={<Setup />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/change-password" element={<ChangePassword />} />
-          
-          <Route element={<ProtectedLayout />}>
-            <Route path="/" element={<DatasetList />} />
-            <Route path="/datasets/:id" element={<DatasetDetail />} />
-            <Route path="/workspace/:datasetId" element={<WorkspaceRouter />} />
-            <Route path="/users" element={<UserManagement />} />
-            <Route path="/about" element={<div><h2>{t('app.about')}</h2><p>Saki is a visual active learning framework.</p></div>} />
-          </Route>
-        </Routes>
+        <PermissionInitializer>
+          <Routes>
+            <Route path="/network-error" element={<NetworkError />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/change-password" element={<ChangePassword />} />
+            
+            <Route element={<ProtectedLayout />}>
+              <Route path="/" element={<DatasetList />} />
+              <Route path="/datasets/:id" element={<DatasetDetail />} />
+              <Route path="/workspace/:datasetId" element={<WorkspaceRouter />} />
+              <Route path="/users" element={<UserManagement />} />
+              <Route path="/about" element={<div><h2>{t('app.about')}</h2><p>Saki is a visual active learning framework.</p></div>} />
+            </Route>
+          </Routes>
+        </PermissionInitializer>
       </SystemCheck>
     </Router>
   );

@@ -1,12 +1,24 @@
+"""
+System endpoints for initialization and configuration.
+
+Includes system setup, status check, and available types.
+"""
+
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from saki_api.core import security
-from saki_api.db.session import get_session
-from saki_api.models.enums import TaskType, AnnotationSystemType
-from saki_api.models.user import User, UserCreate, UserRead
 from sqlmodel import Session, select
+
+from saki_api.core import security
+from saki_api.core.rbac.presets import init_preset_roles, get_role_by_name
+from saki_api.db.session import get_session
+from saki_api.models import (
+    User, UserCreate, UserRead,
+    UserSystemRole,
+    Role,
+)
+from saki_api.models.enums import TaskType, AnnotationSystemType
 
 router = APIRouter()
 
@@ -70,7 +82,7 @@ ANNOTATION_SYSTEM_INFO = {
 
 @router.get("/status")
 def get_system_status(
-        session: Session = Depends(get_session),
+    session: Session = Depends(get_session),
 ) -> Any:
     """
     Check if the system is initialized (has at least one user).
@@ -93,11 +105,16 @@ def get_available_types() -> AvailableTypesResponse:
 
 @router.post("/setup", response_model=UserRead)
 def setup_system(
-        user_in: UserCreate,
-        session: Session = Depends(get_session),
+    user_in: UserCreate,
+    session: Session = Depends(get_session),
 ) -> Any:
     """
     Initialize the system with the first superuser.
+    
+    This endpoint:
+    1. Creates all preset roles
+    2. Creates the first user
+    3. Assigns super_admin role to the first user
     """
     user = session.exec(select(User).limit(1)).first()
     if user:
@@ -106,15 +123,79 @@ def setup_system(
             detail="System already initialized",
         )
 
-    from saki_api.models.permission import GlobalRole
+    # Initialize preset roles
+    roles = init_preset_roles(session)
 
+    # Create user
     user_data = user_in.model_dump(exclude={"password"})
     user_data["hashed_password"] = security.get_password_hash(user_in.password)
-    user_data["global_role"] = GlobalRole.SUPER_ADMIN  # Set as super admin
     user_data["is_active"] = True
-    user = User.model_validate(user_data)
+    db_user = User.model_validate(user_data)
+    session.add(db_user)
+    session.flush()
 
-    session.add(user)
+    # Assign super_admin role
+    super_admin_role = roles.get("super_admin")
+    if not super_admin_role:
+        super_admin_role = get_role_by_name(session, "super_admin")
+    
+    if super_admin_role:
+        user_role = UserSystemRole(
+            user_id=db_user.id,
+            role_id=super_admin_role.id,
+        )
+        session.add(user_role)
+
     session.commit()
-    session.refresh(user)
-    return user
+    session.refresh(db_user)
+
+    # Build response
+    return _build_user_read(db_user, session)
+
+
+@router.post("/init-roles")
+def init_roles(
+    session: Session = Depends(get_session),
+) -> Any:
+    """
+    Initialize or update preset roles.
+    
+    This can be called to ensure all preset roles exist.
+    Safe to call multiple times - only creates missing roles.
+    """
+    roles = init_preset_roles(session)
+    return {
+        "ok": True,
+        "roles_count": len(roles),
+        "roles": [r.name for r in roles.values()],
+    }
+
+
+def _build_user_read(user: User, session: Session) -> UserRead:
+    """Build UserRead with role information."""
+    user_roles = session.exec(
+        select(UserSystemRole).where(UserSystemRole.user_id == user.id)
+    ).all()
+
+    system_roles = []
+    for ur in user_roles:
+        role = session.get(Role, ur.role_id)
+        if role:
+            system_roles.append({
+                "id": role.id,
+                "name": role.name,
+                "displayName": role.display_name,
+            })
+
+    return UserRead(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        must_change_password=user.must_change_password,
+        avatar_url=user.avatar_url,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        last_login_at=user.last_login_at,
+        system_roles=system_roles,
+    )

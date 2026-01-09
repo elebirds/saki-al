@@ -1,24 +1,34 @@
 """
 API endpoints for Dataset-level operations.
+
 Datasets are independent entities used for data annotation.
+Uses the new RBAC system for permission checking.
 """
 
 import logging
 from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from saki_api.api import deps
-from saki_api.core.permissions import require_permission, check_permission
-from saki_api.db.session import get_session
+from sqlalchemy import func
+from sqlmodel import Session, select
+
+from saki_api.api.deps import get_current_user, get_session
+from saki_api.core.rbac import (
+    require_permission,
+    get_permission_checker,
+    PermissionChecker,
+    PermissionContext,
+)
+from saki_api.core.rbac.dependencies import get_dataset_owner
+from saki_api.core.rbac.presets import get_dataset_owner_role
 from saki_api.models import (
     Dataset, DatasetCreate, DatasetRead, DatasetUpdate,
     Sample, SampleStatus,
     Annotation,
+    User,
+    ResourceMember, ResourceType, RoleType,
+    Permissions,
 )
-from saki_api.models.permission import Permission
-from saki_api.models.user import User
-from sqlalchemy import func
-from sqlmodel import Session, select
 
 logger = logging.getLogger(__name__)
 
@@ -31,65 +41,35 @@ router = APIRouter()
 
 @router.get("/", response_model=List[DatasetRead])
 def list_datasets(
-        skip: int = 0,
-        limit: int = 100,
-        session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     List all datasets with sample statistics.
-    Only shows datasets the user has permission to read.
+    
+    Automatically filters to only show datasets the user has permission to read:
+    - Super admin / Admin: All datasets
+    - Regular user: Owned datasets + member datasets
     """
-    # Check if user has global read_all permission
-    has_read_all = check_permission(
-        current_user, Permission.DATASET_READ_ALL, session=session
+    query = select(Dataset)
+    
+    # Apply permission-based filtering
+    filtered_query = checker.filter_accessible_resources(
+        user_id=current_user.id,
+        resource_type=ResourceType.DATASET,
+        required_permission="dataset:read",
+        base_query=query,
+        get_owner_id_column=lambda: Dataset.owner_id,
     )
-
-    if has_read_all:
-        # User can see all datasets
-        datasets = session.exec(select(Dataset).offset(skip).limit(limit)).all()
-    else:
-        # User can only see datasets they own or are members of
-        from saki_api.models.permission import DatasetMember
-
-        # Get dataset IDs where user is owner or member
-        owned_datasets = session.exec(
-            select(Dataset.id).where(Dataset.owner_id == current_user.id)
-        ).all()
-
-        member_datasets = session.exec(
-            select(DatasetMember.dataset_id).where(DatasetMember.user_id == current_user.id)
-        ).all()
-
-        accessible_dataset_ids = list(set(owned_datasets + member_datasets))
-
-        if not accessible_dataset_ids:
-            return []
-
-        datasets = session.exec(
-            select(Dataset)
-            .where(Dataset.id.in_(accessible_dataset_ids))
-            .offset(skip)
-            .limit(limit)
-        ).all()
+    
+    datasets = session.exec(filtered_query.offset(skip).limit(limit)).all()
 
     result = []
     for ds in datasets:
-        ds_read = DatasetRead.model_validate(ds)
-
-        # Calculate sample statistics
-        sample_count = session.exec(
-            select(func.count()).select_from(Sample).where(Sample.dataset_id == ds.id)
-        ).one()
-        labeled_count = session.exec(
-            select(func.count()).select_from(Sample).where(
-                Sample.dataset_id == ds.id,
-                Sample.status == SampleStatus.LABELED
-            )
-        ).one()
-
-        ds_read.sample_count = sample_count
-        ds_read.labeled_count = labeled_count
+        ds_read = _build_dataset_read(ds, current_user.id, session, checker)
         result.append(ds_read)
 
     return result
@@ -97,33 +77,51 @@ def list_datasets(
 
 @router.post("/", response_model=DatasetRead)
 def create_dataset(
-        dataset: DatasetCreate,
-        session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(Permission.DATASET_CREATE))
+    dataset: DatasetCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(Permissions.DATASET_CREATE)),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     Create a new dataset for data annotation.
-    The current user will be set as the owner.
+    
+    The current user will be set as the owner and automatically
+    assigned the dataset_owner role.
     """
     # Create Dataset instance with owner_id from current user
     db_dataset = Dataset(**dataset.model_dump(), owner_id=current_user.id)
     session.add(db_dataset)
+    session.flush()  # Get dataset ID
+    
+    # Assign owner role to creator
+    owner_role = get_dataset_owner_role(session)
+    if owner_role:
+        member = ResourceMember(
+            resource_type=ResourceType.DATASET,
+            resource_id=db_dataset.id,
+            user_id=current_user.id,
+            role_id=owner_role.id,
+            created_by=current_user.id,
+        )
+        session.add(member)
+    
     session.commit()
     session.refresh(db_dataset)
 
-    ds_read = DatasetRead.model_validate(db_dataset)
-    ds_read.sample_count = 0
-    ds_read.labeled_count = 0
-    return ds_read
+    return _build_dataset_read(db_dataset, current_user.id, session, checker)
 
 
 @router.get("/{dataset_id}", response_model=DatasetRead)
 def get_dataset(
-        dataset_id: str,
-        session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            Permission.DATASET_READ, "dataset", "dataset_id"
-        ))
+    dataset_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(
+        Permissions.DATASET_READ,
+        ResourceType.DATASET,
+        "dataset_id",
+        get_dataset_owner
+    )),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     Get dataset by ID with sample statistics.
@@ -132,33 +130,21 @@ def get_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    ds_read = DatasetRead.model_validate(dataset)
-
-    # Calculate sample statistics
-    sample_count = session.exec(
-        select(func.count()).select_from(Sample).where(Sample.dataset_id == dataset.id)
-    ).one()
-    labeled_count = session.exec(
-        select(func.count()).select_from(Sample).where(
-            Sample.dataset_id == dataset.id,
-            Sample.status == SampleStatus.LABELED
-        )
-    ).one()
-
-    ds_read.sample_count = sample_count
-    ds_read.labeled_count = labeled_count
-
-    return ds_read
+    return _build_dataset_read(dataset, current_user.id, session, checker)
 
 
 @router.put("/{dataset_id}", response_model=DatasetRead)
 def update_dataset(
-        dataset_id: str,
-        dataset_in: DatasetUpdate,
-        session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            Permission.DATASET_UPDATE, "dataset", "dataset_id"
-        ))
+    dataset_id: str,
+    dataset_in: DatasetUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(
+        Permissions.DATASET_UPDATE,
+        ResourceType.DATASET,
+        "dataset_id",
+        get_dataset_owner
+    )),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     Update a dataset.
@@ -175,16 +161,19 @@ def update_dataset(
     session.commit()
     session.refresh(dataset)
 
-    return get_dataset(dataset_id, session, current_user)
+    return _build_dataset_read(dataset, current_user.id, session, checker)
 
 
 @router.delete("/{dataset_id}")
 def delete_dataset(
-        dataset_id: str,
-        session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            Permission.DATASET_DELETE, "dataset", "dataset_id"
-        ))
+    dataset_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(
+        Permissions.DATASET_DELETE,
+        ResourceType.DATASET,
+        "dataset_id",
+        get_dataset_owner
+    )),
 ):
     """
     Delete a dataset and all its samples and annotations.
@@ -215,6 +204,16 @@ def delete_dataset(
             session.delete(ann)
         session.delete(sample)
 
+    # Delete resource members
+    members = session.exec(
+        select(ResourceMember).where(
+            ResourceMember.resource_type == ResourceType.DATASET,
+            ResourceMember.resource_id == dataset_id
+        )
+    ).all()
+    for member in members:
+        session.delete(member)
+
     # Delete the dataset
     session.delete(dataset)
     session.commit()
@@ -228,11 +227,14 @@ def delete_dataset(
 
 @router.get("/{dataset_id}/stats")
 def get_dataset_stats(
-        dataset_id: str,
-        session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            Permission.DATASET_READ, "dataset", "dataset_id"
-        ))
+    dataset_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(
+        Permissions.DATASET_READ,
+        ResourceType.DATASET,
+        "dataset_id",
+        get_dataset_owner
+    ))
 ) -> Dict[str, Any]:
     """
     Get detailed statistics for a dataset.
@@ -275,6 +277,14 @@ def get_dataset_stats(
         )
     ).one()
 
+    # Count members
+    member_count = session.exec(
+        select(func.count()).select_from(ResourceMember).where(
+            ResourceMember.resource_type == ResourceType.DATASET,
+            ResourceMember.resource_id == dataset_id
+        )
+    ).one()
+
     return {
         "dataset_id": dataset_id,
         "total_samples": total,
@@ -283,6 +293,7 @@ def get_dataset_stats(
         "skipped_samples": skipped,
         "completion_rate": labeled / total if total > 0 else 0.0,
         "linked_projects": project_count,
+        "member_count": member_count,
     }
 
 
@@ -292,13 +303,16 @@ def get_dataset_stats(
 
 @router.get("/{dataset_id}/export")
 def export_dataset(
-        dataset_id: str,
-        format: str = "json",
-        include_unlabeled: bool = False,
-        session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            Permission.DATASET_EXPORT, "dataset", "dataset_id"
-        ))
+    dataset_id: str,
+    format: str = "json",
+    include_unlabeled: bool = False,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(
+        Permissions.DATASET_EXPORT,
+        ResourceType.DATASET,
+        "dataset_id",
+        get_dataset_owner
+    ))
 ) -> Dict[str, Any]:
     """
     Export dataset annotations in various formats.
@@ -355,3 +369,47 @@ def export_dataset(
         "samples": export_data,
         "total": len(export_data),
     }
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def _build_dataset_read(
+    dataset: Dataset,
+    user_id: str,
+    session: Session,
+    checker: PermissionChecker
+) -> DatasetRead:
+    """Build DatasetRead with statistics and user role."""
+    # Calculate sample statistics
+    sample_count = session.exec(
+        select(func.count()).select_from(Sample).where(Sample.dataset_id == dataset.id)
+    ).one()
+    labeled_count = session.exec(
+        select(func.count()).select_from(Sample).where(
+            Sample.dataset_id == dataset.id,
+            Sample.status == SampleStatus.LABELED
+        )
+    ).one()
+
+    # Get user's role in this dataset
+    user_role = None
+    role = checker.get_user_role_in_resource(
+        user_id, ResourceType.DATASET, dataset.id
+    )
+    if role:
+        user_role = role.name
+
+    return DatasetRead(
+        id=dataset.id,
+        name=dataset.name,
+        description=dataset.description,
+        annotation_system=dataset.annotation_system,
+        owner_id=dataset.owner_id,
+        created_at=str(dataset.created_at),
+        updated_at=str(dataset.updated_at),
+        sample_count=sample_count,
+        labeled_count=labeled_count,
+        user_role=user_role,
+    )

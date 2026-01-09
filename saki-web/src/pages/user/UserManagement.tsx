@@ -1,21 +1,34 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select } from 'antd';
-import { User, GlobalRole } from '../../types';
+import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
+import { User, Role, UserSystemRole } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
+import { usePermission } from '../../hooks';
+import { Authorized } from '../../components/common';
 
 const UserManagement: React.FC = () => {
   const { t } = useTranslation();
   const currentUser = useAuthStore((state) => state.user);
   const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
+  const [rolesLoading, setRolesLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [userRoles, setUserRoles] = useState<UserSystemRole[]>([]);
   const [form] = Form.useForm();
+  const [roleForm] = Form.useForm();
   
-  // Check if current user can manage roles
-  const canManageRoles = currentUser?.globalRole === 'super_admin' || currentUser?.globalRole === 'admin';
+  // Permission checks
+  const { can, isSuperAdmin } = usePermission();
+  const canCreateUser = can('user:create');
+  const canUpdateUser = can('user:update');
+  const canDeleteUser = can('user:delete');
+  const canManageRoles = can('user:manage') || isSuperAdmin;
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -29,8 +42,30 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const fetchRoles = async () => {
+    setRolesLoading(true);
+    try {
+      const data = await api.getRoles('system');
+      setRoles(data);
+    } catch (error) {
+      console.error('Failed to fetch roles:', error);
+    } finally {
+      setRolesLoading(false);
+    }
+  };
+
+  const fetchUserRoles = async (userId: string) => {
+    try {
+      const data = await api.getUserRoles(userId);
+      setUserRoles(data);
+    } catch (error) {
+      console.error('Failed to fetch user roles:', error);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchRoles();
   }, []);
 
   const handleAdd = () => {
@@ -53,9 +88,15 @@ const UserManagement: React.FC = () => {
       await api.deleteUser(id);
       message.success(t('userManagement.deleteSuccess'));
       fetchUsers();
-    } catch (error) {
-      message.error(t('userManagement.deleteError'));
+    } catch (error: any) {
+      message.error(error.message || t('userManagement.deleteError'));
     }
+  };
+
+  const handleManageRoles = async (user: User) => {
+    setSelectedUserId(user.id);
+    await fetchUserRoles(user.id);
+    setIsRoleModalOpen(true);
   };
 
   const handleOk = async () => {
@@ -77,6 +118,47 @@ const UserManagement: React.FC = () => {
     } catch (error: any) {
       message.error(error.message || t('common.operationFailed'));
     }
+  };
+
+  const handleAssignRole = async () => {
+    if (!selectedUserId) return;
+    try {
+      const values = await roleForm.validateFields();
+      await api.assignUserRole(selectedUserId, { roleId: values.roleId });
+      message.success(t('userManagement.roleAssigned'));
+      await fetchUserRoles(selectedUserId);
+      roleForm.resetFields();
+      fetchUsers(); // Refresh user list to update role display
+    } catch (error: any) {
+      message.error(error.message || t('common.operationFailed'));
+    }
+  };
+
+  const handleRevokeRole = async (roleId: string) => {
+    if (!selectedUserId) return;
+    try {
+      await api.revokeUserRole(selectedUserId, roleId);
+      message.success(t('userManagement.roleRevoked'));
+      await fetchUserRoles(selectedUserId);
+      fetchUsers(); // Refresh user list to update role display
+    } catch (error: any) {
+      message.error(error.message || t('common.operationFailed'));
+    }
+  };
+
+  // Get role color based on role name
+  const getRoleColor = (roleName: string): string => {
+    const colors: Record<string, string> = {
+      'super_admin': 'red',
+      'admin': 'gold',
+      'user': 'blue',
+    };
+    return colors[roleName] || 'default';
+  };
+
+  // Check if user has super_admin role
+  const isUserSuperAdmin = (user: User): boolean => {
+    return user.systemRoles?.some(r => r.name === 'super_admin') ?? false;
   };
 
   const columns = [
@@ -102,61 +184,91 @@ const UserManagement: React.FC = () => {
     },
     {
       title: t('common.role'),
-      key: 'globalRole',
-      dataIndex: 'globalRole',
-      render: (role: GlobalRole) => {
-        const roleColors: Record<GlobalRole, string> = {
-          'super_admin': 'red',
-          'admin': 'gold',
-          'annotator': 'blue',
-          'viewer': 'default',
-        };
-        const roleLabels: Record<GlobalRole, string> = {
-          'super_admin': t('userManagement.roles.superAdmin'),
-          'admin': t('userManagement.roles.admin'),
-          'annotator': t('userManagement.roles.annotator'),
-          'viewer': t('userManagement.roles.viewer'),
-        };
-        return (
-          <Tag color={roleColors[role]}>
-            {roleLabels[role]}
-          </Tag>
-        );
-      },
+      key: 'systemRoles',
+      render: (_: any, record: User) => (
+        <Space wrap>
+          {record.systemRoles?.map(role => (
+            <Tag key={role.id} color={getRoleColor(role.name)}>
+              {role.displayName}
+            </Tag>
+          )) || <Tag>-</Tag>}
+        </Space>
+      ),
     },
     {
       title: t('common.actions'),
       key: 'action',
-      render: (_: any, record: User) => (
-        <Space size="middle">
-          <Button type="link" onClick={() => handleEdit(record)}>
-            {t('common.edit')}
-          </Button>
-          <Popconfirm
-            title={t('userManagement.deleteConfirm')}
-            onConfirm={() => handleDelete(record.id)}
-            okText={t('common.yes')}
-            cancelText={t('common.no')}
-          >
-            <Button type="link" danger>
-              {t('common.delete')}
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: any, record: User) => {
+        const isSuperAdminUser = isUserSuperAdmin(record);
+        const canEditThisUser = canUpdateUser && (!isSuperAdminUser || isSuperAdmin);
+        const canDeleteThisUser = canDeleteUser && (!isSuperAdminUser || isSuperAdmin) && record.id !== currentUser?.id;
+        
+        return (
+          <Space size="middle">
+            {canEditThisUser ? (
+              <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+                {t('common.edit')}
+              </Button>
+            ) : (
+              <Tooltip title={t('common.noPermission')}>
+                <Button type="link" icon={<EditOutlined />} disabled>
+                  {t('common.edit')}
+                </Button>
+              </Tooltip>
+            )}
+            
+            {canManageRoles && (
+              <Button type="link" icon={<KeyOutlined />} onClick={() => handleManageRoles(record)}>
+                {t('userManagement.manageRoles')}
+              </Button>
+            )}
+            
+            {canDeleteThisUser ? (
+              <Popconfirm
+                title={t('userManagement.deleteConfirm')}
+                onConfirm={() => handleDelete(record.id)}
+                okText={t('common.yes')}
+                cancelText={t('common.no')}
+              >
+                <Button type="link" danger icon={<DeleteOutlined />}>
+                  {t('common.delete')}
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Tooltip title={record.id === currentUser?.id ? t('userManagement.cannotDeleteSelf') : t('common.noPermission')}>
+                <Button type="link" danger icon={<DeleteOutlined />} disabled>
+                  {t('common.delete')}
+                </Button>
+              </Tooltip>
+            )}
+          </Space>
+        );
+      },
     },
   ];
+
+  // Get assigned role IDs for the selected user
+  const assignedRoleIds = new Set(userRoles.map(ur => ur.roleId));
 
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2>{t('userManagement.title')}</h2>
-        <Button type="primary" onClick={handleAdd}>
-          {t('userManagement.addUser')}
-        </Button>
+        {canCreateUser ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            {t('userManagement.addUser')}
+          </Button>
+        ) : (
+          <Tooltip title={t('common.noPermission')}>
+            <Button type="primary" icon={<PlusOutlined />} disabled>
+              {t('userManagement.addUser')}
+            </Button>
+          </Tooltip>
+        )}
       </div>
       <Table columns={columns} dataSource={users} rowKey="id" loading={loading} />
 
+      {/* User Edit Modal */}
       <Modal
         title={editingUser ? t('userManagement.editUser') : t('userManagement.addUser')}
         open={isModalOpen}
@@ -192,23 +304,92 @@ const UserManagement: React.FC = () => {
           >
             <Checkbox>{t('common.active')}</Checkbox>
           </Form.Item>
-          {canManageRoles && (
-            <Form.Item
-              name="globalRole"
-              label={t('userManagement.globalRole')}
-              initialValue="viewer"
-            >
-              <Select>
-                <Select.Option value="viewer">{t('userManagement.roles.viewer')}</Select.Option>
-                <Select.Option value="annotator">{t('userManagement.roles.annotator')}</Select.Option>
-                <Select.Option value="admin">{t('userManagement.roles.admin')}</Select.Option>
-                {currentUser?.globalRole === 'super_admin' && (
-                  <Select.Option value="super_admin">{t('userManagement.roles.superAdmin')}</Select.Option>
-                )}
-              </Select>
-            </Form.Item>
-          )}
         </Form>
+      </Modal>
+
+      {/* Role Management Modal */}
+      <Modal
+        title={t('userManagement.manageRoles')}
+        open={isRoleModalOpen}
+        onCancel={() => setIsRoleModalOpen(false)}
+        footer={null}
+        width={600}
+      >
+        {rolesLoading ? (
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <Spin tip={t('common.loading')} />
+          </div>
+        ) : (
+          <>
+            {/* Current Roles */}
+            <div style={{ marginBottom: 24 }}>
+              <h4>{t('userManagement.currentRoles')}</h4>
+              {userRoles.length === 0 ? (
+                <p style={{ color: '#999' }}>{t('userManagement.noRoles')}</p>
+              ) : (
+                <Space wrap>
+                  {userRoles.map(ur => {
+                    const role = roles.find(r => r.id === ur.roleId);
+                    const canRevoke = isSuperAdmin || (role?.name !== 'super_admin');
+                    return (
+                      <Tag 
+                        key={ur.id} 
+                        color={getRoleColor(ur.roleName || '')}
+                        closable={canRevoke}
+                        onClose={(e) => {
+                          e.preventDefault();
+                          handleRevokeRole(ur.roleId);
+                        }}
+                      >
+                        {ur.roleDisplayName || ur.roleName}
+                      </Tag>
+                    );
+                  })}
+                </Space>
+              )}
+            </div>
+
+            {/* Assign New Role */}
+            <div>
+              <h4>{t('userManagement.assignRole')}</h4>
+              <Form form={roleForm} layout="inline" onFinish={handleAssignRole}>
+                <Form.Item
+                  name="roleId"
+                  rules={[{ required: true, message: t('userManagement.selectRole') }]}
+                  style={{ flex: 1, marginRight: 8 }}
+                >
+                  <Select placeholder={t('userManagement.selectRole')} style={{ width: '100%' }}>
+                    {roles
+                      .filter(role => {
+                        // Filter out already assigned roles
+                        if (assignedRoleIds.has(role.id)) return false;
+                        // Only super_admin can assign super_admin role
+                        if (role.name === 'super_admin' && !isSuperAdmin) return false;
+                        return true;
+                      })
+                      .map(role => (
+                        <Select.Option key={role.id} value={role.id}>
+                          <Tag color={getRoleColor(role.name)} style={{ marginRight: 8 }}>
+                            {role.displayName}
+                          </Tag>
+                          {role.description && (
+                            <span style={{ color: '#999', fontSize: 12 }}>
+                              {role.description}
+                            </span>
+                          )}
+                        </Select.Option>
+                      ))}
+                  </Select>
+                </Form.Item>
+                <Form.Item>
+                  <Button type="primary" htmlType="submit">
+                    {t('userManagement.assign')}
+                  </Button>
+                </Form.Item>
+              </Form>
+            </div>
+          </>
+        )}
       </Modal>
     </div>
   );

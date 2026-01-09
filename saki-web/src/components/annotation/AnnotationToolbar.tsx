@@ -7,6 +7,7 @@
 import React from 'react';
 import { Space, Button, Radio, Tooltip, Select, Tag, Spin, Divider } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   UndoOutlined,
   RedoOutlined,
@@ -17,6 +18,7 @@ import {
   ZoomOutOutlined,
   ExpandOutlined,
   SyncOutlined,
+  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { Label } from '../../types';
 
@@ -64,6 +66,8 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   syncStatus,
 }) => {
   const { t } = useTranslation();
+  const { datasetId } = useParams<{ datasetId: string }>();
+  const navigate = useNavigate();
 
   return (
     <div style={{
@@ -74,6 +78,22 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
       gap: '10px',
       alignItems: 'center',
     }}>
+      {/* Back Button */}
+      <Tooltip title={t('workspace.backToDataset')}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => {
+            if (datasetId) {
+              navigate(`/datasets/${datasetId}`);
+            }
+          }}
+        >
+          {t('workspace.back')}
+        </Button>
+      </Tooltip>
+
+      <Divider type="vertical" />
+
       {/* Label Selection */}
       <Space>
         <span style={{ fontWeight: 'bold' }}>{t('workspace.label')}</span>

@@ -276,7 +276,9 @@
       "ready": "同步就绪",
       "initializing": "初始化中..."
     },
-    "noSamples": "此数据集暂无样本"
+    "noSamples": "此数据集暂无样本",
+    "back": "返回",
+    "backToDataset": "返回到数据集界面"
   },
   "annotation": {
     "saved": "保存成功",

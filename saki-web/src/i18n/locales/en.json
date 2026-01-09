@@ -275,7 +275,9 @@
       "ready": "Sync Ready",
       "initializing": "Initializing..."
     },
-    "noSamples": "No samples found for this dataset"
+    "noSamples": "No samples found for this dataset",
+    "back": "Back",
+    "backToDataset": "Back to dataset"
   },
   "annotation": {
     "saved": "Saved",

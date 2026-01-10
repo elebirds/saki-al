@@ -269,7 +269,7 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
                 existing.is_super_admin = preset.get("is_super_admin", False)
                 existing.is_admin = preset.get("is_admin", False)
                 session.add(existing)
-                
+
                 # Get current permissions
                 current_perms = session.exec(
                     select(RolePermission).where(RolePermission.role_id == existing.id)

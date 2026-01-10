@@ -135,11 +135,11 @@ def _get_sample_and_dataset(
     sample = session.get(Sample, sample_id)
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
-    
+
     dataset = session.get(Dataset, sample.dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    
+
     return sample, dataset
 
 
@@ -198,12 +198,12 @@ def _get_annotation_access_scope(
     """
     if checker is None:
         checker = PermissionChecker(session)
-    
+
     dataset_id = get_sample_dataset_id(session, sample_id)
-    
+
     if not dataset_id:
         return "none"
-    
+
     if action == "read":
         # Check from highest to lowest scope
         # owner_id not needed: dataset_owner role is set at resource level, assigned scope is sufficient
@@ -220,7 +220,7 @@ def _get_annotation_access_scope(
             return "assigned"
         if checker.check(user.id, Permissions.ANNOTATION_MODIFY_SELF, ResourceType.DATASET, dataset_id):
             return "self"
-    
+
     return "none"
 
 
@@ -374,7 +374,7 @@ def sync_annotations(
         elif action.action == "update":
             # For update, check if user can modify this annotation
             existing_ann = session.get(Annotation, action.annotation_id)
-            
+
             # Check permission for existing annotation (if it exists in DB)
             if existing_ann and not _can_access_annotation(existing_ann, current_user, modify_scope):
                 results.append(SyncResultItem(
@@ -441,7 +441,7 @@ def sync_annotations(
         elif action.action == "delete":
             # For delete, check if user can modify this annotation
             existing_ann = session.get(Annotation, action.annotation_id)
-            
+
             if existing_ann and not _can_access_annotation(existing_ann, current_user, modify_scope):
                 results.append(SyncResultItem(
                     action="delete",
@@ -535,7 +535,7 @@ def save_annotations(
         for a in request.annotations:
             annotation_type = a.type if isinstance(a.type, str) else a.type.value if a.type else 'rect'
             backend_data = convert_annotation_data_to_backend(annotation_type, a.data or {})
-            
+
             # For "self" scope, determine the annotator_id from the annotation
             # If the annotation belongs to another user, skip it (don't overwrite)
             if modify_scope == "self":
@@ -545,7 +545,7 @@ def save_annotations(
                     # This annotation belongs to another user, skip saving it
                     # (It was already preserved above by not deleting it)
                     continue
-            
+
             # Get original annotator_id from existing annotation if available
             # This ensures we preserve the original creator even if frontend doesn't send it
             original_annotator_id = None
@@ -554,7 +554,7 @@ def save_annotations(
             elif a.annotator_id:
                 # Fallback to frontend-provided annotator_id if annotation is new
                 original_annotator_id = a.annotator_id
-            
+
             annotations_to_save.append({
                 "id": a.id,
                 "sample_id": request.sample_id,
@@ -584,10 +584,10 @@ def save_annotations(
             # Determine annotator_id based on source and scope
             source = AnnotationSource(ann_data["source"]) if ann_data.get("source") else AnnotationSource.MANUAL
             annotator_id = None
-            
+
             # Get original annotator_id from the data (preserved from existing annotation)
             original_annotator = ann_data.get("original_annotator_id")
-            
+
             if source == AnnotationSource.MANUAL:
                 if modify_scope == "self":
                     # In self scope, manual annotations are always owned by current user

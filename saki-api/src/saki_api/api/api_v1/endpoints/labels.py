@@ -12,7 +12,6 @@ from sqlmodel import Session, select
 
 from saki_api.core.rbac import require_permission
 from saki_api.core.rbac.dependencies import get_label_dataset_id
-
 from saki_api.db.session import get_session
 from saki_api.models import (
     Label, LabelCreate, LabelRead, LabelUpdate,

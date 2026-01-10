@@ -25,6 +25,7 @@ def require_permission(*args, **kwargs):
     from saki_api.core.rbac.dependencies import require_permission as _require_permission
     return _require_permission(*args, **kwargs)
 
+
 __all__ = [
     # Checker
     "PermissionChecker",

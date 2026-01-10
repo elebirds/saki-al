@@ -113,7 +113,7 @@ class PermissionDependency:
 
         if self.resource_id_param:
             param_id = request.path_params.get(self.resource_id_param)
-            
+
             # For sub-resources, get the parent resource ID
             if self.get_parent_resource_id and param_id:
                 resource_id = self.get_parent_resource_id(session, param_id)
@@ -193,6 +193,7 @@ def require_permission(
         resource_id_param=resource_id_param,
         get_parent_resource_id=get_parent_resource_id,
     )
+
 
 # ============================================================================
 # Parent Resource ID Getters (for sub-resources)

@@ -311,7 +311,7 @@ def delete_role(
             status_code=403,
             detail="Cannot delete system preset roles"
         )
-    
+
     # Cannot delete super_admin role (extra protection)
     if role.is_super_admin:
         raise HTTPException(

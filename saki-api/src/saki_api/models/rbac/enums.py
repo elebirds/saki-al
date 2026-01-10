@@ -65,6 +65,7 @@ class AuditAction(str, Enum):
     PERMISSION_DENIED = "permission.denied"
     PERMISSION_GRANTED = "permission.granted"
 
+
 # ============================================================================
 # Predefined Permission Constants (for convenience)
 # ============================================================================

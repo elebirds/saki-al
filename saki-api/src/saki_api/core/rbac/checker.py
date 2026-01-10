@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Set, Callable, Any, Union
 
-from saki_api.models.rbac.enums import Permissions
 from sqlmodel import Session, select
 
 from saki_api.models.rbac import (
     Role, RolePermission,
     UserSystemRole, ResourceMember, ResourceType, )
+from saki_api.models.rbac.enums import Permissions
 
 
 @dataclass
@@ -187,14 +187,14 @@ class PermissionChecker:
                 (UserSystemRole.expires_at > datetime.utcnow())
             )
         ).all()
-        
+
         for ur in user_roles:
             role = self.get_role(ur.role_id)
             if role and role.is_super_admin:
                 return True
-        
+
         return False
-    
+
     def is_admin(self, user_id: str) -> bool:
         """Check if user is an admin (including super admin) by checking roles."""
         # Get user's system roles (filter out expired)
@@ -205,12 +205,12 @@ class PermissionChecker:
                 (UserSystemRole.expires_at > datetime.utcnow())
             )
         ).all()
-        
+
         for ur in user_roles:
             role = self.get_role(ur.role_id)
             if role and (role.is_admin or role.is_super_admin):
                 return True
-        
+
         return False
 
     def check(

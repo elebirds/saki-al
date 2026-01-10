@@ -35,6 +35,7 @@ def get_current_user(
         raise HTTPException(status_code=400, detail="Inactive user")
     return user
 
+
 def get_current_active_superuser(
         current_user: User = Depends(get_current_user),
         session: Session = Depends(get_session)

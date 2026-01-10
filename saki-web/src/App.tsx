@@ -5,6 +5,7 @@ import DatasetList from './pages/dataset/DatasetList';
 import DatasetDetail from './pages/dataset/DatasetDetail';
 import WorkspaceRouter from './pages/annotation/WorkspaceRouter';
 import UserManagement from './pages/user/UserManagement';
+import RoleManagement from './pages/user/RoleManagement';
 import Login from './pages/user/Login';
 import Register from './pages/user/Register';
 import ChangePassword from './pages/user/ChangePassword';
@@ -38,6 +39,7 @@ const App: React.FC = () => {
               <Route path="/datasets/:id" element={<DatasetDetail />} />
               <Route path="/workspace/:datasetId" element={<WorkspaceRouter />} />
               <Route path="/users" element={<UserManagement />} />
+              <Route path="/roles" element={<RoleManagement />} />
               <Route path="/about" element={<div><h2>{t('app.about')}</h2><p>Saki is a visual active learning framework.</p></div>} />
             </Route>
           </Routes>

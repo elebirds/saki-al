@@ -24,6 +24,7 @@ const ProtectedLayout: React.FC = () => {
   // Permission check
   const { can, isSuperAdmin } = usePermission();
   const canManageUsers = can('user:read') || isSuperAdmin;
+  const canManageRoles = can('role:read') || isSuperAdmin;
 
   useEffect(() => {
     let interval: number;
@@ -71,9 +72,12 @@ const ProtectedLayout: React.FC = () => {
             mode="horizontal"
             defaultSelectedKeys={['1']}
             items={[
-              { key: '1', label: <Link to="/">{t('app.projects')}</Link> },
+              { key: '1', label: <Link to="/">{t('app.datasets')}</Link> },
               ...(canManageUsers
                 ? [{ key: '3', label: <Link to="/users">{t('userManagement.title')}</Link> }] 
+                : []),
+              ...(canManageRoles
+                ? [{ key: '4', label: <Link to="/roles">{t('roleManagement.title')}</Link> }] 
                 : []),
               { key: '2', label: <Link to="/about">{t('app.about')}</Link> },
             ]}

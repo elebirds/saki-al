@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
 import { User, Role, UserSystemRole } from '../../types';
@@ -19,6 +19,8 @@ const UserManagement: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [userRoles, setUserRoles] = useState<UserSystemRole[]>([]);
+  const [tableHeight, setTableHeight] = useState<number>(500);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
   const [form] = Form.useForm();
   const [roleForm] = Form.useForm();
   
@@ -73,6 +75,26 @@ const UserManagement: React.FC = () => {
       fetchRoles();
     }
   }, [permissionLoading, canReadUsers, canManageRoles]);
+
+  // 计算表格高度
+  useEffect(() => {
+    const updateTableHeight = () => {
+      if (tableContainerRef.current) {
+        const containerHeight = tableContainerRef.current.clientHeight;
+        // 减去：表格头部(约55px) + 分页器(约64px)
+        const calculatedHeight = containerHeight - 119;
+        setTableHeight(Math.max(300, calculatedHeight)); // 最小高度300px
+      }
+    };
+
+    // 使用 setTimeout 确保 DOM 已渲染
+    const timeoutId = setTimeout(updateTableHeight, 0);
+    window.addEventListener('resize', updateTableHeight);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', updateTableHeight);
+    };
+  }, [users]); // 当数据变化时重新计算
 
   const handleAdd = () => {
     setEditingUser(null);
@@ -279,9 +301,9 @@ const UserManagement: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2>{t('userManagement.title')}</h2>
+    <div style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <h2 style={{ margin: 0 }}>{t('userManagement.title')}</h2>
         {canCreateUser ? (
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             {t('userManagement.addUser')}
@@ -294,7 +316,28 @@ const UserManagement: React.FC = () => {
           </Tooltip>
         )}
       </div>
-      <Table columns={columns} dataSource={users} rowKey="id" loading={loading} />
+      <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Table 
+          columns={columns} 
+          dataSource={users} 
+          rowKey="id" 
+          loading={loading}
+          scroll={{ 
+            y: tableHeight,
+            x: 'max-content' 
+          }}
+          pagination={{
+            pageSize: 20,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => 
+              range 
+                ? `${range[0]}-${range[1]} ${t('common.of')} ${total} ${t('common.items')}`
+                : `${total} ${t('common.items')}`,
+            pageSizeOptions: ['10', '20', '50', '100'],
+          }}
+        />
+      </div>
 
       {/* User Edit Modal */}
       <Modal

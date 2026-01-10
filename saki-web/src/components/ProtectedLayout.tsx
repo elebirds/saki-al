@@ -60,6 +60,22 @@ const ProtectedLayout: React.FC = () => {
     i18n.changeLanguage(lng);
   };
 
+  // 根据当前路径确定选中的菜单项
+  const getSelectedKeys = () => {
+    const pathname = location.pathname;
+    if (pathname === '/users') {
+      return ['3'];
+    } else if (pathname === '/roles') {
+      return ['4'];
+    } else if (pathname === '/about') {
+      return ['2'];
+    } else if (pathname === '/' || pathname.startsWith('/datasets') || pathname.startsWith('/workspace')) {
+      return ['1'];
+    }
+    // 默认选中数据集
+    return ['1'];
+  };
+
   return (
     <Layout className="layout" style={{ height: '100vh', overflow: 'hidden' }}>
       <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -70,7 +86,7 @@ const ProtectedLayout: React.FC = () => {
           <Menu
             theme="dark"
             mode="horizontal"
-            defaultSelectedKeys={['1']}
+            selectedKeys={getSelectedKeys()}
             items={[
               { key: '1', label: <Link to="/">{t('app.datasets')}</Link> },
               ...(canManageUsers

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result, Card, Typography, Divider } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { Role, RoleCreate, RoleUpdate, RolePermissionCreate, RoleType } from '../../types';
@@ -147,6 +147,8 @@ const RoleManagement: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleTypeFilter, setRoleTypeFilter] = useState<RoleType | 'all'>('all');
+  const [tableHeight, setTableHeight] = useState<number>(500);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
   const [form] = Form.useForm();
 
   // Permission checks
@@ -174,6 +176,31 @@ const RoleManagement: React.FC = () => {
       fetchRoles(roleTypeFilter === 'all' ? undefined : roleTypeFilter);
     }
   }, [permissionLoading, canReadRoles, roleTypeFilter]);
+
+  // 计算表格高度
+  useEffect(() => {
+    const updateTableHeight = () => {
+      if (tableContainerRef.current) {
+        const containerHeight = tableContainerRef.current.clientHeight;
+        // 减去：表格头部(约55px) + 分页器(约64px)
+        const calculatedHeight = containerHeight - 119;
+        setTableHeight(Math.max(300, calculatedHeight)); // 最小高度300px
+      }
+    };
+
+    // 使用 setTimeout 确保 DOM 已渲染
+    const timeoutId = setTimeout(updateTableHeight, 0);
+    window.addEventListener('resize', updateTableHeight);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', updateTableHeight);
+    };
+  }, [roles, roleTypeFilter, loading]); // 当数据或加载状态变化时重新计算
+
+  // 过滤显示的角色
+  const filteredRoles = roleTypeFilter === 'all' 
+    ? roles 
+    : roles.filter(r => r.type === roleTypeFilter);
 
   const handleAdd = () => {
     setEditingRole(null);
@@ -398,15 +425,10 @@ const RoleManagement: React.FC = () => {
     );
   }
 
-  // 过滤显示的角色
-  const filteredRoles = roleTypeFilter === 'all' 
-    ? roles 
-    : roles.filter(r => r.type === roleTypeFilter);
-
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2>{t('roleManagement.title')}</h2>
+    <div style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <h2 style={{ margin: 0 }}>{t('roleManagement.title')}</h2>
         <Space>
           <Select
             value={roleTypeFilter}
@@ -430,26 +452,28 @@ const RoleManagement: React.FC = () => {
           )}
         </Space>
       </div>
-      <Table 
-        columns={columns} 
-        dataSource={filteredRoles} 
-        rowKey="id" 
-        loading={loading}
-        scroll={{ 
-          y: 'calc(100vh - 320px)', 
-          x: 'max-content' 
-        }}
-        pagination={{
-          pageSize: 20,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => 
-            range 
-              ? `${range[0]}-${range[1]} ${t('common.of')} ${total} ${t('common.items')}`
-              : `${total} ${t('common.items')}`,
-          pageSizeOptions: ['10', '20', '50', '100'],
-        }}
-      />
+      <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Table 
+          columns={columns} 
+          dataSource={filteredRoles} 
+          rowKey="id" 
+          loading={loading}
+          scroll={{ 
+            y: tableHeight,
+            x: 'max-content' 
+          }}
+          pagination={{
+            pageSize: 20,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => 
+              range 
+                ? `${range[0]}-${range[1]} ${t('common.of')} ${total} ${t('common.items')}`
+                : `${total} ${t('common.items')}`,
+            pageSizeOptions: ['10', '20', '50', '100'],
+          }}
+        />
+      </div>
 
       {/* Role Edit/Create Modal */}
       <Modal

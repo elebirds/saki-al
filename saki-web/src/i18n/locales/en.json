@@ -121,7 +121,8 @@
       "stepWelcome": "Welcome",
       "stepCreateAdmin": "Create Admin",
       "stepReady": "Ready"
-    }
+    },
+    "logout": "Logout"
   },
   "userManagement": {
     "title": "User Management",
@@ -489,6 +490,35 @@
       "annotationManagementSelf": "Annotation Management (Self)",
       "annotationReadSelf": "Read Annotation (Self)",
       "annotationModifySelf": "Modify Annotation (Self)"
+    }
+  },
+  "userProfile": {
+    "title": "User Profile",
+    "basicInfo": "Basic Information",
+    "systemRoles": "System Roles",
+    "permissions": "Permissions",
+    "noRoles": "No roles assigned",
+    "noPermissions": "No permissions",
+    "isSuperAdmin": "Super Administrator",
+    "createdAt": "Created At",
+    "updatedAt": "Updated At",
+    "lastLoginAt": "Last Login At",
+    "fetchError": "Failed to fetch user information",
+    "userNotFound": "User information not found",
+    "permissionScope": {
+      "all": "All",
+      "assigned": "Assigned",
+      "self": "Self",
+      "owned": "Owned"
+    },
+    "permissionResources": {
+      "user": "User Management",
+      "role": "Role Management",
+      "dataset": "Dataset Management",
+      "sample": "Sample Management",
+      "label": "Label Management",
+      "annotation": "Annotation Management",
+      "system": "System Management"
     }
   }
 }

@@ -1,8 +1,9 @@
 import React from 'react';
-import { Layout, Menu, theme, Select, Button } from 'antd';
-import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Layout, Menu, theme, Select, Button, Dropdown } from 'antd';
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LogoutOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import type { MenuProps } from 'antd';
 import { useAuthStore } from '../store/authStore';
 import { api } from '../services/api';
 import { useEffect } from 'react';
@@ -13,6 +14,7 @@ const { Header, Content, Footer } = Layout;
 const ProtectedLayout: React.FC = () => {
   const { t, i18n } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     token: { colorBgContainer },
   } = theme.useToken();
@@ -76,6 +78,32 @@ const ProtectedLayout: React.FC = () => {
     return ['1'];
   };
 
+  // Handle user menu click
+  const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'profile') {
+      navigate('/profile');
+    } else if (key === 'logout') {
+      logout();
+    }
+  };
+
+  // User menu items
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: t('userProfile.title'),
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: t('auth.logout'),
+    },
+  ];
+
   return (
     <Layout className="layout" style={{ height: '100vh', overflow: 'hidden' }}>
       <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -109,8 +137,12 @@ const ProtectedLayout: React.FC = () => {
               { value: 'zh', label: '中文' },
             ]}
           />
-          <span style={{ color: 'white' }}>{user?.fullName || user?.email}</span>
-          <Button type="text" icon={<LogoutOutlined />} style={{ color: 'white' }} onClick={logout} />
+          <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
+            <Button type="text" style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <UserOutlined />
+              <span>{user?.fullName || user?.email}</span>
+            </Button>
+          </Dropdown>
         </div>
       </Header>
       <Content style={{ padding: '0 50px', marginTop: '20px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

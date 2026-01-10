@@ -53,6 +53,7 @@
       "registerLink": "立即注册！",
       "or": "或"
     },
+    "logout": "退出登录",
     "register": {
       "title": "注册",
       "subtitle": "创建您的 Saki 账户",
@@ -490,6 +491,35 @@
       "annotationManagementSelf": "标注管理（自己）",
       "annotationReadSelf": "查看标注（自己）",
       "annotationModifySelf": "修改标注（自己）"
+    }
+  },
+  "userProfile": {
+    "title": "个人信息",
+    "basicInfo": "基本信息",
+    "systemRoles": "系统角色",
+    "permissions": "权限",
+    "noRoles": "暂无角色",
+    "noPermissions": "暂无权限",
+    "isSuperAdmin": "超级管理员",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+    "lastLoginAt": "最后登录时间",
+    "fetchError": "获取用户信息失败",
+    "userNotFound": "用户信息未找到",
+    "permissionScope": {
+      "all": "全局",
+      "assigned": "成员",
+      "self": "自己",
+      "owned": "拥有"
+    },
+    "permissionResources": {
+      "user": "用户管理",
+      "role": "角色管理",
+      "dataset": "数据集管理",
+      "sample": "样本管理",
+      "label": "标签管理",
+      "annotation": "标注管理",
+      "system": "系统管理"
     }
   }
 }

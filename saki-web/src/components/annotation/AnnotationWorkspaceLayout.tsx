@@ -9,8 +9,8 @@ import { Layout } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { LoadingState, EmptyState } from '../common';
 import { SampleList, AnnotationToolbar, AnnotationSidebar } from './index';
-import { Sample, Label } from '../../types';
-import { AnnotationLike, UseAnnotationStateReturn } from '../../hooks';
+import { Sample, Label, Annotation } from '../../types';
+import { AnnotationLike, UseAnnotationStateReturn, AccessScope } from '../../hooks';
 
 const { Content, Sider } = Layout;
 
@@ -47,6 +47,12 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
   canvasArea: ReactNode;
   sidebarExtra?: ReactNode;
   renderAnnotationItem?: (annotation: any, index: number) => ReactNode;
+  
+  // 权限控制
+  currentUserId?: string;
+  modifyScope?: AccessScope;
+  canEditAnnotation?: (annotation: Annotation) => boolean;
+  hasAnyEditPermission?: boolean;
 }
 
 export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
@@ -71,6 +77,11 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
   canvasArea,
   sidebarExtra,
   renderAnnotationItem,
+  // 权限控制
+  currentUserId,
+  modifyScope = 'assigned',
+  canEditAnnotation,
+  hasAnyEditPermission = true,
 }: AnnotationWorkspaceLayoutProps<T>) {
   const { t } = useTranslation();
 
@@ -119,6 +130,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
             isSyncing,
             isSyncReady,
           }}
+          hasAnyEditPermission={hasAnyEditPermission}
         />
 
         {/* Canvas Area */}
@@ -148,6 +160,9 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
         onNext={onNext}
         onSubmit={onSubmit}
         renderAnnotationItem={renderAnnotationItem}
+        currentUserId={currentUserId}
+        canEditAnnotation={canEditAnnotation}
+        hasAnyEditPermission={hasAnyEditPermission}
       />
       {sidebarExtra}
     </Layout>

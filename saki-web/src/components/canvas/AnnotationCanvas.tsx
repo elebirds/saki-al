@@ -50,6 +50,8 @@ export interface AnnotationCanvasProps extends AnnotationCanvasCallbacks {
   selectedId: string | null;
   /** 所有应该被选中的标注 ID 集合（用于关联标注的高亮显示） */
   selectedAnnotationIds?: Set<string>;
+  /** 检查单个标注是否可编辑 */
+  canEditAnnotation?: (annotation: Annotation) => boolean;
 }
 
 export type { AnnotationCreateEvent, ToolType };
@@ -77,6 +79,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
   onAnnotationUpdate,
   onAnnotationDelete,
   onSelect,
+  canEditAnnotation,
 }, ref) => {
   // ========== Refs ==========
   const containerRef = useRef<HTMLDivElement>(null);
@@ -161,6 +164,8 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
           {annotations.map(ann => {
             // 判断标注是否被选中：要么是主选中标注，要么在 selectedAnnotationIds 中
             const isSelected = selectedId === ann.id || (selectedAnnotationIds?.has(ann.id) ?? false);
+            // 检查是否可编辑此标注
+            const canEdit = canEditAnnotation ? canEditAnnotation(ann) : true;
             return (
               <AnnotationItem
                 key={ann.id}
@@ -173,6 +178,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
                 currentTool={currentTool}
                 onSelect={id => onSelect?.(id)}
                 onUpdate={updated => onAnnotationUpdate?.(updated)}
+                canEdit={canEdit}
               />
             );
           })}
@@ -195,6 +201,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
             selectedAnnotation={selectedAnnotation}
             currentTool={currentTool}
             image={image}
+            canEdit={selectedAnnotation ? (canEditAnnotation ? canEditAnnotation(selectedAnnotation) : true) : true}
           />
         </Layer>
       </Stage>

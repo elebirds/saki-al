@@ -20,6 +20,7 @@ export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
     type: dual.primary.type as AnnotationType,
     source: 'manual',
     data: dual.primary.bbox,
+    annotatorId: dual.annotatorId,
     extra: {
       view: VIEW_TIME_ENERGY, // 默认主标注在 Time-Energy 视图
     },
@@ -46,6 +47,7 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
     labelId: ann.labelId,
     labelName: ann.labelName || '',
     labelColor: ann.labelColor || '#ff0000',
+    annotatorId: ann.annotatorId,
     primary: {
       type: ann.type as 'rect' | 'obb',
       bbox,
@@ -62,7 +64,8 @@ export function generatedToAnnotations(
   parentId: string,
   labelId: string,
   labelName: string,
-  labelColor: string
+  labelColor: string,
+  annotatorId?: string | null
 ): Annotation[] {
   return generated.map((gen) => {
     const data = gen.data || {};
@@ -86,6 +89,7 @@ export function generatedToAnnotations(
       type: type,
       source: (gen.source || 'auto') as any,
       data: bboxData,
+      annotatorId: gen.annotator_id || annotatorId,
       extra: {
         parent_id: parentId,
         view: view,

@@ -23,7 +23,7 @@ export interface DualCanvasAreaProps {
   annotations: Annotation[];
   
   // 标注操作
-  onAnnotationCreate: (event: {
+  onAnnotationCreate?: (event: {
     type: 'rect' | 'obb';
     bbox: { x: number; y: number; width: number; height: number; rotation?: number };
     view: string; // 'time-energy' 或 'L-omegad'
@@ -40,6 +40,9 @@ export interface DualCanvasAreaProps {
   
   // 当前选中标注的映射区域
   currentMappedRegions: MappedRegion[];
+  
+  // 权限控制
+  canEditAnnotation?: (annotation: Annotation) => boolean;
 }
 
 export interface DualCanvasAreaRef {
@@ -61,6 +64,7 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
   selectedAnnotationIds,
   onSelect,
   currentMappedRegions,
+  canEditAnnotation,
 }, ref) => {
   const timeEnergyCanvasRef = useRef<AnnotationCanvasRef>(null);
   const lWdCanvasRef = useRef<AnnotationCanvasRef>(null);
@@ -150,7 +154,7 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
           ref={timeEnergyCanvasRef}
           imageUrl={timeEnergyImageUrl}
           annotations={timeEnergyAnnotations}
-          onAnnotationCreate={handleTimeEnergyCreate}
+          onAnnotationCreate={onAnnotationCreate ? handleTimeEnergyCreate : undefined}
           onAnnotationUpdate={onAnnotationUpdate}
           onAnnotationDelete={onAnnotationDelete}
           currentTool={currentTool}
@@ -158,6 +162,7 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
           selectedId={selectedId}
           selectedAnnotationIds={selectedAnnotationIds}
           onSelect={onSelect}
+          canEditAnnotation={canEditAnnotation}
         />
       </div>
 
@@ -189,7 +194,7 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
           ref={lWdCanvasRef}
           imageUrl={lWdImageUrl}
           annotations={lOmegadAnnotations}
-          onAnnotationCreate={handleLOmegadCreate}
+          onAnnotationCreate={onAnnotationCreate ? handleLOmegadCreate : undefined}
           onAnnotationUpdate={onAnnotationUpdate}
           onAnnotationDelete={onAnnotationDelete}
           currentTool={currentTool}
@@ -197,6 +202,7 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
           selectedId={selectedId}
           selectedAnnotationIds={selectedAnnotationIds}
           onSelect={onSelect}
+          canEditAnnotation={canEditAnnotation}
         />
         {/* Mapped regions count indicator */}
         {currentMappedRegions.length > 0 && (

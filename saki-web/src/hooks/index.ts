@@ -15,8 +15,8 @@ export type { AnnotationLike, UseAnnotationStateReturn, UseAnnotationStateOption
 export type { UseAnnotationSyncReturn, UseAnnotationSyncOptions } from './annotation/useAnnotationSync';
 export type { UseAnnotationShortcutsOptions } from './annotation/useAnnotationShortcuts';
 export type { UseAnnotationSubmitReturn, UseAnnotationSubmitOptions } from './annotation/useAnnotationSubmit';
-export type { UseClassicAnnotationsReturn, UseClassicAnnotationsOptions } from './annotation/useClassicAnnotations';
-export type { UseFedoAnnotationsReturn, UseFedoAnnotationsOptions } from './annotation/useFedoAnnotations';
+export type { UseClassicAnnotationsReturn, UseClassicAnnotationsOptions, AccessScope } from './annotation/useClassicAnnotations';
+export type { UseFedoAnnotationsReturn, UseFedoAnnotationsOptions, AccessScope as FedoAccessScope } from './annotation/useFedoAnnotations';
 export type { UseFedoSubmitReturn, UseFedoSubmitOptions } from './annotation/useFedoSubmit';
 export type { UseWorkspaceCommonReturn, UseWorkspaceCommonOptions } from './annotation/useWorkspaceCommon';
 

@@ -33,13 +33,13 @@ class ResourceMember(SQLModel, table=True):
             name='uq_resource_member'
         ),
     )
-    
+
     id: str = Field(
         default_factory=lambda: str(uuid4()),
         primary_key=True,
         description="Unique identifier"
     )
-    
+
     # Resource identification
     resource_type: ResourceType = Field(
         index=True,
@@ -49,20 +49,20 @@ class ResourceMember(SQLModel, table=True):
         index=True,
         description="ID of the resource"
     )
-    
+
     # User
     user_id: str = Field(
         foreign_key="user.id",
         index=True,
         description="User ID"
     )
-    
+
     # Role
     role_id: str = Field(
         foreign_key="role.id",
         description="Resource role ID"
     )
-    
+
     # Metadata
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
@@ -77,7 +77,7 @@ class ResourceMember(SQLModel, table=True):
         default=None,
         description="Last update time"
     )
-    
+
     # Relationships
     user: "User" = Relationship(
         back_populates="resource_memberships",
@@ -109,11 +109,11 @@ class ResourceMemberRead(SQLModel):
     created_at: datetime
     created_by: Optional[str] = None
     updated_at: Optional[datetime] = None
-    
+
     # User details
     user_email: Optional[str] = None
     user_full_name: Optional[str] = None
-    
+
     # Role details
     role_name: Optional[str] = None
     role_display_name: Optional[str] = None

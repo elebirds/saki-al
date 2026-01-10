@@ -7,15 +7,19 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from saki_api.api import deps
+from sqlalchemy import func
+from sqlmodel import Session, select
+
+from saki_api.core.rbac import require_permission
+from saki_api.core.rbac.dependencies import get_label_dataset_id
+
 from saki_api.db.session import get_session
 from saki_api.models import (
     Label, LabelCreate, LabelRead, LabelUpdate,
     Dataset, Annotation,
+    ResourceType, Permissions,
 )
 from saki_api.models.user import User
-from sqlalchemy import func
-from sqlmodel import Session, select
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +34,11 @@ router = APIRouter()
 def list_labels(
         dataset_id: str,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        _current_user: User = Depends(require_permission(
+            Permissions.LABEL_READ,
+            ResourceType.DATASET,
+            "dataset_id"
+        ))
 ):
     """
     List all labels for a dataset with annotation counts.
@@ -65,7 +73,11 @@ def create_label(
         dataset_id: str,
         label_in: LabelCreate,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        _current_user: User = Depends(require_permission(
+            Permissions.LABEL_CREATE,
+            ResourceType.DATASET,
+            "dataset_id"
+        ))
 ):
     """
     Create a new label for a dataset.
@@ -106,7 +118,12 @@ def create_label(
 def get_label(
         label_id: str,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        _current_user: User = Depends(require_permission(
+            Permissions.LABEL_READ,
+            ResourceType.DATASET,
+            "label_id",
+            get_label_dataset_id,
+        ))
 ):
     """
     Get a label by ID.
@@ -130,7 +147,12 @@ def update_label(
         label_id: str,
         label_in: LabelUpdate,
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        _current_user: User = Depends(require_permission(
+            Permissions.LABEL_UPDATE,
+            ResourceType.DATASET,
+            "label_id",
+            get_label_dataset_id,
+        ))
 ):
     """
     Update a label (name, color, etc.).
@@ -178,7 +200,12 @@ def delete_label(
         label_id: str,
         force: bool = Query(False, description="Force delete even if label has annotations"),
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        _current_user: User = Depends(require_permission(
+            Permissions.LABEL_DELETE,
+            ResourceType.DATASET,
+            "label_id",
+            get_label_dataset_id,
+        ))
 ):
     """
     Delete a label.
@@ -234,7 +261,11 @@ def create_labels_batch(
         dataset_id: str,
         labels_in: List[LabelCreate],
         session: Session = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user)
+        _current_user: User = Depends(require_permission(
+            Permissions.LABEL_CREATE,
+            ResourceType.DATASET,
+            "dataset_id"
+        ))
 ):
     """
     Create multiple labels at once for a dataset.

@@ -29,7 +29,7 @@ class RolePermission(SQLModel, table=True):
     Permission format: resource:action:scope (e.g., "dataset:read:owned")
     """
     __tablename__ = "role_permission"
-    
+
     id: str = Field(
         default_factory=lambda: str(uuid4()),
         primary_key=True,
@@ -49,7 +49,7 @@ class RolePermission(SQLModel, table=True):
         sa_column=Column(JSON),
         description="Optional conditions for ABAC-style constraints"
     )
-    
+
     # Relationship
     role: "Role" = Relationship(back_populates="permissions")
 
@@ -65,13 +65,13 @@ class Role(SQLModel, table=True):
     - System preset protection
     """
     __tablename__ = "role"
-    
+
     id: str = Field(
         default_factory=lambda: str(uuid4()),
         primary_key=True,
         description="Unique identifier"
     )
-    
+
     # Basic info
     name: str = Field(
         unique=True,
@@ -88,20 +88,20 @@ class Role(SQLModel, table=True):
         max_length=500,
         description="Role description"
     )
-    
+
     # Role type
     type: RoleType = Field(
         default=RoleType.RESOURCE,
         description="Role type: system (global) or resource (per-resource)"
     )
-    
+
     # Inheritance
     parent_id: Optional[str] = Field(
         default=None,
         foreign_key="role.id",
         description="Parent role ID for inheritance"
     )
-    
+
     # System protection
     is_system: bool = Field(
         default=False,
@@ -111,13 +111,21 @@ class Role(SQLModel, table=True):
         default=False,
         description="Whether this is the default role for new users"
     )
-    
+    is_super_admin: bool = Field(
+        default=False,
+        description="Whether this is the super administrator role (cannot be assigned/revoked/deleted except by super admin)"
+    )
+    is_admin: bool = Field(
+        default=False,
+        description="Whether this is the administrator role (can only be assigned/revoked by super admin)"
+    )
+
     # Ordering
     sort_order: int = Field(
         default=0,
         description="Display order"
     )
-    
+
     # Timestamps
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
@@ -127,7 +135,7 @@ class Role(SQLModel, table=True):
         default=None,
         description="Last update time"
     )
-    
+
     # Relationships
     permissions: List["RolePermission"] = Relationship(
         back_populates="role",
@@ -181,6 +189,8 @@ class RoleRead(SQLModel):
     parent_id: Optional[str] = None
     is_system: bool
     is_default: bool
+    is_super_admin: bool
+    is_admin: bool
     sort_order: int
     created_at: datetime
     updated_at: Optional[datetime] = None

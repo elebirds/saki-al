@@ -21,13 +21,13 @@ class AuditLog(SQLModel, table=True):
     Records all permission-related operations for security auditing.
     """
     __tablename__ = "audit_log"
-    
+
     id: str = Field(
         default_factory=lambda: str(uuid4()),
         primary_key=True,
         description="Unique identifier"
     )
-    
+
     # Actor (who performed the action)
     actor_id: Optional[str] = Field(
         default=None,
@@ -35,13 +35,13 @@ class AuditLog(SQLModel, table=True):
         index=True,
         description="User who performed the action"
     )
-    
+
     # Action
     action: AuditAction = Field(
         index=True,
         description="Type of action"
     )
-    
+
     # Target
     target_type: str = Field(
         max_length=50,
@@ -51,7 +51,7 @@ class AuditLog(SQLModel, table=True):
         max_length=100,
         description="ID of the target"
     )
-    
+
     # Change details
     old_value: Optional[dict] = Field(
         default=None,
@@ -63,7 +63,7 @@ class AuditLog(SQLModel, table=True):
         sa_column=Column(JSON),
         description="New value (for creates/updates)"
     )
-    
+
     # Context
     ip_address: Optional[str] = Field(
         default=None,
@@ -75,7 +75,7 @@ class AuditLog(SQLModel, table=True):
         max_length=500,
         description="Client user agent"
     )
-    
+
     # Timestamp
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
@@ -100,6 +100,6 @@ class AuditLogRead(SQLModel):
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     created_at: datetime
-    
+
     # Actor details (joined)
     actor_email: Optional[str] = None

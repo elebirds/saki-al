@@ -290,7 +290,16 @@
     },
     "noSamples": "此数据集暂无样本",
     "back": "返回",
-    "backToDataset": "返回到数据集界面"
+    "backToDataset": "返回到数据集界面",
+    "noEditPermission": "您没有编辑权限",
+    "cannotEditOthersAnnotation": "您只能编辑自己的标注",
+    "cannotDeleteOthersAnnotation": "您只能删除自己的标注",
+    "readOnly": "只读",
+    "annotationSource": {
+      "mine": "我的标注",
+      "others": "他人标注",
+      "auto": "自动生成"
+    }
   },
   "annotation": {
     "saved": "保存成功",

@@ -289,7 +289,16 @@
     },
     "noSamples": "No samples found for this dataset",
     "back": "Back",
-    "backToDataset": "Back to dataset"
+    "backToDataset": "Back to dataset",
+    "noEditPermission": "You do not have edit permission",
+    "cannotEditOthersAnnotation": "You can only edit your own annotations",
+    "cannotDeleteOthersAnnotation": "You can only delete your own annotations",
+    "readOnly": "Read-only",
+    "annotationSource": {
+      "mine": "My annotation",
+      "others": "Others' annotation",
+      "auto": "Auto-generated"
+    }
   },
   "annotation": {
     "saved": "Saved",

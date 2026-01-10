@@ -4,6 +4,7 @@ from typing import Any, Union
 
 from jose import jwt
 from passlib.context import CryptContext
+
 from saki_api.core.config import settings
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")

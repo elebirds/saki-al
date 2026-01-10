@@ -1,9 +1,10 @@
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
-from saki_api.models.base import TimestampMixin, UUIDMixin
-from saki_api.models.enums import TaskType, ProjectStatus
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel, Relationship
+
+from saki_api.models.base import TimestampMixin, UUIDMixin
+from saki_api.models.enums import TaskType, ProjectStatus
 
 if TYPE_CHECKING:
     from saki_api.models.system_config import QueryStrategy, BaseModel

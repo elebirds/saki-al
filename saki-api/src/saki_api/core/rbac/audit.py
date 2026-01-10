@@ -4,22 +4,23 @@ Audit Logging for RBAC
 Provides functions to log permission-related events.
 """
 
-from typing import Optional, Any
+from typing import Optional
+
 from sqlmodel import Session
 
 from saki_api.models.rbac import AuditLog, AuditAction
 
 
 def log_audit(
-    session: Session,
-    action: AuditAction,
-    target_type: str,
-    target_id: str,
-    actor_id: Optional[str] = None,
-    old_value: Optional[dict] = None,
-    new_value: Optional[dict] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None,
+        session: Session,
+        action: AuditAction,
+        target_type: str,
+        target_id: str,
+        actor_id: Optional[str] = None,
+        old_value: Optional[dict] = None,
+        new_value: Optional[dict] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
 ) -> AuditLog:
     """
     Log an audit event.
@@ -64,11 +65,11 @@ def log_audit(
 
 
 def log_role_create(
-    session: Session,
-    role_id: str,
-    role_data: dict,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        role_id: str,
+        role_data: dict,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a role creation event."""
     return log_audit(
@@ -83,12 +84,12 @@ def log_role_create(
 
 
 def log_role_update(
-    session: Session,
-    role_id: str,
-    old_data: dict,
-    new_data: dict,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        role_id: str,
+        old_data: dict,
+        new_data: dict,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a role update event."""
     return log_audit(
@@ -104,11 +105,11 @@ def log_role_update(
 
 
 def log_role_delete(
-    session: Session,
-    role_id: str,
-    role_data: dict,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        role_id: str,
+        role_data: dict,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a role deletion event."""
     return log_audit(
@@ -123,11 +124,11 @@ def log_role_delete(
 
 
 def log_user_role_assign(
-    session: Session,
-    user_id: str,
-    role_id: str,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        user_id: str,
+        role_id: str,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a user role assignment event."""
     return log_audit(
@@ -142,11 +143,11 @@ def log_user_role_assign(
 
 
 def log_user_role_revoke(
-    session: Session,
-    user_id: str,
-    role_id: str,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        user_id: str,
+        role_id: str,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a user role revocation event."""
     return log_audit(
@@ -161,13 +162,13 @@ def log_user_role_revoke(
 
 
 def log_member_add(
-    session: Session,
-    resource_type: str,
-    resource_id: str,
-    user_id: str,
-    role_id: str,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        resource_type: str,
+        resource_id: str,
+        user_id: str,
+        role_id: str,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a member addition event."""
     return log_audit(
@@ -187,14 +188,14 @@ def log_member_add(
 
 
 def log_member_update(
-    session: Session,
-    resource_type: str,
-    resource_id: str,
-    user_id: str,
-    old_role_id: str,
-    new_role_id: str,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        resource_type: str,
+        resource_id: str,
+        user_id: str,
+        old_role_id: str,
+        new_role_id: str,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a member role update event."""
     return log_audit(
@@ -210,13 +211,13 @@ def log_member_update(
 
 
 def log_member_remove(
-    session: Session,
-    resource_type: str,
-    resource_id: str,
-    user_id: str,
-    role_id: str,
-    actor_id: str,
-    **kwargs
+        session: Session,
+        resource_type: str,
+        resource_id: str,
+        user_id: str,
+        role_id: str,
+        actor_id: str,
+        **kwargs
 ) -> AuditLog:
     """Log a member removal event."""
     return log_audit(
@@ -236,12 +237,12 @@ def log_member_remove(
 
 
 def log_permission_denied(
-    session: Session,
-    user_id: str,
-    permission: str,
-    resource_type: Optional[str] = None,
-    resource_id: Optional[str] = None,
-    **kwargs
+        session: Session,
+        user_id: str,
+        permission: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        **kwargs
 ) -> AuditLog:
     """Log a permission denied event (for security auditing)."""
     return log_audit(

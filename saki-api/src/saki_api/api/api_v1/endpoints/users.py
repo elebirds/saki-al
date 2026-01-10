@@ -4,7 +4,6 @@ API endpoints for User management.
 Uses the new RBAC system for permission checking.
 """
 
-from datetime import datetime
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,9 +18,8 @@ from saki_api.core.rbac import (
 )
 from saki_api.core.rbac.presets import get_default_role
 from saki_api.models import (
-    User, UserCreate, UserRead, UserUpdate,
-    Role, RoleType,
-    UserSystemRole,
+    User, UserCreate, UserRead, UserUpdate, UserListItem,
+    Role, UserSystemRole,
     Permissions,
 )
 
@@ -30,8 +28,8 @@ router = APIRouter()
 
 @router.get("/me", response_model=UserRead)
 def read_user_me(
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user),
 ) -> Any:
     """
     Get current user.
@@ -39,15 +37,36 @@ def read_user_me(
     return _build_user_read(current_user, session)
 
 
-@router.get("/", response_model=List[UserRead])
-def read_users(
-    session: Session = Depends(get_session),
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(require_permission(Permissions.USER_READ)),
+@router.get("/list", response_model=List[UserListItem])
+def list_users_simple(
+        session: Session = Depends(get_session),
+        skip: int = 0,
+        limit: int = 100,
+        current_user: User = Depends(require_permission(Permissions.USER_LIST)),
 ) -> Any:
     """
-    Retrieve users.
+    List users with basic info only (for member selection).
+    
+    Requires user:list permission (not full user:read).
+    """
+    users = session.exec(select(User).where(User.is_active == True).offset(skip).limit(limit)).all()
+    return [
+        UserListItem(id=u.id, email=u.email, full_name=u.full_name)
+        for u in users
+    ]
+
+
+@router.get("/", response_model=List[UserRead])
+def read_users(
+        session: Session = Depends(get_session),
+        skip: int = 0,
+        limit: int = 100,
+        current_user: User = Depends(require_permission(Permissions.USER_READ)),
+) -> Any:
+    """
+    Retrieve users with full details.
+    
+    Requires user:read permission (admin level).
     """
     users = session.exec(select(User).offset(skip).limit(limit)).all()
     return [_build_user_read(u, session) for u in users]
@@ -55,11 +74,10 @@ def read_users(
 
 @router.post("/", response_model=UserRead)
 def create_user(
-    *,
-    session: Session = Depends(get_session),
-    user_in: UserCreate,
-    current_user: User = Depends(require_permission(Permissions.USER_CREATE)),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        *,
+        session: Session = Depends(get_session),
+        user_in: UserCreate,
+        current_user: User = Depends(require_permission(Permissions.USER_CREATE))
 ) -> Any:
     """
     Create new user.
@@ -98,12 +116,12 @@ def create_user(
 
 @router.put("/{user_id}", response_model=UserRead)
 def update_user(
-    *,
-    session: Session = Depends(get_session),
-    user_id: str,
-    user_in: UserUpdate,
-    current_user: User = Depends(require_permission(Permissions.USER_UPDATE)),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        *,
+        session: Session = Depends(get_session),
+        user_id: str,
+        user_in: UserUpdate,
+        current_user: User = Depends(require_permission(Permissions.USER_UPDATE)),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ) -> Any:
     """
     Update a user.
@@ -141,11 +159,11 @@ def update_user(
 
 @router.delete("/{user_id}", response_model=UserRead)
 def delete_user(
-    *,
-    session: Session = Depends(get_session),
-    user_id: str,
-    current_user: User = Depends(require_permission(Permissions.USER_DELETE)),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        *,
+        session: Session = Depends(get_session),
+        user_id: str,
+        current_user: User = Depends(require_permission(Permissions.USER_DELETE)),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ) -> Any:
     """
     Delete a user.

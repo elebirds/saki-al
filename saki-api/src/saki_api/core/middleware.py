@@ -9,9 +9,10 @@ from typing import Callable
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from saki_api.core.response import success_response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+from saki_api.core.response import success_response
 
 
 class ResponseWrapperMiddleware(BaseHTTPMiddleware):
@@ -25,11 +26,18 @@ class ResponseWrapperMiddleware(BaseHTTPMiddleware):
     4. 排除静态文件、OpenAPI文档等路径
     """
 
-    EXCLUDED_PATHS = ["/docs", "/redoc", "/openapi.json", "/static"]
+    EXCLUDED_PATHS = ["/docs", "/redoc", "/static"]
+    EXCLUDED_SUFFIXES = ["/openapi.json"]
 
     def _should_exclude(self, path: str) -> bool:
         """检查路径是否应该被排除"""
-        return any(path.startswith(excluded) for excluded in self.EXCLUDED_PATHS)
+        # 检查前缀匹配
+        if any(path.startswith(excluded) for excluded in self.EXCLUDED_PATHS):
+            return True
+        # 检查后缀匹配（用于处理 /api/v1/openapi.json 等路径）
+        if any(path.endswith(excluded) for excluded in self.EXCLUDED_SUFFIXES):
+            return True
+        return False
 
     def _clean_headers(self, headers: dict) -> dict:
         """清理响应头，移除Content-Length让FastAPI自动计算"""

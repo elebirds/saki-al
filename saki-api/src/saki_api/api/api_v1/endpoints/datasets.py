@@ -17,17 +17,14 @@ from saki_api.core.rbac import (
     require_permission,
     get_permission_checker,
     PermissionChecker,
-    PermissionContext,
 )
-from saki_api.core.rbac.dependencies import get_dataset_owner
 from saki_api.core.rbac.presets import get_dataset_owner_role
 from saki_api.models import (
     Dataset, DatasetCreate, DatasetRead, DatasetUpdate,
     Sample, SampleStatus,
     Annotation,
     User,
-    ResourceMember, ResourceType, RoleType,
-    Permissions,
+    ResourceMember, ResourceType, Permissions,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,11 +38,11 @@ router = APIRouter()
 
 @router.get("/", response_model=List[DatasetRead])
 def list_datasets(
-    skip: int = 0,
-    limit: int = 100,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        skip: int = 0,
+        limit: int = 100,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     List all datasets with sample statistics.
@@ -55,7 +52,7 @@ def list_datasets(
     - Regular user: Owned datasets + member datasets
     """
     query = select(Dataset)
-    
+
     # Apply permission-based filtering
     filtered_query = checker.filter_accessible_resources(
         user_id=current_user.id,
@@ -63,8 +60,9 @@ def list_datasets(
         required_permission="dataset:read",
         base_query=query,
         get_owner_id_column=lambda: Dataset.owner_id,
+        resource_model=Dataset,
     )
-    
+
     datasets = session.exec(filtered_query.offset(skip).limit(limit)).all()
 
     result = []
@@ -77,10 +75,10 @@ def list_datasets(
 
 @router.post("/", response_model=DatasetRead)
 def create_dataset(
-    dataset: DatasetCreate,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.DATASET_CREATE)),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        dataset: DatasetCreate,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(Permissions.DATASET_CREATE_ALL)),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     Create a new dataset for data annotation.
@@ -92,7 +90,7 @@ def create_dataset(
     db_dataset = Dataset(**dataset.model_dump(), owner_id=current_user.id)
     session.add(db_dataset)
     session.flush()  # Get dataset ID
-    
+
     # Assign owner role to creator
     owner_role = get_dataset_owner_role(session)
     if owner_role:
@@ -104,7 +102,7 @@ def create_dataset(
             created_by=current_user.id,
         )
         session.add(member)
-    
+
     session.commit()
     session.refresh(db_dataset)
 
@@ -113,15 +111,14 @@ def create_dataset(
 
 @router.get("/{dataset_id}", response_model=DatasetRead)
 def get_dataset(
-    dataset_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(
-        Permissions.DATASET_READ,
-        ResourceType.DATASET,
-        "dataset_id",
-        get_dataset_owner
-    )),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        dataset_id: str,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(
+            Permissions.DATASET_READ,
+            ResourceType.DATASET,
+            "dataset_id"
+        )),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     Get dataset by ID with sample statistics.
@@ -135,16 +132,15 @@ def get_dataset(
 
 @router.put("/{dataset_id}", response_model=DatasetRead)
 def update_dataset(
-    dataset_id: str,
-    dataset_in: DatasetUpdate,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(
-        Permissions.DATASET_UPDATE,
-        ResourceType.DATASET,
-        "dataset_id",
-        get_dataset_owner
-    )),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        dataset_id: str,
+        dataset_in: DatasetUpdate,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(
+            Permissions.DATASET_UPDATE,
+            ResourceType.DATASET,
+            "dataset_id"
+        )),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """
     Update a dataset.
@@ -166,14 +162,13 @@ def update_dataset(
 
 @router.delete("/{dataset_id}")
 def delete_dataset(
-    dataset_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(
-        Permissions.DATASET_DELETE,
-        ResourceType.DATASET,
-        "dataset_id",
-        get_dataset_owner
-    )),
+        dataset_id: str,
+        session: Session = Depends(get_session),
+        _current_user: User = Depends(require_permission(
+            Permissions.DATASET_DELETE,
+            ResourceType.DATASET,
+            "dataset_id"
+        )),
 ):
     """
     Delete a dataset and all its samples and annotations.
@@ -227,14 +222,13 @@ def delete_dataset(
 
 @router.get("/{dataset_id}/stats")
 def get_dataset_stats(
-    dataset_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(
-        Permissions.DATASET_READ,
-        ResourceType.DATASET,
-        "dataset_id",
-        get_dataset_owner
-    ))
+        dataset_id: str,
+        session: Session = Depends(get_session),
+        _current_user: User = Depends(require_permission(
+            Permissions.DATASET_READ,
+            ResourceType.DATASET,
+            "dataset_id"
+        ))
 ) -> Dict[str, Any]:
     """
     Get detailed statistics for a dataset.
@@ -303,16 +297,15 @@ def get_dataset_stats(
 
 @router.get("/{dataset_id}/export")
 def export_dataset(
-    dataset_id: str,
-    format: str = "json",
-    include_unlabeled: bool = False,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(
-        Permissions.DATASET_EXPORT,
-        ResourceType.DATASET,
-        "dataset_id",
-        get_dataset_owner
-    ))
+        dataset_id: str,
+        format: str = "json",
+        include_unlabeled: bool = False,
+        session: Session = Depends(get_session),
+        _current_user: User = Depends(require_permission(
+            Permissions.DATASET_EXPORT,
+            ResourceType.DATASET,
+            "dataset_id"
+        ))
 ) -> Dict[str, Any]:
     """
     Export dataset annotations in various formats.
@@ -376,10 +369,10 @@ def export_dataset(
 # ============================================================================
 
 def _build_dataset_read(
-    dataset: Dataset,
-    user_id: str,
-    session: Session,
-    checker: PermissionChecker
+        dataset: Dataset,
+        user_id: str,
+        session: Session,
+        checker: PermissionChecker
 ) -> DatasetRead:
     """Build DatasetRead with statistics and user role."""
     # Calculate sample statistics
@@ -401,12 +394,19 @@ def _build_dataset_read(
     if role:
         user_role = role.name
 
+    # Get owner name
+    owner_name = None
+    owner = session.get(User, dataset.owner_id)
+    if owner:
+        owner_name = owner.full_name or owner.email
+
     return DatasetRead(
         id=dataset.id,
         name=dataset.name,
         description=dataset.description,
         annotation_system=dataset.annotation_system,
         owner_id=dataset.owner_id,
+        owner_name=owner_name,
         created_at=str(dataset.created_at),
         updated_at=str(dataset.updated_at),
         sample_count=sample_count,

@@ -75,6 +75,7 @@ export interface Dataset {
   
   // Owner information
   ownerId: string;
+  ownerName?: string;
   
   createdAt: string;
   updatedAt?: string;
@@ -153,6 +154,7 @@ export interface DualViewAnnotation {
   labelId: string;
   labelName: string;  // For display convenience
   labelColor: string; // For display convenience
+  annotatorId?: string | null;  // ID of the user who created the annotation
   // Primary view (Time-Energy) - always a rect or OBB
   primary: {
     type: 'rect' | 'obb';
@@ -241,6 +243,9 @@ export interface SampleAnnotationsResponse {
   datasetId: string;
   annotationSystem: string;
   annotations: Annotation[];
+  // Access scope info for UI adaptation
+  readScope: 'all' | 'assigned' | 'self' | 'none';
+  modifyScope: 'all' | 'assigned' | 'self' | 'none';
 }
 
 export interface QueryStrategy {

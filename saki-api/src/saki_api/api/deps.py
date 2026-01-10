@@ -2,10 +2,11 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from pydantic import ValidationError
+from sqlmodel import Session
+
 from saki_api.core.config import settings
 from saki_api.db.session import get_session
 from saki_api.models.user import User
-from sqlmodel import Session
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/auth/login/access-token"
@@ -34,27 +35,6 @@ def get_current_user(
         raise HTTPException(status_code=400, detail="Inactive user")
     return user
 
-
-def get_current_active_admin(
-        current_user: User = Depends(get_current_user),
-        session: Session = Depends(get_session)
-) -> User:
-    """检查用户是否为管理员（admin或super_admin角色）"""
-    # Import here to avoid circular import
-    from saki_api.core.rbac.checker import PermissionChecker
-    
-    checker = PermissionChecker(session)
-    if checker.is_super_admin(current_user.id):
-        return current_user
-    # Check if user has admin role
-    if checker.check(current_user.id, "user:read:all"):
-        return current_user
-    raise HTTPException(
-        status_code=403,
-        detail="The user doesn't have enough privileges"
-    )
-
-
 def get_current_active_superuser(
         current_user: User = Depends(get_current_user),
         session: Session = Depends(get_session)
@@ -62,7 +42,7 @@ def get_current_active_superuser(
     """检查用户是否为超级管理员"""
     # Import here to avoid circular import
     from saki_api.core.rbac.checker import PermissionChecker
-    
+
     checker = PermissionChecker(session)
     if not checker.is_super_admin(current_user.id):
         raise HTTPException(

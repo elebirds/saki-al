@@ -10,9 +10,10 @@ Datasets are independent entities that can be:
 
 from typing import List, Optional, TYPE_CHECKING
 
+from sqlmodel import Field, SQLModel, Relationship
+
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import AnnotationSystemType
-from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from saki_api.models.sample import Sample
@@ -47,7 +48,7 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
     Members are managed through the ResourceMember table.
     """
     __tablename__ = "dataset"
-    
+
     owner_id: str = Field(
         foreign_key="user.id",
         index=True,
@@ -62,7 +63,7 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
 
     # Relationship to projects through link table (many-to-many)
     project_links: List["ProjectDataset"] = Relationship(back_populates="dataset")
-    
+
     # Note: Members are now managed through ResourceMember table
     # Use ResourceMember.resource_type == 'dataset' and ResourceMember.resource_id == self.id
 
@@ -85,13 +86,14 @@ class DatasetRead(SQLModel):
     description: Optional[str] = None
     annotation_system: AnnotationSystemType
     owner_id: str = Field(description="Owner of the dataset")
+    owner_name: Optional[str] = Field(default=None, description="Owner's display name")
     created_at: str
     updated_at: str
-    
+
     # Statistics (computed)
     sample_count: int = Field(default=0, description="Number of samples in the dataset.")
     labeled_count: int = Field(default=0, description="Number of labeled samples.")
-    
+
     # Optional: current user's role in this dataset
     user_role: Optional[str] = Field(default=None, description="Current user's role in this dataset")
 

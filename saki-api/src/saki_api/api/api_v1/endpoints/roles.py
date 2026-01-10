@@ -11,12 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from saki_api.api.deps import get_current_user, get_session
+from saki_api.api.deps import get_session
 from saki_api.core.rbac import (
     require_permission,
     get_permission_checker,
     PermissionChecker,
-    log_audit,
 )
 from saki_api.core.rbac.audit import (
     log_role_create,
@@ -30,7 +29,6 @@ from saki_api.models import (
     Role, RoleType, RoleCreate, RoleRead, RoleUpdate,
     RolePermission, RolePermissionRead,
     UserSystemRole, UserSystemRoleCreate, UserSystemRoleRead,
-    AuditAction,
     Permissions,
 )
 
@@ -43,9 +41,9 @@ router = APIRouter()
 
 @router.get("/", response_model=List[RoleRead])
 def list_roles(
-    type: Optional[RoleType] = Query(None, description="Filter by role type"),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.ROLE_READ)),
+        type: Optional[RoleType] = Query(None, description="Filter by role type"),
+        session: Session = Depends(get_session),
+        _current_user: User = Depends(require_permission(Permissions.ROLE_READ)),
 ):
     """
     List all roles.
@@ -53,19 +51,19 @@ def list_roles(
     Optionally filter by type (system or resource).
     """
     query = select(Role).order_by(Role.sort_order, Role.created_at)
-    
+
     if type:
         query = query.where(Role.type == type)
-    
+
     roles = session.exec(query).all()
-    
+
     result = []
     for role in roles:
         # Get permissions for the role
         perms = session.exec(
             select(RolePermission).where(RolePermission.role_id == role.id)
         ).all()
-        
+
         role_read = RoleRead(
             id=role.id,
             name=role.name,
@@ -75,6 +73,8 @@ def list_roles(
             parent_id=role.parent_id,
             is_system=role.is_system,
             is_default=role.is_default,
+            is_super_admin=role.is_super_admin,
+            is_admin=role.is_admin,
             sort_order=role.sort_order,
             created_at=role.created_at,
             updated_at=role.updated_at,
@@ -88,25 +88,25 @@ def list_roles(
             ],
         )
         result.append(role_read)
-    
+
     return result
 
 
 @router.get("/{role_id}", response_model=RoleRead)
 def get_role(
-    role_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.ROLE_READ)),
+        role_id: str,
+        session: Session = Depends(get_session),
+        _current_user: User = Depends(require_permission(Permissions.ROLE_READ)),
 ):
     """Get a role by ID."""
     role = session.get(Role, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
-    
+
     perms = session.exec(
         select(RolePermission).where(RolePermission.role_id == role.id)
     ).all()
-    
+
     return RoleRead(
         id=role.id,
         name=role.name,
@@ -116,6 +116,8 @@ def get_role(
         parent_id=role.parent_id,
         is_system=role.is_system,
         is_default=role.is_default,
+        is_super_admin=role.is_super_admin,
+        is_admin=role.is_admin,
         sort_order=role.sort_order,
         created_at=role.created_at,
         updated_at=role.updated_at,
@@ -132,9 +134,9 @@ def get_role(
 
 @router.post("/", response_model=RoleRead)
 def create_role(
-    role_in: RoleCreate,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.ROLE_CREATE)),
+        role_in: RoleCreate,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(Permissions.ROLE_CREATE)),
 ):
     """
     Create a custom role.
@@ -147,7 +149,7 @@ def create_role(
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Role name already exists")
-    
+
     # Validate parent role exists
     if role_in.parent_id:
         parent = session.get(Role, role_in.parent_id)
@@ -158,7 +160,7 @@ def create_role(
                 status_code=400,
                 detail="Parent role must be of the same type"
             )
-    
+
     # Create role
     role = Role(
         name=role_in.name,
@@ -171,7 +173,7 @@ def create_role(
     )
     session.add(role)
     session.flush()
-    
+
     # Create permissions
     for perm_in in role_in.permissions:
         perm = RolePermission(
@@ -180,7 +182,7 @@ def create_role(
             conditions=perm_in.conditions,
         )
         session.add(perm)
-    
+
     # Audit log
     log_role_create(
         session=session,
@@ -193,19 +195,19 @@ def create_role(
         },
         actor_id=current_user.id,
     )
-    
+
     session.commit()
     session.refresh(role)
-    
+
     return get_role(role.id, session, current_user)
 
 
 @router.put("/{role_id}", response_model=RoleRead)
 def update_role(
-    role_id: str,
-    role_in: RoleUpdate,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.ROLE_UPDATE)),
+        role_id: str,
+        role_in: RoleUpdate,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(Permissions.ROLE_UPDATE)),
 ):
     """
     Update a role.
@@ -215,13 +217,13 @@ def update_role(
     role = session.get(Role, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
-    
+
     # Store old values for audit
     old_data = {
         "display_name": role.display_name,
         "description": role.description,
     }
-    
+
     # Update basic fields
     if role_in.display_name is not None:
         role.display_name = role_in.display_name
@@ -229,7 +231,7 @@ def update_role(
         role.description = role_in.description
     if role_in.sort_order is not None:
         role.sort_order = role_in.sort_order
-    
+
     # Update parent (only for non-system roles)
     if role_in.parent_id is not None and not role.is_system:
         if role_in.parent_id:
@@ -242,7 +244,7 @@ def update_role(
                     detail="Parent role must be of the same type"
                 )
         role.parent_id = role_in.parent_id
-    
+
     # Update permissions (only for non-system roles)
     if role_in.permissions is not None:
         if role.is_system:
@@ -250,14 +252,14 @@ def update_role(
                 status_code=403,
                 detail="Cannot modify permissions of system preset roles"
             )
-        
+
         # Delete old permissions
         old_perms = session.exec(
             select(RolePermission).where(RolePermission.role_id == role_id)
         ).all()
         for old_perm in old_perms:
             session.delete(old_perm)
-        
+
         # Create new permissions
         for perm_in in role_in.permissions:
             perm = RolePermission(
@@ -266,10 +268,10 @@ def update_role(
                 conditions=perm_in.conditions,
             )
             session.add(perm)
-    
+
     role.updated_at = datetime.utcnow()
     session.add(role)
-    
+
     # Audit log
     log_role_update(
         session=session,
@@ -281,17 +283,17 @@ def update_role(
         },
         actor_id=current_user.id,
     )
-    
+
     session.commit()
-    
+
     return get_role(role_id, session, current_user)
 
 
 @router.delete("/{role_id}")
 def delete_role(
-    role_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.ROLE_DELETE)),
+        role_id: str,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(Permissions.ROLE_DELETE)),
 ):
     """
     Delete a role.
@@ -302,7 +304,7 @@ def delete_role(
     role = session.get(Role, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
-    
+
     # Cannot delete system roles
     if role.is_system:
         raise HTTPException(
@@ -310,37 +312,44 @@ def delete_role(
             detail="Cannot delete system preset roles"
         )
     
+    # Cannot delete super_admin role (extra protection)
+    if role.is_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot delete super_admin role"
+        )
+
     # Check if role is in use
     user_count = session.exec(
         select(func.count()).select_from(UserSystemRole).where(
             UserSystemRole.role_id == role_id
         )
     ).one()
-    
+
     from saki_api.models.rbac import ResourceMember
     member_count = session.exec(
         select(func.count()).select_from(ResourceMember).where(
             ResourceMember.role_id == role_id
         )
     ).one()
-    
+
     if user_count > 0 or member_count > 0:
         raise HTTPException(
             status_code=400,
             detail=f"Role is in use by {user_count} users and {member_count} resource members"
         )
-    
+
     # Check if role is a parent
     child_count = session.exec(
         select(func.count()).select_from(Role).where(Role.parent_id == role_id)
     ).one()
-    
+
     if child_count > 0:
         raise HTTPException(
             status_code=400,
             detail=f"Role is a parent of {child_count} other roles"
         )
-    
+
     # Audit log
     log_role_delete(
         session=session,
@@ -352,10 +361,10 @@ def delete_role(
         },
         actor_id=current_user.id,
     )
-    
+
     session.delete(role)
     session.commit()
-    
+
     return {"ok": True, "message": "Role deleted"}
 
 
@@ -365,19 +374,19 @@ def delete_role(
 
 @router.get("/users/{user_id}/roles", response_model=List[UserSystemRoleRead])
 def get_user_roles(
-    user_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.USER_READ)),
+        user_id: str,
+        session: Session = Depends(get_session),
+        _current_user: User = Depends(require_permission(Permissions.USER_READ)),
 ):
     """Get all system roles assigned to a user."""
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     user_roles = session.exec(
         select(UserSystemRole).where(UserSystemRole.user_id == user_id)
     ).all()
-    
+
     result = []
     for ur in user_roles:
         role = session.get(Role, ur.role_id)
@@ -391,41 +400,48 @@ def get_user_roles(
             role_name=role.name if role else None,
             role_display_name=role.display_name if role else None,
         ))
-    
+
     return result
 
 
 @router.post("/users/{user_id}/roles", response_model=UserSystemRoleRead)
 def assign_user_role(
-    user_id: str,
-    role_in: UserSystemRoleCreate,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.USER_MANAGE)),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        user_id: str,
+        role_in: UserSystemRoleCreate,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(Permissions.ROLE_ASSIGN)),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """Assign a system role to a user."""
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     role = session.get(Role, role_in.role_id)
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
-    
+
     if role.type != RoleType.SYSTEM:
         raise HTTPException(
             status_code=400,
             detail="Can only assign system roles through this endpoint"
         )
-    
-    # Check if super_admin role - only super_admin can assign
-    if role.name == "super_admin":
-        if not checker.is_super_admin(current_user.id):
+
+    # Super admin role cannot be assigned by anyone, including super admins
+    if role.is_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="super_admin role cannot be assigned through this endpoint"
+        )
+
+    # Admin role requires ROLE_ASSIGN_ADMIN permission (only super admins have this)
+    if role.is_admin:
+        if not checker.check(current_user.id, Permissions.ROLE_ASSIGN_ADMIN):
             raise HTTPException(
                 status_code=403,
-                detail="Only super administrators can assign super_admin role"
+                detail="Only super administrators can assign admin roles"
             )
-    
+
     # Check if already assigned
     existing = session.exec(
         select(UserSystemRole).where(
@@ -433,13 +449,13 @@ def assign_user_role(
             UserSystemRole.role_id == role_in.role_id
         )
     ).first()
-    
+
     if existing:
         raise HTTPException(
             status_code=400,
             detail="Role already assigned to user"
         )
-    
+
     # Create assignment
     user_role = UserSystemRole(
         user_id=user_id,
@@ -448,7 +464,7 @@ def assign_user_role(
         expires_at=role_in.expires_at,
     )
     session.add(user_role)
-    
+
     # Audit log
     log_user_role_assign(
         session=session,
@@ -456,10 +472,10 @@ def assign_user_role(
         role_id=role_in.role_id,
         actor_id=current_user.id,
     )
-    
+
     session.commit()
     session.refresh(user_role)
-    
+
     return UserSystemRoleRead(
         id=user_role.id,
         user_id=user_role.user_id,
@@ -474,11 +490,11 @@ def assign_user_role(
 
 @router.delete("/users/{user_id}/roles/{role_id}")
 def revoke_user_role(
-    user_id: str,
-    role_id: str,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(require_permission(Permissions.USER_MANAGE)),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        user_id: str,
+        role_id: str,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(require_permission(Permissions.ROLE_REVOKE)),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ):
     """Revoke a system role from a user."""
     user_role = session.exec(
@@ -487,29 +503,29 @@ def revoke_user_role(
             UserSystemRole.role_id == role_id
         )
     ).first()
-    
+
     if not user_role:
         raise HTTPException(
             status_code=404,
             detail="Role not assigned to user"
         )
-    
+
     role = session.get(Role, role_id)
-    
-    # Check if super_admin role - only super_admin can revoke
-    if role and role.name == "super_admin":
-        if not checker.is_super_admin(current_user.id):
+
+    # Check if super_admin or admin role - require ROLE_ASSIGN_ADMIN permission
+    if role and (role.is_super_admin or role.is_admin):
+        if not checker.check(current_user.id, Permissions.ROLE_ASSIGN_ADMIN):
             raise HTTPException(
                 status_code=403,
-                detail="Only super administrators can revoke super_admin role"
+                detail="Only super administrators can revoke super_admin or admin roles"
             )
         # Cannot revoke from self
         if user_id == current_user.id:
             raise HTTPException(
                 status_code=403,
-                detail="Cannot revoke super_admin role from yourself"
+                detail="Cannot revoke super_admin or admin role from yourself"
             )
-    
+
     # Audit log
     log_user_role_revoke(
         session=session,
@@ -517,8 +533,8 @@ def revoke_user_role(
         role_id=role_id,
         actor_id=current_user.id,
     )
-    
+
     session.delete(user_role)
     session.commit()
-    
+
     return {"ok": True, "message": "Role revoked"}

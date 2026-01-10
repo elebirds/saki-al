@@ -138,6 +138,7 @@ export interface ApiService {
   // User Management
   // ============================================================================
   getUsers(skip?: number, limit?: number): Promise<User[]>;
+  getUserList(skip?: number, limit?: number): Promise<{ id: string; email: string; fullName?: string }[]>;
   createUser(user: Partial<User> & { password: string }): Promise<User>;
   updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User>;
   deleteUser(id: string): Promise<void>;

@@ -33,6 +33,8 @@ interface AnnotationItemProps {
   currentTool: string;
   onSelect: (id: string) => void;
   onUpdate: (annotation: Annotation) => void;
+  /** 是否可以编辑此标注（基于用户权限） */
+  canEdit?: boolean;
 }
 
 const AnnotationItem: FC<AnnotationItemProps> = ({
@@ -45,6 +47,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
   currentTool,
   onSelect,
   onUpdate,
+  canEdit = true,
 }) => {
   // Extract bbox from data field
   const bbox = useMemo(() => getBBox(ann), [ann]);
@@ -54,9 +57,9 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
   // 判断是否为生成的标注（auto-generated）
   const isGenerated = ann.source === 'auto' || !!ann.extra?.parent_id;
   
-  // 生成的标注不能拖拽和变换
-  const canDrag = currentTool === 'select' && !isGenerated;
-  const canTransform = !isGenerated;
+  // 生成的标注不能拖拽和变换，没有编辑权限的标注也不能
+  const canDrag = currentTool === 'select' && !isGenerated && canEdit;
+  const canTransform = !isGenerated && canEdit;
 
   const handleTransformEnd = (e: Konva.KonvaEventObject<Event>) => {
     const node = e.target;

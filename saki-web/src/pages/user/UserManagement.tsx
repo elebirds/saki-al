@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip } from 'antd';
+import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
 import { User, Role, UserSystemRole } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { usePermission } from '../../hooks';
-import { Authorized } from '../../components/common';
 
 const UserManagement: React.FC = () => {
   const { t } = useTranslation();
@@ -24,13 +23,15 @@ const UserManagement: React.FC = () => {
   const [roleForm] = Form.useForm();
   
   // Permission checks
-  const { can, isSuperAdmin } = usePermission();
-  const canCreateUser = can('user:create');
-  const canUpdateUser = can('user:update');
-  const canDeleteUser = can('user:delete');
+  const { can, isSuperAdmin, isLoading: permissionLoading } = usePermission();
+  const canReadUsers = can('user:read') || isSuperAdmin;
+  const canCreateUser = can('user:create') || isSuperAdmin;
+  const canUpdateUser = can('user:update') || isSuperAdmin;
+  const canDeleteUser = can('user:delete') || isSuperAdmin;
   const canManageRoles = can('user:manage') || isSuperAdmin;
 
   const fetchUsers = async () => {
+    if (!canReadUsers) return;
     setLoading(true);
     try {
       const data = await api.getUsers();
@@ -43,6 +44,7 @@ const UserManagement: React.FC = () => {
   };
 
   const fetchRoles = async () => {
+    if (!canManageRoles) return;
     setRolesLoading(true);
     try {
       const data = await api.getRoles('system');
@@ -64,9 +66,13 @@ const UserManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchUsers();
-    fetchRoles();
-  }, []);
+    if (!permissionLoading && canReadUsers) {
+      fetchUsers();
+    }
+    if (!permissionLoading && canManageRoles) {
+      fetchRoles();
+    }
+  }, [permissionLoading, canReadUsers, canManageRoles]);
 
   const handleAdd = () => {
     setEditingUser(null);
@@ -249,6 +255,28 @@ const UserManagement: React.FC = () => {
 
   // Get assigned role IDs for the selected user
   const assignedRoleIds = new Set(userRoles.map(ur => ur.roleId));
+
+  // Show loading state while permissions are being loaded
+  if (permissionLoading) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center' }}>
+        <Spin size="large" tip={t('common.loading')} />
+      </div>
+    );
+  }
+
+  // Show no permission message if user can't read users
+  if (!canReadUsers) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <Result
+          status="403"
+          title="403"
+          subTitle={t('common.noPermission')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px' }}>

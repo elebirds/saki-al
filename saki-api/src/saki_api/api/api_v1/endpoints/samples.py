@@ -12,6 +12,9 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func, desc, asc
+from sqlmodel import Session, select
+
 # Import annotation_systems module for handler registry
 from saki_api.annotation_systems import (
     get_handler,
@@ -19,17 +22,15 @@ from saki_api.annotation_systems import (
     UploadContext,
     ProgressTracker,
 )
-from saki_api.api import deps
 from saki_api.core.config import settings
 from saki_api.core.rbac import require_permission
 from saki_api.db.session import get_session
 from saki_api.models import (
     Dataset,
+    Permissions, ResourceType,
 )
 from saki_api.models.sample import Sample, SampleStatus
 from saki_api.models.user import User
-from sqlalchemy import func, desc, asc
-from sqlmodel import Session, select
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +72,10 @@ def read_samples(
         sort_by: Optional[SampleSortField] = None,
         sort_order: SortOrder = SortOrder.ASC,
         session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            "sample:read:assigned", "dataset", "dataset_id"
+        _current_user: User = Depends(require_permission(
+            Permissions.SAMPLE_READ,
+            ResourceType.DATASET,
+            "dataset_id"
         ))
 ):
     """
@@ -128,8 +131,10 @@ async def upload_samples_with_progress(
         dataset_id: str,
         files: List[UploadFile] = File(...),
         session: Session = Depends(get_session),
-        current_user: User = Depends(require_permission(
-            "sample:create:assigned", "dataset", "dataset_id"
+        _current_user: User = Depends(require_permission(
+            Permissions.SAMPLE_CREATE,
+            ResourceType.DATASET,
+            "dataset_id"
         ))
 ):
     """

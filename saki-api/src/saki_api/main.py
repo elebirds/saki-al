@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
 from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
 from saki_api.core.exceptions import http_exception_handler, general_exception_handler

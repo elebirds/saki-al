@@ -1,5 +1,6 @@
-from saki_api.core.config import settings
 from sqlmodel import create_engine, Session, SQLModel
+
+from saki_api.core.config import settings
 
 # SQLite requires specific connection arguments to work with multi-threaded applications
 connect_args = {}

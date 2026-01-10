@@ -2,13 +2,12 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout, Button, Typography, Space, Card, List, Tag, Progress, Tabs, message, Select, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { Dataset, Sample, User } from '../../types';
+import { Dataset, Sample } from '../../types';
 import { api } from '../../services/api';
 import { HighlightOutlined, UploadOutlined, SettingOutlined, FileTextOutlined, ExportOutlined, ArrowLeftOutlined, SortAscendingOutlined, SortDescendingOutlined } from '@ant-design/icons';
 import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
 import { useUpload, useSortSettings, useResourcePermission } from '../../hooks';
-import { Authorized } from '../../components/common';
 
 const { Title } = Typography;
 const { Sider, Content } = Layout;
@@ -22,7 +21,6 @@ const DatasetDetail: React.FC = () => {
   const [samples, setSamples] = useState<Sample[]>([]);
   const [activeTab, setActiveTab] = useState('data');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [owner, setOwner] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Permission hook
@@ -71,13 +69,6 @@ const DatasetDetail: React.FC = () => {
       api.getDataset(id).then((d) => {
         if (d) {
           setDataset(d);
-          // Fetch owner info if available
-          if (d.ownerId) {
-            api.getUsers().then(users => {
-              const ownerUser = users.find(u => u.id === d.ownerId);
-              if (ownerUser) setOwner(ownerUser);
-            }).catch(() => {});
-          }
         }
       });
       loadSamples(id);
@@ -315,7 +306,7 @@ const DatasetDetail: React.FC = () => {
           {role && !isOwner && <Tag>{role.displayName}</Tag>}
         </Space>
         <div style={{ marginBottom: 16, fontSize: 12, color: '#666' }}>
-          {t('datasetDetail.owner')}: {owner ? (owner.fullName || owner.email) : (dataset.ownerId ? '...' + dataset.ownerId.slice(-8) : t('common.unknown'))}
+          {t('datasetDetail.owner')}: {dataset.ownerName || t('common.unknown')}
         </div>
         
         <Space direction="vertical" style={{ width: '100%' }} size="large">

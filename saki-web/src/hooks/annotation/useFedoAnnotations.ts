@@ -26,9 +26,14 @@ import {
 import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../../components/annotation/DualCanvasArea';
 import { generateUUID } from '../../utils/uuid';
 
+/** 权限范围类型 */
+export type AccessScope = 'all' | 'assigned' | 'self' | 'none';
+
 export interface UseFedoAnnotationsOptions {
   /** 当前样本 ID */
   currentSampleId: string | undefined;
+  /** 当前用户 ID */
+  currentUserId?: string;
   /** 标注状态管理 */
   annotationState: UseAnnotationStateReturn<DualViewAnnotation>;
   /** 同步 hook */
@@ -69,6 +74,16 @@ export interface UseFedoAnnotationsReturn {
   handleDeleteAnnotation: (id: string) => Promise<void>;
   /** 加载样本的标注 */
   loadSampleAnnotations: () => Promise<void>;
+  
+  // 权限相关
+  /** 读取权限范围 */
+  readScope: AccessScope;
+  /** 修改权限范围 */
+  modifyScope: AccessScope;
+  /** 检查标注是否可编辑 */
+  canEditAnnotation: (annotation: Annotation) => boolean;
+  /** 是否有任何编辑权限 */
+  hasAnyEditPermission: boolean;
 }
 
 /**
@@ -79,6 +94,7 @@ export function useFedoAnnotations(
 ): UseFedoAnnotationsReturn {
   const {
     currentSampleId,
+    currentUserId,
     annotationState,
     sync,
     onSampleChange,
@@ -89,6 +105,27 @@ export function useFedoAnnotations(
   const [generatedAnnotations, setGeneratedAnnotations] = useState<Annotation[]>([]);
   const [annotationViews, setAnnotationViews] = useState<Map<string, string>>(new Map());
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<Set<string>>(new Set());
+  
+  // 权限范围状态
+  const [readScope, setReadScope] = useState<AccessScope>('assigned');
+  const [modifyScope, setModifyScope] = useState<AccessScope>('none');
+
+  // 检查是否有任何编辑权限
+  const hasAnyEditPermission = useMemo(() => {
+    return modifyScope !== 'none';
+  }, [modifyScope]);
+
+  // 检查单个标注是否可编辑
+  const canEditAnnotation = useCallback((annotation: Annotation): boolean => {
+    // 生成的标注不可编辑
+    if (isGeneratedAnnotation(annotation)) return false;
+    if (modifyScope === 'none') return false;
+    if (modifyScope === 'all' || modifyScope === 'assigned') return true;
+    if (modifyScope === 'self') {
+      return !annotation.annotatorId || annotation.annotatorId === currentUserId;
+    }
+    return false;
+  }, [modifyScope, currentUserId]);
 
   // 计算属性：用于画布显示的标注
   const canvasAnnotations = useMemo(() => {
@@ -175,6 +212,14 @@ export function useFedoAnnotations(
     bbox: { x: number; y: number; width: number; height: number; rotation?: number };
     view: string;
   }) => {
+    // 检查是否有编辑权限
+    if (!hasAnyEditPermission) {
+      if (t) {
+        message.warning(t('workspace.noEditPermission'));
+      }
+      return;
+    }
+
     if (!annotationState.selectedLabel) {
       if (t) {
         message.warning(t('workspace.noLabelSelected'));
@@ -212,7 +257,8 @@ export function useFedoAnnotations(
           newId,
           annotationState.selectedLabel.id,
           annotationState.selectedLabel.name || 'unknown',
-          annotationState.selectedLabel.color || '#ff0000'
+          annotationState.selectedLabel.color || '#ff0000',
+          currentUserId
         );
         newGeneratedAnnotations.push(...generated);
       }
@@ -223,6 +269,7 @@ export function useFedoAnnotations(
         labelId: annotationState.selectedLabel.id,
         labelName: annotationState.selectedLabel.name || 'unknown',
         labelColor: annotationState.selectedLabel.color || '#ff0000',
+        annotatorId: currentUserId,
         primary: {
           type: event.type,
           bbox: event.bbox,
@@ -252,6 +299,7 @@ export function useFedoAnnotations(
         labelId: annotationState.selectedLabel.id,
         labelName: annotationState.selectedLabel.name || 'unknown',
         labelColor: annotationState.selectedLabel.color || '#ff0000',
+        annotatorId: currentUserId,
         primary: {
           type: event.type,
           bbox: event.bbox,
@@ -273,6 +321,14 @@ export function useFedoAnnotations(
   // 更新标注
   const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
     if (!currentSampleId) return;
+
+    // 检查是否有权限编辑此标注
+    if (!canEditAnnotation(updatedAnn)) {
+      if (t) {
+        message.warning(t('workspace.cannotEditOthersAnnotation'));
+      }
+      return;
+    }
 
     // 直接使用前端坐标（左上角），后端会自动转换
     const syncAction: SyncAction = {
@@ -304,7 +360,8 @@ export function useFedoAnnotations(
             updatedAnn.id,
             updatedAnn.labelId,
             updatedAnn.labelName || 'unknown',
-            updatedAnn.labelColor || '#ff0000'
+            updatedAnn.labelColor || '#ff0000',
+            updatedAnn.annotatorId || currentUserId
           );
           generatedAnnotations.push(...generated);
           
@@ -349,6 +406,15 @@ export function useFedoAnnotations(
   const handleDeleteAnnotation = useCallback(async (id: string) => {
     if (!currentSampleId) return;
 
+    // 找到要删除的标注，检查权限
+    const annotation = canvasAnnotations.find(a => a.id === id);
+    if (annotation && !canEditAnnotation(annotation)) {
+      if (t) {
+        message.warning(t('workspace.cannotDeleteOthersAnnotation'));
+      }
+      return;
+    }
+
     const syncAction: SyncAction = {
       action: 'delete',
       annotationId: id,
@@ -372,7 +438,7 @@ export function useFedoAnnotations(
         return parentId !== id;
       }));
     }
-  }, [currentSampleId, annotationState, sync]);
+  }, [currentSampleId, annotationState, sync, canvasAnnotations, canEditAnnotation, t]);
 
   // 加载样本的标注
   const loadSampleAnnotations = useCallback(async () => {
@@ -380,16 +446,30 @@ export function useFedoAnnotations(
 
     const response = await api.getSampleAnnotations(currentSampleId);
     
+    // 更新权限范围
+    setReadScope(response.readScope || 'assigned');
+    setModifyScope(response.modifyScope || 'none');
+    
     // 分离主标注和生成的标注
     const mainAnnotations: Annotation[] = [];
     const generated: Annotation[] = [];
     
-    response.annotations.forEach((ann) => {
+    response.annotations.forEach((ann: any) => {
+      // 转换字段名：后端返回 snake_case，前端使用 camelCase
+      const annotation: Annotation = {
+        ...ann,
+        annotatorId: ann.annotatorId || ann.annotator_id || null,
+        labelId: ann.labelId || ann.label_id,
+        labelName: ann.labelName || ann.label_name,
+        labelColor: ann.labelColor || ann.label_color,
+        sampleId: ann.sampleId || ann.sample_id,
+      };
+      
       // 后端已经转换为左上角坐标，直接使用
-      if (isGeneratedAnnotation(ann)) {
-        generated.push(ann);
+      if (isGeneratedAnnotation(annotation)) {
+        generated.push(annotation);
       } else {
-        mainAnnotations.push(ann);
+        mainAnnotations.push(annotation);
       }
     });
     
@@ -474,6 +554,11 @@ export function useFedoAnnotations(
     handleUpdateAnnotation,
     handleDeleteAnnotation,
     loadSampleAnnotations,
+    // 权限相关
+    readScope,
+    modifyScope,
+    canEditAnnotation,
+    hasAnyEditPermission,
   };
 }
 

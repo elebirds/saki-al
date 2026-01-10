@@ -14,11 +14,13 @@ import {
   useClassicAnnotations,
 } from '../../hooks';
 import { Annotation } from '../../types';
+import { useAuthStore } from '../../store/authStore';
 
 const ClassicAnnotationWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
   const canvasRef = useRef<AnnotationCanvasRef>(null);
+  const user = useAuthStore(state => state.user);
 
   // 使用数据集加载器 hook
   const {
@@ -48,8 +50,12 @@ const ClassicAnnotationWorkspace: React.FC = () => {
     handleAnnotationCreate,
     handleUpdateAnnotation,
     handleDeleteAnnotation,
+    modifyScope,
+    canEditAnnotation,
+    hasAnyEditPermission,
   } = useClassicAnnotations({
     currentSampleId: currentSample?.id,
+    currentUserId: user?.id,
     annotationState,
     sync,
     t,
@@ -113,18 +119,24 @@ const ClassicAnnotationWorkspace: React.FC = () => {
       onZoomIn={() => canvasRef.current?.zoomIn()}
       onZoomOut={() => canvasRef.current?.zoomOut()}
       onResetView={() => canvasRef.current?.resetView()}
+      // 权限控制
+      currentUserId={user?.id}
+      modifyScope={modifyScope}
+      canEditAnnotation={canEditAnnotation}
+      hasAnyEditPermission={hasAnyEditPermission}
       canvasArea={
         <AnnotationCanvas
           ref={canvasRef}
           imageUrl={currentSample?.url || ''}
           annotations={annotationState.annotations}
-          onAnnotationCreate={handleAnnotationCreate}
+          onAnnotationCreate={hasAnyEditPermission ? handleAnnotationCreate : undefined}
           onAnnotationUpdate={handleUpdateAnnotation}
           onAnnotationDelete={handleDeleteAnnotation}
-          currentTool={annotationState.currentTool}
+          currentTool={hasAnyEditPermission ? annotationState.currentTool : 'select'}
           labelColor={annotationState.selectedLabel?.color || '#ff0000'}
           selectedId={annotationState.selectedId}
           onSelect={annotationState.setSelectedId}
+          canEditAnnotation={canEditAnnotation}
         />
       }
     />

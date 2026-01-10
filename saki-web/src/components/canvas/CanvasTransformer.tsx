@@ -7,18 +7,21 @@ interface CanvasTransformerProps {
   selectedAnnotation?: Annotation;
   currentTool: string;
   image?: HTMLImageElement;
+  /** 是否可以编辑选中的标注（基于用户权限） */
+  canEdit?: boolean;
 }
 
 const CanvasTransformer = forwardRef<Konva.Transformer, CanvasTransformerProps>(({
   selectedAnnotation,
   currentTool,
-  image
+  image,
+  canEdit = true,
 }, ref) => {
   // 判断是否为生成的标注（auto-generated）
   const isGenerated = selectedAnnotation?.source === 'auto' || !!selectedAnnotation?.extra?.parent_id;
   
-  // 只有主标注（非生成的）可以调整大小
-  const canResize = !isGenerated && currentTool === 'select';
+  // 只有主标注（非生成的）且有编辑权限才能调整大小
+  const canResize = !isGenerated && currentTool === 'select' && canEdit;
   
   return (
     <Transformer

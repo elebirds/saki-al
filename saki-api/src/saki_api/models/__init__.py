@@ -13,13 +13,6 @@ from saki_api.models.project import (
     Project, ProjectCreate, ProjectRead, ProjectUpdate, ProjectStats,
     ProjectDataset, ProjectDatasetCreate, ProjectDatasetRead
 )
-from saki_api.models.sample import Sample, SampleCreate, SampleRead, SampleUpdate
-from saki_api.models.system_config import (
-    QueryStrategy, QueryStrategyCreate, QueryStrategyRead, QueryStrategyUpdate,
-    BaseModel, BaseModelCreate, BaseModelRead, BaseModelUpdate,
-)
-from saki_api.models.user import User, UserCreate, UserRead, UserUpdate, UserWithPermissions
-
 # RBAC Models (new permission system)
 from saki_api.models.rbac import (
     # Enums
@@ -48,9 +41,14 @@ from saki_api.models.rbac import (
     AuditLog,
     AuditLogRead,
 )
-
 # Permission constants
-from saki_api.models.rbac.enums import Permissions, Resource, Action
+from saki_api.models.rbac.enums import Permissions
+from saki_api.models.sample import Sample, SampleCreate, SampleRead, SampleUpdate
+from saki_api.models.system_config import (
+    QueryStrategy, QueryStrategyCreate, QueryStrategyRead, QueryStrategyUpdate,
+    BaseModel, BaseModelCreate, BaseModelRead, BaseModelUpdate,
+)
+from saki_api.models.user import User, UserCreate, UserRead, UserUpdate, UserWithPermissions, UserListItem
 
 __all__ = [
     # Dataset models (independent, for data annotation)
@@ -74,7 +72,7 @@ __all__ = [
     "TaskType", "SampleStatus", "ProjectStatus", "ModelStatus", "AnnotationSystemType",
     # User models
     "User", "UserCreate", "UserRead", "UserUpdate", "UserWithPermissions",
-    
+
     # RBAC Enums
     "RoleType", "ResourceType", "Scope", "AuditAction",
     # RBAC Role
@@ -87,5 +85,5 @@ __all__ = [
     # RBAC Audit Log
     "AuditLog", "AuditLogRead",
     # Permission constants
-    "Permissions", "Resource", "Action",
+    "Permissions"
 ]

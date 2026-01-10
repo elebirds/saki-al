@@ -48,6 +48,9 @@ export interface AnnotationToolbarProps {
     isSyncing: boolean;
     isSyncReady: boolean;
   };
+  
+  // Permission control
+  hasAnyEditPermission?: boolean;
 }
 
 export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
@@ -64,6 +67,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   onZoomOut,
   onResetView,
   syncStatus,
+  hasAnyEditPermission = true,
 }) => {
   const { t } = useTranslation();
   const { datasetId } = useParams<{ datasetId: string }>();
@@ -146,13 +150,13 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             <DragOutlined /> {t('workspace.tools.select').split(' (')[0]}
           </Tooltip>
         </Radio.Button>
-        <Radio.Button value="rect">
-          <Tooltip title={t('workspace.tools.rect')}>
+        <Radio.Button value="rect" disabled={!hasAnyEditPermission}>
+          <Tooltip title={hasAnyEditPermission ? t('workspace.tools.rect') : t('workspace.noEditPermission')}>
             <BorderOutlined /> {t('workspace.tools.rect').split(' (')[0]}
           </Tooltip>
         </Radio.Button>
-        <Radio.Button value="obb">
-          <Tooltip title={t('workspace.tools.obb')}>
+        <Radio.Button value="obb" disabled={!hasAnyEditPermission}>
+          <Tooltip title={hasAnyEditPermission ? t('workspace.tools.obb') : t('workspace.noEditPermission')}>
             <RotateRightOutlined /> {t('workspace.tools.obb').split(' (')[0]}
           </Tooltip>
         </Radio.Button>

@@ -17,7 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
-from saki_api.models.enums import AnnotationSystemType, AnnotationType, AnnotationSource
+from saki_api.models.enums import AnnotationSystemType, AnnotationType
 
 logger = logging.getLogger(__name__)
 

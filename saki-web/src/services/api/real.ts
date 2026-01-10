@@ -722,6 +722,11 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
+  async getUserList(skip: number = 0, limit: number = 100): Promise<{ id: string; email: string; fullName?: string }[]> {
+    const response = await this.client.get<{ id: string; email: string; fullName?: string }[]>('/users/list', { params: { skip, limit } });
+    return response.data;
+  }
+
   async createUser(user: Partial<User> & { password: string }): Promise<User> {
     return withOptionalPasswordHashing(async (userData) => {
       const response = await this.client.post<User>('/users/', userData);

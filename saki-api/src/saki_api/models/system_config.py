@@ -1,9 +1,10 @@
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
-from saki_api.models.base import TimestampMixin
-from saki_api.models.enums import TaskType
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel, Relationship
+
+from saki_api.models.base import TimestampMixin
+from saki_api.models.enums import TaskType
 
 if TYPE_CHECKING:
     from saki_api.models.project import Project

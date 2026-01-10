@@ -4,8 +4,9 @@ Labels belong to Datasets and are referenced by Annotations.
 """
 from typing import Optional, TYPE_CHECKING, List
 
-from saki_api.models.base import TimestampMixin, UUIDMixin
 from sqlmodel import Field, SQLModel, Relationship
+
+from saki_api.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from saki_api.models.dataset import Dataset

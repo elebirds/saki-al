@@ -7,7 +7,8 @@ import json
 from fastapi import Request, status
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.responses import JSONResponse
-from saki_api.core.response import ApiResponse, error_response
+
+from saki_api.core.response import error_response
 
 
 async def http_exception_handler(request: Request, exc: FastAPIHTTPException) -> JSONResponse:

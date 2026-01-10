@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from saki_api.core import security
+from saki_api.core.rbac import require_permission
 from saki_api.core.rbac.presets import init_preset_roles, get_role_by_name
 from saki_api.db.session import get_session
 from saki_api.models import (
@@ -82,7 +83,7 @@ ANNOTATION_SYSTEM_INFO = {
 
 @router.get("/status")
 def get_system_status(
-    session: Session = Depends(get_session),
+        session: Session = Depends(get_session),
 ) -> Any:
     """
     Check if the system is initialized (has at least one user).
@@ -105,8 +106,8 @@ def get_available_types() -> AvailableTypesResponse:
 
 @router.post("/setup", response_model=UserRead)
 def setup_system(
-    user_in: UserCreate,
-    session: Session = Depends(get_session),
+        user_in: UserCreate,
+        session: Session = Depends(get_session),
 ) -> Any:
     """
     Initialize the system with the first superuser.
@@ -138,7 +139,7 @@ def setup_system(
     super_admin_role = roles.get("super_admin")
     if not super_admin_role:
         super_admin_role = get_role_by_name(session, "super_admin")
-    
+
     if super_admin_role:
         user_role = UserSystemRole(
             user_id=db_user.id,
@@ -151,25 +152,6 @@ def setup_system(
 
     # Build response
     return _build_user_read(db_user, session)
-
-
-@router.post("/init-roles")
-def init_roles(
-    session: Session = Depends(get_session),
-) -> Any:
-    """
-    Initialize or update preset roles.
-    
-    This can be called to ensure all preset roles exist.
-    Safe to call multiple times - only creates missing roles.
-    """
-    roles = init_preset_roles(session)
-    return {
-        "ok": True,
-        "roles_count": len(roles),
-        "roles": [r.name for r in roles.values()],
-    }
-
 
 def _build_user_read(user: User, session: Session) -> UserRead:
     """Build UserRead with role information."""

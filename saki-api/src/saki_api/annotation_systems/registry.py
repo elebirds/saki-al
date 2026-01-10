@@ -8,7 +8,6 @@ import logging
 from typing import Dict, Optional, Type
 
 from saki_api.models.enums import AnnotationSystemType
-
 from .base import AnnotationSystemHandler
 
 logger = logging.getLogger(__name__)

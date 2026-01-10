@@ -20,13 +20,12 @@ from saki_api.core.rbac import (
     PermissionContext,
     get_permission_checker,
 )
-from saki_api.core.rbac.presets import get_default_role, get_role_by_name
+from saki_api.core.rbac.presets import get_default_role
 from saki_api.db.session import get_session
 from saki_api.models import (
     User, UserCreate, UserRead,
-    Role, RoleType, RoleRead,
-    UserSystemRole,
-    ResourceMember, ResourceType,
+    Role, UserSystemRole,
+    ResourceType,
 )
 
 router = APIRouter()
@@ -62,8 +61,8 @@ class UserPermissionsResponse(BaseModel):
 
 @router.post("/login/access-token")
 def login_access_token(
-    session: Session = Depends(get_session),
-    form_data: OAuth2PasswordRequestForm = Depends()
+        session: Session = Depends(get_session),
+        form_data: OAuth2PasswordRequestForm = Depends()
 ) -> Any:
     """
     OAuth2 compatible token login, get an access token for future requests.
@@ -98,8 +97,8 @@ def login_access_token(
 
 @router.post("/register", response_model=UserRead)
 def register_user(
-    user_in: UserCreate,
-    session: Session = Depends(get_session),
+        user_in: UserCreate,
+        session: Session = Depends(get_session),
 ) -> Any:
     """
     Create new user without the need to be logged in.
@@ -139,7 +138,7 @@ def register_user(
 
 @router.post("/login/refresh-token")
 def refresh_token(
-    current_user: User = Depends(deps.get_current_user),
+        current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Refresh access token.
@@ -155,9 +154,9 @@ def refresh_token(
 
 @router.post("/change-password")
 def change_password(
-    password_data: ChangePasswordRequest,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(deps.get_current_user),
+        password_data: ChangePasswordRequest,
+        session: Session = Depends(get_session),
+        current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Change user password.
@@ -186,11 +185,11 @@ def change_password(
 
 @router.get("/permissions", response_model=UserPermissionsResponse)
 def get_my_permissions(
-    resource_type: Optional[str] = Query(None, description="Resource type (e.g., 'dataset')"),
-    resource_id: Optional[str] = Query(None, description="Resource ID"),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(deps.get_current_user),
-    checker: PermissionChecker = Depends(get_permission_checker),
+        resource_type: Optional[str] = Query(None, description="Resource type (e.g., 'dataset')"),
+        resource_id: Optional[str] = Query(None, description="Resource ID"),
+        session: Session = Depends(get_session),
+        current_user: User = Depends(deps.get_current_user),
+        checker: PermissionChecker = Depends(get_permission_checker),
 ) -> UserPermissionsResponse:
     """
     Get current user's permissions.
@@ -240,7 +239,7 @@ def get_my_permissions(
     # Get resource role if applicable
     resource_role = None
     is_owner = None
-    
+
     if resource_type and resource_id:
         try:
             rt = ResourceType(resource_type)
@@ -251,7 +250,7 @@ def get_my_permissions(
                     name=role.name,
                     displayName=role.display_name,
                 )
-            
+
             # Check if owner
             if resource_type == "dataset":
                 from saki_api.models import Dataset

@@ -23,7 +23,7 @@ class UserSystemRole(SQLModel, table=True):
     System roles grant global permissions across the system.
     """
     __tablename__ = "user_system_role"
-    
+
     id: str = Field(
         default_factory=lambda: str(uuid4()),
         primary_key=True,
@@ -39,7 +39,7 @@ class UserSystemRole(SQLModel, table=True):
         index=True,
         description="Role ID"
     )
-    
+
     # Assignment metadata
     assigned_at: datetime = Field(
         default_factory=datetime.utcnow,
@@ -50,13 +50,13 @@ class UserSystemRole(SQLModel, table=True):
         foreign_key="user.id",
         description="Who assigned this role"
     )
-    
+
     # Optional expiration
     expires_at: Optional[datetime] = Field(
         default=None,
         description="When this role assignment expires (null = never)"
     )
-    
+
     # Relationships
     user: "User" = Relationship(
         back_populates="system_roles",
@@ -89,7 +89,7 @@ class UserSystemRoleRead(SQLModel):
     assigned_at: datetime
     assigned_by: Optional[str] = None
     expires_at: Optional[datetime] = None
-    
+
     # Include role details
     role_name: Optional[str] = None
     role_display_name: Optional[str] = None

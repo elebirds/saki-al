@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Select, message, Space, Popconfirm, Tag, Typography, Spin } from 'antd';
 import { UserAddOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { ResourceMember, User } from '../../types';
+import { ResourceMember } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
-import { useResourcePermission } from '../../hooks';
+import { useResourcePermission, usePermission } from '../../hooks';
 
 const { Title } = Typography;
 
@@ -15,6 +15,12 @@ interface AvailableRole {
   description?: string;
 }
 
+interface UserListItem {
+  id: string;
+  email: string;
+  fullName?: string;
+}
+
 interface DatasetMembersProps {
   datasetId: string;
   ownerId?: string;
@@ -23,7 +29,7 @@ interface DatasetMembersProps {
 const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) => {
   const { t } = useTranslation();
   const [members, setMembers] = useState<ResourceMember[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserListItem[]>([]);
   const [availableRoles, setAvailableRoles] = useState<AvailableRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [rolesLoading, setRolesLoading] = useState(false);
@@ -31,9 +37,12 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
   const [editingMember, setEditingMember] = useState<ResourceMember | null>(null);
   const [form] = Form.useForm();
 
-  // Permission hook
+  // Permission hooks
   const { can, isOwner } = useResourcePermission('dataset', datasetId, ownerId);
+  const { can: canSystem, isSuperAdmin } = usePermission();
   const canManageMembers = can('dataset:assign');
+  // Use user:list permission (not user:read) for member selection
+  const canListUsers = canSystem('user:list') || can('user:list') || isSuperAdmin;
 
   const fetchMembers = async () => {
     setLoading(true);
@@ -49,7 +58,8 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
 
   const fetchUsers = async () => {
     try {
-      const data = await api.getUsers();
+      // Use getUserList API (requires user:list permission)
+      const data = await api.getUserList();
       setUsers(data);
     } catch (error) {
       console.error('Failed to fetch users:', error);
@@ -70,9 +80,14 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
 
   useEffect(() => {
     fetchMembers();
-    fetchUsers();
-    fetchAvailableRoles();
-  }, [datasetId]);
+    // Fetch users list if user has permission
+    if (canManageMembers && canListUsers) {
+      fetchUsers();
+    }
+    if (canManageMembers) {
+      fetchAvailableRoles();
+    }
+  }, [datasetId, canManageMembers, canListUsers]);
 
   const handleAdd = () => {
     setEditingMember(null);

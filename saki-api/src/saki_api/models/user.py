@@ -52,15 +52,15 @@ class User(UserBase, TimestampMixin, UUIDMixin, table=True):
     - resource_memberships: Resource-specific roles (ResourceMember)
     """
     __tablename__ = "user"
-    
+
     hashed_password: str = Field(description="Hashed password")
-    
+
     # Last login tracking
     last_login_at: Optional[datetime] = Field(
         default=None,
         description="Last login timestamp"
     )
-    
+
     # Relationships - System roles (global permissions)
     system_roles: List["UserSystemRole"] = Relationship(
         back_populates="user",
@@ -69,7 +69,7 @@ class User(UserBase, TimestampMixin, UUIDMixin, table=True):
             "cascade": "all, delete-orphan"
         }
     )
-    
+
     # Relationships - Resource memberships (per-resource permissions)
     resource_memberships: List["ResourceMember"] = Relationship(
         back_populates="user",
@@ -104,7 +104,7 @@ class UserRead(SQLModel):
     created_at: datetime
     updated_at: datetime
     last_login_at: Optional[datetime] = None
-    
+
     # Include role information
     system_roles: List[dict] = []  # [{id, name, displayName}]
 
@@ -126,3 +126,13 @@ class UserWithPermissions(UserRead):
     """Extended user schema with permission details."""
     permissions: List[str] = []  # List of permission strings
     is_super_admin: bool = False
+
+
+# ========================================================
+# User List Item
+# ========================================================
+class UserListItem(SQLModel):
+    """Simplified user info for member selection."""
+    id: str
+    email: str
+    full_name: Optional[str] = None

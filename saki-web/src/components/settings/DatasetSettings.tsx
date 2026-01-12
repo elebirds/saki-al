@@ -27,7 +27,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
   const { availableTypes } = useSystemCapabilities();
   
   // Permission hook
-  const { can, isOwner } = useResourcePermission('dataset', dataset.id, dataset.ownerId);
+  const { can } = useResourcePermission('dataset', dataset.id, dataset.ownerId);
   const canManageMembers = can('dataset:assign');
   const canDelete = can('dataset:delete');
   const canManageLabels = can('label:create');

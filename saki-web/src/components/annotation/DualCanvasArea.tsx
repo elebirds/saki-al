@@ -83,10 +83,12 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
     type: 'rect' | 'obb';
     bbox: { x: number; y: number; width: number; height: number; rotation?: number };
   }) => {
-    onAnnotationCreate({
-      ...event,
-      view: VIEW_TIME_ENERGY,
-    });
+    if (onAnnotationCreate) {
+      onAnnotationCreate({
+        ...event,
+        view: VIEW_TIME_ENERGY,
+      });
+    }
   };
 
   // 为 L-ωd 画布创建标注时的回调
@@ -94,10 +96,12 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
     type: 'rect' | 'obb';
     bbox: { x: number; y: number; width: number; height: number; rotation?: number };
   }) => {
-    onAnnotationCreate({
-      ...event,
-      view: VIEW_L_OMEGAD,
-    });
+    if (onAnnotationCreate) {
+      onAnnotationCreate({
+        ...event,
+        view: VIEW_L_OMEGAD,
+      });
+    }
   };
 
   useImperativeHandle(ref, () => ({

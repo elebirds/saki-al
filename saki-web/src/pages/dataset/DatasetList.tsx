@@ -6,7 +6,6 @@ import { Dataset, AnnotationSystemType } from '../../types';
 import { api } from '../../services/api';
 import { useSystemCapabilities, usePermission } from '../../hooks';
 import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
-import { Authorized } from '../../components/common';
 
 const { Title, Paragraph } = Typography;
 const { Option } = Select;
@@ -20,7 +19,7 @@ const DatasetList: React.FC = () => {
   const navigate = useNavigate();
   
   // Permission hook
-  const { can, isSuperAdmin } = usePermission();
+  const { can } = usePermission();
   const canCreate = can('dataset:create');
   
   // Load available types from backend

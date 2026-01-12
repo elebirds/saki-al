@@ -192,12 +192,12 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_READ,
             # Sample - 只读
             Permissions.SAMPLE_READ,
-            # Label - 只读
+            # Label - 标签完全控制
             Permissions.LABEL_READ,
             Permissions.LABEL_CREATE,
             Permissions.LABEL_UPDATE,
             Permissions.LABEL_DELETE,
-            # Annotation - 编辑全部标注和标签
+            # Annotation - 标注完全控制
             Permissions.ANNOTATION_READ,  # 可以看到所有标注
             Permissions.ANNOTATION_MODIFY,  # 可以修改所有标注
         ],
@@ -205,7 +205,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
     {
         "name": "dataset_senior_annotator",
         "display_name": "高级标注员",
-        "description": "可查看所有标注，但只能修改和删除自己的标注",
+        "description": "可编辑所有标注，但不能管理样本和标签",
         "type": RoleType.RESOURCE,
         "is_system": True,
         "sort_order": 13,
@@ -216,7 +216,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.SAMPLE_READ,
             # Label - 只读
             Permissions.LABEL_READ,
-            # Annotation - 读取全部，修改自己的
+            # Annotation - 标注完全控制
             Permissions.ANNOTATION_READ,  # 可以看到所有标注
             Permissions.ANNOTATION_MODIFY,  # 可以修改所有标注
         ],

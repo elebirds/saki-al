@@ -75,14 +75,12 @@ export function useClassicAnnotations(
         setModifyScope(response.modifyScope || 'none');
         
         // 后端已经转换为左上角坐标，直接使用
-        // 重置历史记录
-        annotationState.resetHistory();
-        // 设置初始标注并添加到历史记录
-        if (response.annotations.length > 0) {
-          annotationState.addToHistory(response.annotations);
-        } else {
-          annotationState.setAnnotations([]);
-        }
+        // 重置历史记录，将加载的标注作为初始状态
+        // 直接设置历史记录，而不是先重置再添加，避免 undo 可以清除初始加载的标注
+        annotationState.setAnnotations(response.annotations);
+        annotationState.setHistory([response.annotations]);
+        annotationState.setHistoryIndex(0);
+        annotationState.setSelectedId(null);
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

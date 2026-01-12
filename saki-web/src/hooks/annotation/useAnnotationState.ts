@@ -39,6 +39,8 @@ export interface UseAnnotationStateReturn<T extends AnnotationLike = AnnotationL
   undo: () => void;
   redo: () => void;
   resetHistory: () => void;
+  setHistory: (history: T[][]) => void;
+  setHistoryIndex: (index: number) => void;
   
   // Annotation operations
   handleAnnotationCreate: (annotation: T) => void;
@@ -98,6 +100,14 @@ export function useAnnotationState<T extends AnnotationLike = AnnotationLike>(
     setSelectedId(null);
   }, []);
 
+  const setHistoryCallback = useCallback((newHistory: T[][]) => {
+    setHistory(newHistory);
+  }, []);
+
+  const setHistoryIndexCallback = useCallback((index: number) => {
+    setHistoryIndex(index);
+  }, []);
+
   const handleAnnotationCreate = useCallback((annotation: T) => {
     addToHistory([...annotations, annotation]);
   }, [annotations, addToHistory]);
@@ -133,6 +143,8 @@ export function useAnnotationState<T extends AnnotationLike = AnnotationLike>(
     undo,
     redo,
     resetHistory,
+    setHistory: setHistoryCallback,
+    setHistoryIndex: setHistoryIndexCallback,
     
     // Annotation operations
     handleAnnotationCreate,

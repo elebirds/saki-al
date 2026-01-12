@@ -525,13 +525,12 @@ export function useFedoAnnotations(
     });
     setAnnotationViews(views);
     
-    // 重置历史记录
-    annotationState.resetHistory();
-    if (dualAnns.length > 0) {
-      annotationState.addToHistory(dualAnns);
-    } else {
-      annotationState.setAnnotations([]);
-    }
+    // 重置历史记录，将加载的标注作为初始状态
+    // 直接设置历史记录，而不是先重置再添加，避免 undo 可以清除初始加载的标注
+    annotationState.setAnnotations(dualAnns);
+    annotationState.setHistory([dualAnns]);
+    annotationState.setHistoryIndex(0);
+    annotationState.setSelectedId(null);
     
     // 设置生成的标注
     setGeneratedAnnotations(generated);

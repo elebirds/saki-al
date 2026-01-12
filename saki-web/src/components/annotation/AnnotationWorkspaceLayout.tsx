@@ -79,7 +79,6 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
   renderAnnotationItem,
   // 权限控制
   currentUserId,
-  modifyScope = 'assigned',
   canEditAnnotation,
   hasAnyEditPermission = true,
 }: AnnotationWorkspaceLayoutProps<T>) {

@@ -30,7 +30,9 @@ const UserManagement: React.FC = () => {
   const canCreateUser = can('user:create') || isSuperAdmin;
   const canUpdateUser = can('user:update') || isSuperAdmin;
   const canDeleteUser = can('user:delete') || isSuperAdmin;
-  const canManageRoles = can('user:manage') || isSuperAdmin;
+  const canReadUserRoles = can('user:role_read') || isSuperAdmin;
+  const canAssignRoles = can('role:assign') || isSuperAdmin;
+  const canRevokeRoles = can('role:revoke') || isSuperAdmin;
 
   const fetchUsers = async () => {
     if (!canReadUsers) return;
@@ -46,7 +48,7 @@ const UserManagement: React.FC = () => {
   };
 
   const fetchRoles = async () => {
-    if (!canManageRoles) return;
+    if (!canReadUserRoles) return;
     setRolesLoading(true);
     try {
       const data = await api.getRoles('system');
@@ -71,10 +73,10 @@ const UserManagement: React.FC = () => {
     if (!permissionLoading && canReadUsers) {
       fetchUsers();
     }
-    if (!permissionLoading && canManageRoles) {
+    if (!permissionLoading && canReadUserRoles) {
       fetchRoles();
     }
-  }, [permissionLoading, canReadUsers, canManageRoles]);
+  }, [permissionLoading, canReadUsers, canReadUserRoles]);
 
   // 计算表格高度
   useEffect(() => {
@@ -245,7 +247,7 @@ const UserManagement: React.FC = () => {
               </Tooltip>
             )}
             
-            {canManageRoles && (
+            {canReadUserRoles && (
               <Button type="link" icon={<KeyOutlined />} onClick={() => handleManageRoles(record)}>
                 {t('userManagement.manageRoles')}
               </Button>
@@ -401,7 +403,7 @@ const UserManagement: React.FC = () => {
                 <Space wrap>
                   {userRoles.map(ur => {
                     const role = roles.find(r => r.id === ur.roleId);
-                    const canRevoke = isSuperAdmin || (role?.name !== 'super_admin');
+                    const canRevoke = canRevokeRoles && (isSuperAdmin || (role?.name !== 'super_admin'));
                     return (
                       <Tag 
                         key={ur.id} 
@@ -421,44 +423,46 @@ const UserManagement: React.FC = () => {
             </div>
 
             {/* Assign New Role */}
-            <div>
-              <h4>{t('userManagement.assignRole')}</h4>
-              <Form form={roleForm} layout="inline" onFinish={handleAssignRole}>
-                <Form.Item
-                  name="roleId"
-                  rules={[{ required: true, message: t('userManagement.selectRole') }]}
-                  style={{ flex: 1, marginRight: 8 }}
-                >
-                  <Select placeholder={t('userManagement.selectRole')} style={{ width: '100%' }}>
-                    {roles
-                      .filter(role => {
-                        // Filter out already assigned roles
-                        if (assignedRoleIds.has(role.id)) return false;
-                        // Only super_admin can assign super_admin role
-                        if (role.name === 'super_admin' && !isSuperAdmin) return false;
-                        return true;
-                      })
-                      .map(role => (
-                        <Select.Option key={role.id} value={role.id}>
-                          <Tag color={getRoleColor(role.name)} style={{ marginRight: 8 }}>
-                            {role.displayName}
-                          </Tag>
-                          {role.description && (
-                            <span style={{ color: '#999', fontSize: 12 }}>
-                              {role.description}
-                            </span>
-                          )}
-                        </Select.Option>
-                      ))}
-                  </Select>
-                </Form.Item>
-                <Form.Item>
-                  <Button type="primary" htmlType="submit">
-                    {t('userManagement.assign')}
-                  </Button>
-                </Form.Item>
-              </Form>
-            </div>
+            {canAssignRoles && (
+              <div>
+                <h4>{t('userManagement.assignRole')}</h4>
+                <Form form={roleForm} layout="inline" onFinish={handleAssignRole}>
+                  <Form.Item
+                    name="roleId"
+                    rules={[{ required: true, message: t('userManagement.selectRole') }]}
+                    style={{ flex: 1, marginRight: 8 }}
+                  >
+                    <Select placeholder={t('userManagement.selectRole')} style={{ width: '100%' }}>
+                      {roles
+                        .filter(role => {
+                          // Filter out already assigned roles
+                          if (assignedRoleIds.has(role.id)) return false;
+                          // Only super_admin can assign super_admin role
+                          if (role.name === 'super_admin' && !isSuperAdmin) return false;
+                          return true;
+                        })
+                        .map(role => (
+                          <Select.Option key={role.id} value={role.id}>
+                            <Tag color={getRoleColor(role.name)} style={{ marginRight: 8 }}>
+                              {role.displayName}
+                            </Tag>
+                            {role.description && (
+                              <span style={{ color: '#999', fontSize: 12 }}>
+                                {role.description}
+                              </span>
+                            )}
+                          </Select.Option>
+                        ))}
+                    </Select>
+                  </Form.Item>
+                  <Form.Item>
+                    <Button type="primary" htmlType="submit">
+                      {t('userManagement.assign')}
+                    </Button>
+                  </Form.Item>
+                </Form>
+              </div>
+            )}
           </>
         )}
       </Modal>

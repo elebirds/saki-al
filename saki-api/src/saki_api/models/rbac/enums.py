@@ -91,6 +91,7 @@ class Permissions:
     USER_UPDATE = "user:update:all"  # 全局允许：修改用户信息（不包括角色信息）
     USER_DELETE = "user:delete:all"  # 全局允许：删除用户
     USER_LIST = "user:list:all"  # 全局允许：读取用户列表（用于用户选择）
+    USER_ROLE_READ = "user:role_read:all"  # 全局允许：查看用户角色信息
 
     # ============================================================================
     # Role Management Permissions

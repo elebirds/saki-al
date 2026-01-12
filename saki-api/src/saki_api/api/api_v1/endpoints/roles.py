@@ -376,7 +376,7 @@ def delete_role(
 def get_user_roles(
         user_id: str,
         session: Session = Depends(get_session),
-        _current_user: User = Depends(require_permission(Permissions.USER_READ)),
+        _current_user: User = Depends(require_permission(Permissions.USER_ROLE_READ)),
 ):
     """Get all system roles assigned to a user."""
     user = session.get(User, user_id)

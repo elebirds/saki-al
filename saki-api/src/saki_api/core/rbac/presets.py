@@ -54,6 +54,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.USER_UPDATE,
             Permissions.USER_DELETE,
             Permissions.USER_LIST,
+            Permissions.USER_ROLE_READ,
             # Role management - 角色管理
             Permissions.ROLE_CREATE,
             Permissions.ROLE_READ,
@@ -180,12 +181,53 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         ],
     },
     {
+        "name": "dataset_super_annotator",
+        "display_name": "超级标注员",
+        "description": "可编辑所有标注和标签，但不能管理样本",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 12,
+        "permissions": [
+            # Dataset - 只读
+            Permissions.DATASET_READ,
+            # Sample - 只读
+            Permissions.SAMPLE_READ,
+            # Label - 只读
+            Permissions.LABEL_READ,
+            Permissions.LABEL_CREATE,
+            Permissions.LABEL_UPDATE,
+            Permissions.LABEL_DELETE,
+            # Annotation - 编辑全部标注和标签
+            Permissions.ANNOTATION_READ,  # 可以看到所有标注
+            Permissions.ANNOTATION_MODIFY,  # 可以修改所有标注
+        ],
+    },
+    {
         "name": "dataset_senior_annotator",
         "display_name": "高级标注员",
         "description": "可查看所有标注，但只能修改和删除自己的标注",
         "type": RoleType.RESOURCE,
         "is_system": True,
-        "sort_order": 12,
+        "sort_order": 13,
+        "permissions": [
+            # Dataset - 只读
+            Permissions.DATASET_READ,
+            # Sample - 只读
+            Permissions.SAMPLE_READ,
+            # Label - 只读
+            Permissions.LABEL_READ,
+            # Annotation - 读取全部，修改自己的
+            Permissions.ANNOTATION_READ,  # 可以看到所有标注
+            Permissions.ANNOTATION_MODIFY,  # 可以修改所有标注
+        ],
+    },
+    {
+        "name": "dataset_normal_annotator",
+        "display_name": "普通标注员",
+        "description": "可查看所有标注，但只能修改和删除自己的标注",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 14,
         "permissions": [
             # Dataset - 只读
             Permissions.DATASET_READ,
@@ -199,12 +241,12 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         ],
     },
     {
-        "name": "dataset_annotator",
-        "display_name": "标注员",
-        "description": "只能查看和操作自己的标注",
+        "name": "dataset_intership_annotator",
+        "display_name": "实习标注员",
+        "description": "只能查看和修改自己的标注",
         "type": RoleType.RESOURCE,
         "is_system": True,
-        "sort_order": 13,
+        "sort_order": 15,
         "permissions": [
             # Dataset - 只读
             Permissions.DATASET_READ,
@@ -223,7 +265,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "description": "只能查看数据集内容，无法进行任何修改",
         "type": RoleType.RESOURCE,
         "is_system": True,
-        "sort_order": 14,
+        "sort_order": 16,
         "permissions": [
             # Dataset - 只读
             Permissions.DATASET_READ,

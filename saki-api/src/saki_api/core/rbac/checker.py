@@ -7,11 +7,13 @@ Provides efficient permission checking with support for:
 - Scope-based access control (all, owned, assigned, self)
 """
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Set, Callable, Any, Union
 
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac import (
     Role, RolePermission,
@@ -28,9 +30,9 @@ class PermissionContext:
     Note: Object-level access checks (e.g., is this annotation mine?) should be
     done in the business layer, not here.
     """
-    user_id: str
+    user_id: uuid.UUID
     resource_type: Optional[Union[ResourceType, str]] = None
-    resource_id: Optional[str] = None
+    resource_id: Optional[uuid.UUID] = None
 
 
 class PermissionChecker:
@@ -51,18 +53,18 @@ class PermissionChecker:
             ...
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: AsyncSession):
         self.session = session
-        self._role_cache: dict[str, Role] = {}
-        self._permission_cache: dict[str, Set[str]] = {}
+        self._role_cache: dict[uuid.UUID, Role] = {}
+        self._permission_cache: dict[uuid.UUID, Set[str]] = {}
 
-    def get_role(self, role_id: str) -> Optional[Role]:
+    async def get_role(self, role_id: uuid.UUID) -> Optional[Role]:
         """Get a role by ID with caching."""
         if role_id not in self._role_cache:
-            self._role_cache[role_id] = self.session.get(Role, role_id)
+            self._role_cache[role_id] = await self.session.get(Role, role_id)
         return self._role_cache[role_id]
 
-    def get_role_permissions(self, role_id: str) -> Set[str]:
+    async def get_role_permissions(self, role_id: uuid.UUID) -> Set[str]:
         """
         Get all permissions for a role, including inherited permissions.
         
@@ -71,29 +73,30 @@ class PermissionChecker:
         if role_id in self._permission_cache:
             return self._permission_cache[role_id]
 
-        role = self.get_role(role_id)
+        role = await self.get_role(role_id)
         if not role:
             return set()
 
         permissions: Set[str] = set()
 
         # Get direct permissions
-        role_perms = self.session.exec(
+        result = await self.session.exec(
             select(RolePermission).where(RolePermission.role_id == role_id)
-        ).all()
+        )
+        role_perms = result.all()
 
         for rp in role_perms:
             permissions.add(rp.permission)
 
         # Get inherited permissions from parent
         if role.parent_id:
-            parent_perms = self.get_role_permissions(role.parent_id)
+            parent_perms = await self.get_role_permissions(role.parent_id)
             permissions.update(parent_perms)
 
         self._permission_cache[role_id] = permissions
         return permissions
 
-    def get_user_system_permissions(self, user_id: str) -> Set[str]:
+    async def get_user_system_permissions(self, user_id: uuid.UUID) -> Set[str]:
         """
         Get all system-level permissions for a user.
         
@@ -102,25 +105,26 @@ class PermissionChecker:
         permissions: Set[str] = set()
 
         # Get user's system roles (filter out expired)
-        user_roles = self.session.exec(
+        result = await self.session.exec(
             select(UserSystemRole).where(
                 UserSystemRole.user_id == user_id,
                 (UserSystemRole.expires_at == None) |
                 (UserSystemRole.expires_at > datetime.utcnow())
             )
-        ).all()
+        )
+        user_roles = result.all()
 
         for ur in user_roles:
-            role_perms = self.get_role_permissions(ur.role_id)
+            role_perms = await self.get_role_permissions(ur.role_id)
             permissions.update(role_perms)
 
         return permissions
 
-    def get_user_resource_permissions(
+    async def get_user_resource_permissions(
             self,
-            user_id: str,
+            user_id: uuid.UUID,
             resource_type: Union[ResourceType, str],
-            resource_id: str
+            resource_id: uuid.UUID
     ) -> Set[str]:
         """
         Get permissions for a user on a specific resource.
@@ -134,21 +138,22 @@ class PermissionChecker:
             except ValueError:
                 return permissions
 
-        member = self.session.exec(
+        result = await self.session.exec(
             select(ResourceMember).where(
                 ResourceMember.resource_type == resource_type,
                 ResourceMember.resource_id == resource_id,
                 ResourceMember.user_id == user_id
             )
-        ).first()
+        )
+        member = result.first()
 
         if member:
-            role_perms = self.get_role_permissions(member.role_id)
+            role_perms = await self.get_role_permissions(member.role_id)
             permissions.update(role_perms)
 
         return permissions
 
-    def _get_effective_permissions(self, ctx: PermissionContext) -> Set[str]:
+    async def _get_effective_permissions(self, ctx: PermissionContext) -> Set[str]:
         """
         Get all effective permissions for a user in a given context.
         
@@ -157,65 +162,67 @@ class PermissionChecker:
         permissions: Set[str] = set()
 
         # System permissions
-        system_perms = self.get_user_system_permissions(ctx.user_id)
+        system_perms = await self.get_user_system_permissions(ctx.user_id)
         permissions.update(system_perms)
 
         # Resource permissions (if resource context provided)
         if ctx.resource_type and ctx.resource_id:
-            resource_perms = self.get_user_resource_permissions(
+            resource_perms = await self.get_user_resource_permissions(
                 ctx.user_id, ctx.resource_type, ctx.resource_id
             )
             permissions.update(resource_perms)
 
         return permissions
 
-    def get_effective_permissions(self, ctx: PermissionContext) -> Set[str]:
+    async def get_effective_permissions(self, ctx: PermissionContext) -> Set[str]:
         """
         Public method to get all effective permissions for a user in a given context.
         
         Combines system permissions and resource permissions.
         """
-        return self._get_effective_permissions(ctx)
+        return await self._get_effective_permissions(ctx)
 
-    def is_super_admin(self, user_id: str) -> bool:
+    async def is_super_admin(self, user_id: uuid.UUID) -> bool:
         """Check if user is a super admin by checking if they have super_admin role."""
         # Get user's system roles (filter out expired)
-        user_roles = self.session.exec(
+        result = await self.session.exec(
             select(UserSystemRole).where(
                 UserSystemRole.user_id == user_id,
                 (UserSystemRole.expires_at == None) |
                 (UserSystemRole.expires_at > datetime.utcnow())
             )
-        ).all()
+        )
+        user_roles = result.all()
 
         for ur in user_roles:
-            role = self.get_role(ur.role_id)
+            role = await self.get_role(ur.role_id)
             if role and role.is_super_admin:
                 return True
 
         return False
 
-    def is_admin(self, user_id: str) -> bool:
+    async def is_admin(self, user_id: uuid.UUID) -> bool:
         """Check if user is an admin (including super admin) by checking roles."""
         # Get user's system roles (filter out expired)
-        user_roles = self.session.exec(
+        result = await self.session.exec(
             select(UserSystemRole).where(
                 UserSystemRole.user_id == user_id,
                 (UserSystemRole.expires_at == None) |
                 (UserSystemRole.expires_at > datetime.utcnow())
             )
-        ).all()
+        )
+        user_roles = result.all()
 
         for ur in user_roles:
-            role = self.get_role(ur.role_id)
+            role = await self.get_role(ur.role_id)
             if role and (role.is_admin or role.is_super_admin):
                 return True
 
         return False
 
-    def check(
+    async def check(
             self,
-            user_id: str,
+            user_id: uuid.UUID,
             permission: str,
             resource_type: Optional[Union[ResourceType, str]] = None,
             resource_id: Optional[str] = None
@@ -249,7 +256,7 @@ class PermissionChecker:
             # checking if a specific annotation belongs to the user is done in business layer
             checker.check(user_id, "annotation:read:self", "dataset", dataset_id)
         """
-        if self.is_super_admin(user_id):
+        if await self.is_super_admin(user_id):
             return True
 
         ctx = PermissionContext(
@@ -258,7 +265,7 @@ class PermissionChecker:
             resource_id=resource_id,
         )
 
-        permissions = self._get_effective_permissions(ctx)
+        permissions = await self._get_effective_permissions(ctx)
 
         # Parse required permission
         req_parts = permission.split(":")
@@ -320,9 +327,9 @@ class PermissionChecker:
 
         return False
 
-    def filter_accessible_resources(
+    async def filter_accessible_resources(
             self,
-            user_id: str,
+            user_id: uuid.UUID,
             resource_type: Union[ResourceType, str],
             required_permission: str,
             base_query,
@@ -362,7 +369,7 @@ class PermissionChecker:
                 return base_query.where(False)
 
         # Get user's system permissions
-        system_perms = self.get_user_system_permissions(user_id)
+        system_perms = await self.get_user_system_permissions(user_id)
 
         # Super admin or has 'all' scope - return everything
         if Permissions.ALL_PERMISSIONS in system_perms:
@@ -396,18 +403,20 @@ class PermissionChecker:
         if has_owned:
             # Get resources owned by user using the provided owner_id column
             owner_id_col = get_owner_id_column()
-            owned = self.session.exec(
+            result = await self.session.exec(
                 select(resource_model.id).where(owner_id_col == user_id)
-            ).all()
+            )
+            owned = result.all()
             accessible_ids.update(owned)
 
         # Get resources where user is a member
-        member_ids = self.session.exec(
+        result = await self.session.exec(
             select(ResourceMember.resource_id).where(
                 ResourceMember.resource_type == resource_type,
                 ResourceMember.user_id == user_id
             )
-        ).all()
+        )
+        member_ids = result.all()
         accessible_ids.update(member_ids)
 
         if not accessible_ids:
@@ -417,11 +426,11 @@ class PermissionChecker:
         # Apply filter using the resource model's primary key
         return base_query.where(resource_model.id.in_(accessible_ids))
 
-    def get_user_role_in_resource(
+    async def get_user_role_in_resource(
             self,
-            user_id: str,
+            user_id: uuid.UUID,
             resource_type: Union[ResourceType, str],
-            resource_id: str
+            resource_id: uuid.UUID
     ) -> Optional[Role]:
         """Get user's role in a specific resource."""
         # Convert string to enum if needed
@@ -431,16 +440,17 @@ class PermissionChecker:
             except ValueError:
                 return None
 
-        member = self.session.exec(
+        result = await self.session.exec(
             select(ResourceMember).where(
                 ResourceMember.resource_type == resource_type,
                 ResourceMember.resource_id == resource_id,
                 ResourceMember.user_id == user_id
             )
-        ).first()
+        )
+        member = result.first()
 
         if member:
-            return self.get_role(member.role_id)
+            return await self.get_role(member.role_id)
         return None
 
     def clear_cache(self):

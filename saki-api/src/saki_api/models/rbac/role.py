@@ -7,35 +7,21 @@ Supports:
 - Dynamic permission management
 - System preset roles (cannot be deleted)
 """
-
-from datetime import datetime
+import uuid
 from typing import Optional, List, TYPE_CHECKING
-from uuid import uuid4
 
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel, Relationship
 
+from saki_api.models.base import UUIDMixin, TimestampMixin
 from saki_api.models.rbac.enums import RoleType
 
 if TYPE_CHECKING:
     pass
 
 
-class RolePermission(SQLModel, table=True):
-    """
-    Role-Permission mapping table.
-    
-    Stores permissions assigned to each role.
-    Permission format: resource:action:scope (e.g., "dataset:read:owned")
-    """
-    __tablename__ = "role_permission"
-
-    id: str = Field(
-        default_factory=lambda: str(uuid4()),
-        primary_key=True,
-        description="Unique identifier"
-    )
-    role_id: str = Field(
+class RolePermissionBase(SQLModel):
+    role_id: uuid.UUID = Field(
         foreign_key="role.id",
         index=True,
         description="Role ID"
@@ -50,28 +36,21 @@ class RolePermission(SQLModel, table=True):
         description="Optional conditions for ABAC-style constraints"
     )
 
+
+class RolePermission(RolePermissionBase, UUIDMixin, TimestampMixin, table=True):
+    """
+    Role-Permission mapping table.
+    
+    Stores permissions assigned to each role.
+    Permission format: resource:action:scope (e.g., "dataset:read:owned")
+    """
+    __tablename__ = "role_permission"
+
     # Relationship
     role: "Role" = Relationship(back_populates="permissions")
 
 
-class Role(SQLModel, table=True):
-    """
-    Role definition table.
-    
-    Supports:
-    - System roles (global scope)
-    - Resource roles (per-resource scope)
-    - Role inheritance
-    - System preset protection
-    """
-    __tablename__ = "role"
-
-    id: str = Field(
-        default_factory=lambda: str(uuid4()),
-        primary_key=True,
-        description="Unique identifier"
-    )
-
+class RoleBase(SQLModel):
     # Basic info
     name: str = Field(
         unique=True,
@@ -96,7 +75,7 @@ class Role(SQLModel, table=True):
     )
 
     # Inheritance
-    parent_id: Optional[str] = Field(
+    parent_id: Optional[uuid.UUID] = Field(
         default=None,
         foreign_key="role.id",
         description="Parent role ID for inheritance"
@@ -126,15 +105,18 @@ class Role(SQLModel, table=True):
         description="Display order"
     )
 
-    # Timestamps
-    created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Creation time"
-    )
-    updated_at: Optional[datetime] = Field(
-        default=None,
-        description="Last update time"
-    )
+
+class Role(RoleBase, UUIDMixin, TimestampMixin, table=True):
+    """
+    Role definition table.
+    
+    Supports:
+    - System roles (global scope)
+    - Resource roles (per-resource scope)
+    - Role inheritance
+    - System preset protection
+    """
+    __tablename__ = "role"
 
     # Relationships
     permissions: List["RolePermission"] = Relationship(
@@ -147,60 +129,3 @@ class Role(SQLModel, table=True):
             "foreign_keys": "[Role.parent_id]"
         }
     )
-
-
-# ============================================================================
-# Schema Models
-# ============================================================================
-
-class RolePermissionCreate(SQLModel):
-    """Schema for creating a role permission."""
-    permission: str = Field(description="Permission string (resource:action:scope)")
-    conditions: Optional[dict] = Field(default=None, description="Optional conditions")
-
-
-class RolePermissionRead(SQLModel):
-    """Schema for reading a role permission."""
-    id: str
-    permission: str
-    conditions: Optional[dict] = None
-
-
-class RoleCreate(SQLModel):
-    """Schema for creating a role."""
-    name: str = Field(min_length=2, max_length=50, description="Role identifier")
-    display_name: str = Field(min_length=1, max_length=100, description="Display name")
-    description: Optional[str] = Field(default=None, max_length=500)
-    type: RoleType = Field(default=RoleType.RESOURCE)
-    parent_id: Optional[str] = Field(default=None, description="Parent role ID")
-    permissions: List[RolePermissionCreate] = Field(
-        default_factory=list,
-        description="List of permissions"
-    )
-
-
-class RoleRead(SQLModel):
-    """Schema for reading a role."""
-    id: str
-    name: str
-    display_name: str
-    description: Optional[str] = None
-    type: RoleType
-    parent_id: Optional[str] = None
-    is_system: bool
-    is_default: bool
-    is_super_admin: bool
-    is_admin: bool
-    sort_order: int
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-    permissions: List[RolePermissionRead] = []
-
-
-class RoleUpdate(SQLModel):
-    """Schema for updating a role."""
-    display_name: Optional[str] = Field(default=None, max_length=100)
-    description: Optional[str] = Field(default=None, max_length=500)
-    parent_id: Optional[str] = None
-    sort_order: Optional[int] = None
-    permissions: Optional[List[RolePermissionCreate]] = None

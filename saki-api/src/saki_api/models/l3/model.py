@@ -1,11 +1,13 @@
 import uuid
 from typing import Optional, TYPE_CHECKING
+
 from sqlmodel import SQLModel, Field, Relationship
 
 from saki_api.models.base import UUIDMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from saki_api.models.l3.job import Job
+
 
 class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     """
@@ -17,7 +19,7 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
 
     # 溯源：这个模型是哪次训练任务产出的？
-    job_id: uuid.UUID | None = Field(foreign_key="training_job.id")
+    job_id: uuid.UUID | None = Field(foreign_key="job.id")
 
     # 核心元数据
     name: str = Field(index=True)  # 如 "FEDO-OBB-Standard-v1"

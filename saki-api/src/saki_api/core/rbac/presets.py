@@ -7,7 +7,8 @@ These roles cannot be deleted.
 
 from typing import List, Dict, Any
 
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac import (
     Role, RoleType, RolePermission,
@@ -280,7 +281,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
 ]
 
 
-def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[str, Role]:
+async def init_preset_roles(session: AsyncSession, update_existing: bool = True) -> Dict[str, Role]:
     """
     Initialize preset roles in the database.
     
@@ -298,9 +299,10 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
 
     for preset in PRESET_ROLES:
         # Check if role already exists
-        existing = session.exec(
+        result = await session.exec(
             select(Role).where(Role.name == preset["name"])
-        ).first()
+        )
+        existing = result.first()
 
         if existing:
             roles[preset["name"]] = existing
@@ -313,9 +315,10 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
                 session.add(existing)
 
                 # Get current permissions
-                current_perms = session.exec(
+                result = await session.exec(
                     select(RolePermission).where(RolePermission.role_id == existing.id)
-                ).all()
+                )
+                current_perms = result.all()
                 current_perm_set = {rp.permission for rp in current_perms}
                 preset_perm_set = set(preset.get("permissions", []))
 
@@ -349,7 +352,7 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
             sort_order=preset.get("sort_order", 0),
         )
         session.add(role)
-        session.flush()  # Get ID
+        await session.flush()  # Get ID
 
         # Store parent mapping for later
         if "parent" in preset:
@@ -371,25 +374,27 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
             roles[role_name].parent_id = roles[parent_name].id
             session.add(roles[role_name])
 
-    session.commit()
+    await session.commit()
 
     return roles
 
 
-def get_default_role(session: Session) -> Role:
+async def get_default_role(session: AsyncSession) -> Role:
     """Get the default role for new users."""
-    return session.exec(
+    result = await session.exec(
         select(Role).where(Role.is_default == True, Role.type == RoleType.SYSTEM)
-    ).first()
+    )
+    return result.first()
 
 
-def get_role_by_name(session: Session, name: str) -> Role:
+async def get_role_by_name(session: AsyncSession, name: str) -> Role:
     """Get a role by its name."""
-    return session.exec(
+    result = await session.exec(
         select(Role).where(Role.name == name)
-    ).first()
+    )
+    return result.first()
 
 
-def get_dataset_owner_role(session: Session) -> Role:
+async def get_dataset_owner_role(session: AsyncSession) -> Role:
     """Get the dataset_owner role."""
-    return get_role_by_name(session, "dataset_owner")
+    return await get_role_by_name(session, "dataset_owner")

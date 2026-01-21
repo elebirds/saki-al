@@ -21,12 +21,12 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
     # Database
-    DATABASE_URL: str = "sqlite:///./saki.db"
+    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/saki"
     SQL_ECHO: bool = False
 
     # Storage
     UPLOAD_DIR: str = "./data/uploads"
-    
+
     # MinIO Object Storage Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"

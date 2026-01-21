@@ -3,20 +3,21 @@ Audit Logging for RBAC
 
 Provides functions to log permission-related events.
 """
-
+import uuid
 from typing import Optional
 
 from sqlmodel import Session
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac import AuditLog, AuditAction
 
 
 def log_audit(
-        session: Session,
+        session: Session | AsyncSession,
         action: AuditAction,
         target_type: str,
-        target_id: str,
-        actor_id: Optional[str] = None,
+        target_id: str | uuid.UUID,
+        actor_id: Optional[uuid.UUID] = None,
         old_value: Optional[dict] = None,
         new_value: Optional[dict] = None,
         ip_address: Optional[str] = None,
@@ -65,10 +66,10 @@ def log_audit(
 
 
 def log_role_create(
-        session: Session,
-        role_id: str,
+        session: Session | AsyncSession,
+        role_id: str | uuid.UUID,
         role_data: dict,
-        actor_id: str,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a role creation event."""
@@ -84,11 +85,11 @@ def log_role_create(
 
 
 def log_role_update(
-        session: Session,
-        role_id: str,
+        session: Session | AsyncSession,
+        role_id: str | uuid.UUID,
         old_data: dict,
         new_data: dict,
-        actor_id: str,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a role update event."""
@@ -105,10 +106,10 @@ def log_role_update(
 
 
 def log_role_delete(
-        session: Session,
-        role_id: str,
+        session: Session | AsyncSession,
+        role_id: str | uuid.UUID,
         role_data: dict,
-        actor_id: str,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a role deletion event."""
@@ -124,10 +125,10 @@ def log_role_delete(
 
 
 def log_user_role_assign(
-        session: Session,
-        user_id: str,
-        role_id: str,
-        actor_id: str,
+        session: Session | AsyncSession,
+        user_id: str | uuid.UUID,
+        role_id: str | uuid.UUID,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a user role assignment event."""
@@ -137,16 +138,16 @@ def log_user_role_assign(
         target_type="user",
         target_id=user_id,
         actor_id=actor_id,
-        new_value={"role_id": role_id},
+        new_value={"role_id": str(role_id)},
         **kwargs
     )
 
 
 def log_user_role_revoke(
-        session: Session,
-        user_id: str,
-        role_id: str,
-        actor_id: str,
+        session: Session | AsyncSession,
+        user_id: str | uuid.UUID,
+        role_id: str | uuid.UUID,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a user role revocation event."""
@@ -156,7 +157,7 @@ def log_user_role_revoke(
         target_type="user",
         target_id=user_id,
         actor_id=actor_id,
-        old_value={"role_id": role_id},
+        old_value={"role_id": str(role_id)},
         **kwargs
     )
 
@@ -167,7 +168,7 @@ def log_member_add(
         resource_id: str,
         user_id: str,
         role_id: str,
-        actor_id: str,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a member addition event."""
@@ -194,7 +195,7 @@ def log_member_update(
         user_id: str,
         old_role_id: str,
         new_role_id: str,
-        actor_id: str,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a member role update event."""
@@ -204,8 +205,8 @@ def log_member_update(
         target_type="resource_member",
         target_id=f"{resource_type}:{resource_id}:{user_id}",
         actor_id=actor_id,
-        old_value={"role_id": old_role_id},
-        new_value={"role_id": new_role_id},
+        old_value={"role_id": str(old_role_id)},
+        new_value={"role_id": str(new_role_id)},
         **kwargs
     )
 
@@ -216,7 +217,7 @@ def log_member_remove(
         resource_id: str,
         user_id: str,
         role_id: str,
-        actor_id: str,
+        actor_id: uuid.UUID,
         **kwargs
 ) -> AuditLog:
     """Log a member removal event."""
@@ -238,7 +239,7 @@ def log_member_remove(
 
 def log_permission_denied(
         session: Session,
-        user_id: str,
+        user_id: uuid.UUID,
         permission: str,
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,

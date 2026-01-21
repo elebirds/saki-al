@@ -9,7 +9,6 @@ from abc import ABC, abstractmethod
 from datetime import timedelta
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import quote
 
 from minio import Minio
 from minio.error import S3Error
@@ -17,13 +16,13 @@ from minio.error import S3Error
 
 class StorageObject:
     """存储对象的元数据表示"""
-    
+
     def __init__(
-        self,
-        name: str,
-        size: int,
-        last_modified: Optional[str] = None,
-        etag: Optional[str] = None,
+            self,
+            name: str,
+            size: int,
+            last_modified: Optional[str] = None,
+            etag: Optional[str] = None,
     ):
         self.name = name
         self.size = size
@@ -38,13 +37,13 @@ class BaseStorageProvider(ABC):
     定义了存储系统必须实现的核心接口，包括文件上传、下载、
     URL 生成和对象列表等功能。
     """
-    
+
     @abstractmethod
     def upload_file(
-        self,
-        local_path: Path,
-        object_name: str,
-        content_type: Optional[str] = None,
+            self,
+            local_path: Path,
+            object_name: str,
+            content_type: Optional[str] = None,
     ) -> str:
         """
         上传本地文件到存储系统。
@@ -62,12 +61,12 @@ class BaseStorageProvider(ABC):
             StorageError: 上传失败
         """
         pass
-    
+
     @abstractmethod
     def get_presigned_url(
-        self,
-        object_name: str,
-        expires_delta: timedelta = timedelta(hours=1),
+            self,
+            object_name: str,
+            expires_delta: timedelta = timedelta(hours=1),
     ) -> str:
         """
         生成预签名 URL，允许临时访问存储对象。
@@ -85,12 +84,12 @@ class BaseStorageProvider(ABC):
             StorageError: URL 生成失败
         """
         pass
-    
+
     @abstractmethod
     def download_file(
-        self,
-        object_name: str,
-        local_path: Path,
+            self,
+            object_name: str,
+            local_path: Path,
     ) -> None:
         """
         从存储系统下载文件到本地。
@@ -105,12 +104,12 @@ class BaseStorageProvider(ABC):
             StorageError: 下载失败
         """
         pass
-    
+
     @abstractmethod
     def list_objects(
-        self,
-        prefix: str = "",
-        recursive: bool = True,
+            self,
+            prefix: str = "",
+            recursive: bool = True,
     ) -> List[StorageObject]:
         """
         列出存储系统中的对象。
@@ -126,7 +125,7 @@ class BaseStorageProvider(ABC):
             StorageError: 列表操作失败
         """
         pass
-    
+
     @abstractmethod
     def delete_object(self, object_name: str) -> None:
         """
@@ -139,7 +138,7 @@ class BaseStorageProvider(ABC):
             StorageError: 删除失败
         """
         pass
-    
+
     @abstractmethod
     def object_exists(self, object_name: str) -> bool:
         """
@@ -161,14 +160,14 @@ class MinioStorageProvider(BaseStorageProvider):
     MinIO 是一个高性能的对象存储系统，兼容 Amazon S3 API。
     此实现提供了完整的文件上传、下载、URL 生成等功能。
     """
-    
+
     def __init__(
-        self,
-        endpoint: str,
-        access_key: str,
-        secret_key: str,
-        bucket_name: str,
-        secure: bool = True,
+            self,
+            endpoint: str,
+            access_key: str,
+            secret_key: str,
+            bucket_name: str,
+            secure: bool = True,
     ):
         """
         初始化 MinIO 客户端。
@@ -183,7 +182,7 @@ class MinioStorageProvider(BaseStorageProvider):
         self.endpoint = endpoint
         self.bucket_name = bucket_name
         self.secure = secure
-        
+
         # 初始化 MinIO 客户端
         self.client = Minio(
             endpoint=endpoint,
@@ -191,10 +190,10 @@ class MinioStorageProvider(BaseStorageProvider):
             secret_key=secret_key,
             secure=secure,
         )
-        
+
         # 确保 bucket 存在
         self._ensure_bucket_exists()
-    
+
     def _ensure_bucket_exists(self) -> None:
         """
         确保存储桶存在，如果不存在则创建。
@@ -210,12 +209,12 @@ class MinioStorageProvider(BaseStorageProvider):
                 print(f"✓ Bucket exists: {self.bucket_name}")
         except S3Error as e:
             raise StorageError(f"Failed to ensure bucket exists: {e}") from e
-    
+
     def upload_file(
-        self,
-        local_path: Path,
-        object_name: str,
-        content_type: Optional[str] = None,
+            self,
+            local_path: Path,
+            object_name: str,
+            content_type: Optional[str] = None,
     ) -> str:
         """
         上传本地文件到 MinIO。
@@ -236,11 +235,11 @@ class MinioStorageProvider(BaseStorageProvider):
         """
         if not local_path.exists():
             raise FileNotFoundError(f"Local file not found: {local_path}")
-        
+
         try:
             # 确保 bucket 存在
             self._ensure_bucket_exists()
-            
+
             # 上传文件
             self.client.fput_object(
                 bucket_name=self.bucket_name,
@@ -248,16 +247,16 @@ class MinioStorageProvider(BaseStorageProvider):
                 file_path=str(local_path),
                 content_type=content_type,
             )
-            
+
             return object_name
-            
+
         except S3Error as e:
             raise StorageError(f"Failed to upload file: {e}") from e
-    
+
     def get_presigned_url(
-        self,
-        object_name: str,
-        expires_delta: timedelta = timedelta(hours=1),
+            self,
+            object_name: str,
+            expires_delta: timedelta = timedelta(hours=1),
     ) -> str:
         """
         生成 MinIO 预签名 URL。
@@ -280,16 +279,16 @@ class MinioStorageProvider(BaseStorageProvider):
                 object_name=object_name,
                 expires=expires_delta,
             )
-            
+
             return url
-            
+
         except S3Error as e:
             raise StorageError(f"Failed to generate presigned URL: {e}") from e
-    
+
     def download_file(
-        self,
-        object_name: str,
-        local_path: Path,
+            self,
+            object_name: str,
+            local_path: Path,
     ) -> None:
         """
         从 MinIO 下载文件到本地。
@@ -306,21 +305,21 @@ class MinioStorageProvider(BaseStorageProvider):
         try:
             # 确保父目录存在
             local_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # 下载文件
             self.client.fget_object(
                 bucket_name=self.bucket_name,
                 object_name=object_name,
                 file_path=str(local_path),
             )
-            
+
         except S3Error as e:
             raise StorageError(f"Failed to download file: {e}") from e
-    
+
     def list_objects(
-        self,
-        prefix: str = "",
-        recursive: bool = True,
+            self,
+            prefix: str = "",
+            recursive: bool = True,
     ) -> List[StorageObject]:
         """
         列出 MinIO 中的对象。
@@ -341,7 +340,7 @@ class MinioStorageProvider(BaseStorageProvider):
                 prefix=prefix,
                 recursive=recursive,
             )
-            
+
             result = []
             for obj in objects:
                 storage_obj = StorageObject(
@@ -351,12 +350,12 @@ class MinioStorageProvider(BaseStorageProvider):
                     etag=obj.etag,
                 )
                 result.append(storage_obj)
-            
+
             return result
-            
+
         except S3Error as e:
             raise StorageError(f"Failed to list objects: {e}") from e
-    
+
     def delete_object(self, object_name: str) -> None:
         """
         删除 MinIO 中的对象。
@@ -374,7 +373,7 @@ class MinioStorageProvider(BaseStorageProvider):
             )
         except S3Error as e:
             raise StorageError(f"Failed to delete object: {e}") from e
-    
+
     def object_exists(self, object_name: str) -> bool:
         """
         检查 MinIO 中的对象是否存在。
@@ -421,11 +420,11 @@ def get_storage_provider() -> BaseStorageProvider:
         StorageError: 配置错误或初始化失败
     """
     global _storage_provider
-    
+
     if _storage_provider is None:
         # 延迟导入以避免循环依赖
         from saki_api.core.config import settings
-        
+
         # 目前只支持 MinIO，未来可以根据配置选择不同的存储后端
         _storage_provider = MinioStorageProvider(
             endpoint=settings.MINIO_ENDPOINT,
@@ -434,7 +433,7 @@ def get_storage_provider() -> BaseStorageProvider:
             bucket_name=settings.MINIO_BUCKET_NAME,
             secure=settings.MINIO_SECURE,
         )
-    
+
     return _storage_provider
 
 

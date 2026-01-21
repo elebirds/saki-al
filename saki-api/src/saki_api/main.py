@@ -10,7 +10,6 @@ from saki_api.core.config import settings
 from saki_api.core.exceptions import http_exception_handler, general_exception_handler
 from saki_api.core.middleware import ResponseWrapperMiddleware
 from saki_api.db.session import init_db
-import asyncio
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

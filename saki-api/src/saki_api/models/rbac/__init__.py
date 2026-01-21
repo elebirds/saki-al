@@ -10,7 +10,6 @@ This module provides a comprehensive RBAC system with:
 
 from saki_api.models.rbac.audit_log import (
     AuditLog,
-    AuditLogRead,
 )
 from saki_api.models.rbac.enums import (
     RoleType,
@@ -21,24 +20,17 @@ from saki_api.models.rbac.enums import (
 )
 from saki_api.models.rbac.resource_member import (
     ResourceMember,
-    ResourceMemberCreate,
-    ResourceMemberRead,
-    ResourceMemberUpdate,
 )
 from saki_api.models.rbac.role import (
     Role,
-    RoleCreate,
-    RoleRead,
-    RoleUpdate,
     RolePermission,
-    RolePermissionCreate,
-    RolePermissionRead,
 )
 from saki_api.models.rbac.user_role import (
     UserSystemRole,
-    UserSystemRoleCreate,
-    UserSystemRoleRead,
 )
+
+# Note: Schema classes are imported from saki_api.schemas.rbac
+# They are re-exported through saki_api.models for backward compatibility
 
 __all__ = [
     # Enums
@@ -47,24 +39,10 @@ __all__ = [
     "Scope",
     "AuditAction",
     "Permissions",
-    # Role
+    # Models only - schemas are in saki_api.schemas.rbac
     "Role",
-    "RoleCreate",
-    "RoleRead",
-    "RoleUpdate",
     "RolePermission",
-    "RolePermissionCreate",
-    "RolePermissionRead",
-    # User System Role
     "UserSystemRole",
-    "UserSystemRoleCreate",
-    "UserSystemRoleRead",
-    # Resource Member
     "ResourceMember",
-    "ResourceMemberCreate",
-    "ResourceMemberRead",
-    "ResourceMemberUpdate",
-    # Audit Log
     "AuditLog",
-    "AuditLogRead",
 ]

@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from pydantic import ValidationError
-from sqlmodel import Session
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.config import settings
 from saki_api.core.rbac.checker import PermissionChecker
@@ -23,8 +23,8 @@ _reusable_oauth2 = OAuth2PasswordBearer(
 )
 
 
-def _get_current_user_internal(
-        session: Session = Depends(get_session),
+async def _get_current_user_internal(
+        session: AsyncSession = Depends(get_session),
         token: str = Depends(_reusable_oauth2)
 ) -> User:
     """Internal user getter to avoid circular import."""
@@ -39,7 +39,7 @@ def _get_current_user_internal(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = session.get(User, token_data)
+    user = await session.get(User, token_data)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:
@@ -47,8 +47,8 @@ def _get_current_user_internal(
     return user
 
 
-def get_permission_checker(
-        session: Session = Depends(get_session)
+async def get_permission_checker(
+        session: AsyncSession = Depends(get_session)
 ) -> PermissionChecker:
     """Dependency to get a PermissionChecker instance."""
     return PermissionChecker(session)
@@ -83,7 +83,7 @@ class PermissionDependency:
             permission: str,
             resource_type: Optional[str] = None,
             resource_id_param: Optional[str] = None,
-            get_parent_resource_id: Optional[Callable[[Session, str], Optional[str]]] = None,
+            get_parent_resource_id: Optional[Callable[[AsyncSession, str], Optional[str]]] = None,
     ):
         """
         Initialize the permission dependency.
@@ -99,10 +99,10 @@ class PermissionDependency:
         self.resource_id_param = resource_id_param
         self.get_parent_resource_id = get_parent_resource_id
 
-    def __call__(
+    async def __call__(
             self,
             request: Request,
-            session: Session = Depends(get_session),
+            session: AsyncSession = Depends(get_session),
             current_user: User = Depends(_get_current_user_internal),
     ) -> User:
         """Check permission and return current user if authorized."""
@@ -116,11 +116,11 @@ class PermissionDependency:
 
             # For sub-resources, get the parent resource ID
             if self.get_parent_resource_id and param_id:
-                resource_id = self.get_parent_resource_id(session, param_id)
+                resource_id = await self.get_parent_resource_id(session, param_id)
             else:
                 resource_id = param_id
 
-        if not checker.check(
+        if not await checker.check(
                 user_id=current_user.id,
                 permission=self.permission,
                 resource_type=self.resource_type,
@@ -142,7 +142,7 @@ def require_permission(
         permission: str,
         resource_type: Optional[str] = None,
         resource_id_param: Optional[str] = None,
-        get_parent_resource_id: Optional[Callable[[Session, str], Optional[str]]] = None,
+        get_parent_resource_id: Optional[Callable[[AsyncSession, str], Optional[str]]] = None,
 ) -> PermissionDependency:
     """
     Create a permission checking dependency.
@@ -199,15 +199,15 @@ def require_permission(
 # Parent Resource ID Getters (for sub-resources)
 # ============================================================================
 
-def get_sample_dataset_id(session: Session, sample_id: str) -> Optional[str]:
+async def get_sample_dataset_id(session: AsyncSession, sample_id: str) -> Optional[str]:
     """Get the dataset ID of a sample."""
     from saki_api.models import Sample
-    sample = session.get(Sample, sample_id)
+    sample = await session.get(Sample, sample_id)
     return sample.dataset_id if sample else None
 
 
-def get_label_dataset_id(session: Session, label_id: str) -> Optional[str]:
+async def get_label_dataset_id(session: AsyncSession, label_id: str) -> Optional[str]:
     """Get the dataset ID of a label."""
     from saki_api.models import Label
-    label = session.get(Label, label_id)
+    label = await session.get(Label, label_id)
     return label.dataset_id if label else None

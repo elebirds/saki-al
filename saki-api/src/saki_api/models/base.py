@@ -21,5 +21,5 @@ class UUIDMixin(SQLModel):
     """
     Mixin to add a UUID primary key to a model.
     """
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True,
+    id: uuid.UUID = Field(default_factory=lambda: uuid.uuid4(), primary_key=True,
                     description="Unique identifier for the record.")

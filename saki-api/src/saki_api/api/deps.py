@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from pydantic import ValidationError
-from sqlmodel import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from saki_api.core.config import settings
 from saki_api.db.session import get_session
@@ -13,8 +13,8 @@ reusable_oauth2 = OAuth2PasswordBearer(
 )
 
 
-def get_current_user(
-        session: Session = Depends(get_session),
+async def get_current_user(
+        session: AsyncSession = Depends(get_session),
         token: str = Depends(reusable_oauth2)
 ) -> User:
     try:
@@ -28,7 +28,7 @@ def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = session.get(User, token_data)
+    user = await session.get(User, token_data)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:
@@ -36,9 +36,9 @@ def get_current_user(
     return user
 
 
-def get_current_active_superuser(
+async def get_current_active_superuser(
         current_user: User = Depends(get_current_user),
-        session: Session = Depends(get_session)
+        session: AsyncSession = Depends(get_session)
 ) -> User:
     """检查用户是否为超级管理员"""
     # Import here to avoid circular import

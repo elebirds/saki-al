@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "sqlite:///./saki.db"
+    SQL_ECHO: bool = False
 
     # Storage
     UPLOAD_DIR: str = "./data/uploads"

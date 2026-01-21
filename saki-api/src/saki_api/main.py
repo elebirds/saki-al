@@ -10,6 +10,7 @@ from saki_api.core.config import settings
 from saki_api.core.exceptions import http_exception_handler, general_exception_handler
 from saki_api.core.middleware import ResponseWrapperMiddleware
 from saki_api.db.session import init_db
+import asyncio
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -20,12 +21,12 @@ app = FastAPI(
 
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     """
     Event handler triggered when the application starts.
-    Initializes the database tables.
+    Initializes the database tables asynchronously.
     """
-    init_db()
+    await init_db()
 
     # Ensure upload directory exists for static file serving
     upload_path = Path(settings.UPLOAD_DIR)

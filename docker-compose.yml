@@ -44,7 +44,23 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
+  minio:
+    image: minio/minio:latest
+    container_name: saki-minio
+    ports:
+      - "9000:9000"      # API 端口
+      - "9001:9001"      # 控制台端口
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ./data/minio:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 networks:
   saki-network:
     driver: bridge

@@ -25,6 +25,13 @@ class Settings(BaseSettings):
 
     # Storage
     UPLOAD_DIR: str = "./data/uploads"
+    
+    # MinIO Object Storage Configuration
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_SECURE: bool = False
+    MINIO_BUCKET_NAME: str = "saki-data"
 
     # Security
     SECRET_KEY: str = "YOUR_SUPER_SECRET_KEY_CHANGE_ME_IN_PRODUCTION"

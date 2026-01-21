@@ -15,8 +15,8 @@ from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import AnnotationSystemType
 
 if TYPE_CHECKING:
-    from saki_api.models.sample import Sample
-    from saki_api.models.project import ProjectDataset
+    from saki_api.models.l1.sample import Sample
+    from saki_api.models.l2.project import ProjectDataset
 
 
 class DatasetBase(SQLModel):

@@ -17,7 +17,7 @@ from saki_api.models.base import TimestampMixin, UUIDMixin, OPT_JSON
 from saki_api.models.enums import AnnotationType, AnnotationSource
 
 if TYPE_CHECKING:
-    from saki_api.models.label import Label
+    from saki_api.models.l2.label import Label
 
 
 class AnnotationBase(SQLModel):
@@ -32,7 +32,8 @@ class AnnotationBase(SQLModel):
     # 标注 ID：所属标签，定义语义类别
     label_id: uuid.UUID = Field(foreign_key="label.id", index=True, description="ID of the label for this annotation.")
     # 项目 ID：所属项目，便于查询过滤
-    project_id: uuid.UUID = Field(foreign_key="project.id", index=True, description="ID of the project this annotation belongs to.")
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True,
+                                  description="ID of the project this annotation belongs to.")
 
     # 视图同步字段
     # 逻辑同步 ID：用于跨视图同步同一标注
@@ -43,7 +44,7 @@ class AnnotationBase(SQLModel):
     )
     # 视图角色：标注所属视图角色（主视图/辅视图）
     view_role: str = Field(default="main", description="Role of the view this annotation belongs to.")
-    
+
     # 版本控制字段
     # 血缘追踪 ID：修改时指向父标注，None 表示原始标注
     parent_id: uuid.UUID | None = Field(
@@ -52,13 +53,15 @@ class AnnotationBase(SQLModel):
         index=True,
         description="ID of the parent annotation (for tracking modifications)."
     )
-    
+
     # 数据描述字段
     # 标注类型：几何形状类型，决定 data 如何解析
-    type: AnnotationType = Field(default=AnnotationType.RECT, index=True, description="Geometric type of the annotation (rect, obb, polygon, etc.)")
+    type: AnnotationType = Field(default=AnnotationType.RECT, index=True,
+                                 description="Geometric type of the annotation (rect, obb, polygon, etc.)")
     # 标注来源
-    source: AnnotationSource = Field(default=AnnotationSource.MANUAL, index=True, description="Source of annotation (MANUAL, MODEL, SYSTEM).")
-    
+    source: AnnotationSource = Field(default=AnnotationSource.MANUAL, index=True,
+                                     description="Source of annotation (MANUAL, MODEL, SYSTEM).")
+
     # 数据存储字段
     # 标注数据
     # For RECT: {x, y, width, height}
@@ -76,8 +79,9 @@ class AnnotationBase(SQLModel):
         description="System-specific extra data (FEDO mapping info, etc.)."
     )
     # 置信度分数
-    confidence: float = Field(default=1.0, index=True, description="Confidence score of the annotation (0.0 to 1.0).", ge=0.0, le=1.0)
-    
+    confidence: float = Field(default=1.0, index=True, description="Confidence score of the annotation (0.0 to 1.0).",
+                              ge=0.0, le=1.0)
+
     # 审计字段
     # 标注者信息，source 决定了其解释
     annotator_id: uuid.UUID | None = Field(

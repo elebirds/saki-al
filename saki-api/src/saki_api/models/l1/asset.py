@@ -24,19 +24,22 @@ class AssetBase(SQLModel):
     Physical file with content-addressable storage.
     """
     # 物理唯一性限制
-    hash: str = Field(max_length=64, index=True, unique=True, description="Content hash (MD5/SHA256) of the file for content-addressable storage.")
+    hash: str = Field(max_length=64, index=True, unique=True,
+                      description="Content hash (MD5/SHA256) of the file for content-addressable storage.")
 
     # 存储定位
     storage_type: StorageType = Field(default=StorageType.S3, description="Storage type of the file (e.g., s3, local).")
     path: str = Field(max_length=1024, description="File path within the bucket/local.")
-    bucket: str | None = Field(max_length=255, description="Object storage bucket name, will be None if it stores in Local storage.")
-    
+    bucket: str | None = Field(max_length=255,
+                               description="Object storage bucket name, will be None if it stores in Local storage.")
+
     # 文件基本属性
     original_filename: str = Field(max_length=255, description="Original filename of the uploaded file.")
     extension: str = Field(max_length=31, description="File extension (e.g., .jpg, .png, .txt).")
-    mime_type: str = Field(max_length=127, description="MIME type of the file (e.g., image/png, application/octet-stream).")
+    mime_type: str = Field(max_length=127,
+                           description="MIME type of the file (e.g., image/png, application/octet-stream).")
     size: int = Field(default=0, description="File size in bytes.")
-    
+
     # 其他元数据
     meta_info: Dict[str, Any] = Field(
         default_factory=dict,

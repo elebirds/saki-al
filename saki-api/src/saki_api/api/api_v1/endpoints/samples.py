@@ -29,7 +29,7 @@ from saki_api.models import (
     Dataset,
     Permissions, ResourceType,
 )
-from saki_api.models.sample import Sample, SampleStatus
+from saki_api.models.l1.sample import Sample, SampleStatus
 from saki_api.models.user import User
 
 logger = logging.getLogger(__name__)

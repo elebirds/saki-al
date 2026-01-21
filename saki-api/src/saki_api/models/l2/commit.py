@@ -20,7 +20,7 @@ from saki_api.models.base import TimestampMixin, UUIDMixin, OPT_JSON
 from saki_api.models.enums import AuthorType
 
 if TYPE_CHECKING:
-    from saki_api.models.project import Project
+    from saki_api.models.l2.project import Project
 
 
 class CommitBase(SQLModel):
@@ -29,16 +29,19 @@ class CommitBase(SQLModel):
     Represents a snapshot of the annotations at a specific point in time.
     """
     # 业务归属字段
-    project_id: uuid.UUID = Field(foreign_key="project.id", index=True, description="ID of the project this commit belongs to.")
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True,
+                                  description="ID of the project this commit belongs to.")
 
     # Git-like 版本控制字段
-    parent_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True, description="ID of the parent commit (forms version tree).")
+    parent_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True,
+                                        description="ID of the parent commit (forms version tree).")
 
     # 审计字段
     message: str = Field(max_length=500, description="Commit message describing this version.")
-    author_type: AuthorType = Field(default=AuthorType.USER, index=True, description="Type of the author who created this commit (USER, MODEL, SYSTEM).")
+    author_type: AuthorType = Field(default=AuthorType.USER, index=True,
+                                    description="Type of the author who created this commit (USER, MODEL, SYSTEM).")
     author_id: uuid.UUID | None = Field(default=None, description="ID of the user/model who created this commit.")
-    
+
     # 统计信息（冗余存储）
     stats: Dict[str, Any] = Field(
         default_factory=dict,
@@ -60,5 +63,5 @@ class Commit(CommitBase, TimestampMixin, UUIDMixin, table=True):
     Immutable snapshot of dataset state.
     """
     __tablename__ = "commit"
-    
+
     project: "Project" = Relationship(back_populates="commits")

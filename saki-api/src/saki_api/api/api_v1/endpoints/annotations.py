@@ -30,10 +30,10 @@ from saki_api.core.rbac.dependencies import (
 from saki_api.db.session import get_session
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.annotation import Annotation
-from saki_api.models.dataset import Dataset
+from saki_api.models.l1.dataset import Dataset
 from saki_api.models.enums import AnnotationType, AnnotationSource
 from saki_api.models.label import Label
-from saki_api.models.sample import Sample, SampleStatus
+from saki_api.models.l1.sample import Sample, SampleStatus
 from saki_api.models.user import User
 from saki_api.utils.coordinate_converter import (
     convert_annotation_data_to_backend,

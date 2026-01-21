@@ -24,7 +24,7 @@ class UUIDMixin(SQLModel):
     Mixin to add a UUID primary key to a model.
     """
     id: uuid.UUID = Field(default_factory=lambda: uuid.uuid4(), primary_key=True,
-                    description="Unique identifier for the record.")
+                          description="Unique identifier for the record.")
 
 
 OPT_JSON = JSON().with_variant(postgresql.JSONB(), "postgresql")

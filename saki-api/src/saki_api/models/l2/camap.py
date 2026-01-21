@@ -16,7 +16,7 @@ class CommitAnnotationMap(SQLModel, table=True):
     commit_id: uuid.UUID = Field(primary_key=True, foreign_key="commit.id", index=True)
     sample_id: uuid.UUID = Field(primary_key=True, foreign_key="sample.id", index=True)
     annotation_id: uuid.UUID = Field(primary_key=True, foreign_key="annotation.id", index=True)
-    
+
     # 业务归属冗余
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
 

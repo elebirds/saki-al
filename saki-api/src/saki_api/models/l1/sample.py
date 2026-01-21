@@ -17,7 +17,7 @@ from sqlmodel import Field, SQLModel, Relationship
 from saki_api.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from saki_api.models.dataset import Dataset
+    from saki_api.models.l1.dataset import Dataset
 
 
 class SampleBase(SQLModel):
@@ -30,11 +30,11 @@ class SampleBase(SQLModel):
         index=True,
         description="ID of the dataset this sample belongs to."
     )
-    
+
     name: str = Field(
         description="Name of the sample, typically the primary filename."
     )
-    
+
     # Core field: maps logical roles to physical asset IDs
     # Example: {"raw_text": "asset_uuid_1", "lut": "asset_uuid_2", "image_main": "asset_uuid_3"}
     asset_group: Dict[str, str] = Field(
@@ -42,12 +42,12 @@ class SampleBase(SQLModel):
         sa_column=Column(JSON),
         description="Maps logical asset roles to Asset IDs (e.g., raw_text, lut, image_main)."
     )
-    
+
     remark: str = Field(
         default="",
         description="Remark associated with the sample."
     )
-    
+
     # Additional metadata (not physical, but sample-level logic)
     meta_info: Dict[str, Any] = Field(
         default_factory=dict,
@@ -56,12 +56,11 @@ class SampleBase(SQLModel):
     )
 
 
-
 class Sample(SampleBase, TimestampMixin, UUIDMixin, table=True):
     """
     Database model for Sample.
     Belongs to a Dataset.
     """
     __tablename__ = "sample"
-    
+
     dataset: "Dataset" = Relationship(back_populates="samples")

@@ -1,69 +1,80 @@
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+"""
+Sample model for logical data layer.
+
+Sample is the smallest logical unit in a dataset, grouping multiple related Assets.
+This implements the physical-logical decoupling: Sample no longer stores annotation status,
+as annotations are managed through the Git-like version control layer.
+---
+样本模型，用于逻辑数据层。
+Sample 是数据集中最小的逻辑单元，负责将多个相关的 Asset 进行分组。
+"""
+import uuid
+from typing import Dict, Any, TYPE_CHECKING
 
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.models.base import TimestampMixin, UUIDMixin
-from saki_api.models.enums import SampleStatus
 
 if TYPE_CHECKING:
     from saki_api.models.dataset import Dataset
-    from saki_api.models.annotation import Annotation
 
 
 class SampleBase(SQLModel):
     """
     Base model for Sample.
-    A Sample represents a single data item (e.g., image, time series).
-    Samples belong to a Dataset, not directly to a Project.
+    A Sample represents a logical data unit grouping multiple physical Assets.
     """
-    dataset_id: str = Field(foreign_key="dataset.id", index=True,
-                            description="ID of the dataset this sample belongs to.")
-    name: str = Field(description="Name of the sample, which is the filename by default.")
-    url: str = Field(default=None, description="Public URL to access the data.")
-    remark: str = Field(default="", description="Remark associated with the sample.")
+    dataset_id: uuid.UUID = Field(
+        foreign_key="dataset.id",
+        index=True,
+        description="ID of the dataset this sample belongs to."
+    )
+    
+    name: str = Field(
+        description="Name of the sample, typically the primary filename."
+    )
+    
+    # Core field: maps logical roles to physical asset IDs
+    # Example: {"raw_text": "asset_uuid_1", "lut": "asset_uuid_2", "image_main": "asset_uuid_3"}
+    asset_group: Dict[str, str] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON),
+        description="Maps logical asset roles to Asset IDs (e.g., raw_text, lut, image_main)."
+    )
+    
+    remark: str = Field(
+        default="",
+        description="Remark associated with the sample."
+    )
+    
+    # Additional metadata (not physical, but sample-level logic)
+    meta_info: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON),
+        description="Additional sample-level metadata."
+    )
 
-    status: SampleStatus = Field(default=SampleStatus.UNLABELED, index=True,
-                                 description="Annotation status of the sample.")
-
-    # tags: List[str] = Field(default=[], description="List of tags associated with the sample.")
-    # TODO: add tags in sample.
-
-    meta_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON),
-                                      description="Additional metadata for the sample.")
 
 
 class Sample(SampleBase, TimestampMixin, UUIDMixin, table=True):
     """
     Database model for Sample.
-    Belongs to a Dataset. Can be used in multiple Projects through the Dataset link.
+    Belongs to a Dataset.
     """
+    __tablename__ = "sample"
+    
     dataset: "Dataset" = Relationship(back_populates="samples")
-    annotations: List["Annotation"] = Relationship(back_populates="sample")
 
 
 class SampleCreate(SQLModel):
-    """
-    Model for creating a new Sample.
-    """
-    dataset_id: str = Field(description="ID of the dataset this sample belongs to.")
-    name: str = Field(description="Name of the sample.")
-    url: str = Field(default=None, description="Public URL to access the data.")
-    remark: str = Field(default="", description="Remark associated with the sample.")
-    meta_data: Dict[str, Any] = Field(default={}, description="Additional metadata for the sample.")
+    pass
 
 
 class SampleRead(SampleBase, TimestampMixin, UUIDMixin):
-    """
-    Model for reading Sample data.
-    """
     pass
 
 
 class SampleUpdate(SQLModel):
-    """
-    Model for updating a Sample.
-    """
-    status: Optional[SampleStatus] = None
-    remark: Optional[str] = None
-    meta_data: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    remark: str | None = None

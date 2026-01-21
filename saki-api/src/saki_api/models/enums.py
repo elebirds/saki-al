@@ -1,5 +1,9 @@
 from enum import Enum
 
+class StorageType(str, Enum):
+    LOCAL = "local"
+    S3 = "s3"
+
 
 class TaskType(str, Enum):
     """
@@ -37,10 +41,10 @@ class AnnotationSource(str, Enum):
     """
     # Manual annotation by human annotator
     MANUAL = "manual"
-    # FEDO dual-view mapping annotation
-    FEDO_MAPPING = "fedo_mapping"
-    # Model prediction
-    PREDICTION = "prediction"
+    # Model prediction (from active learning or inference)
+    MODEL = "model"
+    # System-generated (e.g., FEDO dual-view mapping)
+    SYSTEM = "system"
     # Imported from external source
     IMPORTED = "imported"
 
@@ -80,3 +84,15 @@ class ModelStatus(str, Enum):
     TRAINING = "training"
     READY = "ready"
     FAILED = "failed"
+
+
+class TrainingJobStatus(str, Enum):
+    """
+    Enum for the status of a training job.
+    """
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+

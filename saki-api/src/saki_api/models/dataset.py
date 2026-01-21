@@ -1,13 +1,12 @@
 """
 Dataset model.
 
-A Dataset represents a batch of uploaded data for annotation.
-Datasets are independent entities that can be:
-- Used for data annotation
-- Exported for external use
-- Linked to training projects for active learning
+A Dataset represents a batch of uploaded ORIGINAL samples, not been annotated.
+---
+数据集Dataset，表示一批上传的、未标注的原始样本，其自身并不包含标注信息。
+它是一个独立的实体，可以关联到多个项目中。
 """
-
+import uuid
 from typing import List, Optional, TYPE_CHECKING
 
 from sqlmodel import Field, SQLModel, Relationship
@@ -18,7 +17,6 @@ from saki_api.models.enums import AnnotationSystemType
 if TYPE_CHECKING:
     from saki_api.models.sample import Sample
     from saki_api.models.project import ProjectDataset
-    from saki_api.models.label import Label
 
 
 class DatasetBase(SQLModel):
@@ -49,7 +47,7 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
     """
     __tablename__ = "dataset"
 
-    owner_id: str = Field(
+    owner_id: uuid.UUID = Field(
         foreign_key="user.id",
         index=True,
         description="Owner of the dataset"
@@ -58,41 +56,23 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
     # Relationship to samples (one-to-many)
     samples: List["Sample"] = Relationship(back_populates="dataset")
 
-    # Relationship to labels (one-to-many)
-    labels: List["Label"] = Relationship(back_populates="dataset")
-
     # Relationship to projects through link table (many-to-many)
     project_links: List["ProjectDataset"] = Relationship(back_populates="dataset")
 
-    # Note: Members are now managed through ResourceMember table
-    # Use ResourceMember.resource_type == 'dataset' and ResourceMember.resource_id == self.id
+
+class DatasetCreate(DatasetBase):
+    pass
 
 
-class DatasetCreate(SQLModel):
-    """
-    Model for creating a new Dataset.
-    """
-    name: str = Field(max_length=200)
-    description: Optional[str] = Field(default=None, max_length=2000)
-    annotation_system: AnnotationSystemType = AnnotationSystemType.CLASSIC
-
-
-class DatasetRead(SQLModel):
+class DatasetRead(DatasetBase, TimestampMixin, UUIDMixin):
     """
     Model for reading Dataset data.
     """
-    id: str
-    name: str
-    description: Optional[str] = None
-    annotation_system: AnnotationSystemType
     owner_id: str = Field(description="Owner of the dataset")
     owner_name: Optional[str] = Field(default=None, description="Owner's display name")
-    created_at: str
-    updated_at: str
 
     # Statistics (computed)
     sample_count: int = Field(default=0, description="Number of samples in the dataset.")
-    labeled_count: int = Field(default=0, description="Number of labeled samples.")
 
     # Optional: current user's role in this dataset
     user_role: Optional[str] = Field(default=None, description="Current user's role in this dataset")

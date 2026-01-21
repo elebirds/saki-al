@@ -51,17 +51,3 @@ class Asset(AssetBase, UUIDMixin, TimestampMixin, table=True):
     Immutable physical file reference.
     """
     __tablename__ = "asset"
-
-
-class AssetCreate(AssetBase):
-    """
-    Model for creating a new Asset.
-    """
-    pass
-
-
-class AssetRead(AssetBase, TimestampMixin):
-    """
-    Model for reading Asset data.
-    """
-    pass

@@ -65,16 +65,3 @@ class Sample(SampleBase, TimestampMixin, UUIDMixin, table=True):
     __tablename__ = "sample"
     
     dataset: "Dataset" = Relationship(back_populates="samples")
-
-
-class SampleCreate(SQLModel):
-    pass
-
-
-class SampleRead(SampleBase, TimestampMixin, UUIDMixin):
-    pass
-
-
-class SampleUpdate(SQLModel):
-    name: str | None = None
-    remark: str | None = None

@@ -58,32 +58,3 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
 
     # Relationship to projects through link table (many-to-many)
     project_links: List["ProjectDataset"] = Relationship(back_populates="dataset")
-
-
-class DatasetCreate(DatasetBase):
-    pass
-
-
-class DatasetRead(DatasetBase, TimestampMixin, UUIDMixin):
-    """
-    Model for reading Dataset data.
-    """
-    owner_id: str = Field(description="Owner of the dataset")
-    owner_name: Optional[str] = Field(default=None, description="Owner's display name")
-
-    # Statistics (computed)
-    sample_count: int = Field(default=0, description="Number of samples in the dataset.")
-
-    # Optional: current user's role in this dataset
-    user_role: Optional[str] = Field(default=None, description="Current user's role in this dataset")
-
-    class Config:
-        from_attributes = True
-
-
-class DatasetUpdate(SQLModel):
-    """
-    Model for updating a Dataset.
-    """
-    name: Optional[str] = Field(default=None, max_length=200)
-    description: Optional[str] = Field(default=None, max_length=2000)

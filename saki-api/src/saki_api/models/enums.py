@@ -5,6 +5,12 @@ class StorageType(str, Enum):
     S3 = "s3"
 
 
+class AuthorType(str, Enum):
+    USER = "user"
+    MODEL = "model"
+    SYSTEM = "system"
+
+
 class TaskType(str, Enum):
     """
     Enum for the type of machine learning task.

@@ -1,164 +1,96 @@
 """
-Annotation model for storing annotation data.
-Annotations belong to Samples and reference Labels.
+Annotation model for Git-like version control.
 
-Supports:
-- Multiple annotation types (rect, obb, polygon, etc.)
-- Manual and auto-generated annotations
-- Flexible extra data for system-specific extensions (FEDO dual-view, etc.)
+Annotations are immutable records with parent tracking.
+Version control is managed through Commits and Branches.
+---
+标注 Annotation 模型，属于 L2 标注层。
+标注是不可变记录，支持父标注追踪，用于版本控制。
 """
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
+import uuid
+from typing import Dict, Any, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column
 from sqlmodel import Field, SQLModel, Relationship
 
-from saki_api.models.base import TimestampMixin, UUIDMixin
+from saki_api.models.base import TimestampMixin, UUIDMixin, OPT_JSON
 from saki_api.models.enums import AnnotationType, AnnotationSource
 
 if TYPE_CHECKING:
-    from saki_api.models.sample import Sample
     from saki_api.models.label import Label
 
 
 class AnnotationBase(SQLModel):
     """
     Base model for Annotation.
-    Stores the actual labeling data for a sample.
+    Immutable annotation record with version tracking.
     """
-    sample_id: str = Field(foreign_key="sample.id", index=True,
-                           description="ID of the sample being annotated.")
-    label_id: str = Field(foreign_key="label.id", index=True,
-                          description="ID of the label for this annotation.")
 
-    # Annotation type determines how 'data' is interpreted
-    type: AnnotationType = Field(default=AnnotationType.RECT, index=True,
-                                 description="Geometric type of the annotation (rect, obb, polygon, etc.)")
+    # 业务归属字段
+    # 样本 ID：所属样本，追踪原始数据
+    sample_id: uuid.UUID = Field(foreign_key="sample.id", index=True, description="ID of the sample being annotated.")
+    # 标注 ID：所属标签，定义语义类别
+    label_id: uuid.UUID = Field(foreign_key="label.id", index=True, description="ID of the label for this annotation.")
+    # 项目 ID：所属项目，便于查询过滤
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True, description="ID of the project this annotation belongs to.")
 
-    # Source indicates if annotation is manual or auto-generated
-    source: AnnotationSource = Field(default=AnnotationSource.MANUAL, index=True,
-                                     description="Source of annotation (manual, auto, imported)")
-
-    # The actual annotation geometry data
+    # 视图同步字段
+    # 逻辑同步 ID：用于跨视图同步同一标注
+    sync_id: uuid.UUID = Field(
+        index=True,
+        nullable=False,
+        description="Logical UUID for synchronizing annotations across views."
+    )
+    # 视图角色：标注所属视图角色（主视图/辅视图）
+    view_role: str = Field(default="main", description="Role of the view this annotation belongs to.")
+    
+    # 版本控制字段
+    # 血缘追踪 ID：修改时指向父标注，None 表示原始标注
+    parent_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="annotation.id",
+        index=True,
+        description="ID of the parent annotation (for tracking modifications)."
+    )
+    
+    # 数据描述字段
+    # 标注类型：几何形状类型，决定 data 如何解析
+    type: AnnotationType = Field(default=AnnotationType.RECT, index=True, description="Geometric type of the annotation (rect, obb, polygon, etc.)")
+    # 标注来源
+    source: AnnotationSource = Field(default=AnnotationSource.MANUAL, index=True, description="Source of annotation (MANUAL, MODEL, SYSTEM).")
+    
+    # 数据存储字段
+    # 标注数据
     # For RECT: {x, y, width, height}
     # For OBB: {cx, cy, width, height, rotation}
     # For POLYGON/POLYLINE: {points: [[x1,y1], [x2,y2], ...]}
-    data: Optional[Dict[str, Any]] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False, default=dict),
-                                           description="The annotation geometry data.")
-
-    # System-specific extra data (flexible JSON for different annotation systems)
-    # Examples:
-    #   - FEDO: {parent_id, view: "time-energy"|"L-omegad", mapping_info, ...}
-    #   - Classic: {} (empty, no extra data needed)
-    #   - Future systems can add their own fields
-    extra: Optional[Dict[str, Any]] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False, default=dict),
-                                            description="System-specific extra data for this annotation.")
-
-    # User who created the annotation
-    annotator_id: Optional[str] = Field(default=None,
-                                        description="ID of the user or system that created the annotation.")
+    data: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(OPT_JSON),
+        description="The annotation geometry data."
+    )
+    # 扩展数据 (FEDO dual-view mapping, etc.)
+    extra: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(OPT_JSON),
+        description="System-specific extra data (FEDO mapping info, etc.)."
+    )
+    # 置信度分数
+    confidence: float = Field(default=1.0, index=True, description="Confidence score of the annotation (0.0 to 1.0).", ge=0.0, le=1.0)
+    
+    # 审计字段
+    # 标注者信息，source 决定了其解释
+    annotator_id: uuid.UUID | None = Field(
+        default=None,
+        description="ID of the user or system that created this annotation."
+    )
 
 
 class Annotation(AnnotationBase, TimestampMixin, UUIDMixin, table=True):
     """
     Database model for Annotation.
+    Immutable record - modifications create new annotations with parent_id reference.
     """
-    sample: "Sample" = Relationship(back_populates="annotations")
+    __tablename__ = "annotation"
+
     label: "Label" = Relationship(back_populates="annotations")
-
-
-class AnnotationCreate(AnnotationBase):
-    """
-    Model for creating a new Annotation.
-    """
-    pass
-
-
-class AnnotationRead(AnnotationBase, TimestampMixin, UUIDMixin):
-    """
-    Model for reading Annotation data.
-    """
-    # Include label info for convenience
-    label_name: Optional[str] = None
-    label_color: Optional[str] = None
-
-
-class AnnotationUpdate(SQLModel):
-    """
-    Model for updating an Annotation.
-    """
-    label_id: Optional[str] = None
-    type: Optional[AnnotationType] = None
-    data: Optional[Dict[str, Any]] = None
-    extra: Optional[Dict[str, Any]] = None
-
-
-# ============================================================================
-# Annotation Session Models (for real-time sync during annotation)
-# ============================================================================
-
-class AnnotationAction(SQLModel):
-    """
-    Single annotation action for real-time sync.
-    Sent from frontend when user creates/modifies/deletes an annotation.
-    """
-    action: str = Field(description="Action type: 'create', 'update', 'delete'")
-    annotation_id: str = Field(description="ID of the annotation")
-
-    # For create/update actions
-    label_id: Optional[str] = None
-    type: Optional[AnnotationType] = None
-    data: Optional[Dict[str, Any]] = None
-    extra: Optional[Dict[str, Any]] = None
-
-
-class AnnotationSyncRequest(SQLModel):
-    """
-    Request for syncing annotation actions.
-    """
-    sample_id: str
-    actions: List[AnnotationAction]
-
-
-class AnnotationSyncResult(SQLModel):
-    """
-    Result of a single annotation sync action.
-    For special systems like FEDO, includes generated linked annotations.
-    """
-    action: str
-    annotation_id: str
-    success: bool
-    error: Optional[str] = None
-
-    # Auto-generated annotations (e.g., FEDO dual-view mapping)
-    generated: List[Dict[str, Any]] = Field(default=[])
-
-
-class AnnotationSyncResponse(SQLModel):
-    """
-    Response for annotation sync request.
-    """
-    sample_id: str
-    results: List[AnnotationSyncResult]
-    # Whether the sample is ready for more annotations
-    ready: bool = True
-
-
-class AnnotationBatchSaveRequest(SQLModel):
-    """
-    Request for batch saving annotations to database.
-    Called when user clicks 'Save' button.
-    """
-    sample_id: str
-    annotations: List[AnnotationCreate]
-    # Update sample status after save
-    update_status: Optional[str] = None  # 'labeled', 'skipped', None
-
-
-class AnnotationBatchSaveResponse(SQLModel):
-    """
-    Response for batch save request.
-    """
-    sample_id: str
-    saved_count: int
-    success: bool
-    error: Optional[str] = None

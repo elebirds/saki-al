@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime
 
+from sqlalchemy import JSON
+from sqlalchemy.dialects import postgresql
 from sqlmodel import Field, SQLModel
 
 
@@ -23,3 +25,6 @@ class UUIDMixin(SQLModel):
     """
     id: uuid.UUID = Field(default_factory=lambda: uuid.uuid4(), primary_key=True,
                     description="Unique identifier for the record.")
+
+
+OPT_JSON = JSON().with_variant(postgresql.JSONB(), "postgresql")

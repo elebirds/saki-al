@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,30 +10,33 @@ from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
 from saki_api.core.exceptions import http_exception_handler, general_exception_handler
 from saki_api.core.middleware import ResponseWrapperMiddleware
-from saki_api.db.session import init_db
+from saki_api.db.session import init_db, dispose_engine
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    应用生命周期管理。
+    
+    Startup: 初始化数据库表，创建上传目录
+    Shutdown: 优雅关闭数据库连接池
+    """
+    # Startup
+    await init_db()
+    
+    yield
+
+    # Shutdown: 优雅关闭连接池
+    await dispose_engine()
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     description="API for Saki Active Learning Platform",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-async def on_startup():
-    """
-    Event handler triggered when the application starts.
-    Initializes the database tables asynchronously.
-    """
-    await init_db()
-
-    # Ensure upload directory exists for static file serving
-    upload_path = Path(settings.UPLOAD_DIR)
-    upload_path.mkdir(parents=True, exist_ok=True)
-
-    # Mount static files for serving uploaded images
-    app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 
 
 # Set all CORS enabled origins

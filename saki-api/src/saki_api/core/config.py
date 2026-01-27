@@ -1,5 +1,6 @@
 from typing import List
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -21,11 +22,30 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
     # Database
-    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/saki"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/saki"
     SQL_ECHO: bool = False
-
-    # Storage
-    UPLOAD_DIR: str = "./data/uploads"
+    
+    # Connection pool settings (only used for non-SQLite databases)
+    POOL_SIZE: int = 20
+    MAX_OVERFLOW: int = 10
+    POOL_RECYCLE: int = 1800  # 30 minutes
+    
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_db_connection(cls, v: str) -> str:
+        """
+        自动将同步数据库 URL 转换为异步驱动 URL。
+        
+        - sqlite:/// -> sqlite+aiosqlite:///
+        - postgresql:// -> postgresql+psycopg://
+        """
+        if isinstance(v, str):
+            if v.startswith("sqlite:///"):
+                return v.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+            if v.startswith("postgresql://"):
+                # 显式使用 psycopg 驱动 (v3)
+                return v.replace("postgresql://", "postgresql+psycopg://", 1)
+        return v
 
     # MinIO Object Storage Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
@@ -41,6 +61,7 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
+        env_file = ".env" # 允许从根目录的 .env 文件读取变量
 
 
 settings = Settings()

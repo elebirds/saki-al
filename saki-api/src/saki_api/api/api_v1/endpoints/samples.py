@@ -15,8 +15,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, desc, asc
 from sqlmodel import Session, select
 
-# Import annotation_systems module for handler registry
-from saki_api.annotation_systems import (
+# Import annotation module for handler registry
+from saki_api.annotation import (
     get_handler,
     discover_handlers,
     UploadContext,

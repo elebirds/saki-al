@@ -60,7 +60,7 @@ def get_available_types() -> AvailableTypesResponse:
     data = SystemService.get_available_types()
     return AvailableTypesResponse(
         task_types=[TypeInfo(**item) for item in data["task_types"]],
-        annotation_systems=[TypeInfo(**item) for item in data["annotation_systems"]],
+        annotation_systems=[TypeInfo(**item) for item in data["annotation"]],
     )
 
 

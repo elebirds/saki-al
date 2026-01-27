@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from saki_api.annotation_systems.base import (
+from saki_api.modules.annotation.base import (
     AnnotationSystemHandler,
     AnnotationContext,
     EventType,
@@ -25,11 +25,11 @@ from saki_api.annotation_systems.base import (
     SyncResult,
     UploadContext,
 )
-from saki_api.annotation_systems.registry import register_handler
-from saki_api.annotation_systems.satellite_fedo.lookup import load_lookup_table, LookupTable
-from saki_api.annotation_systems.satellite_fedo.obb_mapper import map_obb_annotations
+from saki_api.modules.annotation.registry import register_handler
+from saki_api.modules.annotation.satellite_fedo.lookup import load_lookup_table, LookupTable
+from saki_api.modules.annotation.satellite_fedo.obb_mapper import map_obb_annotations
 # FEDO data processing utilities (in satellite_fedo submodule)
-from saki_api.annotation_systems.satellite_fedo.processor import FedoProcessor
+from saki_api.modules.annotation.satellite_fedo.processor import FedoProcessor
 from saki_api.models.enums import AnnotationSystemType, AnnotationType, AnnotationSource
 
 # FEDO view identifiers

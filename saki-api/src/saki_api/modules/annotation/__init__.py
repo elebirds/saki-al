@@ -9,7 +9,7 @@ Each system (CLASSIC, FEDO, etc.) has a single Handler that manages:
 3. Batch Save - Pre-save hooks for validation/transformation
 
 Directory Structure:
-    annotation_systems/
+    annotation/
     ├── base.py          # AnnotationSystemHandler base class
     ├── registry.py      # Handler registration and discovery
     ├── progress.py      # Progress tracking utilities
@@ -24,7 +24,7 @@ Directory Structure:
         └── lookup.py    # Coordinate mapping tables
 
 Usage:
-    from saki_api.annotation_systems import get_handler, discover_handlers
+    from saki_api.annotation import get_handler, discover_handlers
     
     # On app startup
     discover_handlers()

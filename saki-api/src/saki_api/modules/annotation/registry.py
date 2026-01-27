@@ -109,8 +109,8 @@ def discover_handlers() -> None:
     Call during application startup.
     """
     handler_modules = [
-        "saki_api.annotation_systems.handlers.classic",
-        "saki_api.annotation_systems.handlers.fedo",
+        "saki_api.annotation.handlers.classic",
+        "saki_api.annotation.handlers.fedo",
     ]
 
     for module_name in handler_modules:

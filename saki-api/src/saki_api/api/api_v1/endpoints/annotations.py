@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from saki_api.annotation_systems import get_handler, AnnotationContext
+from saki_api.annotation import get_handler, AnnotationContext
 from saki_api.api import deps
 from saki_api.core.rbac import PermissionChecker
 from saki_api.core.rbac.dependencies import (
@@ -328,7 +328,7 @@ def sync_annotations(
         handler = get_handler(dataset.annotation_system)
     except ValueError:
         # Fallback to classic (pass-through)
-        from saki_api.annotation_systems.handlers.classic import ClassicHandler
+        from saki_api.annotation.handlers.classic import ClassicHandler
         handler = ClassicHandler()
 
     results: List[SyncResultItem] = []

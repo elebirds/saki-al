@@ -87,5 +87,5 @@ class SystemService:
 
         return {
             "task_types": task_types,
-            "annotation_systems": annotation_systems,
+            "annotation": annotation_systems,
         }

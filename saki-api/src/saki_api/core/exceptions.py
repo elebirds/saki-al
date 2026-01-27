@@ -22,13 +22,13 @@ class AppException(Exception):
     用于替代 HTTPException，提供更语义化的错误处理。
     自动根据 ErrorCode 映射到对应的 HTTP 状态码。
     """
-    
+
     def __init__(
-        self,
-        message: str,
-        error_code: ErrorCode = ErrorCode.BAD_REQUEST,
-        status_code: Optional[int] = None,
-        data: Optional[dict] = None
+            self,
+            message: str,
+            error_code: ErrorCode = ErrorCode.BAD_REQUEST,
+            status_code: Optional[int] = None,
+            data: Optional[dict] = None
     ):
         """
         初始化业务异常。
@@ -44,24 +44,49 @@ class AppException(Exception):
         self.data = data
         self.status_code = status_code or self._map_error_code_to_status_code(error_code)
         super().__init__(self.message)
-    
+
     @staticmethod
     def _map_error_code_to_status_code(error_code: ErrorCode) -> int:
         # 1. 认证相关：只有没登录才 401，剩下的（如密码错）其实可以算 400
         if error_code in (ErrorCode.UNAUTHORIZED, ErrorCode.AUTH_INVALID_TOKEN):
             return status.HTTP_401_UNAUTHORIZED
-        
+
         # 2. 权限相关：403
         if error_code in (ErrorCode.FORBIDDEN, ErrorCode.AUTH_PERMISSION_DENIED):
             return status.HTTP_403_FORBIDDEN
-        
+
         # 3. 严重的系统崩溃：500
         if error_code == ErrorCode.INTERNAL_SERVER_ERROR:
             return status.HTTP_500_INTERNAL_SERVER_ERROR
-        
+
         # 4. 其他所有业务报错，一律返回 400
         # 既能让浏览器控制台变红方便调试，又不用纠结是 404 还是 409
         return status.HTTP_400_BAD_REQUEST
+
+
+class NotFoundAppException(AppException):
+    def __init__(self, message: str = "Not Found"):
+        super().__init__(message, ErrorCode.NOT_FOUND)
+
+
+class BadRequestAppException(AppException):
+    def __init__(self, message: str = "Bad Request"):
+        super().__init__(message, ErrorCode.BAD_REQUEST)
+
+
+class UnauthorizedAppException(AppException):
+    def __init__(self, message: str = "Unauthorized"):
+        super().__init__(message, ErrorCode.UNAUTHORIZED)
+
+
+class ForbiddenAppException(AppException):
+    def __init__(self, message: str = "Forbidden"):
+        super().__init__(message, ErrorCode.FORBIDDEN)
+
+
+class InternalServerErrorAppException(AppException):
+    def __init__(self, message: str = "Internal Server Error"):
+        super().__init__(message, ErrorCode.INTERNAL_SERVER_ERROR)
 
 
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:

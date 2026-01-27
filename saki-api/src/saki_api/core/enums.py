@@ -18,7 +18,7 @@ class ErrorCode(IntEnum):
     """
     # 成功
     SUCCESS = 0
-    
+
     # HTTP标准状态码映射
     BAD_REQUEST = 4000
     UNAUTHORIZED = 4001
@@ -28,7 +28,7 @@ class ErrorCode(IntEnum):
     CONFLICT = 4009
     UNPROCESSABLE_ENTITY = 4220
     INTERNAL_SERVER_ERROR = 5000
-    
+
     # 认证授权相关 (2xxx)
     AUTH_ERROR = 2000
     AUTH_INVALID_CREDENTIALS = 2001
@@ -36,7 +36,7 @@ class ErrorCode(IntEnum):
     AUTH_INVALID_TOKEN = 2003
     AUTH_INCORRECT_PASSWORD = 2004
     AUTH_PERMISSION_DENIED = 2005
-    
+
     # 数据相关 (3xxx)
     DATA_ERROR = 3000
     DATA_NOT_FOUND = 3001

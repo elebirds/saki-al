@@ -11,6 +11,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from saki_api.models.enums import AnnotationSystemType
 from saki_api.modules.annotation.base import (
     AnnotationSystemHandler,
     EventType,
@@ -20,7 +21,6 @@ from saki_api.modules.annotation.base import (
     UploadContext,
 )
 from saki_api.modules.annotation.registry import register_handler
-from saki_api.models.enums import AnnotationSystemType
 
 
 @register_handler

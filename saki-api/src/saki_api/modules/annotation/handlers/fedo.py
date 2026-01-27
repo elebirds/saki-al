@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from saki_api.models.enums import AnnotationSystemType, AnnotationType, AnnotationSource
 from saki_api.modules.annotation.base import (
     AnnotationSystemHandler,
     AnnotationContext,
@@ -30,7 +31,6 @@ from saki_api.modules.annotation.satellite_fedo.lookup import load_lookup_table,
 from saki_api.modules.annotation.satellite_fedo.obb_mapper import map_obb_annotations
 # FEDO data processing utilities (in satellite_fedo submodule)
 from saki_api.modules.annotation.satellite_fedo.processor import FedoProcessor
-from saki_api.models.enums import AnnotationSystemType, AnnotationType, AnnotationSource
 
 # FEDO view identifiers
 VIEW_TIME_ENERGY = "time-energy"

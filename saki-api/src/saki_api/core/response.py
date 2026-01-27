@@ -42,7 +42,7 @@
 """
 
 from datetime import datetime
-from typing import Optional, Generic, TypeVar, Any, ClassVar
+from typing import Optional, Generic, TypeVar, Any
 
 from pydantic import BaseModel, Field
 
@@ -68,13 +68,13 @@ class ApiResponse(BaseModel, Generic[T]):
     message: str = Field(..., description="响应消息")
     timestamp: datetime = Field(default_factory=datetime.now, description="响应时间戳")
     data: Optional[T] = Field(None, description="响应数据")
-    
+
     @classmethod
     def success_response(
-        cls,
-        data: Any = None,
-        message: str = "Success",
-        code: int = ErrorCode.SUCCESS.value
+            cls,
+            data: Any = None,
+            message: str = "Success",
+            code: int = ErrorCode.SUCCESS.value
     ) -> "ApiResponse[T]":
         """
         创建成功响应的静态方法。
@@ -93,13 +93,13 @@ class ApiResponse(BaseModel, Generic[T]):
             message=message,
             data=data
         )
-    
+
     @classmethod
     def error_response(
-        cls,
-        message: str,
-        code: int = ErrorCode.BAD_REQUEST.value,
-        data: Any = None
+            cls,
+            message: str,
+            code: int = ErrorCode.BAD_REQUEST.value,
+            data: Any = None
     ) -> "ApiResponse[Any]":
         """
         创建错误响应的静态方法。

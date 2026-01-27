@@ -3,7 +3,6 @@ Permission Query Service - Aggregate permission view for the current user.
 """
 
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -22,11 +21,11 @@ class PermissionQueryService:
         self.role_repo = RoleRepository(session)
 
     async def get_my_permissions(
-        self,
-        current_user: User,
-        checker: PermissionChecker,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[uuid.UUID] = None,
+            self,
+            current_user: User,
+            checker: PermissionChecker,
+            resource_type: Optional[str] = None,
+            resource_id: Optional[uuid.UUID] = None,
     ) -> Dict[str, Any]:
         # System roles
         user_roles = await self.user_repo.get_user_system_roles(current_user.id)

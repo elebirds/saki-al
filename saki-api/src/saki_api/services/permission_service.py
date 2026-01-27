@@ -31,7 +31,8 @@ class PermissionService:
         """Get all permissions for a user through their roles."""
         return await self.repo.get_user_permissions(user_id)
 
-    async def add_permission(self, role_id: uuid.UUID, permission: str, conditions: Optional[dict] = None) -> RolePermission:
+    async def add_permission(self, role_id: uuid.UUID, permission: str,
+                             conditions: Optional[dict] = None) -> RolePermission:
         """
         Add a permission to a role.
         

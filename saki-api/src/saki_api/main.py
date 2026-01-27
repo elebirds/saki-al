@@ -8,8 +8,12 @@ from fastapi.staticfiles import StaticFiles
 
 from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
-from saki_api.core.exceptions import http_exception_handler, general_exception_handler
-from saki_api.core.middleware import ResponseWrapperMiddleware
+from saki_api.core.exceptions import (
+    AppException,
+    app_exception_handler,
+    http_exception_handler,
+    general_exception_handler
+)
 from saki_api.db.session import init_db, dispose_engine
 
 
@@ -49,14 +53,16 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_headers=["*"],
     )
 
-# 添加响应包装中间件（在CORS之后，这样CORS头会被保留）
-app.add_middleware(ResponseWrapperMiddleware)
-
-app.include_router(api_router, prefix=settings.API_V1_STR)
-
-# 注册全局异常处理器
+# 注册全局异常处理器（按优先级顺序注册）
+# 1. 业务异常处理器（最具体）
+app.add_exception_handler(AppException, app_exception_handler)
+# 2. FastAPI HTTP异常处理器
 app.add_exception_handler(HTTPException, http_exception_handler)
+# 3. 通用异常处理器（兜底，处理所有未捕获的异常）
 app.add_exception_handler(Exception, general_exception_handler)
+
+# 包含API路由（AutoWrapAPIRoute已在api_router中配置）
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")

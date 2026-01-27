@@ -5,11 +5,12 @@ Auth Service - Authentication and password management logic.
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
-from fastapi import HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 
 from saki_api.core import security
 from saki_api.core.config import settings
+from saki_api.core.enums import ErrorCode
+from saki_api.core.exceptions import AppException
 from saki_api.repositories.user_repository import UserRepository
 
 
@@ -21,9 +22,15 @@ class AuthService:
         """Authenticate the user and issue an access token."""
         user = await self.user_repo.get_by_email(form_data.username)
         if not user or not security.verify_password(form_data.password, user.hashed_password):
-            raise HTTPException(status_code=400, detail="Incorrect email or password")
+            raise AppException(
+                message="Incorrect email or password",
+                error_code=ErrorCode.AUTH_INVALID_CREDENTIALS
+            )
         if not user.is_active:
-            raise HTTPException(status_code=400, detail="Inactive user")
+            raise AppException(
+                message="Inactive user",
+                error_code=ErrorCode.AUTH_INACTIVE_USER
+            )
 
         # Update last login time
         user.last_login_at = datetime.utcnow()
@@ -45,13 +52,16 @@ class AuthService:
         """Change password for the current user after verifying the old one and format."""
         # Verify old password
         if not security.verify_password(old_password, current_user.hashed_password):
-            raise HTTPException(status_code=400, detail="Incorrect old password")
+            raise AppException(
+                message="Incorrect old password",
+                error_code=ErrorCode.AUTH_INCORRECT_PASSWORD
+            )
 
         # Verify new password format
         if not security.is_frontend_hashed_password(new_password):
-            raise HTTPException(
-                status_code=400,
-                detail="New password must be in the correct format (frontend hashed)",
+            raise AppException(
+                message="New password must be in the correct format (frontend hashed)",
+                error_code=ErrorCode.DATA_INVALID_FORMAT
             )
 
         await self.user_repo.update(

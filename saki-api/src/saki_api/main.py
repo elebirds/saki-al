@@ -1,10 +1,8 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
@@ -14,6 +12,7 @@ from saki_api.core.exceptions import (
     http_exception_handler,
     general_exception_handler
 )
+from saki_api.core.middleware import AuditContextMiddleware
 from saki_api.db.session import init_db, dispose_engine
 
 
@@ -27,7 +26,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     await init_db()
-    
+
     yield
 
     # Shutdown: 优雅关闭连接池
@@ -42,7 +41,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
 # Set all CORS enabled origins
 if settings.BACKEND_CORS_ORIGINS:
     app.add_middleware(
@@ -53,6 +51,9 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_headers=["*"],
     )
 
+# 添加审计上下文中间件（确保在请求结束时清理上下文变量）
+app.add_middleware(AuditContextMiddleware)
+
 # 注册全局异常处理器（按优先级顺序注册）
 # 1. 业务异常处理器（最具体）
 app.add_exception_handler(AppException, app_exception_handler)
@@ -61,7 +62,6 @@ app.add_exception_handler(HTTPException, http_exception_handler)
 # 3. 通用异常处理器（兜底，处理所有未捕获的异常）
 app.add_exception_handler(Exception, general_exception_handler)
 
-# 包含API路由（AutoWrapAPIRoute已在api_router中配置）
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 

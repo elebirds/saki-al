@@ -7,30 +7,28 @@ from datetime import datetime
 from typing import Optional, List
 
 from fastapi import HTTPException
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.rbac.audit import (
     log_role_create,
     log_role_update,
     log_role_delete,
 )
-from saki_api.models import Role, RoleType
+from saki_api.models import Role, RoleType, User
 from saki_api.repositories.role_repository import RoleRepository
 from saki_api.schemas import RoleCreate, RoleUpdate, RoleRead, RolePermissionRead
+from saki_api.services.base_service import BaseService
 
 
-class RoleService:
+class RoleService(BaseService[Role, RoleCreate, RoleUpdate]):
     """Service for role business logic."""
 
-    def __init__(self, repo: RoleRepository):
-        self.repo = repo
+    def __init__(self, session: AsyncSession, current_user: Optional[User] = None):
+        super().__init__(Role, session, current_user)
+        # Override repository with RoleRepository for additional methods
+        self.repo = RoleRepository(session)
 
-    async def get_by_id(self, role_id: uuid.UUID) -> Role:
-        """Get role by ID or raise 404."""
-        role = await self.repo.get_by_id(role_id)
-        if not role:
-            raise HTTPException(status_code=404, detail="Role not found")
-        return role
-
+    # Keep custom methods that extend BaseService functionality
     async def get_by_name(self, name: str) -> Optional[Role]:
         """Get role by name."""
         return await self.repo.get_by_name(name)
@@ -43,13 +41,12 @@ class RoleService:
         """Get the default role for new users."""
         return await self.repo.get_default_role()
 
-    async def create_role(self, role_in: RoleCreate, current_user_id: uuid.UUID) -> Role:
+    async def create_role(self, role_in: RoleCreate) -> Role:
         """
         Create a custom role.
         
         Args:
             role_in: Role creation data
-            current_user_id: ID of the user creating the role
         
         Raises:
             HTTPException: If role name exists or parent role invalid
@@ -96,21 +93,20 @@ class RoleService:
                 "type": role.type.value,
                 "permissions": [p.permission for p in role_in.permissions],
             },
-            actor_id=current_user_id,
+            actor_id=self.current_user.id,
         )
 
         await self.repo.commit()
         await self.repo.refresh(role)
         return role
 
-    async def update_role(self, role_id: uuid.UUID, role_in: RoleUpdate, current_user_id: uuid.UUID) -> Role:
+    async def update_role(self, role_id: uuid.UUID, role_in: RoleUpdate) -> Role:
         """
         Update a role.
         
         Args:
             role_id: Role ID to update
             role_in: Update data
-            current_user_id: ID of the user updating the role
         
         Raises:
             HTTPException: If role not found or permission denied
@@ -175,20 +171,19 @@ class RoleService:
                 "display_name": role.display_name,
                 "description": role.description,
             },
-            actor_id=current_user_id,
+            actor_id=self.current_user.id,
         )
 
         await self.repo.commit()
         await self.repo.refresh(role)
         return role
 
-    async def delete_role(self, role_id: uuid.UUID, current_user_id: uuid.UUID) -> bool:
+    async def delete_role(self, role_id: uuid.UUID) -> bool:
         """
         Delete a role.
         
         Args:
             role_id: Role ID to delete
-            current_user_id: ID of the user deleting the role
         
         Raises:
             HTTPException: If role not found or is system role
@@ -218,14 +213,15 @@ class RoleService:
                 "display_name": role.display_name,
                 "type": role.type.value,
             },
-            actor_id=current_user_id,
+            actor_id=self.current_user.id,
         )
 
         # Delete role and its permissions
         await self.repo.clear_permissions(role_id)
-        result = await self.repo.delete(role_id)
-        await self.repo.commit()
-        return result
+
+        # Use BaseService delete method
+        await self.delete(role_id)
+        return True
 
     async def build_role_read(self, role: Role) -> RoleRead:
         """Build RoleRead response with permissions."""

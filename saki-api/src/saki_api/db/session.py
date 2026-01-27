@@ -5,6 +5,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.config import settings
+from saki_api.db.audit import setup_audit_listeners
 
 
 def get_engine_kwargs() -> dict:
@@ -17,7 +18,7 @@ def get_engine_kwargs() -> dict:
         "echo": settings.SQL_ECHO,
         "pool_pre_ping": True,  # 每次拿连接先检查，防止"断线"
     }
-    
+
     # 只有非 SQLite 数据库才启用连接池参数
     if "sqlite" not in settings.DATABASE_URL:
         kwargs.update({
@@ -28,7 +29,7 @@ def get_engine_kwargs() -> dict:
     else:
         # SQLite 特有配置
         kwargs["connect_args"] = {"check_same_thread": False}
-    
+
     return kwargs
 
 
@@ -39,6 +40,8 @@ engine: AsyncEngine = create_async_engine(
     **get_engine_kwargs()
 )
 
+# 设置审计字段自动填充的事件监听器
+setup_audit_listeners()
 
 # 使用专用的 async_sessionmaker（SQLAlchemy 2.0+）
 SessionLocal = async_sessionmaker(

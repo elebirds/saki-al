@@ -9,17 +9,14 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models import Role, RolePermission, RoleType
+from saki_api.repositories.base_repository import BaseRepository
 
 
-class RoleRepository:
+class RoleRepository(BaseRepository[Role]):
     """Repository for Role data access."""
 
     def __init__(self, session: AsyncSession):
-        self.session = session
-
-    async def get_by_id(self, role_id: uuid.UUID) -> Optional[Role]:
-        """Get role by ID."""
-        return await self.session.get(Role, role_id)
+        super().__init__(Role, session)
 
     async def get_by_name(self, name: str) -> Optional[Role]:
         """Get role by name."""
@@ -46,36 +43,6 @@ class RoleRepository:
         """Get the default role for new users."""
         statement = select(Role).where(Role.is_default == True)
         return (await self.session.exec(statement)).first()
-
-    async def create(self, role_data: dict) -> Role:
-        """Create a new role."""
-        role = Role(**role_data)
-        self.session.add(role)
-        await self.session.flush()
-        return role
-
-    async def update(self, role_id: uuid.UUID, role_data: dict) -> Optional[Role]:
-        """Update an existing role."""
-        role = await self.get_by_id(role_id)
-        if not role:
-            return None
-
-        for key, value in role_data.items():
-            setattr(role, key, value)
-
-        self.session.add(role)
-        await self.session.flush()
-        return role
-
-    async def delete(self, role_id: uuid.UUID) -> bool:
-        """Delete a role."""
-        role = await self.get_by_id(role_id)
-        if not role:
-            return False
-
-        await self.session.delete(role)
-        await self.session.flush()
-        return True
 
     async def get_permissions(self, role_id: uuid.UUID) -> List[RolePermission]:
         """Get all permissions for a role."""

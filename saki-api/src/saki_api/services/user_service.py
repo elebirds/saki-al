@@ -6,6 +6,7 @@ import uuid
 from typing import Optional, List
 
 from fastapi import HTTPException
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core import security
 from saki_api.core.rbac import PermissionChecker
@@ -16,8 +17,8 @@ from saki_api.core.rbac.audit import (
 from saki_api.core.rbac.presets import get_default_role
 from saki_api.models import User, UserSystemRole, RoleType
 from saki_api.models.rbac.enums import Permissions
-from saki_api.repositories.user_repository import UserRepository
 from saki_api.repositories.role_repository import RoleRepository
+from saki_api.repositories.user_repository import UserRepository
 from saki_api.schemas import (
     UserRead,
     UserUpdate,
@@ -25,40 +26,36 @@ from saki_api.schemas import (
     UserSystemRoleCreate,
     UserSystemRoleRead,
 )
+from saki_api.services.base_service import BaseService
 
 
-class UserService:
+class UserService(BaseService[User, UserCreate, UserUpdate]):
     """Service for user business logic."""
 
-    def __init__(self, repo: UserRepository):
-        self.repo = repo
+    def __init__(self, session: AsyncSession, current_user: Optional[User] = None):
+        super().__init__(User, session, current_user)
+        # Override repository with UserRepository for additional methods
+        self.repo = UserRepository(session)
 
-    async def get_by_id(self, user_id: uuid.UUID) -> User:
-        """Get user by ID or raise 404."""
-        user = await self.repo.get_by_id(user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        return user
-
+    # Keep custom methods that extend BaseService functionality
     async def get_by_email(self, email: str) -> Optional[User]:
         """Get user by email."""
         return await self.repo.get_by_email(email)
 
     async def list_users(self, skip: int = 0, limit: int = 100) -> List[User]:
         """List all users."""
-        return await self.repo.list_all(skip=skip, limit=limit)
+        return await self.list_all(skip=skip, limit=limit)
 
     async def list_active_users(self, skip: int = 0, limit: int = 100) -> List[User]:
         """List active users for member selection."""
         return await self.repo.list_active(skip=skip, limit=limit)
 
-    async def create_user(self, user_in: UserCreate, current_user: User = None) -> User:
+    async def create_user(self, user_in: UserCreate) -> User:
         """
         Create a new user.
         
         Args:
             user_in: User creation data
-            current_user: The user creating this user (for audit), can be None for registration
         
         Raises:
             HTTPException: If email already exists
@@ -84,21 +81,20 @@ class UserService:
         # Assign default role
         default_role = await get_default_role(self.repo.session)
         if default_role:
-            assigned_by = current_user.id if current_user else "system"
+            assigned_by = self.current_user.id if self.current_user else "system"
             await self.repo.assign_system_role(user.id, default_role.id, assigned_by)
 
         await self.repo.commit()
         await self.repo.refresh(user)
         return user
 
-    async def update_user(self, user_id: uuid.UUID, user_in: UserUpdate, current_user_id: uuid.UUID, checker) -> User:
+    async def update_user(self, user_id: uuid.UUID, user_in: UserUpdate, checker: PermissionChecker) -> User:
         """
         Update a user.
         
         Args:
             user_id: User ID to update
             user_in: Update data
-            current_user_id: ID of the user making the update
             checker: Permission checker for super admin checks
         
         Raises:
@@ -108,7 +104,7 @@ class UserService:
 
         # Protect super admin
         if await checker.is_super_admin(user_id):
-            if not await checker.is_super_admin(current_user_id):
+            if not await checker.is_super_admin(self.current_user.id):
                 raise HTTPException(
                     status_code=403,
                     detail="Only super administrators can modify super administrator accounts"
@@ -129,13 +125,12 @@ class UserService:
         await self.repo.refresh(user)
         return user
 
-    async def delete_user(self, user_id: uuid.UUID, current_user_id: uuid.UUID, checker) -> User:
+    async def delete_user(self, user_id: uuid.UUID, checker: PermissionChecker) -> User:
         """
         Delete a user.
         
         Args:
             user_id: User ID to delete
-            current_user_id: ID of the user making the deletion
             checker: Permission checker for super admin checks
         
         Raises:
@@ -145,25 +140,20 @@ class UserService:
 
         # Protect super admin
         if checker.is_super_admin(user_id):
-            if not checker.is_super_admin(current_user_id):
+            if not checker.is_super_admin(self.current_user.id):
                 raise HTTPException(
                     status_code=403,
                     detail="Only super administrators can delete super administrator accounts"
                 )
 
-            if user_id == current_user_id:
+            if user_id == self.current_user.id:
                 raise HTTPException(
                     status_code=403,
                     detail="Super administrators cannot delete themselves"
                 )
 
-        # Store user info before deletion
-        deleted_user = User.model_validate(user)
-
-        # Delete user
-        await self.repo.delete(user_id)
-        await self.repo.commit()
-        return deleted_user
+        # Use BaseService delete method
+        return await self.delete(user_id)
 
     async def build_user_read(self, user: User) -> UserRead:
         """
@@ -222,9 +212,9 @@ class UserService:
     # =====================================================================
 
     async def get_user_roles_read(
-        self,
-        user_id: uuid.UUID,
-        role_repo: RoleRepository,
+            self,
+            user_id: uuid.UUID,
+            role_repo: RoleRepository,
     ) -> List[UserSystemRoleRead]:
         """Get user's system roles with role details for response."""
         # Ensure user exists (raise 404 if not)
@@ -249,12 +239,12 @@ class UserService:
         return result
 
     async def assign_user_system_role(
-        self,
-        user_id: uuid.UUID,
-        role_in: UserSystemRoleCreate,
-        current_user: User,
-        checker: PermissionChecker,
-        role_repo: RoleRepository,
+            self,
+            user_id: uuid.UUID,
+            role_in: UserSystemRoleCreate,
+            current_user: User,
+            checker: PermissionChecker,
+            role_repo: RoleRepository,
     ) -> UserSystemRoleRead:
         """Assign a system role to a user with validations and audit logging."""
         from fastapi import HTTPException
@@ -325,12 +315,12 @@ class UserService:
         )
 
     async def revoke_user_system_role(
-        self,
-        user_id: uuid.UUID,
-        role_id: uuid.UUID,
-        current_user: User,
-        checker: PermissionChecker,
-        role_repo: RoleRepository,
+            self,
+            user_id: uuid.UUID,
+            role_id: uuid.UUID,
+            current_user: User,
+            checker: PermissionChecker,
+            role_repo: RoleRepository,
     ) -> bool:
         """Revoke a system role with validations and audit."""
         from fastapi import HTTPException

@@ -52,6 +52,30 @@ class BaseRepository(Generic[ModelType]):
         """
         return await self.session.get(self.model, record_id)
 
+    async def get_one(
+            self,
+            filters: Optional[Dict[str, Any]] = None
+    ) -> Optional[ModelType]:
+        """
+        Get one record.
+
+        Args:
+            filters: Optional dictionary of field filters
+
+        Returns:
+            List of records
+        """
+        statement = select(self.model)
+
+        if filters:
+            for field, value in filters.items():
+                if hasattr(self.model, field):
+                    statement = statement.where(getattr(self.model, field) == value)
+
+        result = await self.session.exec(statement)
+        # 使用 .first() 只取一条，即使匹配多条也只返回第一条
+        return result.first()
+
     async def list_all(
             self,
             skip: int = 0,
@@ -94,7 +118,9 @@ class BaseRepository(Generic[ModelType]):
         """
         record = self.model(**data)
         self.session.add(record)
+        # flush 会同步对象状态到数据库内存，触发 before_insert 事件
         await self.session.flush()
+        # 刷新以获取数据库生成的字段（如审计字段、ID等）
         await self.session.refresh(record)
         return record
 
@@ -122,7 +148,9 @@ class BaseRepository(Generic[ModelType]):
                 setattr(record, key, value)
 
         self.session.add(record)
+        # flush 会同步对象状态到数据库内存，触发 before_insert 事件
         await self.session.flush()
+        # 刷新以获取数据库生成的字段（如审计字段、ID等）
         await self.session.refresh(record)
         return record
 

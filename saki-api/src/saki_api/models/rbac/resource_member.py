@@ -6,12 +6,12 @@ and assigning resource-specific roles.
 """
 
 import uuid
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel, Relationship
 
-from saki_api.models.base import UUIDMixin, TimestampMixin
+from saki_api.models.base import UUIDMixin, TimestampMixin, AuditMixin
 from saki_api.models.rbac.enums import ResourceType
 
 if TYPE_CHECKING:
@@ -29,26 +29,18 @@ class ResourceMemberBase(SQLModel):
         index=True,
         description="ID of the resource"
     )
-
-    # User
     user_id: uuid.UUID = Field(
         foreign_key="user.id",
         index=True,
         description="User ID"
     )
-
-    # Role
     role_id: uuid.UUID = Field(
         foreign_key="role.id",
         description="Resource role ID"
     )
-    created_by: uuid.UUID = Field(
-        foreign_key="user.id",
-        description="Creator User ID"
-    )
 
 
-class ResourceMember(ResourceMemberBase, UUIDMixin, TimestampMixin, table=True):
+class ResourceMember(ResourceMemberBase, UUIDMixin, TimestampMixin, AuditMixin, table=True):
     """
     Resource Member table.
     
@@ -69,6 +61,3 @@ class ResourceMember(ResourceMemberBase, UUIDMixin, TimestampMixin, table=True):
         sa_relationship_kwargs={"foreign_keys": "[ResourceMember.user_id]"}
     )
     role: "Role" = Relationship()
-    creator: Optional["User"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": "[ResourceMember.created_by]"}
-    )

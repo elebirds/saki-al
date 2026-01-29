@@ -6,6 +6,7 @@ import logging
 from typing import Optional
 
 from fastapi import Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.responses import JSONResponse
 
@@ -89,6 +90,56 @@ class InternalServerErrorAppException(AppException):
         super().__init__(message, ErrorCode.INTERNAL_SERVER_ERROR)
 
 
+# ============================================================================
+# Data-related Exceptions (3xxx)
+# ============================================================================
+
+class DataAlreadyExistsAppException(AppException):
+    """Exception raised when trying to create a resource that already exists."""
+    def __init__(self, message: str = "Resource already exists"):
+        super().__init__(message, ErrorCode.DATA_ALREADY_EXISTS)
+
+
+class DataValidationAppException(AppException):
+    """Exception raised when data validation fails."""
+    def __init__(self, message: str = "Data validation error"):
+        super().__init__(message, ErrorCode.DATA_VALIDATION_ERROR)
+
+
+class DataInvalidFormatAppException(AppException):
+    """Exception raised when data format is invalid."""
+    def __init__(self, message: str = "Invalid data format"):
+        super().__init__(message, ErrorCode.DATA_INVALID_FORMAT)
+
+
+# ============================================================================
+# Authentication-related Exceptions (2xxx)
+# ============================================================================
+
+class AuthInvalidCredentialsAppException(AppException):
+    """Exception raised when authentication credentials are invalid."""
+    def __init__(self, message: str = "Invalid credentials"):
+        super().__init__(message, ErrorCode.AUTH_INVALID_CREDENTIALS)
+
+
+class AuthInactiveUserAppException(AppException):
+    """Exception raised when trying to authenticate an inactive user."""
+    def __init__(self, message: str = "Inactive user"):
+        super().__init__(message, ErrorCode.AUTH_INACTIVE_USER)
+
+
+class AuthIncorrectPasswordAppException(AppException):
+    """Exception raised when password is incorrect."""
+    def __init__(self, message: str = "Incorrect password"):
+        super().__init__(message, ErrorCode.AUTH_INCORRECT_PASSWORD)
+
+
+class AuthInvalidTokenAppException(AppException):
+    """Exception raised when token is invalid or expired."""
+    def __init__(self, message: str = "Invalid or expired token"):
+        super().__init__(message, ErrorCode.AUTH_INVALID_TOKEN)
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """
     处理业务异常（AppException），转换为统一的响应格式。
@@ -101,7 +152,7 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
 
     return JSONResponse(
         status_code=exc.status_code,
-        content=response.model_dump()
+        content=jsonable_encoder(response),
     )
 
 
@@ -135,7 +186,7 @@ async def http_exception_handler(request: Request, exc: FastAPIHTTPException) ->
 
     return JSONResponse(
         status_code=exc.status_code,
-        content=response.model_dump()
+        content=jsonable_encoder(response),
     )
 
 
@@ -153,5 +204,5 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=response.model_dump()
+        content=jsonable_encoder(response),
     )

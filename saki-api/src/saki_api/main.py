@@ -12,7 +12,6 @@ from saki_api.core.exceptions import (
     http_exception_handler,
     general_exception_handler
 )
-from saki_api.core.middleware import AuditContextMiddleware
 from saki_api.db.session import init_db, dispose_engine
 
 
@@ -51,8 +50,7 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_headers=["*"],
     )
 
-# 添加审计上下文中间件（确保在请求结束时清理上下文变量）
-app.add_middleware(AuditContextMiddleware)
+# 注意：审计上下文现在通过依赖项管理，不再需要中间件
 
 # 注册全局异常处理器（按优先级顺序注册）
 # 1. 业务异常处理器（最具体）

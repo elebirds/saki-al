@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from saki_api.api.service_deps import SystemServiceDep
 from saki_api.db.session import get_session
 from saki_api.models import User
 from saki_api.schemas import UserCreate, UserRead
@@ -42,13 +43,12 @@ class AvailableTypesResponse(BaseModel):
 
 @router.get("/status")
 async def get_system_status(
-        session: AsyncSession = Depends(get_session),
+        service: SystemServiceDep
 ) -> Any:
     """
     Check if the system is initialized (has at least one user).
     """
-    svc = SystemService(session)
-    return await svc.get_status()
+    return await service.get_status()
 
 
 @router.get("/types", response_model=AvailableTypesResponse)
@@ -67,7 +67,7 @@ def get_available_types() -> AvailableTypesResponse:
 @router.post("/setup", response_model=UserRead)
 async def setup_system(
         user_in: UserCreate,
-        session: AsyncSession = Depends(get_session),
+        service: SystemServiceDep
 ) -> Any:
     """
     Initialize the system with the first superuser.
@@ -77,11 +77,4 @@ async def setup_system(
     2. Creates the first user
     3. Assigns super_admin role to the first user
     """
-    # Disallow re-initialization
-    result = await session.exec(select(User).limit(1))
-    if result.first():
-        raise HTTPException(status_code=400, detail="System already initialized")
-
-    svc = SystemService(session)
-    db_user = await svc.setup_system(user_in)
-    return await svc.build_user_read(db_user)
+    return await service.setup_system(user_in)

@@ -5,7 +5,7 @@ Provides generic service operations with automatic dependency injection.
 """
 
 import uuid
-from typing import TypeVar, Generic, List, Type, Dict, Any
+from typing import TypeVar, Generic, List, Type
 
 from pydantic import BaseModel
 from sqlmodel import SQLModel
@@ -14,6 +14,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.db.transaction import transactional
 from saki_api.repositories.base_repository import BaseRepository
+from saki_api.repositories.query import FilterType, Pagination, OrderByType
 
 ModelType = TypeVar("ModelType", bound=SQLModel)
 RepoType = TypeVar("RepoType", bound=BaseRepository)
@@ -42,7 +43,7 @@ class BaseService(Generic[ModelType, RepoType, CreateSchemaType, UpdateSchemaTyp
         """
         self.model = model
         self.session = session
-        self.repository : RepoType = repository_class(model, session)
+        self.repository : RepoType = repository_class(session)
 
     async def get_by_id(self, record_id: uuid.UUID) -> ModelType | None:
         """
@@ -68,33 +69,22 @@ class BaseService(Generic[ModelType, RepoType, CreateSchemaType, UpdateSchemaTyp
             raise NotFoundAppException(f"Record{self.model.__name__} with ID {record_id} not found")
         return record
 
-    async def get_one(self, filters: Dict[str, Any] | None = None) -> ModelType | None:
+    async def get_one(self, filters: FilterType = None) -> ModelType | None:
         return await self.repository.get_one(filters)
 
-    async def get_one_or_raise(self, filters: Dict[str, Any] | None = None) -> ModelType:
+    async def get_one_or_raise(self, filters: FilterType = None) -> ModelType:
         record = await self.repository.get_one(filters)
         if not record:
             raise NotFoundAppException(f"Record{self.model.__name__} with Filters {filters} not found")
         return record
 
-    async def list_all(
-            self,
-            skip: int = 0,
-            limit: int = 100,
-            filters: Dict[str, Any] | None = None
-    ) -> List[ModelType]:
+    async def list(self, pagination: Pagination = Pagination(),
+                   filters: FilterType = None,
+                   order_by: OrderByType = None, ) -> List[ModelType]:
         """
-        List all records with pagination.
-        
-        Args:
-            skip: Number of records to skip
-            limit: Maximum number of records to return
-            filters: Optional dictionary of field filters
-            
-        Returns:
-            List of records
+        List all records with pagination, filtering, and ordering.
         """
-        return await self.repository.list_all(skip=skip, limit=limit, filters=filters)
+        return await self.repository.list(pagination, filters, order_by)
 
     @transactional
     async def create(self, schema: CreateSchemaType) -> ModelType:
@@ -125,17 +115,8 @@ class BaseService(Generic[ModelType, RepoType, CreateSchemaType, UpdateSchemaTyp
             
         Returns:
             The updated record
-            
-        Raises:
-            HTTPException: If record not found
         """
-        data = schema.model_dump(exclude_unset=True)
-        record = await self.repository.update(record_id, data)
-
-        if not record:
-            raise NotFoundAppException(f"Record{self.model.__name__} with ID {record_id} not found")
-
-        return record
+        return await self.repository.update_or_raise(record_id, schema.model_dump(exclude_unset=True))
 
     @transactional
     async def delete(self, record_id: uuid.UUID) -> ModelType:
@@ -147,9 +128,6 @@ class BaseService(Generic[ModelType, RepoType, CreateSchemaType, UpdateSchemaTyp
             
         Returns:
             The deleted record
-            
-        Raises:
-            HTTPException: If record not found
         """
         # Get the record first to return it
         record = await self.get_by_id(record_id)

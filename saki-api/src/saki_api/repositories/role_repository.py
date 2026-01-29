@@ -2,13 +2,11 @@
 Role Repository - Data access layer for Role operations.
 """
 
-import uuid
-from typing import Optional, List
+from typing import List
 
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models import Role, RolePermission, RoleType
+from saki_api.models import Role
 from saki_api.repositories.base_repository import BaseRepository
 
 
@@ -18,71 +16,25 @@ class RoleRepository(BaseRepository[Role]):
     def __init__(self, session: AsyncSession):
         super().__init__(Role, session)
 
-    async def get_by_name(self, name: str) -> Optional[Role]:
+    async def get_by_name(self, name: str) -> Role | None:
         """Get role by name."""
-        statement = select(Role).where(Role.name == name)
-        return (await self.session.exec(statement)).first()
+        return await self.get_one([Role.name == name])
 
-    async def list_all(self, role_type: Optional[RoleType] = None) -> List[Role]:
-        """List all roles, optionally filtered by type."""
-        query = select(Role).order_by(Role.sort_order, Role.created_at)
+    async def get_by_name_or_raise(self, name: str) -> Role:
+        """Get role by name or raise NotFoundAppException."""
+        return await self.get_one_or_raise([Role.name == name])
 
-        if role_type:
-            query = query.where(Role.type == role_type)
-
-        result = await self.session.exec(query)
-        return result.all()
-
-    async def list_system_roles(self) -> List[Role]:
+    async def list_system(self) -> List[Role]:
         """List all system preset roles."""
-        statement = select(Role).where(Role.is_system == True).order_by(Role.sort_order)
-        result = await self.session.exec(statement)
-        return result.all()
-
-    async def get_default_role(self) -> Optional[Role]:
-        """Get the default role for new users."""
-        statement = select(Role).where(Role.is_default == True)
-        return (await self.session.exec(statement)).first()
-
-    async def get_permissions(self, role_id: uuid.UUID) -> List[RolePermission]:
-        """Get all permissions for a role."""
-        statement = select(RolePermission).where(RolePermission.role_id == role_id)
-        result = await self.session.exec(statement)
-        return result.all()
-
-    async def add_permission(self, role_id: uuid.UUID, permission: str,
-                             conditions: Optional[dict] = None) -> RolePermission:
-        """Add a permission to a role."""
-        perm = RolePermission(
-            role_id=role_id,
-            permission=permission,
-            conditions=conditions,
+        return await self.list(
+            filters=[Role.is_system == True],
+            order_by=[Role.sort_order]
         )
-        self.session.add(perm)
-        await self.session.flush()
-        return perm
 
-    async def remove_permission(self, role_id: uuid.UUID, permission_id: uuid.UUID) -> bool:
-        """Remove a permission from a role."""
-        perm = await self.session.get(RolePermission, permission_id)
-        if not perm or perm.role_id != role_id:
-            return False
+    async def get_super_admin(self) -> Role: # Must be NOT None
+        return await self.get_one([Role.is_super == True])
 
-        await self.session.delete(perm)
-        await self.session.flush()
-        return True
+    async def get_default(self) -> Role: # Must be NOT None
+        """Get the default role for new users."""
+        return await self.get_one([Role.is_default == True])
 
-    async def clear_permissions(self, role_id: uuid.UUID) -> None:
-        """Remove all permissions from a role."""
-        perms = await self.get_permissions(role_id)
-        for perm in perms:
-            await self.session.delete(perm)
-        await self.session.flush()
-
-    async def commit(self) -> None:
-        """Commit transaction."""
-        await self.session.commit()
-
-    async def refresh(self, obj: Role) -> None:
-        """Refresh an object."""
-        await self.session.refresh(obj)

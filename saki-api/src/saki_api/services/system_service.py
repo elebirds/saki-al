@@ -2,54 +2,73 @@
 System Service - Initialization and system-wide operations.
 """
 
-from typing import Any, Dict, List
+from typing import Dict, List
 
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.core import security
-from saki_api.core.rbac.presets import init_preset_roles, get_role_by_name
-from saki_api.models import User, UserSystemRole
-from saki_api.schemas import UserCreate
-from saki_api.services.user_service import UserService
-from saki_api.repositories.user_repository import UserRepository
+from saki_api.core.exceptions import BadRequestAppException
+from saki_api.core.rbac.presets import init_preset_roles
+from saki_api.db.transaction import transactional
+from saki_api.repositories.user_system_role_repository import UserSystemRoleRepository
+from saki_api.schemas import UserCreate, UserRead
+from saki_api.services import UserService, RoleService
 
 
 class SystemService:
     def __init__(self, session: AsyncSession):
         self.session = session
+        self.user_service = UserService(session)
+        self.role_service = RoleService(session)
+        self.user_role_repo = UserSystemRoleRepository(session)
 
     async def get_status(self) -> Dict[str, bool]:
-        result = await self.session.exec(select(User).limit(1))
-        user = result.first()
-        return {"initialized": user is not None}
+        return {"initialized": await self.is_init()}
 
-    async def setup_system(self, user_in: UserCreate) -> User:
+    async def is_init(self) -> bool:
+        return await self.user_service.has_any_user()
+
+    @transactional
+    async def setup_system(self, user_in: UserCreate) -> UserRead:
+        """
+        Initialize the system with the first superuser.
+        
+        This method:
+        1. Creates all preset roles
+        2. Creates the first user
+        3. Assigns super_admin role to the first user
+        
+        Args:
+            user_in: User creation data for the first superuser
+            
+        Returns:
+            UserRead: Created superuser profile
+            
+        Raises:
+            BadRequestAppException: If system is already initialized
+        """
+        if await self.is_init():
+            raise BadRequestAppException("System already exists")
+        
         # Initialize preset roles
-        roles = await init_preset_roles(self.session)
+        await init_preset_roles(self.session)
+        
+        # Create the first user
+        user = await self.user_service.create(user_in, must_change_password=False)
+        
+        # Get super_admin role
+        super_admin_role = await self.role_service.get_super_admin()
+        if not super_admin_role:
+            raise BadRequestAppException("super_admin role not found after initialization")
 
-        # Create first user
-        user_data = user_in.model_dump(exclude={"password"})
-        user_data["hashed_password"] = security.get_password_hash(user_in.password)
-        user_data["is_active"] = True
-        db_user = User.model_validate(user_data)
-        self.session.add(db_user)
-        await self.session.flush()
+        from saki_api.schemas.user_system_role import UserSystemRoleCreate
+        
+        role_in = UserSystemRoleCreate(
+            user_id=user.id,
+            role_id=super_admin_role.id,
+        )
+        await self.user_role_repo.assign(role_in)
 
-        # Assign super_admin role
-        super_admin_role = roles.get("super_admin") or await get_role_by_name(self.session, "super_admin")
-        if super_admin_role:
-            user_role = UserSystemRole(user_id=db_user.id, role_id=super_admin_role.id)
-            self.session.add(user_role)
-
-        await self.session.commit()
-        await self.session.refresh(db_user)
-        return db_user
-
-    async def build_user_read(self, user: User) -> Any:
-        # Reuse existing user service builder for consistency
-        repo = UserRepository(self.session)
-        return await UserService(repo).build_user_read(user)
+        return await self.user_service.get_profile_by_id(user.id)
 
     @staticmethod
     def get_available_types() -> Dict[str, List[Dict[str, str]]]:

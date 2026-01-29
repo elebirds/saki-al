@@ -6,18 +6,27 @@ Schemas are separated from SQLModel database models for clear separation of conc
 """
 
 # RBAC Schemas
-from saki_api.schemas.rbac import (
+from saki_api.schemas.resource_member import (
+    ResourceMemberCreate,
+    ResourceMemberRead,
+)
+
+from saki_api.schemas.role import (
     RoleCreate,
     RoleRead,
     RoleUpdate,
+RoleReadMinimal
+)
+
+from saki_api.schemas.role_permission import (
     RolePermissionCreate,
     RolePermissionRead,
+    RolePermissionUpdate,
+)
+
+from saki_api.schemas.user_system_role import (
     UserSystemRoleCreate,
-    UserSystemRoleRead,
-    ResourceMemberCreate,
-    ResourceMemberRead,
-    ResourceMemberUpdate,
-    AuditLogRead,
+    UserSystemRoleRead
 )
 
 # User Schemas
@@ -25,7 +34,7 @@ from saki_api.schemas.user import (
     UserCreate,
     UserRead,
     UserUpdate,
-    UserWithPermissions,
+    UserReadWithPermissions,
     UserListItem,
 )
 
@@ -34,19 +43,19 @@ __all__ = [
     "RoleCreate",
     "RoleRead",
     "RoleUpdate",
+    "RoleReadMinimal",
     "RolePermissionCreate",
     "RolePermissionRead",
+    "RolePermissionUpdate",
     "UserSystemRoleCreate",
     "UserSystemRoleRead",
     "ResourceMemberCreate",
     "ResourceMemberRead",
-    "ResourceMemberUpdate",
-    "AuditLogRead",
 
     # User Schemas
     "UserCreate",
     "UserRead",
     "UserUpdate",
-    "UserWithPermissions",
+    "UserReadWithPermissions",
     "UserListItem",
 ]

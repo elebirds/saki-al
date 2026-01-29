@@ -88,11 +88,6 @@ class PermissionChecker:
         for rp in role_perms:
             permissions.add(rp.permission)
 
-        # Get inherited permissions from parent
-        if role.parent_id:
-            parent_perms = await self.get_role_permissions(role.parent_id)
-            permissions.update(parent_perms)
-
         self._permission_cache[role_id] = permissions
         return permissions
 

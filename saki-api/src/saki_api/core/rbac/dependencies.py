@@ -4,41 +4,111 @@ FastAPI Dependencies for RBAC
 Provides dependency injection for permission checking.
 """
 
-from typing import Optional, Callable
+import uuid
+from typing import Optional, Callable, AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import jwt, JWTError
+from pydantic import BaseModel, ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.core.context import get_current_user_id
+from saki_api.core.config import settings
+from saki_api.core.context import set_current_user_id, reset_current_user_id
 from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.db.session import get_session
 from saki_api.models.user import User
 
+# HTTPBearer 用于从请求头中提取 token，并集成到 Swagger UI
+security = HTTPBearer()
 
-async def _get_current_user_internal(
-        session: AsyncSession = Depends(get_session)
-) -> User:
+
+class TokenPayload(BaseModel):
+    """JWT Token Payload 模型"""
+    sub: str  # Subject (user ID)
+
+
+async def get_token_payload(
+        credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> TokenPayload:
     """
-    Internal user getter to avoid circular import.
+    获取并解码 JWT Token，不访问数据库。
     
-    完全基于中间件设置的 ContextVar 获取用户信息。
-    中间件已经从请求头中提取并验证了 token，并将用户 ID 设置到上下文变量中。
+    这是最轻量级的依赖项，只解析 Token 获取 payload。
+    用于 Swagger UI 的 Authorize 锁定功能。
     
+    Args:
+        credentials: HTTPBearer 自动提取的认证凭证
+        
+    Returns:
+        TokenPayload: 解码后的 token payload
+        
     Raises:
-        HTTPException: 如果用户未认证或用户不存在/未激活
+        HTTPException: 如果 token 无效或过期
     """
-    # 从上下文变量中获取用户 ID（中间件已设置）
-    user_id = get_current_user_id()
-
-    if not user_id:
-        # 如果上下文变量中没有用户 ID，说明 token 无效或未提供
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        token_data = TokenPayload(**payload)
+        return token_data
+    except (JWTError, ValidationError) as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
 
-    # 从数据库获取用户对象
+
+async def get_current_user_id(
+        token_data: TokenPayload = Depends(get_token_payload)
+) -> AsyncGenerator[uuid.UUID, None]:
+    """
+    获取当前用户 ID（轻量级依赖项）。
+    
+    依赖 get_token_payload，提取 sub 并注入 ContextVar。
+    这是最快路径，用于只需要 ID 的场景（如 AuditMixin）。
+    
+    使用 yield 模式确保在请求结束后清理上下文变量。
+    
+    Args:
+        token_data: 从 get_token_payload 获取的 token payload
+        
+    Returns:
+        uuid.UUID: 当前用户 ID
+        
+    Yields:
+        uuid.UUID: 当前用户 ID
+    """
+    user_id = uuid.UUID(token_data.sub)
+    token = set_current_user_id(user_id)
+    try:
+        yield user_id
+    finally:
+        reset_current_user_id(token)
+
+
+async def get_current_user(
+        user_id: uuid.UUID = Depends(get_current_user_id),
+        session: AsyncSession = Depends(get_session)
+) -> User:
+    """
+    获取当前认证用户（深度依赖项）。
+    
+    依赖 get_current_user_id，查询数据库获取完整 User 对象。
+    用于需要完整用户信息的场景。
+    
+    Args:
+        user_id: 从 get_current_user_id 获取的用户 ID
+        session: 数据库会话
+        
+    Returns:
+        User: 当前用户对象
+        
+    Raises:
+        HTTPException: 如果用户不存在或未激活
+    """
     user = await session.get(User, user_id)
     if not user:
         raise HTTPException(
@@ -50,7 +120,6 @@ async def _get_current_user_internal(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
         )
-
     return user
 
 
@@ -110,7 +179,7 @@ class PermissionDependency:
             self,
             request: Request,
             session: AsyncSession = Depends(get_session),
-            current_user: User = Depends(_get_current_user_internal),
+            current_user: User = Depends(get_current_user),
     ) -> User:
         """Check permission and return current user if authorized."""
         checker = PermissionChecker(session)

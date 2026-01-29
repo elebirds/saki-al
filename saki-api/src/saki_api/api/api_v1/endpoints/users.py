@@ -15,9 +15,11 @@ from saki_api.core.rbac import (
     get_permission_checker,
     PermissionChecker,
 )
+from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.models import (
     Permissions,
 )
+from saki_api.repositories.query import Pagination
 from saki_api.schemas import (UserCreate, UserRead, UserUpdate, UserListItem)
 
 router = APIRouter()
@@ -31,11 +33,12 @@ router = APIRouter()
 )
 async def read_user_me(
         service: UserServiceDep,
-) -> Any:
+        user_id: uuid.UUID = Depends(get_current_user_id)
+) -> UserRead:
     """
     Get current user.
     """
-    return await service.build_user_read(service.current_user)
+    return await service.get_profile_by_id(user_id)
 
 
 @router.get(
@@ -55,7 +58,7 @@ async def list_users_simple(
     
     Requires user:list permission (not full user:read).
     """
-    users = await service.list_active_users(skip=skip, limit=limit)
+    users = await service.list_active(Pagination(skip=skip, limit=limit))
     return [
         UserListItem(id=u.id, email=u.email, full_name=u.full_name)
         for u in users
@@ -79,7 +82,8 @@ async def read_users(
     
     Requires user:read permission (admin level).
     """
-    users = await service.list_users(skip=skip, limit=limit)
+    query = ListQuery(pagination=Pagination(skip=skip, limit=limit))
+    users = await service.list_users(query)
     return [await service.build_user_read(u) for u in users]
 
 
@@ -139,5 +143,4 @@ async def delete_user(
     """
     Delete a user.
     """
-    deleted_user = await service.delete_user(user_id, checker)
-    return deleted_user
+    return await service.delete_user(user_id, checker)

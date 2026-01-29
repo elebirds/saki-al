@@ -10,7 +10,7 @@ from typing import Optional, TYPE_CHECKING
 
 from sqlmodel import Field, SQLModel, Relationship
 
-from saki_api.models.base import UUIDMixin
+from saki_api.models.base import UUIDMixin, TimestampMixin, AuditMixin
 
 if TYPE_CHECKING:
     from saki_api.models.user import User
@@ -28,18 +28,6 @@ class UserSystemRoleBase(SQLModel):
         index=True,
         description="Role ID"
     )
-
-    # Assignment metadata
-    assigned_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the role was assigned"
-    )
-    assigned_by: Optional[uuid.UUID] = Field(
-        default=None,
-        foreign_key="user.id",
-        description="Who assigned this role"
-    )
-
     # Optional expiration
     expires_at: Optional[datetime] = Field(
         default=None,
@@ -47,21 +35,14 @@ class UserSystemRoleBase(SQLModel):
     )
 
 
-class UserSystemRole(UserSystemRoleBase, UUIDMixin, table=True):
-    """
-    User-System Role association table.
-    
-    Associates users with system-wide roles (not resource-specific).
-    System roles grant global permissions across the system.
-    """
+class UserSystemRole(UserSystemRoleBase, UUIDMixin, TimestampMixin, AuditMixin, table=True):
     __tablename__ = "user_system_role"
 
-    # Relationships
     user: "User" = Relationship(
-        back_populates="system_roles",
+        back_populates="role_assignments",
         sa_relationship_kwargs={"foreign_keys": "[UserSystemRole.user_id]"}
     )
-    role: "Role" = Relationship()
-    assigner: Optional["User"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": "[UserSystemRole.assigned_by]"}
+    role: "Role" = Relationship(
+        back_populates="user_assignments",
+        sa_relationship_kwargs={"foreign_keys": "[UserSystemRole.role_id]"}
     )

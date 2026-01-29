@@ -25,7 +25,7 @@ from saki_api.models.rbac.role import (
     Role,
     RolePermission,
 )
-from saki_api.models.rbac.user_role import (
+from saki_api.models.rbac.user_system_role import (
     UserSystemRole,
 )
 

@@ -295,7 +295,6 @@ async def init_preset_roles(session: AsyncSession, update_existing: bool = True)
         Dictionary mapping role names to Role objects
     """
     roles: Dict[str, Role] = {}
-    parent_mappings: Dict[str, str] = {}  # role_name -> parent_name
 
     for preset in PRESET_ROLES:
         # Check if role already exists
@@ -354,10 +353,6 @@ async def init_preset_roles(session: AsyncSession, update_existing: bool = True)
         session.add(role)
         await session.flush()  # Get ID
 
-        # Store parent mapping for later
-        if "parent" in preset:
-            parent_mappings[preset["name"]] = preset["parent"]
-
         # Create permissions
         for perm in preset.get("permissions", []):
             rp = RolePermission(
@@ -368,23 +363,14 @@ async def init_preset_roles(session: AsyncSession, update_existing: bool = True)
 
         roles[preset["name"]] = role
 
-    # Set up parent relationships
-    for role_name, parent_name in parent_mappings.items():
-        if role_name in roles and parent_name in roles:
-            roles[role_name].parent_id = roles[parent_name].id
-            session.add(roles[role_name])
-
-    await session.commit()
-
     return roles
 
 
 async def get_default_role(session: AsyncSession) -> Role:
     """Get the default role for new users."""
-    result = await session.exec(
-        select(Role).where(Role.is_default == True, Role.type == RoleType.SYSTEM)
-    )
-    return result.first()
+    from saki_api.repositories.role_repository import RoleRepository
+    repo = RoleRepository(session)
+    return await repo.get_default()
 
 
 async def get_role_by_name(session: AsyncSession, name: str) -> Role:

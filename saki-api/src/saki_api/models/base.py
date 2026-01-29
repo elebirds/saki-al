@@ -4,10 +4,10 @@ from typing import Optional
 
 from sqlalchemy import JSON
 from sqlalchemy.dialects import postgresql
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
 
 
-class TimestampMixin(SQLModel):
+class TimestampMixin:
     """
     Mixin to add created_at and updated_at timestamps to a model.
     """
@@ -20,7 +20,7 @@ class TimestampMixin(SQLModel):
         populate_by_name = True
 
 
-class UUIDMixin(SQLModel):
+class UUIDMixin:
     """
     Mixin to add a UUID primary key to a model.
     """
@@ -28,7 +28,7 @@ class UUIDMixin(SQLModel):
                           description="Unique identifier for the record.")
 
 
-class AuditMixin(SQLModel):
+class AuditMixin:
     """
     Mixin to add audit fields (created_by, updated_by) to a model.
     

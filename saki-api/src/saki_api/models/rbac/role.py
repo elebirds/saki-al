@@ -7,57 +7,19 @@ Supports:
 - Dynamic permission management
 - System preset roles (cannot be deleted)
 """
-import uuid
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel, Relationship
-
 from saki_api.models.base import UUIDMixin, TimestampMixin
 from saki_api.models.rbac.enums import RoleType
+from saki_api.models.rbac.role_permission import RolePermission
+
 
 if TYPE_CHECKING:
-    pass
+    from saki_api.models import User, UserSystemRole
 
 
-class RolePermissionBase(SQLModel):
-    role_id: uuid.UUID = Field(
-        foreign_key="role.id",
-        index=True,
-        description="Role ID"
-    )
-    permission: str = Field(
-        max_length=100,
-        description="Permission string (resource:action:scope)"
-    )
-    conditions: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Optional conditions for ABAC-style constraints"
-    )
-
-
-class RolePermission(RolePermissionBase, UUIDMixin, TimestampMixin, table=True):
-    """
-    Role-Permission mapping table.
-    
-    Stores permissions assigned to each role.
-    Permission format: resource:action:scope (e.g., "dataset:read:owned")
-    """
-    __tablename__ = "role_permission"
-
-    # Relationship
-    role: "Role" = Relationship(back_populates="permissions")
-
-
-class RoleBase(SQLModel):
-    # Basic info
-    name: str = Field(
-        unique=True,
-        index=True,
-        max_length=50,
-        description="Role identifier (unique, lowercase with underscores)"
-    )
+class RoleCanModifyBase(SQLModel):
     display_name: str = Field(
         max_length=100,
         description="Human-readable display name"
@@ -67,20 +29,27 @@ class RoleBase(SQLModel):
         max_length=500,
         description="Role description"
     )
+    # Ordering
+    sort_order: int = Field(
+        default=0,
+        description="Display order"
+    )
 
+class RoleBase(RoleCanModifyBase):
+    # Basic info
+    name: str = Field(
+        unique=True,
+        index=True,
+        max_length=50,
+        description="Role identifier (unique, lowercase with underscores)"
+    )
     # Role type
     type: RoleType = Field(
         default=RoleType.RESOURCE,
         description="Role type: system (global) or resource (per-resource)"
     )
 
-    # Inheritance
-    parent_id: Optional[uuid.UUID] = Field(
-        default=None,
-        foreign_key="role.id",
-        description="Parent role ID for inheritance"
-    )
-
+class RoleMetadata(SQLModel):
     # System protection
     is_system: bool = Field(
         default=False,
@@ -99,14 +68,8 @@ class RoleBase(SQLModel):
         description="Whether this is the administrator role (can only be assigned/revoked by super admin)"
     )
 
-    # Ordering
-    sort_order: int = Field(
-        default=0,
-        description="Display order"
-    )
 
-
-class Role(RoleBase, UUIDMixin, TimestampMixin, table=True):
+class Role(RoleBase, RoleMetadata, UUIDMixin, TimestampMixin, table=True):
     """
     Role definition table.
     
@@ -123,9 +86,23 @@ class Role(RoleBase, UUIDMixin, TimestampMixin, table=True):
         back_populates="role",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
-    parent: Optional["Role"] = Relationship(
+
+    # A. 快捷方式：获取该角色下的所有用户
+    users: List["User"] = Relationship(
+        back_populates="roles",
         sa_relationship_kwargs={
-            "remote_side": "Role.id",
-            "foreign_keys": "[Role.parent_id]"
+            "secondary": "user_system_role",
+            "primaryjoin": "Role.id == UserSystemRole.role_id",
+            "secondaryjoin": "UserSystemRole.user_id == User.id",
+            "viewonly": True,
+        }
+    )
+
+    # B. 镜像路径：供中间表反向引用
+    user_assignments: List["UserSystemRole"] = Relationship(
+        back_populates="role",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "foreign_keys": "[UserSystemRole.role_id]"
         }
     )

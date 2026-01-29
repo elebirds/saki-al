@@ -5,7 +5,6 @@ Provides login, registration, password management, and permission info.
 """
 
 import uuid
-from datetime import timedelta
 from typing import Any, Optional, List
 
 from fastapi import APIRouter, Depends, Query
@@ -14,17 +13,14 @@ from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.api import deps
-from saki_api.core import security, settings
+from saki_api.api.service_deps import AuthServiceDep
 from saki_api.core.rbac import (
     PermissionChecker,
     get_permission_checker,
 )
 from saki_api.db.session import get_session
 from saki_api.models import User
-from saki_api.repositories.user_repository import UserRepository
 from saki_api.schemas import UserRead, UserCreate
-from saki_api.services.user_service import UserService
-from saki_api.services.auth_service import AuthService
 from saki_api.services.permission_query_service import PermissionQueryService
 
 router = APIRouter()
@@ -33,6 +29,10 @@ router = APIRouter()
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 class RoleInfo(BaseModel):
@@ -60,62 +60,55 @@ class UserPermissionsResponse(BaseModel):
 
 @router.post("/login/access-token")
 async def login_access_token(
-        session: AsyncSession = Depends(get_session),
+        service: AuthServiceDep,
         form_data: OAuth2PasswordRequestForm = Depends()
 ) -> Any:
     """
     OAuth2 compatible token login, get an access token for future requests.
     """
-    repo = UserRepository(session)
-    auth = AuthService(repo)
-    return await auth.login_access_token(form_data)
+    return await service.login(form_data)
 
 
 @router.post("/register", response_model=UserRead)
 async def register_user(
         user_in: UserCreate,
-        session: AsyncSession = Depends(get_session),
-) -> Any:
+        service: AuthServiceDep
+) -> UserRead:
     """
     Create new user without the need to be logged in.
     
     New users are automatically assigned the default system role.
     """
-    repo = UserRepository(session)
-    service = UserService(repo)
-    user = await service.create_user(user_in, None)  # No current_user for registration
-    return await service.build_user_read(user)
+    return await service.register(user_in)
 
 
 @router.post("/login/refresh-token")
-def refresh_token(
-        current_user: User = Depends(deps.get_current_user),
+async def refresh_token(
+        token_data: RefreshTokenRequest,
+        service: AuthServiceDep,
 ) -> Any:
     """
-    Refresh access token.
+    Refresh access token using a refresh token.
+    
+    This endpoint accepts a refresh token (not an access token) and returns
+    a new access token. The refresh token should be obtained during login.
     """
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return {
-        "access_token": security.create_access_token(
-            current_user.id, expires_delta=access_token_expires
-        ),
-        "token_type": "bearer",
-    }
+    return await service.refresh_access_token(token_data.refresh_token)
 
 
 @router.post("/change-password")
 async def change_password(
         password_data: ChangePasswordRequest,
-        session: AsyncSession = Depends(get_session),
+        service: AuthServiceDep,
         current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Change user password.
+    
+    Requires authentication. The user can only change their own password.
     """
-    repo = UserRepository(session)
-    auth = AuthService(repo)
-    return await auth.change_password(
-        current_user=current_user,
+    return await service.change_password(
+        user_id=current_user.id,
         old_password=password_data.old_password,
         new_password=password_data.new_password,
     )

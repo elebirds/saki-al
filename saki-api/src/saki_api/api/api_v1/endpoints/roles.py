@@ -10,8 +10,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.api.deps import get_session
+from saki_api.api.deps import get_session, get_current_user
 from saki_api.api.service_deps import RoleServiceDep, UserServiceDep
+from saki_api.models.user import User
 from saki_api.core.rbac import (
     require_permission,
     get_permission_checker,
@@ -19,6 +20,7 @@ from saki_api.core.rbac import (
 )
 from saki_api.models import RoleType, Permissions
 from saki_api.repositories.role_repository import RoleRepository
+from saki_api.repositories.query import Pagination
 from saki_api.schemas import (
     RoleCreate, RoleRead, RoleUpdate,
     UserSystemRoleCreate, UserSystemRoleRead,
@@ -41,13 +43,18 @@ router = APIRouter()
 async def list_roles(
         service: RoleServiceDep,
         type: Optional[RoleType] = Query(None, description="Filter by role type"),
+        skip: int = 0,
+        limit: int = 100,
 ):
     """
     List all roles.
     
     Optionally filter by type (system or resource).
     """
-    roles = await service.list_roles(role_type=type)
+    roles = await service.list_by_type(
+        role_type=type,
+        pagination=Pagination(skip=skip, limit=limit)
+    )
     return [await service.build_role_read(role) for role in roles]
 
 
@@ -77,13 +84,14 @@ async def get_role(
 async def create_role(
         role_in: RoleCreate,
         service: RoleServiceDep,
+        current_user: User = Depends(get_current_user),
 ):
     """
     Create a custom role.
     
     System preset roles cannot be created through this endpoint.
     """
-    role = await service.create_role(role_in)
+    role = await service.create(role_in, current_user.id)
     return await service.build_role_read(role)
 
 
@@ -98,13 +106,14 @@ async def update_role(
         role_id: uuid.UUID,
         role_in: RoleUpdate,
         service: RoleServiceDep,
+        current_user: User = Depends(get_current_user),
 ):
     """
     Update a role.
     
     System preset roles have limited update capabilities.
     """
-    role = await service.update_role(role_id, role_in)
+    role = await service.update(role_id, role_in, current_user.id)
     return await service.build_role_read(role)
 
 
@@ -117,6 +126,7 @@ async def update_role(
 async def delete_role(
         role_id: uuid.UUID,
         service: RoleServiceDep,
+        current_user: User = Depends(get_current_user),
 ):
     """
     Delete a role.
@@ -124,7 +134,7 @@ async def delete_role(
     System preset roles cannot be deleted.
     Roles that are in use cannot be deleted.
     """
-    await service.delete_role(role_id)
+    await service.delete_role(role_id, current_user.id)
 
 
 # ============================================================================

@@ -75,7 +75,7 @@ class AuthService:
         )
 
     @transactional
-    async def register(self, user_in: UserCreate):
+    async def register(self, user_in: UserCreate) -> UserRead:
         """
         Register a new user.
         
@@ -92,6 +92,9 @@ class AuthService:
 
         # Assign default role to new user
         await self._assign_default_role_to_user(user.id)
+        
+        # Return user profile
+        return await self.user_service.get_profile_by_id(user.id)
 
     async def _assign_default_role_to_user(self, user_id: uuid.UUID) -> None:
         """

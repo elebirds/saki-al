@@ -21,6 +21,7 @@ from saki_api.services.role_service import RoleService
 from saki_api.services.system_service import SystemService
 from saki_api.services.user_system_role_service import UserRoleService
 from saki_api.services.user_service import UserService
+from saki_api.services.permission_query_service import PermissionQueryService
 
 
 # ============================================================================
@@ -123,3 +124,18 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 # Type alias for AdminGuard dependency
 AdminGuardDep = Annotated[AdminGuard, Depends(get_admin_guard)]
+
+
+# ============================================================================
+# Permission Query Service Dependencies
+# ============================================================================
+
+def get_permission_query_service(
+    session: AsyncSession = Depends(get_session),
+) -> PermissionQueryService:
+    """Get PermissionQueryService with dependencies injected."""
+    return PermissionQueryService(session=session)
+
+
+# Type alias for cleaner route signatures
+PermissionQueryServiceDep = Annotated[PermissionQueryService, Depends(get_permission_query_service)]

@@ -6,7 +6,7 @@ import {
   Role, RoleCreate, RoleUpdate, RoleType,
   UserSystemRole, UserSystemRoleCreate,
   ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
-  UserPermissions,
+  SystemPermissions, ResourcePermissions,
 } from '../../types';
 
 /**
@@ -38,8 +38,11 @@ export interface ApiService {
   // Permission APIs
   // ============================================================================
   
-  // Get current user's permissions
-  getMyPermissions(resourceType?: string, resourceId?: string): Promise<UserPermissions>;
+  // Get system-level permissions
+  getSystemPermissions(): Promise<SystemPermissions>;
+  
+  // Get resource-specific permissions
+  getResourcePermissions(resourceType: string, resourceId: string): Promise<ResourcePermissions>;
   
   // Role management
   getRoles(type?: RoleType): Promise<Role[]>;

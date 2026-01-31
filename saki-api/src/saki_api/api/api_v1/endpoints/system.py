@@ -68,7 +68,7 @@ def get_available_types() -> AvailableTypesResponse:
 async def setup_system(
         user_in: UserCreate,
         service: SystemServiceDep
-) -> Any:
+) -> UserRead:
     """
     Initialize the system with the first superuser.
     

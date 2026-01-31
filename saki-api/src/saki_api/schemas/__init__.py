@@ -29,6 +29,12 @@ from saki_api.schemas.user_system_role import (
     UserSystemRoleRead
 )
 
+from saki_api.schemas.permission import (
+    SystemPermissionsResponse,
+    ResourcePermissionsResponse,
+    RoleInfo,
+)
+
 # User Schemas
 from saki_api.schemas.user import (
     UserCreate,
@@ -58,4 +64,9 @@ __all__ = [
     "UserUpdate",
     "UserReadWithPermissions",
     "UserListItem",
+    
+    # Permission Query Schemas
+    "SystemPermissionsResponse",
+    "ResourcePermissionsResponse",
+    "RoleInfo",
 ]

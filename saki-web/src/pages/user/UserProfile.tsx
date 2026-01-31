@@ -16,7 +16,7 @@ const UserProfile: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Get permissions from store
-  const userPermissions = permissionStore.userPermissions;
+  const systemPermissions = permissionStore.systemPermissions;
   const systemRoles = permissionStore.getSystemRoles();
   const isSuperAdmin = permissionStore.isSuperAdmin();
 
@@ -118,7 +118,7 @@ const UserProfile: React.FC = () => {
     );
   }
 
-  const groupedPermissions = userPermissions ? groupPermissions(userPermissions.permissions) : {};
+  const groupedPermissions = systemPermissions ? groupPermissions(systemPermissions.permissions) : {};
   const permissionKeys = Object.keys(groupedPermissions);
 
   return (
@@ -211,16 +211,16 @@ const UserProfile: React.FC = () => {
             <Space>
               <LockOutlined />
               <span>{t('userProfile.permissions')}</span>
-              {userPermissions && (
+              {systemPermissions && (
                 <Text type="secondary" style={{ fontSize: 14, fontWeight: 'normal' }}>
-                  ({userPermissions.permissions.length} {t('userProfile.permissions')})
+                  ({systemPermissions.permissions.length} {t('userProfile.permissions')})
                 </Text>
               )}
             </Space>
           }
           style={{ marginBottom: 24 }}
         >
-          {!userPermissions || userPermissions.permissions.length === 0 ? (
+          {!systemPermissions || systemPermissions.permissions.length === 0 ? (
             <Text type="secondary">{t('userProfile.noPermissions')}</Text>
           ) : (
             <div style={{ maxHeight: '500px', overflowY: 'auto', overflowX: 'hidden' }}>

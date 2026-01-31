@@ -7,7 +7,7 @@ import {
   Role, RoleCreate, RoleUpdate, RoleType,
   UserSystemRole, UserSystemRoleCreate,
   ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
-  UserPermissions,
+  SystemPermissions, ResourcePermissions,
 } from '../../types';
 import { ApiService, UploadProgressCallback } from './interface';
 import { useAuthStore } from '../../store/authStore';
@@ -359,12 +359,18 @@ export class RealApiService implements ApiService {
   // Permission APIs
   // ==========================================================================
 
-  async getMyPermissions(resourceType?: string, resourceId?: string): Promise<UserPermissions> {
-    const params: Record<string, string> = {};
-    if (resourceType) params.resource_type = resourceType;
-    if (resourceId) params.resource_id = resourceId;
-    
-    const response = await this.client.get<UserPermissions>('/auth/permissions', { params });
+  async getSystemPermissions(): Promise<SystemPermissions> {
+    const response = await this.client.get<SystemPermissions>('/permissions/system');
+    return response.data;
+  }
+
+  async getResourcePermissions(resourceType: string, resourceId: string): Promise<ResourcePermissions> {
+    const response = await this.client.get<ResourcePermissions>('/permissions/resource', {
+      params: {
+        resource_type: resourceType,
+        resource_id: resourceId,
+      },
+    });
     return response.data;
   }
 

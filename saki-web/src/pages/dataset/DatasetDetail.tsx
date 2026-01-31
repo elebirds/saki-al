@@ -24,7 +24,7 @@ const DatasetDetail: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Permission hook
-  const { can, role, isOwner } = useResourcePermission('dataset', id, dataset?.ownerId);
+  const { can, role, isOwner } = useResourcePermission('dataset', id);
   
   // 使用排序设置 hook
   const { sortBy, sortOrder, setSortBy, setSortOrder, sortOptions } = useSortSettings(id);

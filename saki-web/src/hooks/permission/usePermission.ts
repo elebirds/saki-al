@@ -28,12 +28,11 @@ export function usePermission() {
     (
       permission: string,
       resourceType?: string,
-      resourceId?: string,
-      resourceOwnerId?: string
+      resourceId?: string
     ) => {
-      return store.hasPermission(permission, resourceType, resourceId, resourceOwnerId);
+      return store.hasPermission(permission, resourceType, resourceId);
     },
-    [store.hasPermission, store.userPermissions]
+    [store.hasPermission, store.systemPermissions]
   );
 
   const canAny = useCallback(
@@ -76,8 +75,7 @@ export function usePermission() {
  */
 export function useResourcePermission(
   resourceType: string,
-  resourceId: string | undefined,
-  resourceOwnerId?: string
+  resourceId: string | undefined
 ) {
   const store = usePermissionStore();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -99,11 +97,11 @@ export function useResourcePermission(
 
     const fetchPermissions = async () => {
       try {
-        const data = await api.getMyPermissions(resourceType, resourceId);
+        const data = await api.getResourcePermissions(resourceType, resourceId);
         store.setResourcePermissions(resourceType, resourceId, {
           role: data.resourceRole,
           permissions: data.permissions,
-          isOwner: data.isOwner ?? false,
+          isOwner: data.isOwner,
         });
       } catch (error) {
         // Silently fail - the API interceptor will handle 401
@@ -116,9 +114,9 @@ export function useResourcePermission(
 
   const can = useCallback(
     (permission: string) => {
-      return store.hasPermission(permission, resourceType, resourceId, resourceOwnerId);
+      return store.hasPermission(permission, resourceType, resourceId);
     },
-    [resourceType, resourceId, resourceOwnerId, store.hasPermission, store.resourcePermissions]
+    [resourceType, resourceId, store.hasPermission, store.resourcePermissions]
   );
 
   const role = resourceId ? store.getResourceRole(resourceType, resourceId) : undefined;
@@ -177,19 +175,14 @@ export function useInitPermissions() {
       store.setLoading(true);
       hasInitialized.current = true;
       try {
-        const data = await api.getMyPermissions();
-        store.setUserPermissions({
-          userId: data.userId,
-          systemRoles: data.systemRoles,
-          permissions: data.permissions,
-          isSuperAdmin: data.isSuperAdmin,
-        });
+        const data = await api.getSystemPermissions();
+        store.setSystemPermissions(data);
       } catch (error: any) {
         // On auth error, clear the flag so it can retry after re-login
         if (error?.statusCode === 401) {
           hasInitialized.current = false;
         }
-        console.error('Failed to initialize permissions:', error);
+        console.error('Failed to initialize system permissions:', error);
         store.clearPermissions();
       } finally {
         store.setLoading(false);

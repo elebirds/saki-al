@@ -38,7 +38,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
   const [form] = Form.useForm();
 
   // Permission hooks
-  const { can } = useResourcePermission('dataset', datasetId, ownerId);
+  const { can } = useResourcePermission('dataset', datasetId);
   const { can: canSystem, isSuperAdmin } = usePermission();
   const canManageMembers = can('dataset:assign');
   // Use user:list permission (not user:read) for member selection

@@ -7,21 +7,14 @@ Provides login, registration, password management, and permission info.
 import uuid
 from typing import Any, Optional, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.api import deps
 from saki_api.api.service_deps import AuthServiceDep
-from saki_api.core.rbac import (
-    PermissionChecker,
-    get_permission_checker,
-)
-from saki_api.db.session import get_session
 from saki_api.models import User
 from saki_api.schemas import UserRead, UserCreate
-from saki_api.services.permission_query_service import PermissionQueryService
 
 router = APIRouter()
 
@@ -112,29 +105,3 @@ async def change_password(
         old_password=password_data.old_password,
         new_password=password_data.new_password,
     )
-
-
-@router.get("/permissions", response_model=UserPermissionsResponse)
-async def get_my_permissions(
-        resource_type: Optional[str] = Query(None, description="Resource type (e.g., 'dataset')"),
-        resource_id: Optional[uuid.UUID] = Query(None, description="Resource ID"),
-        session: AsyncSession = Depends(get_session),
-        current_user: User = Depends(deps.get_current_user),
-        checker: PermissionChecker = Depends(get_permission_checker),
-) -> UserPermissionsResponse:
-    """
-    Get current user's permissions.
-    
-    If resource_type and resource_id are provided, includes resource-specific
-    permissions and role information.
-    
-    This endpoint is used by the frontend to determine what UI elements to show.
-    """
-    svc = PermissionQueryService(session)
-    payload = await svc.get_my_permissions(
-        current_user=current_user,
-        checker=checker,
-        resource_type=resource_type,
-        resource_id=resource_id,
-    )
-    return UserPermissionsResponse(**payload)

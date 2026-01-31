@@ -10,7 +10,55 @@
 
 export type RoleType = 'system' | 'resource';
 export type ResourceType = 'dataset' | 'project';
-export type Scope = 'all' | 'owned' | 'assigned' | 'self';
+export type Scope = 'all' | 'assigned' | 'self';
+
+/**
+ * Permission object representation
+ * 
+ * Scope hierarchy (from highest to lowest):
+ * - all: System-level permissions, only for system roles
+ * - assigned: Resource-level permissions, for resource role members
+ * - self: Resource-level permissions, for own resources/annotations
+ */
+export interface Permission {
+  target: string;  // Resource type (e.g., 'user', 'dataset', '*')
+  action: string;  // Action (e.g., 'create', 'read', '*')
+  scope: Scope;    // Permission scope: 'all' | 'assigned' | 'self'
+}
+
+/**
+ * Parse permission string to Permission object
+ * Format: "target:action:scope" or "target:action" (defaults to 'assigned')
+ * 
+ * @example
+ * parsePermission("user:create:all") => { target: "user", action: "create", scope: "all" }
+ * parsePermission("dataset:*:assigned") => { target: "dataset", action: "*", scope: "assigned" }
+ * parsePermission("annotation:read") => { target: "annotation", action: "read", scope: "assigned" }
+ */
+export function parsePermission(permissionStr: string): Permission {
+  const parts = permissionStr.split(':');
+  if (parts.length < 2) {
+    throw new Error(`Invalid permission format: ${permissionStr}`);
+  }
+  
+  const target = parts[0];
+  const action = parts[1];
+  const scope = (parts[2] as Scope) || 'assigned';
+  
+  // Validate scope
+  if (scope !== 'all' && scope !== 'assigned' && scope !== 'self') {
+    throw new Error(`Invalid scope: ${scope}. Must be 'all', 'assigned', or 'self'`);
+  }
+  
+  return { target, action, scope };
+}
+
+/**
+ * Convert Permission object back to string
+ */
+export function permissionToString(permission: Permission): string {
+  return `${permission.target}:${permission.action}:${permission.scope}`;
+}
 
 // ============================================================================
 // Role Types
@@ -117,13 +165,23 @@ export interface ResourceMemberUpdate {
 // Permission Response Types
 // ============================================================================
 
-export interface UserPermissions {
+/**
+ * System-level permissions (from system roles)
+ */
+export interface SystemPermissions {
   userId: string;
   systemRoles: RoleInfo[];
-  resourceRole?: RoleInfo;
-  permissions: string[];
+  permissions: string[];  // Permission strings, will be parsed to Permission objects
   isSuperAdmin: boolean;
-  isOwner?: boolean;
+}
+
+/**
+ * Resource-specific permissions (from resource roles)
+ */
+export interface ResourcePermissions {
+  resourceRole?: RoleInfo;
+  permissions: string[];  // Permission strings, will be parsed to Permission objects
+  isOwner: boolean;
 }
 
 // ============================================================================
@@ -134,10 +192,20 @@ export interface ResourcePermissionCache {
   resourceType: string;
   resourceId: string;
   role?: RoleInfo;
-  permissions: string[];
+  permissions: string[];  // Permission strings, will be parsed to Permission objects
   isOwner: boolean;
   fetchedAt: number;
 }
+
+/**
+ * Permission index structure for fast lookup
+ * 
+ * Structure:
+ * - Map<target, Map<action, Set<scope>>>
+ * 
+ * This allows O(1) lookup instead of O(n) iteration
+ */
+export type PermissionIndex = Map<string, Map<string, Set<Scope>>>;
 
 // ============================================================================
 // Permission Constants

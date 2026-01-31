@@ -25,10 +25,6 @@ interface AuthorizedProps {
    */
   resourceId?: string;
   /**
-   * Resource owner ID (for 'owned' scope checking)
-   */
-  resourceOwnerId?: string;
-  /**
    * Content to show when user doesn't have permission
    */
   fallback?: React.ReactNode;
@@ -53,7 +49,6 @@ interface AuthorizedProps {
  *   permission="dataset:delete"
  *   resourceType="dataset"
  *   resourceId={datasetId}
- *   resourceOwnerId={dataset.ownerId}
  *   fallback={<Tooltip title="No permission"><Button disabled>Delete</Button></Tooltip>}
  * >
  *   <Button danger>Delete Dataset</Button>
@@ -63,13 +58,12 @@ export const Authorized: React.FC<AuthorizedProps> = ({
   permission,
   resourceType,
   resourceId,
-  resourceOwnerId,
   fallback = null,
   children,
 }) => {
   const { can } = usePermission();
 
-  const hasAccess = can(permission, resourceType, resourceId, resourceOwnerId);
+  const hasAccess = can(permission, resourceType, resourceId);
 
   if (hasAccess) {
     return <>{children}</>;
@@ -181,10 +175,6 @@ interface ResourceAuthorizedProps {
    */
   resourceId: string;
   /**
-   * Resource owner ID
-   */
-  resourceOwnerId?: string;
-  /**
    * Content to show when user doesn't have permission
    */
   fallback?: React.ReactNode;
@@ -211,11 +201,10 @@ export const ResourceAuthorized: React.FC<ResourceAuthorizedProps> = ({
   permission,
   resourceType,
   resourceId,
-  resourceOwnerId,
   fallback = null,
   children,
 }) => {
-  const { can } = useResourcePermission(resourceType, resourceId, resourceOwnerId);
+  const { can } = useResourcePermission(resourceType, resourceId);
 
   if (can(permission)) {
     return <>{children}</>;
@@ -232,7 +221,6 @@ interface WithAuthorizationOptions {
   permission: string;
   resourceType?: string;
   resourceIdProp?: string;
-  resourceOwnerIdProp?: string;
   fallback?: React.ReactNode;
 }
 
@@ -253,22 +241,17 @@ export function withAuthorization<P extends object>(
     permission,
     resourceType,
     resourceIdProp,
-    resourceOwnerIdProp,
     fallback = null,
   } = options;
 
   const AuthorizedComponent: React.FC<P> = (props) => {
     const resourceId = resourceIdProp ? (props as any)[resourceIdProp] : undefined;
-    const resourceOwnerId = resourceOwnerIdProp
-      ? (props as any)[resourceOwnerIdProp]
-      : undefined;
 
     return (
       <Authorized
         permission={permission}
         resourceType={resourceType}
         resourceId={resourceId}
-        resourceOwnerId={resourceOwnerId}
         fallback={fallback}
       >
         <Component {...props} />

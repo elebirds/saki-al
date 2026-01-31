@@ -368,7 +368,7 @@ async def init_preset_roles(session: AsyncSession, update_existing: bool = True)
 
 async def get_default_role(session: AsyncSession) -> Role:
     """Get the default role for new users."""
-    from saki_api.repositories.role_repository import RoleRepository
+    from saki_api.repositories.role import RoleRepository
     repo = RoleRepository(session)
     return await repo.get_default()
 

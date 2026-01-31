@@ -3,15 +3,17 @@ User System Role Repository - Data access layer for User-(Sys)Role association o
 """
 
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import NotFoundAppException
+from saki_api.models import RoleType
 from saki_api.models.rbac.user_system_role import UserSystemRole
 from saki_api.models.rbac.role import Role
-from saki_api.repositories.base_repository import BaseRepository
+from saki_api.repositories.base import BaseRepository
 from saki_api.schemas.user_system_role import UserSystemRoleCreate
 
 
@@ -82,7 +84,7 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
         
         return await self.delete(user_role.id)
 
-    async def get_system_roles(self, user_id: uuid.UUID) -> List[Role]:
+    async def get_system_roles(self, user_id: uuid.UUID, now: Optional[datetime] = None) -> List[Role]:
         """
         Get all system roles assigned to a user (Role objects).
         
@@ -91,10 +93,21 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
         
         Args:
             user_id: User ID
+            now: Date to filter expired roles. If provided, only returns roles that haven't expired.
             
         Returns:
             List of Role objects assigned to the user
         """
-        statement = select(Role).join(UserSystemRole).where(UserSystemRole.user_id == user_id)
+        statement = (
+            select(Role)
+            .join(UserSystemRole)
+            .where(UserSystemRole.user_id == user_id)
+            .where(Role.type == RoleType.SYSTEM)
+        )
+        if now is not None:
+            statement = statement.where(
+                (UserSystemRole.expires_at == None) |
+                (UserSystemRole.expires_at > now)
+            )
         result = await self.session.exec(statement)
         return list(result.all())

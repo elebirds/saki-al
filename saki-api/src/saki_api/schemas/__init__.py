@@ -32,7 +32,6 @@ from saki_api.schemas.user_system_role import (
 from saki_api.schemas.permission import (
     SystemPermissionsResponse,
     ResourcePermissionsResponse,
-    RoleInfo,
 )
 
 # User Schemas
@@ -68,5 +67,4 @@ __all__ = [
     # Permission Query Schemas
     "SystemPermissionsResponse",
     "ResourcePermissionsResponse",
-    "RoleInfo",
 ]

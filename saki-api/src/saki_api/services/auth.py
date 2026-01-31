@@ -21,11 +21,11 @@ from saki_api.core.exceptions import (
     DataInvalidFormatAppException,
 )
 from saki_api.db.transaction import transactional
-from saki_api.repositories.role_repository import RoleRepository
-from saki_api.repositories.user_system_role_repository import UserSystemRoleRepository
+from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
 from saki_api.services.token_service import TokenService
-from saki_api.services.user_service import UserService
+from saki_api.services.user import UserService
 
 logger = logging.getLogger(__name__)
 

@@ -20,11 +20,11 @@ from saki_api.core.rbac.audit import (
 )
 from saki_api.db.transaction import transactional
 from saki_api.models.rbac.role import Role, RoleType
-from saki_api.repositories.role_repository import RoleRepository
-from saki_api.repositories.permission_repository import PermissionRepository
+from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.permission import PermissionRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import RoleCreate, RoleUpdate, RoleRead, RolePermissionRead
-from saki_api.services.base_service import BaseService
+from saki_api.services.base import BaseService
 
 
 class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):

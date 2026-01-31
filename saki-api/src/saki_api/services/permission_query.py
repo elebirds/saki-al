@@ -11,15 +11,16 @@ from typing import List, Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.rbac.enums import ResourceType, RoleType
-from saki_api.repositories.role_repository import RoleRepository
-from saki_api.repositories.user_system_role_repository import UserSystemRoleRepository
-from saki_api.services.permission_service import PermissionService
-from saki_api.services.resource_owner_service import ResourceOwnerService
+from saki_api.models.rbac.enums import ResourceType
+from saki_api.repositories import ResourceMemberRepository
+from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.schemas import RoleReadMinimal
+from saki_api.services.permission import PermissionService
+from saki_api.services.resource_owner import ResourceOwnerService
 from saki_api.schemas.permission import (
     SystemPermissionsResponse,
     ResourcePermissionsResponse,
-    RoleInfo,
 )
 
 
@@ -35,6 +36,7 @@ class PermissionQueryService:
         self.session = session
         self.role_repo = RoleRepository(session)
         self.user_role_repo = UserSystemRoleRepository(session)
+        self.resource_member_repo = ResourceMemberRepository(session)
         self.permission_service = PermissionService(session)
         self.resource_owner_service = ResourceOwnerService(session)
     
@@ -50,34 +52,24 @@ class PermissionQueryService:
         Returns:
             SystemPermissionsResponse with system roles and permissions
         """
-        # Get user's system roles (filter out expired)
-        user_roles = await self.user_role_repo.get_by_user(user_id)
-        system_roles: List[RoleInfo] = []
-        
-        for ur in user_roles:
-            # Filter out expired roles
-            if ur.expires_at and ur.expires_at < datetime.utcnow():
-                continue
-                
-            role = await self.role_repo.get_by_id(ur.role_id)
-            if role and role.type == RoleType.SYSTEM:  # Only system roles
-                system_roles.append(RoleInfo(
-                    id=role.id,
-                    name=role.name,
-                    displayName=role.display_name,
-                ))
-        
-        # Check if super admin
-        is_super_admin = await self.permission_service.is_super_admin(user_id)
-        
-        # Get system permissions only
-        permissions = await self.permission_service.get_user_system_permissions(user_id)
-        
+        # Get user's system roles
+        system_roles: List[RoleReadMinimal] = []
+        is_super_admin = False
+        permissions: set[str] = set()
+        for each in await self.user_role_repo.get_system_roles(user_id, datetime.utcnow()):
+            system_roles.append(RoleReadMinimal(
+                id=each.id,
+                name=each.name,
+                display_name=each.display_name,
+            ))
+            is_super_admin |= each.is_super_admin
+            permissions.update(await self.permission_service.get_role_permissions(each.id))
+
         return SystemPermissionsResponse(
-            userId=user_id,
-            systemRoles=system_roles,
+            user_id=user_id,
+            system_roles=system_roles,
             permissions=list(permissions),
-            isSuperAdmin=is_super_admin,
+            is_super_admin=is_super_admin,
         )
     
     async def get_resource_permissions(
@@ -106,20 +98,22 @@ class PermissionQueryService:
         except ValueError:
             # Invalid resource type, return empty permissions
             return ResourcePermissionsResponse(
-                resourceRole=None,
+                resource_role=None,
                 permissions=[],
-                isOwner=False,
+                is_owner=False,
             )
         
         # Get resource role using permission service
-        role = await self.permission_service.get_user_role_in_resource(user_id, rt, resource_id)
-        resource_role: Optional[RoleInfo] = None
-        if role:
-            resource_role = RoleInfo(
-                id=role.id,
-                name=role.name,
-                displayName=role.display_name,
-            )
+        member = await self.resource_member_repo.get_by_user_and_resource(user_id, rt, resource_id)
+        resource_role: Optional[RoleReadMinimal] = None
+        if member:
+            role = await self.role_repo.get_by_id(member.role_id)
+            if role:
+                resource_role = RoleReadMinimal(
+                    id=role.id,
+                    name=role.name,
+                    display_name=role.display_name,
+                )
         
         # Get resource permissions only
         resource_permissions = await self.permission_service.get_user_resource_permissions(
@@ -130,7 +124,7 @@ class PermissionQueryService:
         is_owner = await self.resource_owner_service.is_owner(rt, resource_id, user_id)
         
         return ResourcePermissionsResponse(
-            resourceRole=resource_role,
+            resource_role=resource_role,
             permissions=list(resource_permissions),
-            isOwner=is_owner,
+            is_owner=is_owner,
         )

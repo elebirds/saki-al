@@ -19,7 +19,7 @@ from saki_api.core.rbac import (
     PermissionChecker,
 )
 from saki_api.models import RoleType, Permissions
-from saki_api.repositories.role_repository import RoleRepository
+from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import (
     RoleCreate, RoleRead, RoleUpdate,

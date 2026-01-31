@@ -21,9 +21,9 @@ from saki_api.db.transaction import transactional
 from saki_api.models import User, RoleType
 from saki_api.models.rbac.enums import Permissions
 from saki_api.models.rbac.user_system_role import UserSystemRole
-from saki_api.repositories.user_repository import UserRepository
-from saki_api.repositories.role_repository import RoleRepository
-from saki_api.repositories.user_system_role_repository import UserSystemRoleRepository
+from saki_api.repositories.user import UserRepository
+from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas.user_system_role import UserSystemRoleRead, UserSystemRoleCreate
 
 

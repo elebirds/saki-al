@@ -9,13 +9,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-
-class RoleInfo(BaseModel):
-    """Basic role information."""
-    id: uuid.UUID
-    name: str
-    displayName: str
-
+from saki_api.schemas import RoleReadMinimal
 
 class SystemPermissionsResponse(BaseModel):
     """
@@ -23,10 +17,10 @@ class SystemPermissionsResponse(BaseModel):
     
     Contains permissions from system roles only.
     """
-    userId: uuid.UUID
-    systemRoles: List[RoleInfo]
+    user_id: uuid.UUID
+    system_roles: List[RoleReadMinimal]
     permissions: List[str]  # Permission strings in format "target:action:scope"
-    isSuperAdmin: bool
+    is_super_admin: bool
 
 
 class ResourcePermissionsResponse(BaseModel):
@@ -35,6 +29,6 @@ class ResourcePermissionsResponse(BaseModel):
     
     Contains permissions from resource roles only.
     """
-    resourceRole: Optional[RoleInfo] = None
+    resource_role: Optional[RoleReadMinimal] = None
     permissions: List[str]  # Permission strings in format "target:action:scope"
-    isOwner: bool
+    is_owner: bool

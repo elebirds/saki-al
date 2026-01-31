@@ -8,7 +8,7 @@ from typing import Optional, List
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.l1.dataset import Dataset
-from saki_api.repositories.base_repository import BaseRepository
+from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
 
 

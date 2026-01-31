@@ -12,16 +12,16 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.api.deps import get_session, get_current_user
 from saki_api.core.rbac import get_permission_checker, PermissionChecker
 from saki_api.models.user import User
-from saki_api.repositories.role_repository import RoleRepository
-from saki_api.repositories.user_repository import UserRepository
-from saki_api.repositories.user_system_role_repository import UserSystemRoleRepository
-from saki_api.services.auth_service import AuthService
+from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.user import UserRepository
+from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.services.auth import AuthService
 from saki_api.services.guards.admin_guard import AdminGuard, get_admin_guard
-from saki_api.services.role_service import RoleService
-from saki_api.services.system_service import SystemService
-from saki_api.services.user_system_role_service import UserRoleService
-from saki_api.services.user_service import UserService
-from saki_api.services.permission_query_service import PermissionQueryService
+from saki_api.services.role import RoleService
+from saki_api.services.system import SystemService
+from saki_api.services.user_system_role import UserRoleService
+from saki_api.services.user import UserService
+from saki_api.services.permission_query import PermissionQueryService
 
 
 # ============================================================================

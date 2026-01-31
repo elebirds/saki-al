@@ -13,7 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.db.transaction import transactional
-from saki_api.repositories.base_repository import BaseRepository
+from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import FilterType, Pagination, OrderByType
 
 ModelType = TypeVar("ModelType", bound=SQLModel)

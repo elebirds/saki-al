@@ -15,10 +15,10 @@ from saki_api.core.exceptions import (
 )
 from saki_api.db.transaction import transactional
 from saki_api.models.user import User
-from saki_api.repositories.user_repository import UserRepository
+from saki_api.repositories.user import UserRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import UserRead
-from saki_api.services.base_service import BaseService
+from saki_api.services.base import BaseService
 from saki_api.services.guards.admin_guard import AdminGuard
 from saki_api.schemas.user import UserUpdate, UserCreate
 

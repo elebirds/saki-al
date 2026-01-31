@@ -27,29 +27,10 @@ class ChangePasswordRequest(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
-
-class RoleInfo(BaseModel):
-    """Basic role information."""
-    id: uuid.UUID
-    name: str
-    displayName: str
-
-
 class PermissionInfo(BaseModel):
     """Permission with scope."""
     permission: str
     scope: str
-
-
-class UserPermissionsResponse(BaseModel):
-    """Response for user permissions endpoint."""
-    userId: uuid.UUID
-    systemRoles: List[RoleInfo]
-    resourceRole: Optional[RoleInfo] = None
-    permissions: List[str]
-    isSuperAdmin: bool
-    isOwner: Optional[bool] = None
-
 
 @router.post("/login/access-token")
 async def login_access_token(

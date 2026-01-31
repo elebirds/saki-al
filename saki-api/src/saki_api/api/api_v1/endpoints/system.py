@@ -15,7 +15,7 @@ from saki_api.api.service_deps import SystemServiceDep
 from saki_api.db.session import get_session
 from saki_api.models import User
 from saki_api.schemas import UserCreate, UserRead
-from saki_api.services.system_service import SystemService
+from saki_api.services.system import SystemService
 
 router = APIRouter()
 

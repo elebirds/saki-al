@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.enums import ResourceType
-from saki_api.repositories.base_repository import BaseRepository
+from saki_api.repositories.base import BaseRepository
 
 
 class ResourceMemberRepository(BaseRepository[ResourceMember]):

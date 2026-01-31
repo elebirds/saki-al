@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.rbac.presets import init_preset_roles
 from saki_api.db.transaction import transactional
-from saki_api.repositories.user_system_role_repository import UserSystemRoleRepository
+from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
 from saki_api.services import UserService, RoleService
 

@@ -121,20 +121,3 @@ class TokenService:
         """
         payload = TokenService.decode_token(token)
         return payload.get("type") == "refresh"
-
-    @staticmethod
-    def create_token_pair(user_id: uuid.UUID) -> Dict[str, str]:
-        """
-        Create both access and refresh tokens for a user.
-        
-        Args:
-            user_id: User ID
-            
-        Returns:
-            Dictionary with access_token and refresh_token
-        """
-        return {
-            "access_token": TokenService.create_access_token(user_id),
-            "refresh_token": TokenService.create_refresh_token(user_id),
-            "token_type": "bearer",
-        }

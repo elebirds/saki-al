@@ -19,7 +19,8 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       const loginResponse = await api.login(values.email, values.password);
-      setToken(loginResponse.accessToken);
+      const setTokens = useAuthStore.getState().setTokens;
+      setTokens(loginResponse.accessToken, loginResponse.refreshToken);
       
       // Fetch user details
       const user = await api.getCurrentUser();

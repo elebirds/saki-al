@@ -217,6 +217,24 @@ export class RealApiService implements ApiService {
       (error) => Promise.reject(error)
     );
 
+    // Track if we're currently refreshing to avoid multiple refresh calls
+    let isRefreshing = false;
+    let failedQueue: Array<{
+      resolve: (value?: any) => void;
+      reject: (reason?: any) => void;
+    }> = [];
+
+    const processQueue = (error: any, token: string | null = null) => {
+      failedQueue.forEach((prom) => {
+        if (error) {
+          prom.reject(error);
+        } else {
+          prom.resolve(token);
+        }
+      });
+      failedQueue = [];
+    };
+
     // 2. Convert request body from camelCase to snake_case
     this.client.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
@@ -260,10 +278,61 @@ export class RealApiService implements ApiService {
         }
         return response;
       },
-      (error) => {
-        // Handle 401 Unauthorized - logout user
-        if (error.response?.status === 401) {
-          useAuthStore.getState().logout();
+      async (error) => {
+        const originalRequest = error.config;
+
+        // Handle 401 Unauthorized - try to refresh token
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          if (isRefreshing) {
+            // If already refreshing, queue this request
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
+            })
+              .then((token) => {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+                return this.client(originalRequest);
+              })
+              .catch((err) => {
+                return Promise.reject(err);
+              });
+          }
+
+          originalRequest._retry = true;
+          isRefreshing = true;
+
+          const refreshToken = useAuthStore.getState().refreshToken;
+          if (!refreshToken) {
+            // No refresh token, logout user
+            useAuthStore.getState().logout();
+            processQueue(error, null);
+            return Promise.reject(error);
+          }
+
+          try {
+            const response = await this.client.post<LoginResponse>('/auth/login/refresh-token', {
+              token: refreshToken,
+            });
+            const { accessToken, refreshToken: newRefreshToken } = response.data;
+            
+            // Update tokens in store
+            useAuthStore.getState().setTokens(accessToken, newRefreshToken);
+            
+            // Update the original request with new token
+            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+            
+            // Process queued requests
+            processQueue(null, accessToken);
+            
+            // Retry the original request
+            return this.client(originalRequest);
+          } catch (refreshError) {
+            // Refresh failed, logout user
+            processQueue(refreshError, null);
+            useAuthStore.getState().logout();
+            return Promise.reject(refreshError);
+          } finally {
+            isRefreshing = false;
+          }
         }
         
         // Handle network errors - redirect to network error page
@@ -337,7 +406,13 @@ export class RealApiService implements ApiService {
   }
 
   async refreshToken(): Promise<LoginResponse> {
-    const response = await this.client.post<LoginResponse>('/auth/login/refresh-token');
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+    const response = await this.client.post<LoginResponse>('/auth/login/refresh-token', {
+      token: refreshToken,
+    });
     return response.data;
   }
 

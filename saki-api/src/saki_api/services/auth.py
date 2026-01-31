@@ -24,6 +24,7 @@ from saki_api.db.transaction import transactional
 from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
+from saki_api.schemas.auth import LoginResponse
 from saki_api.services.token_service import TokenService
 from saki_api.services.user import UserService
 
@@ -45,7 +46,7 @@ class AuthService:
         self.user_role_repo = UserSystemRoleRepository(session)
 
     @transactional
-    async def login(self, form_data: OAuth2PasswordRequestForm) -> Dict[str, Any]:
+    async def login(self, form_data: OAuth2PasswordRequestForm) -> LoginResponse:
         """
         Authenticate the user and issue access and refresh tokens.
         
@@ -67,11 +68,11 @@ class AuthService:
 
         await self.user_service.update_user_login_time(user.id)
 
-        # Create token pair (access + refresh)
-        token_pair = self.token_service.create_token_pair(user.id)
-        token_pair["must_change_password"] = user.must_change_password
-        
-        return token_pair
+        return LoginResponse(
+            access_token=TokenService.create_access_token(user.id),
+            refresh_token=TokenService.create_refresh_token(user.id),
+            must_change_password=user.must_change_password
+        )
 
     @transactional
     async def register(self, user_in: UserCreate):
@@ -118,7 +119,7 @@ class AuthService:
         await self.user_role_repo.assign(role_in)
 
     @transactional
-    async def refresh_access_token(self, refresh_token: str) -> Dict[str, str]:
+    async def refresh_access_token(self, refresh_token: str) -> LoginResponse:
         """
         Refresh an access token using a refresh token.
         
@@ -146,13 +147,14 @@ class AuthService:
             raise AuthInactiveUserAppException("Inactive user")
         
         # Create new access token
-        return {
-            "access_token": self.token_service.create_access_token(user_id),
-            "token_type": "bearer",
-        }
+        return LoginResponse(
+            access_token=TokenService.create_access_token(user.id),
+            refresh_token=refresh_token,
+            must_change_password=user.must_change_password
+        )
 
     @transactional
-    async def change_password(self, user_id: uuid.UUID, old_password: str, new_password: str) -> Dict[str, str]:
+    async def change_password(self, user_id: uuid.UUID, old_password: str, new_password: str):
         """
         Change user password.
         
@@ -185,4 +187,3 @@ class AuthService:
             security.get_password_hash(new_password), 
             False
         )
-        return {"message": "Password changed successfully"}

@@ -36,7 +36,8 @@ const ProtectedLayout: React.FC = () => {
         try {
           console.log('Refreshing token...');
           const response = await api.refreshToken();
-          setToken(response.accessToken);
+          const setTokens = useAuthStore.getState().setTokens;
+          setTokens(response.accessToken, response.refreshToken);
           console.log('Token refreshed');
         } catch (error) {
           console.error('Token refresh failed', error);
@@ -47,7 +48,7 @@ const ProtectedLayout: React.FC = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isAuthenticated, setToken]);
+  }, [isAuthenticated]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

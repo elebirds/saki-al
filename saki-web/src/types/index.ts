@@ -318,7 +318,7 @@ export type { ResourceMemberUpdate as DatasetMemberUpdate } from './permission';
 
 export interface LoginResponse {
   accessToken: string;
-  tokenType: string;
+  refreshToken: string;
   mustChangePassword?: boolean;
 }
 

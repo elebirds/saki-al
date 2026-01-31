@@ -41,7 +41,10 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
         return await self.repository.list_active(pagination)
 
     async def get_profile_by_id(self, user_id: uuid.UUID) -> UserRead:
-        return UserRead.model_validate(await self.repository.get_with_roles_by_id(user_id))
+        return await self.repository.get_with_roles_by_id(user_id)
+
+    async def list_with_roles(self, pagination: Pagination) -> List[UserRead]:
+        return await self.repository.list_with_roles(pagination=pagination)
 
     @transactional
     @override

@@ -52,17 +52,14 @@ async def list_users_simple(
         service: UserServiceDep,
         skip: int = 0,
         limit: int = 100,
-) -> Any:
+) -> List[UserListItem]:
     """
     List users with basic info only (for member selection).
     
     Requires user:list permission (not full user:read).
     """
     users = await service.list_active(Pagination(skip=skip, limit=limit))
-    return [
-        UserListItem(id=u.id, email=u.email, full_name=u.full_name)
-        for u in users
-    ]
+    return [UserListItem.model_validate(u) for u in users]
 
 
 @router.get(
@@ -76,15 +73,13 @@ async def read_users(
         service: UserServiceDep,
         skip: int = 0,
         limit: int = 100,
-) -> Any:
+) -> List[UserRead]:
     """
     Retrieve users with full details.
     
     Requires user:read permission (admin level).
     """
-    query = ListQuery(pagination=Pagination(skip=skip, limit=limit))
-    users = await service.list_users(query)
-    return [await service.build_user_read(u) for u in users]
+    return await service.list_with_roles(Pagination(skip=skip, limit=limit))
 
 
 @router.post(
@@ -102,8 +97,8 @@ async def create_user(
     """
     Create new user.
     """
-    user = await service.create_user(user_in)
-    return await service.build_user_read(user)
+    user = await service.create(user_in)
+    return await service.get_profile_by_id(user.id)
 
 
 @router.put(
@@ -124,7 +119,7 @@ async def update_user(
     Update a user.
     """
     user = await service.update_user(user_id, user_in, checker)
-    return await service.build_user_read(user)
+    return await service.get_profile_by_id(user.id)
 
 
 @router.delete(

@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.models.user import User
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
+from saki_api.schemas import UserRead
 
 
 class UserRepository(BaseRepository[User]):
@@ -29,7 +30,7 @@ class UserRepository(BaseRepository[User]):
         """List active users with pagination."""
         return await self.list(pagination=pagination, filters=[User.is_active == True])
 
-    async def get_with_roles_by_id(self, user_id: uuid.UUID) -> Optional[User]:
+    async def get_with_roles_by_id(self, user_id: uuid.UUID) -> Optional[UserRead]:
         statement = (
             select(User)
             .where(User.id == user_id)
@@ -37,4 +38,14 @@ class UserRepository(BaseRepository[User]):
             # 预加载所有角色
         )
         result = await self.session.exec(statement)
-        return result.first()
+        return UserRead.model_validate(result.first()) if result else None
+
+    async def list_with_roles(self, pagination: Pagination) -> List[UserRead]:
+        statement = (
+            select(User)
+            .options(selectinload(User.roles)) # type: ignore
+            # 预加载所有角色
+        )
+        statement = statement.offset(pagination.skip).limit(pagination.limit)
+        result = await self.session.exec(statement)
+        return [UserRead.model_validate(result) for result in result.all()]

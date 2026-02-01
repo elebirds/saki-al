@@ -7,8 +7,8 @@ from typing import List, Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.enums import ResourceType
+from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.repositories.base import BaseRepository
 
 
@@ -19,9 +19,9 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
         super().__init__(ResourceMember, session)
 
     async def get_by_resource(
-        self,
-        resource_type: ResourceType,
-        resource_id: uuid.UUID,
+            self,
+            resource_type: ResourceType,
+            resource_id: uuid.UUID,
     ) -> List[ResourceMember]:
         """Get all members of a resource."""
         return await self.list(
@@ -32,10 +32,10 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
         )
 
     async def get_by_user_and_resource(
-        self,
-        user_id: uuid.UUID,
-        resource_type: ResourceType,
-        resource_id: uuid.UUID,
+            self,
+            user_id: uuid.UUID,
+            resource_type: ResourceType,
+            resource_id: uuid.UUID,
     ) -> Optional[ResourceMember]:
         """Get a specific user's membership in a resource."""
         return await self.get_one([
@@ -45,9 +45,9 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
         ])
 
     async def get_by_user(
-        self,
-        user_id: uuid.UUID,
-        resource_type: Optional[ResourceType] = None,
+            self,
+            user_id: uuid.UUID,
+            resource_type: Optional[ResourceType] = None,
     ) -> List[ResourceMember]:
         """Get all resource memberships for a user, optionally filtered by resource type."""
         filters = [ResourceMember.user_id == user_id]
@@ -56,10 +56,54 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
         return await self.list(filters=filters)
 
     async def get_resource_ids_by_user(
-        self,
-        user_id: uuid.UUID,
-        resource_type: ResourceType,
+            self,
+            user_id: uuid.UUID,
+            resource_type: ResourceType,
     ) -> List[uuid.UUID]:
         """Get all resource IDs where the user is a member."""
         members = await self.get_by_user(user_id, resource_type)
         return [member.resource_id for member in members]
+
+    async def get_by_user_and_resource_with_expired(
+            self,
+            user_id: uuid.UUID,
+            resource_type: ResourceType,
+            resource_id: uuid.UUID,
+    ) -> Optional[ResourceMember]:
+        """Get a specific user's membership in a resource (including expired)."""
+        return await self.get_by_user_and_resource(user_id, resource_type, resource_id)
+
+    async def get_user_role_in_resource(
+            self,
+            user_id: uuid.UUID,
+            resource_type: ResourceType,
+            resource_id: uuid.UUID,
+    ) -> Optional["Role"]:
+        """
+        Efficiently get user's role in a resource using SQL JOIN.
+        
+        Returns the Role object directly without fetching ResourceMember first.
+        
+        Args:
+            user_id: User ID
+            resource_type: Resource type
+            resource_id: Resource ID
+            
+        Returns:
+            Role object if user is a member, None otherwise
+        """
+        from saki_api.models.rbac.role import Role
+        from sqlmodel import select
+
+        # Single SQL query with JOIN to get role directly
+        statement = (
+            select(Role)
+            .join(ResourceMember, Role.id == ResourceMember.role_id)
+            .where(
+                ResourceMember.user_id == user_id,
+                ResourceMember.resource_type == resource_type,
+                ResourceMember.resource_id == resource_id
+            )
+        )
+        result = await self.session.exec(statement)
+        return result.first()

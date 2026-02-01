@@ -5,7 +5,7 @@ import {
   SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse,
   // Permission types
   Role, RoleCreate, RoleUpdate, RoleType,
-  UserSystemRole, UserSystemRoleCreate,
+  UserSystemRole, UserSystemRoleAssign,
   ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
   SystemPermissions, ResourcePermissions,
 } from '../../types';
@@ -482,7 +482,7 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async assignUserRole(userId: string, role: UserSystemRoleCreate): Promise<UserSystemRole> {
+  async assignUserRole(userId: string, role: UserSystemRoleAssign): Promise<UserSystemRole> {
     const response = await this.client.post<UserSystemRole>(`/roles/users/${userId}/roles`, role);
     return response.data;
   }

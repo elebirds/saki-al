@@ -48,20 +48,20 @@ class SystemService:
         """
         if await self.is_init():
             raise BadRequestAppException("System already exists")
-        
+
         # Initialize preset roles
         await init_preset_roles(self.session)
-        
+
         # Create the first user
         user = await self.user_service.create(user_in, must_change_password=False)
-        
+
         # Get super_admin role
         super_admin_role = await self.role_service.get_super_admin()
         if not super_admin_role:
             raise BadRequestAppException("super_admin role not found after initialization")
 
         from saki_api.schemas.user_system_role import UserSystemRoleCreate
-        
+
         role_in = UserSystemRoleCreate(
             user_id=user.id,
             role_id=super_admin_role.id,

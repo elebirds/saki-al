@@ -8,8 +8,8 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 
-from saki_api.api import deps
 from saki_api.api.service_deps import PermissionQueryServiceDep
+from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.schemas.permission import (
     SystemPermissionsResponse,
     ResourcePermissionsResponse,
@@ -25,8 +25,8 @@ router = APIRouter()
     description="Get system-level permissions for the current user. Returns only permissions from system roles."
 )
 async def get_system_permissions(
-    service: PermissionQueryServiceDep,
-    current_user_id: uuid.UUID = Depends(deps.get_current_user_id),
+        service: PermissionQueryServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> SystemPermissionsResponse:
     return await service.get_system_permissions(current_user_id)
 
@@ -38,10 +38,10 @@ async def get_system_permissions(
     description="Get resource-specific permissions for the current user. Returns only permissions from resource roles."
 )
 async def get_resource_permissions(
-    service: PermissionQueryServiceDep,
-    current_user_id: uuid.UUID = Depends(deps.get_current_user_id),
-    resource_type: str = Query(..., description="Resource type (e.g., 'dataset')"),
-    resource_id: uuid.UUID = Query(..., description="Resource ID"),
+        service: PermissionQueryServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+        resource_type: str = Query(..., description="Resource type (e.g., 'dataset')"),
+        resource_id: uuid.UUID = Query(..., description="Resource ID"),
 ) -> ResourcePermissionsResponse:
     return await service.get_resource_permissions(
         current_user_id,

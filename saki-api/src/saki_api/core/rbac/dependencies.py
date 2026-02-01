@@ -18,6 +18,7 @@ from saki_api.core.context import set_current_user_id, reset_current_user_id
 from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.db.session import get_session
 from saki_api.models.user import User
+from saki_api.repositories.user import UserRepository
 
 # HTTPBearer 用于从请求头中提取 token，并集成到 Swagger UI
 security = HTTPBearer()
@@ -109,7 +110,8 @@ async def get_current_user(
     Raises:
         HTTPException: 如果用户不存在或未激活
     """
-    user = await session.get(User, user_id)
+    user_repo = UserRepository(session)
+    user = await user_repo.get_by_id(user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -123,43 +125,12 @@ async def get_current_user(
     return user
 
 
-async def get_permission_checker(
-        session: AsyncSession = Depends(get_session)
-) -> PermissionChecker:
-    """Dependency to get a PermissionChecker instance."""
-    return PermissionChecker(session)
-
-
 class PermissionDependency:
-    """
-    Permission checking dependency for FastAPI.
-    
-    Usage:
-        @router.get("/{dataset_id}")
-        def get_dataset(
-            dataset_id: str,
-            current_user: User = Depends(require_permission("dataset:read", "dataset", "dataset_id")),
-        ):
-            ...
-        
-        # For sub-resources (label, annotation), use get_parent_resource_id:
-        @router.get("/labels/{label_id}")
-        def get_label(
-            label_id: str,
-            current_user: User = Depends(require_permission(
-                "label:read:assigned", "dataset", "label_id",
-                get_label_dataset_owner, get_label_dataset_id
-            )),
-        ):
-            ...
-    """
-
     def __init__(
             self,
             permission: str,
             resource_type: Optional[str] = None,
             resource_id_param: Optional[str] = None,
-            get_parent_resource_id: Optional[Callable[[AsyncSession, str], Optional[str]]] = None,
     ):
         """
         Initialize the permission dependency.
@@ -168,38 +139,43 @@ class PermissionDependency:
             permission: Required permission (e.g., "dataset:read", "annotation:modify:self")
             resource_type: Type of resource being accessed (string like "dataset")
             resource_id_param: URL path parameter name for resource ID
-            get_parent_resource_id: Function to get parent resource ID (for sub-resources like label/annotation)
         """
         self.permission = permission
         self.resource_type = resource_type
         self.resource_id_param = resource_id_param
-        self.get_parent_resource_id = get_parent_resource_id
 
     async def __call__(
             self,
             request: Request,
             session: AsyncSession = Depends(get_session),
-            current_user: User = Depends(get_current_user),
-    ) -> User:
+            user_id: uuid.UUID = Depends(get_current_user_id),
+    ):
         """Check permission and return current user if authorized."""
-        checker = PermissionChecker(session)
 
         # Build context
         resource_id = None
+        resource_type_enum = None
 
         if self.resource_id_param:
-            param_id = request.path_params.get(self.resource_id_param)
+            resource_id = request.path_params.get(self.resource_id_param)
 
-            # For sub-resources, get the parent resource ID
-            if self.get_parent_resource_id and param_id:
-                resource_id = await self.get_parent_resource_id(session, param_id)
-            else:
-                resource_id = param_id
+        # Convert resource_type string to ResourceType enum if provided
+        if self.resource_type:
+            try:
+                from saki_api.models.rbac import ResourceType
+                resource_type_enum = ResourceType(self.resource_type)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid resource type: {self.resource_type}"
+                )
+
+        checker = PermissionChecker(session)
 
         if not await checker.check(
-                user_id=current_user.id,
+                user_id=user_id,
                 permission=self.permission,
-                resource_type=self.resource_type,
+                resource_type=resource_type_enum,
                 resource_id=resource_id
         ):
             raise HTTPException(
@@ -211,8 +187,6 @@ class PermissionDependency:
                 }
             )
 
-        return current_user
-
 
 def require_permission(
         permission: str,
@@ -220,54 +194,10 @@ def require_permission(
         resource_id_param: Optional[str] = None,
         get_parent_resource_id: Optional[Callable[[AsyncSession, str], Optional[str]]] = None,
 ) -> PermissionDependency:
-    """
-    Create a permission checking dependency.
-    
-    Args:
-        permission: Required permission string
-        resource_type: Type of resource (for resource-level permissions)
-        resource_id_param: URL parameter name containing the resource ID
-        get_parent_resource_id: Function to get parent resource ID (for sub-resources)
-    
-    Examples:
-        # Simple permission check (system level)
-        @router.get("/users")
-        def list_users(
-            current_user: User = Depends(require_permission(Permissions.USER_READ)),
-        ):
-            ...
-        
-        # Resource-level permission check
-        @router.get("/datasets/{dataset_id}")
-        def get_dataset(
-            dataset_id: str,
-            current_user: User = Depends(require_permission(
-                Permissions.DATASET_READ,
-                ResourceType.DATASET,
-                "dataset_id",
-                get_dataset_owner
-            )),
-        ):
-            ...
-        
-        # Sub-resource permission check (label -> dataset)
-        @router.get("/labels/{label_id}")
-        def get_label(
-            label_id: str,
-            current_user: User = Depends(require_permission(
-                Permissions.LABEL_READ,
-                ResourceType.DATASET,
-                "label_id",
-                get_label_dataset_id
-            )),
-        ):
-            ...
-    """
     return PermissionDependency(
         permission=permission,
         resource_type=resource_type,
-        resource_id_param=resource_id_param,
-        get_parent_resource_id=get_parent_resource_id,
+        resource_id_param=resource_id_param
     )
 
 
@@ -278,12 +208,41 @@ def require_permission(
 async def get_sample_dataset_id(session: AsyncSession, sample_id: str) -> Optional[str]:
     """Get the dataset ID of a sample."""
     from saki_api.models import Sample
-    sample = await session.get(Sample, sample_id)
-    return sample.dataset_id if sample else None
+    from saki_api.repositories.base import BaseRepository
+
+    try:
+        sample_uuid = uuid.UUID(sample_id)
+    except ValueError:
+        return None
+
+    # Use repository pattern instead of direct session access
+    sample_repo = BaseRepository(Sample, session)
+    sample = await sample_repo.get_by_id(sample_uuid)
+    return str(sample.dataset_id) if sample and sample.dataset_id else None
 
 
 async def get_label_dataset_id(session: AsyncSession, label_id: str) -> Optional[str]:
-    """Get the dataset ID of a label."""
+    """
+    Get the dataset ID of a label.
+    
+    Note: Label belongs to Project, not directly to Dataset.
+    This function may need to be updated based on your actual data model.
+    If labels don't have a direct dataset relationship, this should return None
+    or be refactored to get dataset through project.
+    """
     from saki_api.models import Label
-    label = await session.get(Label, label_id)
-    return label.dataset_id if label else None
+    from saki_api.repositories.base import BaseRepository
+
+    try:
+        label_uuid = uuid.UUID(label_id)
+    except ValueError:
+        return None
+
+    # Use repository pattern instead of direct session access
+    label_repo = BaseRepository(Label, session)
+    label = await label_repo.get_by_id(label_uuid)
+
+    # Note: Label model has project_id, not dataset_id
+    # If you need dataset_id, you may need to join through project
+    # For now, return None as labels don't directly belong to datasets
+    return None

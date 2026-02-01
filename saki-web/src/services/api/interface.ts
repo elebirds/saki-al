@@ -4,7 +4,7 @@ import {
   SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse,
   // Permission types
   Role, RoleCreate, RoleUpdate, RoleType,
-  UserSystemRole, UserSystemRoleCreate,
+  UserSystemRole, UserSystemRoleAssign,
   ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
   SystemPermissions, ResourcePermissions,
 } from '../../types';
@@ -53,7 +53,7 @@ export interface ApiService {
   
   // User role management
   getUserRoles(userId: string): Promise<UserSystemRole[]>;
-  assignUserRole(userId: string, role: UserSystemRoleCreate): Promise<UserSystemRole>;
+  assignUserRole(userId: string, role: UserSystemRoleAssign): Promise<UserSystemRole>;
   revokeUserRole(userId: string, roleId: string): Promise<{ ok: boolean; message: string }>;
 
   // ============================================================================

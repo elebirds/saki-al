@@ -52,23 +52,36 @@ SessionLocal = async_sessionmaker(
     expire_on_commit=False,  # 异步模式下必须设为 False，防止意外的 IO
 )
 
+from contextvars import ContextVar
+from typing import Optional
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+# 定义一个全局上下文变量，用于存储异步会话
+_session_ctx: ContextVar[Optional[AsyncSession]] = ContextVar("db_session", default=None)
+
+
+def get_current_session() -> AsyncSession:
+    """获取当前上下文中的 session"""
+    session = _session_ctx.get()
+    if not session:
+        raise RuntimeError("当前上下文中没有活跃的 AsyncSession，请确保在 get_session 依赖范围内调用。")
+    return session
+
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """
-    FastAPI 依赖注入：获取异步会话。
-    
-    使用方式：
-        session: AsyncSession = Depends(get_session)
-    
-    自动处理异常回滚和连接关闭。
-    """
     async with SessionLocal() as session:
+        # 将 session 放入上下文
+        token = _session_ctx.set(session)
         try:
             yield session
+            # 注意：由装饰器负责 commit 逻辑或在这里进行最后的最外层 commit
+            await session.commit()
         except Exception:
             await session.rollback()
             raise
         finally:
+            # 重置上下文，防止内存泄露或跨请求污染
+            _session_ctx.reset(token)
             await session.close()
 
 

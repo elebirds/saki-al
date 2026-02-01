@@ -10,10 +10,10 @@ Supports:
 from typing import Optional, List, TYPE_CHECKING
 
 from sqlmodel import Field, SQLModel, Relationship
+
 from saki_api.models.base import UUIDMixin, TimestampMixin
 from saki_api.models.rbac.enums import RoleType
 from saki_api.models.rbac.role_permission import RolePermission
-
 
 if TYPE_CHECKING:
     from saki_api.models import User, UserSystemRole
@@ -35,6 +35,7 @@ class RoleCanModifyBase(SQLModel):
         description="Display order"
     )
 
+
 class RoleBase(RoleCanModifyBase):
     # Basic info
     name: str = Field(
@@ -48,6 +49,7 @@ class RoleBase(RoleCanModifyBase):
         default=RoleType.RESOURCE,
         description="Role type: system (global) or resource (per-resource)"
     )
+
 
 class RoleMetadata(SQLModel):
     # System protection

@@ -6,14 +6,10 @@ Includes system setup, status check, and available types.
 
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.api.service_deps import SystemServiceDep
-from saki_api.db.session import get_session
-from saki_api.models import User
 from saki_api.schemas import UserCreate, UserRead
 from saki_api.services.system import SystemService
 

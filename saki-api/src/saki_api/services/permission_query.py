@@ -16,12 +16,12 @@ from saki_api.repositories import ResourceMemberRepository
 from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import RoleReadMinimal
-from saki_api.services.permission import PermissionService
-from saki_api.services.resource_owner import ResourceOwnerService
 from saki_api.schemas.permission import (
     SystemPermissionsResponse,
     ResourcePermissionsResponse,
 )
+from saki_api.services.permission import PermissionService
+from saki_api.services.resource_owner import ResourceOwnerService
 
 
 class PermissionQueryService:
@@ -31,15 +31,16 @@ class PermissionQueryService:
     Separates system permissions and resource permissions into different methods.
     Uses PermissionService for permission logic, following repository pattern.
     """
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
         self.role_repo = RoleRepository(session)
         self.user_role_repo = UserSystemRoleRepository(session)
         self.resource_member_repo = ResourceMemberRepository(session)
         self.permission_service = PermissionService(session)
+        self.permission_repo = self.permission_service.permission_repo
         self.resource_owner_service = ResourceOwnerService(session)
-    
+
     async def get_system_permissions(self, user_id: uuid.UUID) -> SystemPermissionsResponse:
         """
         Get system-level permissions for a user.
@@ -71,12 +72,12 @@ class PermissionQueryService:
             permissions=list(permissions),
             is_super_admin=is_super_admin,
         )
-    
+
     async def get_resource_permissions(
-        self,
-        user_id: uuid.UUID,
-        resource_type: str,
-        resource_id: uuid.UUID,
+            self,
+            user_id: uuid.UUID,
+            resource_type: str,
+            resource_id: uuid.UUID,
     ) -> ResourcePermissionsResponse:
         """
         Get resource-specific permissions for a user.
@@ -102,7 +103,7 @@ class PermissionQueryService:
                 permissions=[],
                 is_owner=False,
             )
-        
+
         # Get resource role using permission service
         member = await self.resource_member_repo.get_by_user_and_resource(user_id, rt, resource_id)
         resource_role: Optional[RoleReadMinimal] = None
@@ -114,15 +115,15 @@ class PermissionQueryService:
                     name=role.name,
                     display_name=role.display_name,
                 )
-        
-        # Get resource permissions only
-        resource_permissions = await self.permission_service.get_user_resource_permissions(
+
+        # Get resource permissions only - use repository directly with ResourceType enum
+        resource_permissions = await self.permission_repo.get_user_resource_permissions(
             user_id, rt, resource_id
         )
-        
+
         # Check if user is owner
         is_owner = await self.resource_owner_service.is_owner(rt, resource_id, user_id)
-        
+
         return ResourcePermissionsResponse(
             resource_role=resource_role,
             permissions=list(resource_permissions),

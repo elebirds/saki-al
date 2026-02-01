@@ -128,7 +128,7 @@ export interface UserSystemRole {
   roleDisplayName?: string;
 }
 
-export interface UserSystemRoleCreate {
+export interface UserSystemRoleAssign {
   roleId: string;
   expiresAt?: string;
 }

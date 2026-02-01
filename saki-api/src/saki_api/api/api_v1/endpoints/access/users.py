@@ -12,8 +12,6 @@ from fastapi import APIRouter, Depends
 from saki_api.api.service_deps import UserServiceDep
 from saki_api.core.rbac import (
     require_permission,
-    get_permission_checker,
-    PermissionChecker,
 )
 from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.models import (
@@ -113,12 +111,11 @@ async def update_user(
         user_id: uuid.UUID,
         user_in: UserUpdate,
         service: UserServiceDep,
-        checker: PermissionChecker = Depends(get_permission_checker),
 ) -> Any:
     """
     Update a user.
     """
-    user = await service.update_user(user_id, user_in, checker)
+    user = await service.update_user(user_id, user_in)
     return await service.get_profile_by_id(user.id)
 
 
@@ -132,10 +129,9 @@ async def update_user(
 async def delete_user(
         *,
         user_id: uuid.UUID,
-        service: UserServiceDep,
-        checker: PermissionChecker = Depends(get_permission_checker),
+        service: UserServiceDep
 ) -> Any:
     """
     Delete a user.
     """
-    return await service.delete_user(user_id, checker)
+    return await service.delete_user(user_id)

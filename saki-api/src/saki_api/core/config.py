@@ -24,12 +24,12 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/saki"
     SQL_ECHO: bool = False
-    
+
     # Connection pool settings (only used for non-SQLite databases)
     POOL_SIZE: int = 20
     MAX_OVERFLOW: int = 10
     POOL_RECYCLE: int = 1800  # 30 minutes
-    
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def assemble_db_connection(cls, v: str) -> str:
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
-        env_file = ".env" # 允许从根目录的 .env 文件读取变量
+        env_file = ".env"  # 允许从根目录的 .env 文件读取变量
 
 
 settings = Settings()

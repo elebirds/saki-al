@@ -4,8 +4,8 @@ User Repository - Data access layer for User operations.
 import uuid
 from typing import Optional, List
 
-from sqlmodel import select
 from sqlalchemy.orm import selectinload
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.user import User
@@ -34,7 +34,7 @@ class UserRepository(BaseRepository[User]):
         statement = (
             select(User)
             .where(User.id == user_id)
-            .options(selectinload(User.roles)) # type: ignore
+            .options(selectinload(User.roles))  # type: ignore
             # 预加载所有角色
         )
         result = await self.session.exec(statement)
@@ -43,7 +43,7 @@ class UserRepository(BaseRepository[User]):
     async def list_with_roles(self, pagination: Pagination) -> List[UserRead]:
         statement = (
             select(User)
-            .options(selectinload(User.roles)) # type: ignore
+            .options(selectinload(User.roles))  # type: ignore
             # 预加载所有角色
         )
         statement = statement.offset(pagination.skip).limit(pagination.limit)

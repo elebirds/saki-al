@@ -8,8 +8,9 @@ from saki_api.models.base import UUIDMixin, TimestampMixin
 if TYPE_CHECKING:
     from saki_api.models import Role
 
+
 class RolePermissionBase(SQLModel):
-    permission: str = Field(max_length=100,description="Permission string (resource:action:scope)")
+    permission: str = Field(max_length=100, description="Permission string (resource:action:scope)")
 
 
 class RolePermission(RolePermissionBase, UUIDMixin, TimestampMixin, table=True):

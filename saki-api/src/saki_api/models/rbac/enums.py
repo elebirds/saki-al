@@ -43,6 +43,9 @@ class Scope(str, Enum):
     SELF = "self"
 
 
+VALID_SCOPE_STRS = [s.value for s in Scope]
+
+
 class AuditAction(str, Enum):
     """
     Audit log action types.
@@ -80,8 +83,39 @@ class AuditAction(str, Enum):
 class Permissions:
     """
     Predefined permission constants for common use cases.
+    
+    All permission constants are strings in format "target:action:scope".
+    You can convert them to Permission objects using Permission.from_string() or parse_permission().
+    
+    Examples:
+        >>> from saki_api.models.rbac import Permission, parse_permission
+        >>> perm = parse_permission(Permissions.DATASET_READ)
+        >>> print(perm.target)  # "dataset"
+        >>> print(perm.action)  # "read"
+        >>> print(perm.scope)   # "assigned"
     """
     ALL_PERMISSIONS = "*:*:all"  # 全局允许：所有权限
+
+    @staticmethod
+    def to_permission(permission_str: str) -> "Permission":
+        """
+        Convert a permission string to a Permission object.
+        
+        This is a convenience method that imports Permission class dynamically
+        to avoid circular imports.
+        
+        Args:
+            permission_str: Permission string (e.g., "dataset:read:all")
+            
+        Returns:
+            Permission object
+            
+        Examples:
+            >>> perm = Permissions.to_permission(Permissions.DATASET_READ)
+            >>> print(perm.target)  # "dataset"
+        """
+        from saki_api.models.rbac.permission import Permission
+        return Permission.from_string(permission_str)
 
     # ============================================================================
     # User Management Permissions

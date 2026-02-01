@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,6 +16,17 @@ from saki_api.core.exceptions import (
 from saki_api.db.session import init_db, dispose_engine
 
 
+def setup_logging():
+    """配置应用日志系统"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    # 设置 SQLAlchemy 日志级别为 WARNING，避免过多的 SQL 日志
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -24,6 +36,7 @@ async def lifespan(app: FastAPI):
     Shutdown: 优雅关闭数据库连接池
     """
     # Startup
+    setup_logging()
     await init_db()
 
     yield

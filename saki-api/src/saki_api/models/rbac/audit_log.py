@@ -10,19 +10,11 @@ from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
-from saki_api.models.base import UUIDMixin, TimestampMixin
+from saki_api.models.base import UUIDMixin, TimestampMixin, AuditMixin
 from saki_api.models.rbac.enums import AuditAction
 
 
 class AuditLogBase(SQLModel):
-    # Actor (who performed the action)
-    actor_id: uuid.UUID | None = Field(
-        default=None,
-        foreign_key="user.id",
-        index=True,
-        description="User who performed the action"
-    )
-
     # Action
     action: AuditAction = Field(
         index=True,
@@ -64,7 +56,7 @@ class AuditLogBase(SQLModel):
     )
 
 
-class AuditLog(AuditLogBase, UUIDMixin, TimestampMixin, table=True):
+class AuditLog(AuditLogBase, UUIDMixin, TimestampMixin, AuditMixin, table=True):
     """
     Permission Audit Log.
     

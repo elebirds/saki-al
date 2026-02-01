@@ -308,7 +308,7 @@ export interface User {
   createdAt?: string;
   updatedAt?: string;
   lastLoginAt?: string;
-  systemRoles?: RoleInfoLegacy[];
+  roles?: RoleInfoLegacy[];
 }
 
 // Re-export from permission.ts for backward compatibility

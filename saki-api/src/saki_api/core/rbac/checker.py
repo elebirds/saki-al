@@ -16,9 +16,12 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac import (
-    Role, RolePermission,
-    UserSystemRole, ResourceMember, ResourceType, )
+    Role, ResourceType, Permission, parse_permission)
 from saki_api.models.rbac.enums import Permissions
+from saki_api.repositories.permission import PermissionRepository
+from saki_api.repositories.resource_member import ResourceMemberRepository
+from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.user_system_role import UserSystemRoleRepository
 
 
 @dataclass
@@ -31,7 +34,7 @@ class PermissionContext:
     done in the business layer, not here.
     """
     user_id: uuid.UUID
-    resource_type: Optional[Union[ResourceType, str]] = None
+    resource_type: Optional[ResourceType] = None
     resource_id: Optional[uuid.UUID] = None
 
 
@@ -40,113 +43,58 @@ class PermissionChecker:
     Permission checking service.
     
     Provides efficient permission checking with caching support.
+    Uses Repository pattern - all database operations go through repositories.
     
     Usage:
         checker = PermissionChecker(session)
         
         # Check a simple permission
-        if checker.check(user_id, "dataset:read"):
+        if await checker.check(user_id, "dataset:read"):
             ...
         
         # Check with resource context
-        if checker.check(user_id, "dataset:update", "dataset", dataset_id, dataset.owner_id):
+        if await checker.check(user_id, "dataset:update", "dataset", dataset_id):
             ...
     """
 
     def __init__(self, session: AsyncSession):
         self.session = session
+        self.role_repo = RoleRepository(session)
+        self.permission_repo = PermissionRepository(session)
+        self.user_role_repo = UserSystemRoleRepository(session)
+        self.resource_member_repo = ResourceMemberRepository(session)
         self._role_cache: dict[uuid.UUID, Role] = {}
         self._permission_cache: dict[uuid.UUID, Set[str]] = {}
 
-    async def get_role(self, role_id: uuid.UUID) -> Optional[Role]:
-        """Get a role by ID with caching."""
-        if role_id not in self._role_cache:
-            self._role_cache[role_id] = await self.session.get(Role, role_id)
-        return self._role_cache[role_id]
-
-    async def get_role_permissions(self, role_id: uuid.UUID) -> Set[str]:
-        """
-        Get all permissions for a role, including inherited permissions.
-        
-        Uses recursion to handle role inheritance.
-        """
-        if role_id in self._permission_cache:
-            return self._permission_cache[role_id]
-
-        role = await self.get_role(role_id)
-        if not role:
-            return set()
-
-        permissions: Set[str] = set()
-
-        # Get direct permissions
-        result = await self.session.exec(
-            select(RolePermission).where(RolePermission.role_id == role_id)
-        )
-        role_perms = result.all()
-
-        for rp in role_perms:
-            permissions.add(rp.permission)
-
-        self._permission_cache[role_id] = permissions
-        return permissions
-
     async def get_user_system_permissions(self, user_id: uuid.UUID) -> Set[str]:
         """
-        Get all system-level permissions for a user.
+        Efficiently get all system-level permissions for a user.
         
-        Combines permissions from all assigned system roles.
+        Uses optimized SQL JOIN query to get all permissions in a single database call,
+        avoiding the need to first fetch role IDs and then query permissions.
         """
-        permissions: Set[str] = set()
-
-        # Get user's system roles (filter out expired)
-        result = await self.session.exec(
-            select(UserSystemRole).where(
-                UserSystemRole.user_id == user_id,
-                (UserSystemRole.expires_at == None) |
-                (UserSystemRole.expires_at > datetime.utcnow())
-            )
-        )
-        user_roles = result.all()
-
-        for ur in user_roles:
-            role_perms = await self.get_role_permissions(ur.role_id)
-            permissions.update(role_perms)
-
-        return permissions
+        return await self.permission_repo.get_user_system_permissions(user_id, datetime.utcnow())
 
     async def get_user_resource_permissions(
             self,
             user_id: uuid.UUID,
-            resource_type: Union[ResourceType, str],
+            resource_type: ResourceType,
             resource_id: uuid.UUID
     ) -> Set[str]:
         """
-        Get permissions for a user on a specific resource.
+        Efficiently get permissions for a user on a specific resource.
+        
+        Uses optimized SQL JOIN query to get permissions in a single database call.
+        
+        Args:
+            user_id: User ID
+            resource_type: Resource type enum (must be ResourceType, not string)
+            resource_id: Resource ID
         """
-        permissions: Set[str] = set()
-
-        # Convert string to enum if needed
-        if isinstance(resource_type, str):
-            try:
-                resource_type = ResourceType(resource_type)
-            except ValueError:
-                return permissions
-
-        result = await self.session.exec(
-            select(ResourceMember).where(
-                ResourceMember.resource_type == resource_type,
-                ResourceMember.resource_id == resource_id,
-                ResourceMember.user_id == user_id
-            )
+        # Use optimized SQL JOIN query through repository
+        return await self.permission_repo.get_user_resource_permissions(
+            user_id, resource_type, resource_id
         )
-        member = result.first()
-
-        if member:
-            role_perms = await self.get_role_permissions(member.role_id)
-            permissions.update(role_perms)
-
-        return permissions
 
     async def _get_effective_permissions(self, ctx: PermissionContext) -> Set[str]:
         """
@@ -178,48 +126,28 @@ class PermissionChecker:
         return await self._get_effective_permissions(ctx)
 
     async def is_super_admin(self, user_id: uuid.UUID) -> bool:
-        """Check if user is a super admin by checking if they have super_admin role."""
-        # Get user's system roles (filter out expired)
-        result = await self.session.exec(
-            select(UserSystemRole).where(
-                UserSystemRole.user_id == user_id,
-                (UserSystemRole.expires_at == None) |
-                (UserSystemRole.expires_at > datetime.utcnow())
-            )
-        )
-        user_roles = result.all()
-
-        for ur in user_roles:
-            role = await self.get_role(ur.role_id)
-            if role and role.is_super_admin:
-                return True
-
-        return False
+        """
+        Efficiently check if user is a super admin using optimized SQL query.
+        
+        Uses EXISTS query with JOIN to check role properties directly in database,
+        avoiding the need to fetch all roles and check individually.
+        """
+        return await self.user_role_repo.has_super_admin_role(user_id, datetime.utcnow())
 
     async def is_admin(self, user_id: uuid.UUID) -> bool:
-        """Check if user is an admin (including super admin) by checking roles."""
-        # Get user's system roles (filter out expired)
-        result = await self.session.exec(
-            select(UserSystemRole).where(
-                UserSystemRole.user_id == user_id,
-                (UserSystemRole.expires_at == None) |
-                (UserSystemRole.expires_at > datetime.utcnow())
-            )
-        )
-        user_roles = result.all()
-
-        for ur in user_roles:
-            role = await self.get_role(ur.role_id)
-            if role and (role.is_admin or role.is_super_admin):
-                return True
-
-        return False
+        """
+        Efficiently check if user is an admin (including super admin) using optimized SQL query.
+        
+        Uses EXISTS query with JOIN to check role properties directly in database,
+        avoiding the need to fetch all roles and check individually.
+        """
+        return await self.user_role_repo.has_admin_role(user_id, datetime.utcnow())
 
     async def check(
             self,
             user_id: uuid.UUID,
-            permission: str,
-            resource_type: Optional[Union[ResourceType, str]] = None,
+            permission: str | Permission,
+            resource_type: Optional[ResourceType] = None,
             resource_id: Optional[str] = None
     ) -> bool:
         """
@@ -231,102 +159,66 @@ class PermissionChecker:
         
         Args:
             user_id: ID of the user
-            permission: Permission string (resource:action or resource:action:scope)
+            permission: Permission string (target:action or target:action:scope) or Permission object
             resource_type: Type of resource (optional, for resource-level permissions)
             resource_id: ID of the resource (optional)
-            resource_owner_id: Owner of the resource (optional, for owned scope)
         
         Returns:
             True if permission is granted, False otherwise
         
         Examples:
-            # Check if user can read datasets (system level)
-            checker.check(user_id, "dataset:read")
+            # Check if user can read datasets (system level) - using string
+            await checker.check(user_id, "dataset:read")
+            
+            # Check using Permission object
+            from saki_api.models.rbac import parse_permission
+            perm = parse_permission("dataset:read:all")
+            await checker.check(user_id, perm)
             
             # Check if user can update a specific dataset
-            checker.check(user_id, "dataset:update", "dataset", dataset_id, dataset.owner_id)
+            await checker.check(user_id, "dataset:update", ResourceType.DATASET, dataset_id)
             
             # Check if user has self-level annotation permission
             # Note: This only checks if user has the permission level,
             # checking if a specific annotation belongs to the user is done in business layer
-            checker.check(user_id, "annotation:read:self", "dataset", dataset_id)
+            await checker.check(user_id, "annotation:read:self", ResourceType.DATASET, dataset_id)
         """
         if await self.is_super_admin(user_id):
             return True
 
+        # Convert to Permission object if needed
+        if isinstance(permission, Permission):
+            required_perm = permission
+        else:
+            try:
+                required_perm = parse_permission(permission)
+            except ValueError:
+                return False  # Invalid permission format
+
+        # Convert resource_id string to UUID if provided
+        resource_id_uuid = None
+        if resource_id:
+            try:
+                resource_id_uuid = uuid.UUID(resource_id)
+            except ValueError:
+                return False  # Invalid UUID format
+
         ctx = PermissionContext(
             user_id=user_id,
             resource_type=resource_type,
-            resource_id=resource_id,
+            resource_id=resource_id_uuid,
         )
 
         permissions = await self._get_effective_permissions(ctx)
 
-        # Parse required permission
-        req_parts = permission.split(":")
-        if len(req_parts) < 2:
-            return False
-
-        req_resource = req_parts[0]
-        req_action = req_parts[1]
-        req_scope = req_parts[2] if len(req_parts) > 2 else "assigned"
-
-        for perm in permissions:
-            perm_parts = perm.split(":")
-            if len(perm_parts) < 2:
-                continue
-
-            perm_resource = perm_parts[0]
-            perm_action = perm_parts[1]
-            perm_scope = perm_parts[2] if len(perm_parts) > 2 else "assigned"
-
-            # Check resource match
-            if perm_resource != req_resource and perm_action != "*":
-                continue
-
-            # Check action match (manage covers all actions)
-            if perm_action != req_action and perm_action != "*":
-                continue
-
-            # Check scope
-            if self._scope_covers(perm_scope, req_scope):
-                return True
-
-        return False
-
-    def _scope_covers(
-            self,
-            perm_scope: str,
-            req_scope: str
-    ) -> bool:
-        """
-        Check if permission scope covers the required scope.
-        
-        Scope hierarchy: all > owned > assigned > self
-        
-        This only checks scope levels, not object ownership.
-        Object-level checks (e.g., "is this annotation mine?") should be
-        done in the business layer after confirming the user has the scope.
-        """
-        # 'all' covers everything
-        if perm_scope == "all":
-            return True
-
-        # 'assigned' covers assigned and self
-        if perm_scope == "assigned":
-            return req_scope in ("assigned", "self")
-
-        # 'self' only covers self
-        if perm_scope == "self":
-            return req_scope == "self"
-
-        return False
+        # Use Permission class method to check if requirement is satisfied
+        return required_perm.is_satisfied_by(permissions)
 
     async def filter_accessible_resources(
             self,
             user_id: uuid.UUID,
-            resource_type: Union[ResourceType, str],
-            required_permission: str,
+            resource_type: ResourceType,
+            required_permission: Union[str, Permission],
             base_query,
             get_owner_id_column: Callable[[], Any],
             resource_model: Any  # The SQLModel class (e.g., Dataset)
@@ -336,8 +228,8 @@ class PermissionChecker:
         
         Args:
             user_id: The user ID
-            resource_type: Type of resource being queried
-            required_permission: Permission required (e.g., "dataset:read")
+            resource_type: Type of resource being queried (must be ResourceType enum)
+            required_permission: Permission required (Permission object or string, e.g., "dataset:read")
             base_query: The base SQLAlchemy query
             get_owner_id_column: Function that returns the owner_id column
             resource_model: The SQLModel class for the resource (e.g., Dataset)
@@ -346,57 +238,61 @@ class PermissionChecker:
             Modified query with access filters applied
         
         Example:
+            from saki_api.models.rbac import ResourceType, parse_permission
+            
             query = select(Dataset)
+            # Using string
             filtered = checker.filter_accessible_resources(
                 user_id=current_user.id,
-                resource_type="dataset",
+                resource_type=ResourceType.DATASET,
                 required_permission="dataset:read",
                 base_query=query,
                 get_owner_id_column=lambda: Dataset.owner_id,
                 resource_model=Dataset
             )
+            # Using Permission object
+            perm = parse_permission("dataset:read")
+            filtered = checker.filter_accessible_resources(
+                user_id=current_user.id,
+                resource_type=ResourceType.DATASET,
+                required_permission=perm,
+                base_query=query,
+                get_owner_id_column=lambda: Dataset.owner_id,
+                resource_model=Dataset
+            )
         """
-        # Convert string to enum if needed
-        if isinstance(resource_type, str):
-            try:
-                resource_type = ResourceType(resource_type)
-            except ValueError:
-                return base_query.where(False)
-
         # Get user's system permissions
         system_perms = await self.get_user_system_permissions(user_id)
 
+        # Convert to Permission object if needed
+        if isinstance(required_permission, Permission):
+            required_perm = required_permission
+        else:
+            try:
+                required_perm = parse_permission(required_permission)
+            except ValueError:
+                return base_query.where(False)  # Invalid permission format
+
         # Super admin or has 'all' scope - return everything
-        if Permissions.ALL_PERMISSIONS in system_perms:
+        all_permissions_perm = parse_permission(Permissions.ALL_PERMISSIONS)
+        if all_permissions_perm.is_satisfied_by(system_perms):
             return base_query
 
-        req_resource = required_permission.split(":")[0]
-        req_action = required_permission.split(":")[1] if ":" in required_permission else "*"
+        # Check if user has 'all' scope for this permission using Permission.with_scope()
+        if required_perm.with_scope("all").is_satisfied_by(system_perms):
+            return base_query
 
-        for perm in system_perms:
-            parts = perm.split(":")
-            if len(parts) >= 3:
-                if (parts[0] == req_resource and
-                        (parts[1] == req_action or parts[1] == "*") and
-                        parts[2] == "all"):
-                    return base_query
+        # Collect accessible resource IDs (as UUIDs)
+        accessible_ids: Set[uuid.UUID] = set()
 
-        # Collect accessible resource IDs
-        accessible_ids: Set[str] = set()
-
-        # Check for 'owned' scope
-        has_owned = False
-        for perm in system_perms:
-            parts = perm.split(":")
-            if len(parts) >= 3:
-                if (parts[0] == req_resource and
-                        (parts[1] == req_action or parts[1] == "*") and
-                        parts[2] == "owned"):
-                    has_owned = True
-                    break
+        # Check for 'owned' scope using Permission.with_scope()
+        has_owned = required_perm.with_scope("owned").is_satisfied_by(system_perms)
 
         if has_owned:
             # Get resources owned by user using the provided owner_id column
+            # Note: This is a dynamic query that works with any resource model.
+            # Since it's model-agnostic, we keep it here rather than in a repository.
+            # The owner_id column is provided by the caller, making this flexible.
             owner_id_col = get_owner_id_column()
             result = await self.session.exec(
                 select(resource_model.id).where(owner_id_col == user_id)
@@ -404,15 +300,11 @@ class PermissionChecker:
             owned = result.all()
             accessible_ids.update(owned)
 
-        # Get resources where user is a member
-        result = await self.session.exec(
-            select(ResourceMember.resource_id).where(
-                ResourceMember.resource_type == resource_type,
-                ResourceMember.user_id == user_id
-            )
+        # Get resources where user is a member through repository
+        member_ids = await self.resource_member_repo.get_resource_ids_by_user(
+            user_id, resource_type
         )
-        member_ids = result.all()
-        accessible_ids.update(member_ids)
+        accessible_ids.update(member_ids)  # member_ids is List[uuid.UUID], compatible with Set[uuid.UUID]
 
         if not accessible_ids:
             # Return empty result
@@ -424,29 +316,23 @@ class PermissionChecker:
     async def get_user_role_in_resource(
             self,
             user_id: uuid.UUID,
-            resource_type: Union[ResourceType, str],
+            resource_type: ResourceType,
             resource_id: uuid.UUID
     ) -> Optional[Role]:
-        """Get user's role in a specific resource."""
-        # Convert string to enum if needed
-        if isinstance(resource_type, str):
-            try:
-                resource_type = ResourceType(resource_type)
-            except ValueError:
-                return None
-
-        result = await self.session.exec(
-            select(ResourceMember).where(
-                ResourceMember.resource_type == resource_type,
-                ResourceMember.resource_id == resource_id,
-                ResourceMember.user_id == user_id
-            )
+        """
+        Efficiently get user's role in a specific resource.
+        
+        Uses optimized SQL JOIN query to get role directly in a single database call.
+        
+        Args:
+            user_id: User ID
+            resource_type: Resource type enum (must be ResourceType, not string)
+            resource_id: Resource ID
+        """
+        # Use optimized SQL JOIN query through repository
+        return await self.resource_member_repo.get_user_role_in_resource(
+            user_id, resource_type, resource_id
         )
-        member = result.first()
-
-        if member:
-            return await self.get_role(member.role_id)
-        return None
 
     def clear_cache(self):
         """Clear permission cache."""

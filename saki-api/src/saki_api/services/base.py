@@ -43,7 +43,7 @@ class BaseService(Generic[ModelType, RepoType, CreateSchemaType, UpdateSchemaTyp
         """
         self.model = model
         self.session = session
-        self.repository : RepoType = repository_class(session)
+        self.repository: RepoType = repository_class(session)
 
     async def get_by_id(self, record_id: uuid.UUID) -> ModelType | None:
         """

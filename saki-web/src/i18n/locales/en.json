@@ -151,6 +151,12 @@
     "assign": "Assign",
     "roleAssigned": "Role assigned successfully",
     "roleRevoked": "Role revoked successfully",
+    "expiresAt": "Expires At",
+    "expiresAtTooltip": "Optional, set when the role assignment expires. Leave empty for permanent assignment",
+    "expiresAtPlaceholder": "Select expiration date",
+    "expired": "Expired",
+    "noExpiration": "Never expires",
+    "revoke": "Revoke",
     "roles": {
       "superAdmin": "Super Admin",
       "admin": "Admin",

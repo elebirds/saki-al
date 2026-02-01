@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result } from 'antd';
+import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result, DatePicker } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
-import { User, Role, UserSystemRole } from '../../types';
+import dayjs, { Dayjs } from 'dayjs';
+import { User, Role, UserSystemRole, UserSystemRoleAssign } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
@@ -154,7 +155,16 @@ const UserManagement: React.FC = () => {
     if (!selectedUserId) return;
     try {
       const values = await roleForm.validateFields();
-      await api.assignUserRole(selectedUserId, { roleId: values.roleId });
+      const roleData: UserSystemRoleAssign = {
+        roleId: values.roleId,
+      };
+      
+      // Add expiresAt if provided
+      if (values.expiresAt) {
+        roleData.expiresAt = (values.expiresAt as Dayjs).toISOString();
+      }
+      
+      await api.assignUserRole(selectedUserId, roleData);
       message.success(t('userManagement.roleAssigned'));
       await fetchUserRoles(selectedUserId);
       roleForm.resetFields();
@@ -188,7 +198,7 @@ const UserManagement: React.FC = () => {
 
   // Check if user has super_admin role
   const isUserSuperAdmin = (user: User): boolean => {
-    return user.systemRoles?.some(r => r.name === 'super_admin') ?? false;
+    return user.roles?.some(r => r.name === 'super_admin') ?? false;
   };
 
   const columns = [
@@ -217,7 +227,7 @@ const UserManagement: React.FC = () => {
       key: 'systemRoles',
       render: (_: any, record: User) => (
         <Space wrap>
-          {record.systemRoles?.map(role => (
+          {record.roles?.map(role => (
             <Tag key={role.id} color={getRoleColor(role.name)}>
               {role.displayName}
             </Tag>
@@ -400,22 +410,42 @@ const UserManagement: React.FC = () => {
               {userRoles.length === 0 ? (
                 <p style={{ color: '#999' }}>{t('userManagement.noRoles')}</p>
               ) : (
-                <Space wrap>
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
                   {userRoles.map(ur => {
                     const role = roles.find(r => r.id === ur.roleId);
                     const canRevoke = canRevokeRoles && (isSuperAdmin || (role?.name !== 'super_admin'));
+                    const isExpired = ur.expiresAt && dayjs(ur.expiresAt).isBefore(dayjs());
                     return (
-                      <Tag 
-                        key={ur.id} 
-                        color={getRoleColor(ur.roleName || '')}
-                        closable={canRevoke}
-                        onClose={(e) => {
-                          e.preventDefault();
-                          handleRevokeRole(ur.roleId);
-                        }}
-                      >
-                        {ur.roleDisplayName || ur.roleName}
-                      </Tag>
+                      <div key={ur.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', border: '1px solid #f0f0f0', borderRadius: 4 }}>
+                        <div style={{ flex: 1 }}>
+                          <Tag 
+                            color={isExpired ? 'red' : getRoleColor(ur.roleName || '')}
+                            style={{ marginRight: 8 }}
+                          >
+                            {ur.roleDisplayName || ur.roleName}
+                          </Tag>
+                          {ur.expiresAt && (
+                            <span style={{ fontSize: 12, color: isExpired ? '#ff4d4f' : '#666' }}>
+                              {isExpired ? t('userManagement.expired') : t('userManagement.expiresAt')}: {dayjs(ur.expiresAt).format('YYYY-MM-DD HH:mm:ss')}
+                            </span>
+                          )}
+                          {!ur.expiresAt && (
+                            <span style={{ fontSize: 12, color: '#999' }}>
+                              {t('userManagement.noExpiration')}
+                            </span>
+                          )}
+                        </div>
+                        {canRevoke && (
+                          <Button
+                            type="link"
+                            danger
+                            size="small"
+                            onClick={() => handleRevokeRole(ur.roleId)}
+                          >
+                            {t('userManagement.revoke')}
+                          </Button>
+                        )}
+                      </div>
                     );
                   })}
                 </Space>
@@ -426,11 +456,11 @@ const UserManagement: React.FC = () => {
             {canAssignRoles && (
               <div>
                 <h4>{t('userManagement.assignRole')}</h4>
-                <Form form={roleForm} layout="inline" onFinish={handleAssignRole}>
+                <Form form={roleForm} layout="vertical" onFinish={handleAssignRole}>
                   <Form.Item
                     name="roleId"
+                    label={t('userManagement.selectRole')}
                     rules={[{ required: true, message: t('userManagement.selectRole') }]}
-                    style={{ flex: 1, marginRight: 8 }}
                   >
                     <Select placeholder={t('userManagement.selectRole')} style={{ width: '100%' }}>
                       {roles
@@ -455,8 +485,21 @@ const UserManagement: React.FC = () => {
                         ))}
                     </Select>
                   </Form.Item>
+                  <Form.Item
+                    name="expiresAt"
+                    label={t('userManagement.expiresAt')}
+                    tooltip={t('userManagement.expiresAtTooltip')}
+                  >
+                    <DatePicker
+                      showTime
+                      format="YYYY-MM-DD HH:mm:ss"
+                      style={{ width: '100%' }}
+                      disabledDate={(current) => current && current < dayjs().startOf('day')}
+                      placeholder={t('userManagement.expiresAtPlaceholder')}
+                    />
+                  </Form.Item>
                   <Form.Item>
-                    <Button type="primary" htmlType="submit">
+                    <Button type="primary" htmlType="submit" block>
                       {t('userManagement.assign')}
                     </Button>
                   </Form.Item>

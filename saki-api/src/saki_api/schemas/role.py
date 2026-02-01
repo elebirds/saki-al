@@ -18,19 +18,22 @@ class RoleCreate(RoleBase):
     )
 
 
-class RoleRead(RoleBase, RoleMetadata):
+class RoleRead(RoleBase, RoleMetadata, UUIDMixin):
     permissions: List[RolePermissionRead] = []
+
 
 class RoleReadMinimal(SQLModel, UUIDMixin):
     """用于在用户列表中嵌套显示的极简角色信息"""
     name: str
     display_name: Optional[str]
 
+
 class RoleUpdate(RoleCanModifyBase):
     display_name: Optional[str] = Field(description="Role display name")
     description: Optional[str] = Field(description="Role description")
     sort_order: Optional[int] = Field(description="Role sort order")
     permissions: Optional[List[RolePermissionCreate]] = None
+
 
 class RoleSetDefault(UUIDMixin):
     pass

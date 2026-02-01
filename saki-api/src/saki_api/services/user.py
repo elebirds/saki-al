@@ -9,18 +9,18 @@ from typing import Optional, List
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing_extensions import override
 
+from saki_api.services.guards import AdminGuardDep
 from saki_api.core import security
 from saki_api.core.exceptions import (
     DataAlreadyExistsAppException,
 )
 from saki_api.db.transaction import transactional
 from saki_api.models.user import User
-from saki_api.repositories.user import UserRepository
 from saki_api.repositories.query import Pagination
+from saki_api.repositories.user import UserRepository
 from saki_api.schemas import UserRead
-from saki_api.services.base import BaseService
-from saki_api.services.guards.admin_guard import AdminGuard
 from saki_api.schemas.user import UserUpdate, UserCreate
+from saki_api.services.base import BaseService
 
 
 class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
@@ -67,11 +67,11 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
 
     @transactional
     async def update_user(
-        self,
-        user_id: uuid.UUID,
-        user_in: UserUpdate,
-        guard: AdminGuard,
-        current_user_id: uuid.UUID,
+            self,
+            user_id: uuid.UUID,
+            user_in: UserUpdate,
+            current_user_id: uuid.UUID,
+            guard: AdminGuardDep
     ) -> User:
         """
         Update a user.
@@ -79,8 +79,8 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
         Args:
             user_id: User ID to update
             user_in: Update data
-            guard: AdminGuard for permission checks
             current_user_id: ID of the current user performing the action
+            guard: AdminGuard for permission checks
         """
         # Protect super admin
         await guard.protect_super_admin(user_id, current_user_id)
@@ -99,18 +99,18 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
 
     @transactional
     async def delete_user(
-        self,
-        user_id: uuid.UUID,
-        guard: AdminGuard,
-        current_user_id: uuid.UUID,
+            self,
+            user_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            guard: AdminGuardDep
     ) -> User:
         """
         Delete a user.
         
         Args:
             user_id: User ID to delete
-            guard: AdminGuard for permission checks
             current_user_id: ID of the current user performing the action
+            guard: AdminGuard for permission checks
         
         Raises:
             HTTPException: If user not found or permission denied
@@ -121,8 +121,8 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
 
     @transactional
     async def update_user_login_time(
-        self,
-        user_id: uuid.UUID,
+            self,
+            user_id: uuid.UUID,
     ):
         await self.repository.update(user_id, {"last_login_at": datetime.utcnow()})
 

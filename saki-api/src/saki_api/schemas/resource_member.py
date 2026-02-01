@@ -11,6 +11,7 @@ from saki_api.models.rbac.resource_member import ResourceMemberBase
 class ResourceMemberCreate(ResourceMemberBase):
     pass
 
+
 class ResourceMemberRead(ResourceMemberBase, UUIDMixin):
     """Schema for reading a resource member."""
 

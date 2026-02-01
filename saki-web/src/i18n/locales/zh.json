@@ -151,6 +151,12 @@
     "assign": "分配",
     "roleAssigned": "角色分配成功",
     "roleRevoked": "角色已撤销",
+    "expiresAt": "过期时间",
+    "expiresAtTooltip": "可选，设置角色过期时间。留空表示永久有效",
+    "expiresAtPlaceholder": "选择过期时间",
+    "expired": "已过期",
+    "noExpiration": "永久有效",
+    "revoke": "撤销",
     "roles": {
       "superAdmin": "超级管理员",
       "admin": "管理员",

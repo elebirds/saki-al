@@ -15,6 +15,7 @@ from saki_api.models.base import TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from saki_api.models.rbac import ResourceMember
 
+
 class UserBase(SQLModel):
     """Base user fields."""
     email: str = Field(
@@ -38,12 +39,14 @@ class UserBase(SQLModel):
         description="URL to user's avatar image"
     )
 
+
 class InitedUserBase(UserBase):
     # Last login tracking
     last_login_at: Optional[datetime] = Field(
         default=None,
         description="Last login timestamp"
     )
+
 
 class User(UserBase, TimestampMixin, UUIDMixin, table=True):
     """

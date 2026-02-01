@@ -7,7 +7,6 @@ This service orchestrates authentication operations by coordinating between:
 """
 import logging
 import uuid
-from typing import Any, Dict
 
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -30,6 +29,7 @@ from saki_api.services.user import UserService
 
 logger = logging.getLogger(__name__)
 
+
 class AuthService:
     """
     Authentication service that orchestrates user authentication operations.
@@ -37,7 +37,7 @@ class AuthService:
     This service coordinates between UserService and TokenService to provide
     high-level authentication operations like login, registration, and token refresh.
     """
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
         self.user_service = UserService(session)
@@ -92,7 +92,7 @@ class AuthService:
 
         # Assign default role to new user
         await self._assign_default_role_to_user(user.id)
-        
+
         # Return user profile
         return await self.user_service.get_profile_by_id(user.id)
 
@@ -108,13 +108,13 @@ class AuthService:
             user_id: ID of the user to assign the role to
         """
         from saki_api.schemas.user_system_role import UserSystemRoleCreate
-        
+
         default_role = await self.role_repo.get_default()
         if not default_role:
             # If no default role exists, skip assignment (should not happen in normal flow)
             logger.error(f"Default role not found for user {user_id}")
             return
-        
+
         role_in = UserSystemRoleCreate(
             user_id=user_id,
             role_id=default_role.id,
@@ -138,17 +138,17 @@ class AuthService:
         # Validate that it's actually a refresh token
         if not self.token_service.is_refresh_token(refresh_token):
             raise AuthInvalidTokenAppException("Token is not a refresh token")
-        
+
         # Extract user ID from refresh token
         user_id = self.token_service.extract_user_id_from_token(refresh_token)
-        
+
         # Verify user exists and is active
         user = await self.user_service.get_by_id(user_id)
         if not user:
             raise AuthInvalidTokenAppException("User not found")
         if not user.is_active:
             raise AuthInactiveUserAppException("Inactive user")
-        
+
         # Create new access token
         return LoginResponse(
             access_token=TokenService.create_access_token(user.id),
@@ -186,7 +186,7 @@ class AuthService:
             )
 
         await self.user_service.change_password(
-            user.id, 
-            security.get_password_hash(new_password), 
+            user.id,
+            security.get_password_hash(new_password),
             False
         )

@@ -3,7 +3,7 @@ Dataset Repository - Data access layer for Dataset operations.
 """
 
 import uuid
-from typing import Optional, List
+from typing import List
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 

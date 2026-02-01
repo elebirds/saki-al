@@ -49,15 +49,19 @@ def setup_audit_listeners() -> None:
         # 处理审计字段
         if isinstance(target, AuditMixin):
             user_id = get_current_user_id()
+            logger.info(
+                f"Audit field population for {target.__class__.__name__}: user_id={user_id}, created_by={getattr(target, 'created_by', None)}, updated_by={getattr(target, 'updated_by', None)}")
             if user_id is not None:
                 # 只有在字段未设置时才自动填充
                 if target.created_by is None:
                     target.created_by = user_id
+                    logger.info(f"Set created_by={user_id} for {target.__class__.__name__}")
                 # 插入时也设置 updated_by
                 if target.updated_by is None:
                     target.updated_by = user_id
+                    logger.info(f"Set updated_by={user_id} for {target.__class__.__name__}")
             else:
-                logger.debug(
+                logger.warning(
                     f"No current user ID found, skipping audit field population for {target.__class__.__name__}")
 
     @event.listens_for(SQLModel, "before_update", propagate=True)
@@ -79,8 +83,11 @@ def setup_audit_listeners() -> None:
         # 处理审计字段
         if isinstance(target, AuditMixin):
             user_id = get_current_user_id()
+            logger.info(
+                f"Audit field update for {target.__class__.__name__}: user_id={user_id}, updated_by={getattr(target, 'updated_by', None)}")
             if user_id is not None:
                 target.updated_by = user_id
+                logger.info(f"Set updated_by={user_id} for {target.__class__.__name__}")
             else:
-                logger.debug(
+                logger.warning(
                     f"No current user ID found, skipping audit field population for {target.__class__.__name__}")

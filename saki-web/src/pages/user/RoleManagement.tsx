@@ -297,7 +297,9 @@ const RoleManagement: React.FC = () => {
         message.success(t('roleManagement.createSuccess'));
       }
       setIsModalOpen(false);
-      fetchRoles();
+      form.resetFields();
+      // Refresh roles list with current filter - await to ensure it completes
+      await fetchRoles(roleTypeFilter === 'all' ? undefined : roleTypeFilter);
     } catch (error: any) {
       message.error(error.message || t('common.operationFailed'));
     }

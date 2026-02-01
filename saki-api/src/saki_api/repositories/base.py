@@ -126,12 +126,12 @@ class BaseRepository(Generic[ModelType]):
                 f"{self.model.__name__}{filter_str} not found"
             )
         return record
-    
+
     async def list(
-        self,
-        pagination: Pagination = Pagination(),
-        filters: FilterType = None,
-        order_by: OrderByType = None,
+            self,
+            pagination: Pagination = Pagination(),
+            filters: FilterType = None,
+            order_by: OrderByType = None,
     ) -> List[ModelType]:
         """
         List records with pagination, filtering, and ordering.
@@ -257,14 +257,10 @@ class BaseRepository(Generic[ModelType]):
         await self.session.flush()
         return True
 
-    async def commit(self) -> None:
-        """Commit the current transaction."""
-        await self.session.commit()
-
     async def refresh(self, record: ModelType) -> None:
         """Refresh a record from the database."""
         await self.session.refresh(record)
 
-    async def rollback(self) -> None:
-        """Rollback the current transaction."""
-        await self.session.rollback()
+    # Note: commit() and rollback() are intentionally removed.
+    # Transaction management should be handled by the @transactional decorator
+    # or the get_session dependency, not by repositories.

@@ -9,19 +9,16 @@ from typing import Annotated
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.api.deps import get_session, get_current_user
-from saki_api.core.rbac import get_permission_checker, PermissionChecker
-from saki_api.models.user import User
+from saki_api.db.session import get_session
 from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user import UserRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.services.auth import AuthService
-from saki_api.services.guards.admin_guard import AdminGuard, get_admin_guard
+from saki_api.services.permission_query import PermissionQueryService
 from saki_api.services.role import RoleService
 from saki_api.services.system import SystemService
-from saki_api.services.user_system_role import UserRoleService
 from saki_api.services.user import UserService
-from saki_api.services.permission_query import PermissionQueryService
+from saki_api.services.user_system_role import UserRoleService
 
 
 # ============================================================================
@@ -29,7 +26,7 @@ from saki_api.services.permission_query import PermissionQueryService
 # ============================================================================
 
 def get_user_service(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> UserService:
     """Get UserService with dependencies injected."""
     return UserService(session=session)
@@ -44,28 +41,28 @@ UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 # ============================================================================
 
 def get_user_repository(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> UserRepository:
     """Get UserRepository with dependencies injected."""
     return UserRepository(session)
 
 
 def get_role_repository(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> RoleRepository:
     """Get RoleRepository with dependencies injected."""
     return RoleRepository(session)
 
 
 def get_user_role_repository(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> UserSystemRoleRepository:
     """Get UserRoleRepository with dependencies injected."""
     return UserSystemRoleRepository(session)
 
 
 def get_user_role_service(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> UserRoleService:
     """Get UserRoleService with dependencies injected."""
     return UserRoleService(session=session)
@@ -80,7 +77,7 @@ UserRoleServiceDep = Annotated[UserRoleService, Depends(get_user_role_service)]
 # ============================================================================
 
 def get_role_service(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> RoleService:
     """Get RoleService with dependencies injected."""
     return RoleService(session=session)
@@ -95,7 +92,7 @@ RoleServiceDep = Annotated[RoleService, Depends(get_role_service)]
 # ============================================================================
 
 def get_system_service(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> SystemService:
     return SystemService(session=session)
 
@@ -109,7 +106,7 @@ SystemServiceDep = Annotated[SystemService, Depends(get_system_service)]
 # ============================================================================
 
 def get_auth_service(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> AuthService:
     return AuthService(session=session)
 
@@ -117,21 +114,12 @@ def get_auth_service(
 # Type alias for cleaner route signatures
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
-
-# ============================================================================
-# Guard Dependencies
-# ============================================================================
-
-# Type alias for AdminGuard dependency
-AdminGuardDep = Annotated[AdminGuard, Depends(get_admin_guard)]
-
-
 # ============================================================================
 # Permission Query Service Dependencies
 # ============================================================================
 
 def get_permission_query_service(
-    session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session),
 ) -> PermissionQueryService:
     """Get PermissionQueryService with dependencies injected."""
     return PermissionQueryService(session=session)

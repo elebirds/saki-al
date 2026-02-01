@@ -16,7 +16,7 @@ from saki_api.repositories.dataset import DatasetRepository
 
 class ResourceOwnerChecker(Protocol):
     """Protocol for checking resource ownership."""
-    
+
     async def is_owner(self, resource_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         """
         Check if a user is the owner of a resource.
@@ -37,18 +37,18 @@ class ResourceOwnerService:
     
     Provides a unified interface that delegates to specific repository methods.
     """
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
         self.dataset_repo = DatasetRepository(session)
         # Add other resource repositories here as they are created
         # self.project_repo = ProjectRepository(session)
-    
+
     async def is_owner(
-        self,
-        resource_type: ResourceType,
-        resource_id: uuid.UUID,
-        user_id: uuid.UUID,
+            self,
+            resource_type: ResourceType,
+            resource_id: uuid.UUID,
+            user_id: uuid.UUID,
     ) -> bool:
         """
         Check if a user is the owner of a resource.
@@ -63,9 +63,9 @@ class ResourceOwnerService:
         """
         if resource_type == ResourceType.DATASET:
             return await self.dataset_repo.is_owner(resource_id, user_id)
-        
+
         # Add other resource types here as they are implemented
         # elif resource_type == ResourceType.PROJECT:
         #     return await self.project_repo.is_owner(resource_id, user_id)
-        
+
         return False

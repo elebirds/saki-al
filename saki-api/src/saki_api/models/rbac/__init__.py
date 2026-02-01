@@ -18,6 +18,10 @@ from saki_api.models.rbac.enums import (
     AuditAction,
     Permissions,
 )
+from saki_api.models.rbac.permission import (
+    Permission,
+    parse_permission,
+)
 from saki_api.models.rbac.resource_member import (
     ResourceMember,
 )
@@ -39,6 +43,9 @@ __all__ = [
     "Scope",
     "AuditAction",
     "Permissions",
+    # Permission class
+    "Permission",
+    "parse_permission",
     # Models only - schemas are in saki_api.schemas.rbac
     "Role",
     "RolePermission",

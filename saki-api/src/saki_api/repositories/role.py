@@ -31,10 +31,9 @@ class RoleRepository(BaseRepository[Role]):
             order_by=[Role.sort_order]
         )
 
-    async def get_super_admin(self) -> Role: # Must be NOT None
+    async def get_super_admin(self) -> Role:  # Must be NOT None
         return await self.get_one([Role.is_super_admin == True])
 
-    async def get_default(self) -> Role: # Must be NOT None
+    async def get_default(self) -> Role:  # Must be NOT None
         """Get the default role for new users."""
         return await self.get_one([Role.is_default == True])
-

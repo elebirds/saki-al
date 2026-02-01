@@ -3,13 +3,13 @@ Permission Query Schemas
 
 Schemas for permission query responses, separated into system and resource permissions.
 """
-
 import uuid
 from typing import List, Optional
 
 from pydantic import BaseModel
 
-from saki_api.schemas import RoleReadMinimal
+from saki_api.schemas.role import RoleReadMinimal
+
 
 class SystemPermissionsResponse(BaseModel):
     """

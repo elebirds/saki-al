@@ -96,18 +96,21 @@ class InternalServerErrorAppException(AppException):
 
 class DataAlreadyExistsAppException(AppException):
     """Exception raised when trying to create a resource that already exists."""
+
     def __init__(self, message: str = "Resource already exists"):
         super().__init__(message, ErrorCode.DATA_ALREADY_EXISTS)
 
 
 class DataValidationAppException(AppException):
     """Exception raised when data validation fails."""
+
     def __init__(self, message: str = "Data validation error"):
         super().__init__(message, ErrorCode.DATA_VALIDATION_ERROR)
 
 
 class DataInvalidFormatAppException(AppException):
     """Exception raised when data format is invalid."""
+
     def __init__(self, message: str = "Invalid data format"):
         super().__init__(message, ErrorCode.DATA_INVALID_FORMAT)
 
@@ -118,24 +121,28 @@ class DataInvalidFormatAppException(AppException):
 
 class AuthInvalidCredentialsAppException(AppException):
     """Exception raised when authentication credentials are invalid."""
+
     def __init__(self, message: str = "Invalid credentials"):
         super().__init__(message, ErrorCode.AUTH_INVALID_CREDENTIALS)
 
 
 class AuthInactiveUserAppException(AppException):
     """Exception raised when trying to authenticate an inactive user."""
+
     def __init__(self, message: str = "Inactive user"):
         super().__init__(message, ErrorCode.AUTH_INACTIVE_USER)
 
 
 class AuthIncorrectPasswordAppException(AppException):
     """Exception raised when password is incorrect."""
+
     def __init__(self, message: str = "Incorrect password"):
         super().__init__(message, ErrorCode.AUTH_INCORRECT_PASSWORD)
 
 
 class AuthInvalidTokenAppException(AppException):
     """Exception raised when token is invalid or expired."""
+
     def __init__(self, message: str = "Invalid or expired token"):
         super().__init__(message, ErrorCode.AUTH_INVALID_TOKEN)
 

@@ -11,8 +11,6 @@ from saki_api.core.rbac.checker import (
     PermissionChecker,
     PermissionContext,
 )
-# Import dependencies - get_permission_checker is safe to import directly
-from saki_api.core.rbac.dependencies import get_permission_checker
 from saki_api.core.rbac.presets import (
     PRESET_ROLES,
     init_preset_roles,
@@ -32,7 +30,6 @@ __all__ = [
     "PermissionContext",
     # Dependencies
     "require_permission",
-    "get_permission_checker",
     # Presets
     "PRESET_ROLES",
     "init_preset_roles",

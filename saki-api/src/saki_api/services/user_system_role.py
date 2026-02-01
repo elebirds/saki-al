@@ -5,6 +5,7 @@ User Role Service - Business logic for User-Role association operations.
 import uuid
 from typing import List
 
+from fastapi.params import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import (
@@ -12,19 +13,19 @@ from saki_api.core.exceptions import (
     ForbiddenAppException,
     DataAlreadyExistsAppException,
 )
-from saki_api.core.rbac import PermissionChecker, get_permission_checker
+from saki_api.core.rbac import PermissionChecker
 from saki_api.core.rbac.audit import (
     log_user_role_assign,
     log_user_role_revoke,
 )
 from saki_api.db.transaction import transactional
-from saki_api.models import User, RoleType
-from saki_api.models.rbac.enums import Permissions
+from saki_api.models import RoleType
 from saki_api.models.rbac.user_system_role import UserSystemRole
-from saki_api.repositories.user import UserRepository
 from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.user import UserRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
-from saki_api.schemas.user_system_role import UserSystemRoleRead, UserSystemRoleCreate
+from saki_api.schemas.user_system_role import UserSystemRoleRead, UserSystemRoleCreate, UserSystemRoleAssign
+from saki_api.services.guards import AdminGuard, get_admin_guard
 
 
 class UserRoleService:
@@ -67,20 +68,14 @@ class UserRoleService:
         return await self.repository.get_system_roles(user_id)
 
     @transactional
-    async def assign_role(
-        self,
-        user_id: uuid.UUID,
-        role_id: uuid.UUID,
+    async def _assign_role(
+            self,
+            user_id: uuid.UUID,
+            role_id: uuid.UUID,
     ) -> UserSystemRole:
         """
         Assign a system role to a user (low-level method).
-        
-        This method performs minimal validation. For full validation
-        and audit logging, use assign_user_system_role instead.
-        
-        Audit fields (created_by, updated_by) are automatically populated
-        by event listeners from the current user context.
-        
+
         Args:
             user_id: User ID
             role_id: Role ID to assign
@@ -93,6 +88,7 @@ class UserRoleService:
         """
         # Verify user exists
         await self.user_repo.get_by_id_or_raise(user_id)
+        await self.role_repo.get_by_id_or_raise(role_id)
 
         role_in = UserSystemRoleCreate(
             user_id=user_id,
@@ -101,13 +97,10 @@ class UserRoleService:
         return await self.repository.assign(role_in)
 
     @transactional
-    async def revoke_role(self, user_id: uuid.UUID, role_id: uuid.UUID) -> bool:
+    async def _revoke_role(self, user_id: uuid.UUID, role_id: uuid.UUID) -> bool:
         """
         Revoke a system role from a user (low-level method).
-        
-        This method performs minimal validation. For full validation
-        and audit logging, use revoke_user_system_role instead.
-        
+
         Args:
             user_id: User ID
             role_id: Role ID to revoke
@@ -118,51 +111,27 @@ class UserRoleService:
         return await self.repository.revoke(user_id, role_id)
 
     async def get_user_roles_read(
-        self,
-        user_id: uuid.UUID,
+            self,
+            user_id: uuid.UUID,
     ) -> List[UserSystemRoleRead]:
         """
         Get user's system roles with role details for response.
-        
-        Args:
-            user_id: User ID
-            
-        Returns:
-            List of UserSystemRoleRead with role details
-            
-        Raises:
-            NotFoundAppException: If user not found
         """
-        # Ensure user exists (raise 404 if not)
-        await self.user_repo.get_by_id_or_raise(user_id)
-
-        user_roles = await self.repository.get_by_user(user_id)
-
-        result: List[UserSystemRoleRead] = []
-        for ur in user_roles:
-            role = await self.role_repo.get_by_id_or_raise(ur.role_id)
-            # Use model_validate to convert model to schema, then add role details
-            role_read = UserSystemRoleRead.model_validate(ur)
-            role_read.role_name = role.name
-            role_read.role_display_name = role.display_name
-            result.append(role_read)
-
-        return result
+        return await self.repository.get_by_user_with_roles(user_id)
 
     @transactional
     async def assign_user_system_role(
-        self,
-        user_id: uuid.UUID,
-        role_in: UserSystemRoleCreate,
-        current_user: User,
+            self,
+            user_id: uuid.UUID,
+            role_in: UserSystemRoleAssign,
+            guard: AdminGuard = Depends(get_admin_guard)
     ) -> UserSystemRoleRead:
         """
         Assign a system role to a user with full validation and audit logging.
         
         Args:
-            user_id: User ID to assign role to
-            role_in: Role assignment data
-            current_user: Current authenticated user performing the action
+            user_id: User ID to assign role to (from URL path)
+            role_in: Role assignment data (role_id and optional expires_at)
             
         Returns:
             UserSystemRoleRead with role details
@@ -184,12 +153,11 @@ class UserRoleService:
 
         # Super admin cannot be assigned
         if role.is_super_admin:
-            raise ForbiddenAppException("super_admin role cannot be assigned through this endpoint")
+            raise ForbiddenAppException("Super admin role cannot be assigned.")
 
-        # Admin role requires elevated permission
-        if role.is_admin:
-            if not await self.checker.check(current_user.id, Permissions.ROLE_ASSIGN_ADMIN):
-                raise ForbiddenAppException("Only super administrators can assign admin roles")
+        # Admin can be only assigned by SuperAdmin
+        if role.is_admin and not guard.is_admin():
+            raise ForbiddenAppException("Admin role cannot be assigned by NON-Super admin.")
 
         # Check if already assigned
         user_roles = await self.repository.get_by_user(user_id)
@@ -197,8 +165,6 @@ class UserRoleService:
             raise DataAlreadyExistsAppException("Role already assigned to user")
 
         # Create assignment
-        # Note: Audit fields (created_by, updated_by) are automatically populated
-        # by event listeners from the current user context (current_user.id)
         assignment_data = UserSystemRoleCreate(
             user_id=user_id,
             role_id=role_in.role_id,
@@ -207,11 +173,10 @@ class UserRoleService:
         user_role = await self.repository.assign(assignment_data)
 
         # Audit log
-        log_user_role_assign(
+        await log_user_role_assign(
             session=self.session,
             user_id=user_id,
-            role_id=role_in.role_id,
-            actor_id=current_user.id,
+            role_id=role_in.role_id
         )
 
         # Use model_validate to convert model to schema, then add role details
@@ -222,10 +187,10 @@ class UserRoleService:
 
     @transactional
     async def revoke_user_system_role(
-        self,
-        user_id: uuid.UUID,
-        role_id: uuid.UUID,
-        current_user: User,
+            self,
+            user_id: uuid.UUID,
+            role_id: uuid.UUID,
+            guard: AdminGuard = Depends(get_admin_guard)
     ) -> bool:
         """
         Revoke a system role with full validation and audit logging.
@@ -233,7 +198,6 @@ class UserRoleService:
         Args:
             user_id: User ID to revoke role from
             role_id: Role ID to revoke
-            current_user: Current authenticated user performing the action
             
         Returns:
             True if revoked successfully
@@ -247,23 +211,17 @@ class UserRoleService:
 
         role = await self.role_repo.get_by_id_or_raise(role_id)
 
-        # Admin/super_admin checks
-        if role.is_super_admin or role.is_admin:
-            if not await self.checker.check(current_user.id, Permissions.ROLE_ASSIGN_ADMIN):
-                raise ForbiddenAppException(
-                    "Only super administrators can revoke super_admin or admin roles"
-                )
-            if user_id == current_user.id:
-                raise ForbiddenAppException(
-                    "Cannot revoke super_admin or admin role from yourself"
-                )
+        if role.is_super_admin:
+            raise ForbiddenAppException("Super admin role cannot be revoked.")
+
+        if role.is_admin and not guard.is_super_admin():
+            raise ForbiddenAppException("Admin role can ONLY be revoked by Super admin")
 
         # Audit log
-        log_user_role_revoke(
+        await log_user_role_revoke(
             session=self.session,
             user_id=user_id,
             role_id=role_id,
-            actor_id=current_user.id,
         )
 
         result = await self.repository.revoke(user_id, role_id)

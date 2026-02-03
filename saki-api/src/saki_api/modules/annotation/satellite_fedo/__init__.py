@@ -11,6 +11,7 @@ Note: The FedoHandler (annotation system handler) is in handlers/fedo.py
 and uses these utilities for processing.
 """
 
+from .config import FedoConfig, get_fedo_config
 from .lookup import generate_lookup_table, load_lookup_table, LookupTable
 from .parser import load_fedo_data, parse_energy_bins
 from .physics import calculate_physics_data, CONSTANTS
@@ -20,6 +21,9 @@ from .visualizer import generate_views, generate_pure_image
 __all__ = [
     # Main processor
     'FedoProcessor',
+    # Config
+    'FedoConfig',
+    'get_fedo_config',
     # Parsing
     'load_fedo_data',
     'parse_energy_bins',

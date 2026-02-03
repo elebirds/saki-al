@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
 import { api } from '../../services/api';
-import { Dataset, AnnotationSystemType } from '../../types';
+import { Dataset, DatasetType } from '../../types';
 import ClassicAnnotationWorkspace from './ClassicAnnotationWorkspace.tsx';
 import FedoAnnotationWorkspace from './FedoAnnotationWorkspace';
 
@@ -65,7 +65,7 @@ const WorkspaceRouter: React.FC = () => {
 /**
  * Get the appropriate workspace component for an annotation system type
  */
-function getWorkspaceComponent(annotationSystem: AnnotationSystemType): React.ReactElement {
+function getWorkspaceComponent(annotationSystem: DatasetType): React.ReactElement {
   switch (annotationSystem) {
     case 'fedo':
       return <FedoAnnotationWorkspace />;

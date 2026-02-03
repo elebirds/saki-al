@@ -5,7 +5,7 @@ Provides dependency injection for permission checking.
 """
 
 import uuid
-from typing import Optional, Callable, AsyncGenerator
+from typing import Optional, AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -192,7 +192,6 @@ def require_permission(
         permission: str,
         resource_type: Optional[str] = None,
         resource_id_param: Optional[str] = None,
-        get_parent_resource_id: Optional[Callable[[AsyncSession, str], Optional[str]]] = None,
 ) -> PermissionDependency:
     return PermissionDependency(
         permission=permission,

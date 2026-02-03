@@ -9,7 +9,6 @@ from typing import Optional, List
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing_extensions import override
 
-from saki_api.services.guards import AdminGuardDep
 from saki_api.core import security
 from saki_api.core.exceptions import (
     DataAlreadyExistsAppException,
@@ -21,6 +20,7 @@ from saki_api.repositories.user import UserRepository
 from saki_api.schemas import UserRead
 from saki_api.schemas.user import UserUpdate, UserCreate
 from saki_api.services.base import BaseService
+from saki_api.services.guards import AdminGuardDep
 
 
 class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):

@@ -29,5 +29,5 @@ from pydantic import BaseModel, Field
 class Pagination(BaseModel):
     """Pagination parameters."""
 
-    skip: int = Field(default=0, ge=0, description="Number of records to skip")
+    offset: int = Field(default=0, ge=0, description="Number of records to skip")
     limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")

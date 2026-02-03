@@ -145,24 +145,11 @@ class BaseRepository(Generic[ModelType]):
             
         Returns:
             List of records
-            
-        Examples:
-            from sqlalchemy import desc
-            from saki_api.models.user import User
-            
-            # Using keyword arguments (recommended)
-            await repo.list(filters=[User.is_active == True])
-            await repo.list(pagination=Pagination(skip=10, limit=20))
-            await repo.list(
-                pagination=Pagination(skip=0, limit=50),
-                filters=[User.status == "active", User.age >= 18],
-                order_by=[desc(User.created_at)]
-            )
         """
         statement = select(self.model)
         if filters: statement = statement.where(*filters)
         if order_by: statement = statement.order_by(*order_by)
-        statement = statement.offset(pagination.skip).limit(pagination.limit)
+        statement = statement.offset(pagination.offset).limit(pagination.limit)
         result = await self.session.exec(statement)
         return list(result.all())
 

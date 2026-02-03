@@ -8,7 +8,7 @@
 from abc import ABC, abstractmethod
 from datetime import timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from minio import Minio
 from minio.error import S3Error
@@ -59,6 +59,28 @@ class BaseStorageProvider(ABC):
         Raises:
             FileNotFoundError: 本地文件不存在
             StorageError: 上传失败
+        """
+        pass
+
+    @abstractmethod
+    def put_object(
+            self,
+            data: Any,
+            object_name: str,
+            length: int,
+            content_type: Optional[str] = None,
+    ) -> str:
+        """
+        上传字节流到存储系统。
+        
+        Args:
+            data: 字节流对象 (BytesIO 或 类似文件对象)
+            object_name: 目标对象名称
+            length: 数据长度
+            content_type: 可选的 MIME 类型
+            
+        Returns:
+            对象名称
         """
         pass
 
@@ -149,6 +171,19 @@ class BaseStorageProvider(ABC):
             
         Returns:
             True 如果对象存在，否则 False
+        """
+        pass
+
+    @abstractmethod
+    def get_object_bytes(self, object_name: str) -> bytes:
+        """
+        读取对象内容为字节数组。
+        
+        Args:
+            object_name: 对象名称
+            
+        Returns:
+            对象内容字节数组
         """
         pass
 
@@ -252,6 +287,29 @@ class MinioStorageProvider(BaseStorageProvider):
 
         except S3Error as e:
             raise StorageError(f"Failed to upload file: {e}") from e
+
+    def put_object(
+            self,
+            data: Any,
+            object_name: str,
+            length: int,
+            content_type: Optional[str] = None,
+    ) -> str:
+        """
+        上传字节流到 MinIO。
+        """
+        try:
+            self._ensure_bucket_exists()
+            self.client.put_object(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                data=data,
+                length=length,
+                content_type=content_type
+            )
+            return object_name
+        except S3Error as e:
+            raise StorageError(f"Failed to put object: {e}") from e
 
     def get_presigned_url(
             self,
@@ -394,6 +452,29 @@ class MinioStorageProvider(BaseStorageProvider):
             if e.code == "NoSuchKey":
                 return False
             raise StorageError(f"Failed to check object existence: {e}") from e
+
+    def get_object_bytes(self, object_name: str) -> bytes:
+        """
+        读取对象内容为字节数组。
+        
+        Args:
+            object_name: 对象名称
+            
+        Returns:
+            对象内容字节数组
+        """
+        try:
+            response = self.client.get_object(
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+            )
+            try:
+                return response.read()
+            finally:
+                response.close()
+                response.release_conn()
+        except S3Error as e:
+            raise StorageError(f"Failed to get object bytes: {e}") from e
 
 
 class StorageError(Exception):

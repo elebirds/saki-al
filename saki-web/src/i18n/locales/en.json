@@ -36,7 +36,12 @@
     "owner": "Owner",
     "total": "Total {{total}} items",
     "of": "of",
-    "items": "items"
+    "items": "items",
+    "copy": "Copy",
+    "copied": "Copied to clipboard",
+    "download": "Download",
+    "downloadSuccess": "Download started",
+    "downloadError": "Failed to download file"
   },
   "auth": {
     "login": {
@@ -175,8 +180,8 @@
     "nameRequired": "Please enter dataset name",
     "description": "Description",
     "descriptionPlaceholder": "Enter dataset description (optional)",
-    "annotationSystem": "Annotation System",
-    "annotationSystemHelp": "Choose the annotation interface based on your data type. Cannot be changed after creation.",
+    "annotationSystem": "Dataset Type",
+    "annotationSystemHelp": "Choose the dataset type and processing flow. Cannot be changed after creation.",
     "open": "Open",
     "samples": "Samples",
     "labeled": "Labeled",
@@ -197,7 +202,7 @@
     "basicInfo": "Basic Information",
     "name": "Name",
     "description": "Description",
-    "annotationSystem": "Annotation System",
+    "annotationSystem": "Dataset Type",
     "createdAt": "Created At",
     "dangerZone": "Danger Zone",
     "deleteDataset": "Delete Dataset",
@@ -214,7 +219,20 @@
     "sortByUpdatedAt": "By Updated At",
     "sortByRemark": "By Remark",
     "sortAsc": "Ascending",
-    "sortDesc": "Descending"
+    "sortDesc": "Descending",
+    "loadMore": "Load more",
+    "deleteSampleConfirm": "Are you sure to delete this sample?",
+    "deleteSampleSuccess": "Sample deleted successfully",
+    "deleteSampleError": "Failed to delete sample",
+    "loadError": "Failed to load dataset"
+  },
+  "sampleAssetModal": {
+    "title": "Assets - {{name}}",
+    "assets": "Assets",
+    "primary": "Primary",
+    "noAssets": "No assets",
+    "openInNewTab": "Open in New Tab",
+    "loadError": "Failed to load assets"
   },
   "datasetSettings": {
     "successMessage": "Dataset settings saved successfully",
@@ -224,8 +242,8 @@
     "datasetName": "Dataset Name",
     "nameRequired": "Please enter dataset name",
     "description": "Description",
-    "annotationSystem": "Annotation System",
-    "annotationSystemReadonly": "Annotation system cannot be changed as it would invalidate all existing annotations",
+    "annotationSystem": "Dataset Type",
+    "annotationSystemReadonly": "Dataset type cannot be changed as it would invalidate all existing annotations",
     "labelManagement": "Label Management",
     "noLabels": "No labels defined. Please add labels before starting annotation",
     "newLabelName": "New Label Name",

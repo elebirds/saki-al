@@ -25,12 +25,13 @@ class TypeInfo(BaseModel):
     value: str
     label: str
     description: str
+    color: str
 
 
 class AvailableTypesResponse(BaseModel):
     """Response with all available types."""
     task_types: List[TypeInfo]
-    annotation_systems: List[TypeInfo]
+    dataset_types: List[TypeInfo]
 
 
 # ============================================================================
@@ -55,8 +56,8 @@ def get_available_types() -> AvailableTypesResponse:
     """
     data = SystemService.get_available_types()
     return AvailableTypesResponse(
-        task_types=[TypeInfo(**item) for item in data["task_types"]],
-        annotation_systems=[TypeInfo(**item) for item in data["annotation"]],
+        task_types=[TypeInfo(**item) for item in data["task"]],
+        dataset_types=[TypeInfo(**item) for item in data["dataset"]],
     )
 
 

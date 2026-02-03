@@ -43,6 +43,13 @@ class SampleBase(SQLModel):
         description="Maps logical asset roles to Asset IDs (e.g., raw_text, lut, image_main)."
     )
 
+    # Primary asset for display (must be an image for frontend rendering)
+    # This is the asset shown in dataset preview/listing
+    primary_asset_id: uuid.UUID | None = Field(
+        default=None,
+        description="ID of the primary asset (must be an image) for frontend display."
+    )
+
     remark: str = Field(
         default="",
         description="Remark associated with the sample."

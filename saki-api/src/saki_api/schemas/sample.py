@@ -1,0 +1,17 @@
+from datetime import datetime
+from uuid import UUID
+from typing import Optional
+
+from saki_api.models.l1.sample import SampleBase
+
+
+class SampleRead(SampleBase):
+    """
+    Schema for reading a sample.
+    """
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    # Presigned URL for the primary asset (if available)
+    # This allows frontend to directly display the primary image without making additional requests
+    primary_asset_url: Optional[str] = None

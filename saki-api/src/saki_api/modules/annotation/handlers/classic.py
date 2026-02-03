@@ -3,18 +3,21 @@ Classic annotation system handler.
 Handles standard image annotation (classification, detection, segmentation).
 
 This is the default handler for most annotation tasks. It provides:
-- Image file upload and processing
+- Image file upload and processing with asset management
 - Standard annotation sync (pass-through, no special processing)
 """
 
-import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from saki_api.models.enums import AnnotationSystemType
+from fastapi import UploadFile
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from saki_api.models.enums import DatasetType
 from saki_api.modules.annotation.base import (
     AnnotationSystemHandler,
     EventType,
+    ProcessingStage,
     ProcessResult,
     ProgressCallback,
     ProgressInfo,
@@ -33,10 +36,19 @@ class ClassicHandler(AnnotationSystemHandler):
     - Object detection (bounding boxes)
     - Image segmentation (polygons)
     
+    Processing:
+    1. Receives a single image file
+    2. Uploads to object storage via AssetService
+    3. Returns asset_ids and primary_asset_id for Sample
+    
     Annotation sync uses default pass-through - no special processing needed.
     """
 
-    system_type = AnnotationSystemType.CLASSIC
+    system_type = DatasetType.CLASSIC
+
+    def __init__(self, session: Optional[AsyncSession] = None):
+        """Initialize with database session for asset operations."""
+        super().__init__(session)
 
     @property
     def supported_extensions(self) -> set[str]:
@@ -47,79 +59,176 @@ class ClassicHandler(AnnotationSystemHandler):
         if not is_valid:
             return is_valid, error
 
-        # Check file size (max 50MB)
-        max_size = 50 * 1024 * 1024
-        if file_path.stat().st_size > max_size:
-            return False, "File too large. Maximum size is 50MB."
+        # Check file size (max 50MB) if path exists
+        if file_path.exists():
+            max_size = 50 * 1024 * 1024
+            if file_path.stat().st_size > max_size:
+                return False, "File too large. Maximum size is 50MB."
 
         return True, ""
 
-    def process_upload(
+    async def _upload_image_asset(
             self,
-            file_path: Path,
+            file: UploadFile,
+            progress_callback: Optional[ProgressCallback] = None,
+            progress: Optional[ProgressInfo] = None
+    ):
+        """
+        Upload image file to object storage.
+        
+        Args:
+            file: Uploaded file
+            progress_callback: Optional progress callback
+            progress: Optional progress info to update
+            
+        Returns:
+            Created Asset record
+            
+        Raises:
+            RuntimeError: If AssetService not initialized
+        """
+        if not self.asset_service:
+            raise RuntimeError("AssetService not initialized")
+
+        if progress_callback and progress:
+            progress.update(1, "Uploading to storage", ProcessingStage.CLASSIC_UPLOAD)
+            progress_callback(EventType.PROCESS_PROGRESS, progress)
+
+        asset = await self.asset_service.upload_file(
+            file,
+            meta_info={"generated": False}  # Original file, not generated
+        )
+
+        return asset
+
+    def _extract_image_metadata(
+            self,
+            asset_meta: Dict[str, Any],
+            progress_callback: Optional[ProgressCallback] = None,
+            progress: Optional[ProgressInfo] = None
+    ) -> Dict[str, Any]:
+        """
+        Extract image metadata from asset metadata.
+        
+        Args:
+            asset_meta: Asset metadata dictionary
+            progress_callback: Optional progress callback
+            progress: Optional progress info to update
+            
+        Returns:
+            Filtered metadata dictionary
+        """
+        if progress_callback and progress:
+            progress.update(2, "Extracting metadata", "classic_metadata")
+            progress_callback(EventType.PROCESS_PROGRESS, progress)
+
+        if not asset_meta:
+            return {}
+
+        return {
+            k: v for k, v in asset_meta.items()
+            if k in ("width", "height", "format", "mode", "dpi")
+        }
+
+    def _build_process_result(
+            self,
+            filename: str,
+            sample_id: str,
+            asset_id: str,
+            image_meta: Dict[str, Any]
+    ) -> ProcessResult:
+        """
+        Build ProcessResult from uploaded asset.
+        
+        Args:
+            filename: Original filename
+            sample_id: Generated sample ID
+            asset_id: Uploaded asset ID
+            image_meta: Extracted image metadata
+            
+        Returns:
+            ProcessResult with asset information
+        """
+        return ProcessResult(
+            success=True,
+            sample_id=sample_id,
+            filename=filename,
+            asset_ids={
+                "image_main": asset_id  # Primary asset
+            },
+            primary_asset_id=asset_id,  # Set as primary for display
+            sample_fields={
+                "meta_info": {
+                    "original_filename": filename,
+                    **image_meta,
+                }
+            }
+        )
+
+    async def process_upload(
+            self,
+            file: UploadFile,
             context: UploadContext,
             progress_callback: Optional[ProgressCallback] = None,
     ) -> ProcessResult:
         """
         Process a classic image file.
         
-        For classic annotation, processing is minimal:
-        - Generate sample ID
-        - Copy file to storage
-        - Extract basic image metadata
+        For classic annotation:
+        1. Upload image to object storage via AssetService
+        2. Extract image metadata
+        3. Return ProcessResult with asset information
+        
+        Args:
+            file: Uploaded file (UploadFile from FastAPI)
+            context: Upload context with dataset info
+            progress_callback: Optional progress callback
+            
+        Returns:
+            ProcessResult with asset_ids and primary_asset_id set
         """
-        filename = file_path.name
+        filename = file.filename or "unknown"
         sample_id = self.generate_id()
 
         self.emit(EventType.PROCESS_START, {"filename": filename})
 
+        # Initialize progress
+        progress = None
         if progress_callback:
             progress = ProgressInfo(
-                current=0, total=2, percentage=0,
+                current=0, total=3, percentage=0,
                 message=f"Processing image: {filename}",
                 stage="classic_process"
             )
             progress_callback(EventType.PROCESS_PROGRESS, progress)
 
         try:
-            # Get image dimensions (optional, for metadata)
-            image_meta = self._get_image_metadata(file_path)
+            # 1. Upload file to object storage
+            asset = await self._upload_image_asset(file, progress_callback, progress)
 
-            if progress_callback:
-                progress.update(1, "Preparing image", "classic_prepare")
-                progress_callback(EventType.PROCESS_PROGRESS, progress)
+            # 2. Extract image metadata
+            image_meta = self._extract_image_metadata(
+                asset.meta_info,
+                progress_callback,
+                progress
+            )
 
-            # Prepare storage path
-            output_dir = context.upload_dir / sample_id
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            # Copy image to storage
-            stored_path = output_dir / filename
-            shutil.copy2(file_path, stored_path)
-
-            if progress_callback:
-                progress.update(2, "Complete", "classic_complete")
+            if progress_callback and progress:
+                progress.update(3, "Complete", "classic_complete")
                 progress_callback(EventType.PROCESS_PROGRESS, progress)
 
             self.emit(EventType.PROCESS_COMPLETE, {
                 "filename": filename,
                 "sample_id": sample_id,
+                "asset_id": str(asset.id),
             })
 
-            # Build static URL
-            static_url = f"/static/{context.dataset_id}/{sample_id}/{filename}"
-
-            return ProcessResult(
-                success=True,
-                sample_id=sample_id,
+            # 3. Return result with asset information
+            return self._build_process_result(
                 filename=filename,
-                sample_fields={
-                    'url': static_url,
-                    'meta_data': {
-                        'original_filename': filename,
-                        **image_meta,
-                    },
-                },
+                sample_id=sample_id,
+                asset_id=str(asset.id),
+                image_meta=image_meta
             )
 
         except Exception as e:
@@ -130,20 +239,3 @@ class ClassicHandler(AnnotationSystemHandler):
                 filename=filename,
                 error=str(e),
             )
-
-    def _get_image_metadata(self, file_path: Path) -> Dict[str, Any]:
-        """Extract basic image metadata."""
-        try:
-            from PIL import Image
-            with Image.open(file_path) as img:
-                return {
-                    'width': img.width,
-                    'height': img.height,
-                    'format': img.format,
-                    'mode': img.mode,
-                }
-        except Exception:
-            return {}
-
-    # Annotation sync methods use default pass-through from base class
-    # No special processing needed for classic annotation

@@ -38,7 +38,7 @@ router = APIRouter()
 async def list_roles(
         service: RoleServiceDep,
         type: Optional[RoleType] = Query(None, description="Filter by role type"),
-        skip: int = 0,
+        offset: int = 0,
         limit: int = 100,
 ):
     """
@@ -48,7 +48,7 @@ async def list_roles(
     """
     roles = await service.list_by_type(
         role_type=type,
-        pagination=Pagination(skip=skip, limit=limit)
+        pagination=Pagination(offset=offset, limit=limit)
     )
     return [await service.build_role_read(role) for role in roles]
 

@@ -7,8 +7,9 @@ import importlib
 import logging
 from typing import Dict, Optional, Type
 
-from saki_api.models.enums import AnnotationSystemType
+from saki_api.models.enums import DatasetType
 from .base import AnnotationSystemHandler
+from ...core.exceptions import NotFoundAppException
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,8 @@ class HandlerRegistry:
     """
 
     _instance: Optional["HandlerRegistry"] = None
-    _handlers: Dict[AnnotationSystemType, Type[AnnotationSystemHandler]] = {}
-    _cached_instances: Dict[AnnotationSystemType, AnnotationSystemHandler] = {}
+    _handlers: Dict[DatasetType, Type[AnnotationSystemHandler]] = {}
+    _cached_instances: Dict[DatasetType, AnnotationSystemHandler] = {}
 
     def __new__(cls) -> "HandlerRegistry":
         if cls._instance is None:
@@ -55,7 +56,7 @@ class HandlerRegistry:
         logger.info(f"Registered handler: {handler_class.__name__} for {system_type.value}")
         return handler_class
 
-    def get(self, system_type: AnnotationSystemType, cached: bool = True) -> AnnotationSystemHandler:
+    def get(self, system_type: DatasetType, cached: bool = True) -> AnnotationSystemHandler:
         """
         Get a handler instance for the given system type.
         
@@ -70,17 +71,18 @@ class HandlerRegistry:
             ValueError: If no handler registered for the system type
         """
         if system_type not in self._handlers:
-            raise ValueError(f"No handler for system type: {system_type.value}")
+            raise NotFoundAppException(f"No handler for system type: {system_type.value}")
 
         if cached and system_type in self._cached_instances:
             return self._cached_instances[system_type]
 
-        handler = self._handlers[system_type]()
+        handler_class = self._handlers[system_type]
+        handler = handler_class()
         if cached:
             self._cached_instances[system_type] = handler
         return handler
 
-    def has(self, system_type: AnnotationSystemType) -> bool:
+    def has(self, system_type: DatasetType) -> bool:
         """Check if a handler is registered."""
         return system_type in self._handlers
 
@@ -98,7 +100,7 @@ def register_handler(cls: Type[AnnotationSystemHandler]) -> Type[AnnotationSyste
     return HandlerRegistry.get_instance().register(cls)
 
 
-def get_handler(system_type: AnnotationSystemType) -> AnnotationSystemHandler:
+def get_handler(system_type: DatasetType) -> AnnotationSystemHandler:
     """Get a handler instance for a system type."""
     return HandlerRegistry.get_instance().get(system_type)
 
@@ -109,8 +111,8 @@ def discover_handlers() -> None:
     Call during application startup.
     """
     handler_modules = [
-        "saki_api.annotation.handlers.classic",
-        "saki_api.annotation.handlers.fedo",
+        "saki_api.modules.annotation.handlers.classic",
+        "saki_api.modules.annotation.handlers.fedo",
     ]
 
     for module_name in handler_modules:

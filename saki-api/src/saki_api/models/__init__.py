@@ -11,7 +11,7 @@ Architecture:
 
 # Enums
 from saki_api.models.enums import (
-    TaskType, ProjectStatus, ModelStatus, AnnotationSystemType,
+    TaskType, ProjectStatus, ModelStatus, DatasetType,
     AnnotationType, AnnotationSource, TrainingJobStatus
 )
 # Layer 1: Physical Data Layer
@@ -65,7 +65,7 @@ __all__ = [
     "Job", "ALLoop", "JobSampleMetric",
 
     # Enums
-    "TaskType", "ProjectStatus", "ModelStatus", "AnnotationSystemType",
+    "TaskType", "ProjectStatus", "ModelStatus", "DatasetType",
     "AnnotationType", "AnnotationSource", "TrainingJobStatus",
 
     # User models

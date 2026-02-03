@@ -36,7 +36,12 @@
     "owner": "所有者",
     "total": "共 {{total}} 项",
     "of": "共",
-    "items": "项"
+    "items": "项",
+    "copy": "复制",
+    "copied": "已复制到剪贴板",
+    "download": "下载",
+    "downloadSuccess": "开始下载",
+    "downloadError": "下载失败"
   },
   "auth": {
     "login": {
@@ -170,13 +175,13 @@
     "createSuccess": "数据集创建成功",
     "createError": "创建数据集失败",
     "loadError": "加载数据集失败",
-    "datasetName": "数据集名称",
+    "datasetName": "名称",
     "namePlaceholder": "输入数据集名称",
     "nameRequired": "请输入数据集名称",
     "description": "描述",
     "descriptionPlaceholder": "输入数据集描述（可选）",
-    "annotationSystem": "标注系统",
-    "annotationSystemHelp": "根据数据类型选择对应的标注界面，创建后不可更改",
+    "type": "类型",
+    "typeHelp": "根据数据类型选择对应的处理流程，创建后不可更改",
     "open": "打开",
     "samples": "样本数",
     "labeled": "已标注",
@@ -198,7 +203,7 @@
     "basicInfo": "基本信息",
     "name": "名称",
     "description": "描述",
-    "annotationSystem": "标注系统",
+    "type": "类型",
     "createdAt": "创建时间",
     "dangerZone": "危险操作",
     "deleteDataset": "删除数据集",
@@ -215,7 +220,20 @@
     "sortByUpdatedAt": "按更新时间",
     "sortByRemark": "按备注",
     "sortAsc": "升序",
-    "sortDesc": "降序"
+    "sortDesc": "降序",
+    "loadMore": "加载更多",
+    "deleteSampleConfirm": "确定要删除此样本吗？",
+    "deleteSampleSuccess": "样本删除成功",
+    "deleteSampleError": "删除样本失败",
+    "loadError": "加载数据集失败"
+  },
+  "sampleAssetModal": {
+    "title": "资源文件 - {{name}}",
+    "assets": "资源文件",
+    "primary": "主要",
+    "noAssets": "暂无资源文件",
+    "openInNewTab": "在新标签页中打开",
+    "loadError": "加载资源文件失败"
   },
   "datasetSettings": {
     "successMessage": "数据集设置保存成功",
@@ -225,8 +243,8 @@
     "datasetName": "数据集名称",
     "nameRequired": "请输入数据集名称",
     "description": "描述",
-    "annotationSystem": "标注系统",
-    "annotationSystemReadonly": "标注系统类型不可更改，更改将导致所有标注数据失效",
+    "annotationSystem": "数据集类型",
+    "annotationSystemReadonly": "数据集类型不可更改，更改将导致所有标注数据失效",
     "labelManagement": "标签管理",
     "noLabels": "暂无标签，请添加标签后再开始标注",
     "newLabelName": "新标签名称",

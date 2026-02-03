@@ -47,7 +47,7 @@ export {
 // System Hooks
 // ============================================================================
 
-export { useSystemCapabilities } from './system/useSystemCapabilities';
+export { useSystemCapabilities, useInitSystemCapabilities } from './system/useSystemCapabilities';
 
 // ============================================================================
 // Upload Hooks

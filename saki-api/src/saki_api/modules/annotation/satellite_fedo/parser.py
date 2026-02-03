@@ -55,6 +55,25 @@ def load_fedo_data(file_path: str) -> Tuple[pd.DataFrame, np.ndarray, List[str]]
     with open(file_path, "r", encoding="utf-8", errors='ignore') as f:
         lines = f.readlines()
 
+    return _parse_fedo_lines(lines)
+
+
+def load_fedo_data_from_bytes(file_bytes: bytes) -> Tuple[pd.DataFrame, np.ndarray, List[str]]:
+    """
+    Load FEDO data from raw bytes (in-memory, no disk).
+    
+    Args:
+        file_bytes: Raw file bytes
+        
+    Returns:
+        Tuple of (DataFrame, energy_centers, energy_column_names)
+    """
+    text = file_bytes.decode("utf-8", errors="ignore")
+    lines = text.splitlines(True)
+    return _parse_fedo_lines(lines)
+
+
+def _parse_fedo_lines(lines: List[str]) -> Tuple[pd.DataFrame, np.ndarray, List[str]]:
     e_centers = parse_energy_bins(lines)
 
     # Find header line

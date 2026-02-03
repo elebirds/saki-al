@@ -3,10 +3,11 @@ Authentication and Authorization endpoints.
 
 Provides login, registration, password management, and permission info.
 """
+import uuid
+
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-import uuid
 
 from saki_api.api.service_deps import AuthServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id

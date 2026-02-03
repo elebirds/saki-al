@@ -48,7 +48,7 @@ async def read_user_me(
 )
 async def list_users_simple(
         service: UserServiceDep,
-        skip: int = 0,
+        offset: int = 0,
         limit: int = 100,
 ) -> List[UserListItem]:
     """
@@ -56,7 +56,7 @@ async def list_users_simple(
     
     Requires user:list permission (not full user:read).
     """
-    users = await service.list_active(Pagination(skip=skip, limit=limit))
+    users = await service.list_active(Pagination(offset=offset, limit=limit))
     return [UserListItem.model_validate(u) for u in users]
 
 
@@ -69,7 +69,7 @@ async def list_users_simple(
 )
 async def read_users(
         service: UserServiceDep,
-        skip: int = 0,
+        offset: int = 0,
         limit: int = 100,
 ) -> List[UserRead]:
     """
@@ -77,7 +77,7 @@ async def read_users(
     
     Requires user:read permission (admin level).
     """
-    return await service.list_with_roles(Pagination(skip=skip, limit=limit))
+    return await service.list_with_roles(Pagination(offset=offset, limit=limit))
 
 
 @router.post(

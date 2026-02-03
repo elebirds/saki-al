@@ -28,9 +28,6 @@ def map_obb_annotations(
     """
     从源视图的 OBB 标注推导出目标视图对应的 OBB 标注。
 
-    此函数实现极速处理流程，使用完全矢量化操作，无任何 Python 原生循环。
-    目标性能：处理 37 万个点在 50-100ms 内完成。
-
     Args:
         src_obb_vertices: 源图中 OBB 的四个顶点像素坐标，形状为 (4, 2)
         lut_src: 源图的像素映射表矩阵，形状为 (N, M, 2)

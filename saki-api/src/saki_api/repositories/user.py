@@ -46,6 +46,6 @@ class UserRepository(BaseRepository[User]):
             .options(selectinload(User.roles))  # type: ignore
             # 预加载所有角色
         )
-        statement = statement.offset(pagination.skip).limit(pagination.limit)
+        statement = statement.offset(pagination.offset).limit(pagination.limit)
         result = await self.session.exec(statement)
         return [UserRead.model_validate(result) for result in result.all()]

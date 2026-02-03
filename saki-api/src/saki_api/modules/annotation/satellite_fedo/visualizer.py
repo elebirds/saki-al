@@ -7,11 +7,14 @@ import os
 
 import matplotlib
 import numpy as np
+from matplotlib.figure import Figure
+
+from saki_api.modules.annotation.satellite_fedo.enum import FedoView
 
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple
 
 
 def centers_to_edges_2d(Xc: np.ndarray) -> np.ndarray:
@@ -56,21 +59,19 @@ def _get_color_norm(flux: np.ndarray) -> colors.LogNorm:
 
 def generate_pure_image(
         data: Dict[str, Any],
-        view: str,  # 'time_energy' or 'l_wd'
-        output_path: str,
-        dpi: int = 200,
-        figsize: Tuple[float, float] = (6, 4),
-        cmap: str = "jet",
-        l_xlim: Optional[Tuple[float, float]] = None,
-        wd_ylim: Optional[Tuple[float, float]] = None,
-) -> str:
+        view: FedoView,
+        dpi,
+        figsize: Tuple[float, float],
+        cmap: str,
+        l_xlim: Tuple[float, float],
+        wd_ylim: Tuple[float, float],
+) -> Figure:
     """
     Generate a pure image (no axes, labels, or colorbar) for annotation overlay.
     
     Args:
         data: Physics data dictionary from calculate_physics_data
-        view: 'time_energy' or 'l_wd'
-        output_path: Path to save the image
+        view: FedoView enum specifying the view type
         dpi: Image resolution
         figsize: Figure size in inches
         cmap: Colormap name
@@ -89,10 +90,10 @@ def generate_pure_image(
     norm = _get_color_norm(Flux)
 
     fig = plt.figure(figsize=figsize, dpi=dpi)  # 强制 Axes 占用 100% 的画布空间，不留边距
-    ax = fig.add_axes([0, 0, 1, 1])
+    ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
 
     # P.S. / TODO: 这里这样修改好像没啥意义
-    if view == 'time_energy':
+    if view == FedoView.TIME_ENERGY:
         # 关键修改 2：将时间转换为数值以避免 add 报错
         time_numeric = Time.astype('datetime64[ns]').view('int64').astype(np.float64)
 
@@ -104,7 +105,7 @@ def generate_pure_image(
         # 使用 flat 模式配合 edges，实现像素级对齐
         ax.pcolormesh(T_edge, E_edge, Flux.T, norm=norm, cmap=cmap, shading='flat')
         ax.set_yscale('log')
-    elif view == 'l_wd':
+    elif view == FedoView.L_WD:
         # L vs ωd view with curvilinear grid
         L_grid = np.tile(L, (len(E), 1))  # (M, N)
         Wd_grid = Wd.T  # (M, N)
@@ -122,21 +123,6 @@ def generate_pure_image(
             rasterized=True
         )
 
-        # 如果未指定范围，则从数据中自动计算最大最小值
-        if l_xlim is None:
-            L_valid = L[np.isfinite(L)]
-            if len(L_valid) > 0:
-                l_xlim = (float(np.nanmin(L_valid)), float(np.nanmax(L_valid)))
-            else:
-                l_xlim = (1.0, 2.0)  # 默认范围作为后备
-
-        if wd_ylim is None:
-            Wd_valid = Wd[np.isfinite(Wd)]
-            if len(Wd_valid) > 0:
-                wd_ylim = (float(np.nanmin(Wd_valid)), float(np.nanmax(Wd_valid)))
-            else:
-                wd_ylim = (0.0, 4.0)  # 默认范围作为后备
-
         ax.set_xlim(*l_xlim)
         ax.set_ylim(*wd_ylim)
     else:
@@ -144,27 +130,45 @@ def generate_pure_image(
 
     # Remove all decorations for pure image
     ax.set_axis_off()
-    plt.tight_layout(pad=0.0)
+    # plt.tight_layout(pad=0.0)
 
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    return fig
 
-    fig.savefig(
-        output_path,
-        pad_inches=0.0,
-        transparent=False,
-        facecolor='white',
-    )
+
+def save_fig_to_file(fig: Figure, file_path: str) -> None:
+    """
+    Save a Matplotlib figure to a PNG file.
+    
+    Args:
+        fig: Matplotlib Figure object
+        file_path: Output file path
+    """
+    fig.savefig(file_path, facecolor='white', pad_inches=0.0, transparent=False)
     plt.close(fig)
 
-    return output_path
+
+def save_fig_to_bytes(fig: Figure) -> bytes:
+    """
+    Save a Matplotlib figure to PNG bytes.
+    
+    Args:
+        fig: Matplotlib Figure object
+        
+    Returns:
+        PNG image bytes
+    """
+    import io
+    buf = io.BytesIO()
+    fig.savefig(buf, facecolor='white', pad_inches=0.0, transparent=False)
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
 
 
 def generate_views(
         data: Dict[str, Any],
         output_dir: str,
         base_name: str,
-        dpi: int = 200,
         **kwargs
 ) -> Tuple[str, str]:
     """
@@ -183,7 +187,29 @@ def generate_views(
     te_path = os.path.join(output_dir, f"{base_name}_time_energy.png")
     lwd_path = os.path.join(output_dir, f"{base_name}_l_wd.png")
 
-    generate_pure_image(data, 'time_energy', te_path, dpi=dpi, **kwargs)
-    generate_pure_image(data, 'l_wd', lwd_path, dpi=dpi, **kwargs)
+    save_fig_to_file(
+        generate_pure_image(data, FedoView.TIME_ENERGY, **kwargs),
+        te_path
+    )
+    save_fig_to_file(
+        generate_pure_image(data, FedoView.L_WD, **kwargs),
+        lwd_path
+    )
 
     return te_path, lwd_path
+
+
+def generate_views_bytes(
+        data: Dict[str, Any],
+        **kwargs
+) -> Tuple[bytes, bytes]:
+    """
+    Generate both Time-Energy and L-ωd views as PNG bytes.
+    """
+    te_bytes = save_fig_to_bytes(generate_pure_image(
+        data, FedoView.TIME_ENERGY, **kwargs
+    ))
+    lwd_bytes = save_fig_to_bytes(generate_pure_image(
+        data, FedoView.L_WD, **kwargs
+    ))
+    return te_bytes, lwd_bytes

@@ -73,38 +73,43 @@ class SystemService:
     @staticmethod
     def get_available_types() -> Dict[str, List[Dict[str, str]]]:
         """Return task and annotation system types for frontend options."""
-        task_types = [
+        task = [
             {
                 "value": "classification",
                 "label": "Classification",
                 "description": "Image classification task - assign one label per image",
+                "color": "purple",
             },
             {
                 "value": "detection",
                 "label": "Detection",
                 "description": "Object detection task - locate and classify objects with bounding boxes",
+                "color": "green",
             },
             {
                 "value": "segmentation",
                 "label": "Segmentation",
                 "description": "Semantic segmentation task - pixel-level classification",
+                "color": "yellow",
             },
         ]
 
-        annotation_systems = [
+        dataset = [
             {
                 "value": "classic",
                 "label": "Classic Annotation",
                 "description": "Standard image annotation with rectangles and OBB",
+                "color": "cyan",
             },
             {
                 "value": "fedo",
                 "label": "FEDO Dual-View",
                 "description": "Satellite electron energy data annotation with Time-Energy and L-ωd synchronized views",
+                "color": "purple",
             },
         ]
 
         return {
-            "task_types": task_types,
-            "annotation": annotation_systems,
+            "task": task,
+            "dataset": dataset,
         }

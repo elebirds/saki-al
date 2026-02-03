@@ -1,15 +1,17 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import {
-  Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse,
-  AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult,
-  SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse,
+  // Auth types
+  User, LoginResponse,
   // Permission types
   Role, RoleCreate, RoleUpdate, RoleType,
   UserSystemRole, UserSystemRoleAssign,
-  ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
   SystemPermissions, ResourcePermissions,
+  // L1 types
+  Dataset, DatasetCreate, DatasetUpdate,
+  Sample,
+  AvailableTypesResponse,
 } from '../../types';
-import { ApiService, UploadProgressCallback } from './interface';
+import { ApiService } from './interface';
 import { useAuthStore } from '../../store/authStore';
 import { hashPassword, enforceHttps } from '../../utils/security';
 
@@ -393,6 +395,21 @@ export class RealApiService implements ApiService {
     }, oldPassword, newPassword);
   }
 
+  async refreshToken(): Promise<LoginResponse> {
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+    const response = await this.client.post<LoginResponse>('/auth/login/refresh-token', {
+      token: refreshToken,
+    });
+    return response.data;
+  }
+
+  // ==========================================================================
+  // System APIs
+  // ==========================================================================
+
   async getSystemStatus(): Promise<{ initialized: boolean }> {
     const response = await this.client.get<{ initialized: boolean }>('/system/status');
     return response.data;
@@ -405,28 +422,8 @@ export class RealApiService implements ApiService {
     }, password);
   }
 
-  async refreshToken(): Promise<LoginResponse> {
-    const refreshToken = useAuthStore.getState().refreshToken;
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-    const response = await this.client.post<LoginResponse>('/auth/login/refresh-token', {
-      token: refreshToken,
-    });
-    return response.data;
-  }
-
-  async initRoles(): Promise<{ ok: boolean; roles_count: number; roles: string[] }> {
-    const response = await this.client.post('/system/init-roles');
-    return response.data;
-  }
-
-  // ==========================================================================
-  // System APIs
-  // ==========================================================================
-
-  async getAvailableTypes(): Promise<AvailableTypes> {
-    const response = await this.client.get<AvailableTypes>('/system/types');
+  async getAvailableTypes(): Promise<AvailableTypesResponse> {
+    const response = await this.client.get<AvailableTypesResponse>('/system/types');
     return response.data;
   }
 
@@ -493,7 +490,7 @@ export class RealApiService implements ApiService {
   }
 
   // ==========================================================================
-  // Dataset APIs (for data annotation)
+  // Dataset APIs
   // ==========================================================================
 
   async getDatasets(): Promise<Dataset[]> {
@@ -506,12 +503,12 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async createDataset(dataset: Omit<Dataset, 'id' | 'createdAt' | 'updatedAt' | 'sampleCount' | 'labeledCount' | 'ownerId'>): Promise<Dataset> {
+  async createDataset(dataset: DatasetCreate): Promise<Dataset> {
     const response = await this.client.post<Dataset>('/datasets', dataset);
     return response.data;
   }
 
-  async updateDataset(id: string, dataset: Partial<Dataset>): Promise<Dataset> {
+  async updateDataset(id: string, dataset: Partial<DatasetUpdate>): Promise<Dataset> {
     const response = await this.client.put<Dataset>(`/datasets/${id}`, dataset);
     return response.data;
   }
@@ -530,273 +527,115 @@ export class RealApiService implements ApiService {
     linkedProjects: number;
     memberCount: number;
   }> {
-    const response = await this.client.get(`/datasets/${id}/stats`);
-    return response.data;
+    // TODO: Implement when backend endpoint is available
+    // For now, return mock data
+    return {
+      datasetId: id,
+      totalSamples: 0,
+      labeledSamples: 0,
+      unlabeledSamples: 0,
+      skippedSamples: 0,
+      completionRate: 0,
+      linkedProjects: 0,
+      memberCount: 1,
+    };
   }
 
-  async exportDataset(id: string, format: string = 'json', includeUnlabeled: boolean = false): Promise<any> {
+  async exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any> {
+    // TODO: Implement when backend endpoint is available
     const response = await this.client.get(`/datasets/${id}/export`, {
-      params: { format, includeUnlabeled }
+      params: { format, include_unlabeled: includeUnlabeled }
     });
     return response.data;
   }
 
   // ==========================================================================
-  // Label APIs (for dataset annotation labels)
+  // Sample APIs
   // ==========================================================================
 
-  async getLabels(datasetId: string): Promise<Label[]> {
-    const response = await this.client.get<Label[]>(`/datasets/${datasetId}/labels`);
-    return response.data;
-  }
-
-  async createLabel(datasetId: string, label: LabelCreate): Promise<Label> {
-    const response = await this.client.post<Label>(`/datasets/${datasetId}/labels`, label);
-    return response.data;
-  }
-
-  async createLabelsBatch(datasetId: string, labels: LabelCreate[]): Promise<Label[]> {
-    const response = await this.client.post<Label[]>(`/datasets/${datasetId}/labels/batch`, labels);
-    return response.data;
-  }
-
-  async updateLabel(labelId: string, label: LabelUpdate): Promise<Label> {
-    const response = await this.client.put<Label>(`/datasets/labels/${labelId}`, label);
-    return response.data;
-  }
-
-  async deleteLabel(labelId: string, force: boolean = false): Promise<{ ok: boolean; deletedLabel: string; deletedAnnotations: number }> {
-    const response = await this.client.delete(`/datasets/labels/${labelId}`, {
-      params: { force }
+  async getSamples(datasetId: string, options?: { offset?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc'; skip?: number }): Promise<Sample[]> {
+    const offset = options?.offset ?? options?.skip;
+    const params: Record<string, any> = {
+      offset,
+      limit: options?.limit,
+      sort_by: options?.sortBy,
+      sort_order: options?.sortOrder,
+    };
+    const response = await this.client.get<Sample[]>(`/samples/${datasetId}/samples`, {
+      params
     });
     return response.data;
   }
 
-  // ==========================================================================
-  // Project APIs (for active learning)
-  // ==========================================================================
-
-  async getProjects(): Promise<Project[]> {
-    const response = await this.client.get<Project[]>('/projects');
-    return response.data;
-  }
-
-  async getProject(id: string): Promise<Project | undefined> {
-    const response = await this.client.get<Project>(`/projects/${id}`);
-    return response.data;
-  }
-
-  async createProject(project: Omit<Project, 'id' | 'createdAt' | 'stats'>): Promise<Project> {
-    const response = await this.client.post<Project>('/projects', project);
-    return response.data;
-  }
-
-  async updateProject(id: string, project: Partial<Project>): Promise<Project> {
-    const response = await this.client.put<Project>(`/projects/${id}`, project);
-    return response.data;
-  }
-
-  async deleteProject(id: string): Promise<void> {
-    await this.client.delete(`/projects/${id}`);
-  }
-
-  // ==========================================================================
-  // Sample APIs (belong to Dataset)
-  // ==========================================================================
-
-  async getSamples(
-    datasetId: string,
-    options?: {
-      status?: 'unlabeled' | 'labeled' | 'skipped';
-      skip?: number;
-      limit?: number;
-      sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
-      sortOrder?: 'asc' | 'desc';
-    }
-  ): Promise<Sample[]> {
-    const params = new URLSearchParams();
-    if (options?.status) {
-      params.append('status', options.status);
-    }
-    if (options?.skip !== undefined) {
-      params.append('skip', options.skip.toString());
-    }
-    if (options?.limit !== undefined) {
-      params.append('limit', options.limit.toString());
-    }
-    if (options?.sortBy) {
-      params.append('sort_by', options.sortBy);
-    }
-    if (options?.sortOrder) {
-      params.append('sort_order', options.sortOrder);
-    }
-    
-    const queryString = params.toString();
-    const url = `/samples/${datasetId}${queryString ? `?${queryString}` : ''}`;
-    const response = await this.client.get<{ items: Sample[] }>(url);
-    return response.data.items;
-  }
-
-  async getSample(sampleId: string): Promise<Sample | undefined> {
-    const response = await this.client.get<Sample>(`/samples/item/${sampleId}`);
-    return response.data;
+  async deleteSample(datasetId: string, sampleId: string): Promise<void> {
+    await this.client.delete(`/samples/${datasetId}/samples/${sampleId}`);
   }
 
   async uploadSamplesWithProgress(
     datasetId: string,
     files: File[],
-    onProgress?: UploadProgressCallback,
+    onProgress: (event: any) => void,
     signal?: AbortSignal
-  ): Promise<UploadResult> {
+  ): Promise<void> {
     const formData = new FormData();
-    files.forEach(file => formData.append('files', file));
-
-    const token = useAuthStore.getState().token;
-    const response = await fetch(`${this.apiBaseUrl}/samples/${datasetId}/stream`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-      signal,
+    files.forEach(file => {
+      formData.append('files', file);
     });
 
+    const token = useAuthStore.getState().token;
+    const response = await fetch(
+      `${this.apiBaseUrl}/samples/${datasetId}/stream`,
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        signal,
+      }
+    );
+
     if (!response.ok) {
-      throw new Error(`Upload failed: ${response.statusText}`);
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
+    // Parse Server-Sent Events (SSE)
     const reader = response.body?.getReader();
     if (!reader) {
-      throw new Error('No response body');
+      throw new Error('Response body is not readable');
     }
 
     const decoder = new TextDecoder();
     let buffer = '';
-    let finalResult: UploadResult = { uploaded: 0, errors: 0, results: [] };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n\n');
-      buffer = lines.pop() || '';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event: UploadProgressEvent = JSON.parse(line.slice(6));
-            onProgress?.(event);
-
-            // Capture the final result from the complete event
-            if (event.event === 'complete') {
-              finalResult = {
-                uploaded: event.uploaded || 0,
-                errors: event.errors || 0,
-                results: event.results || [],
-              };
-            }
-          } catch (e) {
-            // 静默处理 SSE 解析错误，避免控制台噪音
-            // 如果需要调试，可以在开发环境下启用
-            if (typeof window !== 'undefined' && 
-                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-              console.warn('Failed to parse SSE event:', e);
+        // Process complete lines
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i];
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              onProgress(data);
+            } catch (e) {
+              console.error('Failed to parse SSE event:', line, e);
             }
           }
         }
+
+        // Keep incomplete line in buffer
+        buffer = lines[lines.length - 1];
       }
+    } finally {
+      reader.releaseLock();
     }
-
-    return finalResult;
   }
-
-  async getSampleAnnotations(sampleId: string): Promise<SampleAnnotationsResponse> {
-    const response = await this.client.get<SampleAnnotationsResponse>(`/annotations/${sampleId}`);
-    return response.data;
-  }
-
-  async syncAnnotations(sampleId: string, actions: SyncAction[]): Promise<SyncResponse> {
-    const response = await this.client.post<SyncResponse>('/annotations/sync', {
-      sampleId,
-      actions,
-    });
-    return response.data;
-  }
-
-  async saveAnnotations(sampleId: string, annotations: Annotation[], updateStatus?: 'labeled' | 'skipped'): Promise<BatchSaveResult> {
-    const response = await this.client.post<BatchSaveResult>('/annotations/save', {
-      sampleId,
-      annotations,
-      updateStatus,
-    });
-    return response.data;
-  }
-
-  // ==========================================================================
-  // Dataset Member APIs (Resource Members)
-  // ==========================================================================
-
-  async getDatasetMembers(datasetId: string): Promise<ResourceMember[]> {
-    const response = await this.client.get<ResourceMember[]>(`/datasets/${datasetId}/members`);
-    return response.data;
-  }
-
-  async addDatasetMember(datasetId: string, member: ResourceMemberCreate): Promise<ResourceMember> {
-    const response = await this.client.post<ResourceMember>(`/datasets/${datasetId}/members`, member);
-    return response.data;
-  }
-
-  async updateDatasetMemberRole(datasetId: string, userId: string, memberUpdate: ResourceMemberUpdate): Promise<ResourceMember> {
-    const response = await this.client.put<ResourceMember>(`/datasets/${datasetId}/members/${userId}`, memberUpdate);
-    return response.data;
-  }
-
-  async removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }> {
-    const response = await this.client.delete(`/datasets/${datasetId}/members/${userId}`);
-    return response.data;
-  }
-
-  async getAvailableDatasetRoles(datasetId: string): Promise<{ id: string; name: string; displayName: string; description?: string }[]> {
-    const response = await this.client.get(`/datasets/${datasetId}/available-roles`);
-    return response.data;
-  }
-
-  // ==========================================================================
-  // Config APIs
-  // ==========================================================================
-
-  async getStrategies(): Promise<QueryStrategy[]> {
-    const response = await this.client.get<QueryStrategy[]>('/configs/strategies');
-    return response.data;
-  }
-
-  async getBaseModels(): Promise<BaseModel[]> {
-    const response = await this.client.get<BaseModel[]>('/configs/base-models');
-    return response.data;
-  }
-
-  // ==========================================================================
-  // Training APIs
-  // ==========================================================================
-
-  async trainProject(projectId: string): Promise<void> {
-    await this.client.post(`/projects/${projectId}/train`);
-  }
-
-  async querySamples(projectId: string, n: number): Promise<Sample[]> {
-    const response = await this.client.post<Sample[]>(`/projects/${projectId}/query`, { n });
-    return response.data;
-  }
-
-  async getModelVersions(projectId: string): Promise<ModelVersion[]> {
-    const response = await this.client.get<ModelVersion[]>(`/projects/${projectId}/models`);
-    return response.data;
-  }
-
-  // ==========================================================================
-  // User APIs
-  // ==========================================================================
 
   async getUsers(skip: number = 0, limit: number = 100): Promise<User[]> {
     const response = await this.client.get<User[]>('/users/', { params: { skip, limit } });

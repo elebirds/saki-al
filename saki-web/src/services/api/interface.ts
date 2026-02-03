@@ -1,18 +1,19 @@
 import {
-  Project, Sample, Annotation, QueryStrategy, BaseModel, ModelVersion, User, LoginResponse,
-  AvailableTypes, Dataset, Label, LabelCreate, LabelUpdate, UploadProgressEvent, UploadResult,
-  SyncAction, SyncResponse, BatchSaveResult, SampleAnnotationsResponse,
+  // Auth types
+  User, LoginResponse, 
+  // System types
+  AvailableTypesResponse,
   // Permission types
   Role, RoleCreate, RoleUpdate, RoleType,
   UserSystemRole, UserSystemRoleAssign,
   ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
   SystemPermissions, ResourcePermissions,
+  // Dataset types
+  Dataset, DatasetCreate, DatasetUpdate,
+  // Sample types
+  Sample,
 } from '../../types';
 
-/**
- * Callback type for upload progress events
- */
-export type UploadProgressCallback = (event: UploadProgressEvent) => void;
 
 export interface ApiService {
   // ============================================================================
@@ -22,17 +23,23 @@ export interface ApiService {
   register(email: string, password: string, fullName?: string): Promise<User>;
   getCurrentUser(): Promise<User>;
   changePassword(oldPassword: string, newPassword: string): Promise<{ message: string }>;
+  refreshToken(): Promise<LoginResponse>;
 
   // ============================================================================
   // System
   // ============================================================================
   getSystemStatus(): Promise<{ initialized: boolean }>;
   setupSystem(email: string, password: string, fullName?: string): Promise<User>;
-  refreshToken(): Promise<LoginResponse>;
-  initRoles(): Promise<{ ok: boolean; roles_count: number; roles: string[] }>;
-  
-  // Types & Capabilities
-  getAvailableTypes(): Promise<AvailableTypes>;
+  getAvailableTypes(): Promise<AvailableTypesResponse>;
+
+  // ============================================================================
+  // User Management
+  // ============================================================================
+  getUsers(skip?: number, limit?: number): Promise<User[]>;
+  getUserList(skip?: number, limit?: number): Promise<{ id: string; email: string; fullName?: string }[]>;
+  createUser(user: Partial<User> & { password: string }): Promise<User>;
+  updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User>;
+  deleteUser(id: string): Promise<void>;
 
   // ============================================================================
   // Permission APIs
@@ -61,8 +68,8 @@ export interface ApiService {
   // ============================================================================
   getDatasets(): Promise<Dataset[]>;
   getDataset(id: string): Promise<Dataset | undefined>;
-  createDataset(dataset: Omit<Dataset, 'id' | 'createdAt' | 'updatedAt' | 'sampleCount' | 'labeledCount' | 'ownerId'>): Promise<Dataset>;
-  updateDataset(id: string, dataset: Partial<Dataset>): Promise<Dataset>;
+  createDataset(dataset: DatasetCreate): Promise<Dataset>;
+  updateDataset(id: string, dataset: Partial<DatasetUpdate>): Promise<Dataset>;
   deleteDataset(id: string): Promise<void>;
   getDatasetStats(id: string): Promise<{
     datasetId: string;
@@ -75,74 +82,22 @@ export interface ApiService {
     memberCount: number;
   }>;
   exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any>;
-
-  // ============================================================================
-  // Label APIs
-  // ============================================================================
-  getLabels(datasetId: string): Promise<Label[]>;
-  createLabel(datasetId: string, label: LabelCreate): Promise<Label>;
-  createLabelsBatch(datasetId: string, labels: LabelCreate[]): Promise<Label[]>;
-  updateLabel(labelId: string, label: LabelUpdate): Promise<Label>;
-  deleteLabel(labelId: string, force?: boolean): Promise<{ ok: boolean; deletedLabel: string; deletedAnnotations: number }>;
-
+  
   // ============================================================================
   // Sample APIs
   // ============================================================================
   getSamples(datasetId: string, options?: {
-    status?: 'unlabeled' | 'labeled' | 'skipped';
-    skip?: number;
+    offset?: number;
     limit?: number;
-    sortBy?: 'name' | 'status' | 'created_at' | 'updated_at' | 'remark';
+    sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    skip?: number;
   }): Promise<Sample[]>;
-  getSample(sampleId: string): Promise<Sample | undefined>;
+  deleteSample(datasetId: string, sampleId: string): Promise<void>;
   uploadSamplesWithProgress(
     datasetId: string,
     files: File[],
-    onProgress?: UploadProgressCallback,
+    onProgress: (event: any) => void,
     signal?: AbortSignal
-  ): Promise<UploadResult>;
-  
-  // ============================================================================
-  // Annotation APIs
-  // ============================================================================
-  getSampleAnnotations(sampleId: string): Promise<SampleAnnotationsResponse>;
-  syncAnnotations(sampleId: string, actions: SyncAction[]): Promise<SyncResponse>;
-  saveAnnotations(sampleId: string, annotations: Annotation[], updateStatus?: 'labeled' | 'skipped'): Promise<BatchSaveResult>;
-  
-  // ============================================================================
-  // Dataset Member APIs (Resource Members)
-  // ============================================================================
-  getDatasetMembers(datasetId: string): Promise<ResourceMember[]>;
-  addDatasetMember(datasetId: string, member: ResourceMemberCreate): Promise<ResourceMember>;
-  updateDatasetMemberRole(datasetId: string, userId: string, memberUpdate: ResourceMemberUpdate): Promise<ResourceMember>;
-  removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }>;
-  getAvailableDatasetRoles(datasetId: string): Promise<{ id: string; name: string; displayName: string; description?: string }[]>;
-  
-  // ============================================================================
-  // Config APIs
-  // ============================================================================
-  getStrategies(): Promise<QueryStrategy[]>;
-  getBaseModels(): Promise<BaseModel[]>;
-
-  // ============================================================================
-  // Project APIs (for active learning)
-  // ============================================================================
-  getProjects(): Promise<Project[]>;
-  getProject(id: string): Promise<Project | undefined>;
-  createProject(project: Omit<Project, 'id' | 'createdAt' | 'stats'>): Promise<Project>;
-  updateProject(id: string, project: Partial<Project>): Promise<Project>;
-  deleteProject(id: string): Promise<void>;
-  trainProject(projectId: string): Promise<void>;
-  querySamples(projectId: string, n: number): Promise<Sample[]>;
-  getModelVersions(projectId: string): Promise<ModelVersion[]>;
-
-  // ============================================================================
-  // User Management
-  // ============================================================================
-  getUsers(skip?: number, limit?: number): Promise<User[]>;
-  getUserList(skip?: number, limit?: number): Promise<{ id: string; email: string; fullName?: string }[]>;
-  createUser(user: Partial<User> & { password: string }): Promise<User>;
-  updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User>;
-  deleteUser(id: string): Promise<void>;
+  ): Promise<void>;
 }

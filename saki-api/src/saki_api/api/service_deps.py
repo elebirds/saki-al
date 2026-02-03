@@ -13,6 +13,7 @@ from saki_api.db.session import get_session
 from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user import UserRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.services.asset import AssetService
 from saki_api.services.auth import AuthService
 from saki_api.services.permission_query import PermissionQueryService
 from saki_api.services.role import RoleService
@@ -114,6 +115,7 @@ def get_auth_service(
 # Type alias for cleaner route signatures
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
+
 # ============================================================================
 # Permission Query Service Dependencies
 # ============================================================================
@@ -125,5 +127,38 @@ def get_permission_query_service(
     return PermissionQueryService(session=session)
 
 
-# Type alias for cleaner route signatures
 PermissionQueryServiceDep = Annotated[PermissionQueryService, Depends(get_permission_query_service)]
+
+# ============================================================================
+# Dataset & Sample Service Dependencies
+# ============================================================================
+
+from saki_api.services.dataset import DatasetService
+from saki_api.services.sample import SampleService
+
+
+def get_dataset_service(
+        session: AsyncSession = Depends(get_session),
+) -> DatasetService:
+    return DatasetService(session=session)
+
+
+DatasetServiceDep = Annotated[DatasetService, Depends(get_dataset_service)]
+
+
+def get_sample_service(
+        session: AsyncSession = Depends(get_session),
+) -> SampleService:
+    return SampleService(session=session)
+
+
+SampleServiceDep = Annotated[SampleService, Depends(get_sample_service)]
+
+
+def get_asset_service(
+        session: AsyncSession = Depends(get_session),
+) -> AssetService:
+    return AssetService(session=session)
+
+
+AssetServiceDep = Annotated[AssetService, Depends(get_asset_service)]

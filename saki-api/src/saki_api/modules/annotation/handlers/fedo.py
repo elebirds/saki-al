@@ -4,22 +4,27 @@ Handles satellite FEDO (electron flux) data annotation with dual-view mapping.
 
 This handler provides:
 - FEDO text file upload and processing (parsing, physics, visualization)
+- Generated image asset management via object storage
 - Dual-view annotation sync with automatic mapping between views
 - Linked annotation management (manual → auto-generated)
 """
 
+import io
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+from fastapi import UploadFile
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.enums import AnnotationSystemType, AnnotationType, AnnotationSource
+from saki_api.models.enums import DatasetType, AnnotationType, AnnotationSource
 from saki_api.modules.annotation.base import (
     AnnotationSystemHandler,
     AnnotationContext,
     EventType,
+    ProcessingStage,
     ProcessResult,
     ProgressCallback,
     ProgressInfo,
@@ -27,10 +32,16 @@ from saki_api.modules.annotation.base import (
     UploadContext,
 )
 from saki_api.modules.annotation.registry import register_handler
-from saki_api.modules.annotation.satellite_fedo.lookup import load_lookup_table, LookupTable
+# FEDO config + parser
+from saki_api.modules.annotation.satellite_fedo.config import FedoConfig, get_fedo_config
+from saki_api.modules.annotation.satellite_fedo.lookup import (
+    load_lookup_table_from_bytes,
+    LookupTable,
+)
 from saki_api.modules.annotation.satellite_fedo.obb_mapper import map_obb_annotations
+from saki_api.modules.annotation.satellite_fedo.parser import load_fedo_data_from_bytes
 # FEDO data processing utilities (in satellite_fedo submodule)
-from saki_api.modules.annotation.satellite_fedo.processor import FedoProcessor
+from saki_api.modules.annotation.satellite_fedo.processor import FedoProcessor, FedoData
 
 # FEDO view identifiers
 VIEW_TIME_ENERGY = "time-energy"
@@ -54,12 +65,18 @@ class FedoHandler(AnnotationSystemHandler):
     
     The auto-generated annotations store parent reference in extra:
         extra: { parent_id: "<manual_ann_id>", view: "L-omegad", ... }
+    
+    Asset Management:
+    - Raw text file is stored as asset (role: raw_text)
+    - Generated visualization images are stored as assets (roles: time_energy_image, l_omegad_image)
+    - Primary asset is time_energy_image for frontend display
     """
 
-    system_type = AnnotationSystemType.FEDO
+    system_type = DatasetType.FEDO
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, session: Optional[AsyncSession] = None):
+        """Initialize with database session for asset operations."""
+        super().__init__(session)
         self._processors: Dict[str, FedoProcessor] = {}
 
     @property
@@ -71,28 +88,135 @@ class FedoHandler(AnnotationSystemHandler):
         if not is_valid:
             return is_valid, error
 
-        # Check FEDO file format
-        try:
-            with open(file_path, 'r') as f:
-                first_line = f.readline()
-                if not first_line.strip():
-                    return False, "Empty file"
-        except Exception as e:
-            return False, f"Cannot read file: {e}"
+        fedo_config = self._get_fedo_config(context)
+
+        # Check FEDO file format (disk-based only)
+        if file_path.exists():
+            try:
+                max_size = fedo_config.max_file_size_mb * 1024 * 1024
+                if file_path.stat().st_size > max_size:
+                    return False, f"File too large. Maximum size is {fedo_config.max_file_size_mb}MB."
+
+                with open(file_path, 'r') as f:
+                    first_line = f.readline()
+                    if not first_line.strip():
+                        return False, "Empty file"
+            except Exception as e:
+                return False, f"Cannot read file: {e}"
 
         return True, ""
 
-    def _get_processor(self, storage_path: str) -> FedoProcessor:
-        """Get or create a processor for the storage path."""
-        if storage_path not in self._processors:
-            self._processors[storage_path] = FedoProcessor(storage_path)
-        return self._processors[storage_path]
+    def _get_processor(self, cache_key: str = "default") -> FedoProcessor:
+        """Get or create a processor instance (stateless)."""
+        if cache_key not in self._processors:
+            self._processors[cache_key] = FedoProcessor()
+        return self._processors[cache_key]
+
+    def _update_progress(
+            self,
+            progress_callback: Optional[ProgressCallback],
+            progress: Optional[ProgressInfo],
+            current: int,
+            message: str,
+            stage: str,
+    ) -> None:
+        if not progress_callback or not progress:
+            return
+        progress.update(current, message, stage)
+        progress_callback(EventType.PROCESS_PROGRESS, progress)
+
+    async def _upload_raw_asset(self, file: UploadFile) -> "AssetRead":
+        if not self.asset_service:
+            raise RuntimeError("AssetService not initialized")
+        return await self.asset_service.upload_file(
+            file,
+            meta_info={"generated": False, "type": "fedo_raw"}
+        )
+
+    async def _read_file_content(self, file: UploadFile) -> bytes:
+        await file.seek(0)
+        return await file.read()
+
+    def _get_fedo_config(self, context: UploadContext) -> FedoConfig:
+        overrides: Dict[str, Any] = {}
+        if isinstance(context.config.get("fedo"), dict):
+            overrides.update(context.config["fedo"])
+        if isinstance(context.config.get("visualization"), dict):
+            overrides.update(context.config["visualization"])
+        return get_fedo_config(overrides)
+
+    def _process_file_with_processor(
+            self,
+            file_content: bytes,
+            fedo_config: FedoConfig,
+    ) -> FedoData:
+        processor = self._get_processor("in_memory")
+        df, e_centers, e_cols = load_fedo_data_from_bytes(file_content)
+        return processor.process_data(
+            df=df,
+            e_centers=e_centers,
+            e_cols=e_cols,
+            config=fedo_config,
+        )
+
+    async def _upload_generated_bytes(
+            self,
+            content: bytes,
+            filename: str,
+            meta_info: Dict[str, Any],
+            content_type: Optional[str] = None,
+    ) -> "AssetRead":
+        if not self.asset_service:
+            raise RuntimeError("AssetService not initialized")
+
+        file_obj = UploadFile(
+            filename=filename,
+            file=io.BytesIO(content),
+            headers={"content-type": content_type} if content_type else None
+        )
+
+        return await self.asset_service.upload_file(file_obj, meta_info=meta_info)
+
+    def _build_process_result(
+            self,
+            filename: str,
+            sample_id: str,
+            raw_asset_id: str,
+            time_energy_asset_id: str,
+            l_omegad_asset_id: str,
+            metadata: Dict[str, Any],
+            lookup_asset_id: Optional[str] = None,
+            data_asset_id: Optional[str] = None,
+    ) -> ProcessResult:
+        asset_ids = {
+            "raw_text": raw_asset_id,
+            "time_energy_image": time_energy_asset_id,
+            "l_omegad_image": l_omegad_asset_id,
+        }
+        if lookup_asset_id:
+            asset_ids["lookup_table"] = lookup_asset_id
+        if data_asset_id:
+            asset_ids["data_npz"] = data_asset_id
+
+        return ProcessResult(
+            success=True,
+            sample_id=sample_id,
+            filename=filename,
+            asset_ids=asset_ids,
+            primary_asset_id=time_energy_asset_id,
+            sample_fields={
+                "meta_info": {
+                    "original_filename": filename,
+                    "fedo_metadata": metadata,
+                }
+            }
+        )
 
     # ==================== Upload & Processing ====================
 
-    def process_upload(
+    async def process_upload(
             self,
-            file_path: Path,
+            file: UploadFile,
             context: UploadContext,
             progress_callback: Optional[ProgressCallback] = None,
     ) -> ProcessResult:
@@ -100,79 +224,126 @@ class FedoHandler(AnnotationSystemHandler):
         Process a FEDO data file.
         
         Pipeline:
-        1. Parse raw text file
-        2. Calculate physics (L-shell, drift frequency)
-        3. Generate visualization images for both views
-        4. Generate coordinate lookup table for mapping
+        1. Receive and upload raw text file as asset
+        2. Parse raw text file
+        3. Calculate physics (L-shell, drift frequency)
+        4. Generate visualization images for both views
+        5. Upload generated images as assets
+        6. Return ProcessResult with asset_ids and primary_asset_id
+        
+        Args:
+            file: Uploaded file (UploadFile from FastAPI)
+            context: Upload context with dataset info
+            progress_callback: Optional progress callback
+            
+        Returns:
+            ProcessResult with asset_ids for raw_text, time_energy_image, l_omegad_image
         """
-        filename = file_path.name
+        filename = file.filename or "unknown"
+        sample_id = self.generate_id()
 
         self.emit(EventType.PROCESS_START, {"filename": filename})
 
+        progress = None
         if progress_callback:
             progress = ProgressInfo(
-                current=0, total=4, percentage=0,
+                current=0, total=6, percentage=0,
                 message=f"Starting FEDO processing: {filename}",
                 stage="fedo_process"
             )
             progress_callback(EventType.PROCESS_PROGRESS, progress)
 
         try:
-            # Get visualization config
-            viz_config = context.config.get('visualization', {})
-            dpi = viz_config.get('dpi', 200)
-            # 如果配置中未指定，则使用 None，让函数从数据中自动计算范围
-            l_xlim = tuple(viz_config['l_xlim']) if 'l_xlim' in viz_config else None
-            wd_ylim = tuple(viz_config['wd_ylim']) if 'wd_ylim' in viz_config else None
+            self._update_progress(progress_callback, progress, 1, "Uploading raw data file", "fedo_upload_raw")
+            raw_asset = await self._upload_raw_asset(file)
 
-            # Get processor
-            storage_path = str(context.upload_dir / "processed")
-            processor = self._get_processor(storage_path)
+            self._update_progress(progress_callback, progress, 2, "Parsing data file", ProcessingStage.FEDO_PARSE)
+            file_content = await self._read_file_content(file)
 
-            if progress_callback:
-                progress.update(1, "Parsing data file", "fedo_parse")
-                progress_callback(EventType.PROCESS_PROGRESS, progress)
+            fedo_config = self._get_fedo_config(context)
 
-            # Process the file
-            result = processor.process_file(
-                str(file_path),
-                dpi=dpi,
-                l_xlim=l_xlim,
-                wd_ylim=wd_ylim,
+            self._update_progress(progress_callback, progress, 3, "Calculating physics", ProcessingStage.FEDO_PHYSICS)
+            result = self._process_file_with_processor(
+                file_content=file_content,
+                fedo_config=fedo_config,
             )
 
-            if progress_callback:
-                progress.update(4, "Processing complete", "fedo_complete")
-                progress_callback(EventType.PROCESS_PROGRESS, progress)
+            self._update_progress(progress_callback, progress, 4, "Generating visualizations", "fedo_viz")
+
+            time_energy_asset = await self._upload_generated_bytes(
+                content=result.time_energy_image_bytes,
+                filename="time_energy.png",
+                content_type="image/png",
+                meta_info={
+                    "generated": True,
+                    "type": "fedo_visualization",
+                    "view": "time-energy",
+                }
+            )
+
+            l_omegad_asset = await self._upload_generated_bytes(
+                content=result.l_wd_image_bytes,
+                filename="l_omegad.png",
+                content_type="image/png",
+                meta_info={
+                    "generated": True,
+                    "type": "fedo_visualization",
+                    "view": "L-omegad",
+                }
+            )
+
+            lookup_asset = await self._upload_generated_bytes(
+                content=result.lookup_table_bytes,
+                filename="lookup.npz",
+                content_type="application/octet-stream",
+                meta_info={
+                    "generated": True,
+                    "type": "fedo_lookup_table",
+                }
+            )
+
+            data_asset = await self._upload_generated_bytes(
+                content=result.data_bytes,
+                filename="data.npz",
+                content_type="application/octet-stream",
+                meta_info={
+                    "generated": True,
+                    "type": "fedo_data",
+                }
+            )
+
+            self._update_progress(progress_callback, progress, 5, "Finalizing", "fedo_finalize")
+            self._update_progress(progress_callback, progress, 6, "Processing complete", "fedo_complete")
 
             self.emit(EventType.PROCESS_COMPLETE, {
                 "filename": filename,
-                "sample_id": result['sample_id'],
+                "sample_id": sample_id,
+                "raw_asset_id": str(raw_asset.id),
+                "time_energy_asset_id": str(time_energy_asset.id),
+                "l_omegad_asset_id": str(l_omegad_asset.id),
+                "lookup_asset_id": str(lookup_asset.id),
+                "data_asset_id": str(data_asset.id),
             })
 
-            # Convert paths to static URLs
-            sample_id = result['sample_id']
-            base_url = f"/static/{context.dataset_id}/processed/{sample_id}"
-
-            return ProcessResult(
-                success=True,
-                sample_id=sample_id,
+            return self._build_process_result(
                 filename=filename,
-                sample_fields={
-                    'url': f"{base_url}/view_time_energy.png",
-                    'meta_data': {
-                        'original_filename': filename,
-                        'time_energy_image_url': f"{base_url}/view_time_energy.png",
-                        'l_wd_image_url': f"{base_url}/view_l_wd.png",
-                        'lookup_table_url': f"{base_url}/lookup.npz",
-                        'data_url': f"{base_url}/data.npz",
-                        **result['metadata'],
-                    },
+                sample_id=sample_id,
+                raw_asset_id=str(raw_asset.id),
+                time_energy_asset_id=str(time_energy_asset.id),
+                l_omegad_asset_id=str(l_omegad_asset.id),
+                lookup_asset_id=str(lookup_asset.id),
+                data_asset_id=str(data_asset.id),
+                metadata={
+                    **result.metadata,
+                    "lookup_asset_id": str(lookup_asset.id),
+                    "data_asset_id": str(data_asset.id),
+                    "lookup_object_path": lookup_asset.path,
+                    "data_object_path": data_asset.path,
                 },
             )
 
         except Exception as e:
-            self.logger.error(f"Error processing FEDO file {filename}: {e}")
+            self.logger.error(f"Error processing FEDO file {filename}: {e}", exc_info=True)
             self.emit(EventType.PROCESS_ERROR, {"filename": filename, "error": str(e)})
             return ProcessResult(
                 success=False,
@@ -327,30 +498,20 @@ class FedoHandler(AnnotationSystemHandler):
     # ==================== Mapping Logic ====================
 
     def _load_lookup_table(self, context: AnnotationContext) -> Optional[LookupTable]:
-        """Load lookup table from sample metadata."""
+        """Load lookup table from object storage (no disk)."""
         try:
-            meta = context.sample_meta
-            lookup_url = meta.get('lookup_table_url')
-            if not lookup_url:
-                self.logger.warning(f"No lookup_table_url in sample_meta for {context.sample_id}")
+            meta = context.sample_meta or {}
+            lookup_object_path = meta.get('lookup_object_path')
+
+            if not lookup_object_path:
+                self.logger.warning(f"No lookup_object_path in sample_meta for {context.sample_id}")
                 return None
 
-            # Convert URL to file path
-            # URL format: /static/{dataset_id}/processed/{sample_id}/lookup.npz
-            # Need to resolve to actual file path
-            # Assuming UPLOAD_DIR is configured in settings
-            from saki_api.core.config import settings
-            lookup_path = os.path.join(settings.UPLOAD_DIR, lookup_url.lstrip('/static/'))
+            if not self.asset_service:
+                raise RuntimeError("AssetService not initialized")
 
-            # Ensure .npz extension
-            if not lookup_path.endswith('.npz'):
-                lookup_path = lookup_path.replace('.parquet', '.npz').replace('.npy', '.npz') + '.npz'
-
-            if not os.path.exists(lookup_path):
-                self.logger.error(f"Lookup table not found: {lookup_path}")
-                return None
-
-            return load_lookup_table(lookup_path)
+            lookup_bytes = self.asset_service.storage.get_object_bytes(lookup_object_path)
+            return load_lookup_table_from_bytes(lookup_bytes)
         except Exception as e:
             self.logger.error(f"Error loading lookup table: {e}")
             return None

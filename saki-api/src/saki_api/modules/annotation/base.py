@@ -3,7 +3,7 @@ Base class for annotation system handlers.
 
 Provides a unified, pluggable architecture for different annotation systems.
 Each handler manages both:
-- Data upload/processing pipeline
+- Data upload/processing pipeline with asset management
 - Annotation sync/save operations
 
 This is the SINGLE handler interface for annotation systems.
@@ -15,9 +15,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol, TYPE_CHECKING
 
-from saki_api.models.enums import AnnotationSystemType, AnnotationType
+from saki_api.models.enums import DatasetType, AnnotationType
+
+if TYPE_CHECKING:
+    from sqlmodel.ext.asyncio.session import AsyncSession
+    from saki_api.services.asset import AssetService
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,22 @@ class EventType(str, Enum):
     # Annotation events
     ANNOTATION_SYNC = "annotation_sync"
     ANNOTATION_SAVE = "annotation_save"
+
+
+class ProcessingStage(str, Enum):
+    """Processing stages for progress tracking."""
+    # Classic handler stages
+    CLASSIC_UPLOAD = "classic_upload"
+    CLASSIC_METADATA = "classic_metadata"
+    CLASSIC_COMPLETE = "classic_complete"
+
+    # FEDO handler stages
+    FEDO_UPLOAD_RAW = "fedo_upload_raw"
+    FEDO_PARSE = "fedo_parse"
+    FEDO_PHYSICS = "fedo_physics"
+    FEDO_VIZ = "fedo_viz"
+    FEDO_UPLOAD_ASSETS = "fedo_upload_assets"
+    FEDO_COMPLETE = "fedo_complete"
 
 
 # ============================================================================
@@ -84,6 +104,9 @@ class ProcessResult:
     error: Optional[str] = None
     # Fields to set on the Sample model
     sample_fields: Dict[str, Any] = field(default_factory=dict)
+    # Asset management
+    asset_ids: Dict[str, str] = field(default_factory=dict)  # role -> asset_id mapping
+    primary_asset_id: Optional[str] = None  # Asset ID for display (must be image)
 
 
 @dataclass
@@ -146,11 +169,18 @@ class AnnotationSystemHandler(ABC):
     """
 
     # Class attribute: which annotation system this handler supports
-    system_type: AnnotationSystemType
+    system_type: DatasetType
 
-    def __init__(self):
+    def __init__(self, session: Optional["AsyncSession"] = None):
         self._event_listeners: Dict[EventType, List[Callable]] = {}
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.session = session
+        self.asset_service: Optional["AssetService"] = None
+
+        # Initialize asset service if session is provided
+        if session:
+            from saki_api.services.asset import AssetService
+            self.asset_service = AssetService(session)
 
     # ==================== Event System ====================
 
@@ -198,10 +228,15 @@ class AnnotationSystemHandler(ABC):
         Returns:
             Tuple of (is_valid, error_message)
         """
-        if not file_path.exists():
-            return False, "File does not exist"
         if file_path.suffix.lower() not in self.supported_extensions:
             return False, f"Unsupported file extension: {file_path.suffix}"
+
+        # In-memory upload may not have a real file path
+        if not file_path.exists():
+            if context.config.get("in_memory", False):
+                return True, ""
+            return False, "File does not exist"
+
         return True, ""
 
     @abstractmethod

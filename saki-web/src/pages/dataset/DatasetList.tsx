@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Col, Row, Statistic, Tag, Button, Typography, Modal, Form, Input, Select, message, Spin, Tooltip, Progress } from 'antd';
+import { Card, Col, Row, Tag, Button, Typography, Modal, Form, Input, Select, message, Spin, Tooltip, } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Dataset, AnnotationSystemType } from '../../types';
+import { Dataset } from '../../types';
 import { api } from '../../services/api';
 import { useSystemCapabilities, usePermission } from '../../hooks';
 import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
@@ -23,7 +23,7 @@ const DatasetList: React.FC = () => {
   const canCreate = can('dataset:create');
   
   // Load available types from backend
-  const { availableTypes, loading: typesLoading } = useSystemCapabilities();
+  const { getDatasetTypeLabel, getDatasetTypeColor, availableTypes } = useSystemCapabilities();
 
   useEffect(() => {
     loadDatasets();
@@ -43,11 +43,7 @@ const DatasetList: React.FC = () => {
 
   const handleCreate = async (values: any) => {
     try {
-      await api.createDataset({
-        name: values.name,
-        description: values.description,
-        annotationSystem: values.annotationSystem as AnnotationSystemType,
-      });
+      await api.createDataset(values);
       message.success(t('datasetList.createSuccess'));
       setIsModalVisible(false);
       form.resetFields();
@@ -55,49 +51,6 @@ const DatasetList: React.FC = () => {
     } catch (error) {
       message.error(t('datasetList.createError'));
     }
-  };
-
-  // Get annotation system tag color
-  const getAnnotationSystemColor = (system: string | undefined) => {
-    switch (system) {
-      case 'fedo': return 'purple';
-      case 'classic': return 'cyan';
-      default: return 'default';
-    }
-  };
-
-  // Calculate completion percentage
-  const getCompletionPercent = (dataset: Dataset) => {
-    if (dataset.sampleCount === 0) return 0;
-    return Math.round((dataset.labeledCount / dataset.sampleCount) * 100);
-  };
-
-  // Get role tag for dataset
-  const getRoleTag = (dataset: Dataset) => {
-    if (dataset.userRole) {
-      const roleColors: Record<string, string> = {
-        'dataset_owner': 'gold',
-        'dataset_manager': 'blue',
-        'dataset_annotator': 'green',
-        'dataset_reviewer': 'cyan',
-        'dataset_viewer': 'default',
-        'dataset_senior_annotator': 'lime',
-      };
-      const roleLabels: Record<string, string> = {
-        'dataset_owner': t('roles.owner'),
-        'dataset_manager': t('roles.manager'),
-        'dataset_annotator': t('roles.annotator'),
-        'dataset_reviewer': t('roles.reviewer'),
-        'dataset_viewer': t('roles.viewer'),
-        'dataset_senior_annotator': t('roles.seniorAnnotator'),
-      };
-      return (
-        <Tag color={roleColors[dataset.userRole] || 'default'} style={{ marginLeft: 4 }}>
-          {roleLabels[dataset.userRole] || dataset.userRole}
-        </Tag>
-      );
-    }
-    return null;
   };
 
   return (
@@ -130,11 +83,9 @@ const DatasetList: React.FC = () => {
                   </div>
                 }
                 extra={
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <Tag color={getAnnotationSystemColor(dataset.annotationSystem)}>
-                      {dataset.annotationSystem || 'classic'}
-                    </Tag>
-                  </div>
+                  <Tag color={getDatasetTypeColor(dataset.type)}>
+                    {getDatasetTypeLabel(dataset.type)}
+                  </Tag>
                 }
                 actions={[
                   <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
@@ -142,37 +93,9 @@ const DatasetList: React.FC = () => {
                   </Button>,
                 ]}
               >
-                <div style={{ marginBottom: 8 }}>
-                  {getRoleTag(dataset)}
-                </div>
                 <Paragraph ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
                   {dataset.description || t('datasetList.noDescription')}
                 </Paragraph>
-                
-                <div style={{ marginBottom: 12 }}>
-                  <Progress 
-                    percent={getCompletionPercent(dataset)} 
-                    size="small" 
-                    status={getCompletionPercent(dataset) === 100 ? 'success' : 'active'}
-                  />
-                </div>
-                
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Statistic 
-                      title={t('datasetList.samples')} 
-                      value={dataset.sampleCount || 0} 
-                      valueStyle={{ fontSize: '16px' }} 
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Statistic 
-                      title={t('datasetList.labeled')} 
-                      value={dataset.labeledCount || 0} 
-                      valueStyle={{ fontSize: '16px', color: '#3f8600' }} 
-                    />
-                  </Col>
-                </Row>
               </Card>
             </Col>
           ))}
@@ -202,12 +125,7 @@ const DatasetList: React.FC = () => {
         onCancel={() => setIsModalVisible(false)}
         onOk={() => form.submit()}
       >
-        {typesLoading ? (
-          <div style={{ textAlign: 'center', padding: 20 }}>
-            <Spin tip={t('common.loading')} />
-          </div>
-        ) : (
-          <Form 
+        <Form 
             form={form} 
             layout="vertical" 
             onFinish={handleCreate} 
@@ -224,11 +142,11 @@ const DatasetList: React.FC = () => {
               <Input.TextArea placeholder={t('datasetList.descriptionPlaceholder')} rows={3} />
             </Form.Item>
             <Form.Item 
-              name="annotationSystem" 
+              name="type" 
               label={
                 <span>
-                  {t('datasetList.annotationSystem')}&nbsp;
-                  <Tooltip title={t('datasetList.annotationSystemHelp')}>
+                  {t('datasetList.type')}&nbsp;
+                  <Tooltip title={t('datasetList.typeHelp')}>
                     <span style={{ color: '#999', cursor: 'help' }}>ⓘ</span>
                   </Tooltip>
                 </span>
@@ -236,7 +154,7 @@ const DatasetList: React.FC = () => {
               rules={[{ required: true }]}
             >
               <Select>
-                {availableTypes?.annotationSystems.map(system => (
+                {availableTypes?.datasetTypes.map(system => (
                   <Option key={system.value} value={system.value}>
                     <Tooltip title={system.description} placement="right">
                       {system.label}
@@ -246,7 +164,6 @@ const DatasetList: React.FC = () => {
               </Select>
             </Form.Item>
           </Form>
-        )}
       </Modal>
     </div>
   );

@@ -202,6 +202,34 @@ def save_lookup_table(lookup: LookupTable, output_path: str) -> None:
     )
 
 
+def save_lookup_table_to_bytes(lookup: LookupTable) -> bytes:
+    """将查找表保存为 .npz 的内存字节。"""
+    import io
+    buf = io.BytesIO()
+    np.savez_compressed(
+        buf,
+        n_time=lookup.n_time,
+        n_energy=lookup.n_energy,
+        lut_te=lookup.lut_te,
+        lut_lw=lookup.lut_lw
+    )
+    buf.seek(0)
+    return buf.read()
+
+
+def load_lookup_table_from_bytes(data: bytes) -> LookupTable:
+    """从 .npz 字节数据加载查找表。"""
+    import io
+    buf = io.BytesIO(data)
+    with np.load(buf) as npz:
+        return LookupTable(
+            n_time=int(npz['n_time']),
+            n_energy=int(npz['n_energy']),
+            lut_te=npz['lut_te'],
+            lut_lw=npz['lut_lw'],
+        )
+
+
 def load_lookup_table(file_path: str) -> LookupTable:
     """加载 .npz 查找表。"""
     data = np.load(file_path)

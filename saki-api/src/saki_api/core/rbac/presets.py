@@ -250,6 +250,7 @@ async def init_preset_roles(session: AsyncSession) -> None:
             is_admin=preset.get("is_admin", False),
             is_supremo=preset.get("is_supremo", False),
             sort_order=preset.get("sort_order", 0),
+            color=preset.get("color", None),
         )
         session.add(role)
 

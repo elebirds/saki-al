@@ -22,6 +22,7 @@ from saki_api.db.transaction import transactional
 from saki_api.models.rbac.role import Role, RoleType
 from saki_api.repositories.permission import PermissionRepository
 from saki_api.repositories.query import Pagination
+from saki_api.schemas.pagination import PaginationResponse
 from saki_api.repositories.role import RoleRepository
 from saki_api.schemas import RoleCreate, RoleUpdate, RoleRead, RolePermissionRead
 from saki_api.services.base import BaseService
@@ -52,9 +53,9 @@ class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):
             self,
             role_type: Optional[RoleType] = None,
             pagination: Pagination = Pagination(),
-    ) -> List[Role]:
-        """List all roles, optionally filtered by type."""
-        return await self.repository.list(
+    ) -> PaginationResponse[RoleRead]:
+        """List roles with pagination, optionally filtered by type."""
+        roles = await self.repository.list_paginated(
             filters=[Role.type == role_type] if role_type else None,
             pagination=pagination,
             order_by=[
@@ -62,6 +63,7 @@ class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):
                 Role.created_at,
             ]
         )
+        return await roles.map_async(self.build_role_read)
 
     @transactional
     @override

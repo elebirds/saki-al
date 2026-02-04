@@ -11,6 +11,7 @@ import {
   Dataset, DatasetCreate, DatasetUpdate,
   Sample,
   AvailableTypesResponse, RoleInfo,
+  PaginationResponse,
 } from '../../types';
 import { ApiService } from './interface';
 import { useAuthStore } from '../../store/authStore';
@@ -447,11 +448,11 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async getRoles(type?: RoleType): Promise<Role[]> {
-    const params: Record<string, string> = {};
+  async getRoles(type?: RoleType, page: number = 1, limit: number = 50): Promise<PaginationResponse<Role>> {
+    const params: Record<string, any> = { page, limit };
     if (type) params.type = type;
     
-    const response = await this.client.get<Role[]>('/roles', { params });
+    const response = await this.client.get<PaginationResponse<Role>>('/roles', { params });
     return response.data;
   }
 
@@ -494,8 +495,8 @@ export class RealApiService implements ApiService {
   // Dataset APIs
   // ==========================================================================
 
-  async getDatasets(): Promise<Dataset[]> {
-    const response = await this.client.get<Dataset[]>('/datasets');
+  async getDatasets(page: number = 1, limit: number = 20): Promise<PaginationResponse<Dataset>> {
+    const response = await this.client.get<PaginationResponse<Dataset>>('/datasets', { params: { page, limit } });
     return response.data;
   }
 
@@ -584,17 +585,24 @@ export class RealApiService implements ApiService {
   // Sample APIs
   // ==========================================================================
 
-  async getSamples(datasetId: string, options?: { offset?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc'; skip?: number }): Promise<Sample[]> {
-    const offset = options?.offset ?? options?.skip;
-    const params: Record<string, any> = {
-      offset,
-      limit: options?.limit,
-      sort_by: options?.sortBy,
-      sort_order: options?.sortOrder,
-    };
-    const response = await this.client.get<Sample[]>(`/samples/${datasetId}/samples`, {
-      params
-    });
+  async getSamples(
+      datasetId: string,
+      page?: number,
+      limit?: number,
+      sortBy?: string,
+      sortOrder?: 'asc' | 'desc'
+  ): Promise<PaginationResponse<Sample>> {
+    const response = await this.client.get<PaginationResponse<Sample>>(
+        `/samples/${datasetId}/samples`,
+        {
+          params: {
+            page: page ?? 1,
+            limit: limit,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+          }
+        }
+    );
     return response.data;
   }
 
@@ -668,13 +676,13 @@ export class RealApiService implements ApiService {
     }
   }
 
-  async getUsers(skip: number = 0, limit: number = 100): Promise<User[]> {
-    const response = await this.client.get<User[]>('/users/', { params: { skip, limit } });
+  async getUsers(page: number = 1, limit: number = 100): Promise<PaginationResponse<User>> {
+    const response = await this.client.get<PaginationResponse<User>>('/users/', { params: { page, limit } });
     return response.data;
   }
 
-  async getUserList(skip: number = 0, limit: number = 100): Promise<{ id: string; email: string; fullName?: string }[]> {
-    const response = await this.client.get<{ id: string; email: string; fullName?: string }[]>('/users/list', { params: { skip, limit } });
+  async getUserList(page: number = 1, limit: number = 100): Promise<PaginationResponse<{ id: string; email: string; fullName?: string }>> {
+    const response = await this.client.get<PaginationResponse<{ id: string; email: string; fullName?: string }>>('/users/list', { params: { page, limit } });
     return response.data;
   }
 

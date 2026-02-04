@@ -18,6 +18,7 @@ from saki_api.models.l1.asset import Asset
 from saki_api.models.l1.sample import Sample
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
+from saki_api.schemas.pagination import PaginationResponse
 
 
 class AssetRepository(BaseRepository[Asset]):
@@ -69,45 +70,23 @@ class AssetRepository(BaseRepository[Asset]):
 
     # ========== Type & Extension Queries ==========
 
-    async def list_by_extension(
+    async def list_by_extension_paginated(
             self,
             extension: str,
             pagination: Pagination = Pagination()
-    ) -> List[Asset]:
-        """
-        List all assets with a specific file extension.
-        
-        Args:
-            extension: File extension (e.g., ".jpg", ".png")
-            pagination: Pagination parameters
-            
-        Returns:
-            List of matching assets
-        """
-        stmt = select(Asset).where(Asset.extension == extension)
-        stmt = stmt.offset(pagination.offset).limit(pagination.limit)
-        result = await self.session.exec(stmt)
-        return result.all()
+    ) -> PaginationResponse[Asset]:
+        """List assets with the given extension using pagination."""
+        filters = [Asset.extension == extension]
+        return await self.list_paginated(pagination=pagination, filters=filters)
 
-    async def list_by_storage_type(
+    async def list_by_storage_type_paginated(
             self,
             storage_type: StorageType,
             pagination: Pagination = Pagination()
-    ) -> List[Asset]:
-        """
-        List all assets stored in a specific storage type.
-        
-        Args:
-            storage_type: StorageType enum (S3, LOCAL, etc.)
-            pagination: Pagination parameters
-            
-        Returns:
-            List of matching assets
-        """
-        stmt = select(Asset).where(Asset.storage_type == storage_type)
-        stmt = stmt.offset(pagination.offset).limit(pagination.limit)
-        result = await self.session.exec(stmt)
-        return result.all()
+    ) -> PaginationResponse[Asset]:
+        """List assets by storage type with pagination."""
+        filters = [Asset.storage_type == storage_type]
+        return await self.list_paginated(pagination=pagination, filters=filters)
 
     # ========== Statistics ==========
 

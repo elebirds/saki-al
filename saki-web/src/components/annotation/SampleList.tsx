@@ -1,5 +1,5 @@
 import React from 'react';
-import { List, Tag, Typography } from 'antd';
+import { List, Typography } from 'antd';
 import { Sample } from '../../types';
 import { useTranslation } from 'react-i18next';
 
@@ -17,32 +17,6 @@ export const SampleList: React.FC<SampleListProps> = ({
   onSampleSelect,
 }) => {
   const { t } = useTranslation();
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'labeled':
-        return 'green';
-      case 'unlabeled':
-        return 'orange';
-      case 'skipped':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'labeled':
-        return t('workspace.statusLabeled') || '已标注';
-      case 'unlabeled':
-        return t('workspace.statusUnlabeled') || '未标注';
-      case 'skipped':
-        return t('workspace.statusSkipped') || '已跳过';
-      default:
-        return status;
-    }
-  };
 
   return (
     <div
@@ -116,12 +90,6 @@ export const SampleList: React.FC<SampleListProps> = ({
                     {sample.name}
                   </div>
                 </div>
-                <Tag
-                  color={getStatusColor(sample.status)}
-                  style={{ marginLeft: 8, flexShrink: 0 }}
-                >
-                  {getStatusText(sample.status)}
-                </Tag>
               </div>
             </List.Item>
           )}

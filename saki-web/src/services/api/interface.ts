@@ -12,6 +12,8 @@ import {
   Dataset, DatasetCreate, DatasetUpdate,
   // Sample types
   Sample, RoleInfo,
+  // Pagination
+  PaginationResponse,
 } from '../../types';
 
 
@@ -35,8 +37,8 @@ export interface ApiService {
   // ============================================================================
   // User Management
   // ============================================================================
-  getUsers(skip?: number, limit?: number): Promise<User[]>;
-  getUserList(skip?: number, limit?: number): Promise<{ id: string; email: string; fullName?: string }[]>;
+  getUsers(page?: number, limit?: number): Promise<PaginationResponse<User>>;
+  getUserList(page?: number, limit?: number): Promise<PaginationResponse<{ id: string; email: string; fullName?: string }>>;
   createUser(user: Partial<User> & { password: string }): Promise<User>;
   updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User>;
   deleteUser(id: string): Promise<void>;
@@ -52,7 +54,7 @@ export interface ApiService {
   getResourcePermissions(resourceType: string, resourceId: string): Promise<ResourcePermissions>;
   
   // Role management
-  getRoles(type?: RoleType): Promise<Role[]>;
+  getRoles(type?: RoleType, page?: number, limit?: number): Promise<PaginationResponse<Role>>;
   getRole(roleId: string): Promise<Role>;
   createRole(role: RoleCreate): Promise<Role>;
   updateRole(roleId: string, role: RoleUpdate): Promise<Role>;
@@ -66,7 +68,7 @@ export interface ApiService {
   // ============================================================================
   // Dataset APIs
   // ============================================================================
-  getDatasets(): Promise<Dataset[]>;
+  getDatasets(page?: number, limit?: number): Promise<PaginationResponse<Dataset>>;
   getDataset(id: string): Promise<Dataset | undefined>;
   createDataset(dataset: DatasetCreate): Promise<void>;
   updateDataset(id: string, dataset: Partial<DatasetUpdate>): Promise<Dataset>;
@@ -95,13 +97,12 @@ export interface ApiService {
   // ============================================================================
   // Sample APIs
   // ============================================================================
-  getSamples(datasetId: string, options?: {
-    offset?: number;
-    limit?: number;
-    sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
-    skip?: number;
-  }): Promise<Sample[]>;
+  getSamples(datasetId: string,
+    page?: number,
+    limit?: number,
+    sortBy?: string,
+    sortOrder?: 'asc' | 'desc'
+  ): Promise<PaginationResponse<Sample>>;
   deleteSample(datasetId: string, sampleId: string): Promise<void>;
   uploadSamplesWithProgress(
     datasetId: string,

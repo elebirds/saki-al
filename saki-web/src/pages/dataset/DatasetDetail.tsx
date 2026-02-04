@@ -9,6 +9,7 @@ import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
 import SampleAssetModal from '../../components/dataset/SampleAssetModal';
 import { useUpload, useSystemCapabilities, useResourcePermission } from '../../hooks';
+import { PaginatedList } from '../../components/common/PaginatedList';
 
 const { Title } = Typography;
 const { Sider, Content } = Layout;
@@ -19,10 +20,8 @@ const DatasetDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [dataset, setDataset] = useState<Dataset | null>(null);
-  const [samples, setSamples] = useState<Sample[]>([]);
-  const [isLoadingSamples, setIsLoadingSamples] = useState(false);
-  const [hasMoreSamples, setHasMoreSamples] = useState(true);
-  const [pageSize] = useState(24);
+  const [sampleMeta, setSampleMeta] = useState({ total: 0, limit: 8, offset: 0, size: 0 });
+  const [sampleRefreshKey, setSampleRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState('data');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -31,16 +30,14 @@ const DatasetDetail: React.FC = () => {
   const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   
-  // Use refs to store latest sort params to avoid loadSamples recreation
+  // Use refs to store latest sort params
   const sortByRef = useRef(sortBy);
   const sortOrderRef = useRef(sortOrder);
-  const isLoadingSamplesRef = useRef(isLoadingSamples);
   
   useEffect(() => {
     sortByRef.current = sortBy;
     sortOrderRef.current = sortOrder;
-    isLoadingSamplesRef.current = isLoadingSamples;
-  }, [sortBy, sortOrder, isLoadingSamples]);
+  }, [sortBy, sortOrder]);
   
   // Permission hook
   const { can, role, isOwner } = useResourcePermission('dataset', id);
@@ -62,7 +59,7 @@ const DatasetDetail: React.FC = () => {
       }));
       // Refresh samples after upload
       if (id) {
-        loadSamples(id, { reset: true });
+        setSampleRefreshKey((v) => v + 1);
         loadDataset(id);
       }
     },
@@ -83,44 +80,30 @@ const DatasetDetail: React.FC = () => {
   }, [t]);
 
   // Load samples
-  const loadSamples = useCallback(async (datasetId: string, options?: { reset?: boolean }) => {
-    if (isLoadingSamplesRef.current) return;
-    const reset = options?.reset ?? false;
-
-    setIsLoadingSamples(true);
+  const fetchSamples = useCallback(async (page: number, pageSize: number) => {
+    if (!id) throw new Error('Dataset id is required');
     try {
-      // Use functional update to get current samples length
-      let offset = 0;
-      if (!reset) {
-        setSamples(prev => {
-          offset = prev.length;
-          return prev;
-        });
-      }
-
-      const samplesData = await api.getSamples(datasetId, {
-        offset,
-        limit: pageSize,
-        sortBy: sortByRef.current,
-        sortOrder: sortOrderRef.current,
-      });
-      setSamples(prev => reset ? samplesData : [...prev, ...samplesData]);
-      setHasMoreSamples(samplesData.length === pageSize);
+      return await api.getSamples(
+        id,
+        page,
+        pageSize,
+        sortByRef.current,
+        sortOrderRef.current,
+      );
     } catch (error) {
       console.error('Failed to load samples:', error);
       message.error(t('datasetDetail.loadSamplesError'));
-    } finally {
-      setIsLoadingSamples(false);
+      throw error;
     }
-  }, [pageSize, t]);
+  }, [id, t]);
 
   // Load dataset and samples
   useEffect(() => {
     if (id) {
       loadDataset(id);
-      loadSamples(id, { reset: true });
+      setSampleRefreshKey((v) => v + 1);
     }
-  }, [id, loadDataset, loadSamples]);
+  }, [id, loadDataset]);
 
   // Reload samples when sort settings change
   const isInitialMountRef = useRef(true);
@@ -130,9 +113,9 @@ const DatasetDetail: React.FC = () => {
       return;
     }
     if (id) {
-      loadSamples(id, { reset: true });
+      setSampleRefreshKey((v) => v + 1);
     }
-  }, [sortBy, sortOrder, id, loadSamples]);
+  }, [sortBy, sortOrder, id]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -167,7 +150,7 @@ const DatasetDetail: React.FC = () => {
     try {
       await api.deleteSample(dataset.id, sample.id);
       message.success(t('datasetDetail.deleteSampleSuccess'));
-      loadSamples(dataset.id, { reset: true });
+      setSampleRefreshKey((v) => v + 1);
       loadDataset(dataset.id);
     } catch (error) {
       message.error(t('datasetDetail.deleteSampleError'));
@@ -251,17 +234,8 @@ const DatasetDetail: React.FC = () => {
   };
 
   // Calculate completion stats (mock for now)
-  const totalSamples = samples.length;
-  const loadMore = samples.length > 0 && hasMoreSamples ? (
-    <div style={{ textAlign: 'center', marginTop: 16 }}>
-      <Button
-        onClick={() => id && loadSamples(id)}
-        loading={isLoadingSamples}
-      >
-        {t('datasetDetail.loadMore')}
-      </Button>
-    </div>
-  ) : null;
+  const totalSamples = sampleMeta.total;
+  const totalSamplePages = Math.max(1, Math.ceil(sampleMeta.total / (sampleMeta.limit || 1)));
   // Check permissions for various actions
   const canUpload = can('sample:create');
   const canEdit = can('dataset:update');
@@ -295,44 +269,69 @@ const DatasetDetail: React.FC = () => {
             </Space>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
-            {samples.length === 0 ? (
-              <Card>
-                <div style={{ textAlign: 'center', padding: 40 }}>
-                  <FileTextOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
-                  <Title level={5} style={{ color: '#999' }}>{t('datasetDetail.noSamples')}</Title>
-                  {canUpload ? (
-                    <Button type="primary" icon={<UploadOutlined />} onClick={handleUploadClick}>
-                      {t('datasetDetail.uploadData')}
-                    </Button>
-                  ) : (
-                    <Tooltip title={t('common.noPermission')}>
-                      <Button type="primary" icon={<UploadOutlined />} disabled>
-                        {t('datasetDetail.uploadData')}
-                      </Button>
-                    </Tooltip>
-                  )}
+            <PaginatedList<Sample>
+              fetchData={fetchSamples}
+              initialPageSize={8}
+              pageSizeOptions={['8', '12', '20', '32', '50']}
+              refreshKey={`${id}-${sortBy}-${sortOrder}-${sampleRefreshKey}`}
+              resetPageOnRefresh
+              onMetaChange={(meta) => setSampleMeta(meta)}
+              renderItems={(items) => (
+                items.length === 0 ? (
+                  <Card>
+                    <div style={{ textAlign: 'center', padding: 40 }}>
+                      <FileTextOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
+                      <Title level={5} style={{ color: '#999' }}>{t('datasetDetail.noSamples')}</Title>
+                      {canUpload ? (
+                        <Button type="primary" icon={<UploadOutlined />} onClick={handleUploadClick}>
+                          {t('datasetDetail.uploadData')}
+                        </Button>
+                      ) : (
+                        <Tooltip title={t('common.noPermission')}>
+                          <Button type="primary" icon={<UploadOutlined />} disabled>
+                            {t('datasetDetail.uploadData')}
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </Card>
+                ) : (
+                  <List
+                    grid={{
+                      gutter: 16,
+                      xs: 1,
+                      sm: 2,
+                      md: 2,
+                      lg: 3,
+                      xl: 4,
+                      xxl: 4,
+                    }}
+                    dataSource={items}
+                    renderItem={(item) => (
+                      <List.Item>
+                        {renderSampleItem(item)}
+                      </List.Item>
+                    )}
+                  />
+                )
+              )}
+              renderPaginationWrapper={(node) => (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                  <span style={{ fontSize: 12, color: '#666' }}>
+                    {t('datasetDetail.pageStatus', {
+                      defaultValue: 'Page {{page}} / {{pages}} · {{total}} items',
+                      page: Math.floor(sampleMeta.offset / (sampleMeta.limit || 1)) + 1,
+                      pages: totalSamplePages,
+                      total: totalSamples,
+                    })}
+                  </span>
+                  {node}
                 </div>
-              </Card>
-            ) : (
-              <List
-                grid={{
-                  gutter: 16,
-                  xs: 1,
-                  sm: 2,
-                  md: 2,
-                  lg: 3,
-                  xl: 4,
-                  xxl: 4,
-                }}
-                dataSource={samples}
-                loadMore={loadMore}
-                renderItem={(item) => (
-                  <List.Item>
-                    {renderSampleItem(item)}
-                  </List.Item>
-                )}
-              />
-            )}
+              )}
+              paginationProps={{
+                showTotal: (tot, range) => range ? `${range[0]}-${range[1]} ${t('common.of')} ${tot} ${t('common.items')}` : `${tot} ${t('common.items')}`,
+              }}
+            />
           </div>
         </div>
       ),

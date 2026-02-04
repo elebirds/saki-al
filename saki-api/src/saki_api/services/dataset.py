@@ -22,6 +22,7 @@ from saki_api.repositories.query import Pagination
 from saki_api.repositories.resource_member import ResourceMemberRepository
 from saki_api.repositories.role import RoleRepository
 from saki_api.schemas.dataset import DatasetCreate, DatasetUpdate
+from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
@@ -65,15 +66,10 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
     async def list_datasets(
             self,
             user_id: uuid.UUID,
-            pagination: Pagination | None
-    ) -> List[Dataset]:
-        """
-        List datasets available to a user.
-        
-        Returns datasets where the user has a role (via ResourceMember) or owns the resource.
-        Uses the PermissionChecker's filter_accessible_resources to apply consistent access control.
-        """
-        return await self.repository.list_in_permission(user_id, pagination)
+            pagination: Pagination,
+    ) -> PaginationResponse[Dataset]:
+        """List datasets available to a user with pagination."""
+        return await self.repository.list_in_permission_paginated(user_id, pagination)
 
     # =========================================================================
     # Dataset Member Management

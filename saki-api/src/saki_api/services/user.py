@@ -18,6 +18,7 @@ from saki_api.models.user import User
 from saki_api.repositories.query import Pagination
 from saki_api.repositories.user import UserRepository
 from saki_api.schemas import UserRead
+from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.user import UserUpdate, UserCreate
 from saki_api.services.base import BaseService
 from saki_api.services.guards import AdminGuardDep
@@ -36,15 +37,15 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
         """Get user by email."""
         return await self.repository.get_by_email(email)
 
-    async def list_active(self, pagination: Pagination) -> List[User]:
+    async def list_active_paginated(self, pagination: Pagination) -> PaginationResponse[User]:
         """List active users for member selection."""
-        return await self.repository.list_active(pagination)
+        return await self.repository.list_active_paginated(pagination)
 
     async def get_profile_by_id(self, user_id: uuid.UUID) -> UserRead:
         return await self.repository.get_with_roles_by_id(user_id)
 
-    async def list_with_roles(self, pagination: Pagination) -> List[UserRead]:
-        return await self.repository.list_with_roles(pagination=pagination)
+    async def list_with_roles_paginated(self, pagination: Pagination) -> PaginationResponse[UserRead]:
+        return await self.repository.list_with_roles_paginated(pagination=pagination)
 
     @transactional
     @override

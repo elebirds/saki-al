@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result, DatePicker } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -7,13 +7,13 @@ import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { usePermission } from '../../hooks';
+import { PaginatedList } from '../../components/common/PaginatedList';
 
 const UserManagement: React.FC = () => {
   const { t } = useTranslation();
   const currentUser = useAuthStore((state) => state.user);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [loading, setLoading] = useState(false);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
@@ -24,6 +24,7 @@ const UserManagement: React.FC = () => {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [form] = Form.useForm();
   const [roleForm] = Form.useForm();
+  const [refreshKey, setRefreshKey] = useState(0);
   
   // Permission checks
   const { can, isSuperAdmin, isLoading: permissionLoading } = usePermission();
@@ -35,31 +36,30 @@ const UserManagement: React.FC = () => {
   const canAssignRoles = can('role:assign') || isSuperAdmin;
   const canRevokeRoles = can('role:revoke') || isSuperAdmin;
 
-  const fetchUsers = async () => {
-    if (!canReadUsers) return;
-    setLoading(true);
+  const fetchUsers = useCallback(async (page: number, pageSize: number) => {
+    if (!canReadUsers) {
+      return { items: [], total: 0, limit: pageSize, offset: 0, size: 0 } as any;
+    }
     try {
-      const data = await api.getUsers();
-      setUsers(data);
+      return await api.getUsers(page, pageSize);
     } catch (error) {
       message.error(t('userManagement.fetchError'));
-    } finally {
-      setLoading(false);
+      throw error;
     }
-  };
+  }, [canReadUsers, t]);
 
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     if (!canReadUserRoles) return;
     setRolesLoading(true);
     try {
       const data = await api.getRoles('system');
-      setRoles(data);
+      setRoles(data.items);
     } catch (error) {
       console.error('Failed to fetch roles:', error);
     } finally {
       setRolesLoading(false);
     }
-  };
+  }, [canReadUserRoles]);
 
   const fetchUserRoles = async (userId: string) => {
     try {
@@ -71,13 +71,10 @@ const UserManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!permissionLoading && canReadUsers) {
-      fetchUsers();
-    }
     if (!permissionLoading && canReadUserRoles) {
       fetchRoles();
     }
-  }, [permissionLoading, canReadUsers, canReadUserRoles]);
+  }, [permissionLoading, canReadUserRoles, fetchRoles]);
 
   // 计算表格高度
   useEffect(() => {
@@ -118,7 +115,7 @@ const UserManagement: React.FC = () => {
     try {
       await api.deleteUser(id);
       message.success(t('userManagement.deleteSuccess'));
-      fetchUsers();
+      setRefreshKey((v) => v + 1);
     } catch (error: any) {
       message.error(error.message || t('userManagement.deleteError'));
     }
@@ -145,7 +142,7 @@ const UserManagement: React.FC = () => {
         message.success(t('userManagement.createSuccess'));
       }
       setIsModalOpen(false);
-      fetchUsers();
+      setRefreshKey((v) => v + 1);
     } catch (error: any) {
       message.error(error.message || t('common.operationFailed'));
     }
@@ -158,17 +155,14 @@ const UserManagement: React.FC = () => {
       const roleData: UserSystemRoleAssign = {
         roleId: values.roleId,
       };
-      
-      // Add expiresAt if provided
       if (values.expiresAt) {
         roleData.expiresAt = (values.expiresAt as Dayjs).toISOString();
       }
-      
       await api.assignUserRole(selectedUserId, roleData);
       message.success(t('userManagement.roleAssigned'));
       await fetchUserRoles(selectedUserId);
       roleForm.resetFields();
-      fetchUsers(); // Refresh user list to update role display
+      setRefreshKey((v) => v + 1);
     } catch (error: any) {
       message.error(error.message || t('common.operationFailed'));
     }
@@ -180,7 +174,7 @@ const UserManagement: React.FC = () => {
       await api.revokeUserRole(selectedUserId, roleId);
       message.success(t('userManagement.roleRevoked'));
       await fetchUserRoles(selectedUserId);
-      fetchUsers(); // Refresh user list to update role display
+      setRefreshKey((v) => v + 1);
     } catch (error: any) {
       message.error(error.message || t('common.operationFailed'));
     }
@@ -329,24 +323,28 @@ const UserManagement: React.FC = () => {
         )}
       </div>
       <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <Table 
-          columns={columns} 
-          dataSource={users} 
-          rowKey="id" 
-          loading={loading}
-          scroll={{ 
-            y: tableHeight,
-            x: 'max-content' 
-          }}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              range 
+        <PaginatedList<User>
+          fetchData={fetchUsers}
+          onItemsChange={setUsers}
+          refreshKey={refreshKey}
+          resetPageOnRefresh
+          initialPageSize={20}
+          pageSizeOptions={['10', '20', '50', '100']}
+          renderItems={(items, loading) => (
+            <Table
+              columns={columns}
+              dataSource={items}
+              rowKey="id"
+              loading={loading}
+              scroll={{ y: tableHeight, x: 'max-content' }}
+              pagination={false}
+            />
+          )}
+          paginationProps={{
+            showTotal: (total, range) =>
+              range
                 ? `${range[0]}-${range[1]} ${t('common.of')} ${total} ${t('common.items')}`
                 : `${total} ${t('common.items')}`,
-            pageSizeOptions: ['10', '20', '50', '100'],
           }}
         />
       </div>

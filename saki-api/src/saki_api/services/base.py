@@ -15,6 +15,7 @@ from saki_api.core.exceptions import NotFoundAppException
 from saki_api.db.transaction import transactional
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import FilterType, Pagination, OrderByType
+from saki_api.schemas.pagination import PaginationResponse
 
 ModelType = TypeVar("ModelType", bound=SQLModel)
 RepoType = TypeVar("RepoType", bound=BaseRepository)
@@ -78,13 +79,26 @@ class BaseService(Generic[ModelType, RepoType, CreateSchemaType, UpdateSchemaTyp
             raise NotFoundAppException(f"Record{self.model.__name__} with Filters {filters} not found")
         return record
 
-    async def list(self, pagination: Pagination = Pagination(),
-                   filters: FilterType = None,
-                   order_by: OrderByType = None, ) -> List[ModelType]:
-        """
-        List all records with pagination, filtering, and ordering.
-        """
-        return await self.repository.list(pagination, filters, order_by)
+    async def list(
+            self,
+            filters: FilterType = None,
+            order_by: OrderByType = None,
+    ) -> List[ModelType]:
+        """List all records without pagination."""
+        return await self.repository.list(filters=filters, order_by=order_by)
+
+    async def list_paginated(
+            self,
+            pagination: Pagination = Pagination(),
+            filters: FilterType = None,
+            order_by: OrderByType = None,
+    ) -> PaginationResponse[ModelType]:
+        """List records with pagination."""
+        return await self.repository.list_paginated(
+            pagination=pagination,
+            filters=filters,
+            order_by=order_by,
+        )
 
     @transactional
     async def create(self, schema: CreateSchemaType) -> ModelType:

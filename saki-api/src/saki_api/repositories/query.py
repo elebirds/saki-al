@@ -31,3 +31,13 @@ class Pagination(BaseModel):
 
     offset: int = Field(default=0, ge=0, description="Number of records to skip")
     limit: int = Field(default=100, ge=1, le=1000, description="Maximum number of records to return")
+
+    @property
+    def page(self) -> int:
+        """1-based page number derived from offset/limit."""
+        return (self.offset // self.limit) + 1
+
+    @classmethod
+    def from_page(cls, page: int, limit: int) -> "Pagination":
+        page = max(page, 1)
+        return cls(offset=(page - 1) * limit, limit=limit)

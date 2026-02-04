@@ -6,7 +6,7 @@ import logging
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, Query
 from sqlalchemy import asc, desc
 from starlette.responses import StreamingResponse
 
@@ -18,6 +18,7 @@ from saki_api.models.l1.sample import Sample
 from saki_api.modules.annotation.base import EventType, ProgressInfo
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.sample import SampleRead
+from saki_api.schemas.pagination import PaginationResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @router.post(
     "/{dataset_id}/upload",
-    response_model=List[SampleRead],
+    response_model=PaginationResponse[SampleRead],
     dependencies=[
         Depends(
             require_permission(
@@ -180,7 +181,7 @@ async def upload_samples_with_progress(
 
 @router.get(
     "/{dataset_id}/samples",
-    response_model=List[SampleRead],
+    response_model=PaginationResponse[SampleRead],
     dependencies=[
         Depends(
             require_permission(
@@ -196,11 +197,11 @@ async def list_samples(
         dataset_id: uuid.UUID,
         sample_service: SampleServiceDep,
         asset_service: AssetServiceDep,
-        offset: int = 0,
-        limit: int = 100,
+        page: int = Query(1, ge=1),
+        limit: int = Query(24, ge=1, le=200),
         sort_by: str = "createdAt",
         sort_order: str = "desc",
-) -> List[SampleRead]:
+    ) -> PaginationResponse[SampleRead]:
     """
     List all samples in a dataset.
     
@@ -217,14 +218,15 @@ async def list_samples(
     sort_column = sort_map.get(sort_by, Sample.created_at)
     order_clause = asc(sort_column) if sort_order == "asc" else desc(sort_column)
 
-    samples = await sample_service.repository.get_by_dataset(
+    pagination = Pagination.from_page(page=page, limit=limit)
+    samples = await sample_service.repository.get_by_dataset_paginated(
         dataset_id,
-        pagination=Pagination(offset=offset, limit=limit),
+        pagination=pagination,
         order_by=[order_clause],
     )
 
-    result = []
-    for sample in samples:
+    result: List[SampleRead] = []
+    for sample in samples.items:
         sample_dict = sample.model_dump() if hasattr(sample, 'model_dump') else sample.__dict__
         sample_read = SampleRead.model_validate(sample_dict)
 
@@ -238,7 +240,12 @@ async def list_samples(
 
         result.append(sample_read)
 
-    return result
+    return PaginationResponse.from_items(
+        items=result,
+        total=samples.total,
+        offset=samples.offset,
+        limit=samples.limit,
+    )
 
 
 @router.delete(

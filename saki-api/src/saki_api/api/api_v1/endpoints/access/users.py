@@ -5,9 +5,9 @@ Uses the new RBAC system for permission checking.
 """
 
 import uuid
-from typing import Any, List
+from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from saki_api.api.service_deps import UserServiceDep
 from saki_api.core.rbac import (
@@ -19,6 +19,7 @@ from saki_api.models import (
 )
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import (UserCreate, UserRead, UserUpdate, UserListItem)
+from saki_api.schemas.pagination import PaginationResponse
 
 router = APIRouter()
 
@@ -41,43 +42,43 @@ async def read_user_me(
 
 @router.get(
     "/list",
-    response_model=List[UserListItem],
+    response_model=PaginationResponse[UserListItem],
     dependencies=[Depends(require_permission(Permissions.USER_LIST))],
     summary="List users for selection",
     description="List users with basic info only (for member selection). Requires user:list permission."
 )
 async def list_users_simple(
         service: UserServiceDep,
-        offset: int = 0,
-        limit: int = 100,
-) -> List[UserListItem]:
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=200),
+    ) -> PaginationResponse[UserListItem]:
     """
     List users with basic info only (for member selection).
     
     Requires user:list permission (not full user:read).
     """
-    users = await service.list_active(Pagination(offset=offset, limit=limit))
-    return [UserListItem.model_validate(u) for u in users]
+    users = await service.list_active_paginated(Pagination.from_page(page=page, limit=limit))
+    return users.map(UserListItem.model_validate)
 
 
 @router.get(
     "/",
-    response_model=List[UserRead],
+    response_model=PaginationResponse[UserRead],
     dependencies=[Depends(require_permission(Permissions.USER_READ))],
     summary="List users with full details",
     description="Retrieve users with full details. Requires user:read permission (admin level)."
 )
 async def read_users(
         service: UserServiceDep,
-        offset: int = 0,
-        limit: int = 100,
-) -> List[UserRead]:
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=200),
+    ) -> PaginationResponse[UserRead]:
     """
     Retrieve users with full details.
     
     Requires user:read permission (admin level).
     """
-    return await service.list_with_roles(Pagination(offset=offset, limit=limit))
+    return await service.list_with_roles_paginated(Pagination.from_page(page=page, limit=limit))
 
 
 @router.post(

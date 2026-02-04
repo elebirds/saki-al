@@ -82,12 +82,12 @@ export function useDatasetLoader(
 
       if (ds) setDataset(ds);
       setLabels(loadedLabels);
-      setSamples(loadedSamples);
+      setSamples(loadedSamples.items);
 
       // 如果 URL 中有 sampleId 参数，跳转到对应的样本
       const sampleId = searchParams.get('sampleId');
-      if (sampleId && loadedSamples.length > 0) {
-        const index = loadedSamples.findIndex(s => s.id === sampleId);
+      if (sampleId && loadedSamples.items.length > 0) {
+        const index = loadedSamples.items.findIndex(s => s.id === sampleId);
         if (index !== -1) {
           setCurrentIndex(index);
         }

@@ -17,20 +17,34 @@ from fastapi import APIRouter, File, UploadFile, Query, Path, HTTPException, sta
 
 from saki_api.api.service_deps import AssetServiceDep
 from saki_api.models.enums import StorageType
+from saki_api.models.l1.asset import Asset
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.asset import (
     AssetRead,
     AssetUploadResponse,
     AssetDownloadResponse,
     AssetMetadataResponse,
-    AssetListResponse,
     AssetListItem,
-    AssetStorageStats
+    AssetStorageStats,
 )
-
 logger = logging.getLogger(__name__)
 
+from saki_api.schemas.pagination import PaginationResponse
+
 router = APIRouter()
+
+
+def to_list_item(asset: Asset | AssetRead) -> AssetListItem:
+    """Convert an asset model/read schema to a lightweight list item."""
+    return AssetListItem(
+        id=asset.id,
+        original_filename=asset.original_filename,
+        extension=asset.extension,
+        mime_type=asset.mime_type,
+        size=asset.size,
+        created_at=asset.created_at,
+        storage_type=asset.storage_type,
+    )
 
 
 # ========== Asset Upload ==========
@@ -176,85 +190,44 @@ async def get_asset_metadata(
 
 @router.get(
     "",
-    response_model=AssetListResponse,
+    response_model=PaginationResponse[AssetListItem],
     summary="List assets with pagination",
 )
 async def list_assets(
         service: AssetServiceDep,
-        offset: int = Query(default=0, ge=0, description="Pagination offset"),
-        limit: int = Query(default=20, ge=1, le=100, description="Page limit"),
-        extension: Optional[str] = Query(None, description="Filter by extension (.jpg, .png, etc.)"),
+        extension: Optional[str] = Query(None, description="Filter by extension (e.g. .jpg)"),
         storage_type: Optional[StorageType] = Query(None, description="Filter by storage type"),
-) -> AssetListResponse:
-    """
-    List assets with optional filtering.
-    
-    Query parameters:
-    - offset: Starting position (default 0)
-    - limit: Number of items per page (default 20, max 100)
-    - extension: Filter by file extension (optional)
-    - storage_type: Filter by storage type - S3 or LOCAL (optional)
-    """
-    pagination = Pagination(offset=offset, limit=limit)
+        page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+        limit: int = Query(default=20, ge=1, le=100, description="Page size"),
+) -> PaginationResponse[AssetListItem]:
+    """List assets with optional extension/storage type filters."""
+    pagination = Pagination.from_page(page=page, limit=limit)
 
     if extension:
         assets = await service.list_by_extension(extension, pagination)
     elif storage_type:
         assets = await service.list_by_storage_type(storage_type, pagination)
     else:
-        assets = await service.list(pagination)
+        assets = await service.list_paginated(pagination)
 
-    items = [
-        AssetListItem(
-            id=asset.id,
-            original_filename=asset.original_filename,
-            extension=asset.extension,
-            mime_type=asset.mime_type,
-            size=asset.size,
-            created_at=asset.created_at,
-            storage_type=asset.storage_type
-        )
-        for asset in assets
-    ]
-
-    # TODO: Get total count from repository
-    total = len(items)  # This should be replaced with actual count query
-
-    return AssetListResponse(
-        items=items,
-        total=total,
-        offset=offset,
-        limit=limit
-    )
+    return assets.map(to_list_item)
 
 
 @router.get(
     "/by-extension/{extension}",
-    response_model=list[AssetListItem],
+    response_model=PaginationResponse[AssetListItem],
     summary="List assets by file extension",
 )
 async def list_assets_by_extension(
-        service: AssetServiceDep,
         extension: str,
-        offset: int = Query(default=0, ge=0),
-        limit: int = Query(default=20, ge=1, le=100),
-) -> list[AssetListItem]:
-    """List all assets with a specific file extension."""
-    pagination = Pagination(offset=offset, limit=limit)
+        service: AssetServiceDep,
+        page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+        limit: int = Query(default=20, ge=1, le=100, description="Page size"),
+) -> PaginationResponse[AssetListItem]:
+    """List assets filtered by extension with pagination."""
+    pagination = Pagination.from_page(page=page, limit=limit)
     assets = await service.list_by_extension(extension, pagination)
-
-    return [
-        AssetListItem(
-            id=asset.id,
-            original_filename=asset.original_filename,
-            extension=asset.extension,
-            mime_type=asset.mime_type,
-            size=asset.size,
-            created_at=asset.created_at,
-            storage_type=asset.storage_type
-        )
-        for asset in assets
-    ]
+    return assets.map(to_list_item)
 
 
 # ========== Asset Status ==========

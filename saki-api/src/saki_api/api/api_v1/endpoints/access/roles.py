@@ -5,7 +5,7 @@ Provides CRUD operations for roles and user role assignments.
 """
 
 import uuid
-from typing import List, Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Query
 
@@ -20,6 +20,7 @@ from saki_api.schemas import (
     RoleCreate, RoleRead, RoleUpdate,
     UserSystemRoleAssign, UserSystemRoleRead,
 )
+from saki_api.schemas.pagination import PaginationResponse
 
 router = APIRouter()
 
@@ -30,7 +31,7 @@ router = APIRouter()
 
 @router.get(
     "",
-    response_model=List[RoleRead],
+    response_model=PaginationResponse[RoleRead],
     dependencies=[Depends(require_permission(Permissions.ROLE_READ))],
     summary="List all roles",
     description="List all roles. Optionally filter by type (system or resource)."
@@ -38,8 +39,8 @@ router = APIRouter()
 async def list_roles(
         service: RoleServiceDep,
         type: Optional[RoleType] = Query(None, description="Filter by role type"),
-        offset: int = 0,
-        limit: int = 100,
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=100),
 ):
     """
     List all roles.
@@ -48,9 +49,9 @@ async def list_roles(
     """
     roles = await service.list_by_type(
         role_type=type,
-        pagination=Pagination(offset=offset, limit=limit)
+        pagination=Pagination.from_page(page=page, limit=limit)
     )
-    return [await service.build_role_read(role) for role in roles]
+    return roles
 
 
 @router.get(

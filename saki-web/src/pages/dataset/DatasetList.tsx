@@ -1,20 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { Card, Col, Row, Tag, Button, Typography, Modal, Form, Input, Select, message, Spin, Tooltip, } from 'antd';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Card, Col, Row, Tag, Button, Typography, Modal, Form, Input, Select, message, Tooltip } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Dataset } from '../../types';
 import { api } from '../../services/api';
 import { useSystemCapabilities, usePermission } from '../../hooks';
 import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { PaginatedList } from '../../components/common/PaginatedList';
 
 const { Title, Paragraph } = Typography;
 const { Option } = Select;
 
 const DatasetList: React.FC = () => {
   const { t } = useTranslation();
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [form] = Form.useForm();
   const navigate = useNavigate();
   
@@ -25,21 +25,14 @@ const DatasetList: React.FC = () => {
   // Load available types from backend
   const { getDatasetTypeLabel, getDatasetTypeColor, availableTypes } = useSystemCapabilities();
 
-  useEffect(() => {
-    loadDatasets();
-  }, []);
-
-  const loadDatasets = async () => {
-    setLoading(true);
+  const fetchDatasets = useCallback(async (page: number, pageSize: number) => {
     try {
-      const data = await api.getDatasets();
-      setDatasets(data);
+      return await api.getDatasets(page, pageSize);
     } catch (error) {
       message.error(t('datasetList.loadError'));
-    } finally {
-      setLoading(false);
+      throw error;
     }
-  };
+  }, [t]);
 
   const handleCreate = async (values: any) => {
     try {
@@ -47,11 +40,62 @@ const DatasetList: React.FC = () => {
       message.success(t('datasetList.createSuccess'));
       setIsModalVisible(false);
       form.resetFields();
-      loadDatasets();
+      setRefreshKey((v) => v + 1);
     } catch (error) {
       message.error(t('datasetList.createError'));
     }
   };
+
+  const renderDatasets = useCallback((items: Dataset[], _loading?: boolean) => (
+    <Row gutter={[16, 16]}>
+      {items.map((dataset) => (
+        <Col xs={24} sm={12} md={8} lg={6} key={dataset.id}>
+          <Card
+            hoverable
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <DatabaseOutlined />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{dataset.name}</span>
+              </div>
+            }
+            extra={
+              <Tag color={getDatasetTypeColor(dataset.type)}>
+                {getDatasetTypeLabel(dataset.type)}
+              </Tag>
+            }
+            actions={[
+              <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
+                {t('datasetList.open')}
+              </Button>,
+            ]}
+          >
+            <Paragraph ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
+              {dataset.description || t('datasetList.noDescription')}
+            </Paragraph>
+          </Card>
+        </Col>
+      ))}
+    </Row>
+  ), [getDatasetTypeColor, getDatasetTypeLabel, navigate, t]);
+
+  const emptyFallback = useMemo(() => (
+    <Row>
+      <Col span={24}>
+        <Card>
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <DatabaseOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
+            <Title level={4} style={{ color: '#999' }}>{t('datasetList.empty')}</Title>
+            <Paragraph style={{ color: '#999' }}>{t('datasetList.emptyHint')}</Paragraph>
+            {canCreate && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
+                {t('datasetList.newDataset')}
+              </Button>
+            )}
+          </div>
+        </Card>
+      </Col>
+    </Row>
+  ), [canCreate, t]);
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
@@ -70,54 +114,22 @@ const DatasetList: React.FC = () => {
         )}
       </div>
       
-      <Spin spinning={loading}>
-        <Row gutter={[16, 16]}>
-          {datasets.map((dataset) => (
-            <Col xs={24} sm={12} md={8} lg={6} key={dataset.id}>
-              <Card
-                hoverable
-                title={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <DatabaseOutlined />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{dataset.name}</span>
-                  </div>
-                }
-                extra={
-                  <Tag color={getDatasetTypeColor(dataset.type)}>
-                    {getDatasetTypeLabel(dataset.type)}
-                  </Tag>
-                }
-                actions={[
-                  <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
-                    {t('datasetList.open')}
-                  </Button>,
-                ]}
-              >
-                <Paragraph ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
-                  {dataset.description || t('datasetList.noDescription')}
-                </Paragraph>
-              </Card>
-            </Col>
-          ))}
-          
-          {datasets.length === 0 && !loading && (
-            <Col span={24}>
-              <Card>
-                <div style={{ textAlign: 'center', padding: 40 }}>
-                  <DatabaseOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
-                  <Title level={4} style={{ color: '#999' }}>{t('datasetList.empty')}</Title>
-                  <Paragraph style={{ color: '#999' }}>{t('datasetList.emptyHint')}</Paragraph>
-                  {canCreate && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
-                      {t('datasetList.newDataset')}
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            </Col>
-          )}
-        </Row>
-      </Spin>
+      <PaginatedList<Dataset>
+        fetchData={fetchDatasets}
+        renderItems={(items, loading) => renderDatasets(items, loading)}
+        emptyFallback={emptyFallback}
+        refreshKey={refreshKey}
+        resetPageOnRefresh
+        initialPageSize={8}
+        pageSizeOptions={['8', '12', '20', '32', '50']}
+        paginationProps={{
+          showTotal: (tot, range) => range ? `${range[0]}-${range[1]} ${t('common.of')} ${tot} ${t('common.items')}` : `${tot} ${t('common.items')}`,
+        }}
+        onError={() => message.error(t('datasetList.loadError'))}
+        renderPaginationWrapper={(node) => (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>{node}</div>
+        )}
+      />
 
       <Modal
         title={t('datasetList.newDataset')}

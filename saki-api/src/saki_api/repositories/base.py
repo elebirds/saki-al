@@ -7,7 +7,7 @@ Provides generic async CRUD operations for SQLModel models.
 import uuid
 from typing import TypeVar, Generic, Optional, List, Type, Any, Dict
 
-from sqlalchemy import exists
+from sqlalchemy import exists, func
 from sqlalchemy.orm import joinedload
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -15,6 +15,7 @@ from sqlmodel.sql._expression_select_cls import SelectOfScalar
 
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.repositories.query import Pagination, FilterType, OrderByType
+from saki_api.schemas.pagination import PaginationResponse
 
 ModelType = TypeVar("ModelType", bound=SQLModel)
 
@@ -139,24 +140,12 @@ class BaseRepository(Generic[ModelType]):
 
     def list_statement(
             self,
-            pagination: Pagination | None = None,
             filters: FilterType | None = None,
             order_by: OrderByType | None = None,
             joinedloads: List[Any] | None = None,
     ) -> SelectOfScalar:
         """
-        List records with pagination, filtering, and ordering.
-
-        Can be called either with a ListQuery object or with keyword arguments.
-
-        Args:
-            pagination: Optional Pagination object (defaults to Pagination())
-            filters: Optional list of SQLAlchemy where clause expressions
-            order_by: Optional list of SQLAlchemy order by expressions
-            joinedloads: Optional list of SQLAlchemy early loading records
-
-        Returns:
-            List of records
+        Build a base select statement with filters, ordering, and eager loading.
         """
         statement = select(self.model)
         if filters: statement = statement.where(*filters)
@@ -164,33 +153,40 @@ class BaseRepository(Generic[ModelType]):
         if joinedloads:
             for jl in joinedloads:
                 statement = statement.options(joinedload(jl))
-        if pagination:
-            statement = statement.offset(pagination.offset).limit(pagination.limit)
         return statement
 
     async def list(
             self,
-            pagination: Pagination | None = None,
             filters: FilterType | None = None,
             order_by: OrderByType | None = None,
             joinedloads: List[Any] | None = None,
     ) -> List[ModelType]:
-        """
-        List records with pagination, filtering, and ordering.
-        
-        Can be called either with a ListQuery object or with keyword arguments.
-        
-        Args:
-            pagination: Optional Pagination object (defaults to Pagination())
-            filters: Optional list of SQLAlchemy where clause expressions
-            order_by: Optional list of SQLAlchemy order by expressions
-            joinedloads: Optional list of SQLAlchemy early loading records
-            
-        Returns:
-            List of records
-        """
-        result = await self.session.exec(self.list_statement(pagination, filters, order_by, joinedloads))
+        """List records without pagination."""
+        statement = self.list_statement(filters, order_by, joinedloads)
+        result = await self.session.exec(statement)
         return list(result.all())
+
+    async def list_paginated(
+            self,
+            pagination: Pagination,
+            filters: FilterType | None = None,
+            order_by: OrderByType | None = None,
+            joinedloads: List[Any] | None = None,
+    ) -> PaginationResponse[ModelType]:
+        """List records with pagination and return a PaginationResponse envelope."""
+        pagination = pagination or Pagination()
+
+        items_stmt = self.list_statement(filters, order_by, joinedloads)
+        items_stmt = items_stmt.offset(pagination.offset).limit(pagination.limit)
+        items_result = await self.session.exec(items_stmt)
+        items = list(items_result.all())
+
+        count_stmt = self.list_statement(filters)
+        count_stmt = select(func.count()).select_from(count_stmt.subquery())
+        total_result = await self.session.exec(count_stmt)
+        total = total_result.one() or 0
+
+        return PaginationResponse.from_items(items, total, pagination.offset, pagination.limit)
 
     async def create(self, data: Dict[str, Any]) -> ModelType:
         """

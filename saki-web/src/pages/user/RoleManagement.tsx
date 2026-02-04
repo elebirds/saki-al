@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result, Card, Typography, Divider, ColorPicker } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { Role, RoleCreate, RoleUpdate, RolePermissionCreate, RoleType } from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { usePermission } from '../../hooks';
+import { PaginatedList } from '../../components/common/PaginatedList';
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -143,13 +144,13 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
 const RoleManagement: React.FC = () => {
   const { t } = useTranslation();
   const [roles, setRoles] = useState<Role[]>([]);
-  const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleTypeFilter, setRoleTypeFilter] = useState<RoleType | 'all'>('all');
   const [tableHeight, setTableHeight] = useState<number>(500);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [form] = Form.useForm();
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Permission checks
   const { can, isSuperAdmin, isLoading: permissionLoading } = usePermission();
@@ -158,22 +159,22 @@ const RoleManagement: React.FC = () => {
   const canUpdateRole = can('role:update') || isSuperAdmin;
   const canDeleteRole = can('role:delete') || isSuperAdmin;
 
-  const fetchRoles = async (type?: RoleType) => {
-    if (!canReadRoles) return;
-    setLoading(true);
+  const fetchRoles = useCallback(async (page: number, pageSize: number) => {
+    if (!canReadRoles) {
+      return { items: [], total: 0, limit: pageSize, offset: 0, size: 0 } as any;
+    }
     try {
-      const data = await api.getRoles(type);
-      setRoles(data);
+      const type = roleTypeFilter === 'all' ? undefined : roleTypeFilter;
+      return await api.getRoles(type, page, pageSize);
     } catch (error: any) {
       message.error(error.message || t('roleManagement.fetchError'));
-    } finally {
-      setLoading(false);
+      throw error;
     }
-  };
+  }, [canReadRoles, roleTypeFilter, t]);
 
   useEffect(() => {
     if (!permissionLoading && canReadRoles) {
-      fetchRoles(roleTypeFilter === 'all' ? undefined : roleTypeFilter);
+      setRefreshKey((v) => v + 1);
     }
   }, [permissionLoading, canReadRoles, roleTypeFilter]);
 
@@ -195,12 +196,7 @@ const RoleManagement: React.FC = () => {
       clearTimeout(timeoutId);
       window.removeEventListener('resize', updateTableHeight);
     };
-  }, [roles, roleTypeFilter, loading]); // 当数据或加载状态变化时重新计算
-
-  // 过滤显示的角色
-  const filteredRoles = roleTypeFilter === 'all' 
-    ? roles 
-    : roles.filter(r => r.type === roleTypeFilter);
+  }, [roles, roleTypeFilter]); // 当数据或加载状态变化时重新计算
 
   const handleAdd = () => {
     setEditingRole(null);
@@ -243,7 +239,7 @@ const RoleManagement: React.FC = () => {
     try {
       await api.deleteRole(id);
       message.success(t('roleManagement.deleteSuccess'));
-      fetchRoles();
+      setRefreshKey((v) => v + 1);
     } catch (error: any) {
       message.error(error.message || t('roleManagement.deleteError'));
     }
@@ -301,21 +297,10 @@ const RoleManagement: React.FC = () => {
       }
       setIsModalOpen(false);
       form.resetFields();
-      // Refresh roles list with current filter - await to ensure it completes
-      await fetchRoles(roleTypeFilter === 'all' ? undefined : roleTypeFilter);
+      setRefreshKey((v) => v + 1);
     } catch (error: any) {
       message.error(error.message || t('common.operationFailed'));
     }
-  };
-
-  // 获取角色颜色
-  const getRoleColor = (roleName: string): string => {
-    const colors: Record<string, string> = {
-      'super_admin': 'red',
-      'admin': 'gold',
-      'user': 'blue',
-    };
-    return colors[roleName] || 'default';
   };
 
   const columns = [
@@ -437,7 +422,10 @@ const RoleManagement: React.FC = () => {
         <Space>
           <Select
             value={roleTypeFilter}
-            onChange={(value) => setRoleTypeFilter(value)}
+            onChange={(value) => {
+              setRoleTypeFilter(value);
+              setRefreshKey((v) => v + 1);
+            }}
             style={{ width: 150 }}
           >
             <Select.Option value="all">{t('roleManagement.allTypes')}</Select.Option>
@@ -458,24 +446,28 @@ const RoleManagement: React.FC = () => {
         </Space>
       </div>
       <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <Table 
-          columns={columns} 
-          dataSource={filteredRoles} 
-          rowKey="id" 
-          loading={loading}
-          scroll={{ 
-            y: tableHeight,
-            x: 'max-content' 
-          }}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              range 
+        <PaginatedList<Role>
+          fetchData={fetchRoles}
+          onItemsChange={setRoles}
+          refreshKey={refreshKey}
+          resetPageOnRefresh
+          initialPageSize={20}
+          pageSizeOptions={['10', '20', '50', '100']}
+          renderItems={(items, loading) => (
+            <Table
+              columns={columns}
+              dataSource={items}
+              rowKey="id"
+              loading={loading}
+              scroll={{ y: tableHeight, x: 'max-content' }}
+              pagination={false}
+            />
+          )}
+          paginationProps={{
+            showTotal: (total, range) =>
+              range
                 ? `${range[0]}-${range[1]} ${t('common.of')} ${total} ${t('common.items')}`
                 : `${total} ${t('common.items')}`,
-            pageSizeOptions: ['10', '20', '50', '100'],
           }}
         />
       </div>

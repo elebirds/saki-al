@@ -22,6 +22,7 @@ from saki_api.models.l1.asset import Asset
 from saki_api.repositories.asset import AssetRepository
 from saki_api.repositories.query import Pagination, OrderByType
 from saki_api.schemas.asset import AssetRead, AssetCreate, AssetUpdate
+from saki_api.schemas.pagination import PaginationResponse
 from saki_api.services.base import BaseService
 from saki_api.utils.storage import get_storage_provider, StorageError
 
@@ -175,42 +176,22 @@ class AssetService(BaseService[Asset, AssetRepository, AssetCreate, AssetUpdate]
             extension: str,
             pagination: Pagination = Pagination(),
             order_by: OrderByType = None
-    ) -> List[AssetRead]:
-        """
-        List assets by file extension.
-        
-        Args:
-            extension: File extension (e.g., ".jpg", ".png")
-            pagination: Pagination parameters
-            order_by: Sort order
-            
-        Returns:
-            List of assets
-        """
-        filters = [Asset.extension == extension, ]
-        assets = await self.list(pagination, filters, order_by)
-        return [AssetRead.model_validate(asset) for asset in assets]
+    ) -> PaginationResponse[AssetRead]:
+        """List assets by file extension with pagination."""
+        filters = [Asset.extension == extension]
+        assets = await self.list_paginated(pagination, filters, order_by)
+        return assets.map(AssetRead.model_validate)
 
     async def list_by_storage_type(
             self,
             storage_type: StorageType,
             pagination: Pagination = Pagination(),
             order_by: OrderByType = None
-    ) -> List[AssetRead]:
-        """
-        List assets by storage type (S3, LOCAL, etc.).
-        
-        Args:
-            storage_type: StorageType enum
-            pagination: Pagination parameters
-            order_by: Sort order
-            
-        Returns:
-            List of assets
-        """
-        filters = [Asset.storage_type == storage_type, ]
-        assets = await self.list(pagination, filters, order_by)
-        return [AssetRead.model_validate(asset) for asset in assets]
+    ) -> PaginationResponse[AssetRead]:
+        """List assets by storage type (S3, LOCAL, etc.) with pagination."""
+        filters = [Asset.storage_type == storage_type]
+        assets = await self.list_paginated(pagination, filters, order_by)
+        return assets.map(AssetRead.model_validate)
 
     # ========== Presigned URLs & Access ==========
 

@@ -1,10 +1,11 @@
 import React from 'react'
-import { Avatar, Button, Dropdown, Select, Switch } from 'antd'
+import { Avatar, Button, Dropdown, Switch } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   BellOutlined,
   DownOutlined,
   GithubOutlined,
+  GlobalOutlined,
   MoonOutlined,
   PlusOutlined,
   SunOutlined,
@@ -54,6 +55,11 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   userMenuItems,
   onUserMenuClick,
 }) => {
+  const languageMenuItems: MenuProps['items'] = languageOptions.map((option) => ({
+    key: option.value,
+    label: option.label,
+  }))
+
   return (
     <header className="border-b border-github-border bg-[var(--github-header)]">
       <div className={`${containerClassName} py-4`}>
@@ -105,13 +111,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               checkedChildren={<MoonOutlined />}
               unCheckedChildren={<SunOutlined />}
             />
-            <Select
-              value={language}
-              onChange={onLanguageChange}
-              options={languageOptions}
-              size="small"
-              className="min-w-[120px]"
-            />
+            <Dropdown
+              trigger={['hover']}
+              menu={{
+                items: languageMenuItems,
+                onClick: (info) => onLanguageChange(String(info.key)),
+              }}
+            >
+              <Button type="text" icon={<GlobalOutlined />} className="!text-github-muted" />
+            </Dropdown>
             <Dropdown menu={{ items: plusMenuItems }} placement="bottomRight">
               <Button type="text" icon={<PlusOutlined />} className="!text-github-muted" />
             </Dropdown>

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import DatasetList from './pages/dataset/DatasetList';
 import DatasetDetail from './pages/dataset/DatasetDetail';
+import ProjectOverview from './pages/project/ProjectOverview';
 import WorkspaceRouter from './pages/annotation/WorkspaceRouter';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
@@ -43,9 +44,10 @@ const App: React.FC = () => {
               <Route path="/change-password" element={<ChangePassword />} />
               
               <Route element={<ProtectedLayout />}>
-                <Route path="/" element={<DatasetList />} />
-                <Route path="/datasets" element={<DatasetList />} />
-                <Route path="/datasets/:id" element={<DatasetDetail />} />
+              <Route path="/" element={<DatasetList />} />
+              <Route path="/datasets" element={<DatasetList />} />
+              <Route path="/datasets/:id" element={<DatasetDetail />} />
+              <Route path="/projects" element={<ProjectOverview />} />
                 
                 {/* Workspace still points to legacy dataset logic inside? Maybe need check */}
                 <Route path="/workspace/:datasetId" element={<WorkspaceRouter />} />

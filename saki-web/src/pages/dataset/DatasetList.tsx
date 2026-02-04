@@ -8,13 +8,14 @@ import { useSystemCapabilities, usePermission } from '../../hooks';
 import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { PaginatedList } from '../../components/common/PaginatedList';
 
-const { Title, Paragraph } = Typography;
+const { Paragraph, Text, Title } = Typography;
 const { Option } = Select;
 
 const DatasetList: React.FC = () => {
   const { t } = useTranslation();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showNoMore, setShowNoMore] = useState(false);
   const [form] = Form.useForm();
   const navigate = useNavigate();
   
@@ -47,36 +48,41 @@ const DatasetList: React.FC = () => {
   };
 
   const renderDatasets = useCallback((items: Dataset[], _loading?: boolean) => (
-    <Row gutter={[16, 16]}>
-      {items.map((dataset) => (
-        <Col xs={24} sm={12} md={8} lg={6} key={dataset.id}>
-          <Card
-            hoverable
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <DatabaseOutlined />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{dataset.name}</span>
-              </div>
-            }
-            extra={
-              <Tag color={getDatasetTypeColor(dataset.type)}>
-                {getDatasetTypeLabel(dataset.type)}
-              </Tag>
-            }
-            actions={[
-              <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
-                {t('datasetList.open')}
-              </Button>,
-            ]}
-          >
-            <Paragraph ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
-              {dataset.description || t('datasetList.noDescription')}
-            </Paragraph>
-          </Card>
-        </Col>
-      ))}
-    </Row>
-  ), [getDatasetTypeColor, getDatasetTypeLabel, navigate, t]);
+    <>
+      <Row gutter={[16, 16]}>
+        {items.map((dataset) => (
+          <Col xs={24} sm={12} md={8} lg={6} key={dataset.id}>
+            <Card
+              hoverable
+              title={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <DatabaseOutlined />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{dataset.name}</span>
+                </div>
+              }
+              extra={
+                <Tag color={getDatasetTypeColor(dataset.type)}>
+                  {getDatasetTypeLabel(dataset.type)}
+                </Tag>
+              }
+              actions={[
+                <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
+                  {t('datasetList.open')}
+                </Button>,
+              ]}
+            >
+              <Paragraph ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
+                {dataset.description || t('datasetList.noDescription')}
+              </Paragraph>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+      {showNoMore ? (
+        <div className="mt-4 text-sm text-github-muted text-center">没有更多内容了～</div>
+      ) : null}
+    </>
+  ), [getDatasetTypeColor, getDatasetTypeLabel, navigate, t, showNoMore]);
 
   const emptyFallback = useMemo(() => (
     <Row>
@@ -98,9 +104,9 @@ const DatasetList: React.FC = () => {
   ), [canCreate, t]);
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={2}>{t('datasetList.title')}</Title>
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between mb-6 flex-shrink-0">
+        <Text className="text-sm font-semibold text-github-text">{t('datasetList.title')}</Text>
         {canCreate ? (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
             {t('datasetList.newDataset')}
@@ -114,22 +120,31 @@ const DatasetList: React.FC = () => {
         )}
       </div>
       
-      <PaginatedList<Dataset>
-        fetchData={fetchDatasets}
-        renderItems={(items, loading) => renderDatasets(items, loading)}
-        emptyFallback={emptyFallback}
-        refreshKey={refreshKey}
-        resetPageOnRefresh
-        initialPageSize={8}
-        pageSizeOptions={['8', '12', '20', '32', '50']}
-        paginationProps={{
-          showTotal: (tot, range) => range ? `${range[0]}-${range[1]} ${t('common.of')} ${tot} ${t('common.items')}` : `${tot} ${t('common.items')}`,
-        }}
-        onError={() => message.error(t('datasetList.loadError'))}
-        renderPaginationWrapper={(node) => (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>{node}</div>
-        )}
-      />
+      <div className="flex-1 min-h-0">
+        <PaginatedList<Dataset>
+          fetchData={fetchDatasets}
+          renderItems={(items, loading) => renderDatasets(items, loading)}
+          emptyFallback={emptyFallback}
+          refreshKey={refreshKey}
+          resetPageOnRefresh
+          initialPageSize={8}
+          pageSizeOptions={['8', '12', '20', '32', '50']}
+          paginationProps={{
+            showTotal: (tot, range) => range ? `${range[0]}-${range[1]} ${t('common.of')} ${tot} ${t('common.items')}` : `${tot} ${t('common.items')}`,
+          }}
+          onMetaChange={(meta) => {
+            if (meta.total > 0) {
+              setShowNoMore(meta.offset + meta.size >= meta.total);
+            } else {
+              setShowNoMore(false);
+            }
+          }}
+          onError={() => message.error(t('datasetList.loadError'))}
+          renderPaginationWrapper={(node) => (
+            <div className="mt-auto flex justify-end pt-4">{node}</div>
+          )}
+        />
+      </div>
 
       <Modal
         title={t('datasetList.newDataset')}

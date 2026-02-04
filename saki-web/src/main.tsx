@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { message } from 'antd'
 import App from './App.tsx'
+import { ThemeProvider } from './components/ThemeProvider'
 import './index.css'
 import './i18n'
 
@@ -47,6 +48,8 @@ window.addEventListener('unhandledrejection', (event) => {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   //<React.StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   //</React.StrictMode>,
 )

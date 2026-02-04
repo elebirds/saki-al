@@ -351,7 +351,7 @@ const DatasetDetail: React.FC = () => {
 
   return (
     <div className="flex h-full bg-transparent">
-      <aside className="w-[300px] shrink-0 overflow-y-auto border-r border-github-border bg-white p-5">
+      <aside className="w-[300px] shrink-0 overflow-y-auto border-r border-github-border p-5">
         <Button 
           type="text" 
           icon={<ArrowLeftOutlined />} 

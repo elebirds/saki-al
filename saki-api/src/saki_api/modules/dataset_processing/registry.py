@@ -53,12 +53,12 @@ class ProcessorRegistry(HandlerRegistryMixin):
 
 def register_processor(cls: Type[BaseDatasetProcessor]) -> Type[BaseDatasetProcessor]:
     """Decorator to register a processor class."""
-    return ProcessorRegistry.get_instance().register(cls)
+    return ProcessorRegistry.get_instance().register(cls) # type: ignore
 
 
 def get_processor(system_type: DatasetType) -> BaseDatasetProcessor:
     """Get a processor instance for a dataset type."""
-    return ProcessorRegistry.get_instance().get(system_type)
+    return ProcessorRegistry.get_instance().get(system_type) # type: ignore
 
 
 def discover_processors() -> None:

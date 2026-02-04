@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
     MINIO_BUCKET_NAME: str = "saki-data"
 
+    # Redis (Working Area Cache)
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_KEY_PREFIX: str = "saki"
+    REDIS_WORKING_TTL_SECONDS: int = 86400  # 24 hours
+
     # Security
     SECRET_KEY: str = "YOUR_SUPER_SECRET_KEY_CHANGE_ME_IN_PRODUCTION"
     ALGORITHM: str = "HS256"

@@ -275,6 +275,24 @@ class Branch:
 
 ---
 
+#### 可选能力：标注本人可见（Self Scope）
+
+**定位**: 项目内的细粒度隐私隔离，可按需启用。
+
+**当前策略**: 现阶段不强制启用。项目级隔离（项目克隆 + 独立授权）已满足主要需求。
+
+**扩展实现（预留）**:
+- 权限仍绑定在项目级 `ResourceMember`，使用 `scope=self` 表达“仅本人可见”
+- 查询层根据 scope 追加过滤：`Annotation` / `Draft` → `created_by == current_user`
+- 查询层根据 scope 追加过滤：`Commit` → `created_by == current_user`
+- 查询层根据 scope 追加过滤：`Branch` → scope=self 时仅列出本人创建的分支
+
+**启用后效果**:
+- 适用于外包/竞赛等“同项目内互相隔离”场景
+- 但会降低团队协作可见性，需要明确告知用户
+
+---
+
 ### L3: 训练实验层
 
 #### 7. ALLoop（主动学习闭环）

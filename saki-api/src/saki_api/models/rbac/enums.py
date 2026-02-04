@@ -194,12 +194,19 @@ class Permissions:
     ANNOTATE = "annotation:create:assigned"  # 成员允许：创建/修改标注
     ANNOTATION_READ = "annotation:read:assigned"  # 成员允许：读取标注
     ANNOTATION_DELETE = "annotation:delete:assigned"  # 成员允许：删除标注
+    # Annotation - self scope (reserved)
+    ANNOTATE_SELF = "annotation:create:self"  # 仅本人：创建/修改标注（预留）
+    ANNOTATION_READ_SELF = "annotation:read:self"  # 仅本人：读取标注（预留）
+    ANNOTATION_DELETE_SELF = "annotation:delete:self"  # 仅本人：删除标注（预留）
 
     # ============================================================================
     # Commit Permissions (L2 Layer)
     # ============================================================================
     COMMIT_CREATE = "commit:create:assigned"  # 成员允许：创建 commit（保存标注）
     COMMIT_READ = "commit:read:assigned"  # 成员允许：读取 commit 历史
+    # Commit - self scope (reserved)
+    COMMIT_CREATE_SELF = "commit:create:self"  # 仅本人：创建 commit（预留）
+    COMMIT_READ_SELF = "commit:read:self"  # 仅本人：读取 commit（预留）
 
     # ============================================================================
     # Branch Permissions (L2 Layer)
@@ -207,3 +214,5 @@ class Permissions:
     BRANCH_MANAGE = "branch:manage:assigned"  # 成员允许：创建/删除分支
     BRANCH_READ = "branch:read:assigned"  # 成员允许：读取分支信息
     BRANCH_SWITCH = "branch:switch:assigned"  # 成员允许：切换分支（移动 HEAD 指针）
+    # Branch - self scope (reserved)
+    BRANCH_READ_SELF = "branch:read:self"  # 仅本人：读取分支信息（预留）

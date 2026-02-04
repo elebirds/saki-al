@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends
 
 from saki_api.api.service_deps import LabelServiceDep
 from saki_api.core.rbac.dependencies import require_permission
-from saki_api.core.response import ApiResponse
 from saki_api.models import Permissions, ResourceType
 from saki_api.schemas.label import LabelCreate, LabelRead, LabelUpdate
 
@@ -21,7 +20,7 @@ router = APIRouter()
 # =============================================================================
 
 
-@router.post("/projects/{project_id}/labels", response_model=ApiResponse[LabelRead], dependencies=[
+@router.post("/projects/{project_id}/labels", response_model=LabelRead, dependencies=[
     Depends(require_permission(Permissions.LABEL_MANAGE, ResourceType.PROJECT, "project_id"))
 ])
 async def create_label(
@@ -38,10 +37,10 @@ async def create_label(
     # Ensure label belongs to the project in the URL
     label_in.project_id = project_id
     label = await label_service.create_label(label_in)
-    return ApiResponse(data=LabelRead.model_validate(label))
+    return LabelRead.model_validate(label)
 
 
-@router.get("/projects/{project_id}/labels", response_model=ApiResponse[List[LabelRead]], dependencies=[
+@router.get("/projects/{project_id}/labels", response_model=List[LabelRead], dependencies=[
     Depends(require_permission(Permissions.LABEL_READ, ResourceType.PROJECT, "project_id"))
 ])
 async def list_labels(
@@ -53,10 +52,10 @@ async def list_labels(
     Get all labels for a project, ordered by sort_order.
     """
     labels = await label_service.get_by_project(project_id)
-    return ApiResponse(data=[LabelRead.model_validate(l) for l in labels])
+    return [LabelRead.model_validate(l) for l in labels]
 
 
-@router.get("/labels/{label_id}", response_model=ApiResponse[LabelRead], dependencies=[
+@router.get("/labels/{label_id}", response_model=LabelRead, dependencies=[
     Depends(require_permission(Permissions.LABEL_READ))
 ])
 async def get_label(
@@ -68,10 +67,10 @@ async def get_label(
     Get a label by ID.
     """
     label = await label_service.get_by_id_or_raise(label_id)
-    return ApiResponse(data=LabelRead.model_validate(label))
+    return LabelRead.model_validate(label)
 
 
-@router.put("/labels/{label_id}", response_model=ApiResponse[LabelRead], dependencies=[
+@router.put("/labels/{label_id}", response_model=LabelRead, dependencies=[
     Depends(require_permission(Permissions.LABEL_MANAGE))
 ])
 async def update_label(
@@ -86,10 +85,10 @@ async def update_label(
     Prevents name conflicts within the same project.
     """
     label = await label_service.update_label(label_id, label_in)
-    return ApiResponse(data=LabelRead.model_validate(label))
+    return LabelRead.model_validate(label)
 
 
-@router.delete("/labels/{label_id}", response_model=ApiResponse[None], dependencies=[
+@router.delete("/labels/{label_id}", response_model=None, dependencies=[
     Depends(require_permission(Permissions.LABEL_MANAGE))
 ])
 async def delete_label(
@@ -104,7 +103,6 @@ async def delete_label(
     """
     await label_service.get_by_id_or_raise(label_id)
     await label_service.repository.delete(label_id)
-    return ApiResponse(data=None)
 
 
 # =============================================================================
@@ -112,7 +110,7 @@ async def delete_label(
 # =============================================================================
 
 
-@router.post("/projects/{project_id}/labels/batch", response_model=ApiResponse[List[LabelRead]], dependencies=[
+@router.post("/projects/{project_id}/labels/batch", response_model=List[LabelRead], dependencies=[
     Depends(require_permission(Permissions.LABEL_MANAGE, ResourceType.PROJECT, "project_id"))
 ])
 async def batch_create_labels(
@@ -130,10 +128,10 @@ async def batch_create_labels(
     Auto-assigns sort_order if not provided.
     """
     created = await label_service.batch_create(project_id, labels)
-    return ApiResponse(data=[LabelRead.model_validate(l) for l in created])
+    return [LabelRead.model_validate(l) for l in created]
 
 
-@router.post("/projects/{project_id}/labels/reorder", response_model=ApiResponse[List[LabelRead]], dependencies=[
+@router.post("/projects/{project_id}/labels/reorder", response_model=List[LabelRead], dependencies=[
     Depends(require_permission(Permissions.LABEL_MANAGE, ResourceType.PROJECT, "project_id"))
 ])
 async def reorder_labels(
@@ -149,4 +147,4 @@ async def reorder_labels(
     Example: ["uuid1", "uuid3", "uuid2"]
     """
     reordered = await label_service.reorder(project_id, label_ids)
-    return ApiResponse(data=[LabelRead.model_validate(l) for l in reordered])
+    return [LabelRead.model_validate(l) for l in reordered]

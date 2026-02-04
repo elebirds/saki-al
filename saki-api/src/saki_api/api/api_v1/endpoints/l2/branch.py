@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, Query
 
 from saki_api.api.service_deps import BranchServiceDep
 from saki_api.core.rbac.dependencies import require_permission
-from saki_api.core.response import ApiResponse
 from saki_api.models import Permissions, ResourceType
 from saki_api.schemas.branch import BranchRead, BranchReadMinimal, BranchSwitch
 
@@ -21,7 +20,7 @@ router = APIRouter()
 # =============================================================================
 
 
-@router.get("/projects/{project_id}/branches", response_model=ApiResponse[List[dict]], dependencies=[
+@router.get("/projects/{project_id}/branches", response_model=List[dict], dependencies=[
     Depends(require_permission(Permissions.BRANCH_READ, ResourceType.PROJECT, "project_id"))
 ])
 async def list_branches(
@@ -32,11 +31,10 @@ async def list_branches(
     """
     Get all branches for a project with HEAD commit info.
     """
-    branches = await branch_service.get_project_branches_with_head(project_id)
-    return ApiResponse(data=branches)
+    return await branch_service.get_project_branches_with_head(project_id)
 
 
-@router.get("/projects/{project_id}/branches/minimal", response_model=ApiResponse[List[BranchReadMinimal]],
+@router.get("/projects/{project_id}/branches/minimal", response_model=List[BranchReadMinimal],
             dependencies=[
                 Depends(require_permission(Permissions.BRANCH_READ, ResourceType.PROJECT, "project_id"))
             ])
@@ -49,7 +47,7 @@ async def list_branches_minimal(
     Get all branches for a project in minimal format (for dropdowns).
     """
     branches = await branch_service.get_project_branches(project_id)
-    return ApiResponse(data=[
+    return [
         BranchReadMinimal(
             id=b.id,
             name=b.name,
@@ -57,10 +55,10 @@ async def list_branches_minimal(
             is_protected=b.is_protected,
         )
         for b in branches
-    ])
+    ]
 
 
-@router.get("/branches/{branch_id}", response_model=ApiResponse[BranchRead], dependencies=[
+@router.get("/branches/{branch_id}", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_READ))
 ])
 async def get_branch(
@@ -72,10 +70,10 @@ async def get_branch(
     Get a branch by ID.
     """
     branch = await branch_service.get_by_id_or_raise(branch_id)
-    return ApiResponse(data=BranchRead.model_validate(branch))
+    return BranchRead.model_validate(branch)
 
 
-@router.get("/projects/{project_id}/branches/master", response_model=ApiResponse[BranchRead], dependencies=[
+@router.get("/projects/{project_id}/branches/master", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_READ, ResourceType.PROJECT, "project_id"))
 ])
 async def get_master_branch(
@@ -87,7 +85,7 @@ async def get_master_branch(
     Get the master branch for a project.
     """
     branch = await branch_service.get_master_branch(project_id)
-    return ApiResponse(data=BranchRead.model_validate(branch))
+    return BranchRead.model_validate(branch)
 
 
 # =============================================================================
@@ -95,7 +93,7 @@ async def get_master_branch(
 # =============================================================================
 
 
-@router.post("/projects/{project_id}/branches", response_model=ApiResponse[BranchRead], dependencies=[
+@router.post("/projects/{project_id}/branches", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_MANAGE, ResourceType.PROJECT, "project_id"))
 ])
 async def create_branch(
@@ -117,10 +115,10 @@ async def create_branch(
         from_commit_id=from_commit_id,
         description=description,
     )
-    return ApiResponse(data=BranchRead.model_validate(branch))
+    return BranchRead.model_validate(branch)
 
 
-@router.post("/branches/{branch_id}/switch", response_model=ApiResponse[BranchRead], dependencies=[
+@router.post("/branches/{branch_id}/switch", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_SWITCH))
 ])
 async def switch_branch(
@@ -135,10 +133,10 @@ async def switch_branch(
     Cannot modify protected branches.
     """
     branch = await branch_service.switch_to_commit(branch_id, switch.target_commit_id)
-    return ApiResponse(data=BranchRead.model_validate(branch))
+    return BranchRead.model_validate(branch)
 
 
-@router.put("/branches/{branch_id}", response_model=ApiResponse[BranchRead], dependencies=[
+@router.put("/branches/{branch_id}", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_MANAGE))
 ])
 async def update_branch(
@@ -160,10 +158,10 @@ async def update_branch(
         description=description,
         is_protected=is_protected,
     )
-    return ApiResponse(data=BranchRead.model_validate(branch))
+    return BranchRead.model_validate(branch)
 
 
-@router.delete("/branches/{branch_id}", response_model=ApiResponse[None], dependencies=[
+@router.delete("/branches/{branch_id}", response_model=None, dependencies=[
     Depends(require_permission(Permissions.BRANCH_MANAGE))
 ])
 async def delete_branch(
@@ -177,4 +175,3 @@ async def delete_branch(
     Cannot delete protected branches.
     """
     await branch_service.delete_branch(branch_id)
-    return ApiResponse(data=None)

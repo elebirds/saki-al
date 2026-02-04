@@ -20,6 +20,7 @@ from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l1.sample import Sample
 # Layer 2: Logical Annotation Layer
 from saki_api.models.l2.annotation import Annotation
+from saki_api.models.l2.annotation_draft import AnnotationDraft
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l2.commit import Commit
@@ -57,7 +58,7 @@ __all__ = [
     "Asset", "Sample", "Dataset",
 
     # Layer 2: Logical Annotation Layer
-    "Annotation", "Label",
+    "Annotation", "AnnotationDraft", "Label",
     "Commit", "CommitAnnotationMap",
     "Branch", "Project",
 

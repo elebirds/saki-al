@@ -35,8 +35,8 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 ### 开发状态看板 (Status)
 #### saki-api
 - **L1 (Physical)**: ✅ 完成 (Asset去重, MinIO上传, Sample逻辑封装)
-- **L2 (Logic)**: 🏗️ 开发中 (模型已就绪, **重点任务**: 实现 Git-like 版本切换与事务逻辑)
-- **L3 (Experiment)**: ⏳ 计划中 (模型已定义, **重点任务**: 接入调度器与样本指标排序)
+- **L2 (Logic)**: 🏗️ 开发中 (模型、基础 CRUD 已就绪)
+- **L3 (Experiment)**: ⏳ 计划中 (模型已定义)
 #### saki-runtime
 基本可以视为 0 进度。
 
@@ -82,6 +82,18 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 - - **Job**: 执行单元。**设计契约**：必须记录 `source_commit_id`。
 - - **Metric**: 评估结果。与 Job 关联，记录实验效果。
 - - **Model**: 模型制品。与 Job 关联，记录训练输出。
+
+### 标注流水线协议 (Annotation Pipeline)
+为了平衡实时响应、数据安全与版本严谨性，标注采用三级处理流程：
+1. **Working Area (Redis)**: 
+   - 触发：实时绘图/Sync 计算。
+   - 职责：缓存 OpenCV/LUT 映射结果。支持刷新恢复。
+2. **Staging Area (AnnotationDraft 表)**:
+   - 触发：用户“切图”（下一张）、手动暂存或离开页面。
+   - 职责：将 Redis 中的数据 UPSERT 到数据库草稿表。支持跨设备断点续传。
+3. **Formal Commit (Annotation & CAMap)**:
+   - 触发：用户点击“提交版本”。
+   - 职责：将 Draft 固化为不可变记录。执行后清空对应 Draft。
 
 ## 4. 目录结构
 ```text
@@ -158,6 +170,7 @@ saki/
 - **错误处理**: 使用 AppException 及其预定义子类统一处理业务错误，避免直接抛出 HTTPException。
 - **MVC 分层**: Models (数据结构) / Services (业务逻辑) / API (路由与请求处理)。禁止在 API(Controller)层直接操作数据库 session。如无极端需求，数据库 session 操作均应在 Repository 层完成。大部分的基础 Service 和 Repo 应继承 BaseService 和 BaseRepository，以简化基础 CRUD。
 - **继承与复用**: 优先使用组合而非继承，避免深层次继承链。
+- **自动包装**: 不应该在 endpoints 中直接使用 ApiResponse 包装返回值。ApiResponse 已经在更高层（如中间件或统一响应处理器）进行包装，以保持业务逻辑的纯粹性。
 
 ## 7. 部署
 - 项目包含 `docker-compose.yml` 用于启动 Postgres, MinIO 和相关服务。

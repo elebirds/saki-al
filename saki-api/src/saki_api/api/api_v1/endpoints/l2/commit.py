@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends
 
 from saki_api.api.service_deps import CommitServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
-from saki_api.core.response import ApiResponse
 from saki_api.models import Permissions, ResourceType
 from saki_api.schemas.commit import CommitCreate, CommitDiff, CommitHistoryItem, CommitRead, CommitTree
 
@@ -21,7 +20,7 @@ router = APIRouter()
 # =============================================================================
 
 
-@router.get("/projects/{project_id}/commits", response_model=ApiResponse[List[CommitHistoryItem]], dependencies=[
+@router.get("/projects/{project_id}/commits", response_model=List[CommitHistoryItem], dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ, ResourceType.PROJECT, "project_id"))
 ])
 async def list_commits(
@@ -33,7 +32,7 @@ async def list_commits(
     Get all commits for a project, newest first.
     """
     commits = await commit_service.get_project_commits(project_id)
-    return ApiResponse(data=[
+    return [
         CommitHistoryItem(
             id=c.id,
             message=c.message,
@@ -44,10 +43,10 @@ async def list_commits(
             stats=c.stats,
         )
         for c in commits
-    ])
+    ]
 
 
-@router.get("/projects/{project_id}/commits/tree", response_model=ApiResponse[List[CommitTree]], dependencies=[
+@router.get("/projects/{project_id}/commits/tree", response_model=List[CommitTree], dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ, ResourceType.PROJECT, "project_id"))
 ])
 async def get_commit_tree(
@@ -58,11 +57,10 @@ async def get_commit_tree(
     """
     Get the full commit history as a tree structure.
     """
-    tree = await commit_service.get_commit_tree(project_id)
-    return ApiResponse(data=tree)
+    return await commit_service.get_commit_tree(project_id)
 
 
-@router.get("/commits/{commit_id}", response_model=ApiResponse[CommitRead], dependencies=[
+@router.get("/commits/{commit_id}", response_model=CommitRead, dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ))
 ])
 async def get_commit(
@@ -74,10 +72,10 @@ async def get_commit(
     Get a commit by ID.
     """
     commit = await commit_service.get_by_id_or_raise(commit_id)
-    return ApiResponse(data=CommitRead.model_validate(commit))
+    return CommitRead.model_validate(commit)
 
 
-@router.get("/commits/{commit_id}/history", response_model=ApiResponse[List[CommitHistoryItem]], dependencies=[
+@router.get("/commits/{commit_id}/history", response_model=List[CommitHistoryItem], dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ))
 ])
 async def get_commit_history(
@@ -91,11 +89,10 @@ async def get_commit_history(
 
     Returns commits from oldest to newest.
     """
-    history = await commit_service.get_history(commit_id, depth)
-    return ApiResponse(data=history)
+    return await commit_service.get_history(commit_id, depth)
 
 
-@router.get("/commits/{commit_id}/diff", response_model=ApiResponse[CommitDiff], dependencies=[
+@router.get("/commits/{commit_id}/diff", response_model=CommitDiff, dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ))
 ])
 async def get_commit_diff(
@@ -126,10 +123,10 @@ async def get_commit_diff(
     else:
         diff = await commit_service.get_commits_diff(compare_with_id, commit_id)
 
-    return ApiResponse(data=diff)
+    return diff
 
 
-@router.post("/projects/{project_id}/commits", response_model=ApiResponse[CommitRead], dependencies=[
+@router.post("/projects/{project_id}/commits", response_model=CommitRead, dependencies=[
     Depends(require_permission(Permissions.COMMIT_CREATE, ResourceType.PROJECT, "project_id"))
 ])
 async def create_commit(
@@ -153,4 +150,4 @@ async def create_commit(
         author_id=commit_in.author_id or current_user_id,
         stats=commit_in.stats,
     )
-    return ApiResponse(data=CommitRead.model_validate(commit))
+    return CommitRead.model_validate(commit)

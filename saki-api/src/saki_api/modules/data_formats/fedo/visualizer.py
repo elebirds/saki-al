@@ -9,7 +9,7 @@ import matplotlib
 import numpy as np
 from matplotlib.figure import Figure
 
-from saki_api.modules.annotation.satellite_fedo.enum import FedoView
+from saki_api.modules.data_formats.fedo.enum import FedoView
 
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt

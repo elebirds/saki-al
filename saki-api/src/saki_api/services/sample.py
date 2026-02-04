@@ -19,8 +19,8 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.models.enums import DatasetType
 from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l1.sample import Sample
-from saki_api.modules.annotation.base import UploadContext, ProgressCallback
-from saki_api.modules.annotation.registry import get_handler
+from saki_api.modules.dataset_processing.base import UploadContext, ProgressCallback
+from saki_api.modules.annotation_factory import AnnotationSystemFactory
 from saki_api.repositories.sample import SampleRepository
 from saki_api.schemas.sample import SampleRead
 from saki_api.services.base import BaseService
@@ -45,27 +45,19 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
 
     def _initialize_handler(self, dataset_type: DatasetType):
         """
-        Get and initialize appropriate handler for dataset type.
-        
+        Get annotation system facade for dataset type.
+
         Args:
             dataset_type: Type of dataset
-            
+
         Returns:
-            Initialized handler instance
-            
+            AnnotationSystemFacade instance
+
         Raises:
             BadRequestAppException: If no handler found for dataset type
         """
-        handler = get_handler(dataset_type)
-        if not handler:
-            raise BadRequestAppException(f"No handler found for dataset type: {dataset_type}")
-
-        # Initialize handler with database session for asset operations
-        handler.session = self.session
-        from saki_api.services.asset import AssetService
-        handler.asset_service = AssetService(self.session)
-
-        return handler
+        facade = AnnotationSystemFactory.create_system(dataset_type, self.session)
+        return facade
 
     def _build_upload_context(
             self,
@@ -94,23 +86,23 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
     async def _validate_file(
             self,
             file: UploadFile,
-            handler,
+            facade,
             upload_context: UploadContext
     ):
         """
-        Validate uploaded file using handler.
-        
+        Validate uploaded file using processor.
+
         Args:
             file: Uploaded file
-            handler: Handler instance
+            facade: AnnotationSystemFacade instance
             upload_context: Upload context
-            
+
         Raises:
             BadRequestAppException: If validation fails
         """
         from pathlib import Path
 
-        is_valid, error_msg = handler.validate_file(
+        is_valid, error_msg = facade.dataset_processor.validate_file(
             Path(file.filename or "unknown"),
             upload_context
         )
@@ -121,26 +113,26 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
     async def _process_single_file(
             self,
             file: UploadFile,
-            handler,
+            facade,
             upload_context: UploadContext,
             progress_callback: Optional[ProgressCallback] = None
     ):
         """
-        Process a single file using handler.
-        
+        Process a single file using processor.
+
         Args:
             file: Uploaded file
-            handler: Handler instance
+            facade: AnnotationSystemFacade instance
             upload_context: Upload context
             progress_callback: Optional progress callback for streaming updates
-            
+
         Returns:
-            ProcessResult from handler
-            
+            ProcessResult from processor
+
         Raises:
             BadRequestAppException: If processing fails
         """
-        process_result = await handler.process_upload(
+        process_result = await facade.dataset_processor.process_upload(
             file,
             upload_context,
             progress_callback=progress_callback
@@ -211,8 +203,8 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         created_samples = []
         logger.info(f"Processing {len(files)} files for dataset {dataset.id} (type={dataset.type})")
 
-        # Initialize handler and upload context
-        handler = self._initialize_handler(dataset.type)
+        # Initialize facade and upload context
+        facade = self._initialize_handler(dataset.type)
         upload_context = self._build_upload_context(dataset.id)
 
         # Process each file
@@ -221,10 +213,10 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                 logger.debug(f"Processing file: {file.filename}")
 
                 # Validate file
-                await self._validate_file(file, handler, upload_context)
+                await self._validate_file(file, facade, upload_context)
 
-                # Process file via handler
-                process_result = await self._process_single_file(file, handler, upload_context)
+                # Process file via processor
+                process_result = await self._process_single_file(file, facade, upload_context)
 
                 # Create sample record
                 created_sample = await self._create_sample_from_result(dataset.id, process_result)
@@ -264,18 +256,18 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         """
         logger.info(f"Processing file {file.filename} for dataset {dataset.id} (type={dataset.type})")
 
-        # Initialize handler and upload context
-        handler = self._initialize_handler(dataset.type)
+        # Initialize facade and upload context
+        facade = self._initialize_handler(dataset.type)
         upload_context = self._build_upload_context(dataset.id)
 
         try:
             # Validate file
-            await self._validate_file(file, handler, upload_context)
+            await self._validate_file(file, facade, upload_context)
 
-            # Process file via handler with progress callback
+            # Process file via processor with progress callback
             process_result = await self._process_single_file(
                 file,
-                handler,
+                facade,
                 upload_context,
                 progress_callback=progress_callback
             )

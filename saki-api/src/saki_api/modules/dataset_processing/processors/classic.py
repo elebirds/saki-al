@@ -1,10 +1,12 @@
 """
-Classic annotation system handler.
+Classic dataset processor.
+
 Handles standard image annotation (classification, detection, segmentation).
 
-This is the default handler for most annotation tasks. It provides:
-- Image file upload and processing with asset management
-- Standard annotation sync (pass-through, no special processing)
+This processor:
+- Supports image formats: .jpg, .png, .gif, .bmp, .webp, .tiff
+- File size limit: 50MB
+- Single asset workflow: Uploads one image, returns single asset_id
 """
 
 from pathlib import Path
@@ -14,8 +16,8 @@ from fastapi import UploadFile
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.enums import DatasetType
-from saki_api.modules.annotation.base import (
-    AnnotationSystemHandler,
+from saki_api.modules.dataset_processing.base import (
+    BaseDatasetProcessor,
     EventType,
     ProcessingStage,
     ProcessResult,
@@ -23,25 +25,23 @@ from saki_api.modules.annotation.base import (
     ProgressInfo,
     UploadContext,
 )
-from saki_api.modules.annotation.registry import register_handler
+from saki_api.modules.dataset_processing.registry import register_processor
 
 
-@register_handler
-class ClassicHandler(AnnotationSystemHandler):
+@register_processor
+class ClassicProcessor(BaseDatasetProcessor):
     """
-    Handler for classic image annotation system.
-    
+    Processor for classic image annotation.
+
     Supports standard image formats for:
     - Image classification
     - Object detection (bounding boxes)
     - Image segmentation (polygons)
-    
+
     Processing:
     1. Receives a single image file
     2. Uploads to object storage via AssetService
     3. Returns asset_ids and primary_asset_id for Sample
-    
-    Annotation sync uses default pass-through - no special processing needed.
     """
 
     system_type = DatasetType.CLASSIC
@@ -75,15 +75,15 @@ class ClassicHandler(AnnotationSystemHandler):
     ):
         """
         Upload image file to object storage.
-        
+
         Args:
             file: Uploaded file
             progress_callback: Optional progress callback
             progress: Optional progress info to update
-            
+
         Returns:
             Created Asset record
-            
+
         Raises:
             RuntimeError: If AssetService not initialized
         """
@@ -109,17 +109,17 @@ class ClassicHandler(AnnotationSystemHandler):
     ) -> Dict[str, Any]:
         """
         Extract image metadata from asset metadata.
-        
+
         Args:
             asset_meta: Asset metadata dictionary
             progress_callback: Optional progress callback
             progress: Optional progress info to update
-            
+
         Returns:
             Filtered metadata dictionary
         """
         if progress_callback and progress:
-            progress.update(2, "Extracting metadata", "classic_metadata")
+            progress.update(2, "Extracting metadata", ProcessingStage.CLASSIC_METADATA)
             progress_callback(EventType.PROCESS_PROGRESS, progress)
 
         if not asset_meta:
@@ -139,13 +139,13 @@ class ClassicHandler(AnnotationSystemHandler):
     ) -> ProcessResult:
         """
         Build ProcessResult from uploaded asset.
-        
+
         Args:
             filename: Original filename
             sample_id: Generated sample ID
             asset_id: Uploaded asset ID
             image_meta: Extracted image metadata
-            
+
         Returns:
             ProcessResult with asset information
         """
@@ -173,17 +173,17 @@ class ClassicHandler(AnnotationSystemHandler):
     ) -> ProcessResult:
         """
         Process a classic image file.
-        
+
         For classic annotation:
         1. Upload image to object storage via AssetService
         2. Extract image metadata
         3. Return ProcessResult with asset information
-        
+
         Args:
             file: Uploaded file (UploadFile from FastAPI)
             context: Upload context with dataset info
             progress_callback: Optional progress callback
-            
+
         Returns:
             ProcessResult with asset_ids and primary_asset_id set
         """
@@ -214,7 +214,7 @@ class ClassicHandler(AnnotationSystemHandler):
             )
 
             if progress_callback and progress:
-                progress.update(3, "Complete", "classic_complete")
+                progress.update(3, "Complete", ProcessingStage.CLASSIC_COMPLETE)
                 progress_callback(EventType.PROCESS_PROGRESS, progress)
 
             self.emit(EventType.PROCESS_COMPLETE, {

@@ -14,7 +14,7 @@ from saki_api.core.exceptions import (
     general_exception_handler
 )
 from saki_api.db.session import init_db, dispose_engine
-from saki_api.modules.annotation import init_handlers
+from saki_api.modules.annotation_factory import AnnotationSystemFactory
 
 
 def setup_logging():
@@ -32,14 +32,14 @@ def setup_logging():
 async def lifespan(app: FastAPI):
     """
     应用生命周期管理。
-    
+
     Startup: 初始化数据库表，创建上传目录，初始化annotation handlers
     Shutdown: 优雅关闭数据库连接池
     """
     # Startup
     setup_logging()
     await init_db()
-    init_handlers()  # 初始化annotation handlers
+    AnnotationSystemFactory.discover_all()  # 初始化annotation handlers
 
     yield
 

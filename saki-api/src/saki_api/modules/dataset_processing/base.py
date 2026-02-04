@@ -1,12 +1,13 @@
 """
-Base class for annotation system handlers.
+Base class for dataset processors.
 
-Provides a unified, pluggable architecture for different annotation systems.
-Each handler manages both:
-- Data upload/processing pipeline with asset management
-- Annotation sync/save operations
+Provides a unified interface for processing uploaded files and creating
+dataset samples. Each processor handles a specific dataset type (CLASSIC, FEDO, etc.)
 
-This is the SINGLE handler interface for annotation systems.
+This module is responsible for:
+- Data upload and processing pipeline
+- Asset management (via AssetService)
+- Progress tracking and event emission
 """
 
 import logging
@@ -15,13 +16,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Protocol
 
-from saki_api.models.enums import DatasetType, AnnotationType
+from saki_api.models.enums import DatasetType
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
     from saki_api.services.asset import AssetService
+    from fastapi import UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class EventType(str, Enum):
-    """Events that can be emitted by annotation system handlers."""
+    """Events that can be emitted by dataset processors."""
     # Upload/Processing events
     UPLOAD_START = "upload_start"
     UPLOAD_PROGRESS = "upload_progress"
@@ -40,10 +42,6 @@ class EventType(str, Enum):
     PROCESS_PROGRESS = "process_progress"
     PROCESS_COMPLETE = "process_complete"
     PROCESS_ERROR = "process_error"
-
-    # Annotation events
-    ANNOTATION_SYNC = "annotation_sync"
-    ANNOTATION_SAVE = "annotation_save"
 
 
 class ProcessingStage(str, Enum):
@@ -109,26 +107,6 @@ class ProcessResult:
     primary_asset_id: Optional[str] = None  # Asset ID for display (must be image)
 
 
-@dataclass
-class AnnotationContext:
-    """Context for annotation operations."""
-    sample_id: str
-    dataset_id: str
-    sample_meta: Dict[str, Any] = field(default_factory=dict)
-    annotator_id: Optional[str] = None
-
-
-@dataclass
-class SyncResult:
-    """Result of a single annotation sync action."""
-    success: bool
-    annotation_id: str
-    action: str  # 'create', 'update', 'delete'
-    error: Optional[str] = None
-    # Auto-generated annotations (e.g., FEDO dual-view mapping)
-    generated: List[Dict[str, Any]] = field(default_factory=list)
-
-
 class ProgressCallback(Protocol):
     """Protocol for progress callback functions."""
 
@@ -136,39 +114,39 @@ class ProgressCallback(Protocol):
 
 
 # ============================================================================
-# Base Handler Class
+# Base Processor Class
 # ============================================================================
 
-class AnnotationSystemHandler(ABC):
+class BaseDatasetProcessor(ABC):
     """
-    Abstract base class for annotation system handlers.
-    
-    Each annotation system (CLASSIC, FEDO, etc.) implements this interface
-    to handle the complete lifecycle:
-    
-    1. Upload & Processing:
+    Abstract base class for dataset processors.
+
+    Each dataset type (CLASSIC, FEDO, etc.) implements this interface
+    to handle data upload and processing:
+
+    1. File Upload & Processing:
        - validate_file() - Check if file can be processed
        - process_upload() - Process uploaded file, create sample data
-       
-    2. Annotation Sync (real-time, during annotation session):
-       - on_annotation_create() - Handle new annotation
-       - on_annotation_update() - Handle annotation modification  
-       - on_annotation_delete() - Handle annotation removal
-       
-    3. Batch Save (when user clicks Save):
-       - on_batch_save() - Process annotations before persisting to DB
-    
+
+    2. Asset Management:
+       - Uploads files to object storage via AssetService
+       - Returns asset_ids and primary_asset_id for Sample
+
     Example:
-        @register_handler
-        class FedoHandler(AnnotationSystemHandler):
-            system_type = AnnotationSystemType.FEDO
-            
-            def on_annotation_create(self, ...):
-                # Generate dual-view mapped annotation
-                return SyncResult(success=True, generated=[...])
+        @register_processor
+        class FedoProcessor(BaseDatasetProcessor):
+            system_type = DatasetType.FEDO
+
+            async def process_upload(self, file, context, progress_callback):
+                # Parse, calculate physics, generate visualizations
+                return ProcessResult(
+                    success=True,
+                    asset_ids={"raw_text": "...", "time_energy_image": "..."},
+                    primary_asset_id="...",
+                )
     """
 
-    # Class attribute: which annotation system this handler supports
+    # Class attribute: which dataset type this processor supports
     system_type: DatasetType
 
     def __init__(self, session: Optional["AsyncSession"] = None):
@@ -218,13 +196,13 @@ class AnnotationSystemHandler(ABC):
     @property
     @abstractmethod
     def supported_extensions(self) -> set[str]:
-        """File extensions this handler can process (e.g., {'.jpg', '.png'})."""
+        """File extensions this processor can process (e.g., {'.jpg', '.png'})."""
         pass
 
     def validate_file(self, file_path: Path, context: UploadContext) -> tuple[bool, str]:
         """
         Validate if a file can be processed.
-        
+
         Returns:
             Tuple of (is_valid, error_message)
         """
@@ -240,118 +218,45 @@ class AnnotationSystemHandler(ABC):
         return True, ""
 
     @abstractmethod
-    def process_upload(
+    async def process_upload(
             self,
-            file_path: Path,
+            file: "UploadFile",
             context: UploadContext,
             progress_callback: Optional[ProgressCallback] = None,
     ) -> ProcessResult:
         """
         Process an uploaded file.
-        
+
         Args:
-            file_path: Path to the uploaded file
+            file: Uploaded file (UploadFile from FastAPI)
             context: Upload context with dataset info
             progress_callback: Optional progress callback
-            
+
         Returns:
             ProcessResult with sample fields to save
         """
         pass
 
-    # ==================== Annotation Sync (Real-time) ====================
-
-    def on_annotation_create(
-            self,
-            annotation_id: str,
-            label_id: str,
-            ann_type: AnnotationType,
-            data: Dict[str, Any],
-            extra: Dict[str, Any],
-            context: AnnotationContext,
-    ) -> SyncResult:
-        """
-        Handle annotation creation during real-time sync.
-        
-        Override in subclasses for special processing (e.g., FEDO mapping).
-        Default implementation: pass-through with no extra processing.
-        
-        Args:
-            annotation_id: ID of the new annotation
-            label_id: Label ID
-            ann_type: Annotation type (rect, obb, polygon, etc.)
-            data: Geometry data
-            extra: System-specific extra data
-            context: Annotation context
-            
-        Returns:
-            SyncResult, with 'generated' list for auto-created annotations
-        """
-        return SyncResult(success=True, annotation_id=annotation_id, action="create")
-
-    def on_annotation_update(
-            self,
-            annotation_id: str,
-            label_id: Optional[str],
-            ann_type: Optional[AnnotationType],
-            data: Optional[Dict[str, Any]],
-            extra: Optional[Dict[str, Any]],
-            context: AnnotationContext,
-    ) -> SyncResult:
-        """
-        Handle annotation update during real-time sync.
-        
-        Override in subclasses for special processing.
-        Default implementation: pass-through.
-        """
-        return SyncResult(success=True, annotation_id=annotation_id, action="update")
-
-    def on_annotation_delete(
-            self,
-            annotation_id: str,
-            extra: Dict[str, Any],
-            context: AnnotationContext,
-    ) -> SyncResult:
-        """
-        Handle annotation deletion during real-time sync.
-        
-        Override in subclasses for special processing.
-        Default implementation: pass-through.
-        
-        Returns:
-            SyncResult. For linked annotations (FEDO), include child IDs to delete
-            in the 'generated' field with action='delete'.
-        """
-        return SyncResult(success=True, annotation_id=annotation_id, action="delete")
-
-    # ==================== Batch Save ====================
-
-    def on_batch_save(
-            self,
-            annotations: List[Dict[str, Any]],
-            context: AnnotationContext,
-    ) -> List[Dict[str, Any]]:
-        """
-        Process annotations before batch save to database.
-        
-        Override to modify, validate, or augment annotations.
-        Default implementation: pass-through.
-        
-        Args:
-            annotations: List of annotation dicts to save
-            context: Annotation context
-            
-        Returns:
-            Processed list of annotations
-        """
-        return annotations
-
     # ==================== Utilities ====================
 
     def generate_id(self) -> str:
-        """Generate a unique annotation/sample ID."""
+        """Generate a unique sample ID."""
         return str(uuid.uuid4())
 
     def create_progress(self, total: int, message: str = "") -> ProgressInfo:
         """Create a new ProgressInfo instance."""
         return ProgressInfo(total=total, message=message)
+
+    def _update_progress(
+            self,
+            progress_callback: Optional[ProgressCallback],
+            progress: Optional[ProgressInfo],
+            current: int,
+            message: str,
+            stage: str,
+    ) -> None:
+        """Helper method to update progress if callback is provided."""
+        if not progress_callback or not progress:
+            return
+        progress.update(current, message, stage)
+        progress_callback(EventType.PROCESS_PROGRESS, progress)

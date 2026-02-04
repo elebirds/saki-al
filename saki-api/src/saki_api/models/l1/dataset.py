@@ -13,6 +13,7 @@ from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import DatasetType
+from saki_api.models.user import User
 
 if TYPE_CHECKING:
     from saki_api.models.l1.sample import Sample
@@ -52,6 +53,8 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
         index=True,
         description="Owner of the dataset"
     )
+
+    owner: "User" = Relationship(sa_relationship_kwargs={"viewonly": True})
 
     # Relationship to samples (one-to-many)
     samples: List["Sample"] = Relationship(back_populates="dataset")

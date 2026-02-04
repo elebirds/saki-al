@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result, Card, Typography, Divider } from 'antd';
+import { Table, Button, Modal, Form, Input, Checkbox, message, Space, Popconfirm, Tag, Select, Spin, Tooltip, Result, Card, Typography, Divider, ColorPicker } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { Role, RoleCreate, RoleUpdate, RolePermissionCreate, RoleType } from '../../types';
 import { api } from '../../services/api';
@@ -205,7 +205,7 @@ const RoleManagement: React.FC = () => {
   const handleAdd = () => {
     setEditingRole(null);
     form.resetFields();
-    form.setFieldsValue({ type: 'system', permissions: [] });
+    form.setFieldsValue({ type: 'system', permissions: [], color: 'blue' });
     setIsModalOpen(true);
   };
 
@@ -233,6 +233,7 @@ const RoleManagement: React.FC = () => {
       displayName: role.displayName,
       description: role.description,
       type: role.type,
+      color: role.color || 'blue',
       permissions: role.permissions.map(p => p.permission),
     });
     setIsModalOpen(true);
@@ -280,6 +281,7 @@ const RoleManagement: React.FC = () => {
         const updateData: RoleUpdate = {
           displayName: values.displayName,
           description: values.description,
+          color: values.color,
           permissions: permissionCreates,
         };
         await api.updateRole(editingRole.id, updateData);
@@ -291,6 +293,7 @@ const RoleManagement: React.FC = () => {
           displayName: values.displayName,
           description: values.description,
           type: roleType,
+          color: values.color || 'blue',
           permissions: permissionCreates,
         };
         await api.createRole(createData);
@@ -327,7 +330,7 @@ const RoleManagement: React.FC = () => {
       key: 'displayName',
       render: (text: string, record: Role) => (
         <Space>
-          <Tag color={getRoleColor(record.name)}>{text}</Tag>
+          <Tag color={record.color || 'blue'}>{text}</Tag>
           {record.isSystem && (
             <Tooltip title={t('roleManagement.systemRole')}>
               <LockOutlined style={{ color: '#999' }} />
@@ -507,6 +510,36 @@ const RoleManagement: React.FC = () => {
             label={t('roleManagement.description')}
           >
             <TextArea rows={3} placeholder={t('roleManagement.descriptionPlaceholder')} />
+          </Form.Item>
+          <Form.Item
+            name="color"
+            label={t('roleManagement.color')}
+            rules={[{ required: true, message: t('roleManagement.colorRequired') }]}
+          >
+            <ColorPicker 
+              showText 
+              presets={[
+                {
+                  label: t('roleManagement.recommendedColors'),
+                  colors: [
+                    '#1890ff', // blue
+                    '#52c41a', // green
+                    '#faad14', // gold
+                    '#f5222d', // red
+                    '#722ed1', // purple
+                    '#fa8c16', // orange
+                    '#13c2c2', // cyan
+                    '#eb2f96', // magenta
+                    '#2f54eb', // geekblue
+                    '#fa541c', // volcano
+                  ],
+                },
+              ]}
+              format="hex"
+              onChangeComplete={(color) => {
+                form.setFieldsValue({ color: color.toHexString() });
+              }}
+            />
           </Form.Item>
           <Form.Item
             name="type"

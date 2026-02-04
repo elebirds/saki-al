@@ -279,11 +279,9 @@
     "addMemberSuccess": "Member added successfully",
     "fetchError": "Failed to fetch members",
     "roles": {
-      "owner": "Owner",
-      "manager": "Manager",
-      "annotator": "Annotator",
-      "reviewer": "Reviewer",
-      "viewer": "Viewer"
+      "owner": "Dataset Owner",
+      "manager": "Dataset Manager",
+      "viewer": "Dataset Viewer"
     }
   },
   "workspace": {
@@ -431,6 +429,9 @@
     "name": "Role Name",
     "displayName": "Display Name",
     "description": "Description",
+    "color": "Color",
+    "colorRequired": "Please select a role color!",
+    "recommendedColors": "Recommended Colors",
     "type": "Type",
     "system": "System Role",
     "resource": "Resource Role",

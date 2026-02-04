@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Space, message, Card, Popconfirm, Divider } from 'antd';
+import { Form, Input, Button, Space, message, Card, Popconfirm, Divider, Tabs } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Dataset } from '../../types';
 import { api } from '../../services/api';
 import { DeleteOutlined, SaveOutlined } from '@ant-design/icons';
+import DatasetMembers from './DatasetMembers';
+import { useResourcePermission } from '../../hooks';
 
 interface DatasetSettingsProps {
   dataset: Dataset;
@@ -16,6 +18,11 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('basic');
+
+  // Permission check
+  const { can } = useResourcePermission('dataset', dataset.id);
+  const canManageMembers = can('dataset:assign');
 
   React.useEffect(() => {
     form.setFieldsValue({
@@ -32,9 +39,9 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
         description: values.description,
       });
       onUpdate(updated);
-      message.success(t('datasetSettings.updateSuccess'));
+      message.success(t('datasetSettings.successMessage'));
     } catch (error) {
-      message.error(t('datasetSettings.updateError'));
+      message.error(t('datasetSettings.errorMessage'));
     } finally {
       setLoading(false);
     }
@@ -50,62 +57,79 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
     }
   };
 
+  const tabItems = [
+    {
+      key: 'basic',
+      label: t('datasetSettings.basicInfo'),
+      children: (
+        <Card title={t('datasetSettings.basicInfo')}>
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleSave}
+          >
+            <Form.Item
+              label={t('datasetSettings.datasetName')}
+              name="name"
+              rules={[
+                { required: true, message: t('datasetSettings.nameRequired') },
+                { min: 1, max: 100 },
+              ]}
+            >
+              <Input placeholder={t('datasetSettings.namePlaceholder')} />
+            </Form.Item>
+
+            <Form.Item
+              label={t('datasetSettings.description')}
+              name="description"
+            >
+              <Input.TextArea
+                placeholder={t('datasetSettings.descriptionPlaceholder')}
+                rows={4}
+              />
+            </Form.Item>
+
+            <Form.Item>
+              <Space>
+                <Button type="primary" icon={<SaveOutlined />} htmlType="submit" loading={loading}>
+                  {t('datasetSettings.saveBasicInfo')}
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+
+          <Divider />
+
+          <Card title={t('datasetSettings.dangerZone')} style={{ borderColor: '#ff4d4f' }}>
+            <p>{t('datasetSettings.deleteConfirmDesc')}</p>
+            <Popconfirm
+              title={t('datasetSettings.deleteConfirm')}
+              description={t('datasetSettings.deleteConfirmDesc')}
+              onConfirm={handleDelete}
+              okText={t('common.yes')}
+              cancelText={t('common.no')}
+              okButtonProps={{ danger: true }}
+            >
+              <Button danger icon={<DeleteOutlined />}>
+                {t('datasetSettings.deleteDataset')}
+              </Button>
+            </Popconfirm>
+          </Card>
+        </Card>
+      ),
+    },
+    ...(canManageMembers ? [{
+      key: 'members',
+      label: t('datasetMembers.title'),
+      children: (
+        <DatasetMembers datasetId={dataset.id} ownerId={dataset.ownerId} />
+      ),
+    }] : []),
+  ];
+
   return (
     <div>
-      <Card title={t('datasetSettings.basicInfo')}>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSave}
-        >
-          <Form.Item
-            label={t('datasetSettings.name')}
-            name="name"
-            rules={[
-              { required: true, message: t('datasetSettings.nameRequired') },
-              { min: 1, max: 100 },
-            ]}
-          >
-            <Input placeholder={t('datasetSettings.namePlaceholder')} />
-          </Form.Item>
-
-          <Form.Item
-            label={t('datasetSettings.description')}
-            name="description"
-          >
-            <Input.TextArea
-              placeholder={t('datasetSettings.descriptionPlaceholder')}
-              rows={4}
-            />
-          </Form.Item>
-
-          <Form.Item>
-            <Space>
-              <Button type="primary" icon={<SaveOutlined />} htmlType="submit" loading={loading}>
-                {t('datasetSettings.save')}
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Card>
-
-      <Divider />
-
-      <Card title={t('datasetSettings.dangerZone')} style={{ borderColor: '#ff4d4f' }}>
-        <p>{t('datasetSettings.deleteWarning')}</p>
-        <Popconfirm
-          title={t('datasetSettings.deleteConfirmTitle')}
-          description={t('datasetSettings.deleteConfirmDescription')}
-          onConfirm={handleDelete}
-          okText={t('common.yes')}
-          cancelText={t('common.no')}
-          okButtonProps={{ danger: true }}
-        >
-          <Button danger icon={<DeleteOutlined />}>
-            {t('datasetSettings.delete')}
-          </Button>
-        </Popconfirm>
-      </Card>
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
     </div>
   );
 };

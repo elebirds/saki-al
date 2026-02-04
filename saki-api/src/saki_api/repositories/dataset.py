@@ -7,6 +7,8 @@ from typing import List
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from saki_api.core.rbac import PermissionChecker
+from saki_api.models import ResourceType, Permissions
 from saki_api.models.l1.dataset import Dataset
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
@@ -40,3 +42,17 @@ class DatasetRepository(BaseRepository[Dataset]):
         if not dataset:
             return False
         return dataset.owner_id == user_id
+
+    async def list_in_permission(self, user_id: uuid.UUID, pagination: Pagination | None) -> List[Dataset]:
+        statement = self.list_statement(pagination=pagination)
+        checker = PermissionChecker(self.session)
+        filtered_stmt = await checker.filter_accessible_resources(
+            user_id=user_id,
+            resource_type=ResourceType.DATASET,
+            required_permission=Permissions.DATASET_READ,
+            base_query=statement,
+            get_owner_id_column=lambda: Dataset.owner_id,
+            resource_model=Dataset,
+        )
+        result = await self.session.exec(filtered_stmt)
+        return list(result.all())

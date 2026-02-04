@@ -49,6 +49,15 @@ class RoleBase(RoleCanModifyBase):
         default=RoleType.RESOURCE,
         description="Role type: system (global) or resource (per-resource)"
     )
+    color: str = Field(
+        default="blue",
+        max_length=50,
+        description="Role display color (used for UI tags and badges)"
+    )
+    is_supremo: bool = Field(
+        default=False,
+        description="Whether this is the highest leader in a resource."
+    )
 
 
 class RoleMetadata(SQLModel):

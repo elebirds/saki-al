@@ -23,7 +23,7 @@ window.addEventListener('unhandledrejection', (event) => {
       errorMessage = event.reason
     }
     // 如果是对象，尝试提取 message 或 detail
-    else if (typeof event.reason === 'object' && event.reason !== null) {
+    else if (typeof event.reason === 'object') {
       errorMessage = event.reason.message || event.reason.detail || errorMessage
     }
   }

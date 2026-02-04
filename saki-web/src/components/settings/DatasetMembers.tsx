@@ -1,19 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Select, message, Space, Popconfirm, Tag, Typography, Spin } from 'antd';
 import { UserAddOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { ResourceMember } from '../../types';
+import {ResourceMember, RoleInfo} from '../../types';
 import { api } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useResourcePermission, usePermission } from '../../hooks';
 
 const { Title } = Typography;
-
-interface AvailableRole {
-  id: string;
-  name: string;
-  displayName: string;
-  description?: string;
-}
 
 interface UserListItem {
   id: string;
@@ -30,7 +23,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
   const { t } = useTranslation();
   const [members, setMembers] = useState<ResourceMember[]>([]);
   const [users, setUsers] = useState<UserListItem[]>([]);
-  const [availableRoles, setAvailableRoles] = useState<AvailableRole[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<RoleInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -130,19 +123,6 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
     }
   };
 
-  // Role colors based on role name
-  const getRoleColor = (roleName?: string): string => {
-    const colors: Record<string, string> = {
-      'dataset_owner': 'gold',
-      'dataset_manager': 'blue',
-      'dataset_annotator': 'green',
-      'dataset_reviewer': 'cyan',
-      'dataset_viewer': 'default',
-      'dataset_senior_annotator': 'lime',
-    };
-    return colors[roleName || ''] || 'default';
-  };
-
   // Get member user IDs to filter available users
   const memberUserIds = new Set(members.map(m => m.userId));
 
@@ -164,7 +144,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
       title: t('common.role'),
       key: 'role',
       render: (_: any, record: ResourceMember) => (
-        <Tag color={getRoleColor(record.roleName)}>
+        <Tag color={record.roleColor || 'blue'}>
           {record.roleDisplayName || record.roleName || '-'}
         </Tag>
       ),
@@ -266,19 +246,15 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
               <Select placeholder={t('datasetMembers.selectRole')}>
                 {availableRoles
                   .filter(role => {
-                    // Don't show owner role when editing (owner can't be changed)
-                    if (editingMember && role.name === 'dataset_owner') return false;
-                    return true;
+                    return !role.isSupremo;
                   })
                   .map(role => (
                     <Select.Option key={role.id} value={role.id}>
                       <div>
                         <span>{role.displayName}</span>
-                        {role.description && (
-                          <span style={{ color: '#999', fontSize: 12, marginLeft: 8 }}>
-                            {role.description}
-                          </span>
-                        )}
+                        <span style={{ color: '#999', fontSize: 12, marginLeft: 8 }}>
+                          {role.description}
+                        </span>
                       </div>
                     </Select.Option>
                   ))}

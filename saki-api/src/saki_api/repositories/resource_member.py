@@ -3,12 +3,15 @@ Resource Member Repository - Data access layer for ResourceMember operations.
 """
 
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Any
 
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from saki_api.db.transaction import transactional
 from saki_api.models.rbac.enums import ResourceType
 from saki_api.models.rbac.resource_member import ResourceMember
+from saki_api.models.rbac.role import Role
 from saki_api.repositories.base import BaseRepository
 
 
@@ -50,7 +53,7 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
             resource_type: Optional[ResourceType] = None,
     ) -> List[ResourceMember]:
         """Get all resource memberships for a user, optionally filtered by resource type."""
-        filters = [ResourceMember.user_id == user_id]
+        filters: List[Any] = [ResourceMember.user_id == user_id]
         if resource_type:
             filters.append(ResourceMember.resource_type == resource_type)
         return await self.list(filters=filters)
@@ -92,13 +95,10 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
         Returns:
             Role object if user is a member, None otherwise
         """
-        from saki_api.models.rbac.role import Role
-        from sqlmodel import select
-
         # Single SQL query with JOIN to get role directly
         statement = (
             select(Role)
-            .join(ResourceMember, Role.id == ResourceMember.role_id)
+            .join(ResourceMember)
             .where(
                 ResourceMember.user_id == user_id,
                 ResourceMember.resource_type == resource_type,
@@ -107,3 +107,33 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
         )
         result = await self.session.exec(statement)
         return result.first()
+
+    @transactional
+    async def assign_role(
+            self,
+            resource_type: ResourceType,
+            resource_id: uuid.UUID,
+            user_id: uuid.UUID,
+            role_id: uuid.UUID,
+    ) -> ResourceMember:
+        """
+        Assign a role to a user for a resource.
+        
+        This is used when creating new resource member assignments or changing roles.
+        
+        Args:
+            resource_type: Type of resource (e.g., ResourceType.DATASET)
+            resource_id: The resource's ID
+            user_id: The user ID to assign the role to
+            role_id: The ID of the role to assign
+            
+        Returns:
+            The created or updated ResourceMember entry
+        """
+        member = ResourceMember(
+            resource_type=resource_type,
+            resource_id=resource_id,
+            user_id=user_id,
+            role_id=role_id,
+        )
+        return await self.create(member.model_dump())

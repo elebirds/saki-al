@@ -280,11 +280,9 @@
     "addMemberSuccess": "成员添加成功",
     "fetchError": "获取成员列表失败",
     "roles": {
-      "owner": "所有者",
-      "manager": "管理员",
-      "annotator": "标注员",
-      "reviewer": "审核员",
-      "viewer": "查看者"
+      "owner": "数据集所有者",
+      "manager": "数据集管理员",
+      "viewer": "数据集查看者"
     }
   },
   "workspace": {
@@ -432,6 +430,9 @@
     "name": "角色名称",
     "displayName": "显示名称",
     "description": "描述",
+    "color": "颜色",
+    "colorRequired": "请选择角色颜色！",
+    "recommendedColors": "推荐颜色",
     "type": "类型",
     "system": "系统角色",
     "resource": "资源角色",

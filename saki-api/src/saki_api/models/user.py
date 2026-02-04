@@ -9,11 +9,11 @@ from typing import Optional, List, TYPE_CHECKING
 
 from sqlmodel import Field, SQLModel, Relationship
 
-from saki_api.models import Role
 from saki_api.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from saki_api.models.rbac import ResourceMember
+    from saki_api.models import Role
 
 
 class UserBase(SQLModel):

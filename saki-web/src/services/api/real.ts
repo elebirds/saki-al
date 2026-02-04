@@ -6,10 +6,11 @@ import {
   Role, RoleCreate, RoleUpdate, RoleType,
   UserSystemRole, UserSystemRoleAssign,
   SystemPermissions, ResourcePermissions,
+  ResourceMember, ResourceMemberCreate, ResourceMemberUpdate,
   // L1 types
   Dataset, DatasetCreate, DatasetUpdate,
   Sample,
-  AvailableTypesResponse,
+  AvailableTypesResponse, RoleInfo,
 } from '../../types';
 import { ApiService } from './interface';
 import { useAuthStore } from '../../store/authStore';
@@ -503,9 +504,8 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
-  async createDataset(dataset: DatasetCreate): Promise<Dataset> {
-    const response = await this.client.post<Dataset>('/datasets', dataset);
-    return response.data;
+  async createDataset(dataset: DatasetCreate): Promise<void> {
+    await this.client.post<Dataset>('/datasets', dataset);
   }
 
   async updateDataset(id: string, dataset: Partial<DatasetUpdate>): Promise<Dataset> {
@@ -546,6 +546,37 @@ export class RealApiService implements ApiService {
     const response = await this.client.get(`/datasets/${id}/export`, {
       params: { format, include_unlabeled: includeUnlabeled }
     });
+    return response.data;
+  }
+
+  // ==========================================================================
+  // Dataset Member Management APIs
+  // ==========================================================================
+
+  async getDatasetMembers(datasetId: string): Promise<ResourceMember[]> {
+    const response = await this.client.get<ResourceMember[]>(`/datasets/${datasetId}/members`);
+    return response.data;
+  }
+
+  async addDatasetMember(datasetId: string, member: ResourceMemberCreate): Promise<ResourceMember> {
+    const response = await this.client.post<ResourceMember>(`/datasets/${datasetId}/members`, member);
+    return response.data;
+  }
+
+  async updateDatasetMemberRole(datasetId: string, userId: string, member: ResourceMemberUpdate): Promise<ResourceMember> {
+    const response = await this.client.put<ResourceMember>(`/datasets/${datasetId}/members/${userId}`, member);
+    return response.data;
+  }
+
+  async removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }> {
+    const response = await this.client.delete<{ ok: boolean; message: string }>(
+      `/datasets/${datasetId}/members/${userId}`
+    );
+    return response.data;
+  }
+
+  async getAvailableDatasetRoles(datasetId: string): Promise<RoleInfo[]> {
+    const response = await this.client.get<RoleInfo[]>(`/datasets/${datasetId}/available-roles`);
     return response.data;
   }
 

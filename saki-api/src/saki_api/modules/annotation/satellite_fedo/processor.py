@@ -91,6 +91,7 @@ class FedoProcessor:
     4. Generate visualization images
     5. Generate coordinate lookup table
     """
+
     def process_data(
             self,
             df,

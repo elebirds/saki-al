@@ -146,16 +146,12 @@ class Permissions:
     DATASET_READ_ALL = "dataset:read:all"  # 全局允许：读取数据集信息
     DATASET_UPDATE_ALL = "dataset:update:all"  # 全局允许：修改数据集信息
     DATASET_DELETE_ALL = "dataset:delete:all"  # 全局允许：删除数据集
-    DATASET_ASSIGN_ALL = "dataset:assign:all"  # 全局允许：分配数据集权限给用户
-    DATASET_EXPORT_ALL = "dataset:export:all"  # 全局允许：导出数据集
-    DATASET_IMPORT_ALL = "dataset:import:all"  # 全局允许：导入数据集
+    DATASET_ASSIGN_ALL = "dataset:assign:all"  # 全局允许：管理数据集成员和权限
     # Dataset - assigned scope
     DATASET_READ = "dataset:read:assigned"  # 成员允许：读取数据集信息
     DATASET_UPDATE = "dataset:update:assigned"  # 成员允许：修改数据集信息
     DATASET_DELETE = "dataset:delete:assigned"  # 成员允许：删除数据集（应该永远不分配此权限）
-    DATASET_ASSIGN = "dataset:assign:assigned"  # 成员允许：分配数据集权限给用户
-    DATASET_EXPORT = "dataset:export:assigned"  # 成员允许：导出数据集
-    DATASET_IMPORT = "dataset:import:assigned"  # 成员允许：导入数据集
+    DATASET_ASSIGN = "dataset:assign:assigned"  # 成员允许：管理数据集成员和权限
 
     # ============================================================================
     # Sample Permissions
@@ -170,30 +166,3 @@ class Permissions:
     SAMPLE_CREATE = "sample:create:assigned"  # 成员允许：新建样本（即，上传样本）
     SAMPLE_UPDATE = "sample:update:assigned"  # 成员允许：更新样本（即，更新样本信息）
     SAMPLE_DELETE = "sample:delete:assigned"  # 成员允许：删除样本（即，删除样本）
-
-    # ============================================================================
-    # Label Permissions
-    # ============================================================================
-    # Label - global scope
-    LABEL_READ_ALL = "label:read:all"  # 全局允许：读取标签信息
-    LABEL_CREATE_ALL = "label:create:all"  # 全局允许：新建标签
-    LABEL_UPDATE_ALL = "label:update:all"  # 全局允许：更新标签
-    LABEL_DELETE_ALL = "label:delete:all"  # 全局允许：删除标签
-    # Label - assigned scope
-    LABEL_READ = "label:read:assigned"  # 成员允许：读取标签信息
-    LABEL_CREATE = "label:create:assigned"  # 成员允许：新建标签
-    LABEL_UPDATE = "label:update:assigned"  # 成员允许：更新标签
-    LABEL_DELETE = "label:delete:assigned"  # 成员允许：删除标签
-
-    # ============================================================================
-    # Annotation Permissions
-    # ============================================================================
-    # Annotation - global scope
-    ANNOTATION_READ_ALL = "annotation:read:all"  # 全局允许：读取标注信息
-    ANNOTATION_MODIFY_ALL = "annotation:modify:all"  # 全局允许：修改标注信息
-    # Annotation - assigned scope
-    ANNOTATION_READ = "annotation:read:assigned"  # 成员允许：读取标注信息
-    ANNOTATION_MODIFY = "annotation:modify:assigned"  # 成员允许：修改标注信息
-    # Annotation - self scope
-    ANNOTATION_READ_SELF = "annotation:read:self"  # 自己允许：读取标注信息
-    ANNOTATION_MODIFY_SELF = "annotation:modify:self"  # 自己允许：修改标注信息

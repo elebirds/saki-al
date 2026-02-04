@@ -14,7 +14,7 @@ import {
   PermissionIndex,
   parsePermission,
   Scope,
-} from '../types/permission';
+} from '../types';
 
 // Cache expiration time (5 minutes)
 const CACHE_EXPIRATION_MS = 5 * 60 * 1000;

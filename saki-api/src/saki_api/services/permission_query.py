@@ -58,11 +58,7 @@ class PermissionQueryService:
         is_super_admin = False
         permissions: set[str] = set()
         for each in await self.user_role_repo.get_system_roles(user_id, datetime.utcnow()):
-            system_roles.append(RoleReadMinimal(
-                id=each.id,
-                name=each.name,
-                display_name=each.display_name,
-            ))
+            system_roles.append(RoleReadMinimal.model_validate(each))
             is_super_admin |= each.is_super_admin
             permissions.update(await self.permission_service.get_role_permissions(each.id))
 
@@ -110,11 +106,7 @@ class PermissionQueryService:
         if member:
             role = await self.role_repo.get_by_id(member.role_id)
             if role:
-                resource_role = RoleReadMinimal(
-                    id=role.id,
-                    name=role.name,
-                    display_name=role.display_name,
-                )
+                resource_role = RoleReadMinimal.model_validate(role)
 
         # Get resource permissions only - use repository directly with ResourceType enum
         resource_permissions = await self.permission_repo.get_user_resource_permissions(

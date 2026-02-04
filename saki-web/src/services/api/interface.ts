@@ -1,6 +1,6 @@
 import {
   // Auth types
-  User, LoginResponse, 
+  User, LoginResponse,
   // System types
   AvailableTypesResponse,
   // Permission types
@@ -11,7 +11,7 @@ import {
   // Dataset types
   Dataset, DatasetCreate, DatasetUpdate,
   // Sample types
-  Sample,
+  Sample, RoleInfo,
 } from '../../types';
 
 
@@ -68,7 +68,7 @@ export interface ApiService {
   // ============================================================================
   getDatasets(): Promise<Dataset[]>;
   getDataset(id: string): Promise<Dataset | undefined>;
-  createDataset(dataset: DatasetCreate): Promise<Dataset>;
+  createDataset(dataset: DatasetCreate): Promise<void>;
   updateDataset(id: string, dataset: Partial<DatasetUpdate>): Promise<Dataset>;
   deleteDataset(id: string): Promise<void>;
   getDatasetStats(id: string): Promise<{
@@ -82,6 +82,15 @@ export interface ApiService {
     memberCount: number;
   }>;
   exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any>;
+  
+  // ============================================================================
+  // Dataset Members APIs
+  // ============================================================================
+  getDatasetMembers(datasetId: string): Promise<ResourceMember[]>;
+  addDatasetMember(datasetId: string, member: ResourceMemberCreate): Promise<ResourceMember>;
+  updateDatasetMemberRole(datasetId: string, userId: string, member: ResourceMemberUpdate): Promise<ResourceMember>;
+  removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }>;
+  getAvailableDatasetRoles(datasetId: string): Promise<RoleInfo[]>;
   
   // ============================================================================
   // Sample APIs

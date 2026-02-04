@@ -68,6 +68,9 @@ export interface RoleInfo {
   id: string;
   name: string;
   displayName: string;
+  description: string;
+  color: string;
+  isSupremo: boolean;
 }
 
 export interface Role {
@@ -77,9 +80,12 @@ export interface Role {
   description?: string;
   type: RoleType;
   parentId?: string;
+  isSuperAdmin: boolean;
   isSystem: boolean;
   isDefault: boolean;
+  isSupremo: boolean;
   sortOrder: number;
+  color: string;
   createdAt: string;
   updatedAt?: string;
   permissions: RolePermission[];
@@ -96,6 +102,7 @@ export interface RoleCreate {
   displayName: string;
   description?: string;
   type: RoleType;
+  color: string;
   parentId?: string;
   permissions: RolePermissionCreate[];
 }
@@ -108,6 +115,7 @@ export interface RolePermissionCreate {
 export interface RoleUpdate {
   displayName?: string;
   description?: string;
+  color?: string;
   parentId?: string;
   sortOrder?: number;
   permissions?: RolePermissionCreate[];
@@ -150,6 +158,7 @@ export interface ResourceMember {
   userFullName?: string;
   roleName?: string;
   roleDisplayName?: string;
+  roleColor?: string;
 }
 
 export interface ResourceMemberCreate {

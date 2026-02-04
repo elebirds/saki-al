@@ -222,12 +222,12 @@ async def list_samples(
         pagination=Pagination(offset=offset, limit=limit),
         order_by=[order_clause],
     )
-    
+
     result = []
     for sample in samples:
         sample_dict = sample.model_dump() if hasattr(sample, 'model_dump') else sample.__dict__
         sample_read = SampleRead.model_validate(sample_dict)
-        
+
         # Add presigned URL for primary asset if set
         if sample.primary_asset_id:
             try:
@@ -235,9 +235,9 @@ async def list_samples(
                 sample_read.primary_asset_url = primary_asset_url
             except Exception as e:
                 logger.warning(f"Failed to get presigned URL for asset {sample.primary_asset_id}: {str(e)}")
-        
+
         result.append(sample_read)
-    
+
     return result
 
 

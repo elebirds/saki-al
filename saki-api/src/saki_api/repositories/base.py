@@ -8,8 +8,10 @@ import uuid
 from typing import TypeVar, Generic, Optional, List, Type, Any, Dict
 
 from sqlalchemy import exists
+from sqlalchemy.orm import joinedload
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlmodel.sql._expression_select_cls import SelectOfScalar
 
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.repositories.query import Pagination, FilterType, OrderByType
@@ -84,13 +86,15 @@ class BaseRepository(Generic[ModelType]):
 
     async def get_one(
             self,
-            filters: FilterType = None
+            filters: FilterType = None,
+            joinedloads: List[Any] = None,
     ) -> Optional[ModelType]:
         """
         Get one record.
 
         Args:
             filters: Optional dictionary of field filters
+            joinedloads: Optional list of SQLAlchemy early loading records
 
         Returns:
             List of records
@@ -99,19 +103,25 @@ class BaseRepository(Generic[ModelType]):
 
         if filters: statement = statement.where(*filters)
 
+        if joinedloads:
+            for jl in joinedloads:
+                statement = statement.options(joinedload(jl))
+
         result = await self.session.exec(statement)
         # 使用 .first() 只取一条，即使匹配多条也只返回第一条
         return result.first()
 
     async def get_one_or_raise(
             self,
-            filters: FilterType = None
+            filters: FilterType = None,
+            joinedloads: List[Any] = None,
     ) -> ModelType:
         """
         Get one record or raise NotFoundAppException.
         
         Args:
             filters: Optional dictionary of field filters
+            joinedloads: Optional list of SQLAlchemy early loading records
             
         Returns:
             The record
@@ -119,7 +129,7 @@ class BaseRepository(Generic[ModelType]):
         Raises:
             NotFoundAppException: If record not found
         """
-        record = await self.get_one(filters)
+        record = await self.get_one(filters, joinedloads)
         if not record:
             filter_str = f" with filters {filters}" if filters else ""
             raise NotFoundAppException(
@@ -127,11 +137,43 @@ class BaseRepository(Generic[ModelType]):
             )
         return record
 
+    def list_statement(
+            self,
+            pagination: Pagination | None = None,
+            filters: FilterType | None = None,
+            order_by: OrderByType | None = None,
+            joinedloads: List[Any] | None = None,
+    ) -> SelectOfScalar:
+        """
+        List records with pagination, filtering, and ordering.
+
+        Can be called either with a ListQuery object or with keyword arguments.
+
+        Args:
+            pagination: Optional Pagination object (defaults to Pagination())
+            filters: Optional list of SQLAlchemy where clause expressions
+            order_by: Optional list of SQLAlchemy order by expressions
+            joinedloads: Optional list of SQLAlchemy early loading records
+
+        Returns:
+            List of records
+        """
+        statement = select(self.model)
+        if filters: statement = statement.where(*filters)
+        if order_by: statement = statement.order_by(*order_by)
+        if joinedloads:
+            for jl in joinedloads:
+                statement = statement.options(joinedload(jl))
+        if pagination:
+            statement = statement.offset(pagination.offset).limit(pagination.limit)
+        return statement
+
     async def list(
             self,
-            pagination: Pagination = Pagination(),
-            filters: FilterType = None,
-            order_by: OrderByType = None,
+            pagination: Pagination | None = None,
+            filters: FilterType | None = None,
+            order_by: OrderByType | None = None,
+            joinedloads: List[Any] | None = None,
     ) -> List[ModelType]:
         """
         List records with pagination, filtering, and ordering.
@@ -142,15 +184,12 @@ class BaseRepository(Generic[ModelType]):
             pagination: Optional Pagination object (defaults to Pagination())
             filters: Optional list of SQLAlchemy where clause expressions
             order_by: Optional list of SQLAlchemy order by expressions
+            joinedloads: Optional list of SQLAlchemy early loading records
             
         Returns:
             List of records
         """
-        statement = select(self.model)
-        if filters: statement = statement.where(*filters)
-        if order_by: statement = statement.order_by(*order_by)
-        statement = statement.offset(pagination.offset).limit(pagination.limit)
-        result = await self.session.exec(statement)
+        result = await self.session.exec(self.list_statement(pagination, filters, order_by, joinedloads))
         return list(result.all())
 
     async def create(self, data: Dict[str, Any]) -> ModelType:

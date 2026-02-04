@@ -1,6 +1,6 @@
 from datetime import datetime
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
 from saki_api.models.l1.sample import SampleBase
 

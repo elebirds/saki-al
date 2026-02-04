@@ -2,6 +2,7 @@ export interface RoleInfoMinimal {
   id: string;
   name: string;
   displayName: string;
+  color?: string;
 }
 
 export interface User {

@@ -160,8 +160,6 @@ const ProtectedLayout: React.FC = () => {
       userMenuItems={userMenuItems}
       onUserMenuClick={handleUserMenuClick}
       footerText={t('app.footer')}
-      headerVariant={isProjectPage ? 'project' : 'menu'}
-      showMenuButton={isProjectPage}
       projectTabs={
         isProjectPage ? (
           <RepoTabs items={projectTabItems} activeKey={activeProjectTab} onItemClick={() => {}} />

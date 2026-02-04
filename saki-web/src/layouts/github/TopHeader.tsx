@@ -5,7 +5,6 @@ import {
   BellOutlined,
   DownOutlined,
   GithubOutlined,
-  MenuOutlined,
   MoonOutlined,
   PlusOutlined,
   SunOutlined,
@@ -27,8 +26,6 @@ export type TopHeaderProps = {
   language: string
   languageOptions: { value: string; label: string }[]
   onLanguageChange: (lng: string) => void
-  showMenuButton?: boolean
-  onMenuButtonClick?: () => void
   userName?: string
   userMenuItems: MenuProps['items']
   onUserMenuClick: MenuProps['onClick']
@@ -53,8 +50,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   language,
   languageOptions,
   onLanguageChange,
-  showMenuButton = false,
-  onMenuButtonClick,
   userName,
   userMenuItems,
   onUserMenuClick,
@@ -64,14 +59,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       <div className={`${containerClassName} py-4`}>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
           <div className="flex items-center gap-4 justify-self-start">
-            {showMenuButton ? (
-              <Button
-                type="text"
-                icon={<MenuOutlined />}
-                onClick={onMenuButtonClick}
-                className="!text-github-text"
-              />
-            ) : null}
             <div className="flex items-center gap-3">
               <GithubOutlined className="text-github-text text-2xl" />
               <div className="flex items-center gap-1 text-sm">

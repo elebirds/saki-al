@@ -1,7 +1,6 @@
 import React from 'react'
 import type { MenuProps } from 'antd'
 import { useThemeMode } from '../../components/ThemeProvider'
-import { SideDrawerMenu } from './SideDrawerMenu'
 import { TopHeader } from './TopHeader'
 import type { NavItem } from './types'
 
@@ -20,8 +19,6 @@ export type AppShellProps = {
   onUserMenuClick: MenuProps['onClick']
   footerText?: string
   showHeader?: boolean
-  headerVariant?: 'menu' | 'project'
-  showMenuButton?: boolean
   projectTabs?: React.ReactNode
   contentClassName?: string
   headerContainerClassName?: string
@@ -44,15 +41,12 @@ export const AppShell: React.FC<AppShellProps> = ({
   onUserMenuClick,
   footerText,
   showHeader = true,
-  headerVariant = 'menu',
-  showMenuButton = false,
   projectTabs,
   contentClassName = 'max-w-[1280px] mx-auto px-6 py-6 h-full flex flex-col',
   headerContainerClassName = 'w-full px-6',
   contentCardClassName = 'bg-github-panel rounded-md p-6 h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]',
   children,
 }) => {
-  const [drawerOpen, setDrawerOpen] = React.useState(false)
   const { themeMode, setThemeMode } = useThemeMode()
 
   return (
@@ -65,28 +59,16 @@ export const AppShell: React.FC<AppShellProps> = ({
           menuItems={navItems}
           activeMenuKey={activeNavKey}
           onMenuItemClick={onNavItemClick}
-          showHorizontalMenu={headerVariant === 'menu'}
+          showHorizontalMenu
           containerClassName={headerContainerClassName}
           themeMode={themeMode}
           onThemeModeChange={setThemeMode}
           language={language}
           languageOptions={languageOptions}
           onLanguageChange={onLanguageChange}
-          showMenuButton={showMenuButton}
-          onMenuButtonClick={() => setDrawerOpen(true)}
           userName={userName}
           userMenuItems={userMenuItems}
           onUserMenuClick={onUserMenuClick}
-        />
-      ) : null}
-
-      {showMenuButton ? (
-        <SideDrawerMenu
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          items={navItems}
-          activeKey={activeNavKey}
-          onItemClick={onNavItemClick}
         />
       ) : null}
 

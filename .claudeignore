@@ -1,0 +1,52 @@
+# Python 虚拟环境和缓存
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# 前端构建和依赖
+node_modules/
+dist/
+*.tsbuildinfo
+.eslintcache
+
+# 数据和数据库文件 (PostgreSQL, MinIO 数据)
+data/
+*.log
+*.db
+*.sqlite
+
+# IDE 和编辑器配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.env.local
+
+# Docker 相关
+.dockerignore
+docker-compose.override.yml
+
+# Git
+.git/
+.gitignore
+
+# 构建临时文件
+*.tmp
+.cache/
+
+# 第三方库文件不包含在扫描中
+*.lock
+.eslintignore
+.prettierignore

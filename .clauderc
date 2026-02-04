@@ -1,0 +1,20 @@
+{
+  "project_name": "Saki",
+  "ignore_patterns": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/data/**"
+  ],
+  "commands": {
+    "build:web": "cd saki-web && npm run build",
+    "build:api": "cd saki-api && uv build",
+    "install:api": "cd saki-api && uv sync",
+    "install:web": "cd saki-web && npm install",
+    "run:api": "cd saki-api && make run",
+    "run:web": "cd saki-web && npm run dev"
+  },
+  "autoApprove": [
+    "ls",
+    "cat"
+  ]
+}

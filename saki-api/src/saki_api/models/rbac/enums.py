@@ -166,3 +166,44 @@ class Permissions:
     SAMPLE_CREATE = "sample:create:assigned"  # 成员允许：新建样本（即，上传样本）
     SAMPLE_UPDATE = "sample:update:assigned"  # 成员允许：更新样本（即，更新样本信息）
     SAMPLE_DELETE = "sample:delete:assigned"  # 成员允许：删除样本（即，删除样本）
+
+    # ============================================================================
+    # Project Permissions (L2 Layer)
+    # ============================================================================
+    # Project - global scope
+    PROJECT_CREATE_ALL = "project:create:all"  # 全局允许：新建项目
+    PROJECT_READ_ALL = "project:read:all"  # 全局允许：读取项目信息
+    PROJECT_UPDATE_ALL = "project:update:all"  # 全局允许：修改项目信息
+    PROJECT_DELETE_ALL = "project:delete:all"  # 全局允许：删除项目
+    PROJECT_ASSIGN_ALL = "project:assign:all"  # 全局允许：管理项目成员和权限
+    # Project - assigned scope
+    PROJECT_READ = "project:read:assigned"  # 成员允许：读取项目信息
+    PROJECT_UPDATE = "project:update:assigned"  # 成员允许：修改项目信息
+    PROJECT_DELETE = "project:delete:assigned"  # 成员允许：删除项目（应该永远不分配此权限）
+    PROJECT_ASSIGN = "project:assign:assigned"  # 成员允许：管理项目成员和权限
+
+    # ============================================================================
+    # Label Permissions (L2 Layer)
+    # ============================================================================
+    LABEL_MANAGE = "label:manage:assigned"  # 成员允许：创建/更新/删除项目标签
+    LABEL_READ = "label:read:assigned"  # 成员允许：读取项目标签
+
+    # ============================================================================
+    # Annotation Permissions (L2 Layer)
+    # ============================================================================
+    ANNOTATE = "annotation:create:assigned"  # 成员允许：创建/修改标注
+    ANNOTATION_READ = "annotation:read:assigned"  # 成员允许：读取标注
+    ANNOTATION_DELETE = "annotation:delete:assigned"  # 成员允许：删除标注
+
+    # ============================================================================
+    # Commit Permissions (L2 Layer)
+    # ============================================================================
+    COMMIT_CREATE = "commit:create:assigned"  # 成员允许：创建 commit（保存标注）
+    COMMIT_READ = "commit:read:assigned"  # 成员允许：读取 commit 历史
+
+    # ============================================================================
+    # Branch Permissions (L2 Layer)
+    # ============================================================================
+    BRANCH_MANAGE = "branch:manage:assigned"  # 成员允许：创建/删除分支
+    BRANCH_READ = "branch:read:assigned"  # 成员允许：读取分支信息
+    BRANCH_SWITCH = "branch:switch:assigned"  # 成员允许：切换分支（移动 HEAD 指针）

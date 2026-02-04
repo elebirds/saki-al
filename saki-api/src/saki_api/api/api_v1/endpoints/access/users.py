@@ -51,7 +51,7 @@ async def list_users_simple(
         service: UserServiceDep,
         page: int = Query(1, ge=1),
         limit: int = Query(20, ge=1, le=200),
-    ) -> PaginationResponse[UserListItem]:
+) -> PaginationResponse[UserListItem]:
     """
     List users with basic info only (for member selection).
     
@@ -72,7 +72,7 @@ async def read_users(
         service: UserServiceDep,
         page: int = Query(1, ge=1),
         limit: int = Query(20, ge=1, le=200),
-    ) -> PaginationResponse[UserRead]:
+) -> PaginationResponse[UserRead]:
     """
     Retrieve users with full details.
     

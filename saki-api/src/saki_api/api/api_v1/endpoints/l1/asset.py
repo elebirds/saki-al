@@ -27,6 +27,7 @@ from saki_api.schemas.asset import (
     AssetListItem,
     AssetStorageStats,
 )
+
 logger = logging.getLogger(__name__)
 
 from saki_api.schemas.pagination import PaginationResponse

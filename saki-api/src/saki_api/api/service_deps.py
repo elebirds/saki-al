@@ -162,3 +162,68 @@ def get_asset_service(
 
 
 AssetServiceDep = Annotated[AssetService, Depends(get_asset_service)]
+
+# ============================================================================
+# Project & Label Service Dependencies (L2 Layer)
+# ============================================================================
+
+from saki_api.services.project import ProjectService
+from saki_api.services.label import LabelService
+
+
+def get_project_service(
+        session: AsyncSession = Depends(get_session),
+) -> ProjectService:
+    return ProjectService(session=session)
+
+
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+
+
+def get_label_service(
+        session: AsyncSession = Depends(get_session),
+) -> LabelService:
+    return LabelService(session=session)
+
+
+LabelServiceDep = Annotated[LabelService, Depends(get_label_service)]
+
+# ============================================================================
+# Commit & Branch Service Dependencies (L2 Layer)
+# ============================================================================
+
+from saki_api.services.commit import CommitService
+from saki_api.services.branch import BranchService
+
+
+def get_commit_service(
+        session: AsyncSession = Depends(get_session),
+) -> CommitService:
+    return CommitService(session=session)
+
+
+CommitServiceDep = Annotated[CommitService, Depends(get_commit_service)]
+
+
+def get_branch_service(
+        session: AsyncSession = Depends(get_session),
+) -> BranchService:
+    return BranchService(session=session)
+
+
+BranchServiceDep = Annotated[BranchService, Depends(get_branch_service)]
+
+# ============================================================================
+# Annotation Service Dependencies (L2 Layer)
+# ============================================================================
+
+from saki_api.services.annotation import AnnotationService
+
+
+def get_annotation_service(
+        session: AsyncSession = Depends(get_session),
+) -> AnnotationService:
+    return AnnotationService(session=session)
+
+
+AnnotationServiceDep = Annotated[AnnotationService, Depends(get_annotation_service)]

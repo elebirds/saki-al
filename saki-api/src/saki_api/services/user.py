@@ -4,7 +4,7 @@ User Service - Business logic for User operations.
 
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing_extensions import override

@@ -1,0 +1,323 @@
+"""
+Project Endpoints.
+"""
+
+import uuid
+from typing import List
+
+from fastapi import APIRouter, Depends, Query
+
+from saki_api.api.service_deps import ProjectServiceDep
+from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
+from saki_api.core.response import ApiResponse
+from saki_api.models import Permissions, ResourceType
+from saki_api.repositories.query import Pagination
+from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.project import (
+    ProjectCreate,
+    ProjectDatasetLink,
+    ProjectRead,
+    ProjectReadMinimal,
+    ProjectUpdate,
+)
+from saki_api.schemas.resource_member import (
+    ResourceMemberCreateRequest,
+    ResourceMemberRead,
+    ResourceMemberUpdateRequest,
+)
+
+router = APIRouter()
+
+
+# =============================================================================
+# Project CRUD Endpoints
+# =============================================================================
+
+
+@router.post("/", response_model=ApiResponse[ProjectRead], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_CREATE_ALL))
+])
+async def create_project(
+        *,
+        project_in: ProjectCreate,
+        project_service: ProjectServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """
+    Create a new project with master branch and initial commit.
+
+    This initializes the L2 layer for a project:
+    - Creates the project
+    - Links specified datasets
+    - Creates initial commit (author_type=SYSTEM)
+    - Creates master branch pointing to initial commit
+    - Assigns creator as owner
+    """
+    project = await project_service.initialize_project(
+        name=project_in.name,
+        task_type=project_in.task_type,
+        dataset_ids=project_in.dataset_ids,
+        user_id=current_user_id,
+        description=project_in.description,
+        config=project_in.config,
+    )
+
+    # Get counts for response
+    project_with_counts = await project_service.get_with_counts(project.id)
+
+    return ApiResponse(data=ProjectRead.model_validate(project_with_counts))
+
+
+@router.get("/", response_model=ApiResponse[PaginationResponse[ProjectRead]], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_READ_ALL))
+])
+async def list_projects(
+        *,
+        project_service: ProjectServiceDep,
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=200),
+):
+    """
+    List all projects with pagination.
+    """
+    pagination = Pagination.from_page(page=page, limit=limit)
+    result = await project_service.list_paginated(pagination)
+
+    # Add counts to each project
+    items_with_counts = []
+    for project in result.items:
+        counts = await project_service.repository.count_datasets(project.id)
+        project_dict = {
+            "id": project.id,
+            "name": project.name,
+            "description": project.description,
+            "task_type": project.task_type,
+            "status": project.status,
+            "config": project.config,
+            "created_at": project.created_at,
+            "updated_at": project.updated_at,
+            "dataset_count": counts,
+            "label_count": 0,
+            "branch_count": 0,
+            "commit_count": 0,
+        }
+        items_with_counts.append(ProjectRead.model_validate(project_dict))
+
+    response = PaginationResponse(
+        items=items_with_counts,
+        total=result.total,
+        offset=result.offset,
+        limit=result.limit,
+        size=result.size,
+        has_more=result.has_more,
+    )
+
+    return ApiResponse(data=response)
+
+
+@router.get("/minimal", response_model=ApiResponse[List[ProjectReadMinimal]], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_READ_ALL))
+])
+async def list_projects_minimal(
+        *,
+        project_service: ProjectServiceDep,
+):
+    """
+    List all projects in minimal format (for dropdowns/selection).
+    """
+    projects = await project_service.list()
+
+    items = [
+        ProjectReadMinimal(
+            id=p.id,
+            name=p.name,
+            task_type=p.task_type,
+            status=p.status,
+        )
+        for p in projects
+    ]
+
+    return ApiResponse(data=items)
+
+
+@router.get("/{project_id}", response_model=ApiResponse[ProjectRead], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_READ, ResourceType.PROJECT, "project_id"))
+])
+async def get_project(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+):
+    """
+    Get a project by ID with aggregated counts.
+    """
+    project_with_counts = await project_service.get_with_counts(project_id)
+    return ApiResponse(data=ProjectRead.model_validate(project_with_counts))
+
+
+@router.put("/{project_id}", response_model=ApiResponse[ProjectRead], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_UPDATE, ResourceType.PROJECT, "project_id"))
+])
+async def update_project(
+        *,
+        project_id: uuid.UUID,
+        project_in: ProjectUpdate,
+        project_service: ProjectServiceDep,
+):
+    """
+    Update a project.
+    """
+    await project_service.get_by_id_or_raise(project_id)
+    project = await project_service.repository.update(
+        project_id,
+        project_in.model_dump(exclude_unset=True)
+    )
+
+    project_with_counts = await project_service.get_with_counts(project_id)
+    return ApiResponse(data=ProjectRead.model_validate(project_with_counts))
+
+
+@router.delete("/{project_id}", response_model=ApiResponse[None], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_DELETE, ResourceType.PROJECT, "project_id"))
+])
+async def delete_project(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+):
+    """
+    Delete a project.
+
+    Warning: This will cascade delete all branches, commits, and labels.
+    """
+    await project_service.get_by_id_or_raise(project_id)
+    await project_service.repository.delete(project_id)
+    return ApiResponse(data=None)
+
+
+# =============================================================================
+# Dataset Link Management Endpoints
+# =============================================================================
+
+
+@router.post("/{project_id}/datasets", response_model=ApiResponse[List[uuid.UUID]], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_UPDATE, ResourceType.PROJECT, "project_id"))
+])
+async def link_datasets(
+        *,
+        project_id: uuid.UUID,
+        link: ProjectDatasetLink,
+        project_service: ProjectServiceDep,
+):
+    """
+    Link datasets to a project.
+    """
+    links = await project_service.link_datasets(project_id, link.dataset_ids)
+    return ApiResponse(data=[l.dataset_id for l in links])
+
+
+@router.delete("/{project_id}/datasets", response_model=ApiResponse[int], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_UPDATE, ResourceType.PROJECT, "project_id"))
+])
+async def unlink_datasets(
+        *,
+        project_id: uuid.UUID,
+        link: ProjectDatasetLink,
+        project_service: ProjectServiceDep,
+):
+    """
+    Unlink datasets from a project.
+    """
+    count = await project_service.unlink_datasets(project_id, link.dataset_ids)
+    return ApiResponse(data=count)
+
+
+@router.get("/{project_id}/datasets", response_model=ApiResponse[List[uuid.UUID]], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_READ, ResourceType.PROJECT, "project_id"))
+])
+async def get_linked_datasets(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+):
+    """
+    Get all dataset IDs linked to a project.
+    """
+    dataset_ids = await project_service.get_linked_datasets(project_id)
+    return ApiResponse(data=dataset_ids)
+
+
+# =============================================================================
+# Project Member Management Endpoints
+# =============================================================================
+
+
+@router.get("/{project_id}/members", response_model=ApiResponse[List[ResourceMemberRead]], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_ASSIGN, ResourceType.PROJECT, "project_id"))
+])
+async def get_project_members(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+):
+    """
+    Get all members of a project with user and role information.
+    """
+    members = await project_service.get_project_members(project_id)
+    return ApiResponse(data=members)
+
+
+@router.post("/{project_id}/members", response_model=ApiResponse[None], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_ASSIGN, ResourceType.PROJECT, "project_id"))
+])
+async def add_project_member(
+        *,
+        project_id: uuid.UUID,
+        member: ResourceMemberCreateRequest,
+        project_service: ProjectServiceDep,
+):
+    """
+    Add a member to a project.
+
+    Cannot assign owner role - owner is determined by project creator.
+    """
+    await project_service.add_project_member(project_id, member)
+    return ApiResponse(data=None)
+
+
+@router.put("/{project_id}/members/{user_id}", response_model=ApiResponse[None], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_ASSIGN, ResourceType.PROJECT, "project_id"))
+])
+async def update_project_member(
+        *,
+        project_id: uuid.UUID,
+        user_id: uuid.UUID,
+        member: ResourceMemberUpdateRequest,
+        project_service: ProjectServiceDep,
+):
+    """
+    Update a project member's role.
+
+    Cannot assign owner role.
+    """
+    await project_service.update_project_member(project_id, user_id, member)
+    return ApiResponse(data=None)
+
+
+@router.delete("/{project_id}/members/{user_id}", response_model=ApiResponse[None], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_ASSIGN, ResourceType.PROJECT, "project_id"))
+])
+async def remove_project_member(
+        *,
+        project_id: uuid.UUID,
+        user_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """
+    Remove a member from a project.
+
+    Cannot remove yourself.
+    """
+    await project_service.remove_project_member(project_id, user_id, current_user_id)
+    return ApiResponse(data=None)

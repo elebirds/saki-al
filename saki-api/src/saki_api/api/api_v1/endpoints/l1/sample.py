@@ -17,8 +17,8 @@ from saki_api.models import Permissions, ResourceType
 from saki_api.models.l1.sample import Sample
 from saki_api.modules.annotation.base import EventType, ProgressInfo
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.sample import SampleRead
 from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.sample import SampleRead
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -201,7 +201,7 @@ async def list_samples(
         limit: int = Query(24, ge=1, le=200),
         sort_by: str = "createdAt",
         sort_order: str = "desc",
-    ) -> PaginationResponse[SampleRead]:
+) -> PaginationResponse[SampleRead]:
     """
     List all samples in a dataset.
     

@@ -2,7 +2,7 @@
 User Repository - Data access layer for User operations.
 """
 import uuid
-from typing import Optional, List
+from typing import Optional
 
 from sqlalchemy.orm import selectinload
 from sqlmodel import select, func

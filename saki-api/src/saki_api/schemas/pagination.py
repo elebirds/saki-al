@@ -31,11 +31,11 @@ class PaginationResponse(BaseModel, Generic[T]):
 
     @classmethod
     def from_items(
-        cls,
-        items: List[T],
-        total: int,
-        offset: int,
-        limit: int,
+            cls,
+            items: List[T],
+            total: int,
+            offset: int,
+            limit: int,
     ) -> "PaginationResponse[T]":
         size = len(items)
         has_more = offset + size < total

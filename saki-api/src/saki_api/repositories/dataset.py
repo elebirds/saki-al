@@ -5,8 +5,8 @@ Dataset Repository - Data access layer for Dataset operations.
 import uuid
 from typing import List
 
-from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.rbac import PermissionChecker
 from saki_api.models import ResourceType, Permissions
@@ -22,7 +22,8 @@ class DatasetRepository(BaseRepository[Dataset]):
     def __init__(self, session: AsyncSession):
         super().__init__(Dataset, session)
 
-    async def get_by_owner(self, owner_id: uuid.UUID, pagination: Pagination = Pagination()) -> PaginationResponse[Dataset]:
+    async def get_by_owner(self, owner_id: uuid.UUID, pagination: Pagination = Pagination()) -> PaginationResponse[
+        Dataset]:
         """Get datasets owned by a user with pagination."""
         return await self.list_paginated(
             pagination=pagination,
@@ -45,7 +46,8 @@ class DatasetRepository(BaseRepository[Dataset]):
             return False
         return dataset.owner_id == user_id
 
-    async def list_in_permission_paginated(self, user_id: uuid.UUID, pagination: Pagination) -> PaginationResponse[Dataset]:
+    async def list_in_permission_paginated(self, user_id: uuid.UUID, pagination: Pagination) -> PaginationResponse[
+        Dataset]:
         checker = PermissionChecker(self.session)
 
         base_query = self.list_statement()

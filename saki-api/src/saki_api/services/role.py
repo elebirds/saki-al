@@ -4,7 +4,7 @@ Role Service - Business logic for Role operations.
 
 import logging
 import uuid
-from typing import Optional, List
+from typing import Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing_extensions import override
@@ -22,9 +22,9 @@ from saki_api.db.transaction import transactional
 from saki_api.models.rbac.role import Role, RoleType
 from saki_api.repositories.permission import PermissionRepository
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.pagination import PaginationResponse
 from saki_api.repositories.role import RoleRepository
 from saki_api.schemas import RoleCreate, RoleUpdate, RoleRead, RolePermissionRead
+from saki_api.schemas.pagination import PaginationResponse
 from saki_api.services.base import BaseService
 
 logger = logging.getLogger(__name__)

@@ -8,9 +8,9 @@ from typing import List
 from fastapi import APIRouter, Depends, Query
 
 from saki_api.api.service_deps import DatasetServiceDep
-from saki_api.repositories.query import Pagination
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions, ResourceType, Dataset
+from saki_api.repositories.query import Pagination
 from saki_api.schemas.dataset import DatasetCreate, DatasetRead, DatasetUpdate
 from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
@@ -40,8 +40,8 @@ async def list_datasets(
         *,
         current_user_id: uuid.UUID = Depends(get_current_user_id),
         dataset_service: DatasetServiceDep,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=200),
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=200),
 ) -> PaginationResponse[DatasetRead]:
     """
     List datasets available to the current user.

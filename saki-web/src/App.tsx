@@ -1,6 +1,5 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import DatasetList from './pages/dataset/DatasetList';
 import DatasetDetail from './pages/dataset/DatasetDetail';
 import ProjectOverview from './pages/project/ProjectOverview';
@@ -8,6 +7,7 @@ import WorkspaceRouter from './pages/annotation/WorkspaceRouter';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
 import UserProfile from './pages/user/UserProfile';
+import About from './pages/about/About';
 import Login from './pages/user/Login';
 import Register from './pages/user/Register';
 import ChangePassword from './pages/user/ChangePassword';
@@ -30,7 +30,6 @@ const SystemCapabilitiesInitializer: React.FC<{ children: React.ReactNode }> = (
 };
 
 const App: React.FC = () => {
-  const { t } = useTranslation();
   return (
     <Router>
       <SystemCheck>
@@ -54,7 +53,7 @@ const App: React.FC = () => {
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/roles" element={<RoleManagement />} />
                 <Route path="/profile" element={<UserProfile />} />
-                <Route path="/about" element={<div><h2>{t('app.about')}</h2><p>Saki is a visual active learning framework.</p></div>} />
+                <Route path="/about" element={<About />} />
               </Route>
             </Routes>
           </SystemCapabilitiesInitializer>

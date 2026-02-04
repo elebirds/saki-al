@@ -48,7 +48,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   showMenuButton = false,
   projectTabs,
   contentClassName = 'max-w-[1280px] mx-auto px-6 py-6 h-full flex flex-col',
-  headerContainerClassName = 'max-w-[1280px] mx-auto px-6',
+  headerContainerClassName = 'w-full px-6',
   contentCardClassName = 'bg-github-panel rounded-md p-6 h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]',
   children,
 }) => {
@@ -92,7 +92,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
       {projectTabs ? (
         <div className="bg-github-base">
-          <div className="max-w-[1280px] mx-auto">
+          <div className="w-full px-6">
             {projectTabs}
           </div>
         </div>

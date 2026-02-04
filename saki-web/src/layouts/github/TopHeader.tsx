@@ -62,8 +62,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   return (
     <header className="border-b border-github-border bg-[var(--github-header)]">
       <div className={`${containerClassName} py-4`}>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+          <div className="flex items-center gap-4 justify-self-start">
             {showMenuButton ? (
               <Button
                 type="text"
@@ -84,7 +84,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </div>
 
           {showHorizontalMenu && menuItems.length > 0 ? (
-            <div className="flex-1 min-w-0 px-2">
+            <div className="min-w-0 px-2 flex justify-center">
               <div className="flex items-center gap-2 text-sm overflow-x-auto">
                 {menuItems.map((item) => {
                   const isActive = item.key === activeMenuKey
@@ -107,43 +107,41 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex-1" />
+            <div />
           )}
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Switch
-                size="small"
-                checked={themeMode === 'dark'}
-                onChange={(checked) => onThemeModeChange(checked ? 'dark' : 'light')}
-                checkedChildren={<MoonOutlined />}
-                unCheckedChildren={<SunOutlined />}
-              />
-              <Select
-                value={language}
-                onChange={onLanguageChange}
-                options={languageOptions}
-                size="small"
-                className="min-w-[120px]"
-              />
-              <Dropdown menu={{ items: plusMenuItems }} placement="bottomRight">
-                <Button type="text" icon={<PlusOutlined />} className="!text-github-muted" />
-              </Dropdown>
-              <Button type="text" icon={<BellOutlined />} className="!text-github-muted" />
-              <Dropdown menu={{ items: userMenuItems, onClick: onUserMenuClick }} placement="bottomRight">
-                <Button type="text" className="!text-github-muted">
-                  <div className="flex items-center gap-2">
-                    <Avatar
-                      size={28}
-                      icon={<UserOutlined />}
-                      className="bg-gradient-to-br from-orange-400 to-pink-500"
-                    />
-                    <span className="hidden lg:inline text-github-text">{userName || 'User'}</span>
-                    <DownOutlined className="text-github-muted" />
-                  </div>
-                </Button>
-              </Dropdown>
-            </div>
+          <div className="flex items-center justify-self-end gap-2">
+            <Switch
+              size="small"
+              checked={themeMode === 'dark'}
+              onChange={(checked) => onThemeModeChange(checked ? 'dark' : 'light')}
+              checkedChildren={<MoonOutlined />}
+              unCheckedChildren={<SunOutlined />}
+            />
+            <Select
+              value={language}
+              onChange={onLanguageChange}
+              options={languageOptions}
+              size="small"
+              className="min-w-[120px]"
+            />
+            <Dropdown menu={{ items: plusMenuItems }} placement="bottomRight">
+              <Button type="text" icon={<PlusOutlined />} className="!text-github-muted" />
+            </Dropdown>
+            <Button type="text" icon={<BellOutlined />} className="!text-github-muted" />
+            <Dropdown menu={{ items: userMenuItems, onClick: onUserMenuClick }} placement="bottomRight">
+              <Button type="text" className="!text-github-muted">
+                <div className="flex items-center gap-2">
+                  <Avatar
+                    size={28}
+                    icon={<UserOutlined />}
+                    className="bg-gradient-to-br from-orange-400 to-pink-500"
+                  />
+                  <span className="hidden lg:inline text-github-text">{userName || 'User'}</span>
+                  <DownOutlined className="text-github-muted" />
+                </div>
+              </Button>
+            </Dropdown>
           </div>
         </div>
       </div>

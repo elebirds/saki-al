@@ -287,7 +287,7 @@ const UserManagement: React.FC = () => {
   // Show loading state while permissions are being loaded
   if (permissionLoading) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center' }}>
+      <div className="p-6 text-center">
         <Spin size="large" tip={t('common.loading')} />
       </div>
     );
@@ -296,7 +296,7 @@ const UserManagement: React.FC = () => {
   // Show no permission message if user can't read users
   if (!canReadUsers) {
     return (
-      <div style={{ padding: '24px' }}>
+      <div className="p-6">
         <Result
           status="403"
           title="403"
@@ -307,9 +307,9 @@ const UserManagement: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <h2 style={{ margin: 0 }}>{t('userManagement.title')}</h2>
+    <div className="flex h-full flex-col overflow-hidden p-6">
+      <div className="mb-4 flex flex-shrink-0 items-center justify-between">
+        <span className="m-0 font-semibold">{t('userManagement.title')}</span>
         {canCreateUser ? (
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             {t('userManagement.addUser')}
@@ -322,7 +322,7 @@ const UserManagement: React.FC = () => {
           </Tooltip>
         )}
       </div>
-      <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div ref={tableContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <PaginatedList<User>
           fetchData={fetchUsers}
           onItemsChange={setUsers}
@@ -397,38 +397,38 @@ const UserManagement: React.FC = () => {
         width={600}
       >
         {rolesLoading ? (
-          <div style={{ textAlign: 'center', padding: 20 }}>
+          <div className="p-5 text-center">
             <Spin tip={t('common.loading')} />
           </div>
         ) : (
           <>
             {/* Current Roles */}
-            <div style={{ marginBottom: 24 }}>
+            <div className="mb-6">
               <h4>{t('userManagement.currentRoles')}</h4>
               {userRoles.length === 0 ? (
-                <p style={{ color: '#999' }}>{t('userManagement.noRoles')}</p>
+                <p className="text-gray-500">{t('userManagement.noRoles')}</p>
               ) : (
-                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                <Space direction="vertical" className="w-full" size="middle">
                   {userRoles.map(ur => {
                     const role = roles.find(r => r.id === ur.roleId);
                     const canRevoke = canRevokeRoles && (isSuperAdmin || (role?.name !== 'super_admin'));
                     const isExpired = ur.expiresAt && dayjs(ur.expiresAt).isBefore(dayjs());
                     return (
-                      <div key={ur.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', border: '1px solid #f0f0f0', borderRadius: 4 }}>
-                        <div style={{ flex: 1 }}>
+                      <div key={ur.id} className="flex items-center justify-between rounded border border-gray-200 px-3 py-2">
+                        <div className="flex-1">
                           <Tag 
                             color={isExpired ? 'red' : getRoleColor(ur.roleName || '')}
-                            style={{ marginRight: 8 }}
+                            className="mr-2"
                           >
                             {ur.roleDisplayName || ur.roleName}
                           </Tag>
                           {ur.expiresAt && (
-                            <span style={{ fontSize: 12, color: isExpired ? '#ff4d4f' : '#666' }}>
+                            <span className={`text-xs ${isExpired ? 'text-red-500' : 'text-gray-600'}`}>
                               {isExpired ? t('userManagement.expired') : t('userManagement.expiresAt')}: {dayjs(ur.expiresAt).format('YYYY-MM-DD HH:mm:ss')}
                             </span>
                           )}
                           {!ur.expiresAt && (
-                            <span style={{ fontSize: 12, color: '#999' }}>
+                            <span className="text-xs text-gray-500">
                               {t('userManagement.noExpiration')}
                             </span>
                           )}
@@ -460,7 +460,7 @@ const UserManagement: React.FC = () => {
                     label={t('userManagement.selectRole')}
                     rules={[{ required: true, message: t('userManagement.selectRole') }]}
                   >
-                    <Select placeholder={t('userManagement.selectRole')} style={{ width: '100%' }}>
+                    <Select placeholder={t('userManagement.selectRole')} className="w-full">
                       {roles
                         .filter(role => {
                           // Filter out already assigned roles
@@ -471,11 +471,11 @@ const UserManagement: React.FC = () => {
                         })
                         .map(role => (
                           <Select.Option key={role.id} value={role.id}>
-                            <Tag color={getRoleColor(role.name)} style={{ marginRight: 8 }}>
+                            <Tag color={getRoleColor(role.name)} className="mr-2">
                               {role.displayName}
                             </Tag>
                             {role.description && (
-                              <span style={{ color: '#999', fontSize: 12 }}>
+                              <span className="text-xs text-gray-500">
                                 {role.description}
                               </span>
                             )}
@@ -491,7 +491,7 @@ const UserManagement: React.FC = () => {
                     <DatePicker
                       showTime
                       format="YYYY-MM-DD HH:mm:ss"
-                      style={{ width: '100%' }}
+                      className="w-full"
                       disabledDate={(current) => current && current < dayjs().startOf('day')}
                       placeholder={t('userManagement.expiresAtPlaceholder')}
                     />

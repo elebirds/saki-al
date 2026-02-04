@@ -121,36 +121,14 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
 
   return (
     <div
-      style={{
-        flex: 1,
-        display: 'flex',
-        overflow: 'hidden',
-        width: '100%',
-        height: '100%',
-      }}
+      className="flex h-full w-full flex-1 overflow-hidden"
     >
       {/* Left: Time-Energy View */}
       <div
-        style={{
-          flex: 1,
-          position: 'relative',
-          overflow: 'hidden',
-          background: '#333',
-          borderRight: '2px solid #666',
-        }}
+        className="relative flex-1 overflow-hidden border-r-2 border-[#666] bg-[#333]"
       >
         <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            zIndex: 10,
-            background: 'rgba(0,0,0,0.6)',
-            color: '#fff',
-            padding: '4px 8px',
-            borderRadius: 4,
-            fontSize: 12,
-          }}
+          className="absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white"
         >
           Time-Energy
         </div>
@@ -172,25 +150,10 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
 
       {/* Right: L-ωd View (Read-only mapped regions) */}
       <div
-        style={{
-          flex: 1,
-          position: 'relative',
-          overflow: 'hidden',
-          background: '#333',
-        }}
+        className="relative flex-1 overflow-hidden bg-[#333]"
       >
         <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            zIndex: 10,
-            background: 'rgba(0,0,0,0.6)',
-            color: '#fff',
-            padding: '4px 8px',
-            borderRadius: 4,
-            fontSize: 12,
-          }}
+          className="absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white"
         >
           L-ωd
         </div>
@@ -211,17 +174,7 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
         {/* Mapped regions count indicator */}
         {currentMappedRegions.length > 0 && (
           <div
-            style={{
-              position: 'absolute',
-              bottom: 8,
-              left: 8,
-              zIndex: 10,
-              background: 'rgba(0,0,0,0.6)',
-              color: '#fff',
-              padding: '4px 8px',
-              borderRadius: 4,
-              fontSize: 12,
-            }}
+            className="absolute bottom-2 left-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white"
           >
             {currentMappedRegions.length} mapped region
             {currentMappedRegions.length > 1 ? 's' : ''}
@@ -233,4 +186,3 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
 });
 
 DualCanvasArea.displayName = 'DualCanvasArea';
-

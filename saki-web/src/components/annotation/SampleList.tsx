@@ -20,71 +20,42 @@ export const SampleList: React.FC<SampleListProps> = ({
 
   return (
     <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#fff',
-        borderRight: '1px solid #f0f0f0',
-      }}
+      className="flex h-full flex-col border-r border-[#f0f0f0] bg-white"
     >
       <div
-        style={{
-          padding: '16px',
-          borderBottom: '1px solid #f0f0f0',
-          background: '#fafafa',
-        }}
+        className="border-b border-[#f0f0f0] bg-[#fafafa] p-4"
       >
         <Text strong>{t('workspace.sampleList') || '样本列表'}</Text>
-        <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+        <div className="mt-2 text-xs text-[#666]">
           {samples.length} {t('workspace.samples') || '个样本'}
         </div>
       </div>
       <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-        }}
+        className="flex-1 overflow-y-auto"
       >
         <List
           size="small"
           dataSource={samples}
           renderItem={(sample, index) => (
             <List.Item
-              style={{
-                padding: '8px 16px',
-                cursor: 'pointer',
-                backgroundColor: index === currentIndex ? '#e6f7ff' : 'transparent',
-                borderLeft: index === currentIndex ? '3px solid #1890ff' : '3px solid transparent',
-              }}
+              className={`cursor-pointer border-l-[3px] px-4 py-2 ${
+                index === currentIndex ? 'border-[#1890ff] bg-[#e6f7ff]' : 'border-transparent bg-transparent'
+              }`}
               onClick={() => onSampleSelect(index)}
             >
               <div
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
+                className="flex w-full items-center justify-between"
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="min-w-0 flex-1">
                   <div
-                    style={{
-                      fontSize: 12,
-                      color: '#666',
-                      marginBottom: 4,
-                    }}
+                    className="mb-1 text-xs text-[#666]"
                   >
                     #{index + 1}
                   </div>
                   <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: index === currentIndex ? 500 : 400,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
+                    className={`truncate text-[13px] ${
+                      index === currentIndex ? 'font-medium' : 'font-normal'
+                    }`}
                     title={sample.name}
                   >
                     {sample.name}
@@ -98,4 +69,3 @@ export const SampleList: React.FC<SampleListProps> = ({
     </div>
   );
 };
-

@@ -43,9 +43,9 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
 
   const getStatusIcon = (result: UploadFileResult) => {
     if (result.status === 'success') {
-      return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
+      return <CheckCircleOutlined className="text-green-500" />;
     }
-    return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />;
+    return <CloseCircleOutlined className="text-red-500" />;
   };
 
   return (
@@ -68,14 +68,14 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
       closable={!isUploading}
       maskClosable={!isUploading}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size="large">
+      <Space direction="vertical" className="w-full" size="large">
         {/* Overall progress */}
         <div>
-          <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+          <div className="mb-2 flex justify-between">
             <Text>
               {isUploading && currentFilename && (
                 <>
-                  <LoadingOutlined style={{ marginRight: 8 }} />
+                  <LoadingOutlined className="mr-2" />
                   {currentFilename}
                 </>
               )}
@@ -93,28 +93,25 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
 
         {/* Error message */}
         {hasError && error && (
-          <div style={{ 
-            padding: '8px 12px', 
-            background: '#fff2f0', 
-            border: '1px solid #ffccc7',
-            borderRadius: 4 
-          }}>
+          <div className="rounded border border-[#ffccc7] bg-[#fff2f0] px-3 py-2">
             <Text type="danger">{error}</Text>
           </div>
         )}
 
         {/* File results list */}
         {results.length > 0 && (
-          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+          <div className="max-h-[300px] overflow-y-auto">
             <List
               size="small"
               dataSource={results}
               renderItem={(item) => (
-                <List.Item style={{ padding: '8px 0', display: 'block' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <List.Item className="block py-2">
+                  <div className="flex items-center gap-2">
                     {getStatusIcon(item)}
                     <FileOutlined />
-                    <Text ellipsis style={{ maxWidth: 280, flex: 1 }}>{item.filename}</Text>
+                    <Text ellipsis className="max-w-[280px] flex-1">
+                      {item.filename}
+                    </Text>
                     {item.status === 'success' && (
                       <Tag color="success">{t('upload.success')}</Tag>
                     )}
@@ -124,16 +121,10 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                   </div>
                   {/* Show error message below filename */}
                   {item.status === 'error' && item.error && (
-                    <div style={{ 
-                      marginTop: 4, 
-                      marginLeft: 40,
-                      padding: '4px 8px',
-                      background: '#fff2f0',
-                      border: '1px solid #ffccc7',
-                      borderRadius: 4,
-                      fontSize: 12,
-                    }}>
-                      <Text type="danger" style={{ fontSize: 12 }}>{item.error}</Text>
+                    <div className="ml-10 mt-1 rounded border border-[#ffccc7] bg-[#fff2f0] px-2 py-1 text-xs">
+                      <Text type="danger" className="text-xs">
+                        {item.error}
+                      </Text>
                     </div>
                   )}
                 </List.Item>
@@ -144,15 +135,15 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
 
         {/* Summary when complete */}
         {isComplete && (
-          <div style={{ textAlign: 'center', paddingTop: 8 }}>
+          <div className="pt-2 text-center">
             <Space size="large">
               <Text>
-                <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 4 }} />
+                <CheckCircleOutlined className="mr-1 text-green-500" />
                 {t('upload.successCount', { count: successCount })}
               </Text>
               {errorCount > 0 && (
                 <Text>
-                  <CloseCircleOutlined style={{ color: '#ff4d4f', marginRight: 4 }} />
+                  <CloseCircleOutlined className="mr-1 text-red-500" />
                   {t('upload.errorCount', { count: errorCount })}
                 </Text>
               )}

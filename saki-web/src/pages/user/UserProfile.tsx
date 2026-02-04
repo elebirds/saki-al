@@ -101,7 +101,7 @@ const UserProfile: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center' }}>
+      <div className="p-6 text-center">
         <Spin size="large" tip={t('common.loading')} />
       </div>
     );
@@ -110,7 +110,7 @@ const UserProfile: React.FC = () => {
   const displayUser = userInfo || currentUser;
   if (!displayUser) {
     return (
-      <div style={{ padding: '24px' }}>
+      <div className="p-6">
         <Card>
           <Text type="secondary">{t('userProfile.userNotFound')}</Text>
         </Card>
@@ -122,23 +122,12 @@ const UserProfile: React.FC = () => {
   const permissionKeys = Object.keys(groupedPermissions);
 
   return (
-    <div style={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column', 
-      overflow: 'hidden',
-      padding: '24px'
-    }}>
-      <Title level={2} style={{ marginBottom: 24, flexShrink: 0 }}>
+    <div className="flex h-full flex-col overflow-hidden p-6">
+      <Title level={2} className="mb-6 flex-shrink-0">
         {t('userProfile.title')}
       </Title>
 
-      <div style={{ 
-        flex: 1, 
-        overflowY: 'auto', 
-        overflowX: 'hidden',
-        paddingRight: '8px'
-      }}>
+      <div className="flex-1 overflow-x-hidden overflow-y-auto pr-2">
         {/* Basic Information */}
         <Card
           title={
@@ -147,7 +136,7 @@ const UserProfile: React.FC = () => {
               <span>{t('userProfile.basicInfo')}</span>
             </Space>
           }
-          style={{ marginBottom: 24 }}
+          className="mb-6"
         >
           <Descriptions column={2} bordered>
             <Descriptions.Item label={t('common.email')}>
@@ -190,14 +179,14 @@ const UserProfile: React.FC = () => {
               <span>{t('userProfile.systemRoles')}</span>
             </Space>
           }
-          style={{ marginBottom: 24 }}
+          className="mb-6"
         >
           {systemRoles.length === 0 ? (
             <Text type="secondary">{t('userProfile.noRoles')}</Text>
           ) : (
             <Space wrap>
               {systemRoles.map((role) => (
-                <Tag key={role.id} color={getRoleColor(role.name)} style={{ fontSize: 14, padding: '4px 12px' }}>
+                <Tag key={role.id} color={getRoleColor(role.name)} className="px-3 py-1 text-sm">
                   {role.displayName}
                 </Tag>
               ))}
@@ -212,22 +201,22 @@ const UserProfile: React.FC = () => {
               <LockOutlined />
               <span>{t('userProfile.permissions')}</span>
               {systemPermissions && (
-                <Text type="secondary" style={{ fontSize: 14, fontWeight: 'normal' }}>
+                <Text type="secondary" className="text-sm font-normal">
                   ({systemPermissions.permissions.length} {t('userProfile.permissions')})
                 </Text>
               )}
             </Space>
           }
-          style={{ marginBottom: 24 }}
+          className="mb-6"
         >
           {!systemPermissions || systemPermissions.permissions.length === 0 ? (
             <Text type="secondary">{t('userProfile.noPermissions')}</Text>
           ) : (
-            <div style={{ maxHeight: '500px', overflowY: 'auto', overflowX: 'hidden' }}>
+            <div className="max-h-[500px] overflow-x-hidden overflow-y-auto">
               {permissionKeys.map((resource, index) => (
                 <div key={resource}>
                   {index > 0 && <Divider />}
-                  <Title level={5} style={{ marginBottom: 12 }}>
+                  <Title level={5} className="mb-3">
                     {t(`userProfile.permissionResources.${resource}`, resource)}
                   </Title>
                   <List

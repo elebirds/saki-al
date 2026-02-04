@@ -5,14 +5,11 @@
  */
 
 import { ReactNode } from 'react';
-import { Layout } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { LoadingState, EmptyState } from '../common';
 import { SampleList, AnnotationToolbar, AnnotationSidebar } from './index';
 import { Sample, Label, Annotation } from '../../types';
 import { AnnotationLike, UseAnnotationStateReturn, AccessScope } from '../../hooks';
-
-const { Content, Sider } = Layout;
 
 export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
   // 数据状态
@@ -100,17 +97,17 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
   }
 
   return (
-    <Layout style={{ height: '100%' }}>
+    <div className="flex h-full">
       {/* Left Sidebar - Sample List */}
-      <Sider width={250} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
+      <aside className="w-[250px] shrink-0 border-r border-[#f0f0f0] bg-white">
         <SampleList
           samples={samples}
           currentIndex={currentIndex}
           onSampleSelect={onSampleSelect}
         />
-      </Sider>
+      </aside>
 
-      <Content style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <main className="flex h-full min-w-0 flex-1 flex-col">
         {/* Toolbar */}
         <AnnotationToolbar
           labels={labels}
@@ -134,18 +131,13 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
 
         {/* Canvas Area */}
         <div
-          style={{
-            flex: 1,
-            position: 'relative',
-            overflow: 'hidden',
-            background: '#333',
-            pointerEvents: isSyncing ? 'none' : 'auto',
-            opacity: isSyncing ? 0.6 : 1,
-          }}
+          className={`relative flex-1 overflow-hidden bg-[#333] ${
+            isSyncing ? 'pointer-events-none opacity-60' : 'pointer-events-auto opacity-100'
+          }`}
         >
           {canvasArea}
         </div>
-      </Content>
+      </main>
 
       {/* Right Sidebar */}
       <AnnotationSidebar
@@ -164,7 +156,6 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
         hasAnyEditPermission={hasAnyEditPermission}
       />
       {sidebarExtra}
-    </Layout>
+    </div>
   );
 }
-

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Button, Typography, Space, Card, List, Tag, Tabs, message, Select, Tooltip, Popconfirm } from 'antd';
+import { Button, Typography, Space, Card, List, Tag, Tabs, message, Select, Tooltip, Popconfirm } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Dataset, Sample } from '../../types';
 import { api } from '../../services/api';
@@ -12,7 +12,6 @@ import { useUpload, useSystemCapabilities, useResourcePermission } from '../../h
 import { PaginatedList } from '../../components/common/PaginatedList';
 
 const { Title } = Typography;
-const { Sider, Content } = Layout;
 const { Option } = Select;
 
 const DatasetDetail: React.FC = () => {
@@ -184,12 +183,12 @@ const DatasetDetail: React.FC = () => {
       <Card
         hoverable
         onClick={handleSampleClick}
-        style={{ cursor: 'pointer' }}
+        className="cursor-pointer"
         cover={
             <img 
               alt="sample" 
               src={item.primaryAssetUrl}
-              style={{ height: 150, objectFit: 'cover' }}
+              className="h-[150px] w-full object-cover"
               onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
                 e.currentTarget.style.display = 'none';
               }}
@@ -211,23 +210,23 @@ const DatasetDetail: React.FC = () => {
               <DeleteOutlined 
                 key="delete" 
                 onClick={(e) => e.stopPropagation()}
-                style={{ color: '#ff4d4f' }}
+                className="text-red-500"
               />
             </Popconfirm>
           ) : (
             <Tooltip title={t('common.noPermission')}>
-              <DeleteOutlined key="delete" style={{ color: '#ccc', cursor: 'not-allowed' }} />
+              <DeleteOutlined key="delete" className="cursor-not-allowed text-gray-300" />
             </Tooltip>
           ),
         ]}
       >
         <Card.Meta 
           title={
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span className="block truncate">
               {item.name}
             </span>
           }
-          description={item.remark && <span style={{ fontSize: '12px', color: '#999' }}>{item.remark}</span>}
+          description={item.remark && <span className="text-xs text-gray-500">{item.remark}</span>}
         />
       </Card>
     );
@@ -245,14 +244,14 @@ const DatasetDetail: React.FC = () => {
       key: 'data',
       label: t('datasetDetail.dataPool'),
       children: (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ flexShrink: 0, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Title level={5} style={{ margin: 0 }}>{t('datasetDetail.dataPool')} ({totalSamples})</Title>
+        <div className="flex h-full flex-col">
+          <div className="mb-4 flex flex-shrink-0 items-center justify-between">
+            <Title level={5} className="!m-0">{t('datasetDetail.dataPool')} ({totalSamples})</Title>
             <Space>
               <Select
                 value={sortBy}
                 onChange={setSortBy}
-                style={{ width: 140 }}
+                className="w-[140px]"
                 size="small"
               >
                 <Option value="name">{t('datasetDetail.sortByName')}</Option>
@@ -268,7 +267,7 @@ const DatasetDetail: React.FC = () => {
               </Button>
             </Space>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
+          <div className="flex-1 overflow-y-auto pr-2.5">
             <PaginatedList<Sample>
               fetchData={fetchSamples}
               initialPageSize={8}
@@ -279,9 +278,9 @@ const DatasetDetail: React.FC = () => {
               renderItems={(items) => (
                 items.length === 0 ? (
                   <Card>
-                    <div style={{ textAlign: 'center', padding: 40 }}>
-                      <FileTextOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
-                      <Title level={5} style={{ color: '#999' }}>{t('datasetDetail.noSamples')}</Title>
+                    <div className="p-10 text-center">
+                      <FileTextOutlined className="mb-4 text-[48px] text-gray-300" />
+                      <Title level={5} className="!text-gray-500">{t('datasetDetail.noSamples')}</Title>
                       {canUpload ? (
                         <Button type="primary" icon={<UploadOutlined />} onClick={handleUploadClick}>
                           {t('datasetDetail.uploadData')}
@@ -316,8 +315,8 @@ const DatasetDetail: React.FC = () => {
                 )
               )}
               renderPaginationWrapper={(node) => (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-                  <span style={{ fontSize: 12, color: '#666' }}>
+                <div className="mt-4 flex items-center justify-between">
+                  <span className="text-xs text-gray-600">
                     {t('datasetDetail.pageStatus', {
                       defaultValue: 'Page {{page}} / {{pages}} · {{total}} items',
                       page: Math.floor(sampleMeta.offset / (sampleMeta.limit || 1)) + 1,
@@ -340,7 +339,7 @@ const DatasetDetail: React.FC = () => {
       key: 'settings',
       label: t('datasetDetail.settings'),
       children: (
-        <div style={{ height: '100%', overflowY: 'auto', paddingRight: '10px' }}>
+        <div className="h-full overflow-y-auto pr-2.5">
           <DatasetSettings 
             dataset={dataset} 
             onUpdate={(updatedDataset: Dataset) => setDataset(updatedDataset)} 
@@ -351,19 +350,19 @@ const DatasetDetail: React.FC = () => {
   ];
 
   return (
-    <Layout style={{ background: '#fff', height: '100%' }}>
-      <Sider width={300} theme="light" style={{ borderRight: '1px solid #f0f0f0', padding: '20px', overflowY: 'auto' }}>
+    <div className="flex h-full bg-transparent">
+      <aside className="w-[300px] shrink-0 overflow-y-auto border-r border-github-border bg-white p-5">
         <Button 
           type="text" 
           icon={<ArrowLeftOutlined />} 
           onClick={() => navigate('/')}
-          style={{ marginBottom: 16 }}
+          className="mb-4"
         >
           {t('datasetDetail.backToList')}
         </Button>
         
         <Title level={4}>{dataset.name}</Title>
-        <Space style={{ marginBottom: 8 }}>
+        <Space className="mb-2">
           <Tag color={getDatasetTypeColor(dataset.type)}>
             {getDatasetTypeLabel(dataset.type)}
           </Tag>
@@ -371,12 +370,10 @@ const DatasetDetail: React.FC = () => {
           {role && !isOwner && <Tag>{role.displayName}</Tag>}
         </Space>
         {dataset.description && (
-          <div style={{ marginBottom: 16, fontSize: 12, color: '#666' }}>
-            {dataset.description}
-          </div>
+          <div className="mb-4 text-xs text-gray-600">{dataset.description}</div>
         )}
         
-        <Space direction="vertical" style={{ width: '100%' }} size="large">
+        <Space direction="vertical" className="w-full" size="large">
           {canUpload ? (
             <Button block icon={<UploadOutlined />} onClick={handleUploadClick}>
               {t('datasetDetail.uploadData')}
@@ -392,7 +389,7 @@ const DatasetDetail: React.FC = () => {
           <input 
             type="file" 
             ref={fileInputRef} 
-            style={{ display: 'none' }} 
+            className="hidden" 
             multiple 
             accept={getAcceptType()} 
             onChange={handleFileChange} 
@@ -404,8 +401,8 @@ const DatasetDetail: React.FC = () => {
             </Button>
           )}
         </Space>
-      </Sider>
-      <Content style={{ padding: '24px', height: '100%', overflow: 'hidden' }}>
+      </aside>
+      <main className="h-full flex-1 overflow-hidden bg-transparent p-6">
         <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs" />
         
         {/* Upload Progress Modal */}
@@ -425,8 +422,8 @@ const DatasetDetail: React.FC = () => {
             setSelectedSample(null);
           }}
         />
-      </Content>
-    </Layout>
+      </main>
+    </div>
   );
 };
 

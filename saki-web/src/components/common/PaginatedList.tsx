@@ -146,12 +146,12 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
 
   const wrappedPagination = renderPaginationWrapper
     ? renderPaginationWrapper(paginationNode)
-    : <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>{paginationNode}</div>;
+    : <div className="mt-4 flex justify-end">{paginationNode}</div>;
 
   const hasData = items.length > 0;
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="flex h-full flex-col">
       <Spin spinning={loading}>
         {hasData ? renderItems(items, loading) : (!loading && emptyFallback ? emptyFallback : renderItems(items, loading))}
       </Spin>

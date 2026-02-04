@@ -188,7 +188,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="mb-4 flex items-center justify-between">
         <Title level={5}>{t('datasetMembers.title')}</Title>
         {canManageMembers && (
           <Button type="primary" icon={<UserAddOutlined />} onClick={handleAdd}>
@@ -211,7 +211,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
         onCancel={() => setIsModalOpen(false)}
       >
         {rolesLoading ? (
-          <div style={{ textAlign: 'center', padding: 20 }}>
+          <div className="p-5 text-center">
             <Spin tip={t('common.loading')} />
           </div>
         ) : (
@@ -252,7 +252,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({ datasetId, ownerId }) =
                     <Select.Option key={role.id} value={role.id}>
                       <div>
                         <span>{role.displayName}</span>
-                        <span style={{ color: '#999', fontSize: 12, marginLeft: 8 }}>
+                        <span className="ml-2 text-xs text-gray-400">
                           {role.description}
                         </span>
                       </div>

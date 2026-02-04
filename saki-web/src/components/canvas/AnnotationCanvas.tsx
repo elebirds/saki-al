@@ -140,7 +140,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasRef, AnnotationCanvasProps>(
   return (
     <div 
       ref={containerRef} 
-      style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#1e1e1e' }}
+      className="h-full w-full overflow-hidden bg-[#1e1e1e]"
     >
       <Stage
         ref={stageRef}

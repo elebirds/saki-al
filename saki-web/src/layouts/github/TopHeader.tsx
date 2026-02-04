@@ -60,10 +60,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   onUserMenuClick,
 }) => {
   return (
-    <header
-      className="border-b border-github-border"
-      style={{ backgroundColor: 'var(--github-header)' }}
-    >
+    <header className="border-b border-github-border bg-[var(--github-header)]">
       <div className={`${containerClassName} py-4`}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">

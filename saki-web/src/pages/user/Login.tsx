@@ -43,9 +43,9 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
-      <Card style={{ width: 400 }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+    <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+      <Card className="w-[400px]">
+        <div className="mb-6 text-center">
           <Title level={2}>{t('app.title')}</Title>
           <Typography.Text type="secondary">{t('auth.login.subtitle')}</Typography.Text>
         </div>
@@ -76,7 +76,7 @@ const Login: React.FC = () => {
             </Button>
           </Form.Item>
           
-          <div style={{ textAlign: 'center' }}>
+          <div className="text-center">
             {t('auth.login.or')} <Link to="/register">{t('auth.login.registerLink')}</Link>
           </div>
         </Form>

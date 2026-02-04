@@ -100,7 +100,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({ dataset, onUpdate }) 
 
           <Divider />
 
-          <Card title={t('datasetSettings.dangerZone')} style={{ borderColor: '#ff4d4f' }}>
+          <Card title={t('datasetSettings.dangerZone')} className="!border !border-red-500">
             <p>{t('datasetSettings.deleteConfirmDesc')}</p>
             <Popconfirm
               title={t('datasetSettings.deleteConfirm')}

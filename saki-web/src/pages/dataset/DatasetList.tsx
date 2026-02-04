@@ -8,7 +8,7 @@ import { useSystemCapabilities, usePermission } from '../../hooks';
 import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { PaginatedList } from '../../components/common/PaginatedList';
 
-const { Paragraph, Text, Title } = Typography;
+const { Paragraph, Title } = Typography;
 const { Option } = Select;
 
 const DatasetList: React.FC = () => {
@@ -55,9 +55,9 @@ const DatasetList: React.FC = () => {
             <Card
               hoverable
               title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="flex items-center gap-2 min-w-0">
                   <DatabaseOutlined />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{dataset.name}</span>
+                  <span className="truncate">{dataset.name}</span>
                 </div>
               }
               extra={
@@ -71,7 +71,7 @@ const DatasetList: React.FC = () => {
                 </Button>,
               ]}
             >
-              <Paragraph ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
+              <Paragraph ellipsis={{ rows: 2 }} className="min-h-[44px]">
                 {dataset.description || t('datasetList.noDescription')}
               </Paragraph>
             </Card>
@@ -88,10 +88,10 @@ const DatasetList: React.FC = () => {
     <Row>
       <Col span={24}>
         <Card>
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <DatabaseOutlined style={{ fontSize: 48, color: '#ccc', marginBottom: 16 }} />
-            <Title level={4} style={{ color: '#999' }}>{t('datasetList.empty')}</Title>
-            <Paragraph style={{ color: '#999' }}>{t('datasetList.emptyHint')}</Paragraph>
+          <div className="p-10 text-center">
+            <DatabaseOutlined className="mb-4 text-[48px] text-gray-300" />
+            <Title level={4} className="!text-gray-500">{t('datasetList.empty')}</Title>
+            <Paragraph className="!text-gray-500">{t('datasetList.emptyHint')}</Paragraph>
             {canCreate && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
                 {t('datasetList.newDataset')}
@@ -106,7 +106,7 @@ const DatasetList: React.FC = () => {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
-        <Text className="text-sm font-semibold text-github-text">{t('datasetList.title')}</Text>
+        <span className="m-0 font-semibold">{t('datasetList.title')}</span>
         {canCreate ? (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
             {t('datasetList.newDataset')}
@@ -174,7 +174,7 @@ const DatasetList: React.FC = () => {
                 <span>
                   {t('datasetList.type')}&nbsp;
                   <Tooltip title={t('datasetList.typeHelp')}>
-                    <span style={{ color: '#999', cursor: 'help' }}>ⓘ</span>
+                    <span className="cursor-help text-gray-500">ⓘ</span>
                   </Tooltip>
                 </span>
               } 

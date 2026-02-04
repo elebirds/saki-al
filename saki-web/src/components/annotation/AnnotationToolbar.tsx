@@ -74,14 +74,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   const navigate = useNavigate();
 
   return (
-    <div style={{
-      padding: '10px',
-      background: '#fff',
-      borderBottom: '1px solid #f0f0f0',
-      display: 'flex',
-      gap: '10px',
-      alignItems: 'center',
-    }}>
+    <div className="flex items-center gap-2.5 border-b border-[#f0f0f0] bg-white p-2.5">
       {/* Back Button */}
       <Tooltip title={t('workspace.backToDataset')}>
         <Button
@@ -100,14 +93,14 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
 
       {/* Label Selection */}
       <Space>
-        <span style={{ fontWeight: 'bold' }}>{t('workspace.label')}</span>
+        <span className="font-semibold">{t('workspace.label')}</span>
         <Select
           value={selectedLabel?.id}
           onChange={(value) => {
             const label = labels.find(l => l.id === value);
             if (label) onLabelChange(label);
           }}
-          style={{ width: 150 }}
+          className="w-[150px]"
         >
           {labels.map(label => (
             <Select.Option key={label.id} value={label.id}>
@@ -199,8 +192,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
         </>
       )}
 
-      <div style={{ flex: 1 }} />
+      <div className="flex-1" />
     </div>
   );
 };
-

@@ -44,13 +44,7 @@ const NetworkError: React.FC = () => {
   };
 
   return (
-    <div style={{ 
-      height: '100vh', 
-      display: 'flex', 
-      justifyContent: 'center', 
-      alignItems: 'center',
-      background: '#f0f2f5'
-    }}>
+    <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
       <Result
         status="500"
         title="Network Error"

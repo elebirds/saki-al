@@ -26,9 +26,9 @@ const Register: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
-      <Card style={{ width: 400 }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+    <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+      <Card className="w-[400px]">
+        <div className="mb-6 text-center">
           <Title level={2}>{t('auth.register.title')}</Title>
           <Typography.Text type="secondary">{t('auth.register.subtitle')}</Typography.Text>
         </div>
@@ -92,7 +92,7 @@ const Register: React.FC = () => {
             </Button>
           </Form.Item>
           
-          <div style={{ textAlign: 'center' }}>
+          <div className="text-center">
             {t('auth.register.alreadyHaveAccount')} <Link to="/login">{t('auth.register.loginLink')}</Link>
           </div>
         </Form>

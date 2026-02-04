@@ -30,7 +30,7 @@ export const SideDrawerMenu: React.FC<SideDrawerMenuProps> = ({
       onClose={onClose}
       placement="left"
       width={260}
-      styles={{ body: { padding: 0 } }}
+      className="[&_.ant-drawer-body]:p-0"
       title="Menu"
     >
       <Menu

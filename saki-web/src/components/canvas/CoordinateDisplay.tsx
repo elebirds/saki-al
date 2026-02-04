@@ -21,21 +21,7 @@ const CoordinateDisplay: FC<CoordinateDisplayProps> = ({ cursorPos, visible }) =
 
   return (
     <div
-      style={{
-        position: 'absolute',
-        bottom: 8,
-        right: 8,
-        zIndex: 10,
-        background: 'rgba(0, 0, 0, 0.7)',
-        color: '#fff',
-        padding: '6px 12px',
-        borderRadius: 4,
-        fontSize: 12,
-        fontFamily: 'monospace',
-        pointerEvents: 'none',
-        userSelect: 'none',
-        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
-      }}
+      className="absolute bottom-2 right-2 z-10 select-none rounded bg-black/70 px-3 py-1.5 text-xs font-mono text-white shadow-[0_2px_4px_rgba(0,0,0,0.3)] pointer-events-none"
     >
       X: {formatCoordinate(cursorPos.x)}, Y: {formatCoordinate(cursorPos.y)}
     </div>
@@ -43,4 +29,3 @@ const CoordinateDisplay: FC<CoordinateDisplayProps> = ({ cursorPos, visible }) =
 };
 
 export default CoordinateDisplay;
-

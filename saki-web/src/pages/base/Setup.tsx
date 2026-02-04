@@ -50,36 +50,20 @@ const Setup: React.FC = () => {
   };
 
   const renderWelcomeStep = () => (
-    <div style={{ textAlign: 'center', padding: '20px 0' }}>
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.1s',
-        animationFillMode: 'both'
-      }}>
-        <RocketOutlined style={{ fontSize: '64px', color: '#1890ff', marginBottom: '24px' }} />
+    <div className="py-5 text-center">
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.1s] [animation-fill-mode:both]">
+        <RocketOutlined className="mb-6 text-[64px] text-[#1890ff]" />
       </div>
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.2s',
-        animationFillMode: 'both'
-      }}>
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.2s] [animation-fill-mode:both]">
         <Title level={2}>{t('auth.setup.welcomeTitle')}</Title>
       </div>
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.3s',
-        animationFillMode: 'both'
-      }}>
-        <Paragraph type="secondary" style={{ fontSize: '16px', marginBottom: '32px' }}>
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.3s] [animation-fill-mode:both]">
+        <Paragraph type="secondary" className="mb-8 text-base">
           {t('auth.setup.welcomeDescription')}
         </Paragraph>
       </div>
       
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.4s',
-        animationFillMode: 'both'
-      }}>
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.4s] [animation-fill-mode:both]">
         <List
           size="large"
           dataSource={[
@@ -88,32 +72,25 @@ const Setup: React.FC = () => {
             t('auth.setup.feature3'),
           ]}
           renderItem={(item, index) => (
-            <List.Item style={{ 
-              border: 'none', 
-              padding: '12px 0',
-              animation: 'fadeInLeft 0.5s ease-out',
-              animationDelay: `${0.5 + index * 0.1}s`,
-              animationFillMode: 'both'
-            }}>
-              <CheckCircleOutlined style={{ color: '#52c41a', marginRight: '12px' }} />
+            <List.Item
+              className="border-0 py-3 animate-[fadeInLeft_0.5s_ease-out] [animation-fill-mode:both]"
+              style={{ animationDelay: `${0.5 + index * 0.1}s` }}
+            >
+              <CheckCircleOutlined className="mr-3 text-[#52c41a]" />
               {item}
             </List.Item>
           )}
-          style={{ marginBottom: '32px', textAlign: 'left', maxWidth: '400px', margin: '0 auto 32px' }}
+          className="mx-auto mb-8 max-w-[400px] text-left"
         />
       </div>
 
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.7s',
-        animationFillMode: 'both'
-      }}>
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.7s] [animation-fill-mode:both]">
         <Button 
           type="primary" 
           size="large" 
           icon={<ArrowRightOutlined />}
           onClick={() => changeStep('createAdmin')}
-          style={{ minWidth: '200px' }}
+          className="min-w-[200px]"
         >
           {t('auth.setup.getStarted')}
         </Button>
@@ -123,13 +100,9 @@ const Setup: React.FC = () => {
 
   const renderCreateAdminStep = () => (
     <>
-      <div style={{ 
-        textAlign: 'center', 
-        marginBottom: '32px',
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.1s',
-        animationFillMode: 'both'
-      }}>
+      <div
+        className="mb-8 text-center animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.1s] [animation-fill-mode:both]"
+      >
         <Title level={3}>{t('auth.setup.createAdminTitle')}</Title>
         <Paragraph type="secondary">
           {t('auth.setup.createAdminDescription')}
@@ -193,11 +166,11 @@ const Setup: React.FC = () => {
           <Input.Password prefix={<LockOutlined />} placeholder={t('auth.setup.confirmPassword')} />
         </Form.Item>
 
-        <Form.Item style={{ marginTop: '24px' }}>
-          <div style={{ display: 'flex', gap: '12px' }}>
+        <Form.Item className="mt-6">
+          <div className="flex gap-3">
             <Button 
               onClick={() => changeStep('welcome')}
-              style={{ flex: 1 }}
+              className="flex-1"
             >
               {t('auth.setup.back')}
             </Button>
@@ -205,7 +178,7 @@ const Setup: React.FC = () => {
               type="primary" 
               htmlType="submit" 
               loading={loading} 
-              style={{ flex: 2 }}
+              className="flex-[2]"
             >
               {t('auth.setup.initializeButton')}
             </Button>
@@ -216,61 +189,36 @@ const Setup: React.FC = () => {
   );
 
   const renderReadyStep = () => (
-    <div style={{ textAlign: 'center', padding: '20px 0' }}>
-      <div style={{
-        animation: 'scaleIn 0.6s ease-out',
-        animationDelay: '0.1s',
-        animationFillMode: 'both'
-      }}>
-        <CheckCircleOutlined style={{ fontSize: '64px', color: '#52c41a', marginBottom: '24px' }} />
+    <div className="py-5 text-center">
+      <div className="animate-[scaleIn_0.6s_ease-out] [animation-delay:0.1s] [animation-fill-mode:both]">
+        <CheckCircleOutlined className="mb-6 text-[64px] text-[#52c41a]" />
       </div>
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.2s',
-        animationFillMode: 'both'
-      }}>
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.2s] [animation-fill-mode:both]">
         <Title level={2}>{t('auth.setup.readyTitle')}</Title>
       </div>
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.3s',
-        animationFillMode: 'both'
-      }}>
-        <Paragraph type="secondary" style={{ fontSize: '16px', marginBottom: '32px' }}>
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.3s] [animation-fill-mode:both]">
+        <Paragraph type="secondary" className="mb-8 text-base">
           {t('auth.setup.readyDescription')}
         </Paragraph>
       </div>
       
-      <div style={{ 
-        background: '#f0f2f5', 
-        padding: '24px', 
-        borderRadius: '8px', 
-        marginBottom: '32px',
-        textAlign: 'left',
-        maxWidth: '400px',
-        margin: '0 auto 32px',
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.4s',
-        animationFillMode: 'both'
-      }}>
-        <Paragraph style={{ marginBottom: '8px' }}>
+      <div
+        className="mx-auto mb-8 max-w-[400px] rounded-lg bg-[#f0f2f5] p-6 text-left animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.4s] [animation-fill-mode:both]"
+      >
+        <Paragraph className="mb-2">
           <strong>{t('auth.setup.readyInfo')}</strong>
         </Paragraph>
-        <Paragraph type="secondary" style={{ fontSize: '14px' }}>
+        <Paragraph type="secondary" className="text-sm">
           {t('auth.setup.readyHint')}
         </Paragraph>
       </div>
 
-      <div style={{
-        animation: 'fadeInUp 0.6s ease-out',
-        animationDelay: '0.5s',
-        animationFillMode: 'both'
-      }}>
+      <div className="animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.5s] [animation-fill-mode:both]">
         <Button 
           type="primary" 
           size="large" 
           onClick={() => navigate('/login')}
-          style={{ minWidth: '200px' }}
+          className="min-w-[200px]"
         >
           {t('auth.setup.goToLogin')}
         </Button>
@@ -279,30 +227,29 @@ const Setup: React.FC = () => {
   );
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
-      <Card style={{ width: 600, padding: '40px' }}>
-        <Steps
-          current={getCurrentStepIndex()}
-          items={[
-            { title: t('auth.setup.stepWelcome'), status: currentStep === 'welcome' ? 'process' : currentStep === 'createAdmin' || currentStep === 'ready' ? 'finish' : 'wait' },
-            { title: t('auth.setup.stepCreateAdmin'), status: currentStep === 'createAdmin' ? 'process' : currentStep === 'ready' ? 'finish' : 'wait' },
-            { title: t('auth.setup.stepReady'), status: currentStep === 'ready' ? 'finish' : 'wait' },
-          ]}
-          style={{ marginBottom: '40px' }}
-        />
+    <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+      <Card className="w-[600px]">
+        <div className="p-10">
+          <div className="mb-10">
+            <Steps
+              current={getCurrentStepIndex()}
+              items={[
+                { title: t('auth.setup.stepWelcome'), status: currentStep === 'welcome' ? 'process' : currentStep === 'createAdmin' || currentStep === 'ready' ? 'finish' : 'wait' },
+                { title: t('auth.setup.stepCreateAdmin'), status: currentStep === 'createAdmin' ? 'process' : currentStep === 'ready' ? 'finish' : 'wait' },
+                { title: t('auth.setup.stepReady'), status: currentStep === 'ready' ? 'finish' : 'wait' },
+              ]}
+            />
+          </div>
 
-        <div
-          style={{
-            minHeight: '400px',
-            position: 'relative',
-            transition: 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            opacity: isAnimating ? 0 : 1,
-            transform: isAnimating ? 'translateY(20px)' : 'translateY(0)',
-          }}
-        >
-          {currentStep === 'welcome' && renderWelcomeStep()}
-          {currentStep === 'createAdmin' && renderCreateAdminStep()}
-          {currentStep === 'ready' && renderReadyStep()}
+          <div
+            className={`relative min-h-[400px] transition-[opacity,transform] duration-300 ${
+              isAnimating ? 'opacity-0 translate-y-5' : 'opacity-100 translate-y-0'
+            }`}
+          >
+            {currentStep === 'welcome' && renderWelcomeStep()}
+            {currentStep === 'createAdmin' && renderCreateAdminStep()}
+            {currentStep === 'ready' && renderReadyStep()}
+          </div>
         </div>
       </Card>
     </div>

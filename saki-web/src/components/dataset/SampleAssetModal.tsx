@@ -109,7 +109,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({ open, sample, onClo
       dataIndex: 'assetId',
       key: 'assetId',
       render: (value: string) => (
-        <span style={{ fontSize: 12, color: '#666', wordBreak: 'break-all' }}>{value}</span>
+        <span className="break-all text-xs text-gray-600">{value}</span>
       ),
     },
     {
@@ -150,7 +150,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({ open, sample, onClo
         {assets.length === 0 ? (
           <Empty
             description={t('sampleAssetModal.noAssets')}
-            style={{ marginTop: 20 }}
+            className="mt-5"
           />
         ) : (
           <Table

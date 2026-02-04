@@ -318,7 +318,7 @@ const RoleManagement: React.FC = () => {
           <Tag color={record.color || 'blue'}>{text}</Tag>
           {record.isSystem && (
             <Tooltip title={t('roleManagement.systemRole')}>
-              <LockOutlined style={{ color: '#999' }} />
+              <LockOutlined className="text-gray-500" />
             </Tooltip>
           )}
         </Space>
@@ -396,7 +396,7 @@ const RoleManagement: React.FC = () => {
   // Show loading state while permissions are being loaded
   if (permissionLoading) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center' }}>
+      <div className="p-6 text-center">
         <Spin size="large" tip={t('common.loading')} />
       </div>
     );
@@ -405,7 +405,7 @@ const RoleManagement: React.FC = () => {
   // Show no permission message if user can't read roles
   if (!canReadRoles) {
     return (
-      <div style={{ padding: '24px' }}>
+      <div className="p-6">
         <Result
           status="403"
           title="403"
@@ -416,9 +416,9 @@ const RoleManagement: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <h2 style={{ margin: 0 }}>{t('roleManagement.title')}</h2>
+    <div className="flex h-full flex-col overflow-hidden p-6">
+      <div className="mb-4 flex flex-shrink-0 items-center justify-between">
+        <span className="m-0 font-semibold">{t('roleManagement.title')}</span>
         <Space>
           <Select
             value={roleTypeFilter}
@@ -426,7 +426,7 @@ const RoleManagement: React.FC = () => {
               setRoleTypeFilter(value);
               setRefreshKey((v) => v + 1);
             }}
-            style={{ width: 150 }}
+            className="w-[150px]"
           >
             <Select.Option value="all">{t('roleManagement.allTypes')}</Select.Option>
             <Select.Option value="system">{t('roleManagement.system')}</Select.Option>
@@ -445,7 +445,7 @@ const RoleManagement: React.FC = () => {
           )}
         </Space>
       </div>
-      <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div ref={tableContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <PaginatedList<Role>
           fetchData={fetchRoles}
           onItemsChange={setRoles}
@@ -559,35 +559,35 @@ const RoleManagement: React.FC = () => {
                   name="permissions"
                   label={t('roleManagement.permissions')}
                 >
-                  <Checkbox.Group style={{ width: '100%' }}>
-                    <Card size="small" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                  <Checkbox.Group className="w-full">
+                    <Card size="small" className="max-h-[400px] overflow-y-auto">
                       {!roleType ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                        <div className="p-5 text-center text-gray-500">
                           {t('roleManagement.selectRoleTypeFirst')}
                         </div>
                       ) : categories.length === 0 ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                        <div className="p-5 text-center text-gray-500">
                           {roleType === 'system' 
                             ? t('roleManagement.noSystemPermissions') 
                             : t('roleManagement.noResourcePermissions')}
                         </div>
                       ) : (
                         categories.map((category, index) => (
-                          <div key={index} style={{ marginBottom: 16 }}>
-                            <Title level={5} style={{ marginBottom: 8, fontSize: 14 }}>
+                          <div key={index} className="mb-4">
+                            <Title level={5} className="!mb-2 !text-sm">
                               {category.title}
                             </Title>
-                            <Space direction="vertical" style={{ width: '100%' }}>
+                            <Space direction="vertical" className="w-full">
                               {category.permissions.map(perm => (
                                 <Checkbox key={perm.value} value={perm.value}>
                                   <Text>{perm.label}</Text>
-                                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                  <Text type="secondary" className="ml-2 text-xs">
                                     ({perm.value})
                                   </Text>
                                 </Checkbox>
                               ))}
                             </Space>
-                            {index < categories.length - 1 && <Divider style={{ margin: '12px 0' }} />}
+                            {index < categories.length - 1 && <Divider className="my-3" />}
                           </div>
                         ))
                       )}

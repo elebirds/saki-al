@@ -39,7 +39,11 @@ const SystemCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [navigate, location.pathname]);
 
   if (loading) {
-    return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}><Spin size="large" /></div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
   }
 
   return <>{children}</>;

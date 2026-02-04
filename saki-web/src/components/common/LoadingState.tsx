@@ -19,18 +19,10 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
   minHeight = 200,
 }) => {
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100%',
-      }}
-    >
+    <div className="flex h-full items-center justify-center">
       <Spin size="large" tip={tip}>
         <div style={{ minHeight }} />
       </Spin>
     </div>
   );
 };
-

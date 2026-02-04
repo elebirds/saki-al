@@ -41,14 +41,9 @@ const WorkspaceRouter: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100%' 
-      }}>
+      <div className="flex h-full items-center justify-center">
         <Spin size="large">
-          <div style={{ minHeight: 200 }} />
+          <div className="min-h-[200px]" />
         </Spin>
       </div>
     );

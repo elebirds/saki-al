@@ -19,7 +19,7 @@ export type AppShellProps = {
   onUserMenuClick: MenuProps['onClick']
   footerText?: string
   showHeader?: boolean
-  projectTabs?: React.ReactNode
+  showHeaderBorder?: boolean
   contentClassName?: string
   headerContainerClassName?: string
   contentCardClassName?: string
@@ -41,7 +41,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   onUserMenuClick,
   footerText,
   showHeader = true,
-  projectTabs,
+  showHeaderBorder = true,
   contentClassName = 'max-w-[1280px] mx-auto px-6 py-6 h-full flex flex-col',
   headerContainerClassName = 'w-full px-6',
   contentCardClassName = 'bg-github-panel rounded-md p-6 h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]',
@@ -60,6 +60,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           activeMenuKey={activeNavKey}
           onMenuItemClick={onNavItemClick}
           showHorizontalMenu
+          showBorder={showHeaderBorder}
           containerClassName={headerContainerClassName}
           themeMode={themeMode}
           onThemeModeChange={setThemeMode}
@@ -70,14 +71,6 @@ export const AppShell: React.FC<AppShellProps> = ({
           userMenuItems={userMenuItems}
           onUserMenuClick={onUserMenuClick}
         />
-      ) : null}
-
-      {projectTabs ? (
-        <div className="bg-github-base">
-          <div className="w-full px-6">
-            {projectTabs}
-          </div>
-        </div>
       ) : null}
 
       <main className="flex-1 overflow-auto">

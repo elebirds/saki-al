@@ -1,7 +1,7 @@
 import React from 'react'
 import { Button, Dropdown, Tag } from 'antd'
 import type { MenuProps } from 'antd'
-import { DownOutlined, EyeOutlined, ForkOutlined, StarOutlined } from '@ant-design/icons'
+import { DownOutlined, ForkOutlined } from '@ant-design/icons'
 import type { RepoStat } from './types'
 
 export type RepoHeaderProps = {
@@ -10,24 +10,17 @@ export type RepoHeaderProps = {
   stats?: RepoStat[]
 }
 
-const defaultStats: RepoStat[] = [
-  { label: 'Watch', count: 0 },
-  { label: 'Fork', count: 0 },
-  { label: 'Star', count: 0 },
-]
-
 const iconMap: Record<string, React.ReactNode> = {
-  Watch: <EyeOutlined />,
   Fork: <ForkOutlined />,
-  Star: <StarOutlined />,
 }
 
 export const RepoHeader: React.FC<RepoHeaderProps> = ({ title, visibilityLabel = 'Private', stats }) => {
-  const resolvedStats = stats || defaultStats
+  const resolvedStats = stats || [{ label: 'Fork', count: 0 }]
 
   return (
     <div className="flex items-center justify-between mb-6">
       <div className="flex items-center gap-3">
+        {/* TODO: replace with real project avatar */}
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500" />
         <h1 className="text-xl font-semibold text-github-text">{title}</h1>
         <Tag className="!bg-transparent !text-github-muted !border-github-border !rounded-full">

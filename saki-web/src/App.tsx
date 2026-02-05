@@ -3,6 +3,14 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import DatasetList from './pages/dataset/DatasetList';
 import DatasetDetail from './pages/dataset/DatasetDetail';
 import ProjectOverview from './pages/project/ProjectOverview';
+import ProjectLayout from './pages/project/ProjectLayout';
+import ProjectList from './pages/project/ProjectList';
+import ProjectSamplesAnnotations from './pages/project/ProjectSamplesAnnotations';
+import ProjectLoops from './pages/project/ProjectLoops';
+import ProjectInsights from './pages/project/ProjectInsights';
+import ProjectMembers from './pages/project/ProjectMembers';
+import ProjectSettings from './pages/project/ProjectSettings';
+import ProjectWorkspace from './pages/project/ProjectWorkspace';
 import WorkspaceRouter from './pages/annotation/WorkspaceRouter';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
@@ -43,10 +51,20 @@ const App: React.FC = () => {
               <Route path="/change-password" element={<ChangePassword />} />
               
               <Route element={<ProtectedLayout />}>
-              <Route path="/" element={<DatasetList />} />
-              <Route path="/datasets" element={<DatasetList />} />
-              <Route path="/datasets/:id" element={<DatasetDetail />} />
-              <Route path="/projects" element={<ProjectOverview />} />
+                <Route path="/" element={<DatasetList />} />
+                <Route path="/datasets" element={<DatasetList />} />
+                <Route path="/datasets/:id" element={<DatasetDetail />} />
+                <Route path="/projects" element={<ProjectList />} />
+                <Route path="/projects/:projectId" element={<ProjectLayout />}>
+                  <Route index element={<ProjectOverview />} />
+                  <Route path="samples" element={<ProjectSamplesAnnotations />} />
+                  <Route path="loops" element={<ProjectLoops />} />
+                  <Route path="insights" element={<ProjectInsights />} />
+                  <Route path="members" element={<ProjectMembers />} />
+                  <Route path="settings" element={<ProjectSettings />} />
+                  <Route path="workspace" element={<ProjectWorkspace />} />
+                  <Route path="workspace/:datasetId" element={<ProjectWorkspace />} />
+                </Route>
                 
                 {/* Workspace still points to legacy dataset logic inside? Maybe need check */}
                 <Route path="/workspace/:datasetId" element={<WorkspaceRouter />} />

@@ -21,6 +21,7 @@ export type TopHeaderProps = {
   activeMenuKey?: string
   onMenuItemClick?: (path: string) => void
   showHorizontalMenu?: boolean
+  showBorder?: boolean
   containerClassName?: string
   themeMode: 'light' | 'dark'
   onThemeModeChange: (mode: 'light' | 'dark') => void
@@ -45,6 +46,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   activeMenuKey,
   onMenuItemClick,
   showHorizontalMenu = false,
+  showBorder = true,
   containerClassName = 'max-w-[1280px] mx-auto px-6',
   themeMode,
   onThemeModeChange,
@@ -61,7 +63,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   }))
 
   return (
-    <header className="border-b border-github-border bg-[var(--github-header)]">
+    <header className={`bg-[var(--github-header)] ${showBorder ? 'border-b border-github-border' : ''}`}>
       <div className={`${containerClassName} py-4`}>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
           <div className="flex items-center gap-4 justify-self-start">

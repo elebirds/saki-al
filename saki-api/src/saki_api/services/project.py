@@ -76,10 +76,17 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             Created project with all L2 structures initialized
         """
         # 1. Verify datasets exist
+        dataset_type = None
         for dataset_id in dataset_ids:
             dataset = await self.dataset_repo.get_by_id(dataset_id)
             if not dataset:
                 raise NotFoundAppException(f"Dataset {dataset_id} not found")
+            if dataset_type is None:
+                dataset_type = dataset.type
+            elif dataset.type != dataset_type:
+                raise BadRequestAppException(
+                    "All datasets linked to a project must share the same type"
+                )
 
         # 2. Create Project
         project_data = {
@@ -187,14 +194,32 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         await self.get_by_id_or_raise(project_id)
 
         # Verify datasets exist
+        new_dataset_type = None
         for dataset_id in dataset_ids:
             dataset = await self.dataset_repo.get_by_id(dataset_id)
             if not dataset:
                 raise NotFoundAppException(f"Dataset {dataset_id} not found")
+            if new_dataset_type is None:
+                new_dataset_type = dataset.type
+            elif dataset.type != new_dataset_type:
+                raise BadRequestAppException(
+                    "All datasets linked to a project must share the same type"
+                )
 
         # Check for existing links
         existing_ids = await self.repository.get_linked_dataset_ids(project_id)
         new_ids = [did for did in dataset_ids if did not in existing_ids]
+        if not new_ids:
+            return []
+
+        # Enforce consistent dataset type within project
+        if existing_ids:
+            for dataset_id in existing_ids:
+                existing_dataset = await self.dataset_repo.get_by_id(dataset_id)
+                if existing_dataset and existing_dataset.type != new_dataset_type:
+                    raise BadRequestAppException(
+                        "All datasets linked to a project must share the same type"
+                    )
 
         links = []
         for dataset_id in new_ids:

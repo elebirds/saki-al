@@ -64,10 +64,15 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
   const onErrorRef = useRef(onError);
+  const fetchDataRef = useRef(fetchData);
 
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+  }, [fetchData]);
 
   useEffect(() => {
     if (resetPageOnRefresh) {
@@ -81,7 +86,7 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await fetchData(page, pageSize);
+        const data = await fetchDataRef.current(page, pageSize);
         if (cancelled) return;
         setItems(data.items);
         onItemsChange?.(data.items);
@@ -115,7 +120,7 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
     return () => {
       cancelled = true;
     };
-  }, [fetchData, page, pageSize, updateFromMeta, refreshKey, enabled]);
+  }, [page, pageSize, updateFromMeta, refreshKey, enabled]);
 
   const handlePageChange = (nextPage: number, nextSize?: number) => {
     const sizeChanged = nextSize && nextSize !== pageSize;

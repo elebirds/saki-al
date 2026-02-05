@@ -35,6 +35,7 @@ class ResourceMemberRead(ResourceMemberBase, UUIDMixin):
 
     user_email: Optional[str] = Field(None, validation_alias=AliasPath("user", "email"))
     user_full_name: Optional[str] = Field(None, validation_alias=AliasPath("user", "full_name"))
+    user_avatar_url: Optional[str] = Field(None, validation_alias=AliasPath("user", "avatar_url"))
 
     role_name: Optional[str] = Field(None, validation_alias=AliasPath("role", "name"))
     role_display_name: Optional[str] = Field(None, validation_alias=AliasPath("role", "display_name"))

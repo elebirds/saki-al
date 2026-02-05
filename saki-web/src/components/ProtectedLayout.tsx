@@ -7,7 +7,6 @@ import { useAuthStore } from '../store/authStore'
 import { api } from '../services/api'
 import { usePermission } from '../hooks'
 import { AppShell, type NavItem } from '../layouts'
-import { RepoTabs } from '../layouts/github/RepoTabs'
 
 const ProtectedLayout: React.FC = () => {
   const { t, i18n } = useTranslation()
@@ -102,21 +101,7 @@ const ProtectedLayout: React.FC = () => {
     return 'datasets'
   })()
 
-  const isProjectPage =
-    location.pathname.startsWith('/projects') || location.pathname.startsWith('/project')
-
-  const projectTabItems: NavItem[] = [
-    { key: 'code', label: 'Code', path: 'code' },
-    { key: 'issues', label: 'Issues', path: 'issues' },
-    { key: 'actions', label: 'Actions', path: 'actions' },
-    { key: 'projects', label: 'Projects', path: 'projects' },
-    { key: 'wiki', label: 'Wiki', path: 'wiki' },
-    { key: 'security', label: 'Security', path: 'security' },
-    { key: 'insights', label: 'Insights', path: 'insights' },
-    { key: 'settings', label: 'Settings', path: 'settings' },
-  ]
-
-  const activeProjectTab = 'code'
+  const isProjectDetail = /^\/projects\/[^/]+/.test(location.pathname)
 
   const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'profile') {
@@ -160,13 +145,14 @@ const ProtectedLayout: React.FC = () => {
       userMenuItems={userMenuItems}
       onUserMenuClick={handleUserMenuClick}
       footerText={t('app.footer')}
-      projectTabs={
-        isProjectPage ? (
-          <RepoTabs items={projectTabItems} activeKey={activeProjectTab} onItemClick={() => {}} />
-        ) : undefined
+      showHeaderBorder={!isProjectDetail}
+      contentClassName={
+        isProjectDetail
+          ? 'max-w-[1280px] mx-auto px-6 h-full flex flex-col'
+          : 'max-w-[1280px] mx-auto px-6 py-6 h-full flex flex-col'
       }
       contentCardClassName={
-        isProjectPage
+        isProjectDetail
           ? 'bg-transparent border-0 p-0 h-full flex flex-col'
           : 'bg-github-panel rounded-md p-6 h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]'
       }

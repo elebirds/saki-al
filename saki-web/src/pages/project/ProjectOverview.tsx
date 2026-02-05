@@ -1,99 +1,277 @@
-import React from 'react'
-import { Avatar, Button } from 'antd'
-import {
-  FileOutlined,
-  FolderOutlined,
-  HistoryOutlined,
-} from '@ant-design/icons'
-import { FileTable } from '../../layouts/github/FileTable'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Avatar, Button, Spin, Tag } from 'antd'
+import { FolderOutlined, HistoryOutlined } from '@ant-design/icons'
+import { useParams } from 'react-router-dom'
 import { RepoActionBar } from '../../layouts/github/RepoActionBar'
 import { RepoHeader } from '../../layouts/github/RepoHeader'
-import { Sidebar } from '../../layouts/github/Sidebar'
+import { FileTable } from '../../layouts/github/FileTable'
+import { api } from '../../services/api'
+import { CommitHistoryItem, Dataset, Project, ProjectBranch, ResourceMember } from '../../types'
+import ProjectDatasetSamples from './ProjectDatasetSamples'
+import ProjectSidebar from './ProjectSidebar'
 
-const files = [
-  { type: 'folder', name: 'ref', message: "chore: simplify fedo's metadata & add example vis code a...", date: '2 months ago' },
-  { type: 'folder', name: 'saki-api', message: 'feat: 引入 postgresql 和异步 IO', date: '2 weeks ago' },
-  { type: 'folder', name: 'saki-runtime', message: '[feat] add the demo plugin and its training entry, update p...', date: '2 months ago' },
-  { type: 'folder', name: 'saki-web', message: 'fix: fix compile error in TS', date: '3 weeks ago' },
-  { type: 'file', name: '.gitignore', message: '[feat] add network error handling page and update routing', date: '2 months ago' },
-  { type: 'file', name: 'API.md', message: 'refactor(annotation-system): union handler, add sync sys...', date: '2 months ago' },
-  { type: 'file', name: 'DEPLOYMENT.md', message: 'feat(docker): add Docker mirror configuration script and ...', date: 'last month' },
-  { type: 'file', name: 'MODEL_RUNTIME_DESIGN.md', message: '[init] add initial project prompt and constraints for Model ...', date: '2 months ago' },
-  { type: 'file', name: 'PROMPT.txt', message: '[init] add initial project prompt and constraints for Model ...', date: '2 months ago' },
-  { type: 'file', name: 'RBAC_DESIGN.md', message: 'feat(rbac): implement enhanced role-based access contr...', date: 'last month' },
-  { type: 'file', name: 'README.md', message: '[init] project init', date: '2 months ago' },
-  { type: 'file', name: 'deploy.sh', message: 'fix: docker bugs', date: 'last month' },
-  { type: 'file', name: 'docker-compose.yml', message: 'feat: 引入 postgresql 和异步 IO', date: '2 weeks ago' },
-  { type: 'file', name: 'env.example', message: 'feat: object storage', date: '2 weeks ago' },
-  { type: 'file', name: '重构总结文档.md', message: 'refactor(model): layer 3', date: '2 weeks ago' },
-  { type: 'file', name: '问题与建议清单.md', message: 'refactor(model): layer 3', date: '2 weeks ago' },
-]
 
-export default function ProjectOverview() {
+const taskTypeLabel: Record<string, string> = {
+  classification: 'Classification',
+  detection: 'Detection',
+  segmentation: 'Segmentation',
+}
+
+const statusLabel: Record<string, string> = {
+  active: 'Active',
+  archived: 'Archived',
+}
+
+const formatRelativeTime = (value?: string) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  const diffMs = Date.now() - date.getTime()
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} hours ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} days ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `${weeks} weeks ago`
+  const months = Math.floor(days / 30)
+  return `${months} months ago`
+}
+
+const ProjectOverview: React.FC = () => {
+  const { projectId } = useParams<{ projectId: string }>()
+  const [project, setProject] = useState<Project | null>(null)
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [branches, setBranches] = useState<ProjectBranch[]>([])
+  const [commits, setCommits] = useState<CommitHistoryItem[]>([])
+  const [members, setMembers] = useState<ResourceMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
+  const [sampleStats, setSampleStats] = useState({ labeled: 0, unlabeled: 0, skipped: 0, total: 0 })
+  const [selectedBranchName, setSelectedBranchName] = useState('master')
+
+  const loadProject = useCallback(async () => {
+    if (!projectId) return
+    setLoading(true)
+    try {
+      const [projectData, datasetIds, branchData, commitData] = await Promise.all([
+        api.getProject(projectId),
+        api.getProjectDatasets(projectId),
+        api.getProjectBranches(projectId),
+        api.getProjectCommits(projectId),
+      ])
+
+      setProject(projectData)
+      setBranches(branchData)
+      setCommits(commitData)
+
+      const datasetResults = await Promise.all(datasetIds.map((id) => api.getDataset(id)))
+      const resolvedDatasets = datasetResults.filter(Boolean) as Dataset[]
+      setDatasets(resolvedDatasets)
+
+      try {
+        const memberList = await api.getProjectMembers(projectId)
+        setMembers(memberList)
+      } catch (error) {
+        setMembers([])
+      }
+
+      if (resolvedDatasets.length === 1) {
+        setSelectedDatasetId(resolvedDatasets[0].id)
+      }
+    } catch (error) {
+      console.error('Failed to load project overview', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    loadProject()
+  }, [loadProject])
+
+  useEffect(() => {
+    if (selectedDatasetId && !datasets.find((dataset) => dataset.id === selectedDatasetId)) {
+      setSelectedDatasetId(null)
+    }
+    if (!selectedDatasetId && datasets.length === 1) {
+      setSelectedDatasetId(datasets[0].id)
+    }
+  }, [datasets, selectedDatasetId])
+
+  useEffect(() => {
+    if (datasets.length === 0) {
+      setSampleStats({ labeled: 0, unlabeled: 0, skipped: 0, total: 0 })
+      return
+    }
+
+    const loadStats = async () => {
+      const stats = await Promise.all(
+        datasets.map((dataset) =>
+          api.getDatasetStats(dataset.id).catch(() => null)
+        )
+      )
+
+      const totals = stats.reduce(
+        (acc, stat) => {
+          if (!stat) return acc
+          acc.labeled += stat.labeledSamples || 0
+          acc.unlabeled += stat.unlabeledSamples || 0
+          acc.skipped += stat.skippedSamples || 0
+          acc.total += stat.totalSamples || 0
+          return acc
+        },
+        { labeled: 0, unlabeled: 0, skipped: 0, total: 0 }
+      )
+
+      setSampleStats(totals)
+    }
+
+    loadStats()
+  }, [datasets])
+
+  useEffect(() => {
+    if (branches.length === 0) return
+    const master = branches.find((branch) => branch.name === 'master')?.name
+    setSelectedBranchName((prev) => prev || master || branches[0].name)
+  }, [branches])
+
+  const memberMap = useMemo(() => {
+    return new Map(members.map((member) => [member.userId, member]))
+  }, [members])
+
+  const latestCommit = commits[0]
+  const latestCommitAuthor = latestCommit?.authorId ? memberMap.get(latestCommit.authorId) : null
+  const latestCommitName = latestCommit
+    ? latestCommit.authorType === 'system'
+      ? 'System'
+      : latestCommit.authorType === 'model'
+        ? 'Model'
+        : latestCommitAuthor?.userFullName || latestCommitAuthor?.userEmail || 'Unknown User'
+    : 'No commits'
+
+  const latestCommitAvatar = latestCommitAuthor?.userAvatarUrl
+
+  const activeBranchName = selectedBranchName || branches[0]?.name || 'master'
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spin size="large" />
+      </div>
+    )
+  }
+
+  if (!project) {
+    return (
+      <div className="text-github-muted">Project not found.</div>
+    )
+  }
+
+  const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId) || null
+
   return (
     <div>
-      <RepoHeader title="saki-al" visibilityLabel="Private" />
+      <RepoHeader
+        title={project.name}
+        visibilityLabel={taskTypeLabel[project.taskType] || project.taskType}
+        stats={[{ label: 'Fork', count: 0 }]}
+      />
 
       <div className="flex gap-6">
         <div className="flex-1 min-w-0">
-          <RepoActionBar branchName="main" branchesCount={3} tagsCount={0} />
+          <RepoActionBar
+            branchName={activeBranchName}
+            branchesCount={project.branchCount}
+            tagsCount={project.labelCount}
+            branches={branches.map((branch) => ({ id: branch.id, name: branch.name }))}
+            onBranchChange={(name) => setSelectedBranchName(name)}
+          />
 
-          <FileTable
-            header={
-              <>
-                <div className="flex items-center gap-3 min-w-0">
-                  <Avatar size={24} className="bg-gradient-to-br from-green-400 to-blue-500" />
-                  <span className="font-semibold text-sm text-github-text">elebirds</span>
-                  <span className="text-github-muted text-sm truncate">
-                    feat: 引入 postgresql 和异步 IO
-                  </span>
+          {selectedDataset ? (
+            <ProjectDatasetSamples
+              datasetId={selectedDataset.id}
+              datasetName={selectedDataset.name}
+              onBack={() => setSelectedDatasetId(null)}
+            />
+          ) : (
+            <FileTable
+              header={
+                <>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar
+                      size={24}
+                      src={latestCommitAvatar}
+                      className="bg-gradient-to-br from-green-400 to-blue-500"
+                    >
+                      {latestCommitName.charAt(0).toUpperCase()}
+                    </Avatar>
+                    <span className="font-semibold text-sm text-github-text">{latestCommitName}</span>
+                    <span className="text-github-muted text-sm truncate">
+                      {latestCommit?.message || 'No commits yet'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-github-muted shrink-0">
+                    {latestCommit?.id ? (
+                      <span className="font-mono text-xs">{latestCommit.id.slice(0, 7)}</span>
+                    ) : null}
+                    <span>· {formatRelativeTime(latestCommit?.createdAt)}</span>
+                    <Button type="link" className="!text-github-link !p-0">
+                      <HistoryOutlined className="mr-1" />
+                      <span className="font-semibold text-github-text">{project.commitCount}</span> Commits
+                    </Button>
+                  </div>
+                </>
+              }
+            >
+              {datasets.length === 0 ? (
+                <div className="px-4 py-8 text-center text-github-muted">
+                  No datasets linked to this project.
                 </div>
-                <div className="flex items-center gap-3 text-sm text-github-muted shrink-0">
-                  <span className="font-mono text-xs">9edd608</span>
-                  <span>· 2 weeks ago</span>
-                  <Button type="link" className="!text-github-link !p-0">
-                    <HistoryOutlined className="mr-1" />
-                    <span className="font-semibold text-github-text">100</span> Commits
-                  </Button>
-                </div>
-              </>
-            }
-          >
-            {files.map((file) => (
-              <div
-                key={`${file.type}-${file.name}`}
-                className="flex items-center px-4 py-2 hover:bg-github-base border-b border-github-border-muted last:border-b-0 text-sm"
-              >
-                <div className="flex items-center gap-3 w-[200px] shrink-0">
-                  {file.type === 'folder' ? (
-                    <FolderOutlined className="text-github-muted" />
-                  ) : (
-                    <FileOutlined className="text-github-muted" />
-                  )}
-                  <Button type="link" className="!text-github-link !p-0">
-                    {file.name}
-                  </Button>
-                </div>
-                <div className="flex-1 text-github-muted truncate px-4">{file.message}</div>
-                <div className="text-github-muted text-right whitespace-nowrap shrink-0">
-                  {file.date}
-                </div>
-              </div>
-            ))}
-          </FileTable>
+              ) : (
+                datasets.map((dataset) => (
+                  <div
+                    key={dataset.id}
+                    className="flex items-center px-4 py-2 hover:bg-github-base border-b border-github-border-muted last:border-b-0 text-sm"
+                  >
+                    <div className="flex items-center gap-3 w-[220px] shrink-0">
+                      <FolderOutlined className="text-github-muted" />
+                      <Button type="link" className="!text-github-link !p-0" onClick={() => setSelectedDatasetId(dataset.id)}>
+                        {dataset.name}
+                      </Button>
+                    </div>
+                    <div className="flex-1 text-github-muted truncate px-4">
+                      {dataset.description || 'No description'}
+                    </div>
+                    <div className="flex items-center gap-2 text-github-muted text-right whitespace-nowrap shrink-0">
+                      <Tag className="!m-0">{dataset.type}</Tag>
+                      <span>{formatRelativeTime(dataset.updatedAt)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </FileTable>
+          )}
         </div>
 
-        <Sidebar
-          aboutText="Saki - Active Learning Framework"
-          languages={[
-            { name: 'Python', percent: 54.8, color: '#3572A5' },
-            { name: 'TypeScript', percent: 44.5, color: '#3178c6' },
-            { name: 'Shell', percent: 0.4, color: '#89e051' },
-            { name: 'Dockerfile', percent: 0.2, color: '#384d54' },
-            { name: 'CSS', percent: 0.1, color: '#563d7c' },
-          ]}
+        <ProjectSidebar
+          description={project.description}
+          taskTypeLabel={taskTypeLabel[project.taskType] || project.taskType}
+          statusLabel={statusLabel[project.status] || project.status}
+          stats={{
+            datasets: project.datasetCount,
+            labels: project.labelCount,
+            branches: project.branchCount,
+            commits: project.commitCount,
+            members: members.length || undefined,
+          }}
+          members={members}
+          sampleStatus={sampleStats}
         />
       </div>
     </div>
   )
 }
+
+export default ProjectOverview

@@ -11,6 +11,8 @@ import {
   Dataset, DatasetCreate, DatasetUpdate,
   Sample,
   AvailableTypesResponse, RoleInfo,
+  // Project types
+  Project, ProjectBranch, CommitHistoryItem,
   PaginationResponse,
 } from '../../types';
 import { ApiService } from './interface';
@@ -582,6 +584,40 @@ export class RealApiService implements ApiService {
   }
 
   // ==========================================================================
+  // Project APIs
+  // ==========================================================================
+
+  async getProjects(page: number = 1, limit: number = 20): Promise<PaginationResponse<Project>> {
+    const response = await this.client.get<PaginationResponse<Project>>('/projects', { params: { page, limit } });
+    return response.data;
+  }
+
+  async getProject(id: string): Promise<Project> {
+    const response = await this.client.get<Project>(`/projects/${id}`);
+    return response.data;
+  }
+
+  async getProjectDatasets(projectId: string): Promise<string[]> {
+    const response = await this.client.get<string[]>(`/projects/${projectId}/datasets`);
+    return response.data;
+  }
+
+  async getProjectBranches(projectId: string): Promise<ProjectBranch[]> {
+    const response = await this.client.get<ProjectBranch[]>(`/branches/projects/${projectId}/branches`);
+    return response.data;
+  }
+
+  async getProjectCommits(projectId: string): Promise<CommitHistoryItem[]> {
+    const response = await this.client.get<CommitHistoryItem[]>(`/commits/projects/${projectId}/commits`);
+    return response.data;
+  }
+
+  async getProjectMembers(projectId: string): Promise<ResourceMember[]> {
+    const response = await this.client.get<ResourceMember[]>(`/projects/${projectId}/members`);
+    return response.data;
+  }
+
+  // ==========================================================================
   // Sample APIs
   // ==========================================================================
 
@@ -702,6 +738,20 @@ export class RealApiService implements ApiService {
 
   async deleteUser(id: string): Promise<void> {
     await this.client.delete(`/users/${id}`);
+  }
+
+  async updateCurrentUser(user: Partial<User>): Promise<User> {
+    const response = await this.client.patch<User>('/users/me', user);
+    return response.data;
+  }
+
+  async uploadUserAvatar(file: File): Promise<User> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await this.client.post<User>('/users/me/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
   }
 
   // ==========================================================================

@@ -156,6 +156,7 @@ export interface ResourceMember {
   updatedAt?: string;
   userEmail?: string;
   userFullName?: string;
+  userAvatarUrl?: string;
   roleName?: string;
   roleDisplayName?: string;
   roleColor?: string;

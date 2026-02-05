@@ -12,6 +12,8 @@ import {
   Dataset, DatasetCreate, DatasetUpdate,
   // Sample types
   Sample, RoleInfo,
+  // Project types
+  Project, ProjectBranch, CommitHistoryItem,
   // Pagination
   PaginationResponse,
 } from '../../types';
@@ -42,6 +44,8 @@ export interface ApiService {
   createUser(user: Partial<User> & { password: string }): Promise<User>;
   updateUser(id: string, user: Partial<User> & { password?: string }): Promise<User>;
   deleteUser(id: string): Promise<void>;
+  updateCurrentUser(user: Partial<User>): Promise<User>;
+  uploadUserAvatar(file: File): Promise<User>;
 
   // ============================================================================
   // Permission APIs
@@ -93,6 +97,16 @@ export interface ApiService {
   updateDatasetMemberRole(datasetId: string, userId: string, member: ResourceMemberUpdate): Promise<ResourceMember>;
   removeDatasetMember(datasetId: string, userId: string): Promise<{ ok: boolean; message: string }>;
   getAvailableDatasetRoles(datasetId: string): Promise<RoleInfo[]>;
+
+  // ============================================================================
+  // Project APIs
+  // ============================================================================
+  getProjects(page?: number, limit?: number): Promise<PaginationResponse<Project>>;
+  getProject(id: string): Promise<Project>;
+  getProjectDatasets(projectId: string): Promise<string[]>;
+  getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
+  getProjectCommits(projectId: string): Promise<CommitHistoryItem[]>;
+  getProjectMembers(projectId: string): Promise<ResourceMember[]>;
   
   // ============================================================================
   // Sample APIs

@@ -1,38 +1,45 @@
 import React from 'react'
 import { Button, Dropdown, Input } from 'antd'
 import type { MenuProps } from 'antd'
-import { BranchesOutlined, CodeOutlined, DownOutlined, SearchOutlined, TagOutlined } from '@ant-design/icons'
+import { BranchesOutlined, DownOutlined, SearchOutlined, TagOutlined } from '@ant-design/icons'
 
 export type RepoActionBarProps = {
   branchName?: string
   branchesCount?: number
   tagsCount?: number
+  branches?: { id?: string; name: string }[]
+  onBranchChange?: (name: string) => void
 }
-
-const branchMenuItems: MenuProps['items'] = [
-  { key: 'main', label: 'main' },
-  { key: 'dev', label: 'dev' },
-]
-
-const fileMenuItems: MenuProps['items'] = [
-  { key: 'upload', label: 'Upload files' },
-  { key: 'new', label: 'New file' },
-]
-
-const codeMenuItems: MenuProps['items'] = [
-  { key: 'https', label: 'HTTPS' },
-  { key: 'ssh', label: 'SSH' },
-]
 
 export const RepoActionBar: React.FC<RepoActionBarProps> = ({
   branchName = 'main',
   branchesCount = 0,
   tagsCount = 0,
+  branches,
+  onBranchChange,
 }) => {
+  const branchMenuItems: MenuProps['items'] = (branches && branches.length > 0)
+    ? branches.map((branch) => ({
+        key: branch.id || branch.name,
+        label: branch.name,
+      }))
+    : [
+        { key: 'main', label: 'main' },
+        { key: 'dev', label: 'dev' },
+      ]
+
   return (
     <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
       <div className="flex items-center gap-4">
-        <Dropdown menu={{ items: branchMenuItems }}>
+        <Dropdown
+          menu={{
+            items: branchMenuItems,
+            onClick: (info) => {
+              const selected = branches?.find((branch) => (branch.id || branch.name) === info.key)
+              onBranchChange?.(selected?.name || String(info.key))
+            },
+          }}
+        >
           <Button className="!bg-github-input !border-github-border !text-github-text">
             <div className="flex items-center gap-2">
               <BranchesOutlined />
@@ -65,21 +72,6 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
             t
           </kbd>
         </div>
-        <Dropdown menu={{ items: fileMenuItems }}>
-          <Button className="!bg-github-input !border-github-border !text-github-text">
-            Add file <DownOutlined />
-          </Button>
-        </Dropdown>
-        <Button className="!bg-github-input !border-github-border !text-github-text">
-          <CodeOutlined />
-        </Button>
-        <Dropdown menu={{ items: codeMenuItems }}>
-          <Button className="!bg-github-success !border-github-success !text-white hover:!bg-github-success-hover">
-            <div className="flex items-center gap-2">
-              Code <DownOutlined />
-            </div>
-          </Button>
-        </Dropdown>
       </div>
     </div>
   )

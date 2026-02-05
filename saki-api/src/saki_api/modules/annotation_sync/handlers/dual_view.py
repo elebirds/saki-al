@@ -8,6 +8,7 @@ to the corresponding region in the other view via lookup tables.
 
 import cv2
 import numpy as np
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -57,22 +58,32 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
 
     def _get_view_mapper(self, sample_meta: Dict[str, Any]) -> Optional[LUTViewMapper]:
         """Get or create a view mapper for the sample."""
+        lookup_local_path = sample_meta.get('lookup_local_path')
         lookup_object_path = sample_meta.get('lookup_object_path')
-        if not lookup_object_path:
+        lookup_key = lookup_local_path or lookup_object_path
+        if not lookup_key:
             return None
 
-        if lookup_object_path in self._view_mappers:
-            return self._view_mappers[lookup_object_path]
+        if lookup_key in self._view_mappers:
+            return self._view_mappers[lookup_key]
 
         try:
-            if not self.asset_service:
-                raise RuntimeError("AssetService not initialized")
+            lookup_bytes = None
+            if lookup_local_path:
+                path = Path(lookup_local_path)
+                if path.exists():
+                    lookup_bytes = path.read_bytes()
 
-            lookup_bytes = self.asset_service.storage.get_object_bytes(lookup_object_path)
+            if lookup_bytes is None:
+                if not self.asset_service:
+                    raise RuntimeError("AssetService not initialized")
+                if not lookup_object_path:
+                    raise RuntimeError("lookup_object_path missing")
+                lookup_bytes = self.asset_service.storage.get_object_bytes(lookup_object_path)
             lookup_table = load_lookup_table_from_bytes(lookup_bytes)
 
             mapper = LUTViewMapper(lookup_table=lookup_table)
-            self._view_mappers[lookup_object_path] = mapper
+            self._view_mappers[lookup_key] = mapper
             return mapper
         except Exception as e:
             self.logger.error(f"Error loading lookup table: {e}")
@@ -83,15 +94,21 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         try:
             meta = context.sample_meta or {}
             lookup_object_path = meta.get('lookup_object_path')
+            lookup_local_path = meta.get('lookup_local_path')
 
-            if not lookup_object_path:
-                self.logger.warning(f"No lookup_object_path in sample_meta for {context.sample_id}")
-                return None
+            lookup_bytes = None
+            if lookup_local_path:
+                path = Path(lookup_local_path)
+                if path.exists():
+                    lookup_bytes = path.read_bytes()
 
-            if not self.asset_service:
-                raise RuntimeError("AssetService not initialized")
-
-            lookup_bytes = self.asset_service.storage.get_object_bytes(lookup_object_path)
+            if lookup_bytes is None:
+                if not lookup_object_path:
+                    self.logger.warning(f"No lookup_object_path in sample_meta for {context.sample_id}")
+                    return None
+                if not self.asset_service:
+                    raise RuntimeError("AssetService not initialized")
+                lookup_bytes = self.asset_service.storage.get_object_bytes(lookup_object_path)
             return load_lookup_table_from_bytes(lookup_bytes)
         except Exception as e:
             self.logger.error(f"Error loading lookup table: {e}")

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     REDIS_KEY_PREFIX: str = "saki"
     REDIS_WORKING_TTL_SECONDS: int = 86400  # 24 hours
 
+    # FEDO LUT local cache
+    LUT_CACHE_DIR: str = "./data/lut_cache"
+
     # Security
     SECRET_KEY: str = "YOUR_SUPER_SECRET_KEY_CHANGE_ME_IN_PRODUCTION"
     ALGORITHM: str = "HS256"

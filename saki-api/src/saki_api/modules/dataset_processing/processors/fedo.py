@@ -18,6 +18,7 @@ from fastapi import UploadFile
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.enums import DatasetType
+from saki_api.core.config import settings
 from saki_api.modules.dataset_processing.base import (
     BaseDatasetProcessor,
     EventType,
@@ -134,6 +135,28 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
         )
 
         return await self.asset_service.upload_file(file_obj, meta_info=meta_info)
+
+    def _persist_local_lookup_table(
+            self,
+            content: bytes,
+            context: UploadContext,
+            sample_id: str,
+    ) -> Optional[str]:
+        """
+        Persist lookup table to local filesystem for fast access.
+        """
+        try:
+            base_dir = Path(settings.LUT_CACHE_DIR)
+            base_dir.mkdir(parents=True, exist_ok=True)
+            target_path = base_dir / f"{sample_id}.npz"
+            tmp_path = base_dir / f"{sample_id}.npz.tmp"
+
+            tmp_path.write_bytes(content)
+            tmp_path.replace(target_path)
+            return str(target_path)
+        except Exception as e:
+            self.logger.warning(f"Failed to persist local lookup table: {e}")
+            return None
 
     def _process_file_with_processor(
             self,
@@ -268,6 +291,11 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
                     "type": "fedo_lookup_table",
                 }
             )
+            lookup_local_path = self._persist_local_lookup_table(
+                content=result.lookup_table_bytes,
+                context=context,
+                sample_id=sample_id,
+            )
 
             data_asset = await self._upload_generated_bytes(
                 content=result.data_bytes,
@@ -306,6 +334,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
                     "data_asset_id": str(data_asset.id),
                     "lookup_object_path": lookup_asset.path,
                     "data_object_path": data_asset.path,
+                    "lookup_local_path": lookup_local_path,
                 },
             )
 

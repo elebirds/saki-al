@@ -24,7 +24,7 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 
 ### Frontend (saki-web)
 - **Framework**: React 18 + Vite + TypeScript
-- **UI Library**: Ant Design 5.x
+- **UI Library**: Ant Design 5.x(仅使用原子组件) + Tailwind CSS (布局与定制)
 - **State Management**: Zustand
 - **Graphics/Annotation**: Konva + React-Konva + use-image
 - **Networking**: Axios
@@ -35,7 +35,7 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 ### 开发状态看板 (Status)
 #### saki-api
 - **L1 (Physical)**: ✅ 完成 (Asset去重, MinIO上传, Sample逻辑封装)
-- **L2 (Logic)**: 🏗️ 开发中 (模型、基础 CRUD 已就绪)
+- **L2 (Logic)**: 🏗️ 开发中 (模型、基础 CRUD、项目概览与设置界面 已就绪)
 - **L3 (Experiment)**: ⏳ 计划中 (模型已定义)
 #### saki-runtime
 基本可以视为 0 进度。

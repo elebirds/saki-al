@@ -1,11 +1,15 @@
-import React, { useCallback } from 'react'
-import { Card, Tag, Typography } from 'antd'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Button, Card, Form, Input, Modal, Select, Tag, Tooltip, Typography, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { PlusOutlined } from '@ant-design/icons'
 import { api } from '../../services/api'
 import { PaginatedList } from '../../components/common/PaginatedList'
-import { Project } from '../../types'
+import { Dataset, Project, TaskType } from '../../types'
+import { usePermission } from '../../hooks'
 
 const { Title, Text } = Typography
+const { Option } = Select
 
 const taskTypeLabel: Record<string, string> = {
   classification: 'Classification',
@@ -19,21 +23,79 @@ const statusLabel: Record<string, string> = {
 }
 
 const ProjectList: React.FC = () => {
+  const { t } = useTranslation()
   const navigate = useNavigate()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [form] = Form.useForm()
+  const { can } = usePermission()
+  const canCreate = can('project:create')
+
   const fetchProjects = useCallback(
     (page: number, pageSize: number) => api.getProjects(page, pageSize),
     []
   )
 
+  useEffect(() => {
+    if (!createOpen) return
+    setDatasetsLoading(true)
+    api.getDatasets(1, 200)
+      .then((res) => {
+        setDatasets(res.items || [])
+      })
+      .catch(() => {
+        message.error(t('datasetList.loadError'))
+      })
+      .finally(() => setDatasetsLoading(false))
+  }, [createOpen, t])
+
+  const handleCreateProject = async () => {
+    try {
+      const values = await form.validateFields()
+      setCreating(true)
+      await api.createProject({
+        name: values.name,
+        description: values.description,
+        taskType: values.taskType as TaskType,
+        datasetIds: values.datasetIds || [],
+      })
+      message.success(t('projectList.createSuccess'))
+      setCreateOpen(false)
+      form.resetFields()
+      setRefreshKey((v) => v + 1)
+    } catch (error: any) {
+      if (error?.errorFields) return
+      message.error(t('projectList.createError'))
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="mb-4 flex items-center justify-between">
-        <Title level={3} className="!mb-0">Projects</Title>
+        <Title level={3} className="!mb-0">{t('projectList.title')}</Title>
+        {canCreate ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            {t('projectList.newProject')}
+          </Button>
+        ) : (
+          <Tooltip title={t('common.noPermission')}>
+            <Button type="primary" icon={<PlusOutlined />} disabled>
+              {t('projectList.newProject')}
+            </Button>
+          </Tooltip>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden">
         <PaginatedList<Project>
           fetchData={fetchProjects}
+          refreshKey={refreshKey}
+          resetPageOnRefresh
           initialPageSize={12}
           pageSizeOptions={['8', '12', '20', '32', '50']}
           renderItems={(items) => (
@@ -84,6 +146,50 @@ const ProjectList: React.FC = () => {
           )}
         />
       </div>
+
+      <Modal
+        title={t('projectList.newProject')}
+        open={createOpen}
+        onCancel={() => setCreateOpen(false)}
+        onOk={handleCreateProject}
+        okButtonProps={{ loading: creating }}
+        cancelButtonProps={{ disabled: creating }}
+      >
+        <Form form={form} layout="vertical" initialValues={{ taskType: 'classification' }}>
+          <Form.Item
+            name="name"
+            label={t('projectSettings.projectName')}
+            rules={[{ required: true, message: t('datasetList.nameRequired') }]}
+          >
+            <Input placeholder={t('datasetList.namePlaceholder')} />
+          </Form.Item>
+          <Form.Item name="description" label={t('projectSettings.description')}>
+            <Input.TextArea placeholder={t('datasetList.descriptionPlaceholder')} rows={3} />
+          </Form.Item>
+          <Form.Item
+            name="taskType"
+            label={t('projectSettings.taskType')}
+            rules={[{ required: true }]}
+          >
+            <Select>
+              <Option value="classification">{taskTypeLabel.classification}</Option>
+              <Option value="detection">{taskTypeLabel.detection}</Option>
+              <Option value="segmentation">{taskTypeLabel.segmentation}</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="datasetIds" label={t('projectDetail.dataPool')}>
+            <Select
+              mode="multiple"
+              placeholder={t('datasetList.newDataset')}
+              loading={datasetsLoading}
+              options={datasets.map((dataset) => ({
+                value: dataset.id,
+                label: dataset.name,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }

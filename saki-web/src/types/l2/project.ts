@@ -16,6 +16,14 @@ export interface Project {
   commitCount: number;
 }
 
+export interface ProjectCreate {
+  name: string;
+  description?: string;
+  taskType?: TaskType;
+  datasetIds?: string[];
+  config?: Record<string, any>;
+}
+
 export interface ProjectReadMinimal {
   id: string;
   name: string;

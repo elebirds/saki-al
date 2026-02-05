@@ -14,7 +14,7 @@ import {
   Sample, RoleInfo,
   ProjectSample,
   // Project types
-  Project, ProjectBranch, CommitHistoryItem,
+  Project, ProjectBranch, CommitHistoryItem, ProjectCreate,
   ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate,
   AnnotationRead,
   AnnotationDraftPayload,
@@ -111,6 +111,7 @@ export interface ApiService {
   // Project APIs
   // ============================================================================
   getProjects(page?: number, limit?: number): Promise<PaginationResponse<Project>>;
+  createProject(payload: ProjectCreate): Promise<Project>;
   getProject(id: string): Promise<Project>;
   updateProject(projectId: string, payload: Partial<Project>): Promise<Project>;
   getProjectDatasets(projectId: string): Promise<string[]>;

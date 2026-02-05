@@ -13,7 +13,7 @@ import {
   AvailableTypesResponse, RoleInfo,
   // Project types
   Project, ProjectBranch, CommitHistoryItem,
-  ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate,
+  ProjectCreate, ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate,
   ProjectSample,
   AnnotationRead,
   AnnotationDraftPayload,
@@ -598,6 +598,11 @@ export class RealApiService implements ApiService {
 
   async getProjects(page: number = 1, limit: number = 20): Promise<PaginationResponse<Project>> {
     const response = await this.client.get<PaginationResponse<Project>>('/projects', { params: { page, limit } });
+    return response.data;
+  }
+
+  async createProject(payload: ProjectCreate): Promise<Project> {
+    const response = await this.client.post<Project>('/projects', payload);
     return response.data;
   }
 

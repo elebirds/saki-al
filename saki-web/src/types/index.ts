@@ -12,3 +12,4 @@ export * from './l1/sample';
 export * from './l2/annotation';
 export * from './l2/label';
 export * from './l2/project';
+export * from './l2/projectLabel';

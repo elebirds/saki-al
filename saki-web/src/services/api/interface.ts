@@ -14,6 +14,7 @@ import {
   Sample, RoleInfo,
   // Project types
   Project, ProjectBranch, CommitHistoryItem,
+  ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate,
   // Pagination
   PaginationResponse,
 } from '../../types';
@@ -103,10 +104,18 @@ export interface ApiService {
   // ============================================================================
   getProjects(page?: number, limit?: number): Promise<PaginationResponse<Project>>;
   getProject(id: string): Promise<Project>;
+  updateProject(projectId: string, payload: Partial<Project>): Promise<Project>;
   getProjectDatasets(projectId: string): Promise<string[]>;
   getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
   getProjectCommits(projectId: string): Promise<CommitHistoryItem[]>;
   getProjectMembers(projectId: string): Promise<ResourceMember[]>;
+  addProjectMember(projectId: string, member: ResourceMemberCreate): Promise<void>;
+  updateProjectMemberRole(projectId: string, userId: string, member: ResourceMemberUpdate): Promise<void>;
+  removeProjectMember(projectId: string, userId: string): Promise<void>;
+  getProjectLabels(projectId: string): Promise<ProjectLabel[]>;
+  createProjectLabel(projectId: string, payload: ProjectLabelCreate): Promise<ProjectLabel>;
+  updateProjectLabel(labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel>;
+  deleteProjectLabel(labelId: string): Promise<void>;
   
   // ============================================================================
   // Sample APIs

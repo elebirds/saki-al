@@ -38,9 +38,10 @@ class ProjectUpdate(SQLModel):
     """
     name: str | None = None
     description: str | None = None
-    task_type: TaskType | None = None
     status: ProjectStatus | None = None
     config: dict[str, Any] | None = None
+
+    model_config = {"extra": "forbid"}
 
 
 class ProjectRead(ProjectBase):

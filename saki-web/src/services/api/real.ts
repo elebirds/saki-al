@@ -13,6 +13,7 @@ import {
   AvailableTypesResponse, RoleInfo,
   // Project types
   Project, ProjectBranch, CommitHistoryItem,
+  ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate,
   PaginationResponse,
 } from '../../types';
 import { ApiService } from './interface';
@@ -597,6 +598,11 @@ export class RealApiService implements ApiService {
     return response.data;
   }
 
+  async updateProject(projectId: string, payload: Partial<Project>): Promise<Project> {
+    const response = await this.client.put<Project>(`/projects/${projectId}`, payload);
+    return response.data;
+  }
+
   async getProjectDatasets(projectId: string): Promise<string[]> {
     const response = await this.client.get<string[]>(`/projects/${projectId}/datasets`);
     return response.data;
@@ -615,6 +621,37 @@ export class RealApiService implements ApiService {
   async getProjectMembers(projectId: string): Promise<ResourceMember[]> {
     const response = await this.client.get<ResourceMember[]>(`/projects/${projectId}/members`);
     return response.data;
+  }
+
+  async addProjectMember(projectId: string, member: ResourceMemberCreate): Promise<void> {
+    await this.client.post(`/projects/${projectId}/members`, member);
+  }
+
+  async updateProjectMemberRole(projectId: string, userId: string, member: ResourceMemberUpdate): Promise<void> {
+    await this.client.put(`/projects/${projectId}/members/${userId}`, member);
+  }
+
+  async removeProjectMember(projectId: string, userId: string): Promise<void> {
+    await this.client.delete(`/projects/${projectId}/members/${userId}`);
+  }
+
+  async getProjectLabels(projectId: string): Promise<ProjectLabel[]> {
+    const response = await this.client.get<ProjectLabel[]>(`/labels/projects/${projectId}/labels`);
+    return response.data;
+  }
+
+  async createProjectLabel(projectId: string, payload: ProjectLabelCreate): Promise<ProjectLabel> {
+    const response = await this.client.post<ProjectLabel>(`/labels/projects/${projectId}/labels`, payload);
+    return response.data;
+  }
+
+  async updateProjectLabel(labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel> {
+    const response = await this.client.put<ProjectLabel>(`/labels/${labelId}`, payload);
+    return response.data;
+  }
+
+  async deleteProjectLabel(labelId: string): Promise<void> {
+    await this.client.delete(`/labels/${labelId}`);
   }
 
   // ==========================================================================

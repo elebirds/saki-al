@@ -6,7 +6,6 @@ import {
   DatabaseOutlined,
   ExperimentOutlined,
   SettingOutlined,
-  TeamOutlined,
 } from '@ant-design/icons'
 import { RepoTabs } from '../../layouts/github/RepoTabs'
 import type { NavItem } from '../../layouts/github/types'
@@ -16,7 +15,6 @@ const tabItems: NavItem[] = [
   { key: 'samples', label: 'Samples & Annotations', path: 'samples', icon: <DatabaseOutlined /> },
   { key: 'loops', label: 'AL Loops', path: 'loops', icon: <ExperimentOutlined /> },
   { key: 'insights', label: 'Insights', path: 'insights', icon: <BarChartOutlined /> },
-  { key: 'members', label: 'Members', path: 'members', icon: <TeamOutlined /> },
   { key: 'settings', label: 'Settings', path: 'settings', icon: <SettingOutlined /> },
 ]
 

@@ -14,6 +14,14 @@ import {
   // Project types
   Project, ProjectBranch, CommitHistoryItem,
   ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate,
+  ProjectSample,
+  AnnotationRead,
+  AnnotationDraftPayload,
+  AnnotationDraftRead,
+  AnnotationDraftCommitRequest,
+  AnnotationSyncRequest,
+  AnnotationSyncResponse,
+  CommitResult,
   PaginationResponse,
 } from '../../types';
 import { ApiService } from './interface';
@@ -641,7 +649,13 @@ export class RealApiService implements ApiService {
   }
 
   async createProjectLabel(projectId: string, payload: ProjectLabelCreate): Promise<ProjectLabel> {
-    const response = await this.client.post<ProjectLabel>(`/labels/projects/${projectId}/labels`, payload);
+    const response = await this.client.post<ProjectLabel>(
+      `/labels/projects/${projectId}/labels`,
+      {
+        ...payload,
+        projectId,
+      }
+    );
     return response.data;
   }
 
@@ -652,6 +666,132 @@ export class RealApiService implements ApiService {
 
   async deleteProjectLabel(labelId: string): Promise<void> {
     await this.client.delete(`/labels/${labelId}`);
+  }
+
+  async getProjectSamples(
+    projectId: string,
+    datasetId: string,
+    params: {
+      q?: string;
+      status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
+      branchName?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      page?: number;
+      limit?: number;
+    }
+  ): Promise<PaginationResponse<ProjectSample>> {
+    const response = await this.client.get<PaginationResponse<ProjectSample>>(
+      `/projects/${projectId}/datasets/${datasetId}/samples`,
+      {
+        params: {
+          q: params.q,
+          status: params.status,
+          branch_name: params.branchName,
+          sort_by: params.sortBy,
+          sort_order: params.sortOrder,
+          page: params.page,
+          limit: params.limit,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async getAnnotationsAtCommit(commitId: string, sampleId?: string): Promise<AnnotationRead[]> {
+    const response = await this.client.get<AnnotationRead[]>(
+      `/annotations/commits/${commitId}/annotations`,
+      {
+        params: {
+          sample_id: sampleId,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async getWorkingAnnotations(
+    projectId: string,
+    sampleId: string,
+    branchName?: string
+  ): Promise<AnnotationDraftPayload | null> {
+    const response = await this.client.get<AnnotationDraftPayload | null>(
+      `/annotations/projects/${projectId}/samples/${sampleId}/working`,
+      {
+        params: {
+          branch_name: branchName,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async upsertWorkingAnnotations(
+    projectId: string,
+    sampleId: string,
+    payload: AnnotationDraftPayload & { branchName?: string }
+  ): Promise<void> {
+    await this.client.put(
+      `/annotations/projects/${projectId}/samples/${sampleId}/working`,
+      payload
+    );
+  }
+
+  async syncWorkingToDraft(
+    projectId: string,
+    sampleId: string,
+    branchName?: string
+  ): Promise<AnnotationDraftRead> {
+    const response = await this.client.post<AnnotationDraftRead>(
+      `/annotations/projects/${projectId}/samples/${sampleId}/drafts/sync`,
+      null,
+      {
+        params: {
+          branch_name: branchName,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async listAnnotationDrafts(
+    projectId: string,
+    branchName?: string,
+    sampleId?: string
+  ): Promise<AnnotationDraftRead[]> {
+    const response = await this.client.get<AnnotationDraftRead[]>(
+      `/annotations/projects/${projectId}/drafts`,
+      {
+        params: {
+          branch_name: branchName,
+          sample_id: sampleId,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  async commitAnnotationDrafts(
+    projectId: string,
+    payload: AnnotationDraftCommitRequest
+  ): Promise<CommitResult> {
+    const response = await this.client.post<CommitResult>(
+      `/annotations/projects/${projectId}/drafts/commit`,
+      payload
+    );
+    return response.data;
+  }
+
+  async syncAnnotation(
+    projectId: string,
+    sampleId: string,
+    payload: AnnotationSyncRequest
+  ): Promise<AnnotationSyncResponse> {
+    const response = await this.client.post<AnnotationSyncResponse>(
+      `/annotations/projects/${projectId}/samples/${sampleId}/sync`,
+      payload
+    );
+    return response.data;
   }
 
   // ==========================================================================

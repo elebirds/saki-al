@@ -8,7 +8,7 @@ import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LoadingState, EmptyState } from '../common';
 import { SampleList, AnnotationToolbar, AnnotationSidebar } from './index';
-import { Sample, Label, Annotation } from '../../types';
+import { Sample, ProjectLabel, Annotation } from '../../types';
 import { AnnotationLike, UseAnnotationStateReturn, AccessScope } from '../../hooks';
 
 export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
@@ -16,7 +16,7 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
   loading: boolean;
   dataset: any | null;
   samples: Sample[];
-  labels: Label[];
+  labels: ProjectLabel[];
   currentIndex: number;
   currentSample: Sample | undefined;
   
@@ -34,6 +34,11 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
   onSubmit: () => void;
   onAnnotationSelect: (id: string) => void;
   onAnnotationDelete: (id: string) => void;
+
+  // Toolbar navigation
+  onBack?: () => void;
+  backLabel?: string;
+  toolbarExtraActions?: ReactNode;
   
   // 画布控制
   onZoomIn?: () => void;
@@ -68,6 +73,9 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
   onSubmit,
   onAnnotationSelect,
   onAnnotationDelete,
+  onBack,
+  backLabel,
+  toolbarExtraActions,
   onZoomIn,
   onZoomOut,
   onResetView,
@@ -109,10 +117,10 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
 
       <main className="flex h-full min-w-0 flex-1 flex-col">
         {/* Toolbar */}
-        <AnnotationToolbar
-          labels={labels}
-          selectedLabel={annotationState.selectedLabel}
-          onLabelChange={annotationState.setSelectedLabel}
+      <AnnotationToolbar
+        labels={labels}
+        selectedLabel={annotationState.selectedLabel}
+        onLabelChange={annotationState.setSelectedLabel}
           historyIndex={annotationState.historyIndex}
           historyLength={annotationState.history.length}
           onUndo={annotationState.undo}
@@ -124,10 +132,13 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
           onResetView={onResetView}
           syncStatus={{
             isSyncing,
-            isSyncReady,
-          }}
-          hasAnyEditPermission={hasAnyEditPermission}
-        />
+          isSyncReady,
+        }}
+        hasAnyEditPermission={hasAnyEditPermission}
+        onBack={onBack}
+        backLabel={backLabel}
+        extraActions={toolbarExtraActions}
+      />
 
         {/* Canvas Area */}
         <div

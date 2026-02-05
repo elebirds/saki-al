@@ -4,10 +4,9 @@
  * 标注工作空间的工具栏组件
  */
 
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { Space, Button, Radio, Tooltip, Select, Tag, Spin, Divider } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { useParams, useNavigate } from 'react-router-dom';
 import {
   UndoOutlined,
   RedoOutlined,
@@ -20,13 +19,13 @@ import {
   SyncOutlined,
   ArrowLeftOutlined,
 } from '@ant-design/icons';
-import { Label } from '../../types';
+import { ProjectLabel } from '../../types';
 
 export interface AnnotationToolbarProps {
   // Label selection
-  labels: Label[];
-  selectedLabel: Label | null;
-  onLabelChange: (label: Label) => void;
+  labels: ProjectLabel[];
+  selectedLabel: ProjectLabel | null;
+  onLabelChange: (label: ProjectLabel) => void;
   
   // History
   historyIndex: number;
@@ -51,6 +50,13 @@ export interface AnnotationToolbarProps {
   
   // Permission control
   hasAnyEditPermission?: boolean;
+
+  // Back navigation
+  onBack?: () => void;
+  backLabel?: string;
+
+  // Extra actions (right side)
+  extraActions?: ReactNode;
 }
 
 export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
@@ -68,28 +74,25 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   onResetView,
   syncStatus,
   hasAnyEditPermission = true,
+  onBack,
+  backLabel,
+  extraActions,
 }) => {
   const { t } = useTranslation();
-  const { datasetId } = useParams<{ datasetId: string }>();
-  const navigate = useNavigate();
 
   return (
     <div className="flex items-center gap-2.5 border-b border-[#f0f0f0] bg-white p-2.5">
       {/* Back Button */}
-      <Tooltip title={t('workspace.backToDataset')}>
-        <Button
-          icon={<ArrowLeftOutlined />}
-          onClick={() => {
-            if (datasetId) {
-              navigate(`/datasets/${datasetId}`);
-            }
-          }}
-        >
-          {t('workspace.back')}
-        </Button>
-      </Tooltip>
-
-      <Divider type="vertical" />
+      {onBack ? (
+        <>
+          <Tooltip title={t('workspace.backToDataset')}>
+            <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+              {backLabel || t('workspace.back')}
+            </Button>
+          </Tooltip>
+          <Divider type="vertical" />
+        </>
+      ) : null}
 
       {/* Label Selection */}
       <Space>
@@ -193,6 +196,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
       )}
 
       <div className="flex-1" />
+      {extraActions ? <div className="flex items-center gap-2">{extraActions}</div> : null}
     </div>
   );
 };

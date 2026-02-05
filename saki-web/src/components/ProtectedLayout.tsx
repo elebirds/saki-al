@@ -97,7 +97,7 @@ const ProtectedLayout: React.FC = () => {
     if (pathname.startsWith('/roles')) return 'roles'
     if (pathname.startsWith('/about')) return 'about'
     if (pathname.startsWith('/projects')) return 'projects'
-    if (pathname === '/' || pathname.startsWith('/datasets') || pathname.startsWith('/workspace')) return 'datasets'
+    if (pathname === '/' || pathname.startsWith('/datasets')) return 'datasets'
     return 'datasets'
   })()
 

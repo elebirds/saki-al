@@ -124,6 +124,35 @@ class CAMapRepository:
         await self.session.flush()
         return count
 
+    async def delete_commit_sample_state(
+            self,
+            commit_id: uuid.UUID,
+            sample_id: uuid.UUID,
+    ) -> int:
+        """
+        Delete CAMap entries for a specific sample at a commit.
+
+        Args:
+            commit_id: Commit ID
+            sample_id: Sample ID
+
+        Returns:
+            Number of entries deleted
+        """
+        statement = select(CommitAnnotationMap).where(
+            CommitAnnotationMap.commit_id == commit_id,
+            CommitAnnotationMap.sample_id == sample_id,
+        )
+        result = await self.session.exec(statement)
+        entries = result.all()
+
+        count = len(entries)
+        for entry in entries:
+            await self.session.delete(entry)
+
+        await self.session.flush()
+        return count
+
     async def count_annotations_at_commit(self, commit_id: uuid.UUID) -> int:
         """
         Count total annotations at a commit.

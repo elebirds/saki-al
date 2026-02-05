@@ -195,6 +195,7 @@ class AnnotationDraftService(BaseService[AnnotationDraft, AnnotationDraftReposit
             annotation_changes=annotation_changes,
             commit_message=commit_message,
             author_id=user_id,
+            touched_sample_ids=[d.sample_id for d in drafts],
         )
 
         await self.repository.delete_by_user_project(

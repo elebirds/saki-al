@@ -13,6 +13,8 @@ export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
   
   annotations.push({
     id: dual.id,
+    syncId: dual.syncId || dual.id,
+    parentId: dual.parentId ?? undefined,
     sampleId: dual.sampleId,
     labelId: dual.labelId,
     labelName: dual.labelName,
@@ -42,7 +44,9 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
   const extraRegions = ann.extra?.secondary?.regions || regions;
 
   return {
-    id: ann.id,
+    id: ann.syncId || ann.id,
+    syncId: ann.syncId || ann.id,
+    parentId: ann.parentId ?? undefined,
     sampleId: ann.sampleId || '',
     labelId: ann.labelId,
     labelName: ann.labelName || '',
@@ -71,6 +75,17 @@ export function generatedToAnnotations(
     const data = gen.data || {};
     const view = gen.extra?.view || gen.view || VIEW_L_OMEGAD;
     const type = (gen.type || 'obb') as AnnotationType;
+    const resolvedLabelId = gen.labelId || gen.label_id || labelId;
+    const resolvedLabelName = gen.labelName || gen.label_name || labelName;
+    const resolvedLabelColor = gen.labelColor || gen.label_color || labelColor;
+    const source = (gen.source || 'system') as any;
+    const extra = gen.extra || {};
+    const resolvedParentId =
+      extra.parentId ||
+      extra.parent_id ||
+      gen.parentId ||
+      gen.parent_id ||
+      parentId;
     
     // 后端已经转换为左上角坐标，直接使用
     const bboxData = {
@@ -83,17 +98,19 @@ export function generatedToAnnotations(
     
     return {
       id: gen.id || `generated-${Date.now()}-${Math.random()}`,
-      labelId: gen.label_id || labelId,
-      labelName: gen.label_name || labelName,
-      labelColor: gen.label_color || labelColor,
+      labelId: resolvedLabelId,
+      labelName: resolvedLabelName,
+      labelColor: resolvedLabelColor,
       type: type,
-      source: (gen.source || 'auto') as any,
+      source: source,
       data: bboxData,
-      annotatorId: gen.annotator_id || annotatorId,
+      annotatorId: gen.annotatorId || gen.annotator_id || annotatorId,
       extra: {
-        parent_id: parentId,
+        ...extra,
+        parentId: resolvedParentId,
+        parent_id: resolvedParentId,
         view: view,
-        mapping_method: gen.extra?.mapping_method || 'placeholder',
+        mapping_method: extra.mapping_method || extra.mappingMethod || 'placeholder',
       },
     };
   });
@@ -139,8 +156,10 @@ export function isGeneratedAnnotation(ann: Annotation): boolean {
   const source = ann.source as string;
   return (
     source === 'auto' || 
+    source === 'system' ||
+    source === 'model' ||
     source === 'fedo_mapping' || 
-    !!ann.extra?.parent_id
+    !!ann.extra?.parent_id ||
+    !!ann.extra?.parentId
   );
 }
-

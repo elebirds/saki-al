@@ -12,10 +12,14 @@ from saki_api.api.service_deps import (
     ProjectServiceDep,
     AnnotationDraftServiceDep,
     AnnotationWorkingServiceDep,
+    DatasetServiceDep,
+    SampleServiceDep,
 )
-from saki_api.core.exceptions import NotFoundAppException
+from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions, ResourceType
+from saki_api.modules.annotation_factory import AnnotationSystemFactory
+from saki_api.modules.annotation_sync.base import AnnotationContext
 from saki_api.schemas.annotation import AnnotationCreate, AnnotationHistoryItem, AnnotationRead
 from saki_api.schemas.annotation_draft import (
     AnnotationDraftCommitRequest,
@@ -23,6 +27,7 @@ from saki_api.schemas.annotation_draft import (
     AnnotationDraftUpsert,
     AnnotationWorkingUpsert,
 )
+from saki_api.schemas.annotation_sync import AnnotationSyncRequest, AnnotationSyncResponse
 
 router = APIRouter()
 
@@ -136,6 +141,80 @@ async def create_annotation(
 
     annotation = await annotation_service.create_annotation(annotation_in)
     return AnnotationRead.model_validate(annotation)
+
+
+@router.post("/projects/{project_id}/samples/{sample_id}/sync", response_model=AnnotationSyncResponse, dependencies=[
+    Depends(require_permission(Permissions.ANNOTATE, ResourceType.PROJECT, "project_id"))
+])
+async def sync_annotation(
+        *,
+        project_id: uuid.UUID,
+        sample_id: uuid.UUID,
+        sync_in: AnnotationSyncRequest,
+        dataset_service: DatasetServiceDep,
+        sample_service: SampleServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """
+    Run real-time annotation sync (e.g., FEDO dual-view mapping).
+    """
+    sample = await sample_service.get_by_id_or_raise(sample_id)
+    dataset = await dataset_service.get_by_id_or_raise(sample.dataset_id)
+
+    facade = AnnotationSystemFactory.create_system(dataset.type, sample_service.session)
+    context = AnnotationContext(
+        sample_id=str(sample_id),
+        dataset_id=str(sample.dataset_id),
+        project_id=str(project_id),
+        sample_meta=sample.meta_info or {},
+        annotator_id=str(current_user_id),
+    )
+
+    try:
+        if sync_in.action == "create":
+            if not sync_in.label_id or not sync_in.type or sync_in.data is None:
+                raise BadRequestAppException("label_id, type and data are required for create")
+            result = facade.on_annotation_create(
+                annotation_id=sync_in.annotation_id,
+                label_id=str(sync_in.label_id),
+                ann_type=sync_in.type,
+                data=sync_in.data,
+                extra=sync_in.extra or {},
+                context=context,
+            )
+        elif sync_in.action == "update":
+            result = facade.on_annotation_update(
+                annotation_id=sync_in.annotation_id,
+                label_id=str(sync_in.label_id) if sync_in.label_id else None,
+                ann_type=sync_in.type,
+                data=sync_in.data,
+                extra=sync_in.extra or {},
+                context=context,
+            )
+        elif sync_in.action == "delete":
+            result = facade.on_annotation_delete(
+                annotation_id=sync_in.annotation_id,
+                extra=sync_in.extra or {},
+                context=context,
+            )
+        else:
+            raise BadRequestAppException("Invalid action")
+    except Exception as e:
+        return AnnotationSyncResponse(
+            success=False,
+            annotation_id=sync_in.annotation_id,
+            action=sync_in.action,
+            error=str(e),
+            generated=[],
+        )
+
+    return AnnotationSyncResponse(
+        success=result.success,
+        annotation_id=result.annotation_id,
+        action=result.action,
+        error=result.error,
+        generated=result.generated or [],
+    )
 
 
 @router.get("/sync/{sync_id}/annotations", response_model=List[AnnotationRead], dependencies=[

@@ -1,6 +1,8 @@
 // Dual-view annotation types
 export interface DualViewAnnotation {
   id: string;
+  syncId?: string;
+  parentId?: string | null;
   sampleId: string;
   labelId: string;
   labelName: string;  // For display convenience
@@ -36,7 +38,7 @@ export interface MappedRegion {
 // ============================================================================
 
 export type AnnotationType = 'rect' | 'obb' | 'polygon' | 'polyline' | 'point' | 'keypoints';
-export type AnnotationSource = 'manual' | 'auto' | 'imported';
+export type AnnotationSource = 'manual' | 'auto' | 'model' | 'system' | 'imported';
 
 // ============================================================================
 // Annotation - Core annotation model
@@ -44,23 +46,93 @@ export type AnnotationSource = 'manual' | 'auto' | 'imported';
 
 export interface Annotation {
   id: string;
+  projectId?: string;
   sampleId?: string;
   labelId: string;
   labelName?: string;   // For display convenience
   labelColor?: string;  // For display convenience
+  syncId?: string;
+  parentId?: string | null;
+  viewRole?: string;
   type: AnnotationType;
   source?: AnnotationSource;
   data: Record<string, any>;  // Geometry data (bbox, points, etc.)
   extra?: Record<string, any>;  // System-specific (e.g., parentId, view for FEDO)
+  confidence?: number;
   annotatorId?: string | null;  // ID of the user who created the annotation
 }
 
 // ============================================================================
-// Annotation Sync API Types
+// Annotation API Types (L2)
 // ============================================================================
 
-export interface SyncAction {
-  action: 'create' | 'update' | 'delete';
+export interface AnnotationRead {
+  id: string;
+  projectId: string;
+  sampleId: string;
+  labelId: string;
+  syncId: string;
+  parentId?: string | null;
+  viewRole: string;
+  type: AnnotationType;
+  source: AnnotationSource;
+  data: Record<string, any>;
+  extra?: Record<string, any>;
+  confidence: number;
+  annotatorId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnnotationDraftItem {
+  projectId?: string;
+  sampleId?: string;
+  labelId: string;
+  syncId: string;
+  parentId?: string | null;
+  viewRole?: string;
+  type: AnnotationType;
+  source?: AnnotationSource;
+  data: Record<string, any>;
+  extra?: Record<string, any>;
+  confidence?: number;
+  annotatorId?: string | null;
+}
+
+export interface AnnotationDraftPayload {
+  annotations: AnnotationDraftItem[];
+  meta?: Record<string, any>;
+}
+
+export interface AnnotationDraftRead {
+  id: string;
+  projectId: string;
+  sampleId: string;
+  userId: string;
+  branchName: string;
+  payload: AnnotationDraftPayload;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnnotationDraftCommitRequest {
+  branchName: string;
+  commitMessage: string;
+  sampleIds?: string[];
+}
+
+export interface CommitResult {
+  commitId: string;
+  message: string;
+  parentId?: string | null;
+  stats?: Record<string, any>;
+  createdAt: string;
+}
+
+export type AnnotationSyncAction = 'create' | 'update' | 'delete';
+
+export interface AnnotationSyncRequest {
+  action: AnnotationSyncAction;
   annotationId: string;
   labelId?: string;
   type?: AnnotationType;
@@ -68,33 +140,10 @@ export interface SyncAction {
   extra?: Record<string, any>;
 }
 
-export interface SyncResult {
-  action: string;
+export interface AnnotationSyncResponse {
+  success: boolean;
   annotationId: string;
-  success: boolean;
+  action: AnnotationSyncAction;
   error?: string;
-  generated: Array<Record<string, any>>;  // Auto-generated annotations (e.g., FEDO mapped)
-}
-
-export interface SyncResponse {
-  sampleId: string;
-  results: SyncResult[];
-  ready: boolean;
-}
-
-export interface BatchSaveResult {
-  sampleId: string;
-  savedCount: number;
-  success: boolean;
-  error?: string;
-}
-
-export interface SampleAnnotationsResponse {
-  sampleId: string;
-  datasetId: string;
-  annotationSystem: string;
-  annotations: Annotation[];
-  // Access scope info for UI adaptation
-  readScope: 'all' | 'assigned' | 'self' | 'none';
-  modifyScope: 'all' | 'assigned' | 'self' | 'none';
+  generated: Record<string, any>[];
 }

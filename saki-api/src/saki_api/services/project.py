@@ -424,6 +424,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             annotation_changes: List[dict],
             commit_message: str,
             author_id: uuid.UUID,
+            touched_sample_ids: List[uuid.UUID] | None = None,
     ) -> Commit:
         """
         Save annotations and create a new commit.
@@ -501,6 +502,21 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
 
         # 5. Create CAMap entries
         camap_service = CAMapService(self.session)
+        if current_head_id:
+            await camap_service.copy_commit_state(
+                source_commit_id=current_head_id,
+                target_commit_id=new_commit.id,
+                project_id=project_id,
+            )
+
+        # Replace CAMap entries for samples touched by this commit
+        touched_sample_ids = set(touched_sample_ids or [a.sample_id for a in new_annotations])
+        for sample_id in touched_sample_ids:
+            await camap_service.camap_repo.delete_commit_sample_state(
+                commit_id=new_commit.id,
+                sample_id=sample_id,
+            )
+
         await camap_service.create_commit_state(
             commit_id=new_commit.id,
             annotations=new_annotations,

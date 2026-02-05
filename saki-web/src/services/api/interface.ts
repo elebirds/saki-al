@@ -12,9 +12,17 @@ import {
   Dataset, DatasetCreate, DatasetUpdate,
   // Sample types
   Sample, RoleInfo,
+  ProjectSample,
   // Project types
   Project, ProjectBranch, CommitHistoryItem,
   ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate,
+  AnnotationRead,
+  AnnotationDraftPayload,
+  AnnotationDraftRead,
+  AnnotationDraftCommitRequest,
+  AnnotationSyncRequest,
+  AnnotationSyncResponse,
+  CommitResult,
   // Pagination
   PaginationResponse,
 } from '../../types';
@@ -116,6 +124,36 @@ export interface ApiService {
   createProjectLabel(projectId: string, payload: ProjectLabelCreate): Promise<ProjectLabel>;
   updateProjectLabel(labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel>;
   deleteProjectLabel(labelId: string): Promise<void>;
+
+  getProjectSamples(
+    projectId: string,
+    datasetId: string,
+    params: {
+      q?: string;
+      status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
+      branchName?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      page?: number;
+      limit?: number;
+    }
+  ): Promise<PaginationResponse<ProjectSample>>;
+
+  getAnnotationsAtCommit(commitId: string, sampleId?: string): Promise<AnnotationRead[]>;
+  getWorkingAnnotations(projectId: string, sampleId: string, branchName?: string): Promise<AnnotationDraftPayload | null>;
+  upsertWorkingAnnotations(
+    projectId: string,
+    sampleId: string,
+    payload: AnnotationDraftPayload & { branchName?: string }
+  ): Promise<void>;
+  syncWorkingToDraft(projectId: string, sampleId: string, branchName?: string): Promise<AnnotationDraftRead>;
+  listAnnotationDrafts(
+    projectId: string,
+    branchName?: string,
+    sampleId?: string
+  ): Promise<AnnotationDraftRead[]>;
+  commitAnnotationDrafts(projectId: string, payload: AnnotationDraftCommitRequest): Promise<CommitResult>;
+  syncAnnotation(projectId: string, sampleId: string, payload: AnnotationSyncRequest): Promise<AnnotationSyncResponse>;
   
   // ============================================================================
   // Sample APIs

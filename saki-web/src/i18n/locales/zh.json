@@ -288,7 +288,7 @@
   "workspace": {
     "annotations": "标注列表",
     "noAnnotations": "暂无标注",
-    "submitNext": "提交并下一个",
+    "submitNext": "暂存并下一个",
     "loading": "加载中...",
     "label": "标签:",
     "noLabelSelected": "请先选择一个标签",
@@ -316,7 +316,7 @@
     },
     "noSamples": "此数据集暂无样本",
     "back": "返回",
-    "backToDataset": "返回到数据集界面",
+    "backToDataset": "返回样本列表",
     "noEditPermission": "您没有编辑权限",
     "cannotEditOthersAnnotation": "您只能编辑自己的标注",
     "cannotDeleteOthersAnnotation": "您只能删除自己的标注",

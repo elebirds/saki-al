@@ -10,7 +10,6 @@ import ProjectLoops from './pages/project/ProjectLoops';
 import ProjectInsights from './pages/project/ProjectInsights';
 import ProjectSettings from './pages/project/ProjectSettings';
 import ProjectWorkspace from './pages/project/ProjectWorkspace';
-import WorkspaceRouter from './pages/annotation/WorkspaceRouter';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
 import UserProfile from './pages/user/UserProfile';
@@ -68,8 +67,6 @@ const App: React.FC = () => {
                   element={<Navigate to="../settings?section=members" replace />}
                 />
                 
-                {/* Workspace still points to legacy dataset logic inside? Maybe need check */}
-                <Route path="/workspace/:datasetId" element={<WorkspaceRouter />} />
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/roles" element={<RoleManagement />} />
                 <Route path="/profile" element={<UserProfile />} />

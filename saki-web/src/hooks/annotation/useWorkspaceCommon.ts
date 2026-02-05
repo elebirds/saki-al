@@ -5,12 +5,12 @@
  */
 
 import { useEffect, useCallback } from 'react';
-import { Label } from '../../types';
+import { ProjectLabel } from '../../types';
 import { AnnotationLike, UseAnnotationStateReturn } from './useAnnotationState';
 
 export interface UseWorkspaceCommonOptions<T extends AnnotationLike> {
   /** 标签列表 */
-  labels: Label[];
+  labels: ProjectLabel[];
   /** 标注状态管理 */
   annotationState: UseAnnotationStateReturn<T>;
 }
@@ -27,13 +27,14 @@ export function useWorkspaceCommon<T extends AnnotationLike>(
   options: UseWorkspaceCommonOptions<T>
 ): UseWorkspaceCommonReturn {
   const { labels, annotationState } = options;
+  const { selectedLabel, setSelectedLabel } = annotationState;
 
   // 初始化默认标签选择
   const initializeDefaultLabel = useCallback(() => {
-    if (labels.length > 0 && !annotationState.selectedLabel) {
-      annotationState.setSelectedLabel(labels[0]);
+    if (labels.length > 0 && !selectedLabel) {
+      setSelectedLabel(labels[0]);
     }
-  }, [labels, annotationState]);
+  }, [labels, selectedLabel, setSelectedLabel]);
 
   // 自动初始化
   useEffect(() => {
@@ -44,4 +45,3 @@ export function useWorkspaceCommon<T extends AnnotationLike>(
     initializeDefaultLabel,
   };
 }
-

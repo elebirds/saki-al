@@ -6,10 +6,16 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import asc, desc, func, or_
+from sqlmodel import select
 
-from saki_api.api.service_deps import ProjectServiceDep
+from saki_api.api.service_deps import ProjectServiceDep, SampleServiceDep, AssetServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions, ResourceType
+from saki_api.models.l1.sample import Sample
+from saki_api.models.l2.annotation_draft import AnnotationDraft
+from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.repositories.branch import BranchRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.project import (
@@ -19,6 +25,7 @@ from saki_api.schemas.project import (
     ProjectReadMinimal,
     ProjectUpdate,
 )
+from saki_api.schemas.sample import ProjectSampleRead
 from saki_api.schemas.resource_member import (
     ResourceMemberCreateRequest,
     ResourceMemberRead,
@@ -238,6 +245,163 @@ async def get_linked_datasets(
     """
     dataset_ids = await project_service.get_linked_datasets(project_id)
     return dataset_ids
+
+
+# =============================================================================
+# Project Sample Listing (with L2 status)
+# =============================================================================
+
+
+@router.get(
+    "/{project_id}/datasets/{dataset_id}/samples",
+    response_model=PaginationResponse[ProjectSampleRead],
+    dependencies=[
+        Depends(require_permission(Permissions.PROJECT_READ, ResourceType.PROJECT, "project_id"))
+    ]
+)
+async def list_project_samples(
+        *,
+        project_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+        sample_service: SampleServiceDep,
+        asset_service: AssetServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+        branch_name: str = Query("master"),
+        q: str | None = Query(None, description="Search by name or remark"),
+        status: str = Query("all", description="all|labeled|unlabeled|draft"),
+        sort_by: str = Query("createdAt"),
+        sort_order: str = Query("desc"),
+        page: int = Query(1, ge=1),
+        limit: int = Query(24, ge=1, le=200),
+):
+    """
+    List samples for a project dataset with annotation status.
+    """
+    # Ensure dataset is linked to project
+    dataset_ids = await project_service.get_linked_datasets(project_id)
+    if dataset_id not in dataset_ids:
+        return PaginationResponse.from_items(items=[], total=0, offset=0, limit=limit)
+
+    branch_repo = BranchRepository(sample_service.session)
+    branch = await branch_repo.get_by_name(project_id, branch_name)
+    if not branch:
+        return PaginationResponse.from_items(items=[], total=0, offset=0, limit=limit)
+
+    head_commit_id = branch.head_commit_id
+
+    # Build base query
+    statement = select(Sample).where(Sample.dataset_id == dataset_id)
+    if q:
+        pattern = f"%{q}%"
+        statement = statement.where(
+            or_(
+                Sample.name.ilike(pattern),
+                Sample.remark.ilike(pattern),
+            )
+        )
+
+    # Status filter
+    labeled_subq = select(CommitAnnotationMap.sample_id).where(
+        CommitAnnotationMap.commit_id == head_commit_id
+    ).distinct()
+
+    if status == "labeled":
+        statement = statement.where(Sample.id.in_(labeled_subq))
+    elif status == "unlabeled":
+        statement = statement.where(~Sample.id.in_(labeled_subq))
+    elif status == "draft":
+        draft_subq = select(AnnotationDraft.sample_id).where(
+            AnnotationDraft.project_id == project_id,
+            AnnotationDraft.user_id == current_user_id,
+            AnnotationDraft.branch_name == branch_name,
+        ).distinct()
+        statement = statement.where(Sample.id.in_(draft_subq))
+
+    # Sorting
+    sort_map = {
+        "name": Sample.name,
+        "createdAt": Sample.created_at,
+        "updatedAt": Sample.updated_at,
+        "created_at": Sample.created_at,
+        "updated_at": Sample.updated_at,
+    }
+    sort_column = sort_map.get(sort_by, Sample.created_at)
+    order_clause = asc(sort_column) if sort_order == "asc" else desc(sort_column)
+    statement = statement.order_by(order_clause)
+
+    # Pagination
+    pagination = Pagination.from_page(page=page, limit=limit)
+    count_stmt = select(func.count()).select_from(statement.subquery())
+    total_result = await sample_service.session.exec(count_stmt)
+    total = total_result.one() or 0
+    if isinstance(total, (list, tuple)):
+        total = total[0]
+
+    result = await sample_service.session.exec(
+        statement.offset(pagination.offset).limit(pagination.limit)
+    )
+    samples = result.all()
+
+    # Annotation counts for current page
+    sample_ids = [s.id for s in samples]
+    annotation_counts: dict[uuid.UUID, int] = {}
+    if sample_ids:
+        count_statement = (
+            select(
+                CommitAnnotationMap.sample_id,
+                func.count(CommitAnnotationMap.annotation_id),
+            )
+            .where(
+                CommitAnnotationMap.commit_id == head_commit_id,
+                CommitAnnotationMap.sample_id.in_(sample_ids),
+            )
+            .group_by(CommitAnnotationMap.sample_id)
+        )
+        count_result = await sample_service.session.exec(count_statement)
+        for sample_id, count in count_result.all():
+            annotation_counts[sample_id] = count
+
+    # Draft status for current page
+    drafts_by_sample: set[uuid.UUID] = set()
+    if sample_ids:
+        draft_statement = select(AnnotationDraft.sample_id).where(
+            AnnotationDraft.project_id == project_id,
+            AnnotationDraft.user_id == current_user_id,
+            AnnotationDraft.branch_name == branch_name,
+            AnnotationDraft.sample_id.in_(sample_ids),
+        )
+        draft_result = await sample_service.session.exec(draft_statement)
+        drafts_by_sample = {
+            row[0] if isinstance(row, (list, tuple)) else row
+            for row in draft_result.all()
+        }
+
+    items: list[ProjectSampleRead] = []
+    for sample in samples:
+        sample_dict = sample.model_dump() if hasattr(sample, 'model_dump') else sample.__dict__
+        sample_read = ProjectSampleRead.model_validate(sample_dict)
+
+        # Add presigned URL for primary asset if set
+        if sample.primary_asset_id:
+            try:
+                primary_asset_url = await asset_service.get_presigned_download_url(sample.primary_asset_id)
+                sample_read.primary_asset_url = primary_asset_url
+            except Exception:
+                pass
+
+        count = annotation_counts.get(sample.id, 0)
+        sample_read.annotation_count = count
+        sample_read.is_labeled = count > 0
+        sample_read.has_draft = sample.id in drafts_by_sample
+        items.append(sample_read)
+
+    return PaginationResponse.from_items(
+        items=items,
+        total=total,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
 
 
 # =============================================================================

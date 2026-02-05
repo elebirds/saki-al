@@ -11,6 +11,7 @@ export interface ProjectLabel {
 }
 
 export interface ProjectLabelCreate {
+  projectId?: string;
   name: string;
   color?: string;
   description?: string;

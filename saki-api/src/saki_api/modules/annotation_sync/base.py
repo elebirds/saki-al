@@ -14,7 +14,6 @@ import logging
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from saki_api.models.enums import DatasetType, AnnotationType

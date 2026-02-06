@@ -23,10 +23,10 @@ def get_redis_client() -> Redis:
 
 
 def build_working_key(
-    project_id: str,
-    user_id: str,
-    sample_id: str,
-    branch_name: str,
+        project_id: str,
+        user_id: str,
+        sample_id: str,
+        branch_name: str,
 ) -> str:
     """
     Build a Redis key for Working Area payloads.

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
 import DatasetList from './pages/dataset/DatasetList';
 import DatasetDetail from './pages/dataset/DatasetDetail';
 import ProjectOverview from './pages/project/ProjectOverview';
@@ -21,63 +21,63 @@ import Setup from './pages/base/Setup';
 import NetworkError from './pages/base/NetworkError';
 import SystemCheck from './components/SystemCheck';
 import ProtectedLayout from './components/ProtectedLayout';
-import { useInitPermissions, useInitSystemCapabilities } from './hooks';
+import {useInitPermissions, useInitSystemCapabilities} from './hooks';
 
 // Permission initialization wrapper
-const PermissionInitializer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  useInitPermissions();
-  return <>{children}</>;
+const PermissionInitializer: React.FC<{ children: React.ReactNode }> = ({children}) => {
+    useInitPermissions();
+    return <>{children}</>;
 };
 
 // System capabilities initialization wrapper
-const SystemCapabilitiesInitializer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  useInitSystemCapabilities();
-  return <>{children}</>;
+const SystemCapabilitiesInitializer: React.FC<{ children: React.ReactNode }> = ({children}) => {
+    useInitSystemCapabilities();
+    return <>{children}</>;
 };
 
 const App: React.FC = () => {
-  return (
-    <Router>
-      <SystemCheck>
-        <PermissionInitializer>
-          <SystemCapabilitiesInitializer>
-            <Routes>
-              <Route path="/network-error" element={<NetworkError />} />
-              <Route path="/setup" element={<Setup />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/change-password" element={<ChangePassword />} />
-              
-              <Route element={<ProtectedLayout />}>
-                <Route path="/" element={<DatasetList />} />
-                <Route path="/datasets" element={<DatasetList />} />
-                <Route path="/datasets/:id" element={<DatasetDetail />} />
-                <Route path="/projects" element={<ProjectList />} />
-                <Route path="/projects/:projectId" element={<ProjectLayout />}>
-                  <Route index element={<ProjectOverview />} />
-                  <Route path="samples" element={<ProjectSamplesAnnotations />} />
-                  <Route path="loops" element={<ProjectLoops />} />
-                  <Route path="insights" element={<ProjectInsights />} />
-                  <Route path="settings" element={<ProjectSettings />} />
-                  <Route path="workspace" element={<ProjectWorkspace />} />
-                  <Route path="workspace/:datasetId" element={<ProjectWorkspace />} />
-                </Route>
-                <Route
-                  path="/projects/:projectId/members"
-                  element={<Navigate to="../settings?section=members" replace />}
-                />
-                
-                <Route path="/users" element={<UserManagement />} />
-                <Route path="/roles" element={<RoleManagement />} />
-                <Route path="/profile" element={<UserProfile />} />
-                <Route path="/about" element={<About />} />
-              </Route>
-            </Routes>
-          </SystemCapabilitiesInitializer>
-        </PermissionInitializer>
-      </SystemCheck>
-    </Router>
-  );
+    return (
+        <Router>
+            <SystemCheck>
+                <PermissionInitializer>
+                    <SystemCapabilitiesInitializer>
+                        <Routes>
+                            <Route path="/network-error" element={<NetworkError/>}/>
+                            <Route path="/setup" element={<Setup/>}/>
+                            <Route path="/login" element={<Login/>}/>
+                            <Route path="/register" element={<Register/>}/>
+                            <Route path="/change-password" element={<ChangePassword/>}/>
+
+                            <Route element={<ProtectedLayout/>}>
+                                <Route path="/" element={<DatasetList/>}/>
+                                <Route path="/datasets" element={<DatasetList/>}/>
+                                <Route path="/datasets/:id" element={<DatasetDetail/>}/>
+                                <Route path="/projects" element={<ProjectList/>}/>
+                                <Route path="/projects/:projectId" element={<ProjectLayout/>}>
+                                    <Route index element={<ProjectOverview/>}/>
+                                    <Route path="samples" element={<ProjectSamplesAnnotations/>}/>
+                                    <Route path="loops" element={<ProjectLoops/>}/>
+                                    <Route path="insights" element={<ProjectInsights/>}/>
+                                    <Route path="settings" element={<ProjectSettings/>}/>
+                                    <Route path="workspace" element={<ProjectWorkspace/>}/>
+                                    <Route path="workspace/:datasetId" element={<ProjectWorkspace/>}/>
+                                </Route>
+                                <Route
+                                    path="/projects/:projectId/members"
+                                    element={<Navigate to="../settings?section=members" replace/>}
+                                />
+
+                                <Route path="/users" element={<UserManagement/>}/>
+                                <Route path="/roles" element={<RoleManagement/>}/>
+                                <Route path="/profile" element={<UserProfile/>}/>
+                                <Route path="/about" element={<About/>}/>
+                            </Route>
+                        </Routes>
+                    </SystemCapabilitiesInitializer>
+                </PermissionInitializer>
+            </SystemCheck>
+        </Router>
+    );
 };
 
 export default App;

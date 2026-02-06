@@ -6,22 +6,21 @@ dataset processing and annotation sync functionality.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import UploadFile
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.enums import DatasetType, AnnotationType
+from saki_api.modules.annotation_sync.base import (
+    BaseAnnotationSyncHandler,
+    AnnotationContext,
+    SyncResult,
+)
 from saki_api.modules.dataset_processing.base import (
     BaseDatasetProcessor,
     UploadContext,
     ProcessResult,
     ProgressCallback,
-)
-from saki_api.modules.annotation_sync.base import (
-    BaseAnnotationSyncHandler,
-    AnnotationContext,
-    SyncResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,9 +45,9 @@ class AnnotationSystemFacade:
     """
 
     def __init__(
-        self,
-        dataset_processor: BaseDatasetProcessor,
-        sync_handler: BaseAnnotationSyncHandler,
+            self,
+            dataset_processor: BaseDatasetProcessor,
+            sync_handler: BaseAnnotationSyncHandler,
     ):
         """
         Initialize the facade with processor and sync handler.

@@ -4,10 +4,10 @@
  * Provides hooks for permission checking in React components.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
-import { usePermissionStore, canModifyAnnotation } from '../../store/permissionStore';
-import { useAuthStore } from '../../store/authStore';
-import { api } from '../../services/api';
+import {useCallback, useEffect, useRef} from 'react';
+import {canModifyAnnotation, usePermissionStore} from '../../store/permissionStore';
+import {useAuthStore} from '../../store/authStore';
+import {api} from '../../services/api';
 
 /**
  * Basic permission hook.
@@ -22,43 +22,43 @@ import { api } from '../../services/api';
  * }
  */
 export function usePermission() {
-  const store = usePermissionStore();
+    const store = usePermissionStore();
 
-  const can = useCallback(
-    (
-      permission: string,
-      resourceType?: string,
-      resourceId?: string
-    ) => {
-      return store.hasPermission(permission, resourceType, resourceId);
-    },
-    [store.hasPermission, store.systemPermissions]
-  );
+    const can = useCallback(
+        (
+            permission: string,
+            resourceType?: string,
+            resourceId?: string
+        ) => {
+            return store.hasPermission(permission, resourceType, resourceId);
+        },
+        [store.hasPermission, store.systemPermissions]
+    );
 
-  const canAny = useCallback(
-    (permissions: string[]) => {
-      return store.hasAnyPermission(permissions);
-    },
-    [store.hasAnyPermission]
-  );
+    const canAny = useCallback(
+        (permissions: string[]) => {
+            return store.hasAnyPermission(permissions);
+        },
+        [store.hasAnyPermission]
+    );
 
-  const canAll = useCallback(
-    (permissions: string[]) => {
-      return store.hasAllPermissions(permissions);
-    },
-    [store.hasAllPermissions]
-  );
+    const canAll = useCallback(
+        (permissions: string[]) => {
+            return store.hasAllPermissions(permissions);
+        },
+        [store.hasAllPermissions]
+    );
 
-  return {
-    can,
-    canAny,
-    canAll,
-    isSuperAdmin: store.isSuperAdmin(),
-    hasRole: store.hasRole,
-    hasAnyRole: store.hasAnyRole,
-    systemRoles: store.getSystemRoles(),
-    isLoading: store.isLoading,
-  };
+    return {
+        can,
+        canAny,
+        canAll,
+        isSuperAdmin: store.isSuperAdmin(),
+        hasRole: store.hasRole,
+        hasAnyRole: store.hasAnyRole,
+        systemRoles: store.getSystemRoles(),
+        isLoading: store.isLoading,
+    };
 }
 
 /**
@@ -74,63 +74,63 @@ export function usePermission() {
  * }
  */
 export function useResourcePermission(
-  resourceType: string,
-  resourceId: string | undefined
+    resourceType: string,
+    resourceId: string | undefined
 ) {
-  const store = usePermissionStore();
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const token = useAuthStore((state) => state.token);
-  const user = useAuthStore((state) => state.user);
+    const store = usePermissionStore();
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+    const token = useAuthStore((state) => state.token);
+    const user = useAuthStore((state) => state.user);
 
-  // Fetch resource permissions
-  useEffect(() => {
-    // Only fetch if we have a valid authenticated user
-    if (!resourceId || !isAuthenticated || !token || !user) return;
+    // Fetch resource permissions
+    useEffect(() => {
+        // Only fetch if we have a valid authenticated user
+        if (!resourceId || !isAuthenticated || !token || !user) return;
 
-    const key = `${resourceType}:${resourceId}`;
-    const cached = store.resourcePermissions[key];
+        const key = `${resourceType}:${resourceId}`;
+        const cached = store.resourcePermissions[key];
 
-    // Skip if already cached and not expired (5 minutes)
-    if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
-      return;
-    }
+        // Skip if already cached and not expired (5 minutes)
+        if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
+            return;
+        }
 
-    const fetchPermissions = async () => {
-      try {
-        const data = await api.getResourcePermissions(resourceType, resourceId);
-        store.setResourcePermissions(resourceType, resourceId, {
-          role: data.resourceRole,
-          permissions: data.permissions,
-          isOwner: data.isOwner,
-        });
-      } catch (error) {
-        // Silently fail - the API interceptor will handle 401
-        console.error('Failed to fetch resource permissions:', error);
-      }
+        const fetchPermissions = async () => {
+            try {
+                const data = await api.getResourcePermissions(resourceType, resourceId);
+                store.setResourcePermissions(resourceType, resourceId, {
+                    role: data.resourceRole,
+                    permissions: data.permissions,
+                    isOwner: data.isOwner,
+                });
+            } catch (error) {
+                // Silently fail - the API interceptor will handle 401
+                console.error('Failed to fetch resource permissions:', error);
+            }
+        };
+
+        fetchPermissions();
+    }, [resourceType, resourceId, isAuthenticated, token, user]);
+
+    const can = useCallback(
+        (permission: string) => {
+            return store.hasPermission(permission, resourceType, resourceId);
+        },
+        [resourceType, resourceId, store.hasPermission, store.resourcePermissions]
+    );
+
+    const role = resourceId ? store.getResourceRole(resourceType, resourceId) : undefined;
+    const isOwner = resourceId ? store.isResourceOwner(resourceType, resourceId) : false;
+
+    return {
+        can,
+        role,
+        isOwner,
+        isLoading: store.isLoading,
+        permissions: resourceId
+            ? store.resourcePermissions[`${resourceType}:${resourceId}`]?.permissions ?? []
+            : [],
     };
-
-    fetchPermissions();
-  }, [resourceType, resourceId, isAuthenticated, token, user]);
-
-  const can = useCallback(
-    (permission: string) => {
-      return store.hasPermission(permission, resourceType, resourceId);
-    },
-    [resourceType, resourceId, store.hasPermission, store.resourcePermissions]
-  );
-
-  const role = resourceId ? store.getResourceRole(resourceType, resourceId) : undefined;
-  const isOwner = resourceId ? store.isResourceOwner(resourceType, resourceId) : false;
-
-  return {
-    can,
-    role,
-    isOwner,
-    isLoading: store.isLoading,
-    permissions: resourceId
-      ? store.resourcePermissions[`${resourceType}:${resourceId}`]?.permissions ?? []
-      : [],
-  };
 }
 
 /**
@@ -146,51 +146,51 @@ export function useResourcePermission(
  * }
  */
 export function useInitPermissions() {
-  const store = usePermissionStore();
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const token = useAuthStore((state) => state.token);
-  const user = useAuthStore((state) => state.user);
-  const hasInitialized = useRef(false);
+    const store = usePermissionStore();
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+    const token = useAuthStore((state) => state.token);
+    const user = useAuthStore((state) => state.user);
+    const hasInitialized = useRef(false);
 
-  useEffect(() => {
-    // Clear permissions if not authenticated
-    if (!isAuthenticated || !token) {
-      store.clearPermissions();
-      hasInitialized.current = false;
-      return;
-    }
-
-    // Don't fetch if no user loaded yet (still validating token)
-    // The user object is set after successful login
-    if (!user) {
-      return;
-    }
-
-    // Prevent duplicate initialization
-    if (hasInitialized.current) {
-      return;
-    }
-
-    const initPermissions = async () => {
-      store.setLoading(true);
-      hasInitialized.current = true;
-      try {
-        const data = await api.getSystemPermissions();
-        store.setSystemPermissions(data);
-      } catch (error: any) {
-        // On auth error, clear the flag so it can retry after re-login
-        if (error?.statusCode === 401) {
-          hasInitialized.current = false;
+    useEffect(() => {
+        // Clear permissions if not authenticated
+        if (!isAuthenticated || !token) {
+            store.clearPermissions();
+            hasInitialized.current = false;
+            return;
         }
-        console.error('Failed to initialize system permissions:', error);
-        store.clearPermissions();
-      } finally {
-        store.setLoading(false);
-      }
-    };
 
-    initPermissions();
-  }, [isAuthenticated, token, user]);
+        // Don't fetch if no user loaded yet (still validating token)
+        // The user object is set after successful login
+        if (!user) {
+            return;
+        }
+
+        // Prevent duplicate initialization
+        if (hasInitialized.current) {
+            return;
+        }
+
+        const initPermissions = async () => {
+            store.setLoading(true);
+            hasInitialized.current = true;
+            try {
+                const data = await api.getSystemPermissions();
+                store.setSystemPermissions(data);
+            } catch (error: any) {
+                // On auth error, clear the flag so it can retry after re-login
+                if (error?.statusCode === 401) {
+                    hasInitialized.current = false;
+                }
+                console.error('Failed to initialize system permissions:', error);
+                store.clearPermissions();
+            } finally {
+                store.setLoading(false);
+            }
+        };
+
+        initPermissions();
+    }, [isAuthenticated, token, user]);
 }
 
 /**
@@ -204,30 +204,30 @@ export function useInitPermissions() {
  * }
  */
 export function useAnnotationPermission(annotationCreatorId?: string) {
-  const currentUser = useAuthStore((state) => state.user);
+    const currentUser = useAuthStore((state) => state.user);
 
-  const canModify = canModifyAnnotation(
-    'annotation:update:assigned',
-    annotationCreatorId,
-    currentUser?.id
-  );
+    const canModify = canModifyAnnotation(
+        'annotation:update:assigned',
+        annotationCreatorId,
+        currentUser?.id
+    );
 
-  const canDelete = canModifyAnnotation(
-    'annotation:delete:assigned',
-    annotationCreatorId,
-    currentUser?.id
-  );
+    const canDelete = canModifyAnnotation(
+        'annotation:delete:assigned',
+        annotationCreatorId,
+        currentUser?.id
+    );
 
-  const canRead = canModifyAnnotation(
-    'annotation:read:assigned',
-    annotationCreatorId,
-    currentUser?.id
-  );
+    const canRead = canModifyAnnotation(
+        'annotation:read:assigned',
+        annotationCreatorId,
+        currentUser?.id
+    );
 
-  return {
-    canRead,
-    canModify,
-    canDelete,
-    isOwner: annotationCreatorId === currentUser?.id,
-  };
+    return {
+        canRead,
+        canModify,
+        canDelete,
+        isOwner: annotationCreatorId === currentUser?.id,
+    };
 }

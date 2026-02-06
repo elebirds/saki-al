@@ -53,12 +53,12 @@ class SyncHandlerRegistry(HandlerRegistryMixin):
 
 def register_sync_handler(cls: Type[BaseAnnotationSyncHandler]) -> Type[BaseAnnotationSyncHandler]:
     """Decorator to register a handler class."""
-    return SyncHandlerRegistry.get_instance().register(cls) # type: ignore
+    return SyncHandlerRegistry.get_instance().register(cls)  # type: ignore
 
 
 def get_sync_handler(system_type: DatasetType) -> BaseAnnotationSyncHandler:
     """Get a handler instance for a dataset type."""
-    return SyncHandlerRegistry.get_instance().get(system_type) # type: ignore
+    return SyncHandlerRegistry.get_instance().get(system_type)  # type: ignore
 
 
 def discover_sync_handlers() -> None:

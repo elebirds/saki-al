@@ -9,10 +9,10 @@ and inherit these methods for common functionality.
 """
 
 import logging
-from typing import Dict, Optional, Type
+from typing import Dict, Type
 
-from saki_api.models.enums import DatasetType
 from saki_api.core.exceptions import NotFoundAppException
+from saki_api.models.enums import DatasetType
 
 logger = logging.getLogger(__name__)
 

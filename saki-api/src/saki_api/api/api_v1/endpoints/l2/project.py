@@ -25,12 +25,12 @@ from saki_api.schemas.project import (
     ProjectReadMinimal,
     ProjectUpdate,
 )
-from saki_api.schemas.sample import ProjectSampleRead
 from saki_api.schemas.resource_member import (
     ResourceMemberCreateRequest,
     ResourceMemberRead,
     ResourceMemberUpdateRequest,
 )
+from saki_api.schemas.sample import ProjectSampleRead
 
 router = APIRouter()
 

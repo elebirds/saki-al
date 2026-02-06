@@ -113,7 +113,8 @@ class AnnotationSyncService:
             parent_group_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         extra = self._strip_parent_from_extra(generated.get("extra") or {})
-        lineage_id = generated.get("lineage_id") or generated.get("lineageId") or generated.get("id") or str(uuid.uuid4())
+        lineage_id = generated.get("lineage_id") or generated.get("lineageId") or generated.get("id") or str(
+            uuid.uuid4())
         item_id = generated.get("id") or str(uuid.uuid4())
         group_id = generated.get("group_id") or generated.get("groupId") or parent_group_id
         if not group_id:

@@ -6,11 +6,11 @@ When user annotates in one view, the system maps the annotation
 to the corresponding region in the other view via lookup tables.
 """
 
-import cv2
-import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import cv2
+import numpy as np
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.enums import DatasetType, AnnotationType, AnnotationSource
@@ -20,9 +20,9 @@ from saki_api.modules.annotation_sync.base import (
     SyncResult,
 )
 from saki_api.modules.annotation_sync.registry import register_sync_handler
-from saki_api.modules.view_system.mappers.lut_mapper import LUTViewMapper
 from saki_api.modules.data_formats.fedo.lookup import load_lookup_table_from_bytes
 from saki_api.modules.data_formats.fedo.obb_mapper import map_obb_annotations
+from saki_api.modules.view_system.mappers.lut_mapper import LUTViewMapper
 
 # FEDO view identifiers
 VIEW_TIME_ENERGY = "time-energy"

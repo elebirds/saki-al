@@ -17,8 +17,11 @@ from typing import Any, Dict, Optional
 from fastapi import UploadFile
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.enums import DatasetType
 from saki_api.core.config import settings
+from saki_api.models.enums import DatasetType
+from saki_api.modules.data_formats.fedo.config import FedoConfig, get_fedo_config
+# FEDO data processing utilities
+from saki_api.modules.data_formats.fedo.processor import FedoProcessor, FedoData
 from saki_api.modules.dataset_processing.base import (
     BaseDatasetProcessor,
     EventType,
@@ -29,9 +32,6 @@ from saki_api.modules.dataset_processing.base import (
     UploadContext,
 )
 from saki_api.modules.dataset_processing.registry import register_processor
-# FEDO data processing utilities
-from saki_api.modules.data_formats.fedo.processor import FedoProcessor, FedoData
-from saki_api.modules.data_formats.fedo.config import FedoConfig, get_fedo_config
 
 
 @register_processor

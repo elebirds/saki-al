@@ -9,11 +9,9 @@ from typing import Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from saki_api.core.exceptions import NotFoundAppException
 from saki_api.models.enums import DatasetType
 from saki_api.modules.annotation_system import AnnotationSystemFacade
-from saki_api.modules.dataset_processing.registry import get_processor
-from saki_api.modules.annotation_sync.registry import get_sync_handler
-from saki_api.core.exceptions import NotFoundAppException
 
 logger = logging.getLogger(__name__)
 

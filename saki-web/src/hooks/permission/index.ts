@@ -1,6 +1,6 @@
 export {
-  usePermission,
-  useResourcePermission,
-  useInitPermissions,
-  useAnnotationPermission,
+    usePermission,
+    useResourcePermission,
+    useInitPermissions,
+    useAnnotationPermission,
 } from './usePermission';

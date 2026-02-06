@@ -5,11 +5,12 @@ Uses pre-computed lookup tables for fast coordinate conversion between views.
 Used by FEDO dual-view annotation system.
 """
 
-import numpy as np
 from typing import Any, Dict, List, Tuple
 
-from saki_api.modules.view_system.base import BaseViewMapper
+import numpy as np
+
 from saki_api.modules.data_formats.fedo.lookup import LookupTable
+from saki_api.modules.view_system.base import BaseViewMapper
 
 
 class LUTViewMapper(BaseViewMapper):
@@ -201,7 +202,8 @@ class LUTViewMapper(BaseViewMapper):
         else:
             raise ValueError(f"Unknown view: {view}")
 
-    def physical_to_pixel(self, phys_x: float, phys_y: float, view: str = "time-energy", **kwargs) -> Tuple[float, float]:
+    def physical_to_pixel(self, phys_x: float, phys_y: float, view: str = "time-energy", **kwargs) -> Tuple[
+        float, float]:
         """
         Convert physical coordinates to pixel coordinates.
 

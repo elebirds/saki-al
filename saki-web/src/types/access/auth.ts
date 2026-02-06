@@ -1,5 +1,5 @@
 export interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  mustChangePassword?: boolean;
+    accessToken: string;
+    refreshToken: string;
+    mustChangePassword?: boolean;
 }

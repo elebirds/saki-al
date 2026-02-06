@@ -1,60 +1,60 @@
-import { DrawingTool, ToolState, ToolEventContext } from './types';
+import {DrawingTool, ToolEventContext, ToolState} from './types';
 
 /**
  * 选择工具
  * 用于选择和操作已有的标注
  */
 export class SelectTool implements DrawingTool {
-  readonly name = 'select';
-  
-  private pendingDeselect: boolean = false;
+    readonly name = 'select';
 
-  getState(): ToolState {
-    return {
-      drawingRect: null,
-      isDrawing: false,
-    };
-  }
+    private pendingDeselect: boolean = false;
 
-  reset(): void {
-    this.pendingDeselect = false;
-  }
-
-  onMouseDown(ctx: ToolEventContext): void {
-    // 检查是否点击了空白区域
-    const target = ctx.event.target;
-    const clickedOnEmpty = target === target.getStage() || 
-                           target.className === 'Image';
-    
-    if (clickedOnEmpty) {
-      this.pendingDeselect = true;
+    getState(): ToolState {
+        return {
+            drawingRect: null,
+            isDrawing: false,
+        };
     }
-  }
 
-  onMouseMove(_ctx: ToolEventContext): void {
-    // 选择工具不需要处理移动事件
-  }
+    reset(): void {
+        this.pendingDeselect = false;
+    }
 
-  onMouseUp(_ctx: ToolEventContext): void {
-    this.pendingDeselect = false;
-  }
+    onMouseDown(ctx: ToolEventContext): void {
+        // 检查是否点击了空白区域
+        const target = ctx.event.target;
+        const clickedOnEmpty = target === target.getStage() ||
+            target.className === 'Image';
 
-  getCompletedAnnotation(): null {
-    return null;
-  }
+        if (clickedOnEmpty) {
+            this.pendingDeselect = true;
+        }
+    }
 
-  /** 检查是否需要取消选择 */
-  shouldDeselect(): boolean {
-    const result = this.pendingDeselect;
-    this.pendingDeselect = false;
-    return result;
-  }
+    onMouseMove(_ctx: ToolEventContext): void {
+        // 选择工具不需要处理移动事件
+    }
 
-  showCrosshair(): boolean {
-    return false;
-  }
+    onMouseUp(_ctx: ToolEventContext): void {
+        this.pendingDeselect = false;
+    }
 
-  allowStageDrag(hasSelection: boolean): boolean {
-    return !hasSelection;
-  }
+    getCompletedAnnotation(): null {
+        return null;
+    }
+
+    /** 检查是否需要取消选择 */
+    shouldDeselect(): boolean {
+        const result = this.pendingDeselect;
+        this.pendingDeselect = false;
+        return result;
+    }
+
+    showCrosshair(): boolean {
+        return false;
+    }
+
+    allowStageDrag(hasSelection: boolean): boolean {
+        return !hasSelection;
+    }
 }

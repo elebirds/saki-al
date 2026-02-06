@@ -16,7 +16,7 @@ from saki_api.api.service_deps import (
     DatasetServiceDep,
     SampleServiceDep,
 )
-from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException, ConflictAppException
+from saki_api.core.exceptions import ConflictAppException
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions, ResourceType
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
@@ -452,9 +452,10 @@ async def upsert_annotation_draft(
     return AnnotationDraftRead.model_validate(draft)
 
 
-@router.post("/projects/{project_id}/samples/{sample_id}/drafts/sync", response_model=AnnotationDraftRead | None, dependencies=[
-    Depends(require_permission(Permissions.ANNOTATE, ResourceType.PROJECT, "project_id"))
-])
+@router.post("/projects/{project_id}/samples/{sample_id}/drafts/sync", response_model=AnnotationDraftRead | None,
+             dependencies=[
+                 Depends(require_permission(Permissions.ANNOTATE, ResourceType.PROJECT, "project_id"))
+             ])
 async def sync_working_to_draft(
         *,
         project_id: uuid.UUID,

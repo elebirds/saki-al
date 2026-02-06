@@ -163,6 +163,26 @@ export interface ApiService {
 
     getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
 
+    createProjectBranch(
+        projectId: string,
+        payload: {
+            name: string;
+            fromCommitId: string;
+            description?: string;
+        }
+    ): Promise<ProjectBranch>;
+
+    updateBranch(
+        branchId: string,
+        payload: {
+            name?: string;
+            description?: string;
+            isProtected?: boolean;
+        }
+    ): Promise<ProjectBranch>;
+
+    deleteBranch(branchId: string): Promise<void>;
+
     getProjectCommits(projectId: string): Promise<CommitHistoryItem[]>;
 
     getProjectMembers(projectId: string): Promise<ResourceMember[]>;

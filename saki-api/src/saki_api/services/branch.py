@@ -74,13 +74,13 @@ class BranchService(BaseService[Branch, BranchRepository, BranchCreate, BranchUp
                 f"Branch '{name}' already exists in this project"
             )
 
-        branch_data = {
-            "project_id": project_id,
-            "name": name,
-            "head_commit_id": from_commit_id,
-            "description": description,
-            "is_protected": False,
-        }
+        branch_data = BranchCreate(
+            project_id=project_id,
+            name=name,
+            head_commit_id=from_commit_id,
+            description=description,
+            is_protected=False,
+        )
 
         return await self.create(branch_data)
 
@@ -210,6 +210,9 @@ class BranchService(BaseService[Branch, BranchRepository, BranchCreate, BranchUp
         """
         branch = await self.get_by_id_or_raise(branch_id)
 
+        if branch.name == "master" and is_protected is not None and is_protected is False:
+            raise BadRequestAppException("Cannot unprotect master branch")
+
         # Check name conflict if changing name
         if name and name != branch.name:
             if await self.repository.name_exists(branch.project_id, name, exclude_id=branch_id):
@@ -244,6 +247,9 @@ class BranchService(BaseService[Branch, BranchRepository, BranchCreate, BranchUp
         branch = await self.get_by_id(branch_id)
         if not branch:
             return False
+
+        if branch.name == "master":
+            raise BadRequestAppException("Cannot delete master branch")
 
         if branch.is_protected:
             raise BadRequestAppException("Cannot delete protected branch")

@@ -643,6 +643,54 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async createProjectBranch(
+        projectId: string,
+        payload: {
+            name: string;
+            fromCommitId: string;
+            description?: string;
+        }
+    ): Promise<ProjectBranch> {
+        const response = await this.client.post<ProjectBranch>(
+            `/branches/projects/${projectId}/branches`,
+            null,
+            {
+                params: {
+                    name: payload.name,
+                    from_commit_id: payload.fromCommitId,
+                    description: payload.description,
+                },
+            }
+        );
+        return response.data;
+    }
+
+    async updateBranch(
+        branchId: string,
+        payload: {
+            name?: string;
+            description?: string;
+            isProtected?: boolean;
+        }
+    ): Promise<ProjectBranch> {
+        const response = await this.client.put<ProjectBranch>(
+            `/branches/${branchId}`,
+            null,
+            {
+                params: {
+                    name: payload.name,
+                    description: payload.description,
+                    is_protected: payload.isProtected,
+                },
+            }
+        );
+        return response.data;
+    }
+
+    async deleteBranch(branchId: string): Promise<void> {
+        await this.client.delete(`/branches/${branchId}`);
+    }
+
     async getProjectCommits(projectId: string): Promise<CommitHistoryItem[]> {
         const response = await this.client.get<CommitHistoryItem[]>(`/commits/projects/${projectId}/commits`);
         return response.data;

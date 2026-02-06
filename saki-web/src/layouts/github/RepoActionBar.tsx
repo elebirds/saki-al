@@ -9,6 +9,7 @@ export type RepoActionBarProps = {
     tagsCount?: number
     branches?: { id?: string; name: string }[]
     onBranchChange?: (name: string) => void
+    onBranchesClick?: () => void
 }
 
 export const RepoActionBar: React.FC<RepoActionBarProps> = ({
@@ -17,6 +18,7 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                                                                 tagsCount = 0,
                                                                 branches,
                                                                 onBranchChange,
+                                                                onBranchesClick,
                                                             }) => {
     const branchMenuItems: MenuProps['items'] = (branches && branches.length > 0)
         ? branches.map((branch) => ({
@@ -48,7 +50,11 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                         </div>
                     </Button>
                 </Dropdown>
-                <Button type="text" className="!text-github-muted hover:!text-github-text">
+                <Button
+                    type="text"
+                    className="!text-github-muted hover:!text-github-text"
+                    onClick={onBranchesClick}
+                >
                     <BranchesOutlined className="mr-2"/>
                     <span className="font-semibold text-github-text">{branchesCount}</span>
                     <span className="ml-1">Branches</span>

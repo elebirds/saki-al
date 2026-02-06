@@ -58,7 +58,7 @@ async def list_branches_minimal(
     ]
 
 
-@router.get("/branches/{branch_id}", response_model=BranchRead, dependencies=[
+@router.get("/{branch_id}", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_READ))
 ])
 async def get_branch(
@@ -118,7 +118,7 @@ async def create_branch(
     return BranchRead.model_validate(branch)
 
 
-@router.post("/branches/{branch_id}/switch", response_model=BranchRead, dependencies=[
+@router.post("/{branch_id}/switch", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_SWITCH))
 ])
 async def switch_branch(
@@ -136,7 +136,7 @@ async def switch_branch(
     return BranchRead.model_validate(branch)
 
 
-@router.put("/branches/{branch_id}", response_model=BranchRead, dependencies=[
+@router.put("/{branch_id}", response_model=BranchRead, dependencies=[
     Depends(require_permission(Permissions.BRANCH_MANAGE))
 ])
 async def update_branch(
@@ -161,7 +161,7 @@ async def update_branch(
     return BranchRead.model_validate(branch)
 
 
-@router.delete("/branches/{branch_id}", response_model=None, dependencies=[
+@router.delete("/{branch_id}", response_model=None, dependencies=[
     Depends(require_permission(Permissions.BRANCH_MANAGE))
 ])
 async def delete_branch(

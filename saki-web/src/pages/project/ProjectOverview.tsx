@@ -1,13 +1,12 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import {Avatar, Button, Spin, Tag} from 'antd'
 import {FolderOutlined, HistoryOutlined} from '@ant-design/icons'
-import {useParams} from 'react-router-dom'
+import {useNavigate, useParams} from 'react-router-dom'
 import {RepoActionBar} from '../../layouts/github/RepoActionBar'
 import {RepoHeader} from '../../layouts/github/RepoHeader'
 import {FileTable} from '../../layouts/github/FileTable'
 import {api} from '../../services/api'
 import {CommitHistoryItem, Dataset, Project, ProjectBranch, ResourceMember} from '../../types'
-import ProjectDatasetSamples from './ProjectDatasetSamples'
 import ProjectSidebar from './ProjectSidebar'
 
 
@@ -41,6 +40,7 @@ const formatRelativeTime = (value?: string) => {
 
 const ProjectOverview: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>()
+    const navigate = useNavigate()
     const [project, setProject] = useState<Project | null>(null)
     const [datasets, setDatasets] = useState<Dataset[]>([])
     const [branches, setBranches] = useState<ProjectBranch[]>([])
@@ -141,7 +141,11 @@ const ProjectOverview: React.FC = () => {
         return new Map(members.map((member) => [member.userId, member]))
     }, [members])
 
-    const latestCommit = commits[0]
+    const activeBranchName = selectedBranchName || branches[0]?.name || 'master'
+    const activeBranch = branches.find((branch) => branch.name === activeBranchName) || branches[0]
+    const latestCommit = activeBranch?.headCommitId
+        ? commits.find((commit) => commit.id === activeBranch.headCommitId)
+        : commits[0]
     const latestCommitAuthor = latestCommit?.authorId ? memberMap.get(latestCommit.authorId) : null
     const latestCommitName = latestCommit
         ? latestCommit.authorType === 'system'
@@ -152,8 +156,6 @@ const ProjectOverview: React.FC = () => {
         : 'No commits'
 
     const latestCommitAvatar = latestCommitAuthor?.userAvatarUrl
-
-    const activeBranchName = selectedBranchName || branches[0]?.name || 'master'
 
     if (loading) {
         return (
@@ -168,8 +170,6 @@ const ProjectOverview: React.FC = () => {
             <div className="text-github-muted">Project not found.</div>
         )
     }
-
-    const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId) || null
 
     return (
         <div>
@@ -187,15 +187,12 @@ const ProjectOverview: React.FC = () => {
                         tagsCount={project.labelCount}
                         branches={branches.map((branch) => ({id: branch.id, name: branch.name}))}
                         onBranchChange={(name) => setSelectedBranchName(name)}
+                        onBranchesClick={() => {
+                            if (projectId) {
+                                navigate(`/projects/${projectId}/branches`)
+                            }
+                        }}
                     />
-
-                    {selectedDataset ? (
-                        <ProjectDatasetSamples
-                            datasetId={selectedDataset.id}
-                            datasetName={selectedDataset.name}
-                            onBack={() => setSelectedDatasetId(null)}
-                        />
-                    ) : (
                         <FileTable
                             header={
                                 <>
@@ -210,14 +207,16 @@ const ProjectOverview: React.FC = () => {
                                         <span
                                             className="font-semibold text-sm text-github-text">{latestCommitName}</span>
                                         <span className="text-github-muted text-sm truncate">
-                      {latestCommit?.message || 'No commits yet'}
+                      {latestCommit?.message || activeBranch?.headCommitMessage || 'No commits yet'}
                     </span>
                                     </div>
                                     <div className="flex items-center gap-3 text-sm text-github-muted shrink-0">
-                                        {latestCommit?.id ? (
-                                            <span className="font-mono text-xs">{latestCommit.id.slice(0, 7)}</span>
+                                        {latestCommit?.id || activeBranch?.headCommitId ? (
+                                            <span className="font-mono text-xs">
+                                                {(latestCommit?.id || activeBranch?.headCommitId || '').slice(0, 7)}
+                                            </span>
                                         ) : null}
-                                        <span>· {formatRelativeTime(latestCommit?.createdAt)}</span>
+                                        <span>· {formatRelativeTime(latestCommit?.createdAt || activeBranch?.updatedAt)}</span>
                                         <Button type="link" className="!text-github-link !p-0">
                                             <HistoryOutlined className="mr-1"/>
                                             <span
@@ -256,7 +255,6 @@ const ProjectOverview: React.FC = () => {
                                 ))
                             )}
                         </FileTable>
-                    )}
                 </div>
 
                 <ProjectSidebar

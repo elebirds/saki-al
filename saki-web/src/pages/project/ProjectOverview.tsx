@@ -213,7 +213,7 @@ const ProjectOverview: React.FC = () => {
                                         <span>· {formatRelativeTime(latestCommit?.createdAt || activeBranch?.updatedAt)}</span>
                                         <Button
                                             type="link"
-                                            className="!text-github-link !p-0"
+                                            className="text-github-link! p-0!"
                                             onClick={() => {
                                                 if (projectId) {
                                                     navigate(`/projects/${projectId}/commits?branch=${activeBranchName}`)
@@ -238,10 +238,21 @@ const ProjectOverview: React.FC = () => {
                                         key={dataset.id}
                                         className="flex items-center px-4 py-2 hover:bg-github-base border-b border-github-border-muted last:border-b-0 text-sm"
                                     >
-                                        <div className="flex items-center gap-3 w-[220px] shrink-0">
+                                        <div className="flex items-center gap-3 w-55 shrink-0">
                                             <FolderOutlined className="text-github-muted"/>
-                                            <Button type="link" className="!text-github-link !p-0"
-                                                    onClick={() => setSelectedDatasetId(dataset.id)}>
+                                            <Button
+                                                type="link"
+                                                className="text-github-link! p-0!"
+                                                onClick={() => {
+                                                    setSelectedDatasetId(dataset.id)
+                                                    if (projectId) {
+                                                        const params = new URLSearchParams()
+                                                        params.set('datasetId', dataset.id)
+                                                        params.set('branch', activeBranchName)
+                                                        navigate(`/projects/${projectId}/samples?${params.toString()}`)
+                                                    }
+                                                }}
+                                            >
                                                 {dataset.name}
                                             </Button>
                                         </div>
@@ -250,7 +261,7 @@ const ProjectOverview: React.FC = () => {
                                         </div>
                                         <div
                                             className="flex items-center gap-2 text-github-muted text-right whitespace-nowrap shrink-0">
-                                            <Tag className="!m-0">{dataset.type}</Tag>
+                                            <Tag className="m-0!">{dataset.type}</Tag>
                                             <span>{formatRelativeTime(dataset.updatedAt)}</span>
                                         </div>
                                     </div>

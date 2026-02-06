@@ -12,10 +12,11 @@ from saki_api.api.service_deps import (
     ProjectServiceDep,
     AnnotationDraftServiceDep,
     AnnotationWorkingServiceDep,
+    AnnotationSyncServiceDep,
     DatasetServiceDep,
     SampleServiceDep,
 )
-from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
+from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException, ConflictAppException
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions, ResourceType
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
@@ -151,12 +152,13 @@ async def sync_annotation(
         project_id: uuid.UUID,
         sample_id: uuid.UUID,
         sync_in: AnnotationSyncRequest,
+        annotation_sync_service: AnnotationSyncServiceDep,
         dataset_service: DatasetServiceDep,
         sample_service: SampleServiceDep,
         current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """
-    Run real-time annotation sync (e.g., FEDO dual-view mapping).
+    Full snapshot sync with auto-promotion and incremental updates.
     """
     sample = await sample_service.get_by_id_or_raise(sample_id)
     dataset = await dataset_service.get_by_id_or_raise(sample.dataset_id)
@@ -170,65 +172,92 @@ async def sync_annotation(
         annotator_id=str(current_user_id),
     )
 
-    try:
-        if sync_in.action == "create":
-            if not sync_in.label_id or not sync_in.type or sync_in.data is None:
-                raise BadRequestAppException("label_id, type and data are required for create")
-            result = facade.on_annotation_create(
-                annotation_id=sync_in.annotation_id,
-                label_id=str(sync_in.label_id),
-                ann_type=sync_in.type,
-                data=sync_in.data,
-                extra=sync_in.extra or {},
-                context=context,
+    snapshot = await annotation_sync_service.get_or_promote_snapshot(
+        project_id=project_id,
+        sample_id=sample_id,
+        user_id=current_user_id,
+        branch_name=sync_in.branch_name,
+    )
+
+    base_commit_id = snapshot.get("base_commit_id")
+    current_seq = int(snapshot.get("seq") or 0)
+    payload = {
+        "annotations": snapshot.get("annotations") or [],
+        "meta": snapshot.get("meta") or {},
+    }
+
+    if sync_in.base_commit_id and base_commit_id:
+        if str(sync_in.base_commit_id) != str(base_commit_id):
+            conflict_payload = AnnotationSyncResponse(
+                status="conflict",
+                current_seq_id=current_seq,
+                base_commit_id=uuid.UUID(base_commit_id) if base_commit_id else None,
+                payload=payload,
             )
-        elif sync_in.action == "update":
-            result = facade.on_annotation_update(
-                annotation_id=sync_in.annotation_id,
-                label_id=str(sync_in.label_id) if sync_in.label_id else None,
-                ann_type=sync_in.type,
-                data=sync_in.data,
-                extra=sync_in.extra or {},
-                context=context,
+            raise ConflictAppException(
+                "Base commit mismatch",
+                data=conflict_payload.model_dump(mode="json"),
             )
-        elif sync_in.action == "delete":
-            result = facade.on_annotation_delete(
-                annotation_id=sync_in.annotation_id,
-                extra=sync_in.extra or {},
-                context=context,
-            )
-        else:
-            raise BadRequestAppException("Invalid action")
-    except Exception as e:
-        return AnnotationSyncResponse(
-            success=False,
-            annotation_id=sync_in.annotation_id,
-            action=sync_in.action,
-            error=str(e),
-            generated=[],
+
+    if sync_in.last_seq_id != current_seq:
+        conflict_payload = AnnotationSyncResponse(
+            status="conflict",
+            current_seq_id=current_seq,
+            base_commit_id=uuid.UUID(base_commit_id) if base_commit_id else None,
+            payload=payload,
+        )
+        raise ConflictAppException(
+            "Sequence mismatch",
+            data=conflict_payload.model_dump(mode="json"),
         )
 
+    if not sync_in.actions and sync_in.meta is None:
+        return AnnotationSyncResponse(
+            status="success",
+            current_seq_id=current_seq,
+            base_commit_id=uuid.UUID(base_commit_id) if base_commit_id else None,
+            payload=payload,
+        )
+
+    updated_snapshot = await annotation_sync_service.apply_actions(
+        project_id=project_id,
+        sample_id=sample_id,
+        user_id=current_user_id,
+        branch_name=sync_in.branch_name,
+        current_snapshot=snapshot,
+        actions=[action.model_dump(mode="json") for action in sync_in.actions],
+        meta=sync_in.meta,
+        sync_handler=facade.sync_handler,
+        context=context,
+    )
+
+    updated_payload = {
+        "annotations": updated_snapshot.get("annotations") or [],
+        "meta": updated_snapshot.get("meta") or {},
+    }
+    updated_seq = int(updated_snapshot.get("seq") or 0)
+    updated_base = updated_snapshot.get("base_commit_id")
+
     return AnnotationSyncResponse(
-        success=result.success,
-        annotation_id=result.annotation_id,
-        action=result.action,
-        error=result.error,
-        generated=result.generated or [],
+        status="success",
+        current_seq_id=updated_seq,
+        base_commit_id=uuid.UUID(updated_base) if updated_base else None,
+        payload=updated_payload,
     )
 
 
-@router.get("/sync/{sync_id}/annotations", response_model=List[AnnotationRead], dependencies=[
+@router.get("/lineage/{lineage_id}/annotations", response_model=List[AnnotationRead], dependencies=[
     Depends(require_permission(Permissions.ANNOTATION_READ))
 ])
-async def get_annotations_by_sync_id(
+async def get_annotations_by_lineage_id(
         *,
-        sync_id: uuid.UUID,
+        lineage_id: uuid.UUID,
         annotation_service: AnnotationServiceDep,
 ):
     """
-    Get all annotations with a specific sync_id (for cross-view synchronization).
+    Get all annotations with a specific lineage_id (version chain lookup).
     """
-    annotations = await annotation_service.get_by_sync_id(sync_id)
+    annotations = await annotation_service.get_by_lineage_id(lineage_id)
     return [AnnotationRead.model_validate(a) for a in annotations]
 
 
@@ -398,7 +427,7 @@ async def upsert_annotation_draft(
     return AnnotationDraftRead.model_validate(draft)
 
 
-@router.post("/projects/{project_id}/samples/{sample_id}/drafts/sync", response_model=AnnotationDraftRead, dependencies=[
+@router.post("/projects/{project_id}/samples/{sample_id}/drafts/sync", response_model=AnnotationDraftRead | None, dependencies=[
     Depends(require_permission(Permissions.ANNOTATE, ResourceType.PROJECT, "project_id"))
 ])
 async def sync_working_to_draft(
@@ -410,15 +439,28 @@ async def sync_working_to_draft(
         draft_service: AnnotationDraftServiceDep,
         current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    payload = await working_service.get_working(
+    snapshot = await working_service.get_snapshot(
         project_id=project_id,
         sample_id=sample_id,
         user_id=current_user_id,
         branch_name=branch_name,
     )
-    if not payload:
-        raise NotFoundAppException("Working payload not found")
-    payload.pop("branch_name", None)
+    if not snapshot:
+        return None
+
+    if not snapshot.get("dirty"):
+        await working_service.delete_working(
+            project_id=project_id,
+            sample_id=sample_id,
+            user_id=current_user_id,
+            branch_name=branch_name,
+        )
+        return None
+
+    payload = {
+        "annotations": snapshot.get("annotations") or [],
+        "meta": snapshot.get("meta") or {},
+    }
 
     draft = await draft_service.upsert_draft(
         project_id=project_id,

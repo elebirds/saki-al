@@ -147,7 +147,7 @@ export interface ApiService {
     sampleId: string,
     payload: AnnotationDraftPayload & { branchName?: string }
   ): Promise<void>;
-  syncWorkingToDraft(projectId: string, sampleId: string, branchName?: string): Promise<AnnotationDraftRead>;
+  syncWorkingToDraft(projectId: string, sampleId: string, branchName?: string): Promise<AnnotationDraftRead | null>;
   listAnnotationDrafts(
     projectId: string,
     branchName?: string,

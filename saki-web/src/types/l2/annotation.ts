@@ -1,7 +1,8 @@
 // Dual-view annotation types
 export interface DualViewAnnotation {
   id: string;
-  syncId?: string;
+  groupId?: string;
+  lineageId?: string;
   parentId?: string | null;
   sampleId: string;
   labelId: string;
@@ -51,13 +52,14 @@ export interface Annotation {
   labelId: string;
   labelName?: string;   // For display convenience
   labelColor?: string;  // For display convenience
-  syncId?: string;
+  groupId?: string;
+  lineageId?: string;
   parentId?: string | null;
   viewRole?: string;
   type: AnnotationType;
   source?: AnnotationSource;
   data: Record<string, any>;  // Geometry data (bbox, points, etc.)
-  extra?: Record<string, any>;  // System-specific (e.g., parentId, view for FEDO)
+  extra?: Record<string, any>;  // System-specific (e.g., view for FEDO)
   confidence?: number;
   annotatorId?: string | null;  // ID of the user who created the annotation
 }
@@ -71,7 +73,8 @@ export interface AnnotationRead {
   projectId: string;
   sampleId: string;
   labelId: string;
-  syncId: string;
+  groupId: string;
+  lineageId: string;
   parentId?: string | null;
   viewRole: string;
   type: AnnotationType;
@@ -85,10 +88,12 @@ export interface AnnotationRead {
 }
 
 export interface AnnotationDraftItem {
+  id?: string;
   projectId?: string;
   sampleId?: string;
   labelId: string;
-  syncId: string;
+  groupId: string;
+  lineageId: string;
   parentId?: string | null;
   viewRole?: string;
   type: AnnotationType;
@@ -129,21 +134,25 @@ export interface CommitResult {
   createdAt: string;
 }
 
-export type AnnotationSyncAction = 'create' | 'update' | 'delete';
+export type AnnotationSyncActionType = 'add' | 'update' | 'delete';
+
+export interface AnnotationSyncActionItem {
+  type: AnnotationSyncActionType;
+  groupId: string;
+  data?: AnnotationDraftItem;
+}
 
 export interface AnnotationSyncRequest {
-  action: AnnotationSyncAction;
-  annotationId: string;
-  labelId?: string;
-  type?: AnnotationType;
-  data?: Record<string, any>;
-  extra?: Record<string, any>;
+  baseCommitId?: string | null;
+  lastSeqId: number;
+  branchName: string;
+  actions: AnnotationSyncActionItem[];
+  meta?: Record<string, any>;
 }
 
 export interface AnnotationSyncResponse {
-  success: boolean;
-  annotationId: string;
-  action: AnnotationSyncAction;
-  error?: string;
-  generated: Record<string, any>[];
+  status: 'success' | 'conflict';
+  currentSeqId: number;
+  baseCommitId?: string | null;
+  payload: AnnotationDraftPayload;
 }

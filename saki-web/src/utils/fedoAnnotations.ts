@@ -13,7 +13,8 @@ export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
   
   annotations.push({
     id: dual.id,
-    syncId: dual.syncId || dual.id,
+    groupId: dual.groupId || dual.id,
+    lineageId: dual.lineageId || dual.id,
     parentId: dual.parentId ?? undefined,
     sampleId: dual.sampleId,
     labelId: dual.labelId,
@@ -44,8 +45,9 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
   const extraRegions = ann.extra?.secondary?.regions || regions;
 
   return {
-    id: ann.syncId || ann.id,
-    syncId: ann.syncId || ann.id,
+    id: ann.id,
+    groupId: ann.groupId || ann.id,
+    lineageId: ann.lineageId || ann.id,
     parentId: ann.parentId ?? undefined,
     sampleId: ann.sampleId || '',
     labelId: ann.labelId,
@@ -65,7 +67,7 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
 /** Convert backend generated annotations to Annotation[] */
 export function generatedToAnnotations(
   generated: Array<Record<string, any>>,
-  parentId: string,
+  groupId: string,
   labelId: string,
   labelName: string,
   labelColor: string,
@@ -80,12 +82,8 @@ export function generatedToAnnotations(
     const resolvedLabelColor = gen.labelColor || gen.label_color || labelColor;
     const source = (gen.source || 'system') as any;
     const extra = gen.extra || {};
-    const resolvedParentId =
-      extra.parentId ||
-      extra.parent_id ||
-      gen.parentId ||
-      gen.parent_id ||
-      parentId;
+    const resolvedGroupId = gen.groupId || gen.group_id || groupId;
+    const resolvedLineageId = gen.lineageId || gen.lineage_id || gen.id;
     
     // 后端已经转换为左上角坐标，直接使用
     const bboxData = {
@@ -98,6 +96,8 @@ export function generatedToAnnotations(
     
     return {
       id: gen.id || `generated-${Date.now()}-${Math.random()}`,
+      groupId: resolvedGroupId,
+      lineageId: resolvedLineageId,
       labelId: resolvedLabelId,
       labelName: resolvedLabelName,
       labelColor: resolvedLabelColor,
@@ -107,8 +107,6 @@ export function generatedToAnnotations(
       annotatorId: gen.annotatorId || gen.annotator_id || annotatorId,
       extra: {
         ...extra,
-        parentId: resolvedParentId,
-        parent_id: resolvedParentId,
         view: view,
         mapping_method: extra.mapping_method || extra.mappingMethod || 'placeholder',
       },
@@ -155,11 +153,9 @@ export function generatedToRegions(generated: Array<Record<string, any>>): Mappe
 export function isGeneratedAnnotation(ann: Annotation): boolean {
   const source = ann.source as string;
   return (
-    source === 'auto' || 
+    source === 'auto' ||
     source === 'system' ||
     source === 'model' ||
-    source === 'fedo_mapping' || 
-    !!ann.extra?.parent_id ||
-    !!ann.extra?.parentId
+    source === 'fedo_mapping'
   );
 }

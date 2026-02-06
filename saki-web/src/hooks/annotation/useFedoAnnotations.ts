@@ -11,17 +11,16 @@ import {
   DualViewAnnotation,
   MappedRegion,
   AnnotationType,
-  AnnotationSyncAction,
+  AnnotationDraftItem,
+  AnnotationSyncActionItem,
 } from '../../types';
 import { UseAnnotationStateReturn } from './useAnnotationState';
 import {
   annotationToDual,
   isGeneratedAnnotation,
-  generatedToAnnotations,
 } from '../../utils/fedoAnnotations';
 import { VIEW_TIME_ENERGY, VIEW_L_OMEGAD } from '../../components/annotation/DualCanvasArea';
 import { generateUUID } from '../../utils/uuid';
-import { api } from '../../services/api';
 
 export interface UseFedoAnnotationsOptions {
   /** 当前项目 ID */
@@ -38,6 +37,8 @@ export interface UseFedoAnnotationsOptions {
   hasAnyEditPermission?: boolean;
   /** 权限：是否可编辑指定标注 */
   canEditAnnotation?: (annotation: Annotation) => boolean;
+  /** 可选：同步回调，返回最新完整标注列表 */
+  onSyncActions?: (actions: AnnotationSyncActionItem[]) => Promise<Annotation[] | null>;
 }
 
 export interface UseFedoAnnotationsReturn {
@@ -89,6 +90,7 @@ export function useFedoAnnotations(
     t,
     hasAnyEditPermission: hasAnyEditPermissionProp = true,
     canEditAnnotation: canEditAnnotationProp,
+    onSyncActions,
   } = options;
   const {
     setAnnotations: setBaseAnnotations,
@@ -103,6 +105,10 @@ export function useFedoAnnotations(
   const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<Set<string>>(new Set());
 
   const hasAnyEditPermission = hasAnyEditPermissionProp;
+
+  const getGroupId = useCallback((annotation: Annotation): string => {
+    return annotation.groupId || annotation.id;
+  }, []);
 
   const canEditAnnotation = useCallback((annotation: Annotation): boolean => {
     if (isGeneratedAnnotation(annotation)) return false;
@@ -121,6 +127,8 @@ export function useFedoAnnotations(
     annotationState.annotations.forEach(dual => {
       annotations.push({
         id: dual.id,
+        groupId: dual.groupId || dual.id,
+        lineageId: dual.lineageId || dual.id,
         sampleId: dual.sampleId,
         labelId: dual.labelId,
         labelName: dual.labelName,
@@ -161,205 +169,38 @@ export function useFedoAnnotations(
       return;
     }
 
-    const isGenerated = isGeneratedAnnotation(selectedAnn);
-
-    if (isGenerated) {
-      const parentId = selectedAnn.extra?.parent_id || selectedAnn.extra?.parentId;
-      if (parentId) {
-        const relatedIds = new Set([parentId]);
-        canvasAnnotations.forEach(ann => {
-          const annParentId = ann.extra?.parent_id || ann.extra?.parentId;
-          if (annParentId === parentId) {
-            relatedIds.add(ann.id);
-          }
-        });
-        annotationState.setSelectedId(parentId);
-        setSelectedAnnotationIds(relatedIds);
-      } else {
-        annotationState.setSelectedId(id);
-        setSelectedAnnotationIds(new Set([id]));
+    const groupId = getGroupId(selectedAnn);
+    const relatedIds = new Set<string>();
+    canvasAnnotations.forEach((ann) => {
+      if (getGroupId(ann) === groupId) {
+        relatedIds.add(ann.id);
       }
-    } else {
-      const relatedIds = new Set([id]);
-      canvasAnnotations.forEach(ann => {
-        const parentId = ann.extra?.parent_id || ann.extra?.parentId;
-        if (parentId === id) {
-          relatedIds.add(ann.id);
-        }
-      });
-      annotationState.setSelectedId(id);
-      setSelectedAnnotationIds(relatedIds);
-    }
-  }, [canvasAnnotations, annotationState]);
-
-  const syncGeneratedAnnotations = useCallback(async (
-    action: AnnotationSyncAction,
-    baseAnnotation: Annotation,
-    view: string
-  ) => {
-    if (!projectId || !currentSampleId) return;
-    try {
-      const response = await api.syncAnnotation(projectId, currentSampleId, {
-        action,
-        annotationId: baseAnnotation.id,
-        labelId: baseAnnotation.labelId,
-        type: baseAnnotation.type,
-        data: baseAnnotation.data,
-        extra: {
-          ...baseAnnotation.extra,
-          view,
-        },
-      });
-
-      if (!response?.success) {
-        const errorMessage = response?.error || 'Failed to sync auto mapping';
-        if (t) message.warning(errorMessage);
-        return;
-      }
-
-      const generatedItems = (response.generated || []).filter((item) => !item?._action);
-      if (generatedItems.length === 0) {
-        return;
-      }
-
-      const mapped = generatedToAnnotations(
-        generatedItems,
-        baseAnnotation.id,
-        baseAnnotation.labelId,
-        baseAnnotation.labelName || '',
-        baseAnnotation.labelColor || '#ff0000',
-        baseAnnotation.annotatorId || currentUserId
-      );
-
-      setGeneratedAnnotations((prev) => {
-        const filtered = prev.filter((ann) => {
-          const parentId = ann.extra?.parent_id || ann.extra?.parentId;
-          return parentId !== baseAnnotation.id;
-        });
-        return [...filtered, ...mapped];
-      });
-    } catch (error) {
-      if (t) message.warning('Failed to sync auto mapping');
-    }
-  }, [projectId, currentSampleId, currentUserId, t]);
-
-  // 创建标注
-  const handleAnnotationCreate = useCallback(async (event: {
-    type: 'rect' | 'obb';
-    bbox: { x: number; y: number; width: number; height: number; rotation?: number };
-    view: string;
-  }) => {
-    if (!hasAnyEditPermission) {
-      if (t) message.warning(t('workspace.noEditPermission'));
-      return;
-    }
-
-    if (!annotationState.selectedLabel) {
-      if (t) message.warning(t('workspace.noLabelSelected'));
-      return;
-    }
-
-    if (!currentSampleId) return;
-
-    const newId = generateUUID();
-    const view = event.view || VIEW_TIME_ENERGY;
-
-    const newAnn: DualViewAnnotation = {
-      id: newId,
-      syncId: newId,
-      parentId: null,
-      sampleId: currentSampleId,
-      labelId: annotationState.selectedLabel.id,
-      labelName: annotationState.selectedLabel.name || 'unknown',
-      labelColor: annotationState.selectedLabel.color || '#ff0000',
-      annotatorId: currentUserId,
-      primary: {
-        type: event.type,
-        bbox: event.bbox,
-      },
-      secondary: {
-        regions: [],
-      },
-    };
-
-    annotationState.handleAnnotationCreate(newAnn);
-    setAnnotationViews(prev => {
-      const newMap = new Map(prev);
-      newMap.set(newId, view);
-      return newMap;
     });
+    const primary = canvasAnnotations.find(
+      (ann) => getGroupId(ann) === groupId && !isGeneratedAnnotation(ann)
+    ) || selectedAnn;
+    annotationState.setSelectedId(primary.id);
+    setSelectedAnnotationIds(relatedIds);
+  }, [canvasAnnotations, annotationState, getGroupId]);
 
-    const baseAnnotation: Annotation = {
-      id: newId,
+  const buildDraftItem = useCallback((annotation: Annotation): AnnotationDraftItem => {
+    return {
+      id: annotation.id,
+      projectId: projectId || undefined,
       sampleId: currentSampleId,
-      labelId: annotationState.selectedLabel.id,
-      labelName: annotationState.selectedLabel.name || 'unknown',
-      labelColor: annotationState.selectedLabel.color || '#ff0000',
-      type: event.type,
-      source: 'manual',
-      data: {
-        x: event.bbox.x,
-        y: event.bbox.y,
-        width: event.bbox.width,
-        height: event.bbox.height,
-        rotation: event.bbox.rotation,
-      },
-      extra: { view },
-      annotatorId: currentUserId,
+      labelId: annotation.labelId,
+      groupId: annotation.groupId || annotation.id,
+      lineageId: annotation.lineageId || annotation.id,
+      parentId: annotation.parentId ?? null,
+      viewRole: annotation.viewRole || 'main',
+      type: annotation.type,
+      source: annotation.source || 'manual',
+      data: annotation.data,
+      extra: annotation.extra || {},
+      confidence: annotation.confidence ?? 1,
+      annotatorId: annotation.annotatorId ?? currentUserId ?? null,
     };
-
-    await syncGeneratedAnnotations('create', baseAnnotation, view);
-  }, [hasAnyEditPermission, annotationState, currentSampleId, currentUserId, t, syncGeneratedAnnotations]);
-
-  // 更新标注
-  const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
-    if (!currentSampleId) return;
-
-    if (!canEditAnnotation(updatedAnn)) {
-      if (t) message.warning(t('workspace.cannotEditOthersAnnotation'));
-      return;
-    }
-
-    const dual = annotationState.annotations.find(d => d.id === updatedAnn.id);
-    if (dual) {
-      const updatedDual: DualViewAnnotation = {
-        ...dual,
-        primary: {
-          type: updatedAnn.type as 'rect' | 'obb',
-          bbox: {
-            x: updatedAnn.data.x,
-            y: updatedAnn.data.y,
-            width: updatedAnn.data.width,
-            height: updatedAnn.data.height,
-            rotation: updatedAnn.data.rotation,
-          },
-        },
-      };
-      annotationState.handleAnnotationUpdate(updatedDual);
-    }
-    const view = updatedAnn.extra?.view || annotationViews.get(updatedAnn.id) || VIEW_TIME_ENERGY;
-    await syncGeneratedAnnotations('update', {
-      ...updatedAnn,
-      extra: { ...updatedAnn.extra, view },
-    }, view);
-  }, [currentSampleId, annotationState, canEditAnnotation, t, annotationViews, syncGeneratedAnnotations]);
-
-  // 删除标注
-  const handleDeleteAnnotation = useCallback(async (id: string) => {
-    if (!currentSampleId) return;
-
-    const annotation = canvasAnnotations.find(a => a.id === id);
-    if (annotation && !canEditAnnotation(annotation)) {
-      if (t) message.warning(t('workspace.cannotDeleteOthersAnnotation'));
-      return;
-    }
-
-    annotationState.handleAnnotationDelete(id);
-    setGeneratedAnnotations(prev => prev.filter(ann => {
-      const parentId = ann.extra?.parent_id || ann.extra?.parentId;
-      return parentId !== id;
-    }));
-  }, [currentSampleId, annotationState, canvasAnnotations, canEditAnnotation, t]);
+  }, [projectId, currentSampleId, currentUserId]);
 
   const applyBaseAnnotations = useCallback((annotations: Annotation[]) => {
     const mainAnnotations: Annotation[] = [];
@@ -373,19 +214,19 @@ export function useFedoAnnotations(
       }
     });
 
-    const generatedByParent = new Map<string, Annotation[]>();
+    const generatedByGroup = new Map<string, Annotation[]>();
     generated.forEach((genAnn) => {
-      const parentId = genAnn.extra?.parent_id || genAnn.extra?.parentId;
-      if (parentId) {
-        if (!generatedByParent.has(parentId)) {
-          generatedByParent.set(parentId, []);
-        }
-        generatedByParent.get(parentId)!.push(genAnn);
+      const groupId = getGroupId(genAnn);
+      if (!groupId) return;
+      if (!generatedByGroup.has(groupId)) {
+        generatedByGroup.set(groupId, []);
       }
+      generatedByGroup.get(groupId)!.push(genAnn);
     });
 
     const dualAnns: DualViewAnnotation[] = mainAnnotations.map((ann) => {
-      const relatedGenerated = generatedByParent.get(ann.id) || [];
+      const groupId = getGroupId(ann);
+      const relatedGenerated = groupId ? generatedByGroup.get(groupId) || [] : [];
       const regions: MappedRegion[] = relatedGenerated
         .filter(gen => gen.extra?.view === VIEW_L_OMEGAD)
         .map((gen, index) => {
@@ -427,7 +268,152 @@ export function useFedoAnnotations(
     setBaseHistoryIndex(0);
     setBaseSelectedId(null);
     setGeneratedAnnotations(generated);
-  }, [setBaseAnnotations, setBaseHistory, setBaseHistoryIndex, setBaseSelectedId]);
+  }, [getGroupId, setBaseAnnotations, setBaseHistory, setBaseHistoryIndex, setBaseSelectedId]);
+
+  const triggerSync = useCallback(async (
+    actions: AnnotationSyncActionItem[]
+  ) => {
+    if (!onSyncActions) return;
+    const updated = await onSyncActions(actions);
+    if (updated) {
+      applyBaseAnnotations(updated);
+    }
+  }, [onSyncActions, applyBaseAnnotations]);
+
+  // 创建标注
+  const handleAnnotationCreate = useCallback(async (event: {
+    type: 'rect' | 'obb';
+    bbox: { x: number; y: number; width: number; height: number; rotation?: number };
+    view: string;
+  }) => {
+    if (!hasAnyEditPermission) {
+      if (t) message.warning(t('workspace.noEditPermission'));
+      return;
+    }
+
+    if (!annotationState.selectedLabel) {
+      if (t) message.warning(t('workspace.noLabelSelected'));
+      return;
+    }
+
+    if (!currentSampleId) return;
+
+    const newId = generateUUID();
+    const view = event.view || VIEW_TIME_ENERGY;
+
+    const newAnn: DualViewAnnotation = {
+      id: newId,
+      groupId: newId,
+      lineageId: newId,
+      parentId: null,
+      sampleId: currentSampleId,
+      labelId: annotationState.selectedLabel.id,
+      labelName: annotationState.selectedLabel.name || 'unknown',
+      labelColor: annotationState.selectedLabel.color || '#ff0000',
+      annotatorId: currentUserId,
+      primary: {
+        type: event.type,
+        bbox: event.bbox,
+      },
+      secondary: {
+        regions: [],
+      },
+    };
+
+    annotationState.handleAnnotationCreate(newAnn);
+    setAnnotationViews(prev => {
+      const newMap = new Map(prev);
+      newMap.set(newId, view);
+      return newMap;
+    });
+
+    const baseAnnotation: Annotation = {
+      id: newId,
+      groupId: newId,
+      lineageId: newId,
+      sampleId: currentSampleId,
+      labelId: annotationState.selectedLabel.id,
+      labelName: annotationState.selectedLabel.name || 'unknown',
+      labelColor: annotationState.selectedLabel.color || '#ff0000',
+      viewRole: 'main',
+      type: event.type,
+      source: 'manual',
+      data: {
+        x: event.bbox.x,
+        y: event.bbox.y,
+        width: event.bbox.width,
+        height: event.bbox.height,
+        rotation: event.bbox.rotation,
+      },
+      extra: { view },
+      annotatorId: currentUserId,
+    };
+
+    await triggerSync([{
+      type: 'add',
+      groupId: newId,
+      data: buildDraftItem(baseAnnotation),
+    }]);
+  }, [hasAnyEditPermission, annotationState, currentSampleId, currentUserId, t, buildDraftItem, triggerSync]);
+
+  // 更新标注
+  const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
+    if (!currentSampleId) return;
+
+    if (!canEditAnnotation(updatedAnn)) {
+      if (t) message.warning(t('workspace.cannotEditOthersAnnotation'));
+      return;
+    }
+
+    const dual = annotationState.annotations.find(d => d.id === updatedAnn.id);
+    if (dual) {
+      const updatedDual: DualViewAnnotation = {
+        ...dual,
+        primary: {
+          type: updatedAnn.type as 'rect' | 'obb',
+          bbox: {
+            x: updatedAnn.data.x,
+            y: updatedAnn.data.y,
+            width: updatedAnn.data.width,
+            height: updatedAnn.data.height,
+            rotation: updatedAnn.data.rotation,
+          },
+        },
+      };
+      annotationState.handleAnnotationUpdate(updatedDual);
+    }
+    const view = updatedAnn.extra?.view || annotationViews.get(updatedAnn.id) || VIEW_TIME_ENERGY;
+    const updatedWithView: Annotation = {
+      ...updatedAnn,
+      groupId: updatedAnn.groupId || updatedAnn.id,
+      lineageId: updatedAnn.lineageId || updatedAnn.id,
+      extra: { ...updatedAnn.extra, view },
+    };
+    await triggerSync([{
+      type: 'update',
+      groupId: updatedWithView.groupId || updatedAnn.id,
+      data: buildDraftItem(updatedWithView),
+    }]);
+  }, [currentSampleId, annotationState, canEditAnnotation, t, annotationViews, buildDraftItem, triggerSync]);
+
+  // 删除标注
+  const handleDeleteAnnotation = useCallback(async (id: string) => {
+    if (!currentSampleId) return;
+
+    const annotation = canvasAnnotations.find(a => a.id === id);
+    if (annotation && !canEditAnnotation(annotation)) {
+      if (t) message.warning(t('workspace.cannotDeleteOthersAnnotation'));
+      return;
+    }
+
+    const groupId = annotation ? getGroupId(annotation) : id;
+    annotationState.handleAnnotationDelete(id);
+    setGeneratedAnnotations(prev => prev.filter(ann => getGroupId(ann) !== groupId));
+    await triggerSync([{
+      type: 'delete',
+      groupId: groupId,
+    }]);
+  }, [currentSampleId, annotationState, canvasAnnotations, canEditAnnotation, t, triggerSync, getGroupId]);
 
   return {
     generatedAnnotations,

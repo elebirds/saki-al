@@ -17,7 +17,8 @@ class AnnotationBase(SQLModel):
     sample_id: uuid.UUID
     label_id: uuid.UUID
     project_id: uuid.UUID
-    sync_id: uuid.UUID
+    group_id: uuid.UUID
+    lineage_id: uuid.UUID
     view_role: str = "main"
     type: AnnotationType = AnnotationType.RECT
     source: AnnotationSource = AnnotationSource.MANUAL

@@ -45,8 +45,8 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
     - Manual annotation (source=MANUAL) in the annotated view
     - Auto-generated annotation(s) (source=SYSTEM) in the other view
 
-    The auto-generated annotations store parent reference in extra:
-        extra: { parent_id: "<manual_ann_id>", view: "L-omegad", ... }
+    The auto-generated annotations share the same group_id with the manual annotation
+    to represent a single logical group across views.
     """
 
     system_type = DatasetType.FEDO
@@ -58,8 +58,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
 
     def _get_view_mapper(self, sample_meta: Dict[str, Any]) -> Optional[LUTViewMapper]:
         """Get or create a view mapper for the sample."""
-        lookup_local_path = sample_meta.get('lookup_local_path')
-        lookup_object_path = sample_meta.get('lookup_object_path')
+        lookup_local_path, lookup_object_path = self._extract_lookup_paths(sample_meta)
         lookup_key = lookup_local_path or lookup_object_path
         if not lookup_key:
             return None
@@ -93,8 +92,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         """Load lookup table from object storage (no disk)."""
         try:
             meta = context.sample_meta or {}
-            lookup_object_path = meta.get('lookup_object_path')
-            lookup_local_path = meta.get('lookup_local_path')
+            lookup_local_path, lookup_object_path = self._extract_lookup_paths(meta)
 
             lookup_bytes = None
             if lookup_local_path:
@@ -104,7 +102,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
 
             if lookup_bytes is None:
                 if not lookup_object_path:
-                    self.logger.warning(f"No lookup_object_path in sample_meta for {context.sample_id}")
+                    self.logger.warning(f"No lookup path in sample_meta for {context.sample_id}")
                     return None
                 if not self.asset_service:
                     raise RuntimeError("AssetService not initialized")
@@ -113,6 +111,26 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         except Exception as e:
             self.logger.error(f"Error loading lookup table: {e}")
             return None
+
+    @staticmethod
+    def _extract_lookup_paths(sample_meta: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+        def get_value(meta: Dict[str, Any], *keys: str) -> Optional[str]:
+            for key in keys:
+                value = meta.get(key)
+                if value:
+                    return value
+            return None
+
+        lookup_local_path = get_value(sample_meta, "lookup_local_path", "lookupLocalPath")
+        lookup_object_path = get_value(sample_meta, "lookup_object_path", "lookupObjectPath")
+
+        fedo_meta = sample_meta.get("fedo_metadata") or sample_meta.get("fedoMetadata") or {}
+        if not lookup_local_path:
+            lookup_local_path = get_value(fedo_meta, "lookup_local_path", "lookupLocalPath")
+        if not lookup_object_path:
+            lookup_object_path = get_value(fedo_meta, "lookup_object_path", "lookupObjectPath")
+
+        return lookup_local_path, lookup_object_path
 
     def _bbox_to_obb_vertices(self, data: Dict[str, Any]) -> np.ndarray:
         """
@@ -191,7 +209,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
 
     def _generate_mapped_annotations(
             self,
-            parent_id: str,
+            group_id: str,
             label_id: str,
             ann_type: AnnotationType,
             source_view: str,
@@ -206,7 +224,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         coordinate transformation with time-gap segmentation.
 
         Args:
-            parent_id: ID of the source annotation
+            group_id: Group ID of the source annotation
             label_id: Label ID
             ann_type: Annotation type
             source_view: Source view name
@@ -257,6 +275,8 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
             generated.append({
                 "id": generated_id,
                 "label_id": label_id,
+                "group_id": group_id,
+                "lineage_id": generated_id,
                 "type": AnnotationType.OBB.value if abs(bbox_data['rotation']) > 1e-6 else AnnotationType.RECT.value,
                 "source": AnnotationSource.SYSTEM.value,
                 "data": {
@@ -267,7 +287,6 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
                     "rotation": bbox_data['rotation'],
                 },
                 "extra": {
-                    "parent_id": parent_id,
                     "view": target_view,
                     "mapping_method": "fedo_obb_mapper",
                 },
@@ -313,7 +332,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         # Generate mapped annotations
         try:
             generated = self._generate_mapped_annotations(
-                parent_id=annotation_id,
+                group_id=annotation_id,
                 label_id=label_id,
                 ann_type=ann_type,
                 source_view=view,
@@ -390,7 +409,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         # Generate mapped annotations (same logic as create)
         try:
             generated = self._generate_mapped_annotations(
-                parent_id=annotation_id,
+                group_id=annotation_id,
                 label_id=label_id,
                 ann_type=ann_type,
                 source_view=view,
@@ -429,12 +448,11 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         Handle FEDO annotation deletion.
 
         When a manual annotation is deleted, all linked auto-annotations
-        should also be deleted. Frontend should handle this based on parent_id.
+        should also be deleted. Grouping is based on group_id.
         """
         return SyncResult(
             success=True,
             annotation_id=annotation_id,
             action="delete",
-            # Signal that child annotations should be deleted
-            generated=[{"_action": "delete_children", "parent_id": annotation_id}],
+            generated=[{"_action": "delete_group", "group_id": annotation_id}],
         )

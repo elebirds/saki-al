@@ -160,18 +160,18 @@ class AnnotationRepository(BaseRepository[Annotation]):
             order_by=[Annotation.created_at.desc()]
         )
 
-    async def get_by_sync_id(self, sync_id: uuid.UUID) -> List[Annotation]:
+    async def get_by_lineage_id(self, lineage_id: uuid.UUID) -> List[Annotation]:
         """
-        Get all annotations with a specific sync_id (for cross-view synchronization).
+        Get all annotations with a specific lineage_id (for version chain lookup).
 
         Args:
-            sync_id: Sync ID
+            lineage_id: Lineage ID
 
         Returns:
-            List of annotations with this sync_id
+            List of annotations with this lineage_id
         """
         return await self.list(
-            filters=[Annotation.sync_id == sync_id],
+            filters=[Annotation.lineage_id == lineage_id],
             order_by=[Annotation.created_at]
         )
 

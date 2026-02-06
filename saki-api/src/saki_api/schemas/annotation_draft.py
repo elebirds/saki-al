@@ -15,10 +15,12 @@ class AnnotationDraftItem(SQLModel):
     Single annotation item stored in Working/Draft payloads.
     Project and sample IDs are optional in payload and can be injected by server.
     """
+    id: Optional[uuid.UUID] = None
     project_id: Optional[uuid.UUID] = None
     sample_id: Optional[uuid.UUID] = None
     label_id: uuid.UUID
-    sync_id: uuid.UUID
+    group_id: uuid.UUID
+    lineage_id: uuid.UUID
     view_role: str = "main"
     type: AnnotationType = AnnotationType.RECT
     source: AnnotationSource = AnnotationSource.MANUAL

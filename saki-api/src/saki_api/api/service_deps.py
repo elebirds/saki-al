@@ -220,6 +220,7 @@ BranchServiceDep = Annotated[BranchService, Depends(get_branch_service)]
 from saki_api.services.annotation import AnnotationService
 from saki_api.services.annotation_draft import AnnotationDraftService
 from saki_api.services.annotation_working import AnnotationWorkingService
+from saki_api.services.annotation_sync import AnnotationSyncService
 
 
 def get_annotation_service(
@@ -245,3 +246,12 @@ def get_annotation_working_service() -> AnnotationWorkingService:
 
 
 AnnotationWorkingServiceDep = Annotated[AnnotationWorkingService, Depends(get_annotation_working_service)]
+
+
+def get_annotation_sync_service(
+        session: AsyncSession = Depends(get_session),
+) -> AnnotationSyncService:
+    return AnnotationSyncService(session=session)
+
+
+AnnotationSyncServiceDep = Annotated[AnnotationSyncService, Depends(get_annotation_sync_service)]

@@ -746,8 +746,8 @@ export class RealApiService implements ApiService {
     projectId: string,
     sampleId: string,
     branchName?: string
-  ): Promise<AnnotationDraftRead> {
-    const response = await this.client.post<AnnotationDraftRead>(
+  ): Promise<AnnotationDraftRead | null> {
+    const response = await this.client.post<AnnotationDraftRead | null>(
       `/annotations/projects/${projectId}/samples/${sampleId}/drafts/sync`,
       null,
       {
@@ -756,7 +756,7 @@ export class RealApiService implements ApiService {
         },
       }
     );
-    return response.data;
+    return response.data ?? null;
   }
 
   async listAnnotationDrafts(

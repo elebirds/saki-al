@@ -90,6 +90,16 @@ class InternalServerErrorAppException(AppException):
         super().__init__(message, ErrorCode.INTERNAL_SERVER_ERROR)
 
 
+class ConflictAppException(AppException):
+    def __init__(self, message: str = "Conflict", data: Optional[dict] = None):
+        super().__init__(
+            message,
+            ErrorCode.CONFLICT,
+            status_code=status.HTTP_409_CONFLICT,
+            data=data,
+        )
+
+
 # ============================================================================
 # Data-related Exceptions (3xxx)
 # ============================================================================

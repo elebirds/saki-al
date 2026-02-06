@@ -217,7 +217,15 @@ const ProjectOverview: React.FC = () => {
                                             </span>
                                         ) : null}
                                         <span>· {formatRelativeTime(latestCommit?.createdAt || activeBranch?.updatedAt)}</span>
-                                        <Button type="link" className="!text-github-link !p-0">
+                                        <Button
+                                            type="link"
+                                            className="!text-github-link !p-0"
+                                            onClick={() => {
+                                                if (projectId) {
+                                                    navigate(`/projects/${projectId}/commits?branch=${activeBranchName}`)
+                                                }
+                                            }}
+                                        >
                                             <HistoryOutlined className="mr-1"/>
                                             <span
                                                 className="font-semibold text-github-text">{project.commitCount}</span> Commits

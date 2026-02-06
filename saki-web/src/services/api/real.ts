@@ -7,7 +7,9 @@ import {
     AnnotationSyncRequest,
     AnnotationSyncResponse,
     AvailableTypesResponse,
+    CommitDiff,
     CommitHistoryItem,
+    CommitRead,
     CommitResult,
     Dataset,
     DatasetCreate,
@@ -693,6 +695,28 @@ export class RealApiService implements ApiService {
 
     async getProjectCommits(projectId: string): Promise<CommitHistoryItem[]> {
         const response = await this.client.get<CommitHistoryItem[]>(`/commits/projects/${projectId}/commits`);
+        return response.data;
+    }
+
+    async getCommitHistory(commitId: string, depth: number = 100): Promise<CommitHistoryItem[]> {
+        const response = await this.client.get<CommitHistoryItem[]>(
+            `/commits/${commitId}/history`,
+            {params: {depth}}
+        );
+        return response.data;
+    }
+
+    async getCommit(commitId: string): Promise<CommitRead> {
+        const response = await this.client.get<CommitRead>(`/commits/${commitId}`);
+        return response.data;
+    }
+
+    async getCommitDiff(commitId: string, compareWithId?: string): Promise<CommitDiff> {
+        const response = await this.client.get<CommitDiff>(`/commits/${commitId}/diff`, {
+            params: {
+                compare_with_id: compareWithId,
+            },
+        });
         return response.data;
     }
 

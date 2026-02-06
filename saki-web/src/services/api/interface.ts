@@ -6,7 +6,9 @@ import {
     AnnotationSyncRequest,
     AnnotationSyncResponse,
     AvailableTypesResponse,
+    CommitDiff,
     CommitHistoryItem,
+    CommitRead,
     CommitResult,
     Dataset,
     DatasetCreate,
@@ -184,6 +186,12 @@ export interface ApiService {
     deleteBranch(branchId: string): Promise<void>;
 
     getProjectCommits(projectId: string): Promise<CommitHistoryItem[]>;
+
+    getCommitHistory(commitId: string, depth?: number): Promise<CommitHistoryItem[]>;
+
+    getCommit(commitId: string): Promise<CommitRead>;
+
+    getCommitDiff(commitId: string, compareWithId?: string): Promise<CommitDiff>;
 
     getProjectMembers(projectId: string): Promise<ResourceMember[]>;
 

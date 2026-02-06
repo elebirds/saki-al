@@ -60,7 +60,7 @@ async def get_commit_tree(
     return await commit_service.get_commit_tree(project_id)
 
 
-@router.get("/commits/{commit_id}", response_model=CommitRead, dependencies=[
+@router.get("/{commit_id}", response_model=CommitRead, dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ))
 ])
 async def get_commit(
@@ -75,7 +75,7 @@ async def get_commit(
     return CommitRead.model_validate(commit)
 
 
-@router.get("/commits/{commit_id}/history", response_model=List[CommitHistoryItem], dependencies=[
+@router.get("/{commit_id}/history", response_model=List[CommitHistoryItem], dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ))
 ])
 async def get_commit_history(
@@ -92,7 +92,7 @@ async def get_commit_history(
     return await commit_service.get_history(commit_id, depth)
 
 
-@router.get("/commits/{commit_id}/diff", response_model=CommitDiff, dependencies=[
+@router.get("/{commit_id}/diff", response_model=CommitDiff, dependencies=[
     Depends(require_permission(Permissions.COMMIT_READ))
 ])
 async def get_commit_diff(

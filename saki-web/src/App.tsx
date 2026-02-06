@@ -6,6 +6,8 @@ import ProjectOverview from './pages/project/ProjectOverview';
 import ProjectLayout from './pages/project/ProjectLayout';
 import ProjectList from './pages/project/ProjectList';
 import ProjectBranches from './pages/project/ProjectBranches';
+import ProjectCommits from './pages/project/ProjectCommits';
+import ProjectCommitDetail from './pages/project/ProjectCommitDetail';
 import ProjectSamplesAnnotations from './pages/project/ProjectSamplesAnnotations';
 import ProjectLoops from './pages/project/ProjectLoops';
 import ProjectInsights from './pages/project/ProjectInsights';
@@ -57,6 +59,8 @@ const App: React.FC = () => {
                                 <Route path="/projects/:projectId" element={<ProjectLayout/>}>
                                     <Route index element={<ProjectOverview/>}/>
                                     <Route path="branches" element={<ProjectBranches/>}/>
+                                    <Route path="commits" element={<ProjectCommits/>}/>
+                                    <Route path="commits/:commitId" element={<ProjectCommitDetail/>}/>
                                     <Route path="samples" element={<ProjectSamplesAnnotations/>}/>
                                     <Route path="loops" element={<ProjectLoops/>}/>
                                     <Route path="insights" element={<ProjectInsights/>}/>

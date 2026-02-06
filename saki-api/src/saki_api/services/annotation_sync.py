@@ -16,6 +16,7 @@ from saki_api.repositories.annotation import AnnotationRepository
 from saki_api.repositories.annotation_draft import AnnotationDraftRepository
 from saki_api.repositories.branch import BranchRepository
 from saki_api.services.annotation_working import AnnotationWorkingService
+from saki_api.utils.coordinate_converter import convert_annotation_data_to_backend
 
 
 class AnnotationSyncService:
@@ -84,6 +85,8 @@ class AnnotationSyncService:
             raise BadRequestAppException("lineage_id is required for sync actions")
         extra = self._strip_parent_from_extra(data.get("extra") or {})
         item_id = data.get("id") or lineage_id
+        annotation_type = str(data.get("type") or AnnotationType.RECT.value)
+        converted_data = convert_annotation_data_to_backend(annotation_type, data.get("data") or {})
         return {
             "id": str(item_id),
             "project_id": str(data.get("project_id") or project_id),
@@ -93,9 +96,9 @@ class AnnotationSyncService:
             "lineage_id": str(lineage_id),
             "parent_id": str(data.get("parent_id")) if data.get("parent_id") else None,
             "view_role": data.get("view_role") or data.get("viewRole") or "main",
-            "type": str(data.get("type") or AnnotationType.RECT.value),
+            "type": annotation_type,
             "source": str(data.get("source") or AnnotationSource.MANUAL.value),
-            "data": data.get("data") or {},
+            "data": converted_data,
             "extra": extra,
             "confidence": float(data.get("confidence") or 1.0),
             "annotator_id": str(data.get("annotator_id") or data.get("annotatorId") or user_id),

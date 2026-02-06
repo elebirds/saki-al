@@ -29,8 +29,33 @@ from saki_api.schemas.annotation_draft import (
     AnnotationWorkingUpsert,
 )
 from saki_api.schemas.annotation_sync import AnnotationSyncRequest, AnnotationSyncResponse
+from saki_api.utils.coordinate_converter import convert_annotation_item_to_frontend, convert_annotation_data_to_frontend
 
 router = APIRouter()
+
+
+def _normalize_type(annotation_type: object) -> str:
+    if hasattr(annotation_type, "value"):
+        return annotation_type.value
+    return str(annotation_type)
+
+
+def _to_annotation_read(annotation) -> AnnotationRead:
+    payload = annotation.model_dump()
+    payload["data"] = convert_annotation_data_to_frontend(
+        _normalize_type(payload.get("type")),
+        payload.get("data"),
+    )
+    return AnnotationRead.model_validate(payload)
+
+
+def _convert_payload_to_frontend(payload: dict) -> dict:
+    annotations = payload.get("annotations") or []
+    converted = [convert_annotation_item_to_frontend(item) for item in annotations]
+    return {
+        "annotations": converted,
+        "meta": payload.get("meta") or {},
+    }
 
 
 # =============================================================================
@@ -53,7 +78,7 @@ async def get_annotations_at_commit(
     Optionally filter by sample_id to get annotations for a specific sample.
     """
     annotations = await annotation_service.get_annotations_at_commit(commit_id, sample_id)
-    return [AnnotationRead.model_validate(a) for a in annotations]
+    return [_to_annotation_read(a) for a in annotations]
 
 
 @router.get("/samples/{sample_id}/annotations", response_model=List[AnnotationRead], dependencies=[
@@ -70,7 +95,7 @@ async def get_sample_annotations(
     Returns all annotations across all commits for this sample.
     """
     annotations = await annotation_service.get_sample_annotations(sample_id)
-    return [AnnotationRead.model_validate(a) for a in annotations]
+    return [_to_annotation_read(a) for a in annotations]
 
 
 @router.get("/projects/{project_id}/annotations", response_model=List[AnnotationRead], dependencies=[
@@ -85,7 +110,7 @@ async def get_project_annotations(
     Get all annotations for a project.
     """
     annotations = await annotation_service.get_project_annotations(project_id)
-    return [AnnotationRead.model_validate(a) for a in annotations]
+    return [_to_annotation_read(a) for a in annotations]
 
 
 @router.get("/annotations/{annotation_id}", response_model=AnnotationRead, dependencies=[
@@ -100,7 +125,7 @@ async def get_annotation(
     Get an annotation by ID.
     """
     annotation = await annotation_service.get_by_id_or_raise(annotation_id)
-    return AnnotationRead.model_validate(annotation)
+    return _to_annotation_read(annotation)
 
 
 @router.get("/annotations/{annotation_id}/history", response_model=List[AnnotationHistoryItem],
@@ -181,10 +206,10 @@ async def sync_annotation(
 
     base_commit_id = snapshot.get("base_commit_id")
     current_seq = int(snapshot.get("seq") or 0)
-    payload = {
+    payload = _convert_payload_to_frontend({
         "annotations": snapshot.get("annotations") or [],
         "meta": snapshot.get("meta") or {},
-    }
+    })
 
     if sync_in.base_commit_id and base_commit_id:
         if str(sync_in.base_commit_id) != str(base_commit_id):
@@ -231,10 +256,10 @@ async def sync_annotation(
         context=context,
     )
 
-    updated_payload = {
+    updated_payload = _convert_payload_to_frontend({
         "annotations": updated_snapshot.get("annotations") or [],
         "meta": updated_snapshot.get("meta") or {},
-    }
+    })
     updated_seq = int(updated_snapshot.get("seq") or 0)
     updated_base = updated_snapshot.get("base_commit_id")
 

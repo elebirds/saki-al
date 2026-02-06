@@ -19,6 +19,7 @@ from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.sample import SampleRepository
 from saki_api.schemas.annotation import AnnotationCreate
 from saki_api.services.base import BaseService
+from saki_api.utils.coordinate_converter import convert_annotation_data_to_backend, convert_annotation_data_to_frontend
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,9 @@ class AnnotationService(BaseService[Annotation, AnnotationRepository, Annotation
             parent = await self.get_by_id(schema.parent_id)
             if not parent:
                 raise NotFoundAppException(f"Parent annotation {schema.parent_id} not found")
+
+        annotation_type = schema.type.value if hasattr(schema.type, "value") else str(schema.type)
+        schema.data = convert_annotation_data_to_backend(annotation_type, schema.data)
 
         return await self.create(schema.model_dump())
 
@@ -153,7 +157,10 @@ class AnnotationService(BaseService[Annotation, AnnotationRepository, Annotation
                 source=a.source,
                 confidence=a.confidence,
                 created_at=a.created_at,
-                data=a.data,
+                data=convert_annotation_data_to_frontend(
+                    a.type.value if hasattr(a.type, "value") else str(a.type),
+                    a.data,
+                ),
             )
             for a in annotations
         ]

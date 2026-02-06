@@ -86,17 +86,17 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
 
     // 加载状态
     if (loading || !dataset) {
-        return <LoadingState tip={t('workspace.loading')}/>;
+        return <LoadingState tip={t('annotation.workspace.loading')}/>;
     }
 
     // 空状态检查
     if (!currentSample || samples.length === 0) {
-        return <EmptyState description={t('workspace.noSamples')}/>;
+        return <EmptyState description={t('annotation.workspace.noSamples')}/>;
     }
 
     // 检查标签配置
     if (labels.length === 0) {
-        return <EmptyState description={t('workspace.noLabelsConfigured')}/>;
+        return <EmptyState description={t('annotation.workspace.noLabelsConfigured')}/>;
     }
 
     return (

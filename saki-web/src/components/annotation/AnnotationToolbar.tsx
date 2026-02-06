@@ -85,9 +85,9 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             {/* Back Button */}
             {onBack ? (
                 <>
-                    <Tooltip title={t('workspace.backToDataset')}>
+                    <Tooltip title={t('annotation.workspace.backToDataset')}>
                         <Button icon={<ArrowLeftOutlined/>} onClick={onBack}>
-                            {backLabel || t('workspace.back')}
+                            {backLabel || t('annotation.workspace.back')}
                         </Button>
                     </Tooltip>
                     <Divider type="vertical"/>
@@ -96,7 +96,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
 
             {/* Label Selection */}
             <Space>
-                <span className="font-semibold">{t('workspace.label')}</span>
+                <span className="font-semibold">{t('annotation.workspace.label')}</span>
                 <Select
                     value={selectedLabel?.id}
                     onChange={(value) => {
@@ -117,14 +117,14 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
 
             {/* Undo/Redo */}
             <Space>
-                <Tooltip title="Undo (Ctrl+Z)">
+                <Tooltip title={t('annotation.toolbar.undoShortcut')}>
                     <Button
                         icon={<UndoOutlined/>}
                         onClick={onUndo}
                         disabled={historyIndex === 0}
                     />
                 </Tooltip>
-                <Tooltip title="Redo (Ctrl+Shift+Z)">
+                <Tooltip title={t('annotation.toolbar.redoShortcut')}>
                     <Button
                         icon={<RedoOutlined/>}
                         onClick={onRedo}
@@ -142,18 +142,18 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
                 buttonStyle="solid"
             >
                 <Radio.Button value="select">
-                    <Tooltip title={t('workspace.tools.select')}>
-                        <DragOutlined/> {t('workspace.tools.select').split(' (')[0]}
+                    <Tooltip title={t('annotation.workspace.tools.select')}>
+                        <DragOutlined/> {t('annotation.workspace.tools.select').split('(')[0]}
                     </Tooltip>
                 </Radio.Button>
                 <Radio.Button value="rect" disabled={!hasAnyEditPermission}>
-                    <Tooltip title={hasAnyEditPermission ? t('workspace.tools.rect') : t('workspace.noEditPermission')}>
-                        <BorderOutlined/> {t('workspace.tools.rect').split(' (')[0]}
+                    <Tooltip title={hasAnyEditPermission ? t('annotation.workspace.tools.rect') : t('annotation.workspace.noEditPermission')}>
+                        <BorderOutlined/> {t('annotation.workspace.tools.rect').split('(')[0]}
                     </Tooltip>
                 </Radio.Button>
                 <Radio.Button value="obb" disabled={!hasAnyEditPermission}>
-                    <Tooltip title={hasAnyEditPermission ? t('workspace.tools.obb') : t('workspace.noEditPermission')}>
-                        <RotateRightOutlined/> {t('workspace.tools.obb').split(' (')[0]}
+                    <Tooltip title={hasAnyEditPermission ? t('annotation.workspace.tools.obb') : t('annotation.workspace.noEditPermission')}>
+                        <RotateRightOutlined/> {t('annotation.workspace.tools.obb').split('(')[0]}
                     </Tooltip>
                 </Radio.Button>
             </Radio.Group>
@@ -163,13 +163,13 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             {/* Zoom Controls */}
             {onZoomIn && onZoomOut && onResetView && (
                 <Space>
-                    <Tooltip title={t('workspace.tools.zoomIn')}>
+                    <Tooltip title={t('annotation.workspace.tools.zoomIn')}>
                         <Button icon={<ZoomInOutlined/>} onClick={onZoomIn}/>
                     </Tooltip>
-                    <Tooltip title={t('workspace.tools.zoomOut')}>
+                    <Tooltip title={t('annotation.workspace.tools.zoomOut')}>
                         <Button icon={<ZoomOutOutlined/>} onClick={onZoomOut}/>
                     </Tooltip>
-                    <Tooltip title={t('workspace.tools.resetView')}>
+                    <Tooltip title={t('annotation.workspace.tools.resetView')}>
                         <Button icon={<ExpandOutlined/>} onClick={onResetView}/>
                     </Tooltip>
                 </Space>
@@ -186,10 +186,10 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
                             icon={<SyncOutlined spin={syncStatus.isSyncing}/>}
                         >
                             {syncStatus.isSyncing
-                                ? t('workspace.sync.syncing')
+                                ? t('annotation.workspace.sync.syncing')
                                 : syncStatus.isSyncReady
-                                    ? t('workspace.sync.ready')
-                                    : t('workspace.sync.initializing')}
+                                    ? t('annotation.workspace.sync.ready')
+                                    : t('annotation.workspace.sync.initializing')}
                         </Tag>
                     </Space>
                 </>

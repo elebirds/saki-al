@@ -2,6 +2,7 @@ import React from 'react'
 import type {MenuProps} from 'antd'
 import {Button, Dropdown, Input} from 'antd'
 import {BranchesOutlined, DownOutlined, SearchOutlined, TagOutlined} from '@ant-design/icons'
+import {useTranslation} from 'react-i18next'
 
 export type RepoActionBarProps = {
     branchName?: string
@@ -20,6 +21,7 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                                                                 onBranchChange,
                                                                 onBranchesClick,
                                                             }) => {
+    const {t} = useTranslation()
     const branchMenuItems: MenuProps['items'] = (branches && branches.length > 0)
         ? branches.map((branch) => ({
             key: branch.id || branch.name,
@@ -57,12 +59,12 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                 >
                     <BranchesOutlined className="mr-2"/>
                     <span className="font-semibold text-github-text">{branchesCount}</span>
-                    <span className="ml-1">Branches</span>
+                    <span className="ml-1">{t('layout.repoActionBar.branches')}</span>
                 </Button>
                 <Button type="text" className="!text-github-muted hover:!text-github-text">
                     <TagOutlined className="mr-2"/>
                     <span className="font-semibold text-github-text">{tagsCount}</span>
-                    <span className="ml-1">Tags</span>
+                    <span className="ml-1">{t('layout.repoActionBar.tags')}</span>
                 </Button>
             </div>
 
@@ -71,7 +73,7 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                     <Input
                         variant="borderless"
                         prefix={<SearchOutlined className="text-github-muted"/>}
-                        placeholder="Go to file"
+                        placeholder={t('layout.repoActionBar.goToFile')}
                         className="w-[180px] !bg-transparent !text-github-text placeholder:!text-github-muted"
                     />
                     <kbd

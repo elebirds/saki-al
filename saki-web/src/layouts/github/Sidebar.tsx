@@ -8,6 +8,7 @@ import {
     SettingOutlined,
     StarOutlined
 } from '@ant-design/icons'
+import {useTranslation} from 'react-i18next'
 
 export type LanguageStat = {
     name: string
@@ -28,56 +29,59 @@ const defaultLanguages: LanguageStat[] = [
 ]
 
 export const Sidebar: React.FC<SidebarProps> = ({
-                                                    aboutTitle = 'About',
-                                                    aboutText = 'Saki is a visual active learning platform.',
+                                                    aboutTitle,
+                                                    aboutText,
                                                     languages,
                                                 }) => {
+    const {t} = useTranslation()
     const resolvedLanguages = languages || defaultLanguages
+    const resolvedAboutTitle = aboutTitle || t('layout.sidebar.about')
+    const resolvedAboutText = aboutText || t('layout.sidebar.aboutText')
 
     return (
         <aside className="w-[296px] shrink-0 hidden lg:block">
             <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-github-text">{aboutTitle}</h3>
+                    <h3 className="font-semibold text-github-text">{resolvedAboutTitle}</h3>
                     <SettingOutlined className="text-github-muted"/>
                 </div>
-                <p className="text-sm mb-4 text-github-text">{aboutText}</p>
+                <p className="text-sm mb-4 text-github-text">{resolvedAboutText}</p>
                 <div className="space-y-2 text-sm">
                     <Button type="text" className="!text-github-muted hover:!text-github-link">
-                        <FileTextOutlined className="mr-2"/> Readme
+                        <FileTextOutlined className="mr-2"/> {t('layout.sidebar.readme')}
                     </Button>
                     <Button type="text" className="!text-github-muted hover:!text-github-link">
-                        <FireOutlined className="mr-2"/> Activity
+                        <FireOutlined className="mr-2"/> {t('layout.sidebar.activity')}
                     </Button>
                     <div className="flex items-center gap-2 text-github-muted">
                         <StarOutlined/>
-                        <span className="font-semibold text-github-text">0</span> stars
+                        <span className="font-semibold text-github-text">0</span> {t('layout.sidebar.stars')}
                     </div>
                     <div className="flex items-center gap-2 text-github-muted">
                         <EyeOutlined/>
-                        <span className="font-semibold text-github-text">0</span> watching
+                        <span className="font-semibold text-github-text">0</span> {t('layout.sidebar.watching')}
                     </div>
                     <div className="flex items-center gap-2 text-github-muted">
                         <ForkOutlined/>
-                        <span className="font-semibold text-github-text">0</span> forks
+                        <span className="font-semibold text-github-text">0</span> {t('layout.sidebar.forks')}
                     </div>
                 </div>
             </div>
 
             <div className="border-t border-github-border pt-4 mb-4">
-                <h3 className="font-semibold text-github-text mb-2">Releases</h3>
-                <p className="text-sm text-github-muted mb-1">No releases published</p>
-                <Button type="link" className="!text-github-link !p-0">Create a new release</Button>
+                <h3 className="font-semibold text-github-text mb-2">{t('layout.sidebar.releases')}</h3>
+                <p className="text-sm text-github-muted mb-1">{t('layout.sidebar.noReleases')}</p>
+                <Button type="link" className="!text-github-link !p-0">{t('layout.sidebar.createRelease')}</Button>
             </div>
 
             <div className="border-t border-github-border pt-4 mb-4">
-                <h3 className="font-semibold text-github-text mb-2">Packages</h3>
-                <p className="text-sm text-github-muted mb-1">No packages published</p>
-                <Button type="link" className="!text-github-link !p-0">Publish your first package</Button>
+                <h3 className="font-semibold text-github-text mb-2">{t('layout.sidebar.packages')}</h3>
+                <p className="text-sm text-github-muted mb-1">{t('layout.sidebar.noPackages')}</p>
+                <Button type="link" className="!text-github-link !p-0">{t('layout.sidebar.publishPackage')}</Button>
             </div>
 
             <div className="border-t border-github-border pt-4">
-                <h3 className="font-semibold text-github-text mb-3">Languages</h3>
+                <h3 className="font-semibold text-github-text mb-3">{t('layout.sidebar.languages')}</h3>
                 <div className="flex h-2 rounded-full overflow-hidden mb-3">
                     {resolvedLanguages.map((lang) => (
                         <div

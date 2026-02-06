@@ -26,6 +26,7 @@ import {
     QuestionCircleOutlined,
     UserOutlined
 } from '@ant-design/icons'
+import {useTranslation} from 'react-i18next'
 import {useAuthStore} from '../../store/authStore'
 import {useParams, useSearchParams} from 'react-router-dom'
 import {api} from '../../services/api'
@@ -33,23 +34,6 @@ import {useResourcePermission} from '../../hooks'
 import type {Project, ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate, ResourceMember, Role} from '../../types'
 
 const {Title, Text} = Typography
-
-const sectionItems = [
-    {key: 'basic', label: 'Basic Info'},
-    {key: 'labels', label: 'Labels'},
-    {key: 'members', label: 'Members'},
-]
-
-const taskTypeOptions = [
-    {value: 'classification', label: 'Classification'},
-    {value: 'detection', label: 'Detection'},
-    {value: 'segmentation', label: 'Segmentation'},
-]
-
-const statusOptions = [
-    {value: 'active', label: 'Active'},
-    {value: 'archived', label: 'Archived'},
-]
 
 const normalizeColor = (value: any) => {
     if (!value) return '#1890ff'
@@ -59,9 +43,27 @@ const normalizeColor = (value: any) => {
 }
 
 const ProjectSettings: React.FC = () => {
+    const {t} = useTranslation()
     const {projectId} = useParams<{ projectId: string }>()
     const [searchParams, setSearchParams] = useSearchParams()
     const section = searchParams.get('section') || 'basic'
+
+    const sectionItems = [
+        {key: 'basic', label: t('project.settings.sections.basic')},
+        {key: 'labels', label: t('project.settings.sections.labels')},
+        {key: 'members', label: t('project.settings.sections.members')},
+    ]
+
+    const taskTypeOptions = [
+        {value: 'classification', label: t('project.settings.taskType.classification')},
+        {value: 'detection', label: t('project.settings.taskType.detection')},
+        {value: 'segmentation', label: t('project.settings.taskType.segmentation')},
+    ]
+
+    const statusOptions = [
+        {value: 'active', label: t('project.settings.status.active')},
+        {value: 'archived', label: t('project.settings.status.archived')},
+    ]
 
     const {can} = useResourcePermission('project', projectId)
     const canUpdateProject = can('project:update')
@@ -113,11 +115,11 @@ const ProjectSettings: React.FC = () => {
                 status: data.status,
             })
         } catch (error: any) {
-            message.error(error.message || 'Failed to load project')
+            message.error(error.message || t('project.settings.loadProjectError'))
         } finally {
             setProjectLoading(false)
         }
-    }, [projectId, projectForm])
+    }, [projectId, projectForm, t])
 
     const loadLabels = useCallback(async () => {
         if (!projectId) return
@@ -126,11 +128,11 @@ const ProjectSettings: React.FC = () => {
             const data = await api.getProjectLabels(projectId)
             setLabels(data)
         } catch (error: any) {
-            message.error(error.message || 'Failed to load labels')
+            message.error(error.message || t('project.settings.loadLabelsError'))
         } finally {
             setLabelsLoading(false)
         }
-    }, [projectId])
+    }, [projectId, t])
 
     const loadMembers = useCallback(async () => {
         if (!projectId) return
@@ -139,29 +141,29 @@ const ProjectSettings: React.FC = () => {
             const data = await api.getProjectMembers(projectId)
             setMembers(data)
         } catch (error: any) {
-            message.error(error.message || 'Failed to load members')
+            message.error(error.message || t('project.settings.loadMembersError'))
         } finally {
             setMembersLoading(false)
         }
-    }, [projectId])
+    }, [projectId, t])
 
     const loadRoles = useCallback(async () => {
         try {
             const response = await api.getRoles('resource', 1, 100)
             setRoles(response.items)
         } catch (error: any) {
-            message.error(error.message || 'Failed to load roles')
+            message.error(error.message || t('project.settings.loadRolesError'))
         }
-    }, [])
+    }, [t])
 
     const loadUsers = useCallback(async () => {
         try {
             const response = await api.getUserList(1, 200)
             setUsers(response.items)
         } catch (error: any) {
-            message.error(error.message || 'Failed to load users')
+            message.error(error.message || t('project.settings.loadUsersError'))
         }
-    }, [])
+    }, [t])
 
     useEffect(() => {
         loadProject()
@@ -196,9 +198,9 @@ const ProjectSettings: React.FC = () => {
             }
             const updated = await api.updateProject(projectId, payload)
             setProject(updated)
-            message.success('Project updated')
+            message.success(t('project.settings.updateSuccess'))
         } catch (error: any) {
-            message.error(error.message || 'Failed to update project')
+            message.error(error.message || t('project.settings.updateError'))
         } finally {
             setProjectSaving(false)
         }
@@ -235,17 +237,17 @@ const ProjectSettings: React.FC = () => {
             }
             if (editingLabel) {
                 await api.updateProjectLabel(editingLabel.id, payload)
-                message.success('Label updated')
+                message.success(t('project.settings.labelUpdated'))
             } else {
                 await api.createProjectLabel(projectId, payload as ProjectLabelCreate)
-                message.success('Label created')
+                message.success(t('project.settings.labelCreated'))
             }
             setLabelModalOpen(false)
             setEditingLabel(null)
             loadLabels()
         } catch (error: any) {
             if (error?.errorFields) return
-            message.error(error.message || 'Failed to save label')
+            message.error(error.message || t('project.settings.labelSaveError'))
         } finally {
             setLabelSaving(false)
         }
@@ -254,10 +256,10 @@ const ProjectSettings: React.FC = () => {
     const handleDeleteLabel = async (labelId: string) => {
         try {
             await api.deleteProjectLabel(labelId)
-            message.success('Label deleted')
+            message.success(t('project.settings.labelDeleted'))
             loadLabels()
         } catch (error: any) {
-            message.error(error.message || 'Failed to delete label')
+            message.error(error.message || t('project.settings.labelDeleteError'))
         }
     }
 
@@ -267,13 +269,13 @@ const ProjectSettings: React.FC = () => {
             const values = await memberForm.validateFields()
             setMemberSaving(true)
             await api.addProjectMember(projectId, values)
-            message.success('Member added')
+            message.success(t('project.settings.memberAdded'))
             setMemberModalOpen(false)
             memberForm.resetFields()
             loadMembers()
         } catch (error: any) {
             if (error?.errorFields) return
-            message.error(error.message || 'Failed to add member')
+            message.error(error.message || t('project.settings.memberAddError'))
         } finally {
             setMemberSaving(false)
         }
@@ -291,13 +293,13 @@ const ProjectSettings: React.FC = () => {
             const values = await memberEditForm.validateFields()
             setMemberActionId(editingMember.id)
             await api.updateProjectMemberRole(projectId, editingMember.userId, {roleId: values.roleId})
-            message.success('Role updated')
+            message.success(t('project.settings.memberRoleUpdated'))
             setMemberEditModalOpen(false)
             setEditingMember(null)
             loadMembers()
         } catch (error: any) {
             if (error?.errorFields) return
-            message.error(error.message || 'Failed to update role')
+            message.error(error.message || t('project.settings.memberRoleUpdateError'))
         } finally {
             setMemberActionId(null)
         }
@@ -313,10 +315,10 @@ const ProjectSettings: React.FC = () => {
         setMemberActionId(member.id)
         try {
             await api.removeProjectMember(projectId, member.userId)
-            message.success('Member removed')
+            message.success(t('project.settings.memberRemoved'))
             loadMembers()
         } catch (error: any) {
-            message.error(error.message || 'Failed to remove member')
+            message.error(error.message || t('project.settings.memberRemoveError'))
         } finally {
             setMemberActionId(null)
         }
@@ -324,7 +326,7 @@ const ProjectSettings: React.FC = () => {
 
     const labelColumns: ColumnsType<ProjectLabel> = [
         {
-            title: 'Label',
+            title: t('project.settings.labels.columns.label'),
             dataIndex: 'name',
             key: 'name',
             render: (_, record) => (
@@ -335,34 +337,34 @@ const ProjectSettings: React.FC = () => {
             ),
         },
         {
-            title: 'Description',
+            title: t('project.settings.labels.columns.description'),
             dataIndex: 'description',
             key: 'description',
-            render: (value: string) => value || <span className="text-github-muted">-</span>,
+            render: (value: string) => value || <span className="text-github-muted">{t('common.placeholder')}</span>,
         },
         {
-            title: 'Shortcut',
+            title: t('project.settings.labels.columns.shortcut'),
             dataIndex: 'shortcut',
             key: 'shortcut',
-            render: (value: string) => value ? <Tag>{value}</Tag> : <span className="text-github-muted">-</span>,
+            render: (value: string) => value ? <Tag>{value}</Tag> : <span className="text-github-muted">{t('common.placeholder')}</span>,
         },
         {
-            title: 'Actions',
+            title: t('project.settings.labels.columns.actions'),
             key: 'actions',
             render: (_, record) => (
                 <div className="flex items-center gap-2">
                     <Button size="small" onClick={() => openEditLabel(record)} disabled={!canManageLabels}>
-                        Edit
+                        {t('common.edit')}
                     </Button>
                     <Popconfirm
-                        title="Delete this label?"
-                        okText="Delete"
-                        cancelText="Cancel"
+                        title={t('project.settings.labels.deleteTitle')}
+                        okText={t('common.delete')}
+                        cancelText={t('common.cancel')}
                         onConfirm={() => handleDeleteLabel(record.id)}
                         disabled={!canManageLabels}
                     >
                         <Button size="small" danger disabled={!canManageLabels}>
-                            Delete
+                            {t('common.delete')}
                         </Button>
                     </Popconfirm>
                 </div>
@@ -372,11 +374,11 @@ const ProjectSettings: React.FC = () => {
 
     const memberColumns: ColumnsType<ResourceMember> = [
         {
-            title: 'Member',
+            title: t('project.settings.members.columns.member'),
             dataIndex: 'userFullName',
             key: 'member',
             render: (_, record) => {
-                const displayName = record.userFullName || record.userEmail || 'User'
+                const displayName = record.userFullName || record.userEmail || t('common.user')
                 return (
                     <div className="flex items-center gap-3">
                         <Avatar src={record.userAvatarUrl} icon={<UserOutlined/>}>
@@ -387,7 +389,7 @@ const ProjectSettings: React.FC = () => {
                                 <span>{displayName}</span>
                                 {isSelfMember(record) ? (
                                     <Tag color="blue" className="!m-0">
-                                        当前用户
+                                        {t('project.settings.members.currentUser')}
                                     </Tag>
                                 ) : null}
                             </div>
@@ -398,18 +400,18 @@ const ProjectSettings: React.FC = () => {
             },
         },
         {
-            title: 'Role',
+            title: t('project.settings.members.columns.role'),
             dataIndex: 'roleId',
             key: 'role',
             render: (_, record) => {
-                const roleLabel = record.roleDisplayName || record.roleName || 'Member'
+                const roleLabel = record.roleDisplayName || record.roleName || t('project.settings.members.defaultRole')
                 return (
                     <div className="flex items-center gap-2">
                         <Tag color={record.roleColor || 'default'} className="!m-0">
                             {roleLabel}
                         </Tag>
                         {isOwnerMember(record) ? (
-                            <Tooltip title="Project owner cannot be removed.">
+                            <Tooltip title={t('project.settings.members.ownerCannotRemove')}>
                                 <LockOutlined className="text-github-muted"/>
                             </Tooltip>
                         ) : null}
@@ -418,10 +420,10 @@ const ProjectSettings: React.FC = () => {
             },
         },
         {
-            title: 'Actions',
+            title: t('project.settings.members.columns.actions'),
             key: 'actions',
             render: (_, record) => {
-                const displayName = record.userFullName || record.userEmail || 'User'
+                const displayName = record.userFullName || record.userEmail || t('common.user')
                 const disableRemove = !canManageMembers || isSelfMember(record) || isOwnerMember(record)
                 const disableEdit = !canManageMembers || isOwnerMember(record)
                 return (
@@ -436,13 +438,13 @@ const ProjectSettings: React.FC = () => {
                         <Popconfirm
                             title={
                                 isSelfMember(record)
-                                    ? `You cannot remove yourself (${displayName}).`
+                                    ? t('project.settings.members.removeSelf', {name: displayName})
                                     : isOwnerMember(record)
-                                        ? `You cannot remove the project owner (${displayName}).`
-                                        : `Remove ${displayName}?`
+                                        ? t('project.settings.members.removeOwner', {name: displayName})
+                                        : t('project.settings.members.removeConfirm', {name: displayName})
                             }
-                            okText="Remove"
-                            cancelText="Cancel"
+                            okText={t('project.settings.members.remove')}
+                            cancelText={t('common.cancel')}
                             onConfirm={() => handleRemoveMember(record)}
                             disabled={disableRemove}
                         >
@@ -470,9 +472,11 @@ const ProjectSettings: React.FC = () => {
             <div className="mb-4 flex items-center justify-between">
                 <div>
                     <Title level={4} className="!mb-0">
-                        {project?.name ? `Project Info · ${project.name}` : 'Project Info'}
+                        {project?.name
+                            ? t('project.settings.basic.titleWithName', {name: project.name})
+                            : t('project.settings.basic.title')}
                     </Title>
-                    <Text type="secondary">Manage the basic information of this project.</Text>
+                    <Text type="secondary">{t('project.settings.basic.subtitle')}</Text>
                 </div>
             </div>
             <Spin spinning={projectLoading}>
@@ -483,15 +487,18 @@ const ProjectSettings: React.FC = () => {
                     disabled={!canUpdateProject}
                 >
                     <div className="grid gap-4 md:grid-cols-2">
-                        <Form.Item name="name" label="Project Name"
-                                   rules={[{required: true, message: 'Name is required'}]}>
-                            <Input placeholder="Project name"/>
+                        <Form.Item
+                            name="name"
+                            label={t('project.settings.basic.projectName')}
+                            rules={[{required: true, message: t('project.settings.basic.projectNameRequired')}]}
+                        >
+                            <Input placeholder={t('project.settings.basic.projectNamePlaceholder')}/>
                         </Form.Item>
                         <Form.Item
                             label={
                                 <div className="flex items-center gap-2">
-                                    <span>Task Type</span>
-                                    <Tooltip title="任务类型决定标注方式与模型训练流程，创建后不可更改。">
+                                    <span>{t('project.settings.basic.taskType')}</span>
+                                    <Tooltip title={t('project.settings.basic.taskTypeHint')}>
                                         <Button type="text" size="small" icon={<QuestionCircleOutlined/>}/>
                                     </Tooltip>
                                 </div>
@@ -503,15 +510,15 @@ const ProjectSettings: React.FC = () => {
                             />
                         </Form.Item>
                     </div>
-                    <Form.Item name="description" label="Description">
-                        <Input.TextArea rows={4} placeholder="Describe the project"/>
+                    <Form.Item name="description" label={t('project.settings.basic.description')}>
+                        <Input.TextArea rows={4} placeholder={t('project.settings.basic.descriptionPlaceholder')}/>
                     </Form.Item>
-                    <Form.Item name="status" label="Status">
+                    <Form.Item name="status" label={t('project.settings.basic.status')}>
                         <Select options={statusOptions}/>
                     </Form.Item>
                     <div className="flex justify-end">
                         <Button type="primary" htmlType="submit" loading={projectSaving} disabled={!canUpdateProject}>
-                            Save Changes
+                            {t('common.saveChanges')}
                         </Button>
                     </div>
                 </Form>
@@ -523,11 +530,11 @@ const ProjectSettings: React.FC = () => {
         <Card className="!border-github-border !bg-github-panel">
             <div className="mb-4 flex items-center justify-between">
                 <div>
-                    <Title level={4} className="!mb-0">Project Labels</Title>
-                    <Text type="secondary">Manage labels used in this project.</Text>
+                    <Title level={4} className="!mb-0">{t('project.settings.labels.title')}</Title>
+                    <Text type="secondary">{t('project.settings.labels.subtitle')}</Text>
                 </div>
                 <Button type="primary" icon={<PlusOutlined/>} onClick={openCreateLabel} disabled={!canManageLabels}>
-                    Add Label
+                    {t('project.settings.labels.add')}
                 </Button>
             </div>
             <Spin spinning={labelsLoading}>
@@ -536,12 +543,16 @@ const ProjectSettings: React.FC = () => {
                     columns={labelColumns}
                     dataSource={labels}
                     pagination={false}
-                    locale={{emptyText: canReadLabels ? 'No labels yet' : 'No permission to view labels'}}
+                    locale={{
+                        emptyText: canReadLabels
+                            ? t('project.settings.labels.empty')
+                            : t('project.settings.labels.noPermission'),
+                    }}
                 />
             </Spin>
 
             <Modal
-                title={editingLabel ? 'Edit Label' : 'Create Label'}
+                title={editingLabel ? t('project.settings.labels.editTitle') : t('project.settings.labels.createTitle')}
                 open={labelModalOpen}
                 onCancel={() => setLabelModalOpen(false)}
                 onOk={handleSaveLabel}
@@ -549,16 +560,20 @@ const ProjectSettings: React.FC = () => {
                 okButtonProps={{disabled: !canManageLabels}}
             >
                 <Form form={labelForm} layout="vertical">
-                    <Form.Item name="name" label="Name" rules={[{required: true, message: 'Name is required'}]}>
-                        <Input placeholder="Label name"/>
+                    <Form.Item
+                        name="name"
+                        label={t('project.settings.labels.form.name')}
+                        rules={[{required: true, message: t('project.settings.labels.form.nameRequired')}]}
+                    >
+                        <Input placeholder={t('project.settings.labels.form.namePlaceholder')}/>
                     </Form.Item>
-                    <Form.Item name="description" label="Description">
-                        <Input.TextArea rows={3} placeholder="Optional description"/>
+                    <Form.Item name="description" label={t('project.settings.labels.form.description')}>
+                        <Input.TextArea rows={3} placeholder={t('project.settings.labels.form.descriptionPlaceholder')}/>
                     </Form.Item>
-                    <Form.Item name="shortcut" label="Shortcut">
-                        <Input placeholder="Optional shortcut key"/>
+                    <Form.Item name="shortcut" label={t('project.settings.labels.form.shortcut')}>
+                        <Input placeholder={t('project.settings.labels.form.shortcutPlaceholder')}/>
                     </Form.Item>
-                    <Form.Item name="color" label="Color">
+                    <Form.Item name="color" label={t('project.settings.labels.form.color')}>
                         <ColorPicker showText format="hex"/>
                     </Form.Item>
                 </Form>
@@ -570,8 +585,8 @@ const ProjectSettings: React.FC = () => {
         <Card className="!border-github-border !bg-github-panel">
             <div className="mb-4 flex items-center justify-between">
                 <div>
-                    <Title level={4} className="!mb-0">Project Members</Title>
-                    <Text type="secondary">Manage members and their roles in this project.</Text>
+                    <Title level={4} className="!mb-0">{t('project.settings.members.title')}</Title>
+                    <Text type="secondary">{t('project.settings.members.subtitle')}</Text>
                 </div>
                 <Button
                     type="primary"
@@ -579,12 +594,12 @@ const ProjectSettings: React.FC = () => {
                     onClick={() => setMemberModalOpen(true)}
                     disabled={!canManageMembers}
                 >
-                    Add Member
+                    {t('project.settings.members.add')}
                 </Button>
             </div>
             {!canManageMembers ? (
                 <div className="rounded-md border border-dashed border-github-border p-4 text-sm text-github-muted">
-                    You do not have permission to view or manage members.
+                    {t('project.settings.members.noPermission')}
                 </div>
             ) : (
                 <Spin spinning={membersLoading}>
@@ -593,13 +608,13 @@ const ProjectSettings: React.FC = () => {
                         columns={memberColumns}
                         dataSource={members}
                         pagination={false}
-                        locale={{emptyText: 'No members found'}}
+                        locale={{emptyText: t('project.settings.members.empty')}}
                     />
                 </Spin>
             )}
 
             <Modal
-                title="Add Member"
+                title={t('project.settings.members.addTitle')}
                 open={memberModalOpen}
                 onCancel={() => setMemberModalOpen(false)}
                 onOk={handleAddMember}
@@ -609,12 +624,12 @@ const ProjectSettings: React.FC = () => {
                 <Form form={memberForm} layout="vertical">
                     <Form.Item
                         name="userId"
-                        label="User"
-                        rules={[{required: true, message: 'Please select a user'}]}
+                        label={t('project.settings.members.form.user')}
+                        rules={[{required: true, message: t('project.settings.members.form.userRequired')}]}
                     >
                         <Select
                             showSearch
-                            placeholder="Select user"
+                            placeholder={t('project.settings.members.form.userPlaceholder')}
                             optionFilterProp="label"
                             options={availableUsers.map((user) => ({
                                 value: user.id,
@@ -624,11 +639,11 @@ const ProjectSettings: React.FC = () => {
                     </Form.Item>
                     <Form.Item
                         name="roleId"
-                        label="Role"
-                        rules={[{required: true, message: 'Please select a role'}]}
+                        label={t('project.settings.members.form.role')}
+                        rules={[{required: true, message: t('project.settings.members.form.roleRequired')}]}
                     >
                         <Select
-                            placeholder="Select role"
+                            placeholder={t('project.settings.members.form.rolePlaceholder')}
                             options={roles.map((role) => ({
                                 value: role.id,
                                 label: role.displayName || role.name,
@@ -639,7 +654,7 @@ const ProjectSettings: React.FC = () => {
             </Modal>
 
             <Modal
-                title="Edit Member Role"
+                title={t('project.settings.members.editTitle')}
                 open={memberEditModalOpen}
                 onCancel={() => {
                     setMemberEditModalOpen(false)
@@ -652,11 +667,11 @@ const ProjectSettings: React.FC = () => {
                 <Form form={memberEditForm} layout="vertical">
                     <Form.Item
                         name="roleId"
-                        label="Role"
-                        rules={[{required: true, message: 'Please select a role'}]}
+                        label={t('project.settings.members.form.role')}
+                        rules={[{required: true, message: t('project.settings.members.form.roleRequired')}]}
                     >
                         <Select
-                            placeholder="Select role"
+                            placeholder={t('project.settings.members.form.rolePlaceholder')}
                             options={roles.map((role) => ({
                                 value: role.id,
                                 label: role.displayName || role.name,

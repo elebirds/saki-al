@@ -33,7 +33,7 @@ const UserProfile: React.FC = () => {
                 const data = await api.getCurrentUser();
                 setUserInfo(data);
             } catch (error: any) {
-                message.error(error.message || t('userProfile.fetchError'));
+                message.error(error.message || t('user.profile.fetchError'));
             } finally {
                 setLoading(false);
             }
@@ -90,10 +90,10 @@ const UserProfile: React.FC = () => {
         if (parts.length >= 3) {
             const [resource, action, scope] = parts;
             const scopeMap: Record<string, string> = {
-                'all': t('userProfile.permissionScope.all'),
-                'assigned': t('userProfile.permissionScope.assigned'),
-                'self': t('userProfile.permissionScope.self'),
-                'owned': t('userProfile.permissionScope.owned'),
+                'all': t('user.profile.permissionScope.all'),
+                'assigned': t('user.profile.permissionScope.assigned'),
+                'self': t('user.profile.permissionScope.self'),
+                'owned': t('user.profile.permissionScope.owned'),
             };
             return `${resource}:${action} (${scopeMap[scope] || scope})`;
         }
@@ -113,7 +113,7 @@ const UserProfile: React.FC = () => {
         return (
             <div className="p-6">
                 <Card>
-                    <Text type="secondary">{t('userProfile.userNotFound')}</Text>
+                    <Text type="secondary">{t('user.profile.userNotFound')}</Text>
                 </Card>
             </div>
         );
@@ -128,7 +128,7 @@ const UserProfile: React.FC = () => {
         <div className="flex h-full flex-col gap-6 overflow-hidden p-6">
             <div className="flex-shrink-0">
                 <Title level={2} className="!mb-0">
-                    {t('userProfile.title')}
+                    {t('user.profile.title')}
                 </Title>
             </div>
 
@@ -152,11 +152,11 @@ const UserProfile: React.FC = () => {
                         </div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-6 text-xs text-github-muted">
-                        <span>{t('userProfile.createdAt')}: {formatDate(displayUser.createdAt)}</span>
+                        <span>{t('user.profile.createdAt')}: {formatDate(displayUser.createdAt)}</span>
                         {displayUser.updatedAt &&
-                            <span>{t('userProfile.updatedAt')}: {formatDate(displayUser.updatedAt)}</span>}
+                            <span>{t('user.profile.updatedAt')}: {formatDate(displayUser.updatedAt)}</span>}
                         {displayUser.lastLoginAt &&
-                            <span>{t('userProfile.lastLoginAt')}: {formatDate(displayUser.lastLoginAt)}</span>}
+                            <span>{t('user.profile.lastLoginAt')}: {formatDate(displayUser.lastLoginAt)}</span>}
                     </div>
                 </div>
 
@@ -167,7 +167,7 @@ const UserProfile: React.FC = () => {
                             title={
                                 <Space>
                                     <UserOutlined/>
-                                    <span>{t('userProfile.basicInfo')}</span>
+                                    <span>{t('user.profile.basicInfo')}</span>
                                 </Space>
                             }
                         >
@@ -184,7 +184,7 @@ const UserProfile: React.FC = () => {
                                     </Tag>
                                 </Descriptions.Item>
                                 {isSuperAdmin && (
-                                    <Descriptions.Item label={t('userProfile.isSuperAdmin')}>
+                                    <Descriptions.Item label={t('user.profile.isSuperAdmin')}>
                                         <Tag color="red">{t('common.yes')}</Tag>
                                     </Descriptions.Item>
                                 )}
@@ -196,12 +196,12 @@ const UserProfile: React.FC = () => {
                             title={
                                 <Space>
                                     <SafetyOutlined/>
-                                    <span>{t('userProfile.systemRoles')}</span>
+                                    <span>{t('user.profile.systemRoles')}</span>
                                 </Space>
                             }
                         >
                             {systemRoles.length === 0 ? (
-                                <Text type="secondary">{t('userProfile.noRoles')}</Text>
+                                <Text type="secondary">{t('user.profile.noRoles')}</Text>
                             ) : (
                                 <div className="flex flex-wrap gap-2">
                                     {systemRoles.map((role) => (
@@ -220,17 +220,17 @@ const UserProfile: React.FC = () => {
                         title={
                             <Space>
                                 <LockOutlined/>
-                                <span>{t('userProfile.permissions')}</span>
+                                <span>{t('user.profile.permissions')}</span>
                                 {systemPermissions && (
                                     <Text type="secondary" className="text-sm font-normal">
-                                        ({systemPermissions.permissions.length} {t('userProfile.permissions')})
+                                        ({systemPermissions.permissions.length} {t('user.profile.permissions')})
                                     </Text>
                                 )}
                             </Space>
                         }
                     >
                         {!systemPermissions || systemPermissions.permissions.length === 0 ? (
-                            <Text type="secondary">{t('userProfile.noPermissions')}</Text>
+                            <Text type="secondary">{t('user.profile.noPermissions')}</Text>
                         ) : (
                             <div className="max-h-[560px] overflow-y-auto pr-1">
                                 <Collapse
@@ -239,7 +239,7 @@ const UserProfile: React.FC = () => {
                                         key: resource,
                                         label: (
                                             <span className="text-sm font-medium text-github-text">
-                        {t(`userProfile.permissionResources.${resource}`, resource)}
+                        {t(`user.profile.permissionResources.${resource}`, resource)}
                       </span>
                                         ),
                                         children: (

@@ -11,17 +11,6 @@ import {usePermission} from '../../hooks'
 const {Title, Text} = Typography
 const {Option} = Select
 
-const taskTypeLabel: Record<string, string> = {
-    classification: 'Classification',
-    detection: 'Detection',
-    segmentation: 'Segmentation',
-}
-
-const statusLabel: Record<string, string> = {
-    active: 'Active',
-    archived: 'Archived',
-}
-
 const ProjectList: React.FC = () => {
     const {t} = useTranslation()
     const navigate = useNavigate()
@@ -33,6 +22,17 @@ const ProjectList: React.FC = () => {
     const [form] = Form.useForm()
     const {can} = usePermission()
     const canCreate = can('project:create')
+
+    const taskTypeLabel: Record<string, string> = {
+        classification: t('project.settings.taskType.classification'),
+        detection: t('project.settings.taskType.detection'),
+        segmentation: t('project.settings.taskType.segmentation'),
+    }
+
+    const statusLabel: Record<string, string> = {
+        active: t('project.settings.status.active'),
+        archived: t('project.settings.status.archived'),
+    }
 
     const fetchProjects = useCallback(
         (page: number, pageSize: number) => api.getProjects(page, pageSize),
@@ -47,7 +47,7 @@ const ProjectList: React.FC = () => {
                 setDatasets(res.items || [])
             })
             .catch(() => {
-                message.error(t('datasetList.loadError'))
+                message.error(t('dataset.list.loadError'))
             })
             .finally(() => setDatasetsLoading(false))
     }, [createOpen, t])
@@ -62,13 +62,13 @@ const ProjectList: React.FC = () => {
                 taskType: values.taskType as TaskType,
                 datasetIds: values.datasetIds || [],
             })
-            message.success(t('projectList.createSuccess'))
+            message.success(t('project.list.createSuccess'))
             setCreateOpen(false)
             form.resetFields()
             setRefreshKey((v) => v + 1)
         } catch (error: any) {
             if (error?.errorFields) return
-            message.error(t('projectList.createError'))
+            message.error(t('project.list.createError'))
         } finally {
             setCreating(false)
         }
@@ -77,15 +77,15 @@ const ProjectList: React.FC = () => {
     return (
         <div className="flex h-full flex-col">
             <div className="mb-4 flex items-center justify-between">
-                <Title level={3} className="!mb-0">{t('projectList.title')}</Title>
+                <Title level={3} className="!mb-0">{t('project.list.title')}</Title>
                 {canCreate ? (
                     <Button type="primary" icon={<PlusOutlined/>} onClick={() => setCreateOpen(true)}>
-                        {t('projectList.newProject')}
+                        {t('project.list.newProject')}
                     </Button>
                 ) : (
                     <Tooltip title={t('common.noPermission')}>
                         <Button type="primary" icon={<PlusOutlined/>} disabled>
-                            {t('projectList.newProject')}
+                            {t('project.list.newProject')}
                         </Button>
                     </Tooltip>
                 )}
@@ -128,19 +128,19 @@ const ProjectList: React.FC = () => {
                                         className="mt-4 grid grid-cols-2 gap-4 text-xs text-github-muted sm:grid-cols-4">
                                         <div>
                                             <div className="text-github-text font-semibold">{project.datasetCount}</div>
-                                            <div>Datasets</div>
+                                            <div>{t('project.list.stats.datasets')}</div>
                                         </div>
                                         <div>
                                             <div className="text-github-text font-semibold">{project.labelCount}</div>
-                                            <div>Labels</div>
+                                            <div>{t('project.list.stats.labels')}</div>
                                         </div>
                                         <div>
                                             <div className="text-github-text font-semibold">{project.branchCount}</div>
-                                            <div>Branches</div>
+                                            <div>{t('project.list.stats.branches')}</div>
                                         </div>
                                         <div>
                                             <div className="text-github-text font-semibold">{project.commitCount}</div>
-                                            <div>Commits</div>
+                                            <div>{t('project.list.stats.commits')}</div>
                                         </div>
                                     </div>
                                 </Card>
@@ -151,7 +151,7 @@ const ProjectList: React.FC = () => {
             </div>
 
             <Modal
-                title={t('projectList.newProject')}
+                title={t('project.list.newProject')}
                 open={createOpen}
                 onCancel={() => setCreateOpen(false)}
                 onOk={handleCreateProject}
@@ -161,17 +161,17 @@ const ProjectList: React.FC = () => {
                 <Form form={form} layout="vertical" initialValues={{taskType: 'classification'}}>
                     <Form.Item
                         name="name"
-                        label={t('projectSettings.projectName')}
-                        rules={[{required: true, message: t('datasetList.nameRequired')}]}
+                        label={t('project.settings.basic.projectName')}
+                        rules={[{required: true, message: t('project.settings.basic.projectNameRequired')}]}
                     >
-                        <Input placeholder={t('datasetList.namePlaceholder')}/>
+                        <Input placeholder={t('project.settings.basic.projectNamePlaceholder')}/>
                     </Form.Item>
-                    <Form.Item name="description" label={t('projectSettings.description')}>
-                        <Input.TextArea placeholder={t('datasetList.descriptionPlaceholder')} rows={3}/>
+                    <Form.Item name="description" label={t('project.settings.basic.description')}>
+                        <Input.TextArea placeholder={t('project.settings.basic.descriptionPlaceholder')} rows={3}/>
                     </Form.Item>
                     <Form.Item
                         name="taskType"
-                        label={t('projectSettings.taskType')}
+                        label={t('project.settings.basic.taskType')}
                         rules={[{required: true}]}
                     >
                         <Select>
@@ -180,10 +180,10 @@ const ProjectList: React.FC = () => {
                             <Option value="segmentation">{taskTypeLabel.segmentation}</Option>
                         </Select>
                     </Form.Item>
-                    <Form.Item name="datasetIds" label={t('projectDetail.dataPool')}>
+                    <Form.Item name="datasetIds" label={t('project.form.dataPool')}>
                         <Select
                             mode="multiple"
-                            placeholder={t('datasetList.newDataset')}
+                            placeholder={t('dataset.list.newDataset')}
                             loading={datasetsLoading}
                             options={datasets.map((dataset) => ({
                                 value: dataset.id,

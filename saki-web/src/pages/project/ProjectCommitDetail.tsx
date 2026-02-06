@@ -10,6 +10,7 @@ import {
     SearchOutlined,
 } from '@ant-design/icons'
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom'
+import {useTranslation} from 'react-i18next'
 import {api} from '../../services/api'
 import {
     AnnotationRead,
@@ -31,35 +32,6 @@ type CommitTreeNode = DataNode & {
     dataRef?: Dataset | Sample | AnnotationRead
 }
 
-const formatRelativeTime = (value?: string) => {
-    if (!value) return '-'
-    const date = new Date(value)
-    const diffMs = Date.now() - date.getTime()
-    const minutes = Math.floor(diffMs / 60000)
-    if (minutes < 1) return 'just now'
-    if (minutes < 60) return `${minutes} min ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours} hours ago`
-    const days = Math.floor(hours / 24)
-    if (days < 7) return `${days} days ago`
-    const weeks = Math.floor(days / 7)
-    if (weeks < 5) return `${weeks} weeks ago`
-    const months = Math.floor(days / 30)
-    return `${months} months ago`
-}
-
-const formatAbsoluteDate = (value?: string) => {
-    if (!value) return '-'
-    const date = new Date(value)
-    return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    })
-}
-
 const getCommitStatValue = (stats: Record<string, any> | undefined, key: string) => {
     if (!stats) return 0
     if (stats[key] !== undefined) return stats[key]
@@ -71,6 +43,7 @@ const ProjectCommitDetail: React.FC = () => {
     const {projectId, commitId} = useParams<{ projectId: string; commitId: string }>()
     const [searchParams] = useSearchParams()
     const navigate = useNavigate()
+    const {t, i18n} = useTranslation()
 
     const [loading, setLoading] = useState(true)
     const [treeLoading, setTreeLoading] = useState(true)
@@ -87,6 +60,36 @@ const ProjectCommitDetail: React.FC = () => {
 
     const labelMap = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels])
     const memberMap = useMemo(() => new Map(members.map((member) => [member.userId, member])), [members])
+
+    const formatRelativeTime = useCallback((value?: string) => {
+        if (!value) return t('common.placeholder')
+        const date = new Date(value)
+        const diffMs = Date.now() - date.getTime()
+        const minutes = Math.floor(diffMs / 60000)
+        if (minutes < 1) return t('common.time.justNow')
+        if (minutes < 60) return t('common.time.minutesAgo', {count: minutes})
+        const hours = Math.floor(minutes / 60)
+        if (hours < 24) return t('common.time.hoursAgo', {count: hours})
+        const days = Math.floor(hours / 24)
+        if (days < 7) return t('common.time.daysAgo', {count: days})
+        const weeks = Math.floor(days / 7)
+        if (weeks < 5) return t('common.time.weeksAgo', {count: weeks})
+        const months = Math.floor(days / 30)
+        return t('common.time.monthsAgo', {count: months})
+    }, [t])
+
+    const formatAbsoluteDate = useCallback((value?: string) => {
+        if (!value) return t('common.placeholder')
+        const date = new Date(value)
+        const locale = i18n.language === 'zh' ? 'zh-CN' : 'en-US'
+        return date.toLocaleString(locale, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        })
+    }, [t, i18n.language])
 
     const diffInfo = useMemo(() => {
         const addedSamples = new Set(diff?.addedSamples ?? [])
@@ -117,7 +120,9 @@ const ProjectCommitDetail: React.FC = () => {
         <div className="flex items-center gap-2 min-w-0">
             <span className="truncate">{sample.name || sample.id.slice(0, 8)}</span>
             {annotationCount !== undefined ? (
-                <span className="text-xs text-github-muted">{annotationCount} annotations</span>
+                <span className="text-xs text-github-muted">
+                    {t('project.commitDetail.annotationCount', {count: annotationCount})}
+                </span>
             ) : null}
             {statusTag}
         </div>
@@ -126,11 +131,11 @@ const ProjectCommitDetail: React.FC = () => {
     const buildSampleNode = (sample: Sample): CommitTreeNode => {
         let statusTag: React.ReactNode | undefined
         if (diffInfo.addedSamples.has(sample.id)) {
-            statusTag = <Tag color="green">Added</Tag>
+            statusTag = <Tag color="green">{t('project.commitDetail.status.added')}</Tag>
         } else if (diffInfo.removedSamples.has(sample.id)) {
-            statusTag = <Tag color="red">Removed</Tag>
+            statusTag = <Tag color="red">{t('project.commitDetail.status.removed')}</Tag>
         } else if (diffInfo.modifiedSamples.has(sample.id)) {
-            statusTag = <Tag color="blue">Modified</Tag>
+            statusTag = <Tag color="blue">{t('project.commitDetail.status.modified')}</Tag>
         }
 
         return {
@@ -156,9 +161,9 @@ const ProjectCommitDetail: React.FC = () => {
         const diffEntry = diffInfo.modifiedAnnotations[sampleId]
         let statusTag: React.ReactNode | undefined
         if (statusOverride === 'added' || diffEntry?.added?.includes(annotation.id)) {
-            statusTag = <Tag color="green">Added</Tag>
+            statusTag = <Tag color="green">{t('project.commitDetail.status.added')}</Tag>
         } else if (statusOverride === 'removed' || diffEntry?.removed?.includes(annotation.id)) {
-            statusTag = <Tag color="red">Removed</Tag>
+            statusTag = <Tag color="red">{t('project.commitDetail.status.removed')}</Tag>
         }
 
         return {
@@ -354,11 +359,11 @@ const ProjectCommitDetail: React.FC = () => {
 
                 const sample = typed.dataRef as Sample | undefined
                 const statusTag = diffInfo.addedSamples.has(typed.sampleId)
-                    ? <Tag color="green">Added</Tag>
+                    ? <Tag color="green">{t('project.commitDetail.status.added')}</Tag>
                     : diffInfo.removedSamples.has(typed.sampleId)
-                        ? <Tag color="red">Removed</Tag>
+                        ? <Tag color="red">{t('project.commitDetail.status.removed')}</Tag>
                         : diffInfo.modifiedSamples.has(typed.sampleId)
-                            ? <Tag color="blue">Modified</Tag>
+                            ? <Tag color="blue">{t('project.commitDetail.status.modified')}</Tag>
                             : undefined
 
                 setTreeData((prev) =>
@@ -370,10 +375,10 @@ const ProjectCommitDetail: React.FC = () => {
                     }))
                 )
             } catch (error: any) {
-                message.error(error.message || 'Failed to load annotations')
+                message.error(error.message || t('project.commitDetail.annotationsLoadError'))
             }
         }
-    }, [commitId, projectId, updateTreeData, diffInfo, commit, samplesByDataset])
+    }, [commitId, projectId, updateTreeData, diffInfo, commit, samplesByDataset, t, buildSampleNode, buildAnnotationNode, buildSampleTitle])
 
     const filteredTreeData = useMemo(() => {
         if (!filterText.trim()) return treeData
@@ -396,12 +401,12 @@ const ProjectCommitDetail: React.FC = () => {
     }, [filterText, treeData])
 
     const authorName = useMemo(() => {
-        if (!commit) return 'Unknown'
-        if (commit.authorType === 'system') return 'System'
-        if (commit.authorType === 'model') return 'Model'
+        if (!commit) return t('project.commits.author.unknown')
+        if (commit.authorType === 'system') return t('project.commits.author.system')
+        if (commit.authorType === 'model') return t('project.commits.author.model')
         const member = commit.authorId ? memberMap.get(commit.authorId) : null
-        return member?.userFullName || member?.userEmail || 'Unknown User'
-    }, [commit, memberMap])
+        return member?.userFullName || member?.userEmail || t('project.commits.author.unknown')
+    }, [commit, memberMap, t])
 
     const authorAvatar = commit?.authorId ? memberMap.get(commit.authorId)?.userAvatarUrl : undefined
 
@@ -421,7 +426,7 @@ const ProjectCommitDetail: React.FC = () => {
     }, [diff])
 
     if (!projectId || !commitId) {
-        return <div className="text-github-muted">Commit not found.</div>
+        return <div className="text-github-muted">{t('project.commitDetail.notFound')}</div>
     }
 
     if (loading) {
@@ -433,7 +438,7 @@ const ProjectCommitDetail: React.FC = () => {
     }
 
     if (!commit) {
-        return <div className="text-github-muted">Commit not found.</div>
+        return <div className="text-github-muted">{t('project.commitDetail.notFound')}</div>
     }
 
     return (
@@ -442,7 +447,7 @@ const ProjectCommitDetail: React.FC = () => {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex flex-col gap-2">
                         <h1 className="text-2xl font-normal text-github-text">
-                            Commit{' '}
+                            {t('project.commitDetail.title')}{' '}
                             <span className="text-mono bg-github-input border border-github-border px-2 py-1 rounded-md text-base">
                                 {commit.id.slice(0, 7)}
                             </span>
@@ -452,7 +457,7 @@ const ProjectCommitDetail: React.FC = () => {
                                 {authorName.charAt(0).toUpperCase()}
                             </Avatar>
                             <span className="text-github-text font-semibold">{authorName}</span>
-                            <span>committed {formatRelativeTime(commit.createdAt)}</span>
+                            <span>{t('project.commitDetail.committed', {time: formatRelativeTime(commit.createdAt)})}</span>
                             <span className="text-github-muted">· {formatAbsoluteDate(commit.createdAt)}</span>
                             <span className="flex items-center gap-1">
                                 <BranchesOutlined/>
@@ -466,23 +471,25 @@ const ProjectCommitDetail: React.FC = () => {
                                 className="!bg-github-input !border-github-border !text-github-text"
                                 onClick={() => navigate(`/projects/${projectId}/commits/${commit.parentId}?branch=${branchName}`)}
                             >
-                                View parent
+                                {t('project.commitDetail.viewParent')}
                             </Button>
                         ) : null}
                         <Button
                             className="!bg-github-input !border-github-border !text-github-text"
                             onClick={() => navigate(`/projects/${projectId}/commits?branch=${branchName}`)}
                         >
-                            Back to history
+                            {t('project.commitDetail.backToHistory')}
                         </Button>
                     </div>
                 </div>
 
                 <div className="mt-3 rounded-md border border-github-border bg-github-panel px-4 py-3">
-                    <div className="text-sm text-github-text">{commit.message || 'No commit message'}</div>
+                    <div className="text-sm text-github-text">
+                        {commit.message || t('project.commitDetail.noMessage')}
+                    </div>
                     {commit.parentId ? (
                         <div className="mt-2 text-xs text-github-muted">
-                            Parent commit:{' '}
+                            {t('project.commitDetail.parentCommit')}{' '}
                             <button
                                 className="text-github-link"
                                 onClick={() => navigate(`/projects/${projectId}/commits/${commit.parentId}?branch=${branchName}`)}
@@ -491,7 +498,7 @@ const ProjectCommitDetail: React.FC = () => {
                             </button>
                         </div>
                     ) : (
-                        <div className="mt-2 text-xs text-github-muted">Root commit</div>
+                        <div className="mt-2 text-xs text-github-muted">{t('project.commitDetail.rootCommit')}</div>
                     )}
                 </div>
             </header>
@@ -499,15 +506,17 @@ const ProjectCommitDetail: React.FC = () => {
             <div className="grid grid-cols-[280px,1fr] gap-4">
                 <aside className="border border-github-border rounded-md bg-github-panel p-3">
                     <div className="flex items-center justify-between">
-                        <div className="text-sm font-semibold text-github-text">File tree</div>
-                        <span className="text-xs text-github-muted">{datasets.length} datasets</span>
+                        <div className="text-sm font-semibold text-github-text">{t('project.commitDetail.fileTree')}</div>
+                        <span className="text-xs text-github-muted">
+                            {t('project.commitDetail.datasetCount', {count: datasets.length})}
+                        </span>
                     </div>
                     <div className="mt-3">
                         <Input
                             size="small"
                             allowClear
                             prefix={<SearchOutlined className="text-github-muted"/>}
-                            placeholder="Filter files"
+                            placeholder={t('project.commitDetail.filterFiles')}
                             value={filterText}
                             onChange={(event) => setFilterText(event.target.value)}
                         />
@@ -518,7 +527,7 @@ const ProjectCommitDetail: React.FC = () => {
                                 <Spin/>
                             </div>
                         ) : filteredTreeData.length === 0 ? (
-                            <Empty description="No files" image={Empty.PRESENTED_IMAGE_SIMPLE}/>
+                            <Empty description={t('project.commitDetail.noFiles')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>
                         ) : (
                             <Tree
                                 showIcon
@@ -535,43 +544,52 @@ const ProjectCommitDetail: React.FC = () => {
                     <section className="border border-github-border rounded-md bg-github-panel p-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-github-text">
                             <DiffOutlined/>
-                            Commit summary
+                            {t('project.commitDetail.summary')}
                         </div>
                         <Divider className="!my-3"/>
                         <div className="grid grid-cols-3 gap-4 text-sm">
                             <div>
-                                <div className="text-github-muted">Samples (with annotations)</div>
+                                <div className="text-github-muted">{t('project.commitDetail.samplesWithAnnotations')}</div>
                                 <div className="mt-1 text-github-text font-semibold">{commitStats.sampleCount}</div>
                             </div>
                             <div>
-                                <div className="text-github-muted">Annotations</div>
+                                <div className="text-github-muted">{t('project.commitDetail.annotations')}</div>
                                 <div className="mt-1 text-github-text font-semibold">{commitStats.annotationCount}</div>
                             </div>
                             <div>
-                                <div className="text-github-muted">Diff overview</div>
+                                <div className="text-github-muted">{t('project.commitDetail.diffOverview')}</div>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                                    <Tag color="green">+{diffStats.addedSamples} samples</Tag>
-                                    <Tag color="red">-{diffStats.removedSamples} samples</Tag>
-                                    <Tag color="blue">{diffStats.modifiedSamples} modified</Tag>
+                                    <Tag color="green">
+                                        {t('project.commitDetail.diff.addedSamples', {count: diffStats.addedSamples})}
+                                    </Tag>
+                                    <Tag color="red">
+                                        {t('project.commitDetail.diff.removedSamples', {count: diffStats.removedSamples})}
+                                    </Tag>
+                                    <Tag color="blue">
+                                        {t('project.commitDetail.diff.modifiedSamples', {count: diffStats.modifiedSamples})}
+                                    </Tag>
                                 </div>
                             </div>
                         </div>
                     </section>
 
                     <section className="border border-github-border rounded-md bg-github-panel p-4">
-                        <div className="text-sm font-semibold text-github-text">Selection details</div>
+                        <div className="text-sm font-semibold text-github-text">{t('project.commitDetail.selectionDetails')}</div>
                         <Divider className="!my-3"/>
                         {!selectedNode ? (
                             <div className="text-sm text-github-muted">
-                                Select a dataset, sample, or annotation on the left to view details.
+                                {t('project.commitDetail.selectionHint')}
                             </div>
                         ) : selectedNode.nodeType === 'dataset' ? (
                             <div className="space-y-2 text-sm">
                                 <div className="text-github-text font-semibold">{(selectedNode.dataRef as Dataset)?.name}</div>
-                                <div className="text-github-muted">Type: {(selectedNode.dataRef as Dataset)?.type}</div>
                                 <div className="text-github-muted">
-                                    Samples loaded:{' '}
-                                    {samplesByDataset[(selectedNode.dataRef as Dataset)?.id || '']?.length || 0}
+                                    {t('project.commitDetail.datasetType', {type: (selectedNode.dataRef as Dataset)?.type})}
+                                </div>
+                                <div className="text-github-muted">
+                                    {t('project.commitDetail.samplesLoaded', {
+                                        count: samplesByDataset[(selectedNode.dataRef as Dataset)?.id || '']?.length || 0,
+                                    })}
                                 </div>
                             </div>
                         ) : selectedNode.nodeType === 'sample' ? (
@@ -579,9 +597,13 @@ const ProjectCommitDetail: React.FC = () => {
                                 <div className="text-github-text font-semibold">
                                     {(selectedNode.dataRef as Sample)?.name || selectedNode.sampleId}
                                 </div>
-                                <div className="text-github-muted">Sample ID: {selectedNode.sampleId}</div>
                                 <div className="text-github-muted">
-                                    Annotations loaded: {annotationsBySample[selectedNode.sampleId || '']?.length || 0}
+                                    {t('project.commitDetail.sampleId', {id: selectedNode.sampleId})}
+                                </div>
+                                <div className="text-github-muted">
+                                    {t('project.commitDetail.annotationsLoaded', {
+                                        count: annotationsBySample[selectedNode.sampleId || '']?.length || 0,
+                                    })}
                                 </div>
                                 {(selectedNode.dataRef as Sample)?.primaryAssetUrl ? (
                                     <div className="rounded-md border border-github-border bg-github-base p-2">
@@ -603,12 +625,20 @@ const ProjectCommitDetail: React.FC = () => {
                                             <div className="text-github-text font-semibold">
                                                 {label?.name || annotation.labelId}
                                             </div>
-                                            <div className="text-github-muted">Type: {annotation.type}</div>
-                                            <div className="text-github-muted">View: {annotation.viewRole}</div>
                                             <div className="text-github-muted">
-                                                Confidence: {annotation.confidence ?? '-'}
+                                                {t('project.commitDetail.annotationType', {type: annotation.type})}
                                             </div>
-                                            <div className="text-github-muted">Annotation ID: {annotation.id}</div>
+                                            <div className="text-github-muted">
+                                                {t('project.commitDetail.annotationView', {view: annotation.viewRole})}
+                                            </div>
+                                            <div className="text-github-muted">
+                                                {t('project.commitDetail.annotationConfidence', {
+                                                    confidence: annotation.confidence ?? t('common.placeholder'),
+                                                })}
+                                            </div>
+                                            <div className="text-github-muted">
+                                                {t('project.commitDetail.annotationId', {id: annotation.id})}
+                                            </div>
                                             <div className="rounded-md border border-github-border bg-github-base p-2 text-xs text-github-muted">
                                                 <pre className="whitespace-pre-wrap">{JSON.stringify(annotation.data, null, 2)}</pre>
                                             </div>

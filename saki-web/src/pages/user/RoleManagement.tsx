@@ -34,25 +34,25 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
     // 系统级权限（只有系统角色可以使用）
     const systemCategories = [
         {
-            title: t('roleManagement.permissionLabels.userManagement'),
+            title: t('role.management.permissionLabels.userManagement'),
             permissions: [
-                {value: 'user:create:all', label: t('roleManagement.permissionLabels.userCreate')},
-                {value: 'user:read:all', label: t('roleManagement.permissionLabels.userRead')},
-                {value: 'user:update:all', label: t('roleManagement.permissionLabels.userUpdate')},
-                {value: 'user:delete:all', label: t('roleManagement.permissionLabels.userDelete')},
-                {value: 'user:list:all', label: t('roleManagement.permissionLabels.userList')},
+                {value: 'user:create:all', label: t('role.management.permissionLabels.userCreate')},
+                {value: 'user:read:all', label: t('role.management.permissionLabels.userRead')},
+                {value: 'user:update:all', label: t('role.management.permissionLabels.userUpdate')},
+                {value: 'user:delete:all', label: t('role.management.permissionLabels.userDelete')},
+                {value: 'user:list:all', label: t('role.management.permissionLabels.userList')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.roleManagement'),
+            title: t('role.management.permissionLabels.roleManagement'),
             permissions: [
-                {value: 'role:create:all', label: t('roleManagement.permissionLabels.roleCreate')},
-                {value: 'role:read:all', label: t('roleManagement.permissionLabels.roleRead')},
-                {value: 'role:update:all', label: t('roleManagement.permissionLabels.roleUpdate')},
-                {value: 'role:delete:all', label: t('roleManagement.permissionLabels.roleDelete')},
-                {value: 'role:assign:all', label: t('roleManagement.permissionLabels.roleAssign')},
-                {value: 'role:revoke:all', label: t('roleManagement.permissionLabels.roleRevoke')},
-                {value: 'role:assign_admin:all', label: t('roleManagement.permissionLabels.roleAssignAdmin')},
+                {value: 'role:create:all', label: t('role.management.permissionLabels.roleCreate')},
+                {value: 'role:read:all', label: t('role.management.permissionLabels.roleRead')},
+                {value: 'role:update:all', label: t('role.management.permissionLabels.roleUpdate')},
+                {value: 'role:delete:all', label: t('role.management.permissionLabels.roleDelete')},
+                {value: 'role:assign:all', label: t('role.management.permissionLabels.roleAssign')},
+                {value: 'role:revoke:all', label: t('role.management.permissionLabels.roleRevoke')},
+                {value: 'role:assign_admin:all', label: t('role.management.permissionLabels.roleAssignAdmin')},
             ],
         },
     ];
@@ -60,85 +60,85 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
     // 资源级权限（系统角色和资源角色都可以使用，但权限范围不同）
     const resourceCategories = [
         {
-            title: t('roleManagement.permissionLabels.datasetManagementAll'),
+            title: t('role.management.permissionLabels.datasetManagementAll'),
             permissions: [
-                {value: 'dataset:create:all', label: t('roleManagement.permissionLabels.datasetCreateAll')},
-                {value: 'dataset:read:all', label: t('roleManagement.permissionLabels.datasetReadAll')},
-                {value: 'dataset:update:all', label: t('roleManagement.permissionLabels.datasetUpdateAll')},
-                {value: 'dataset:delete:all', label: t('roleManagement.permissionLabels.datasetDeleteAll')},
-                {value: 'dataset:assign:all', label: t('roleManagement.permissionLabels.datasetAssignAll')},
-                {value: 'dataset:export:all', label: t('roleManagement.permissionLabels.datasetExportAll')},
-                {value: 'dataset:import:all', label: t('roleManagement.permissionLabels.datasetImportAll')},
+                {value: 'dataset:create:all', label: t('role.management.permissionLabels.datasetCreateAll')},
+                {value: 'dataset:read:all', label: t('role.management.permissionLabels.datasetReadAll')},
+                {value: 'dataset:update:all', label: t('role.management.permissionLabels.datasetUpdateAll')},
+                {value: 'dataset:delete:all', label: t('role.management.permissionLabels.datasetDeleteAll')},
+                {value: 'dataset:assign:all', label: t('role.management.permissionLabels.datasetAssignAll')},
+                {value: 'dataset:export:all', label: t('role.management.permissionLabels.datasetExportAll')},
+                {value: 'dataset:import:all', label: t('role.management.permissionLabels.datasetImportAll')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.datasetManagementAssigned'),
+            title: t('role.management.permissionLabels.datasetManagementAssigned'),
             permissions: [
-                {value: 'dataset:read:assigned', label: t('roleManagement.permissionLabels.datasetReadAssigned')},
-                {value: 'dataset:update:assigned', label: t('roleManagement.permissionLabels.datasetUpdateAssigned')},
-                {value: 'dataset:assign:assigned', label: t('roleManagement.permissionLabels.datasetAssignAssigned')},
-                {value: 'dataset:export:assigned', label: t('roleManagement.permissionLabels.datasetExportAssigned')},
-                {value: 'dataset:import:assigned', label: t('roleManagement.permissionLabels.datasetImportAssigned')},
+                {value: 'dataset:read:assigned', label: t('role.management.permissionLabels.datasetReadAssigned')},
+                {value: 'dataset:update:assigned', label: t('role.management.permissionLabels.datasetUpdateAssigned')},
+                {value: 'dataset:assign:assigned', label: t('role.management.permissionLabels.datasetAssignAssigned')},
+                {value: 'dataset:export:assigned', label: t('role.management.permissionLabels.datasetExportAssigned')},
+                {value: 'dataset:import:assigned', label: t('role.management.permissionLabels.datasetImportAssigned')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.sampleManagementAll'),
+            title: t('role.management.permissionLabels.sampleManagementAll'),
             permissions: [
-                {value: 'sample:read:all', label: t('roleManagement.permissionLabels.sampleReadAll')},
-                {value: 'sample:create:all', label: t('roleManagement.permissionLabels.sampleCreateAll')},
-                {value: 'sample:update:all', label: t('roleManagement.permissionLabels.sampleUpdateAll')},
-                {value: 'sample:delete:all', label: t('roleManagement.permissionLabels.sampleDeleteAll')},
+                {value: 'sample:read:all', label: t('role.management.permissionLabels.sampleReadAll')},
+                {value: 'sample:create:all', label: t('role.management.permissionLabels.sampleCreateAll')},
+                {value: 'sample:update:all', label: t('role.management.permissionLabels.sampleUpdateAll')},
+                {value: 'sample:delete:all', label: t('role.management.permissionLabels.sampleDeleteAll')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.sampleManagementAssigned'),
+            title: t('role.management.permissionLabels.sampleManagementAssigned'),
             permissions: [
-                {value: 'sample:read:assigned', label: t('roleManagement.permissionLabels.sampleReadAssigned')},
-                {value: 'sample:create:assigned', label: t('roleManagement.permissionLabels.sampleCreateAssigned')},
-                {value: 'sample:update:assigned', label: t('roleManagement.permissionLabels.sampleUpdateAssigned')},
-                {value: 'sample:delete:assigned', label: t('roleManagement.permissionLabels.sampleDeleteAssigned')},
+                {value: 'sample:read:assigned', label: t('role.management.permissionLabels.sampleReadAssigned')},
+                {value: 'sample:create:assigned', label: t('role.management.permissionLabels.sampleCreateAssigned')},
+                {value: 'sample:update:assigned', label: t('role.management.permissionLabels.sampleUpdateAssigned')},
+                {value: 'sample:delete:assigned', label: t('role.management.permissionLabels.sampleDeleteAssigned')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.labelManagementAll'),
+            title: t('role.management.permissionLabels.labelManagementAll'),
             permissions: [
-                {value: 'label:read:all', label: t('roleManagement.permissionLabels.labelReadAll')},
-                {value: 'label:create:all', label: t('roleManagement.permissionLabels.labelCreateAll')},
-                {value: 'label:update:all', label: t('roleManagement.permissionLabels.labelUpdateAll')},
-                {value: 'label:delete:all', label: t('roleManagement.permissionLabels.labelDeleteAll')},
+                {value: 'label:read:all', label: t('role.management.permissionLabels.labelReadAll')},
+                {value: 'label:create:all', label: t('role.management.permissionLabels.labelCreateAll')},
+                {value: 'label:update:all', label: t('role.management.permissionLabels.labelUpdateAll')},
+                {value: 'label:delete:all', label: t('role.management.permissionLabels.labelDeleteAll')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.labelManagementAssigned'),
+            title: t('role.management.permissionLabels.labelManagementAssigned'),
             permissions: [
-                {value: 'label:read:assigned', label: t('roleManagement.permissionLabels.labelReadAssigned')},
-                {value: 'label:create:assigned', label: t('roleManagement.permissionLabels.labelCreateAssigned')},
-                {value: 'label:update:assigned', label: t('roleManagement.permissionLabels.labelUpdateAssigned')},
-                {value: 'label:delete:assigned', label: t('roleManagement.permissionLabels.labelDeleteAssigned')},
+                {value: 'label:read:assigned', label: t('role.management.permissionLabels.labelReadAssigned')},
+                {value: 'label:create:assigned', label: t('role.management.permissionLabels.labelCreateAssigned')},
+                {value: 'label:update:assigned', label: t('role.management.permissionLabels.labelUpdateAssigned')},
+                {value: 'label:delete:assigned', label: t('role.management.permissionLabels.labelDeleteAssigned')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.annotationManagementAll'),
+            title: t('role.management.permissionLabels.annotationManagementAll'),
             permissions: [
-                {value: 'annotation:read:all', label: t('roleManagement.permissionLabels.annotationReadAll')},
-                {value: 'annotation:modify:all', label: t('roleManagement.permissionLabels.annotationModifyAll')},
+                {value: 'annotation:read:all', label: t('role.management.permissionLabels.annotationReadAll')},
+                {value: 'annotation:modify:all', label: t('role.management.permissionLabels.annotationModifyAll')},
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.annotationManagementAssigned'),
+            title: t('role.management.permissionLabels.annotationManagementAssigned'),
             permissions: [
-                {value: 'annotation:read:assigned', label: t('roleManagement.permissionLabels.annotationReadAssigned')},
+                {value: 'annotation:read:assigned', label: t('role.management.permissionLabels.annotationReadAssigned')},
                 {
                     value: 'annotation:modify:assigned',
-                    label: t('roleManagement.permissionLabels.annotationModifyAssigned')
+                    label: t('role.management.permissionLabels.annotationModifyAssigned')
                 },
             ],
         },
         {
-            title: t('roleManagement.permissionLabels.annotationManagementSelf'),
+            title: t('role.management.permissionLabels.annotationManagementSelf'),
             permissions: [
-                {value: 'annotation:read:self', label: t('roleManagement.permissionLabels.annotationReadSelf')},
-                {value: 'annotation:modify:self', label: t('roleManagement.permissionLabels.annotationModifySelf')},
+                {value: 'annotation:read:self', label: t('role.management.permissionLabels.annotationReadSelf')},
+                {value: 'annotation:modify:self', label: t('role.management.permissionLabels.annotationModifySelf')},
             ],
         },
     ];
@@ -189,7 +189,7 @@ const RoleManagement: React.FC = () => {
             const type = roleTypeFilter === 'all' ? undefined : roleTypeFilter;
             return await api.getRoles(type, page, pageSize);
         } catch (error: any) {
-            message.error(error.message || t('roleManagement.fetchError'));
+            message.error(error.message || t('role.management.fetchError'));
             throw error;
         }
     }, [canReadRoles, roleTypeFilter, t]);
@@ -260,10 +260,10 @@ const RoleManagement: React.FC = () => {
     const handleDelete = async (id: string) => {
         try {
             await api.deleteRole(id);
-            message.success(t('roleManagement.deleteSuccess'));
+            message.success(t('role.management.deleteSuccess'));
             setRefreshKey((v) => v + 1);
         } catch (error: any) {
-            message.error(error.message || t('roleManagement.deleteError'));
+            message.error(error.message || t('role.management.deleteError'));
         }
     };
 
@@ -278,14 +278,14 @@ const RoleManagement: React.FC = () => {
                 // 系统角色只能有 :all 权限
                 const invalidPerms = permissions.filter((p: string) => !p.endsWith(':all'));
                 if (invalidPerms.length > 0) {
-                    message.error(t('roleManagement.invalidPermissionsForSystemRole'));
+                    message.error(t('role.management.invalidPermissionsForSystemRole'));
                     return;
                 }
             } else if (roleType === 'resource') {
                 // 资源角色只能有 :assigned 和 :self 权限
                 const invalidPerms = permissions.filter((p: string) => !p.endsWith(':assigned') && !p.endsWith(':self'));
                 if (invalidPerms.length > 0) {
-                    message.error(t('roleManagement.invalidPermissionsForResourceRole'));
+                    message.error(t('role.management.invalidPermissionsForResourceRole'));
                     return;
                 }
             }
@@ -303,7 +303,7 @@ const RoleManagement: React.FC = () => {
                     permissions: permissionCreates,
                 };
                 await api.updateRole(editingRole.id, updateData);
-                message.success(t('roleManagement.updateSuccess'));
+                message.success(t('role.management.updateSuccess'));
             } else {
                 // 创建角色
                 const createData: RoleCreate = {
@@ -315,7 +315,7 @@ const RoleManagement: React.FC = () => {
                     permissions: permissionCreates,
                 };
                 await api.createRole(createData);
-                message.success(t('roleManagement.createSuccess'));
+                message.success(t('role.management.createSuccess'));
             }
             setIsModalOpen(false);
             form.resetFields();
@@ -327,19 +327,19 @@ const RoleManagement: React.FC = () => {
 
     const columns = [
         {
-            title: t('roleManagement.name'),
+            title: t('role.management.name'),
             dataIndex: 'name',
             key: 'name',
         },
         {
-            title: t('roleManagement.displayName'),
+            title: t('role.management.displayName'),
             dataIndex: 'displayName',
             key: 'displayName',
             render: (text: string, record: Role) => (
                 <Space>
                     <Tag color={record.color || 'blue'}>{text}</Tag>
                     {record.isSystem && (
-                        <Tooltip title={t('roleManagement.systemRole')}>
+                        <Tooltip title={t('role.management.systemRole')}>
                             <LockOutlined className="text-gray-500"/>
                         </Tooltip>
                     )}
@@ -347,26 +347,26 @@ const RoleManagement: React.FC = () => {
             ),
         },
         {
-            title: t('roleManagement.description'),
+            title: t('role.management.description'),
             dataIndex: 'description',
             key: 'description',
             ellipsis: true,
         },
         {
-            title: t('roleManagement.type'),
+            title: t('role.management.type'),
             dataIndex: 'type',
             key: 'type',
             render: (type: RoleType) => (
                 <Tag color={type === 'system' ? 'blue' : 'green'}>
-                    {type === 'system' ? t('roleManagement.system') : t('roleManagement.resource')}
+                    {type === 'system' ? t('role.management.system') : t('role.management.resource')}
                 </Tag>
             ),
         },
         {
-            title: t('roleManagement.permissionCount'),
+            title: t('role.management.permissionCount'),
             key: 'permissions',
             render: (_: any, record: Role) => (
-                <Tag>{record.permissions?.length || 0} {t('roleManagement.permissions')}</Tag>
+                <Tag>{record.permissions?.length || 0} {t('role.management.permissions')}</Tag>
             ),
         },
         {
@@ -385,7 +385,7 @@ const RoleManagement: React.FC = () => {
                             </Button>
                         ) : (
                             <Tooltip
-                                title={isSystemRole ? t('roleManagement.cannotEditSystemRole') : t('common.noPermission')}>
+                                title={isSystemRole ? t('role.management.cannotEditSystemRole') : t('common.noPermission')}>
                                 <Button type="link" icon={<EditOutlined/>} disabled>
                                     {t('common.edit')}
                                 </Button>
@@ -394,7 +394,7 @@ const RoleManagement: React.FC = () => {
 
                         {canDeleteThisRole ? (
                             <Popconfirm
-                                title={t('roleManagement.deleteConfirm')}
+                                title={t('role.management.deleteConfirm')}
                                 onConfirm={() => handleDelete(record.id)}
                                 okText={t('common.yes')}
                                 cancelText={t('common.no')}
@@ -405,7 +405,7 @@ const RoleManagement: React.FC = () => {
                             </Popconfirm>
                         ) : (
                             <Tooltip
-                                title={isSystemRole ? t('roleManagement.cannotDeleteSystemRole') : t('common.noPermission')}>
+                                title={isSystemRole ? t('role.management.cannotDeleteSystemRole') : t('common.noPermission')}>
                                 <Button type="link" danger icon={<DeleteOutlined/>} disabled>
                                     {t('common.delete')}
                                 </Button>
@@ -442,7 +442,7 @@ const RoleManagement: React.FC = () => {
     return (
         <div className="flex h-full flex-col overflow-hidden p-6">
             <div className="mb-4 flex flex-shrink-0 items-center justify-between">
-                <span className="m-0 font-semibold">{t('roleManagement.title')}</span>
+                <span className="m-0 font-semibold">{t('role.management.title')}</span>
                 <Space>
                     <Select
                         value={roleTypeFilter}
@@ -452,18 +452,18 @@ const RoleManagement: React.FC = () => {
                         }}
                         className="w-[150px]"
                     >
-                        <Select.Option value="all">{t('roleManagement.allTypes')}</Select.Option>
-                        <Select.Option value="system">{t('roleManagement.system')}</Select.Option>
-                        <Select.Option value="resource">{t('roleManagement.resource')}</Select.Option>
+                        <Select.Option value="all">{t('role.management.allTypes')}</Select.Option>
+                        <Select.Option value="system">{t('role.management.system')}</Select.Option>
+                        <Select.Option value="resource">{t('role.management.resource')}</Select.Option>
                     </Select>
                     {canCreateRole ? (
                         <Button type="primary" icon={<PlusOutlined/>} onClick={handleAdd}>
-                            {t('roleManagement.addRole')}
+                            {t('role.management.addRole')}
                         </Button>
                     ) : (
                         <Tooltip title={t('common.noPermission')}>
                             <Button type="primary" icon={<PlusOutlined/>} disabled>
-                                {t('roleManagement.addRole')}
+                                {t('role.management.addRole')}
                             </Button>
                         </Tooltip>
                     )}
@@ -498,7 +498,7 @@ const RoleManagement: React.FC = () => {
 
             {/* Role Edit/Create Modal */}
             <Modal
-                title={editingRole ? t('roleManagement.editRole') : t('roleManagement.addRole')}
+                title={editingRole ? t('role.management.editRole') : t('role.management.addRole')}
                 open={isModalOpen}
                 onOk={handleOk}
                 onCancel={() => setIsModalOpen(false)}
@@ -509,34 +509,34 @@ const RoleManagement: React.FC = () => {
                 <Form form={form} layout="vertical">
                     <Form.Item
                         name="name"
-                        label={t('roleManagement.name')}
-                        rules={[{required: !editingRole, message: t('roleManagement.nameRequired')}]}
+                        label={t('role.management.name')}
+                        rules={[{required: !editingRole, message: t('role.management.nameRequired')}]}
                     >
-                        <Input disabled={!!editingRole} placeholder={t('roleManagement.namePlaceholder')}/>
+                        <Input disabled={!!editingRole} placeholder={t('role.management.namePlaceholder')}/>
                     </Form.Item>
                     <Form.Item
                         name="displayName"
-                        label={t('roleManagement.displayName')}
-                        rules={[{required: true, message: t('roleManagement.displayNameRequired')}]}
+                        label={t('role.management.displayName')}
+                        rules={[{required: true, message: t('role.management.displayNameRequired')}]}
                     >
-                        <Input placeholder={t('roleManagement.displayNamePlaceholder')}/>
+                        <Input placeholder={t('role.management.displayNamePlaceholder')}/>
                     </Form.Item>
                     <Form.Item
                         name="description"
-                        label={t('roleManagement.description')}
+                        label={t('role.management.description')}
                     >
-                        <TextArea rows={3} placeholder={t('roleManagement.descriptionPlaceholder')}/>
+                        <TextArea rows={3} placeholder={t('role.management.descriptionPlaceholder')}/>
                     </Form.Item>
                     <Form.Item
                         name="color"
-                        label={t('roleManagement.color')}
-                        rules={[{required: true, message: t('roleManagement.colorRequired')}]}
+                        label={t('role.management.color')}
+                        rules={[{required: true, message: t('role.management.colorRequired')}]}
                     >
                         <ColorPicker
                             showText
                             presets={[
                                 {
-                                    label: t('roleManagement.recommendedColors'),
+                                    label: t('role.management.recommendedColors'),
                                     colors: [
                                         '#1890ff', // blue
                                         '#52c41a', // green
@@ -559,15 +559,15 @@ const RoleManagement: React.FC = () => {
                     </Form.Item>
                     <Form.Item
                         name="type"
-                        label={t('roleManagement.type')}
+                        label={t('role.management.type')}
                         rules={[{required: true}]}
                     >
                         <Select
                             disabled={!!editingRole}
                             onChange={handleRoleTypeChange}
                         >
-                            <Select.Option value="system">{t('roleManagement.system')}</Select.Option>
-                            <Select.Option value="resource">{t('roleManagement.resource')}</Select.Option>
+                            <Select.Option value="system">{t('role.management.system')}</Select.Option>
+                            <Select.Option value="resource">{t('role.management.resource')}</Select.Option>
                         </Select>
                     </Form.Item>
                     <Form.Item
@@ -581,19 +581,19 @@ const RoleManagement: React.FC = () => {
                             return (
                                 <Form.Item
                                     name="permissions"
-                                    label={t('roleManagement.permissions')}
+                                    label={t('role.management.permissions')}
                                 >
                                     <Checkbox.Group className="w-full">
                                         <Card size="small" className="max-h-[400px] overflow-y-auto">
                                             {!roleType ? (
                                                 <div className="p-5 text-center text-gray-500">
-                                                    {t('roleManagement.selectRoleTypeFirst')}
+                                                    {t('role.management.selectRoleTypeFirst')}
                                                 </div>
                                             ) : categories.length === 0 ? (
                                                 <div className="p-5 text-center text-gray-500">
                                                     {roleType === 'system'
-                                                        ? t('roleManagement.noSystemPermissions')
-                                                        : t('roleManagement.noResourcePermissions')}
+                                                        ? t('role.management.noSystemPermissions')
+                                                        : t('role.management.noResourcePermissions')}
                                                 </div>
                                             ) : (
                                                 categories.map((category, index) => (

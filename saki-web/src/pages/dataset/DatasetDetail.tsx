@@ -82,7 +82,7 @@ const DatasetDetail: React.FC = () => {
             if (d) setDataset(d);
         } catch (error) {
             console.error('Failed to load dataset:', error);
-            message.error(t('datasetDetail.loadError'));
+            message.error(t('dataset.detail.loadError'));
         }
     }, [t]);
 
@@ -99,7 +99,7 @@ const DatasetDetail: React.FC = () => {
             );
         } catch (error) {
             console.error('Failed to load samples:', error);
-            message.error(t('datasetDetail.loadSamplesError'));
+            message.error(t('dataset.detail.loadSamplesError'));
             throw error;
         }
     }, [id, t]);
@@ -156,11 +156,11 @@ const DatasetDetail: React.FC = () => {
         if (!dataset) return;
         try {
             await api.deleteSample(dataset.id, sample.id);
-            message.success(t('datasetDetail.deleteSampleSuccess'));
+            message.success(t('dataset.detail.deleteSampleSuccess'));
             setSampleRefreshKey((v) => v + 1);
             loadDataset(dataset.id);
         } catch (error) {
-            message.error(t('datasetDetail.deleteSampleError'));
+            message.error(t('dataset.detail.deleteSampleError'));
         }
     };
 
@@ -194,7 +194,7 @@ const DatasetDetail: React.FC = () => {
                 className="cursor-pointer"
                 cover={
                     <img
-                        alt="sample"
+                        alt={t('common.sample')}
                         src={item.primaryAssetUrl}
                         className="h-[150px] w-full object-cover"
                         onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -206,7 +206,7 @@ const DatasetDetail: React.FC = () => {
                 actions={[
                     canDelete ? (
                         <Popconfirm
-                            title={t('datasetDetail.deleteSampleConfirm')}
+                            title={t('dataset.detail.deleteSampleConfirm')}
                             onConfirm={(e) => {
                                 e?.stopPropagation();
                                 handleDeleteSample(item);
@@ -250,11 +250,11 @@ const DatasetDetail: React.FC = () => {
     const items = [
         {
             key: 'data',
-            label: t('datasetDetail.dataPool'),
+            label: t('dataset.detail.dataPool'),
             children: (
                 <div className="flex h-full flex-col">
                     <div className="mb-4 flex flex-shrink-0 items-center justify-between">
-                        <Title level={5} className="!m-0">{t('datasetDetail.dataPool')} ({totalSamples})</Title>
+                        <Title level={5} className="!m-0">{t('dataset.detail.dataPool')} ({totalSamples})</Title>
                         <Space>
                             <Select
                                 value={sortBy}
@@ -262,16 +262,16 @@ const DatasetDetail: React.FC = () => {
                                 className="w-[140px]"
                                 size="small"
                             >
-                                <Option value="name">{t('datasetDetail.sortByName')}</Option>
-                                <Option value="createdAt">{t('datasetDetail.sortByCreatedAt')}</Option>
-                                <Option value="updatedAt">{t('datasetDetail.sortByUpdatedAt')}</Option>
+                                <Option value="name">{t('dataset.detail.sortByName')}</Option>
+                                <Option value="createdAt">{t('dataset.detail.sortByCreatedAt')}</Option>
+                                <Option value="updatedAt">{t('dataset.detail.sortByUpdatedAt')}</Option>
                             </Select>
                             <Button
                                 icon={sortOrder === 'asc' ? <SortAscendingOutlined/> : <SortDescendingOutlined/>}
                                 onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                                 size="small"
                             >
-                                {sortOrder === 'asc' ? t('datasetDetail.sortAsc') : t('datasetDetail.sortDesc')}
+                                {sortOrder === 'asc' ? t('dataset.detail.sortAsc') : t('dataset.detail.sortDesc')}
                             </Button>
                         </Space>
                     </div>
@@ -289,16 +289,16 @@ const DatasetDetail: React.FC = () => {
                                         <div className="p-10 text-center">
                                             <FileTextOutlined className="mb-4 text-[48px] text-gray-300"/>
                                             <Title level={5}
-                                                   className="!text-gray-500">{t('datasetDetail.noSamples')}</Title>
+                                                   className="!text-gray-500">{t('dataset.detail.noSamples')}</Title>
                                             {canUpload ? (
                                                 <Button type="primary" icon={<UploadOutlined/>}
                                                         onClick={handleUploadClick}>
-                                                    {t('datasetDetail.uploadData')}
+                                                    {t('dataset.detail.uploadData')}
                                                 </Button>
                                             ) : (
                                                 <Tooltip title={t('common.noPermission')}>
                                                     <Button type="primary" icon={<UploadOutlined/>} disabled>
-                                                        {t('datasetDetail.uploadData')}
+                                                        {t('dataset.detail.uploadData')}
                                                     </Button>
                                                 </Tooltip>
                                             )}
@@ -327,7 +327,7 @@ const DatasetDetail: React.FC = () => {
                             renderPaginationWrapper={(node) => (
                                 <div className="mt-4 flex items-center justify-between">
                   <span className="text-xs text-gray-600">
-                    {t('datasetDetail.pageStatus', {
+                    {t('dataset.detail.pageStatus', {
                         defaultValue: 'Page {{page}} / {{pages}} · {{total}} items',
                         page: Math.floor(sampleMeta.offset / (sampleMeta.limit || 1)) + 1,
                         pages: totalSamplePages,
@@ -347,7 +347,7 @@ const DatasetDetail: React.FC = () => {
         },
         ...(canEdit ? [{
             key: 'settings',
-            label: t('datasetDetail.settings'),
+            label: t('dataset.detail.settings'),
             children: (
                 <div className="h-full overflow-y-auto pr-2.5">
                     <DatasetSettings
@@ -368,7 +368,7 @@ const DatasetDetail: React.FC = () => {
                     onClick={() => navigate('/')}
                     className="mb-4"
                 >
-                    {t('datasetDetail.backToList')}
+                    {t('dataset.detail.backToList')}
                 </Button>
 
                 <Title level={4}>{dataset.name}</Title>
@@ -386,12 +386,12 @@ const DatasetDetail: React.FC = () => {
                 <Space direction="vertical" className="w-full" size="large">
                     {canUpload ? (
                         <Button block icon={<UploadOutlined/>} onClick={handleUploadClick}>
-                            {t('datasetDetail.uploadData')}
+                            {t('dataset.detail.uploadData')}
                         </Button>
                     ) : (
                         <Tooltip title={t('common.noPermission')}>
                             <Button block icon={<UploadOutlined/>} disabled>
-                                {t('datasetDetail.uploadData')}
+                                {t('dataset.detail.uploadData')}
                             </Button>
                         </Tooltip>
                     )}
@@ -407,7 +407,7 @@ const DatasetDetail: React.FC = () => {
 
                     {canEdit && (
                         <Button block icon={<SettingOutlined/>} onClick={() => setActiveTab('settings')}>
-                            {t('datasetDetail.settings')}
+                            {t('dataset.detail.settings')}
                         </Button>
                     )}
                 </Space>

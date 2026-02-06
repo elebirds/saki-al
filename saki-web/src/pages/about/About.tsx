@@ -28,17 +28,19 @@ const About: React.FC = () => {
                     </div>
                     <div>
                         <h2 className="text-xl font-semibold text-github-text">Saki AL</h2>
-                        <p className="text-sm text-github-muted">{t('app.about')} · Visual Active Learning Platform</p>
+                        <p className="text-sm text-github-muted">
+                            {t('app.about')} · {t('about.hero.subtitle')}
+                        </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center gap-2">
-                        <Tag color="blue">Human-in-the-loop</Tag>
-                        <Tag color="green">Git-like Versioning</Tag>
-                        <Tag color="purple">Active Learning Loop</Tag>
+                        <Tag color="blue">{t('about.hero.tags.humanLoop')}</Tag>
+                        <Tag color="green">{t('about.hero.tags.gitLike')}</Tag>
+                        <Tag color="purple">{t('about.hero.tags.activeLoop')}</Tag>
                     </div>
                 </div>
                 <p className="mt-4 text-sm text-github-text">
-                    Saki 是一个集数据集管理、样本标注（支持版本控制）、模型训练与视觉主动学习于一体的闭环智能标注平台。
-                    通过 Human-in-the-loop 流程，让高价值样本优先进入标注与训练，降低成本并提升迭代效率。
+                    {t('about.hero.description1')}
+                    {t('about.hero.description2')}
                 </p>
             </div>
 
@@ -46,45 +48,51 @@ const About: React.FC = () => {
                 <Card className={cardClassName}>
                     <div className="flex items-center gap-2">
                         <DatabaseOutlined className="text-github-accent"/>
-                        <h3 className="text-base font-semibold text-github-text">数据与资产</h3>
+                        <h3 className="text-base font-semibold text-github-text">
+                            {t('about.sections.dataAssets.title')}
+                        </h3>
                     </div>
                     <p className="mt-2 text-sm text-github-muted">
-                        数据集管理与内容寻址，保证数据可追溯、可复用、可去重。
+                        {t('about.sections.dataAssets.body')}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                        <Tag color="geekblue">Asset SHA256</Tag>
-                        <Tag color="geekblue">Dataset/Sample</Tag>
-                        <Tag color="geekblue">MinIO</Tag>
+                        <Tag color="geekblue">{t('about.sections.dataAssets.tags.assetSha')}</Tag>
+                        <Tag color="geekblue">{t('about.sections.dataAssets.tags.datasetSample')}</Tag>
+                        <Tag color="geekblue">{t('about.sections.dataAssets.tags.minio')}</Tag>
                     </div>
                 </Card>
 
                 <Card className={cardClassName}>
                     <div className="flex items-center gap-2">
                         <BranchesOutlined className="text-github-accent"/>
-                        <h3 className="text-base font-semibold text-github-text">标注版本控制</h3>
+                        <h3 className="text-base font-semibold text-github-text">
+                            {t('about.sections.annotationVersioning.title')}
+                        </h3>
                     </div>
                     <p className="mt-2 text-sm text-github-muted">
-                        标注记录不可变，Commit 快照 + Branch 指针，让标注版本像 Git 一样可回溯。
+                        {t('about.sections.annotationVersioning.body')}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                        <Tag color="purple">Annotation</Tag>
-                        <Tag color="purple">Commit/CAMap</Tag>
-                        <Tag color="purple">Branch</Tag>
+                        <Tag color="purple">{t('about.sections.annotationVersioning.tags.annotation')}</Tag>
+                        <Tag color="purple">{t('about.sections.annotationVersioning.tags.commitMap')}</Tag>
+                        <Tag color="purple">{t('about.sections.annotationVersioning.tags.branch')}</Tag>
                     </div>
                 </Card>
 
                 <Card className={cardClassName}>
                     <div className="flex items-center gap-2">
                         <ExperimentOutlined className="text-github-accent"/>
-                        <h3 className="text-base font-semibold text-github-text">训练与主动学习</h3>
+                        <h3 className="text-base font-semibold text-github-text">
+                            {t('about.sections.training.title')}
+                        </h3>
                     </div>
                     <p className="mt-2 text-sm text-github-muted">
-                        Runtime 以无状态执行器方式运行训练/推理任务，持续闭环筛选高价值样本。
+                        {t('about.sections.training.body')}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                        <Tag color="green">ALLoop</Tag>
-                        <Tag color="green">Job/Metric</Tag>
-                        <Tag color="green">Model</Tag>
+                        <Tag color="green">{t('about.sections.training.tags.alLoop')}</Tag>
+                        <Tag color="green">{t('about.sections.training.tags.jobMetric')}</Tag>
+                        <Tag color="green">{t('about.sections.training.tags.model')}</Tag>
                     </div>
                 </Card>
             </div>
@@ -92,18 +100,20 @@ const About: React.FC = () => {
             <Card className={cardClassName}>
                 <div className="flex items-center gap-2">
                     <SyncOutlined className="text-github-accent"/>
-                    <h3 className="text-base font-semibold text-github-text">核心工作流</h3>
+                    <h3 className="text-base font-semibold text-github-text">
+                        {t('about.sections.coreWorkflow.title')}
+                    </h3>
                 </div>
                 <Divider className="!my-4"/>
                 <Steps
                     size="small"
                     items={[
-                        {title: '数据导入'},
-                        {title: '样本标注'},
-                        {title: '版本快照'},
-                        {title: '模型训练'},
-                        {title: '主动学习选样'},
-                        {title: '迭代优化'},
+                        {title: t('about.sections.coreWorkflow.steps.dataImport')},
+                        {title: t('about.sections.coreWorkflow.steps.sampleAnnotation')},
+                        {title: t('about.sections.coreWorkflow.steps.versionSnapshot')},
+                        {title: t('about.sections.coreWorkflow.steps.modelTraining')},
+                        {title: t('about.sections.coreWorkflow.steps.activeSampling')},
+                        {title: t('about.sections.coreWorkflow.steps.iteration')},
                     ]}
                 />
             </Card>
@@ -112,20 +122,22 @@ const About: React.FC = () => {
                 <Card className={cardClassName}>
                     <div className="flex items-center gap-2">
                         <ApiOutlined className="text-github-accent"/>
-                        <h3 className="text-base font-semibold text-github-text">技术栈概览</h3>
+                        <h3 className="text-base font-semibold text-github-text">
+                            {t('about.sections.techStack.title')}
+                        </h3>
                     </div>
                     <div className="mt-3 space-y-2 text-sm text-github-muted">
                         <div className="flex flex-wrap items-center gap-2">
-                            <Tag color="blue">Frontend</Tag>
-                            <span>React 18 · Vite · TypeScript · Ant Design · Tailwind</span>
+                            <Tag color="blue">{t('about.sections.techStack.frontend.label')}</Tag>
+                            <span>{t('about.sections.techStack.frontend.stack')}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <Tag color="green">Backend</Tag>
-                            <span>FastAPI · SQLModel · PostgreSQL · MinIO</span>
+                            <Tag color="green">{t('about.sections.techStack.backend.label')}</Tag>
+                            <span>{t('about.sections.techStack.backend.stack')}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <Tag color="purple">Runtime</Tag>
-                            <span>FastAPI · WebSocket · Subprocess · HTTPX</span>
+                            <Tag color="purple">{t('about.sections.techStack.runtime.label')}</Tag>
+                            <span>{t('about.sections.techStack.runtime.stack')}</span>
                         </div>
                     </div>
                 </Card>
@@ -133,7 +145,9 @@ const About: React.FC = () => {
                 <Card className={cardClassName}>
                     <div className="flex items-center gap-2">
                         <CloudServerOutlined className="text-github-accent"/>
-                        <h3 className="text-base font-semibold text-github-text">开发状态</h3>
+                        <h3 className="text-base font-semibold text-github-text">
+                            {t('about.sections.devStatus.title')}
+                        </h3>
                     </div>
                     <div className="mt-4 grid gap-3 text-sm">
                         <div className="flex items-center justify-between">
@@ -141,21 +155,21 @@ const About: React.FC = () => {
                                 <CheckCircleOutlined className="text-github-success"/>
                                 <span>saki-api L1</span>
                             </div>
-                            <Tag color="green">完成</Tag>
+                            <Tag color="green">{t('about.sections.devStatus.status.completed')}</Tag>
                         </div>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 text-github-text">
                                 <EyeOutlined className="text-github-accent"/>
                                 <span>saki-api L2</span>
                             </div>
-                            <Tag color="orange">开发中</Tag>
+                            <Tag color="orange">{t('about.sections.devStatus.status.inProgress')}</Tag>
                         </div>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 text-github-text">
                                 <EyeOutlined className="text-github-muted"/>
                                 <span>saki-runtime</span>
                             </div>
-                            <Tag color="default">计划中</Tag>
+                            <Tag color="default">{t('about.sections.devStatus.status.planned')}</Tag>
                         </div>
                     </div>
                 </Card>

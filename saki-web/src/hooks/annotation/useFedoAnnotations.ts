@@ -284,12 +284,12 @@ export function useFedoAnnotations(
         view: string;
     }) => {
         if (!hasAnyEditPermission) {
-            if (t) message.warning(t('workspace.noEditPermission'));
+            if (t) message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
 
         if (!annotationState.selectedLabel) {
-            if (t) message.warning(t('workspace.noLabelSelected'));
+            if (t) message.warning(t('annotation.workspace.noLabelSelected'));
             return;
         }
 
@@ -358,7 +358,7 @@ export function useFedoAnnotations(
         if (!currentSampleId) return;
 
         if (!canEditAnnotation(updatedAnn)) {
-            if (t) message.warning(t('workspace.cannotEditOthersAnnotation'));
+            if (t) message.warning(t('annotation.workspace.cannotEditOthersAnnotation'));
             return;
         }
 
@@ -399,7 +399,7 @@ export function useFedoAnnotations(
 
         const annotation = canvasAnnotations.find(a => a.id === id);
         if (annotation && !canEditAnnotation(annotation)) {
-            if (t) message.warning(t('workspace.cannotDeleteOthersAnnotation'));
+            if (t) message.warning(t('annotation.workspace.cannotDeleteOthersAnnotation'));
             return;
         }
 

@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import {Avatar, Button, Spin, Tag} from 'antd'
 import {FolderOutlined, HistoryOutlined} from '@ant-design/icons'
 import {useNavigate, useParams} from 'react-router-dom'
+import {useTranslation} from 'react-i18next'
 import {RepoActionBar} from '../../layouts/github/RepoActionBar'
 import {RepoHeader} from '../../layouts/github/RepoHeader'
 import {FileTable} from '../../layouts/github/FileTable'
@@ -10,36 +11,9 @@ import {CommitHistoryItem, Dataset, Project, ProjectBranch, ResourceMember} from
 import ProjectSidebar from './ProjectSidebar'
 
 
-const taskTypeLabel: Record<string, string> = {
-    classification: 'Classification',
-    detection: 'Detection',
-    segmentation: 'Segmentation',
-}
-
-const statusLabel: Record<string, string> = {
-    active: 'Active',
-    archived: 'Archived',
-}
-
-const formatRelativeTime = (value?: string) => {
-    if (!value) return '-'
-    const date = new Date(value)
-    const diffMs = Date.now() - date.getTime()
-    const minutes = Math.floor(diffMs / 60000)
-    if (minutes < 1) return 'just now'
-    if (minutes < 60) return `${minutes} min ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours} hours ago`
-    const days = Math.floor(hours / 24)
-    if (days < 7) return `${days} days ago`
-    const weeks = Math.floor(days / 7)
-    if (weeks < 5) return `${weeks} weeks ago`
-    const months = Math.floor(days / 30)
-    return `${months} months ago`
-}
-
 const ProjectOverview: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>()
+    const {t} = useTranslation()
     const navigate = useNavigate()
     const [project, setProject] = useState<Project | null>(null)
     const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -50,6 +24,23 @@ const ProjectOverview: React.FC = () => {
     const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
     const [sampleStats, setSampleStats] = useState({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
     const [selectedBranchName, setSelectedBranchName] = useState('master')
+
+    const formatRelativeTime = useCallback((value?: string) => {
+        if (!value) return t('common.placeholder')
+        const date = new Date(value)
+        const diffMs = Date.now() - date.getTime()
+        const minutes = Math.floor(diffMs / 60000)
+        if (minutes < 1) return t('common.time.justNow')
+        if (minutes < 60) return t('common.time.minutesAgo', {count: minutes})
+        const hours = Math.floor(minutes / 60)
+        if (hours < 24) return t('common.time.hoursAgo', {count: hours})
+        const days = Math.floor(hours / 24)
+        if (days < 7) return t('common.time.daysAgo', {count: days})
+        const weeks = Math.floor(days / 7)
+        if (weeks < 5) return t('common.time.weeksAgo', {count: weeks})
+        const months = Math.floor(days / 30)
+        return t('common.time.monthsAgo', {count: months})
+    }, [t])
 
     const loadProject = useCallback(async () => {
         if (!projectId) return
@@ -149,11 +140,11 @@ const ProjectOverview: React.FC = () => {
     const latestCommitAuthor = latestCommit?.authorId ? memberMap.get(latestCommit.authorId) : null
     const latestCommitName = latestCommit
         ? latestCommit.authorType === 'system'
-            ? 'System'
+            ? t('project.commits.author.system')
             : latestCommit.authorType === 'model'
-                ? 'Model'
-                : latestCommitAuthor?.userFullName || latestCommitAuthor?.userEmail || 'Unknown User'
-        : 'No commits'
+                ? t('project.commits.author.model')
+                : latestCommitAuthor?.userFullName || latestCommitAuthor?.userEmail || t('project.commits.author.unknown')
+        : t('project.overview.noCommits')
 
     const latestCommitAvatar = latestCommitAuthor?.userAvatarUrl
 
@@ -167,16 +158,19 @@ const ProjectOverview: React.FC = () => {
 
     if (!project) {
         return (
-            <div className="text-github-muted">Project not found.</div>
+            <div className="text-github-muted">{t('project.common.notFound')}</div>
         )
     }
+
+    const taskTypeLabel = t(`project.overview.taskType.${project.taskType}`, project.taskType)
+    const statusLabel = t(`project.overview.status.${project.status}`, project.status)
 
     return (
         <div>
             <RepoHeader
                 title={project.name}
-                visibilityLabel={taskTypeLabel[project.taskType] || project.taskType}
-                stats={[{label: 'Fork', count: 0}]}
+                visibilityLabel={taskTypeLabel}
+                stats={[{label: t('layout.repoHeader.stats.fork'), count: 0}]}
             />
 
             <div className="flex gap-6">
@@ -207,7 +201,7 @@ const ProjectOverview: React.FC = () => {
                                         <span
                                             className="font-semibold text-sm text-github-text">{latestCommitName}</span>
                                         <span className="text-github-muted text-sm truncate">
-                      {latestCommit?.message || activeBranch?.headCommitMessage || 'No commits yet'}
+                      {latestCommit?.message || activeBranch?.headCommitMessage || t('project.overview.noCommitsYet')}
                     </span>
                                     </div>
                                     <div className="flex items-center gap-3 text-sm text-github-muted shrink-0">
@@ -228,7 +222,7 @@ const ProjectOverview: React.FC = () => {
                                         >
                                             <HistoryOutlined className="mr-1"/>
                                             <span
-                                                className="font-semibold text-github-text">{project.commitCount}</span> Commits
+                                                className="font-semibold text-github-text">{project.commitCount}</span> {t('project.overview.commits')}
                                         </Button>
                                     </div>
                                 </>
@@ -236,7 +230,7 @@ const ProjectOverview: React.FC = () => {
                         >
                             {datasets.length === 0 ? (
                                 <div className="px-4 py-8 text-center text-github-muted">
-                                    No datasets linked to this project.
+                                    {t('project.overview.noDatasets')}
                                 </div>
                             ) : (
                                 datasets.map((dataset) => (
@@ -252,7 +246,7 @@ const ProjectOverview: React.FC = () => {
                                             </Button>
                                         </div>
                                         <div className="flex-1 text-github-muted truncate px-4">
-                                            {dataset.description || 'No description'}
+                                            {dataset.description || t('project.overview.noDescription')}
                                         </div>
                                         <div
                                             className="flex items-center gap-2 text-github-muted text-right whitespace-nowrap shrink-0">
@@ -267,8 +261,9 @@ const ProjectOverview: React.FC = () => {
 
                 <ProjectSidebar
                     description={project.description}
-                    taskTypeLabel={taskTypeLabel[project.taskType] || project.taskType}
-                    statusLabel={statusLabel[project.status] || project.status}
+                    taskTypeLabel={taskTypeLabel}
+                    statusLabel={statusLabel}
+                    statusValue={project.status}
                     stats={{
                         datasets: project.datasetCount,
                         labels: project.labelCount,

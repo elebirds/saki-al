@@ -30,7 +30,7 @@ const DatasetList: React.FC = () => {
         try {
             return await api.getDatasets(page, pageSize);
         } catch (error) {
-            message.error(t('datasetList.loadError'));
+            message.error(t('dataset.list.loadError'));
             throw error;
         }
     }, [t]);
@@ -38,12 +38,12 @@ const DatasetList: React.FC = () => {
     const handleCreate = async (values: any) => {
         try {
             await api.createDataset(values);
-            message.success(t('datasetList.createSuccess'));
+            message.success(t('dataset.list.createSuccess'));
             setIsModalVisible(false);
             form.resetFields();
             setRefreshKey((v) => v + 1);
         } catch (error) {
-            message.error(t('datasetList.createError'));
+            message.error(t('dataset.list.createError'));
         }
     };
 
@@ -67,19 +67,19 @@ const DatasetList: React.FC = () => {
                             }
                             actions={[
                                 <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
-                                    {t('datasetList.open')}
+                                    {t('dataset.list.open')}
                                 </Button>,
                             ]}
                         >
                             <Paragraph ellipsis={{rows: 2}} className="min-h-[44px]">
-                                {dataset.description || t('datasetList.noDescription')}
+                                {dataset.description || t('dataset.list.noDescription')}
                             </Paragraph>
                         </Card>
                     </Col>
                 ))}
             </Row>
             {showNoMore ? (
-                <div className="mt-4 text-sm text-github-muted text-center">没有更多内容了～</div>
+                <div className="mt-4 text-sm text-github-muted text-center">{t('dataset.list.noMore')}</div>
             ) : null}
         </>
     ), [getDatasetTypeColor, getDatasetTypeLabel, navigate, t, showNoMore]);
@@ -90,11 +90,11 @@ const DatasetList: React.FC = () => {
                 <Card>
                     <div className="p-10 text-center">
                         <DatabaseOutlined className="mb-4 text-[48px] text-gray-300"/>
-                        <Title level={4} className="!text-gray-500">{t('datasetList.empty')}</Title>
-                        <Paragraph className="!text-gray-500">{t('datasetList.emptyHint')}</Paragraph>
+                        <Title level={4} className="!text-gray-500">{t('dataset.list.empty')}</Title>
+                        <Paragraph className="!text-gray-500">{t('dataset.list.emptyHint')}</Paragraph>
                         {canCreate && (
                             <Button type="primary" icon={<PlusOutlined/>} onClick={() => setIsModalVisible(true)}>
-                                {t('datasetList.newDataset')}
+                                {t('dataset.list.newDataset')}
                             </Button>
                         )}
                     </div>
@@ -106,15 +106,15 @@ const DatasetList: React.FC = () => {
     return (
         <div className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-6 flex-shrink-0">
-                <span className="m-0 font-semibold">{t('datasetList.title')}</span>
+                <span className="m-0 font-semibold">{t('dataset.list.title')}</span>
                 {canCreate ? (
                     <Button type="primary" icon={<PlusOutlined/>} onClick={() => setIsModalVisible(true)}>
-                        {t('datasetList.newDataset')}
+                        {t('dataset.list.newDataset')}
                     </Button>
                 ) : (
                     <Tooltip title={t('common.noPermission')}>
                         <Button type="primary" icon={<PlusOutlined/>} disabled>
-                            {t('datasetList.newDataset')}
+                            {t('dataset.list.newDataset')}
                         </Button>
                     </Tooltip>
                 )}
@@ -139,7 +139,7 @@ const DatasetList: React.FC = () => {
                             setShowNoMore(false);
                         }
                     }}
-                    onError={() => message.error(t('datasetList.loadError'))}
+                    onError={() => message.error(t('dataset.list.loadError'))}
                     renderPaginationWrapper={(node) => (
                         <div className="mt-auto flex justify-end pt-4">{node}</div>
                     )}
@@ -147,7 +147,7 @@ const DatasetList: React.FC = () => {
             </div>
 
             <Modal
-                title={t('datasetList.newDataset')}
+                title={t('dataset.list.newDataset')}
                 open={isModalVisible}
                 onCancel={() => setIsModalVisible(false)}
                 onOk={() => form.submit()}
@@ -160,20 +160,20 @@ const DatasetList: React.FC = () => {
                 >
                     <Form.Item
                         name="name"
-                        label={t('datasetList.datasetName')}
-                        rules={[{required: true, message: t('datasetList.nameRequired')}]}
+                        label={t('dataset.list.datasetName')}
+                        rules={[{required: true, message: t('dataset.list.nameRequired')}]}
                     >
-                        <Input placeholder={t('datasetList.namePlaceholder')}/>
+                        <Input placeholder={t('dataset.list.namePlaceholder')}/>
                     </Form.Item>
-                    <Form.Item name="description" label={t('datasetList.description')}>
-                        <Input.TextArea placeholder={t('datasetList.descriptionPlaceholder')} rows={3}/>
+                    <Form.Item name="description" label={t('dataset.list.description')}>
+                        <Input.TextArea placeholder={t('dataset.list.descriptionPlaceholder')} rows={3}/>
                     </Form.Item>
                     <Form.Item
                         name="type"
                         label={
                             <span>
-                  {t('datasetList.type')}&nbsp;
-                                <Tooltip title={t('datasetList.typeHelp')}>
+                  {t('dataset.list.type')}&nbsp;
+                                <Tooltip title={t('dataset.list.typeHelp')}>
                     <span className="cursor-help text-gray-500">ⓘ</span>
                   </Tooltip>
                 </span>

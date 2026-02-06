@@ -39,9 +39,9 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
                 description: values.description,
             });
             onUpdate(updated);
-            message.success(t('datasetSettings.successMessage'));
+            message.success(t('dataset.settings.successMessage'));
         } catch (error) {
-            message.error(t('datasetSettings.errorMessage'));
+            message.error(t('dataset.settings.errorMessage'));
         } finally {
             setLoading(false);
         }
@@ -50,41 +50,41 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
     const handleDelete = async () => {
         try {
             await api.deleteDataset(dataset.id);
-            message.success(t('datasetSettings.deleteSuccess'));
+            message.success(t('dataset.settings.deleteSuccess'));
             navigate('/');
         } catch (error) {
-            message.error(t('datasetSettings.deleteError'));
+            message.error(t('dataset.settings.deleteError'));
         }
     };
 
     const tabItems = [
         {
             key: 'basic',
-            label: t('datasetSettings.basicInfo'),
+            label: t('dataset.settings.basicInfo'),
             children: (
-                <Card title={t('datasetSettings.basicInfo')}>
+                <Card title={t('dataset.settings.basicInfo')}>
                     <Form
                         form={form}
                         layout="vertical"
                         onFinish={handleSave}
                     >
                         <Form.Item
-                            label={t('datasetSettings.datasetName')}
+                            label={t('dataset.settings.datasetName')}
                             name="name"
                             rules={[
-                                {required: true, message: t('datasetSettings.nameRequired')},
+                                {required: true, message: t('dataset.settings.nameRequired')},
                                 {min: 1, max: 100},
                             ]}
                         >
-                            <Input placeholder={t('datasetSettings.namePlaceholder')}/>
+                            <Input placeholder={t('dataset.settings.namePlaceholder')}/>
                         </Form.Item>
 
                         <Form.Item
-                            label={t('datasetSettings.description')}
+                            label={t('dataset.settings.description')}
                             name="description"
                         >
                             <Input.TextArea
-                                placeholder={t('datasetSettings.descriptionPlaceholder')}
+                                placeholder={t('dataset.settings.descriptionPlaceholder')}
                                 rows={4}
                             />
                         </Form.Item>
@@ -92,7 +92,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
                         <Form.Item>
                             <Space>
                                 <Button type="primary" icon={<SaveOutlined/>} htmlType="submit" loading={loading}>
-                                    {t('datasetSettings.saveBasicInfo')}
+                                    {t('dataset.settings.saveBasicInfo')}
                                 </Button>
                             </Space>
                         </Form.Item>
@@ -100,18 +100,18 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
 
                     <Divider/>
 
-                    <Card title={t('datasetSettings.dangerZone')} className="!border !border-red-500">
-                        <p>{t('datasetSettings.deleteConfirmDesc')}</p>
+                    <Card title={t('dataset.settings.dangerZone')} className="!border !border-red-500">
+                        <p>{t('dataset.settings.deleteConfirmDesc')}</p>
                         <Popconfirm
-                            title={t('datasetSettings.deleteConfirm')}
-                            description={t('datasetSettings.deleteConfirmDesc')}
+                            title={t('dataset.settings.deleteConfirm')}
+                            description={t('dataset.settings.deleteConfirmDesc')}
                             onConfirm={handleDelete}
                             okText={t('common.yes')}
                             cancelText={t('common.no')}
                             okButtonProps={{danger: true}}
                         >
                             <Button danger icon={<DeleteOutlined/>}>
-                                {t('datasetSettings.deleteDataset')}
+                                {t('dataset.settings.deleteDataset')}
                             </Button>
                         </Popconfirm>
                     </Card>
@@ -120,7 +120,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
         },
         ...(canManageMembers ? [{
             key: 'members',
-            label: t('datasetMembers.title'),
+            label: t('dataset.members.title'),
             children: (
                 <DatasetMembers datasetId={dataset.id} ownerId={dataset.ownerId}/>
             ),

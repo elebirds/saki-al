@@ -15,7 +15,6 @@
     "no": "否",
     "save": "保存",
     "cancel": "取消",
-    "unknown": "未知",
     "edit": "编辑",
     "delete": "删除",
     "actions": "操作",
@@ -27,25 +26,39 @@
     "status": "状态",
     "role": "角色",
     "user": "用户",
-    "confirm": "确认",
     "close": "关闭",
-    "success": "成功",
-    "error": "失败",
     "operationFailed": "操作失败",
     "noPermission": "您没有权限执行此操作",
     "owner": "所有者",
-    "total": "共 {{total}} 项",
     "of": "共",
     "items": "项",
-    "copy": "复制",
-    "copied": "已复制到剪贴板",
     "download": "下载",
     "downloadSuccess": "开始下载",
-    "downloadError": "下载失败"
+    "downloadError": "下载失败",
+    "create": "创建",
+    "saveChanges": "保存修改",
+    "placeholder": "—",
+    "sample": "样本",
+    "networkErrorTitle": "网络错误",
+    "language": {
+      "english": "英文",
+      "chinese": "中文"
+    },
+    "pagination": {
+      "range": "{{start}}-{{end}} / 共 {{total}}",
+      "total": "共 {{total}} 条"
+    },
+    "time": {
+      "justNow": "刚刚",
+      "minutesAgo": "{{count}} 分钟前",
+      "hoursAgo": "{{count}} 小时前",
+      "daysAgo": "{{count}} 天前",
+      "weeksAgo": "{{count}} 周前",
+      "monthsAgo": "{{count}} 个月前"
+    }
   },
   "auth": {
     "login": {
-      "title": "登录",
       "subtitle": "Visual Active Learning Platform",
       "email": "邮箱",
       "password": "密码",
@@ -94,8 +107,6 @@
       "failed": "密码更改失败"
     },
     "setup": {
-      "title": "欢迎使用 Saki",
-      "subtitle": "看起来这是您第一次运行 Saki。让我们设置您的管理员账户以开始使用。",
       "welcomeTitle": "欢迎使用 Saki",
       "welcomeDescription": "Saki 是一个强大的视觉主动学习平台，帮助您高效地进行数据标注和模型训练。",
       "feature1": "智能标注工具，支持多种标注类型",
@@ -116,7 +127,6 @@
       "confirmPasswordRequired": "请确认您的密码！",
       "passwordMismatch": "两次输入的密码不一致！",
       "initializeButton": "初始化系统",
-      "initializeSuccess": "系统初始化成功！请使用您的管理员账户登录。",
       "initializeFailed": "初始化失败",
       "readyTitle": "系统准备就绪！",
       "readyDescription": "恭喜！系统已成功初始化，您现在可以使用管理员账户登录系统。",
@@ -126,264 +136,524 @@
       "back": "上一步",
       "stepWelcome": "欢迎",
       "stepCreateAdmin": "创建管理员",
-      "stepReady": "准备就绪"
+      "stepReady": "准备就绪",
+      "adminEmailPlaceholder": "admin@example.com",
+      "adminNamePlaceholder": "管理员",
+      "passwordPlaceholder": "强密码"
     }
   },
-  "userManagement": {
-    "title": "用户管理",
-    "addUser": "添加用户",
-    "editUser": "编辑用户",
-    "email": "邮箱",
-    "fullName": "姓名",
-    "password": "密码",
-    "globalRole": "全局角色",
-    "isActive": "激活",
-    "emailRequired": "请输入有效的邮箱地址！",
-    "passwordRequired": "请输入密码！",
-    "passwordHelp": "留空以保持当前密码",
-    "deleteConfirm": "确定要删除该用户吗？",
-    "deleteSuccess": "用户删除成功",
-    "deleteError": "删除用户失败",
-    "updateSuccess": "用户更新成功",
-    "createSuccess": "用户创建成功",
-    "fetchError": "获取用户列表失败",
-    "cannotDeleteSelf": "不能删除自己的账户",
-    "manageRoles": "管理角色",
-    "currentRoles": "当前角色",
-    "noRoles": "暂无角色",
-    "assignRole": "分配角色",
-    "selectRole": "选择角色",
-    "assign": "分配",
-    "roleAssigned": "角色分配成功",
-    "roleRevoked": "角色已撤销",
-    "expiresAt": "过期时间",
-    "expiresAtTooltip": "可选，设置角色过期时间。留空表示永久有效",
-    "expiresAtPlaceholder": "选择过期时间",
-    "expired": "已过期",
-    "noExpiration": "永久有效",
-    "revoke": "撤销",
-    "roles": {
-      "superAdmin": "超级管理员",
-      "admin": "管理员",
-      "annotator": "标注员",
-      "viewer": "查看者"
-    }
-  },
-  "datasetList": {
-    "title": "数据集列表",
-    "newDataset": "新建数据集",
-    "createSuccess": "数据集创建成功",
-    "createError": "创建数据集失败",
-    "loadError": "加载数据集失败",
-    "datasetName": "名称",
-    "namePlaceholder": "输入数据集名称",
-    "nameRequired": "请输入数据集名称",
-    "description": "描述",
-    "descriptionPlaceholder": "输入数据集描述（可选）",
-    "type": "类型",
-    "typeHelp": "根据数据类型选择对应的处理流程，创建后不可更改",
-    "open": "打开",
-    "samples": "样本数",
-    "labeled": "已标注",
-    "noDescription": "暂无描述",
-    "empty": "暂无数据集",
-    "emptyHint": "点击上方按钮创建您的第一个数据集"
-  },
-  "datasetDetail": {
-    "progress": "标注进度",
-    "labeled": "已标注",
-    "startLabeling": "开始标注",
-    "uploadData": "上传数据",
-    "exportData": "导出数据",
-    "settings": "设置",
-    "dataPool": "数据池",
-    "noSamples": "暂无数据",
-    "backToList": "返回列表",
-    "owner": "所有者",
-    "basicInfo": "基本信息",
-    "name": "名称",
-    "description": "描述",
-    "type": "类型",
-    "createdAt": "创建时间",
-    "dangerZone": "危险操作",
-    "deleteDataset": "删除数据集",
-    "deleteConfirm": "确定要删除此数据集吗？",
-    "deleteConfirmDesc": "此操作不可恢复，所有样本和标注数据都将被删除。",
-    "deleteSuccess": "数据集已删除",
-    "deleteError": "删除数据集失败",
-    "exportSuccess": "导出成功",
-    "exportError": "导出失败",
-    "loadSamplesError": "加载样本失败",
-    "sortByName": "按名称",
-    "sortByStatus": "按状态",
-    "sortByCreatedAt": "按创建时间",
-    "sortByUpdatedAt": "按更新时间",
-    "sortByRemark": "按备注",
-    "sortAsc": "升序",
-    "sortDesc": "降序",
-    "loadMore": "加载更多",
-    "deleteSampleConfirm": "确定要删除此样本吗？",
-    "deleteSampleSuccess": "样本删除成功",
-    "deleteSampleError": "删除样本失败",
-    "loadError": "加载数据集失败"
-  },
-  "sampleAssetModal": {
-    "title": "资源文件 - {{name}}",
-    "assets": "资源文件",
-    "primary": "主要",
-    "noAssets": "暂无资源文件",
-    "openInNewTab": "在新标签页中打开",
-    "loadError": "加载资源文件失败"
-  },
-  "datasetSettings": {
-    "successMessage": "数据集设置保存成功",
-    "errorMessage": "保存数据集设置失败",
-    "loadLabelsError": "加载标签失败",
-    "basicInfo": "基本信息",
-    "datasetName": "数据集名称",
-    "nameRequired": "请输入数据集名称",
-    "description": "描述",
-    "annotationSystem": "数据集类型",
-    "annotationSystemReadonly": "数据集类型不可更改，更改将导致所有标注数据失效",
-    "labelManagement": "标签管理",
-    "noLabels": "暂无标签，请添加标签后再开始标注",
-    "newLabelName": "新标签名称",
-    "addLabel": "添加标签",
-    "saveSettings": "保存设置",
-    "saveBasicInfo": "保存基本信息",
-    "deleteDataset": "删除数据集",
-    "dangerZone": "危险操作",
-    "editLabel": "编辑标签",
-    "labelName": "标签名称",
-    "labelColor": "标签颜色",
-    "labelAnnotationCount": "标注数量",
-    "labelExists": "已存在同名标签",
-    "labelCreated": "标签创建成功",
-    "labelUpdated": "标签更新成功",
-    "labelDeleted": "标签删除成功",
-    "labelHasAnnotations": "此标签关联了 {{count}} 个标注",
-    "deleteWithAnnotations": "确定要删除此标签吗？所有使用此标签的 {{count}} 个标注也将被删除。"
-  },
-  "datasetMembers": {
-    "title": "数据集成员",
-    "addMember": "添加成员",
-    "editMemberRole": "编辑成员角色",
-    "user": "用户",
-    "selectUser": "选择用户",
-    "selectUserRequired": "请选择用户！",
-    "selectRole": "选择角色",
-    "selectRoleRequired": "请选择角色！",
-    "removeConfirm": "确定要移除此成员吗？",
-    "removeSuccess": "成员移除成功",
-    "removeError": "移除成员失败",
-    "updateRoleSuccess": "成员角色更新成功",
-    "addMemberSuccess": "成员添加成功",
-    "fetchError": "获取成员列表失败",
-    "roles": {
-      "owner": "数据集所有者",
-      "manager": "数据集管理员",
-      "viewer": "数据集查看者"
-    }
-  },
-  "workspace": {
-    "annotations": "标注列表",
-    "noAnnotations": "暂无标注",
-    "submitNext": "暂存并下一个",
-    "loading": "加载中...",
-    "label": "标签:",
-    "noLabelSelected": "请先选择一个标签",
-    "noLabelsConfigured": "未配置标签，请先在数据集设置中配置标签",
-    "sampleList": "样本列表",
-    "samples": "个样本",
-    "statusLabeled": "已标注",
-    "statusUnlabeled": "未标注",
-    "statusSkipped": "已跳过",
-    "tools": {
-      "select": "选择 (V)",
-      "rect": "矩形 (R)",
-      "obb": "旋转框 (O)",
-      "zoomIn": "放大",
-      "zoomOut": "缩小",
-      "resetView": "重置视图"
+  "user": {
+    "management": {
+      "title": "用户管理",
+      "addUser": "添加用户",
+      "editUser": "编辑用户",
+      "emailRequired": "请输入有效的邮箱地址！",
+      "passwordRequired": "请输入密码！",
+      "passwordHelp": "留空以保持当前密码",
+      "deleteConfirm": "确定要删除该用户吗？",
+      "deleteSuccess": "用户删除成功",
+      "deleteError": "删除用户失败",
+      "updateSuccess": "用户更新成功",
+      "createSuccess": "用户创建成功",
+      "fetchError": "获取用户列表失败",
+      "cannotDeleteSelf": "不能删除自己的账户",
+      "manageRoles": "管理角色",
+      "currentRoles": "当前角色",
+      "noRoles": "暂无角色",
+      "assignRole": "分配角色",
+      "selectRole": "选择角色",
+      "assign": "分配",
+      "roleAssigned": "角色分配成功",
+      "roleRevoked": "角色已撤销",
+      "expiresAt": "过期时间",
+      "expiresAtTooltip": "可选，设置角色过期时间。留空表示永久有效",
+      "expiresAtPlaceholder": "选择过期时间",
+      "expired": "已过期",
+      "noExpiration": "永久有效",
+      "revoke": "撤销"
     },
-    "help": "滚动缩放 • 拖拽平移 (选择模式) • 删除键移除",
-    "undo": "撤销 (Ctrl+Z)",
-    "redo": "重做 (Ctrl+Shift+Z)",
-    "sync": {
-      "syncing": "同步中...",
-      "ready": "同步就绪",
-      "initializing": "初始化中..."
+    "profile": {
+      "title": "个人信息",
+      "basicInfo": "基本信息",
+      "systemRoles": "系统角色",
+      "permissions": "权限",
+      "noRoles": "暂无角色",
+      "noPermissions": "暂无权限",
+      "isSuperAdmin": "超级管理员",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间",
+      "lastLoginAt": "最后登录时间",
+      "fetchError": "获取用户信息失败",
+      "userNotFound": "用户信息未找到",
+      "permissionScope": {
+        "all": "全局",
+        "assigned": "成员",
+        "self": "自己",
+        "owned": "拥有"
+      },
+      "permissionResources": {
+        "user": "用户管理",
+        "role": "角色管理",
+        "dataset": "数据集管理",
+        "sample": "样本管理",
+        "label": "标签管理",
+        "annotation": "标注管理",
+        "system": "系统管理"
+      }
+    }
+  },
+  "dataset": {
+    "list": {
+      "title": "数据集列表",
+      "newDataset": "新建数据集",
+      "createSuccess": "数据集创建成功",
+      "createError": "创建数据集失败",
+      "loadError": "加载数据集失败",
+      "datasetName": "名称",
+      "namePlaceholder": "输入数据集名称",
+      "nameRequired": "请输入数据集名称",
+      "description": "描述",
+      "descriptionPlaceholder": "输入数据集描述（可选）",
+      "type": "类型",
+      "typeHelp": "数据集类型决定标注方式与模型训练流程。",
+      "open": "打开",
+      "noDescription": "暂无描述",
+      "empty": "暂无数据集",
+      "emptyHint": "点击上方按钮创建您的第一个数据集",
+      "noMore": "没有更多内容了～"
     },
-    "noSamples": "此数据集暂无样本",
-    "back": "返回",
-    "backToDataset": "返回样本列表",
-    "noEditPermission": "您没有编辑权限",
-    "cannotEditOthersAnnotation": "您只能编辑自己的标注",
-    "cannotDeleteOthersAnnotation": "您只能删除自己的标注",
-    "readOnly": "只读",
-    "annotationSource": {
-      "mine": "我的标注",
-      "others": "他人标注",
-      "auto": "自动生成"
+    "detail": {
+      "uploadData": "上传数据",
+      "settings": "设置",
+      "dataPool": "数据池",
+      "noSamples": "暂无数据",
+      "backToList": "返回列表",
+      "loadSamplesError": "加载样本失败",
+      "sortByName": "按名称",
+      "sortByCreatedAt": "按创建时间",
+      "sortByUpdatedAt": "按更新时间",
+      "sortAsc": "升序",
+      "sortDesc": "降序",
+      "deleteSampleConfirm": "确定要删除此样本吗？",
+      "deleteSampleSuccess": "样本删除成功",
+      "deleteSampleError": "删除样本失败",
+      "loadError": "加载数据集失败",
+      "notFound": "未找到数据集。",
+      "pageStatus": "第 {{page}} / {{pages}} 页 · 共 {{total}} 条"
+    },
+    "sampleAssets": {
+      "title": "资源文件 - {{name}}",
+      "assets": "资源文件",
+      "primary": "主要",
+      "noAssets": "暂无资源文件",
+      "loadError": "加载资源文件失败"
+    },
+    "settings": {
+      "successMessage": "数据集设置保存成功",
+      "errorMessage": "保存数据集设置失败",
+      "basicInfo": "基本信息",
+      "datasetName": "数据集名称",
+      "nameRequired": "请输入数据集名称",
+      "description": "描述",
+      "saveBasicInfo": "保存基本信息",
+      "deleteDataset": "删除数据集",
+      "dangerZone": "危险操作",
+      "namePlaceholder": "数据集名称",
+      "descriptionPlaceholder": "描述该数据集",
+      "deleteConfirm": "删除该数据集？",
+      "deleteConfirmDesc": "此操作不可撤销。",
+      "deleteSuccess": "数据集已删除",
+      "deleteError": "删除数据集失败"
+    },
+    "members": {
+      "title": "数据集成员",
+      "addMember": "添加成员",
+      "editMemberRole": "编辑成员角色",
+      "user": "用户",
+      "selectUser": "选择用户",
+      "selectUserRequired": "请选择用户！",
+      "selectRole": "选择角色",
+      "selectRoleRequired": "请选择角色！",
+      "removeConfirm": "确定要移除此成员吗？",
+      "removeSuccess": "成员移除成功",
+      "removeError": "移除成员失败",
+      "updateRoleSuccess": "成员角色更新成功",
+      "addMemberSuccess": "成员添加成功",
+      "fetchError": "获取成员列表失败"
     }
   },
   "annotation": {
-    "saved": "保存成功",
-    "saveError": "保存标注失败",
-    "loadError": "加载标注失败"
-  },
-  "projectList": {
-    "title": "项目列表",
-    "newProject": "新建项目",
-    "createSuccess": "项目创建成功",
-    "createError": "创建项目失败",
-    "open": "打开",
-    "stats": "统计",
-    "labeled": "已标注",
-    "accuracy": "准确率"
-  },
-  "projectDetail": {
-    "dataPool": "数据池",
-    "settings": "设置",
-    "progress": "标注进度",
-    "labeled": "已标注",
-    "startLabeling": "开始标注",
-    "trainModel": "训练模型",
-    "uploadData": "上传数据"
-  },
-  "projectSettings": {
-    "successMessage": "设置保存成功",
-    "basicInfo": "基本信息",
-    "projectName": "项目名称",
-    "description": "描述",
-    "taskType": "任务类型",
-    "annotationSystem": "标注系统",
-    "annotationSystemReadonly": "标注系统类型不可更改，更改将导致所有标注数据失效",
-    "labelManagement": "标签管理",
-    "newLabelName": "新标签名称",
-    "addLabel": "添加标签",
-    "alConfig": "主动学习配置",
-    "queryStrategy": "查询策略",
-    "strategies": {
-      "least_confidence": "最小置信度",
-      "margin_sampling": "边缘采样",
-      "entropy_sampling": "熵采样",
-      "random": "随机采样"
+    "workspace": {
+      "annotations": "标注列表",
+      "noAnnotations": "暂无标注",
+      "submitNext": "暂存并下一个",
+      "loading": "加载中...",
+      "label": "标签:",
+      "noLabelSelected": "请先选择一个标签",
+      "noLabelsConfigured": "未配置标签，请先在数据集设置中配置标签",
+      "sampleList": "样本列表",
+      "samples": "个样本",
+      "tools": {
+        "select": "选择 (V)",
+        "rect": "矩形 (R)",
+        "obb": "旋转框 (O)",
+        "zoomIn": "放大",
+        "zoomOut": "缩小",
+        "resetView": "重置视图"
+      },
+      "sync": {
+        "syncing": "同步中...",
+        "ready": "同步就绪",
+        "initializing": "初始化中..."
+      },
+      "noSamples": "此数据集暂无样本",
+      "back": "返回",
+      "backToDataset": "返回样本列表",
+      "noEditPermission": "您没有编辑权限",
+      "cannotEditOthersAnnotation": "您只能编辑自己的标注",
+      "cannotDeleteOthersAnnotation": "您只能删除自己的标注",
+      "readOnly": "只读",
+      "annotationSource": {
+        "mine": "我的标注",
+        "others": "他人标注",
+        "auto": "自动生成"
+      },
+      "commitDrafts": "提交草稿",
+      "sort": {
+        "createdNewest": "创建时间（最新）",
+        "createdOldest": "创建时间（最早）",
+        "updatedNewest": "更新时间（最新）",
+        "updatedOldest": "更新时间（最早）",
+        "nameAZ": "名称（A-Z）",
+        "nameZA": "名称（Z-A）"
+      }
     },
-    "batchSize": "查询批次大小",
-    "batchSizeHelp": "每次迭代查询的样本数量",
-    "modelConfig": "模型配置",
-    "baseModel": "基础模型",
-    "modelArchitecture": "模型架构",
-    "saveSettings": "保存设置",
-    "fedoConfig": "FEDO 配置",
-    "thumbnailView": "缩略图视图",
-    "deleteProject": "删除项目",
-    "deleteConfirm": "确定要删除此项目吗？",
-    "deleteConfirmDesc": "此操作不可恢复。",
-    "deleteSuccess": "项目已删除",
-    "deleteError": "删除项目失败",
-    "updateError": "更新项目失败"
+    "toolbar": {
+      "undoShortcut": "撤销 (Ctrl+Z)",
+      "redoShortcut": "重做 (Ctrl+Shift+Z)"
+    }
+  },
+  "project": {
+    "list": {
+      "title": "项目列表",
+      "newProject": "新建项目",
+      "createSuccess": "项目创建成功",
+      "createError": "创建项目失败",
+      "stats": {
+        "datasets": "数据集",
+        "labels": "标签",
+        "branches": "分支",
+        "commits": "提交"
+      }
+    },
+    "form": {
+      "dataPool": "数据池"
+    },
+    "settings": {
+      "taskType": {
+        "classification": "分类",
+        "detection": "检测",
+        "segmentation": "分割"
+      },
+      "updateError": "更新项目失败",
+      "sections": {
+        "basic": "基本信息",
+        "labels": "标签",
+        "members": "成员"
+      },
+      "status": {
+        "active": "活跃",
+        "archived": "归档"
+      },
+      "loadProjectError": "加载项目信息失败",
+      "loadLabelsError": "加载标签失败",
+      "loadMembersError": "加载成员失败",
+      "loadRolesError": "加载角色失败",
+      "loadUsersError": "加载用户失败",
+      "updateSuccess": "项目已更新",
+      "labelUpdated": "标签已更新",
+      "labelCreated": "标签已创建",
+      "labelSaveError": "保存标签失败",
+      "labelDeleted": "标签已删除",
+      "labelDeleteError": "删除标签失败",
+      "memberAdded": "成员已添加",
+      "memberAddError": "添加成员失败",
+      "memberRoleUpdated": "角色已更新",
+      "memberRoleUpdateError": "更新角色失败",
+      "memberRemoved": "成员已移除",
+      "memberRemoveError": "移除成员失败",
+      "labels": {
+        "title": "项目标签",
+        "subtitle": "管理该项目使用的标签。",
+        "add": "新增标签",
+        "empty": "暂无标签",
+        "noPermission": "无权限查看标签",
+        "editTitle": "编辑标签",
+        "createTitle": "创建标签",
+        "deleteTitle": "删除该标签？",
+        "columns": {
+          "label": "标签",
+          "description": "描述",
+          "shortcut": "快捷键",
+          "actions": "操作"
+        },
+        "form": {
+          "name": "名称",
+          "nameRequired": "请输入名称",
+          "namePlaceholder": "标签名称",
+          "description": "描述",
+          "descriptionPlaceholder": "可选描述",
+          "shortcut": "快捷键",
+          "shortcutPlaceholder": "可选快捷键",
+          "color": "颜色"
+        }
+      },
+      "members": {
+        "title": "项目成员",
+        "subtitle": "管理成员及其角色。",
+        "add": "新增成员",
+        "addTitle": "新增成员",
+        "editTitle": "编辑成员角色",
+        "noPermission": "无权限查看或管理成员。",
+        "empty": "暂无成员",
+        "currentUser": "当前用户",
+        "defaultRole": "成员",
+        "ownerCannotRemove": "项目所有者不可移除。",
+        "removeSelf": "无法移除自己（{{name}}）。",
+        "removeOwner": "无法移除项目所有者（{{name}}）。",
+        "removeConfirm": "移除 {{name}}？",
+        "remove": "移除",
+        "columns": {
+          "member": "成员",
+          "role": "角色",
+          "actions": "操作"
+        },
+        "form": {
+          "user": "用户",
+          "userRequired": "请选择用户",
+          "userPlaceholder": "选择用户",
+          "role": "角色",
+          "roleRequired": "请选择角色",
+          "rolePlaceholder": "选择角色"
+        }
+      },
+      "basic": {
+        "title": "项目信息",
+        "titleWithName": "项目信息 · {{name}}",
+        "subtitle": "管理该项目的基本信息。",
+        "projectName": "项目名称",
+        "projectNameRequired": "请输入项目名称",
+        "projectNamePlaceholder": "项目名称",
+        "taskType": "任务类型",
+        "taskTypeHint": "任务类型决定标注方式与模型训练流程，创建后不可更改。",
+        "description": "描述",
+        "descriptionPlaceholder": "描述该项目",
+        "status": "状态"
+      }
+    },
+    "common": {
+      "notFound": "未找到项目。"
+    },
+    "overview": {
+      "taskType": {
+        "classification": "分类",
+        "detection": "检测",
+        "segmentation": "分割"
+      },
+      "status": {
+        "active": "活跃",
+        "archived": "归档"
+      },
+      "noCommits": "暂无提交",
+      "noCommitsYet": "暂无提交",
+      "commits": "提交",
+      "noDatasets": "该项目未关联数据集。",
+      "noDescription": "暂无描述"
+    },
+    "commits": {
+      "title": "提交",
+      "groupDate": "{{date}} 的提交",
+      "loadError": "加载提交失败",
+      "filters": {
+        "allUsers": "全部用户",
+        "allTime": "全部时间"
+      },
+      "count": "{{count}} 次提交",
+      "empty": "该分支没有提交。",
+      "noMessage": "无提交说明",
+      "author": {
+        "system": "系统",
+        "model": "模型",
+        "unknown": "未知用户"
+      }
+    },
+    "commitDetail": {
+      "status": {
+        "added": "新增",
+        "removed": "移除",
+        "modified": "修改"
+      },
+      "annotationsLoadError": "加载标注失败",
+      "notFound": "未找到提交。",
+      "title": "提交",
+      "committed": "提交于 {{time}}",
+      "viewParent": "查看父提交",
+      "backToHistory": "返回历史",
+      "noMessage": "无提交说明",
+      "parentCommit": "父提交：",
+      "rootCommit": "根提交",
+      "fileTree": "文件树",
+      "datasetCount": "{{count}} 个数据集",
+      "filterFiles": "过滤文件",
+      "noFiles": "没有文件",
+      "summary": "提交摘要",
+      "samplesWithAnnotations": "样本（含标注）",
+      "annotations": "标注",
+      "diffOverview": "差异概览",
+      "diff": {
+        "addedSamples": "+{{count}} 个样本",
+        "removedSamples": "-{{count}} 个样本",
+        "modifiedSamples": "{{count}} 个修改"
+      },
+      "selectionDetails": "选中详情",
+      "selectionHint": "从左侧选择数据集、样本或标注以查看详情。",
+      "datasetType": "类型：{{type}}",
+      "samplesLoaded": "已加载样本：{{count}}",
+      "sampleId": "样本 ID：{{id}}",
+      "annotationsLoaded": "已加载标注：{{count}}",
+      "annotationType": "类型：{{type}}",
+      "annotationView": "视图：{{view}}",
+      "annotationConfidence": "置信度：{{confidence}}",
+      "annotationId": "标注 ID：{{id}}",
+      "annotationCount": "{{count}} 个标注"
+    },
+    "branches": {
+      "title": "分支",
+      "loadError": "加载分支失败",
+      "baseCommitNotFound": "未找到基准提交",
+      "createSuccess": "分支已创建",
+      "createError": "创建分支失败",
+      "protected": "分支已保护",
+      "unprotected": "分支已取消保护",
+      "updateError": "更新分支失败",
+      "deleteSuccess": "分支已删除",
+      "deleteError": "删除分支失败",
+      "columns": {
+        "branch": "分支",
+        "head": "头提交",
+        "updated": "更新时间",
+        "protected": "保护",
+        "actions": "操作"
+      },
+      "noCommits": "暂无提交",
+      "protectedLabel": "已保护",
+      "deleteTitle": "删除该分支？",
+      "deleteMasterBlocked": "主分支不可删除。",
+      "deleteProtectedBlocked": "受保护分支不可删除。",
+      "deleteWarning": "此操作无法撤销。",
+      "count": "{{filtered}} / {{total}} 个分支",
+      "searchPlaceholder": "搜索分支",
+      "newBranch": "新建分支",
+      "listTitle": "分支列表",
+      "defaultBase": "默认基准：{{branch}}",
+      "createTitle": "新建分支",
+      "form": {
+        "name": "分支名称",
+        "nameRequired": "请输入分支名称",
+        "nameTooLong": "分支名称过长",
+        "namePlaceholder": "feature/my-branch",
+        "description": "描述",
+        "descriptionPlaceholder": "可选描述",
+        "baseBranch": "基准分支",
+        "baseBranchPlaceholder": "选择基准分支",
+        "advancedSelection": "高级提交选择",
+        "baseCommit": "基准提交",
+        "baseCommitRequired": "请选择提交",
+        "baseCommitPlaceholder": "选择提交",
+        "noMessage": "无提交说明"
+      }
+    },
+    "samples": {
+      "filters": {
+        "all": "全部",
+        "labeled": "已标注",
+        "unlabeled": "未标注",
+        "draft": "草稿",
+        "datasetPlaceholder": "选择数据集",
+        "searchPlaceholder": "搜索样本",
+        "branchPlaceholder": "分支"
+      },
+      "sort": {
+        "createdNewest": "创建时间（最新）",
+        "createdOldest": "创建时间（最早）",
+        "updatedNewest": "更新时间（最新）",
+        "updatedOldest": "更新时间（最早）",
+        "nameAZ": "名称（A-Z）",
+        "nameZA": "名称（Z-A）"
+      },
+      "commitDrafts": "提交草稿",
+      "emptySelectDataset": "请选择数据集查看样本。",
+      "emptyTitle": "暂无样本",
+      "emptyHint": "尝试调整筛选条件或上传新样本。",
+      "commitModal": {
+        "title": "提交草稿",
+        "commit": "提交",
+        "messageLabel": "提交说明",
+        "messagePlaceholder": "描述本次标注里程碑…"
+      }
+    },
+    "datasetSamples": {
+      "backToDatasets": "返回数据集",
+      "datasetFallback": "数据集",
+      "samples": "样本",
+      "emptyTitle": "暂无样本",
+      "emptyHint": "请在数据集设置中上传样本",
+      "upload": "上传数据",
+      "pagination": "第 {{page}} / {{totalPages}} 页 · 共 {{totalItems}} 条"
+    },
+    "sidebar": {
+      "about": "关于",
+      "noDescription": "暂无描述",
+      "stats": {
+        "datasets": "数据集",
+        "labels": "标签",
+        "branches": "分支",
+        "commits": "提交",
+        "members": "成员"
+      },
+      "loops": {
+        "title": "AL Loops",
+        "empty": "暂无循环",
+        "comingSoon": "敬请期待"
+      },
+      "models": {
+        "title": "模型",
+        "empty": "暂无发布的产物",
+        "comingSoon": "敬请期待"
+      },
+      "sampleStatus": {
+        "title": "样本状态",
+        "labeled": "已标注",
+        "unlabeled": "未标注",
+        "skipped": "已跳过",
+        "empty": "暂无数据"
+      }
+    },
+    "loops": {
+      "comingSoon": "AL Loops 即将上线。"
+    },
+    "insights": {
+      "comingSoon": "Insights 即将上线。"
+    },
+    "tabs": {
+      "overview": "概览",
+      "samples": "样本与标注",
+      "branches": "分支",
+      "commits": "提交",
+      "loops": "AL 循环",
+      "insights": "洞察",
+      "settings": "设置"
+    }
   },
   "upload": {
     "uploading": "上传中...",
@@ -398,153 +668,211 @@
     "errorCount": "{{count}} 个失败",
     "completeMessage": "已上传 {{success}} / {{total}} 个文件"
   },
-  "permissions": {
-    "roles": {
-      "superAdmin": "超级管理员",
-      "admin": "管理员",
-      "annotator": "标注员",
-      "viewer": "查看者",
-      "owner": "所有者",
-      "manager": "管理员",
-      "reviewer": "审核员"
-    },
-    "tabs": {
-      "basicInfo": "基本信息",
-      "labels": "标签",
-      "members": "成员",
-      "dangerZone": "危险操作"
+  "role": {
+    "management": {
+      "title": "角色管理",
+      "addRole": "新增角色",
+      "editRole": "编辑角色",
+      "name": "角色名称",
+      "displayName": "显示名称",
+      "description": "描述",
+      "color": "颜色",
+      "colorRequired": "请选择角色颜色！",
+      "recommendedColors": "推荐颜色",
+      "type": "类型",
+      "system": "系统角色",
+      "resource": "资源角色",
+      "permissions": "权限",
+      "permissionCount": "权限数量",
+      "nameRequired": "请输入角色名称！",
+      "displayNameRequired": "请输入显示名称！",
+      "namePlaceholder": "请输入角色名称（英文字母、数字、下划线）",
+      "displayNamePlaceholder": "请输入显示名称",
+      "descriptionPlaceholder": "请输入角色描述（可选）",
+      "deleteConfirm": "确定要删除该角色吗？",
+      "deleteSuccess": "角色删除成功",
+      "deleteError": "删除角色失败",
+      "updateSuccess": "角色更新成功",
+      "createSuccess": "角色创建成功",
+      "fetchError": "获取角色列表失败",
+      "cannotEditSystemRole": "系统预设角色不可编辑",
+      "cannotDeleteSystemRole": "系统预设角色不可删除",
+      "systemRole": "系统预设角色",
+      "allTypes": "全部类型",
+      "invalidPermissionsForSystemRole": "系统角色只能使用全局权限（:all 结尾）",
+      "invalidPermissionsForResourceRole": "资源角色只能使用成员权限（:assigned 结尾）或自己权限（:self 结尾）",
+      "selectRoleTypeFirst": "请先选择角色类型",
+      "noSystemPermissions": "系统角色没有可用的权限",
+      "noResourcePermissions": "资源角色没有可用的权限",
+      "permissionLabels": {
+        "userManagement": "用户管理",
+        "userCreate": "创建用户",
+        "userRead": "查看用户",
+        "userUpdate": "更新用户",
+        "userDelete": "删除用户",
+        "userList": "列出用户",
+        "roleManagement": "角色管理",
+        "roleCreate": "创建角色",
+        "roleRead": "查看角色",
+        "roleUpdate": "更新角色",
+        "roleDelete": "删除角色",
+        "roleAssign": "分配角色",
+        "roleRevoke": "撤销角色",
+        "roleAssignAdmin": "授权管理员权限",
+        "datasetManagementAll": "数据集管理（全局）",
+        "datasetCreateAll": "创建数据集（全局）",
+        "datasetReadAll": "查看数据集（全局）",
+        "datasetUpdateAll": "更新数据集（全局）",
+        "datasetDeleteAll": "删除数据集（全局）",
+        "datasetAssignAll": "分配数据集（全局）",
+        "datasetExportAll": "导出数据集（全局）",
+        "datasetImportAll": "导入数据集（全局）",
+        "datasetManagementAssigned": "数据集管理（成员）",
+        "datasetReadAssigned": "查看数据集（成员）",
+        "datasetUpdateAssigned": "更新数据集（成员）",
+        "datasetAssignAssigned": "分配数据集（成员）",
+        "datasetExportAssigned": "导出数据集（成员）",
+        "datasetImportAssigned": "导入数据集（成员）",
+        "sampleManagementAll": "样本管理（全局）",
+        "sampleReadAll": "查看样本（全局）",
+        "sampleCreateAll": "创建样本（全局）",
+        "sampleUpdateAll": "更新样本（全局）",
+        "sampleDeleteAll": "删除样本（全局）",
+        "sampleManagementAssigned": "样本管理（成员）",
+        "sampleReadAssigned": "查看样本（成员）",
+        "sampleCreateAssigned": "创建样本（成员）",
+        "sampleUpdateAssigned": "更新样本（成员）",
+        "sampleDeleteAssigned": "删除样本（成员）",
+        "labelManagementAll": "标签管理（全局）",
+        "labelReadAll": "查看标签（全局）",
+        "labelCreateAll": "创建标签（全局）",
+        "labelUpdateAll": "更新标签（全局）",
+        "labelDeleteAll": "删除标签（全局）",
+        "labelManagementAssigned": "标签管理（成员）",
+        "labelReadAssigned": "查看标签（成员）",
+        "labelCreateAssigned": "创建标签（成员）",
+        "labelUpdateAssigned": "更新标签（成员）",
+        "labelDeleteAssigned": "删除标签（成员）",
+        "annotationManagementAll": "标注管理（全局）",
+        "annotationReadAll": "查看标注（全局）",
+        "annotationModifyAll": "修改标注（全局）",
+        "annotationManagementAssigned": "标注管理（成员）",
+        "annotationReadAssigned": "查看标注（成员）",
+        "annotationModifyAssigned": "修改标注（成员）",
+        "annotationManagementSelf": "标注管理（自己）",
+        "annotationReadSelf": "查看标注（自己）",
+        "annotationModifySelf": "修改标注（自己）"
+      }
     }
   },
-  "roles": {
-    "owner": "所有者",
-    "manager": "管理员",
-    "annotator": "标注员",
-    "reviewer": "审核员",
-    "viewer": "查看者",
-    "seniorAnnotator": "高级标注员"
-  },
-  "roleManagement": {
-    "title": "角色管理",
-    "addRole": "新增角色",
-    "editRole": "编辑角色",
-    "name": "角色名称",
-    "displayName": "显示名称",
-    "description": "描述",
-    "color": "颜色",
-    "colorRequired": "请选择角色颜色！",
-    "recommendedColors": "推荐颜色",
-    "type": "类型",
-    "system": "系统角色",
-    "resource": "资源角色",
-    "permissions": "权限",
-    "permissionCount": "权限数量",
-    "nameRequired": "请输入角色名称！",
-    "displayNameRequired": "请输入显示名称！",
-    "namePlaceholder": "请输入角色名称（英文字母、数字、下划线）",
-    "displayNamePlaceholder": "请输入显示名称",
-    "descriptionPlaceholder": "请输入角色描述（可选）",
-    "deleteConfirm": "确定要删除该角色吗？",
-    "deleteSuccess": "角色删除成功",
-    "deleteError": "删除角色失败",
-    "updateSuccess": "角色更新成功",
-    "createSuccess": "角色创建成功",
-    "fetchError": "获取角色列表失败",
-    "cannotEditSystemRole": "系统预设角色不可编辑",
-    "cannotDeleteSystemRole": "系统预设角色不可删除",
-    "systemRole": "系统预设角色",
-    "allTypes": "全部类型",
-    "invalidPermissionsForSystemRole": "系统角色只能使用全局权限（:all 结尾）",
-    "invalidPermissionsForResourceRole": "资源角色只能使用成员权限（:assigned 结尾）或自己权限（:self 结尾）",
-    "selectRoleTypeFirst": "请先选择角色类型",
-    "noSystemPermissions": "系统角色没有可用的权限",
-    "noResourcePermissions": "资源角色没有可用的权限",
-    "permissionLabels": {
-      "userManagement": "用户管理",
-      "userCreate": "创建用户",
-      "userRead": "查看用户",
-      "userUpdate": "更新用户",
-      "userDelete": "删除用户",
-      "userList": "列出用户",
-      "roleManagement": "角色管理",
-      "roleCreate": "创建角色",
-      "roleRead": "查看角色",
-      "roleUpdate": "更新角色",
-      "roleDelete": "删除角色",
-      "roleAssign": "分配角色",
-      "roleRevoke": "撤销角色",
-      "roleAssignAdmin": "授权管理员权限",
-      "datasetManagementAll": "数据集管理（全局）",
-      "datasetCreateAll": "创建数据集（全局）",
-      "datasetReadAll": "查看数据集（全局）",
-      "datasetUpdateAll": "更新数据集（全局）",
-      "datasetDeleteAll": "删除数据集（全局）",
-      "datasetAssignAll": "分配数据集（全局）",
-      "datasetExportAll": "导出数据集（全局）",
-      "datasetImportAll": "导入数据集（全局）",
-      "datasetManagementAssigned": "数据集管理（成员）",
-      "datasetReadAssigned": "查看数据集（成员）",
-      "datasetUpdateAssigned": "更新数据集（成员）",
-      "datasetAssignAssigned": "分配数据集（成员）",
-      "datasetExportAssigned": "导出数据集（成员）",
-      "datasetImportAssigned": "导入数据集（成员）",
-      "sampleManagementAll": "样本管理（全局）",
-      "sampleReadAll": "查看样本（全局）",
-      "sampleCreateAll": "创建样本（全局）",
-      "sampleUpdateAll": "更新样本（全局）",
-      "sampleDeleteAll": "删除样本（全局）",
-      "sampleManagementAssigned": "样本管理（成员）",
-      "sampleReadAssigned": "查看样本（成员）",
-      "sampleCreateAssigned": "创建样本（成员）",
-      "sampleUpdateAssigned": "更新样本（成员）",
-      "sampleDeleteAssigned": "删除样本（成员）",
-      "labelManagementAll": "标签管理（全局）",
-      "labelReadAll": "查看标签（全局）",
-      "labelCreateAll": "创建标签（全局）",
-      "labelUpdateAll": "更新标签（全局）",
-      "labelDeleteAll": "删除标签（全局）",
-      "labelManagementAssigned": "标签管理（成员）",
-      "labelReadAssigned": "查看标签（成员）",
-      "labelCreateAssigned": "创建标签（成员）",
-      "labelUpdateAssigned": "更新标签（成员）",
-      "labelDeleteAssigned": "删除标签（成员）",
-      "annotationManagementAll": "标注管理（全局）",
-      "annotationReadAll": "查看标注（全局）",
-      "annotationModifyAll": "修改标注（全局）",
-      "annotationManagementAssigned": "标注管理（成员）",
-      "annotationReadAssigned": "查看标注（成员）",
-      "annotationModifyAssigned": "修改标注（成员）",
-      "annotationManagementSelf": "标注管理（自己）",
-      "annotationReadSelf": "查看标注（自己）",
-      "annotationModifySelf": "修改标注（自己）"
+  "about": {
+    "hero": {
+      "subtitle": "视觉主动学习平台",
+      "description1": "Saki 是一个集数据集管理、样本标注（支持版本控制）、模型训练与视觉主动学习于一体的闭环智能标注平台。",
+      "description2": "通过 Human-in-the-loop 流程，让高价值样本优先进入标注与训练，降低成本并提升迭代效率。",
+      "tags": {
+        "humanLoop": "人机协同",
+        "gitLike": "类 Git 版本控制",
+        "activeLoop": "主动学习闭环"
+      }
+    },
+    "sections": {
+      "dataAssets": {
+        "title": "数据与资产",
+        "body": "数据集管理与内容寻址，保证数据可追溯、可复用、可去重。",
+        "tags": {
+          "assetSha": "资产 SHA256",
+          "datasetSample": "数据集/样本",
+          "minio": "MinIO"
+        }
+      },
+      "annotationVersioning": {
+        "title": "标注版本控制",
+        "body": "标注记录不可变，Commit 快照 + Branch 指针，让标注版本像 Git 一样可回溯。",
+        "tags": {
+          "annotation": "标注",
+          "commitMap": "Commit/CAMap",
+          "branch": "分支"
+        }
+      },
+      "training": {
+        "title": "训练与主动学习",
+        "body": "Runtime 以无状态执行器方式运行训练/推理任务，持续闭环筛选高价值样本。",
+        "tags": {
+          "alLoop": "ALLoop",
+          "jobMetric": "任务/指标",
+          "model": "模型"
+        }
+      },
+      "coreWorkflow": {
+        "title": "核心工作流",
+        "steps": {
+          "dataImport": "数据导入",
+          "sampleAnnotation": "样本标注",
+          "versionSnapshot": "版本快照",
+          "modelTraining": "模型训练",
+          "activeSampling": "主动学习选样",
+          "iteration": "迭代优化"
+        }
+      },
+      "techStack": {
+        "title": "技术栈概览",
+        "frontend": {
+          "label": "前端",
+          "stack": "React 18 · Vite · TypeScript · Ant Design · Tailwind"
+        },
+        "backend": {
+          "label": "后端",
+          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO"
+        },
+        "runtime": {
+          "label": "运行时",
+          "stack": "FastAPI · WebSocket · Subprocess · HTTPX"
+        }
+      },
+      "devStatus": {
+        "title": "开发状态",
+        "status": {
+          "completed": "完成",
+          "inProgress": "开发中",
+          "planned": "计划中"
+        }
+      }
     }
   },
-  "userProfile": {
-    "title": "个人信息",
-    "basicInfo": "基本信息",
-    "systemRoles": "系统角色",
-    "permissions": "权限",
-    "noRoles": "暂无角色",
-    "noPermissions": "暂无权限",
-    "isSuperAdmin": "超级管理员",
-    "createdAt": "创建时间",
-    "updatedAt": "更新时间",
-    "lastLoginAt": "最后登录时间",
-    "fetchError": "获取用户信息失败",
-    "userNotFound": "用户信息未找到",
-    "permissionScope": {
-      "all": "全局",
-      "assigned": "成员",
-      "self": "自己",
-      "owned": "拥有"
+  "layout": {
+    "header": {
+      "newProject": "新建项目",
+      "newDataset": "新建数据集",
+      "user": "用户"
     },
-    "permissionResources": {
-      "user": "用户管理",
-      "role": "角色管理",
-      "dataset": "数据集管理",
-      "sample": "样本管理",
-      "label": "标签管理",
-      "annotation": "标注管理",
-      "system": "系统管理"
+    "repoActionBar": {
+      "branches": "分支",
+      "tags": "标签",
+      "goToFile": "跳转到文件"
+    },
+    "repoHeader": {
+      "private": "私有",
+      "viewAll": "查看全部{{label}}",
+      "stats": {
+        "fork": "派生"
+      }
+    },
+    "sidebar": {
+      "about": "关于",
+      "aboutText": "Saki 是一个视觉主动学习平台。",
+      "readme": "说明",
+      "activity": "动态",
+      "stars": "星标",
+      "watching": "关注",
+      "forks": "派生",
+      "releases": "发布",
+      "noReleases": "暂无发布",
+      "createRelease": "创建新版本",
+      "packages": "包",
+      "noPackages": "暂无发布包",
+      "publishPackage": "发布第一个包",
+      "languages": "语言"
     }
   }
 }

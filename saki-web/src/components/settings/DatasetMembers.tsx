@@ -43,7 +43,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
             const data = await api.getDatasetMembers(datasetId);
             setMembers(data);
         } catch (error: any) {
-            message.error(error.message || t('datasetMembers.fetchError'));
+            message.error(error.message || t('dataset.members.fetchError'));
         } finally {
             setLoading(false);
         }
@@ -99,10 +99,10 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
     const handleDelete = async (userId: string) => {
         try {
             await api.removeDatasetMember(datasetId, userId);
-            message.success(t('datasetMembers.removeSuccess'));
+            message.success(t('dataset.members.removeSuccess'));
             fetchMembers();
         } catch (error: any) {
-            message.error(error.message || t('datasetMembers.removeError'));
+            message.error(error.message || t('dataset.members.removeError'));
         }
     };
 
@@ -111,10 +111,10 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
             const values = await form.validateFields();
             if (editingMember) {
                 await api.updateDatasetMemberRole(datasetId, editingMember.userId, {roleId: values.roleId});
-                message.success(t('datasetMembers.updateRoleSuccess'));
+                message.success(t('dataset.members.updateRoleSuccess'));
             } else {
                 await api.addDatasetMember(datasetId, {userId: values.userId, roleId: values.roleId});
-                message.success(t('datasetMembers.addMemberSuccess'));
+                message.success(t('dataset.members.addMemberSuccess'));
             }
             setIsModalOpen(false);
             fetchMembers();
@@ -165,7 +165,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
                             {t('common.edit')}
                         </Button>
                         <Popconfirm
-                            title={t('datasetMembers.removeConfirm')}
+                            title={t('dataset.members.removeConfirm')}
                             onConfirm={() => handleDelete(record.userId)}
                             okText={t('common.yes')}
                             cancelText={t('common.no')}
@@ -189,10 +189,10 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
     return (
         <div>
             <div className="mb-4 flex items-center justify-between">
-                <Title level={5}>{t('datasetMembers.title')}</Title>
+                <Title level={5}>{t('dataset.members.title')}</Title>
                 {canManageMembers && (
                     <Button type="primary" icon={<UserAddOutlined/>} onClick={handleAdd}>
-                        {t('datasetMembers.addMember')}
+                        {t('dataset.members.addMember')}
                     </Button>
                 )}
             </div>
@@ -205,7 +205,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
             />
 
             <Modal
-                title={editingMember ? t('datasetMembers.editMemberRole') : t('datasetMembers.addMember')}
+                title={editingMember ? t('dataset.members.editMemberRole') : t('dataset.members.addMember')}
                 open={isModalOpen}
                 onOk={handleOk}
                 onCancel={() => setIsModalOpen(false)}
@@ -219,12 +219,12 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
                         {!editingMember && (
                             <Form.Item
                                 name="userId"
-                                label={t('datasetMembers.user')}
-                                rules={[{required: true, message: t('datasetMembers.selectUserRequired')}]}
+                                label={t('dataset.members.user')}
+                                rules={[{required: true, message: t('dataset.members.selectUserRequired')}]}
                             >
                                 <Select
                                     showSearch
-                                    placeholder={t('datasetMembers.selectUser')}
+                                    placeholder={t('dataset.members.selectUser')}
                                     optionFilterProp="children"
                                     filterOption={(input, option) =>
                                         (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -241,9 +241,9 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
                         <Form.Item
                             name="roleId"
                             label={t('common.role')}
-                            rules={[{required: true, message: t('datasetMembers.selectRoleRequired')}]}
+                            rules={[{required: true, message: t('dataset.members.selectRoleRequired')}]}
                         >
-                            <Select placeholder={t('datasetMembers.selectRole')}>
+                            <Select placeholder={t('dataset.members.selectRole')}>
                                 {availableRoles
                                     .filter(role => {
                                         return !role.isSupremo;

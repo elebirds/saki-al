@@ -47,15 +47,15 @@ const NetworkError: React.FC = () => {
         <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
             <Result
                 status="500"
-                title="Network Error"
+                title={t('common.networkErrorTitle')}
                 subTitle={
                     isChecking
-                        ? t('common.checkingConnection', 'Checking connection...')
-                        : t('common.networkError', 'Cannot connect to the server. Please check your network connection or try again later.')
+                        ? t('common.checkingConnection')
+                        : t('common.networkError')
                 }
                 extra={
                     <Button type="primary" onClick={handleRetry} loading={isChecking}>
-                        {t('common.retry', 'Retry')}
+                        {t('common.retry')}
                     </Button>
                 }
             />

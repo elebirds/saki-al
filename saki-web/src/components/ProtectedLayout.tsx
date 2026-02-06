@@ -74,7 +74,7 @@ const ProtectedLayout: React.FC = () => {
             ? [
                 {
                     key: 'users',
-                    label: t('userManagement.title'),
+                    label: t('user.management.title'),
                     path: '/users',
                     icon: <TeamOutlined/>,
                 },
@@ -84,7 +84,7 @@ const ProtectedLayout: React.FC = () => {
             ? [
                 {
                     key: 'roles',
-                    label: t('roleManagement.title'),
+                    label: t('role.management.title'),
                     path: '/roles',
                     icon: <UserOutlined/>,
                 },
@@ -123,7 +123,7 @@ const ProtectedLayout: React.FC = () => {
         {
             key: 'profile',
             icon: <UserOutlined/>,
-            label: t('userProfile.title'),
+            label: t('user.profile.title'),
         },
         {
             type: 'divider',
@@ -145,8 +145,8 @@ const ProtectedLayout: React.FC = () => {
             onNavItemClick={(path) => navigate(path)}
             language={i18n.language}
             languageOptions={[
-                {value: 'en', label: 'English'},
-                {value: 'zh', label: '中文'},
+                {value: 'en', label: t('common.language.english')},
+                {value: 'zh', label: t('common.language.chinese')},
             ]}
             onLanguageChange={changeLanguage}
             userName={user?.fullName || user?.email}

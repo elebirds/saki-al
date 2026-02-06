@@ -267,12 +267,12 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
     }) => {
         if (!canAnnotate) {
-            message.warning(t('workspace.noEditPermission'));
+            message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
 
         if (!annotationState.selectedLabel) {
-            message.warning(t('workspace.noLabelSelected'));
+            message.warning(t('annotation.workspace.noLabelSelected'));
             return;
         }
 
@@ -313,7 +313,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
         if (!currentSample?.id) return;
         if (!canEditAnnotation(updatedAnn)) {
-            message.warning(t('workspace.cannotEditOthersAnnotation'));
+            message.warning(t('annotation.workspace.cannotEditOthersAnnotation'));
             return;
         }
         annotationState.handleAnnotationUpdate(updatedAnn);
@@ -329,7 +329,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         if (!currentSample?.id) return;
         const ann = annotationState.annotations.find(a => a.id === id);
         if (ann && !canEditAnnotation(ann)) {
-            message.warning(t('workspace.cannotDeleteOthersAnnotation'));
+            message.warning(t('annotation.workspace.cannotDeleteOthersAnnotation'));
             return;
         }
         annotationState.handleAnnotationDelete(id);
@@ -445,12 +445,12 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
                     }}
                     className="min-w-[200px]"
                 >
-                    <Select.Option value="createdAt:desc">Created (Newest)</Select.Option>
-                    <Select.Option value="createdAt:asc">Created (Oldest)</Select.Option>
-                    <Select.Option value="updatedAt:desc">Updated (Newest)</Select.Option>
-                    <Select.Option value="updatedAt:asc">Updated (Oldest)</Select.Option>
-                    <Select.Option value="name:asc">Name (A-Z)</Select.Option>
-                    <Select.Option value="name:desc">Name (Z-A)</Select.Option>
+                    <Select.Option value="createdAt:desc">{t('annotation.workspace.sort.createdNewest')}</Select.Option>
+                    <Select.Option value="createdAt:asc">{t('annotation.workspace.sort.createdOldest')}</Select.Option>
+                    <Select.Option value="updatedAt:desc">{t('annotation.workspace.sort.updatedNewest')}</Select.Option>
+                    <Select.Option value="updatedAt:asc">{t('annotation.workspace.sort.updatedOldest')}</Select.Option>
+                    <Select.Option value="name:asc">{t('annotation.workspace.sort.nameAZ')}</Select.Option>
+                    <Select.Option value="name:desc">{t('annotation.workspace.sort.nameZA')}</Select.Option>
                 </Select>
             </div>
 
@@ -472,7 +472,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
                         disabled={!canCommit}
                         type="button"
                     >
-                        Commit Drafts
+                        {t('annotation.workspace.commitDrafts')}
                     </button>
                 }
                 onSampleSelect={handleSampleSelect}

@@ -135,7 +135,7 @@ const Setup: React.FC = () => {
                         {type: 'email', message: t('auth.setup.emailInvalid')}
                     ]}
                 >
-                    <Input prefix={<MailOutlined/>} placeholder="admin@example.com"/>
+                    <Input prefix={<MailOutlined/>} placeholder={t('auth.setup.adminEmailPlaceholder')}/>
                 </Form.Item>
 
                 <Form.Item
@@ -143,7 +143,7 @@ const Setup: React.FC = () => {
                     label={t('auth.setup.fullName')}
                     rules={[{required: true, message: t('auth.setup.fullNameRequired')}]}
                 >
-                    <Input prefix={<UserOutlined/>} placeholder="Administrator"/>
+                    <Input prefix={<UserOutlined/>} placeholder={t('auth.setup.adminNamePlaceholder')}/>
                 </Form.Item>
 
                 <Form.Item
@@ -154,7 +154,7 @@ const Setup: React.FC = () => {
                         {min: 6, message: t('auth.setup.passwordMinLength')}
                     ]}
                 >
-                    <Input.Password prefix={<LockOutlined/>} placeholder="Strong Password"/>
+                    <Input.Password prefix={<LockOutlined/>} placeholder={t('auth.setup.passwordPlaceholder')}/>
                 </Form.Item>
 
                 <Form.Item

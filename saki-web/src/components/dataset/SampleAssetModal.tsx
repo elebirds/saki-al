@@ -53,7 +53,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
 
             setAssets(assetList);
         } catch (error) {
-            message.error(t('sampleAssetModal.loadError'));
+            message.error(t('dataset.sampleAssets.loadError'));
         } finally {
             setLoading(false);
         }
@@ -91,7 +91,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
 
     const columns = [
         {
-            title: t('sampleAssetModal.assets'),
+            title: t('dataset.sampleAssets.assets'),
             dataIndex: 'displayName',
             key: 'displayName',
             render: (_: string, asset: AssetInfo) => {
@@ -99,7 +99,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
                 return (
                     <Space>
                         <span>{asset.displayName}</span>
-                        {isPrimaryAsset && <Tag color="blue">{t('sampleAssetModal.primary')}</Tag>}
+                        {isPrimaryAsset && <Tag color="blue">{t('dataset.sampleAssets.primary')}</Tag>}
                     </Space>
                 );
             },
@@ -134,8 +134,8 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
         <Modal
             title={
                 sample
-                    ? t('sampleAssetModal.title', {name: sample.name})
-                    : t('sampleAssetModal.assets')
+                    ? t('dataset.sampleAssets.title', {name: sample.name})
+                    : t('dataset.sampleAssets.assets')
             }
             open={open}
             onCancel={onClose}
@@ -149,7 +149,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
             <Spin spinning={loading}>
                 {assets.length === 0 ? (
                     <Empty
-                        description={t('sampleAssetModal.noAssets')}
+                        description={t('dataset.sampleAssets.noAssets')}
                         className="mt-5"
                     />
                 ) : (

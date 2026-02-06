@@ -25,9 +25,9 @@ export const SampleList: React.FC<SampleListProps> = ({
             <div
                 className="border-b border-[#f0f0f0] bg-[#fafafa] p-4"
             >
-                <Text strong>{t('workspace.sampleList') || '样本列表'}</Text>
+                <Text strong>{t('annotation.workspace.sampleList')}</Text>
                 <div className="mt-2 text-xs text-[#666]">
-                    {samples.length} {t('workspace.samples') || '个样本'}
+                    {samples.length} {t('annotation.workspace.samples')}
                 </div>
             </div>
             <div

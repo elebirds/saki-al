@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Button, Card, Empty, Input, Pagination, Select, Space, Spin, Tag, Typography,} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {FileTextOutlined} from '@ant-design/icons';
+import {useTranslation} from 'react-i18next';
 import {api} from '../../services/api';
 import {Dataset, ProjectBranch, ProjectSample} from '../../types';
 import {useProjectSampleList} from '../../hooks/project/useProjectSampleList';
@@ -10,23 +11,8 @@ import CommitModal from '../../components/project/CommitModal';
 
 const {Title, Text} = Typography;
 
-const statusOptions = [
-    {label: 'All', value: 'all'},
-    {label: 'Labeled', value: 'labeled'},
-    {label: 'Unlabeled', value: 'unlabeled'},
-    {label: 'Draft', value: 'draft'},
-];
-
-const sortOptions = [
-    {label: 'Created (Newest)', value: 'createdAt:desc'},
-    {label: 'Created (Oldest)', value: 'createdAt:asc'},
-    {label: 'Updated (Newest)', value: 'updatedAt:desc'},
-    {label: 'Updated (Oldest)', value: 'updatedAt:asc'},
-    {label: 'Name (A-Z)', value: 'name:asc'},
-    {label: 'Name (Z-A)', value: 'name:desc'},
-];
-
 const ProjectSamplesAnnotations: React.FC = () => {
+    const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -49,6 +35,22 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
     const [sortBy, sortOrder] = sortValue.split(':');
     const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId);
+
+    const statusOptions = [
+        {label: t('project.samples.filters.all'), value: 'all'},
+        {label: t('project.samples.filters.labeled'), value: 'labeled'},
+        {label: t('project.samples.filters.unlabeled'), value: 'unlabeled'},
+        {label: t('project.samples.filters.draft'), value: 'draft'},
+    ];
+
+    const sortOptions = [
+        {label: t('project.samples.sort.createdNewest'), value: 'createdAt:desc'},
+        {label: t('project.samples.sort.createdOldest'), value: 'createdAt:asc'},
+        {label: t('project.samples.sort.updatedNewest'), value: 'updatedAt:desc'},
+        {label: t('project.samples.sort.updatedOldest'), value: 'updatedAt:asc'},
+        {label: t('project.samples.sort.nameAZ'), value: 'name:asc'},
+        {label: t('project.samples.sort.nameZA'), value: 'name:desc'},
+    ];
 
     const {samples, meta, loading, reload} = useProjectSampleList({
         projectId,
@@ -167,7 +169,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-3">
                     <Select
                         value={selectedDatasetId || undefined}
-                        placeholder="Select dataset"
+                        placeholder={t('project.samples.filters.datasetPlaceholder')}
                         className="min-w-[200px]"
                         onChange={(value) => updateParams({datasetId: value, page: '1'})}
                         loading={loadingMeta}
@@ -181,7 +183,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
                     <Input.Search
                         allowClear
-                        placeholder="Search samples"
+                        placeholder={t('project.samples.filters.searchPlaceholder')}
                         value={q}
                         onChange={(e) => updateParams({q: e.target.value || null, page: '1'})}
                         className="min-w-[220px]"
@@ -205,7 +207,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                         value={branchName}
                         onChange={(value) => updateParams({branch: value, page: '1'})}
                         className="min-w-[160px]"
-                        placeholder="Branch"
+                        placeholder={t('project.samples.filters.branchPlaceholder')}
                     >
                         {branches.map((branch) => (
                             <Select.Option key={branch.id} value={branch.name}>
@@ -224,7 +226,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                             onClick={() => setCommitModalOpen(true)}
                             disabled={!canCommit}
                         >
-                            Commit Drafts
+                            {t('project.samples.commitDrafts')}
                         </Button>
                     </Space>
                 </div>
@@ -236,7 +238,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                         <Spin/>
                     </div>
                 ) : !selectedDataset ? (
-                    <Empty description="Select a dataset to view samples."/>
+                    <Empty description={t('project.samples.emptySelectDataset')}/>
                 ) : loading ? (
                     <div className="flex h-full items-center justify-center">
                         <Spin/>
@@ -244,8 +246,8 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 ) : samples.length === 0 ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 py-12">
                         <FileTextOutlined className="text-4xl text-gray-300"/>
-                        <Title level={5} className="!m-0">No samples</Title>
-                        <Text type="secondary">Try adjusting your filters or upload new samples.</Text>
+                        <Title level={5} className="!m-0">{t('project.samples.emptyTitle')}</Title>
+                        <Text type="secondary">{t('project.samples.emptyHint')}</Text>
                     </div>
                 ) : (
                     <div>
@@ -273,8 +275,10 @@ const ProjectSamplesAnnotations: React.FC = () => {
                                         description={sample.remark || 'No remark'}
                                     />
                                     <div className="mt-3 flex flex-wrap gap-2">
-                                        {sample.hasDraft ? <Tag color="orange">Draft</Tag> : null}
-                                        {sample.isLabeled ? <Tag color="green">Labeled</Tag> : <Tag>Unlabeled</Tag>}
+                                        {sample.hasDraft ? <Tag color="orange">{t('project.samples.filters.draft')}</Tag> : null}
+                                        {sample.isLabeled
+                                            ? <Tag color="green">{t('project.samples.filters.labeled')}</Tag>
+                                            : <Tag>{t('project.samples.filters.unlabeled')}</Tag>}
                                         <Tag>{sample.annotationCount} anns</Tag>
                                     </div>
                                 </Card>

@@ -59,7 +59,7 @@ const UserManagement: React.FC = () => {
         try {
             return await api.getUsers(page, pageSize);
         } catch (error) {
-            message.error(t('userManagement.fetchError'));
+            message.error(t('user.management.fetchError'));
             throw error;
         }
     }, [canReadUsers, t]);
@@ -130,10 +130,10 @@ const UserManagement: React.FC = () => {
     const handleDelete = async (id: string) => {
         try {
             await api.deleteUser(id);
-            message.success(t('userManagement.deleteSuccess'));
+            message.success(t('user.management.deleteSuccess'));
             setRefreshKey((v) => v + 1);
         } catch (error: any) {
-            message.error(error.message || t('userManagement.deleteError'));
+            message.error(error.message || t('user.management.deleteError'));
         }
     };
 
@@ -152,10 +152,10 @@ const UserManagement: React.FC = () => {
             }
             if (editingUser) {
                 await api.updateUser(editingUser.id, values);
-                message.success(t('userManagement.updateSuccess'));
+                message.success(t('user.management.updateSuccess'));
             } else {
                 await api.createUser(values);
-                message.success(t('userManagement.createSuccess'));
+                message.success(t('user.management.createSuccess'));
             }
             setIsModalOpen(false);
             setRefreshKey((v) => v + 1);
@@ -175,7 +175,7 @@ const UserManagement: React.FC = () => {
                 roleData.expiresAt = (values.expiresAt as Dayjs).toISOString();
             }
             await api.assignUserRole(selectedUserId, roleData);
-            message.success(t('userManagement.roleAssigned'));
+            message.success(t('user.management.roleAssigned'));
             await fetchUserRoles(selectedUserId);
             roleForm.resetFields();
             setRefreshKey((v) => v + 1);
@@ -188,7 +188,7 @@ const UserManagement: React.FC = () => {
         if (!selectedUserId) return;
         try {
             await api.revokeUserRole(selectedUserId, roleId);
-            message.success(t('userManagement.roleRevoked'));
+            message.success(t('user.management.roleRevoked'));
             await fetchUserRoles(selectedUserId);
             setRefreshKey((v) => v + 1);
         } catch (error: any) {
@@ -269,13 +269,13 @@ const UserManagement: React.FC = () => {
 
                         {canReadUserRoles && (
                             <Button type="link" icon={<KeyOutlined/>} onClick={() => handleManageRoles(record)}>
-                                {t('userManagement.manageRoles')}
+                                {t('user.management.manageRoles')}
                             </Button>
                         )}
 
                         {canDeleteThisUser ? (
                             <Popconfirm
-                                title={t('userManagement.deleteConfirm')}
+                                title={t('user.management.deleteConfirm')}
                                 onConfirm={() => handleDelete(record.id)}
                                 okText={t('common.yes')}
                                 cancelText={t('common.no')}
@@ -286,7 +286,7 @@ const UserManagement: React.FC = () => {
                             </Popconfirm>
                         ) : (
                             <Tooltip
-                                title={record.id === currentUser?.id ? t('userManagement.cannotDeleteSelf') : t('common.noPermission')}>
+                                title={record.id === currentUser?.id ? t('user.management.cannotDeleteSelf') : t('common.noPermission')}>
                                 <Button type="link" danger icon={<DeleteOutlined/>} disabled>
                                     {t('common.delete')}
                                 </Button>
@@ -326,15 +326,15 @@ const UserManagement: React.FC = () => {
     return (
         <div className="flex h-full flex-col overflow-hidden p-6">
             <div className="mb-4 flex flex-shrink-0 items-center justify-between">
-                <span className="m-0 font-semibold">{t('userManagement.title')}</span>
+                <span className="m-0 font-semibold">{t('user.management.title')}</span>
                 {canCreateUser ? (
                     <Button type="primary" icon={<PlusOutlined/>} onClick={handleAdd}>
-                        {t('userManagement.addUser')}
+                        {t('user.management.addUser')}
                     </Button>
                 ) : (
                     <Tooltip title={t('common.noPermission')}>
                         <Button type="primary" icon={<PlusOutlined/>} disabled>
-                            {t('userManagement.addUser')}
+                            {t('user.management.addUser')}
                         </Button>
                     </Tooltip>
                 )}
@@ -368,7 +368,7 @@ const UserManagement: React.FC = () => {
 
             {/* User Edit Modal */}
             <Modal
-                title={editingUser ? t('userManagement.editUser') : t('userManagement.addUser')}
+                title={editingUser ? t('user.management.editUser') : t('user.management.addUser')}
                 open={isModalOpen}
                 onOk={handleOk}
                 onCancel={() => setIsModalOpen(false)}
@@ -377,7 +377,7 @@ const UserManagement: React.FC = () => {
                     <Form.Item
                         name="email"
                         label={t('common.email')}
-                        rules={[{required: true, type: 'email', message: t('userManagement.emailRequired')}]}
+                        rules={[{required: true, type: 'email', message: t('user.management.emailRequired')}]}
                     >
                         <Input disabled={!!editingUser}/>
                     </Form.Item>
@@ -390,8 +390,8 @@ const UserManagement: React.FC = () => {
                     <Form.Item
                         name="password"
                         label={t('common.password')}
-                        rules={[{required: !editingUser, message: t('userManagement.passwordRequired')}]}
-                        help={editingUser ? t('userManagement.passwordHelp') : undefined}
+                        rules={[{required: !editingUser, message: t('user.management.passwordRequired')}]}
+                        help={editingUser ? t('user.management.passwordHelp') : undefined}
                     >
                         <Input.Password/>
                     </Form.Item>
@@ -407,7 +407,7 @@ const UserManagement: React.FC = () => {
 
             {/* Role Management Modal */}
             <Modal
-                title={t('userManagement.manageRoles')}
+                title={t('user.management.manageRoles')}
                 open={isRoleModalOpen}
                 onCancel={() => setIsRoleModalOpen(false)}
                 footer={null}
@@ -421,9 +421,9 @@ const UserManagement: React.FC = () => {
                     <>
                         {/* Current Roles */}
                         <div className="mb-6">
-                            <h4>{t('userManagement.currentRoles')}</h4>
+                            <h4>{t('user.management.currentRoles')}</h4>
                             {userRoles.length === 0 ? (
-                                <p className="text-gray-500">{t('userManagement.noRoles')}</p>
+                                <p className="text-gray-500">{t('user.management.noRoles')}</p>
                             ) : (
                                 <Space direction="vertical" className="w-full" size="middle">
                                     {userRoles.map(ur => {
@@ -443,12 +443,12 @@ const UserManagement: React.FC = () => {
                                                     {ur.expiresAt && (
                                                         <span
                                                             className={`text-xs ${isExpired ? 'text-red-500' : 'text-gray-600'}`}>
-                              {isExpired ? t('userManagement.expired') : t('userManagement.expiresAt')}: {dayjs(ur.expiresAt).format('YYYY-MM-DD HH:mm:ss')}
+                              {isExpired ? t('user.management.expired') : t('user.management.expiresAt')}: {dayjs(ur.expiresAt).format('YYYY-MM-DD HH:mm:ss')}
                             </span>
                                                     )}
                                                     {!ur.expiresAt && (
                                                         <span className="text-xs text-gray-500">
-                              {t('userManagement.noExpiration')}
+                              {t('user.management.noExpiration')}
                             </span>
                                                     )}
                                                 </div>
@@ -459,7 +459,7 @@ const UserManagement: React.FC = () => {
                                                         size="small"
                                                         onClick={() => handleRevokeRole(ur.roleId)}
                                                     >
-                                                        {t('userManagement.revoke')}
+                                                        {t('user.management.revoke')}
                                                     </Button>
                                                 )}
                                             </div>
@@ -472,14 +472,14 @@ const UserManagement: React.FC = () => {
                         {/* Assign New Role */}
                         {canAssignRoles && (
                             <div>
-                                <h4>{t('userManagement.assignRole')}</h4>
+                                <h4>{t('user.management.assignRole')}</h4>
                                 <Form form={roleForm} layout="vertical" onFinish={handleAssignRole}>
                                     <Form.Item
                                         name="roleId"
-                                        label={t('userManagement.selectRole')}
-                                        rules={[{required: true, message: t('userManagement.selectRole')}]}
+                                        label={t('user.management.selectRole')}
+                                        rules={[{required: true, message: t('user.management.selectRole')}]}
                                     >
-                                        <Select placeholder={t('userManagement.selectRole')} className="w-full">
+                                        <Select placeholder={t('user.management.selectRole')} className="w-full">
                                             {roles
                                                 .filter(role => {
                                                     // Filter out already assigned roles
@@ -504,20 +504,20 @@ const UserManagement: React.FC = () => {
                                     </Form.Item>
                                     <Form.Item
                                         name="expiresAt"
-                                        label={t('userManagement.expiresAt')}
-                                        tooltip={t('userManagement.expiresAtTooltip')}
+                                        label={t('user.management.expiresAt')}
+                                        tooltip={t('user.management.expiresAtTooltip')}
                                     >
                                         <DatePicker
                                             showTime
                                             format="YYYY-MM-DD HH:mm:ss"
                                             className="w-full"
                                             disabledDate={(current) => current && current < dayjs().startOf('day')}
-                                            placeholder={t('userManagement.expiresAtPlaceholder')}
+                                            placeholder={t('user.management.expiresAtPlaceholder')}
                                         />
                                     </Form.Item>
                                     <Form.Item>
                                         <Button type="primary" htmlType="submit" block>
-                                            {t('userManagement.assign')}
+                                            {t('user.management.assign')}
                                         </Button>
                                     </Form.Item>
                                 </Form>

@@ -12,6 +12,7 @@ import {
     UserOutlined,
 } from '@ant-design/icons'
 import type {NavItem} from './types'
+import {useTranslation} from 'react-i18next'
 
 export type TopHeaderProps = {
     appTitle: string
@@ -33,11 +34,6 @@ export type TopHeaderProps = {
     onUserMenuClick: MenuProps['onClick']
 }
 
-const plusMenuItems: MenuProps['items'] = [
-    {key: 'new-project', label: 'New project'},
-    {key: 'new-dataset', label: 'New dataset'},
-]
-
 export const TopHeader: React.FC<TopHeaderProps> = ({
                                                         appTitle,
                                                         repoOwner,
@@ -57,10 +53,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                                         userMenuItems,
                                                         onUserMenuClick,
                                                     }) => {
+    const {t} = useTranslation()
     const languageMenuItems: MenuProps['items'] = languageOptions.map((option) => ({
         key: option.value,
         label: option.label,
     }))
+    const plusMenuItems: MenuProps['items'] = [
+        {key: 'new-project', label: t('layout.header.newProject')},
+        {key: 'new-dataset', label: t('layout.header.newDataset')},
+    ]
 
     return (
         <header className={`bg-[var(--github-header)] ${showBorder ? 'border-b border-github-border' : ''}`}>
@@ -135,7 +136,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                         icon={<UserOutlined/>}
                                         className="bg-gradient-to-br from-orange-400 to-pink-500"
                                     />
-                                    <span className="hidden lg:inline text-github-text">{userName || 'User'}</span>
+                                    <span className="hidden lg:inline text-github-text">{userName || t('layout.header.user')}</span>
                                     <DownOutlined className="text-github-muted"/>
                                 </div>
                             </Button>

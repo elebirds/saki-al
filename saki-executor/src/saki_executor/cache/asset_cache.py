@@ -91,12 +91,18 @@ class AssetCache:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
 
+        hasher = hashlib.sha256()
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.get(download_url)
-            resp.raise_for_status()
-            tmp.write_bytes(resp.content)
+            async with client.stream("GET", download_url) as response:
+                response.raise_for_status()
+                with tmp.open("wb") as file_obj:
+                    async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
+                        if not chunk:
+                            continue
+                        file_obj.write(chunk)
+                        hasher.update(chunk)
 
-        digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
+        digest = hasher.hexdigest()
         if digest != asset_hash:
             tmp.unlink(missing_ok=True)
             raise ValueError(f"asset hash mismatch: expect={asset_hash}, actual={digest}")

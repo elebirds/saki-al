@@ -81,6 +81,20 @@ class ExecutorPlugin(ABC):
     ) -> list[dict[str, Any]]:
         pass
 
+    async def predict_unlabeled_batch(
+            self,
+            workspace: Workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return await self.predict_unlabeled(
+            workspace=workspace,
+            unlabeled_samples=unlabeled_samples,
+            strategy=strategy,
+            params=params,
+        )
+
     @abstractmethod
     async def stop(self, job_id: str) -> None:
         pass

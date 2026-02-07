@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import heapq
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -175,7 +176,6 @@ class JobManager:
             labels = await self._fetch_all(job_id, "labels", project_id, source_commit_id)
             samples = await self._fetch_all(job_id, "samples", project_id, source_commit_id)
             annotations = await self._fetch_all(job_id, "annotations", project_id, source_commit_id)
-            unlabeled = await self._fetch_all(job_id, "unlabeled_samples", project_id, source_commit_id)
 
             train_samples = samples
             train_annotations = annotations
@@ -202,7 +202,7 @@ class JobManager:
 
             # Content-addressed local cache to reduce re-download.
             protected: set[str] = set()
-            for item in samples + unlabeled:
+            for item in samples:
                 asset_hash = item.get("asset_hash")
                 download_url = item.get("download_url")
                 if not asset_hash or not download_url:
@@ -224,7 +224,17 @@ class JobManager:
                 topk = int(params.get("topk", 200))
                 sampling_params = dict(params)
                 sampling_params["topk"] = topk
-                candidates = await plugin.predict_unlabeled(workspace, unlabeled, query_strategy, sampling_params)
+                candidates = await self._collect_topk_candidates_streaming(
+                    plugin=plugin,
+                    workspace=workspace,
+                    job_id=job_id,
+                    project_id=project_id,
+                    commit_id=source_commit_id,
+                    strategy=query_strategy,
+                    params=sampling_params,
+                    protected=protected,
+                    topk=topk,
+                )
             elif mode == "simulation":
                 await emit("log", {"level": "INFO", "message": "simulation mode skips active-learning TopK sampling"})
             else:
@@ -255,14 +265,16 @@ class JobManager:
                 upload_url = str(ticket.get("upload_url") or "")
                 storage_uri = str(ticket.get("storage_uri") or "")
                 headers = ticket.get("headers") or {}
-                data = Path(artifact.path).read_bytes()
+                artifact_path = Path(artifact.path)
+                size = artifact_path.stat().st_size
                 async with httpx.AsyncClient(timeout=180) as client:
-                    response = await client.put(upload_url, content=data, headers=headers)
-                    response.raise_for_status()
+                    with artifact_path.open("rb") as file_obj:
+                        response = await client.put(upload_url, content=file_obj, headers=headers)
+                        response.raise_for_status()
                 artifacts[artifact.name] = {
                     "kind": artifact.kind,
                     "uri": storage_uri,
-                    "meta": artifact.meta or {"size": len(data)},
+                    "meta": artifact.meta or {"size": size},
                 }
 
             self.executor_state = ExecutorState.FINALIZING
@@ -353,25 +365,14 @@ class JobManager:
         items: list[dict[str, Any]] = []
         cursor: str | None = None
         while True:
-            response_message = await self._request_message(
-                runtime_codec.build_data_request_message(
-                    request_id=str(uuid.uuid4()),
-                    job_id=job_id,
-                    query_type=query_type,
-                    project_id=project_id,
-                    commit_id=commit_id,
-                    cursor=cursor,
-                    limit=limit,
-                )
+            response = await self._fetch_page(
+                job_id=job_id,
+                query_type=query_type,
+                project_id=project_id,
+                commit_id=commit_id,
+                cursor=cursor,
+                limit=limit,
             )
-            payload_type = response_message.WhichOneof("payload")
-            if payload_type == "error":
-                error_payload = runtime_codec.parse_error(response_message.error)
-                raise RuntimeError(str(error_payload.get("error") or "data request failed"))
-            if payload_type != "data_response":
-                raise RuntimeError(f"unexpected data response payload: {payload_type}")
-
-            response = runtime_codec.parse_data_response(response_message.data_response)
             chunk = response.get("items") or []
             items.extend(chunk)
             cursor = response.get("next_cursor")
@@ -380,6 +381,123 @@ class JobManager:
             if self._stop_event.is_set():
                 raise asyncio.CancelledError("job stop requested")
         return items
+
+    async def _fetch_page(
+            self,
+            *,
+            job_id: str,
+            query_type: str,
+            project_id: str,
+            commit_id: str,
+            cursor: str | None,
+            limit: int,
+    ) -> dict[str, Any]:
+        if self._request_message is None:
+            raise RuntimeError("job manager request transport is not configured")
+
+        response_message = await self._request_message(
+            runtime_codec.build_data_request_message(
+                request_id=str(uuid.uuid4()),
+                job_id=job_id,
+                query_type=query_type,
+                project_id=project_id,
+                commit_id=commit_id,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+        payload_type = response_message.WhichOneof("payload")
+        if payload_type == "error":
+            error_payload = runtime_codec.parse_error(response_message.error)
+            raise RuntimeError(str(error_payload.get("error") or "data request failed"))
+        if payload_type != "data_response":
+            raise RuntimeError(f"unexpected data response payload: {payload_type}")
+        return runtime_codec.parse_data_response(response_message.data_response)
+
+    async def _collect_topk_candidates_streaming(
+            self,
+            *,
+            plugin: ExecutorPlugin,
+            workspace: Workspace,
+            job_id: str,
+            project_id: str,
+            commit_id: str,
+            strategy: str,
+            params: dict[str, Any],
+            protected: set[str],
+            topk: int,
+    ) -> list[dict[str, Any]]:
+        page_size = max(1, min(5000, int(params.get("unlabeled_page_size", 1000))))
+        target_topk = max(1, topk)
+        cursor: str | None = None
+        heap: list[tuple[float, int, dict[str, Any]]] = []
+        counter = 0
+
+        while True:
+            if self._stop_event.is_set():
+                raise asyncio.CancelledError("job stop requested")
+
+            response = await self._fetch_page(
+                job_id=job_id,
+                query_type="unlabeled_samples",
+                project_id=project_id,
+                commit_id=commit_id,
+                cursor=cursor,
+                limit=page_size,
+            )
+            chunk = response.get("items") or []
+            if not chunk and not response.get("next_cursor"):
+                break
+
+            # Download current page samples on demand, avoiding full-dataset prefetch.
+            for item in chunk:
+                asset_hash = item.get("asset_hash")
+                download_url = item.get("download_url")
+                if not asset_hash or not download_url:
+                    continue
+                cached_path = await self.cache.ensure_cached(
+                    str(asset_hash),
+                    str(download_url),
+                    protected=protected,
+                    pin_job_id=job_id,
+                )
+                item["local_path"] = str(cached_path)
+                protected.add(str(asset_hash))
+
+            batch = await plugin.predict_unlabeled_batch(
+                workspace=workspace,
+                unlabeled_samples=chunk,
+                strategy=strategy,
+                params=params,
+            )
+            for candidate in batch or []:
+                sample_id = str(candidate.get("sample_id") or "")
+                if not sample_id:
+                    continue
+                try:
+                    score = float(candidate.get("score") or 0.0)
+                except Exception:
+                    score = 0.0
+                payload = {
+                    "sample_id": sample_id,
+                    "score": score,
+                    "reason": candidate.get("reason") or {},
+                }
+                counter += 1
+                key = (score, counter, payload)
+                if len(heap) < target_topk:
+                    heapq.heappush(heap, key)
+                else:
+                    smallest = heap[0]
+                    if score > smallest[0]:
+                        heapq.heapreplace(heap, key)
+
+            cursor = response.get("next_cursor")
+            if not cursor:
+                break
+
+        ranked = sorted(heap, key=lambda item: item[0], reverse=True)
+        return [item[2] for item in ranked]
 
     @staticmethod
     def _normalize_simulation_ratio_schedule(raw: Any) -> list[float]:

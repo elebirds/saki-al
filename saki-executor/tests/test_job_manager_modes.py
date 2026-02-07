@@ -82,6 +82,30 @@ class _ModeAwarePlugin(ExecutorPlugin):
         return
 
 
+class _BatchScoringPlugin(_ModeAwarePlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self.batch_calls = 0
+
+    async def predict_unlabeled_batch(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        del workspace, strategy, params
+        self.batch_calls += 1
+        candidates: list[dict[str, Any]] = []
+        for sample in unlabeled_samples:
+            sample_id = str(sample.get("id") or "")
+            if not sample_id:
+                continue
+            score = float(sample_id.replace("u", ""))
+            candidates.append({"sample_id": sample_id, "score": score, "reason": {"s": score}})
+        return candidates
+
+
 def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> JobManager:
     registry = PluginRegistry()
     registry.register(plugin)
@@ -230,3 +254,78 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
     assert plugin.predict_calls == 1
     assert plugin.prepare_samples_count == 4
     assert plugin.prepare_annotations_count == 2
+
+
+@pytest.mark.anyio
+async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
+    plugin = _BatchScoringPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+
+        next_cursor = ""
+        if request.query_type == pb.UNLABELED_SAMPLES:
+            if not request.cursor:
+                items = [
+                    pb.DataItem(sample_item=pb.SampleItem(id="u1")),
+                    pb.DataItem(sample_item=pb.SampleItem(id="u5")),
+                    pb.DataItem(sample_item=pb.SampleItem(id="u3")),
+                ]
+                next_cursor = "page-2"
+            else:
+                items = [
+                    pb.DataItem(sample_item=pb.SampleItem(id="u2")),
+                    pb.DataItem(sample_item=pb.SampleItem(id="u9")),
+                    pb.DataItem(sample_item=pb.SampleItem(id="u4")),
+                ]
+                next_cursor = ""
+            return pb.RuntimeMessage(
+                data_response=pb.DataResponse(
+                    request_id=f"resp-{request.request_id}",
+                    reply_to=request.request_id,
+                    job_id=request.job_id,
+                    query_type=request.query_type,
+                    items=items,
+                    next_cursor=next_cursor,
+                )
+            )
+
+        return _build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            job_id=request.job_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_job(
+        "assign-al-stream-1",
+        {
+            "job_id": "job-al-stream-1",
+            "project_id": "project-1",
+            "source_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "params": {"topk": 2, "unlabeled_page_size": 3},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].job_result
+    assert result.status == pb.SUCCEEDED
+    assert [item.sample_id for item in result.candidates] == ["u9", "u5"]
+    assert plugin.batch_calls == 2

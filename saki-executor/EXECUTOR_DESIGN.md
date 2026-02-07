@@ -260,6 +260,6 @@ uv run python -m saki_executor.main
 ## 13. 当前已知限制
 
 1. v1 仍以内置 demo 插件为主，真实训练栈与模型特化策略仍需继续补齐。
-2. `DataRequest.query_type` 仍使用字符串枚举，后续可进一步收敛为 proto enum。
-3. 命令系统目前为本地 stdin 通道，尚未提供远程管理端口。
-4. 单执行器固定单任务串行，扩展依赖多实例部署。
+2. 命令系统目前为本地 stdin 通道，尚未提供远程管理端口。
+3. 单执行器固定单任务串行，扩展依赖多实例部署。
+4. 安全模型当前仍以 `internal token + allowlist` 为主，mTLS 尚未启用。

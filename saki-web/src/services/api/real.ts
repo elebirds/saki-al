@@ -25,6 +25,7 @@ import {
     ProjectLabelUpdate,
     ProjectSample,
     RuntimeArtifactsResponse,
+    JobArtifactDownload,
     RuntimeJob,
     RuntimeJobCommandResponse,
     RuntimeJobCreateRequest,
@@ -767,6 +768,18 @@ export class RealApiService implements ApiService {
 
     async getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse> {
         const response = await this.client.get<RuntimeArtifactsResponse>(`/jobs/${jobId}/artifacts`);
+        return response.data;
+    }
+
+    async getJobArtifactDownloadUrl(
+        jobId: string,
+        artifactName: string,
+        expiresInHours: number = 2
+    ): Promise<JobArtifactDownload> {
+        const response = await this.client.get<JobArtifactDownload>(
+            `/jobs/${jobId}/artifacts/${artifactName}:download-url`,
+            {params: {expires_in_hours: expiresInHours}}
+        );
         return response.data;
     }
 

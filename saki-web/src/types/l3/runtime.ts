@@ -266,3 +266,10 @@ export interface ModelArtifactDownload {
     downloadUrl: string;
     expiresInHours: number;
 }
+
+export interface JobArtifactDownload {
+    jobId: string;
+    artifactName: string;
+    downloadUrl: string;
+    expiresInHours: number;
+}

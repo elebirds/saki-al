@@ -25,6 +25,7 @@ from saki_api.schemas.l3.job import (
     JobCandidateRead,
     JobArtifactsResponse,
     JobArtifactRead,
+    JobArtifactDownloadResponse,
     AnnotationBatchRead,
     AnnotationBatchCreateRequest,
 )
@@ -249,6 +250,36 @@ async def get_job_artifacts(
     return JobArtifactsResponse(
         job_id=job_id,
         artifacts=[JobArtifactRead(**item) for item in artifacts],
+    )
+
+
+@router.get("/jobs/{job_id}/artifacts/{artifact_name}:download-url", response_model=JobArtifactDownloadResponse)
+async def get_job_artifact_download_url(
+        *,
+        job_id: uuid.UUID,
+        artifact_name: str,
+        expires_in_hours: int = Query(default=2, ge=1, le=24),
+        job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_READ,
+    )
+    download_url = await job_service.get_artifact_download_url(
+        job_id=job_id,
+        artifact_name=artifact_name,
+        expires_in_hours=expires_in_hours,
+    )
+    return JobArtifactDownloadResponse(
+        job_id=job_id,
+        artifact_name=artifact_name,
+        download_url=download_url,
+        expires_in_hours=expires_in_hours,
     )
 
 

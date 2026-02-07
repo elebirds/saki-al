@@ -159,6 +159,13 @@ class JobArtifactsResponse(BaseModel):
     artifacts: List[JobArtifactRead]
 
 
+class JobArtifactDownloadResponse(BaseModel):
+    job_id: uuid.UUID
+    artifact_name: str
+    download_url: str
+    expires_in_hours: int = Field(default=2, ge=1, le=24)
+
+
 class LoopRoundRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

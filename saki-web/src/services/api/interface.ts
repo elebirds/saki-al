@@ -24,6 +24,7 @@ import {
     ProjectLabelUpdate,
     ProjectSample,
     RuntimeArtifactsResponse,
+    JobArtifactDownload,
     RuntimeJob,
     RuntimeJobCommandResponse,
     RuntimeJobCreateRequest,
@@ -220,6 +221,7 @@ export interface ApiService {
     getJobSamplingTopK(jobId: string, limit?: number): Promise<RuntimeTopKCandidate[]>;
 
     getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse>;
+    getJobArtifactDownloadUrl(jobId: string, artifactName: string, expiresInHours?: number): Promise<JobArtifactDownload>;
 
     createAnnotationBatchFromJob(jobId: string, limit?: number): Promise<AnnotationBatch>;
 

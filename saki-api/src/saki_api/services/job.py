@@ -3,6 +3,7 @@ Job Service - Business logic for L3 runtime jobs.
 """
 
 import uuid
+from datetime import timedelta
 from typing import List
 
 from sqlmodel import select
@@ -29,6 +30,7 @@ from saki_api.services.loop_config import (
 )
 from saki_api.services.runtime_plugin_catalog import extract_executor_plugins
 from saki_api.services.base import BaseService
+from saki_api.utils.storage import get_storage_provider
 
 
 class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequest]):
@@ -40,6 +42,7 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         self.loop_repo = LoopRepository(session)
         self.job_event_repo = JobEventRepository(session)
         self.job_metric_repo = JobMetricPointRepository(session)
+        self.storage = get_storage_provider()
 
     @transactional
     async def create_job_for_loop(self, loop_id: uuid.UUID, payload: JobCreateRequest) -> Job:
@@ -249,3 +252,36 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
                 }
             )
         return artifacts
+
+    async def get_artifact_download_url(
+            self,
+            *,
+            job_id: uuid.UUID,
+            artifact_name: str,
+            expires_in_hours: int = 2,
+    ) -> str:
+        job = await self.repository.get_by_id_or_raise(job_id)
+        artifact = (job.artifacts or {}).get(artifact_name)
+        if not artifact:
+            raise NotFoundAppException(f"Artifact {artifact_name} not found")
+        if not isinstance(artifact, dict):
+            raise BadRequestAppException("Artifact payload is invalid")
+
+        uri = str(artifact.get("uri") or "")
+        if not uri:
+            raise BadRequestAppException("Artifact URI is empty")
+
+        if uri.startswith("s3://"):
+            _, _, bucket_and_path = uri.partition("s3://")
+            _, _, object_path = bucket_and_path.partition("/")
+            if not object_path:
+                raise BadRequestAppException(f"Invalid S3 URI: {uri}")
+            return self.storage.get_presigned_url(
+                object_name=object_path,
+                expires_delta=timedelta(hours=expires_in_hours),
+            )
+
+        if uri.startswith("http://") or uri.startswith("https://"):
+            return uri
+
+        raise BadRequestAppException(f"Unsupported artifact URI: {uri}")

@@ -8,6 +8,7 @@ export interface ALLoop {
     queryStrategy: string;
     modelArch: string;
     globalConfig: Record<string, any>;
+    modelRequestConfig: Record<string, any>;
     currentIteration: number;
     isActive: boolean;
     status: ALLoopStatus;
@@ -61,8 +62,24 @@ export interface LoopCreateRequest {
     queryStrategy?: string;
     modelArch?: string;
     globalConfig?: Record<string, any>;
+    modelRequestConfig?: Record<string, any>;
     isActive?: boolean;
     status?: ALLoopStatus;
+    maxRounds?: number;
+    queryBatchSize?: number;
+    minSeedLabeled?: number;
+    minNewLabelsPerRound?: number;
+    stopPatienceRounds?: number;
+    stopMinGain?: number;
+    autoRegisterModel?: boolean;
+}
+
+export interface LoopUpdateRequest {
+    name?: string;
+    queryStrategy?: string;
+    modelArch?: string;
+    globalConfig?: Record<string, any>;
+    modelRequestConfig?: Record<string, any>;
     maxRounds?: number;
     queryBatchSize?: number;
     minSeedLabeled?: number;
@@ -206,6 +223,41 @@ export interface ProjectModel {
     createdBy?: string | null;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface RuntimeRequestConfigField {
+    key: string;
+    label: string;
+    type: 'integer' | 'number' | 'string' | 'boolean' | 'select';
+    required?: boolean;
+    min?: number;
+    max?: number;
+    options?: Array<{ label: string; value: string | number | boolean }>;
+}
+
+export interface RuntimeRequestConfigSchema {
+    title?: string;
+    fields?: RuntimeRequestConfigField[];
+}
+
+export interface RuntimePluginCatalogItem {
+    pluginId: string;
+    displayName: string;
+    version: string;
+    supportedJobTypes: string[];
+    supportedStrategies: string[];
+    requestConfigSchema: RuntimeRequestConfigSchema;
+    defaultRequestConfig: Record<string, any>;
+    executorsTotal: number;
+    executorsOnline: number;
+    executorsAvailable: number;
+    availabilityRate: number;
+    hasConflict: boolean;
+    conflictFields: string[];
+}
+
+export interface RuntimePluginCatalogResponse {
+    items: RuntimePluginCatalogItem[];
 }
 
 export interface ModelArtifactDownload {

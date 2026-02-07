@@ -9,10 +9,11 @@ import ProjectBranches from './pages/project/ProjectBranches';
 import ProjectCommits from './pages/project/ProjectCommits';
 import ProjectCommitDetail from './pages/project/ProjectCommitDetail';
 import ProjectSamplesAnnotations from './pages/project/ProjectSamplesAnnotations';
-import ProjectLoops from './pages/project/ProjectLoops';
 import ProjectInsights from './pages/project/ProjectInsights';
 import ProjectSettings from './pages/project/ProjectSettings';
 import ProjectWorkspace from './pages/project/ProjectWorkspace';
+import ProjectLoopOverview from './pages/project/loops/ProjectLoopOverview';
+import ProjectLoopDetail from './pages/project/loops/ProjectLoopDetail';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
 import UserProfile from './pages/user/UserProfile';
@@ -62,7 +63,8 @@ const App: React.FC = () => {
                                     <Route path="commits" element={<ProjectCommits/>}/>
                                     <Route path="commits/:commitId" element={<ProjectCommitDetail/>}/>
                                     <Route path="samples" element={<ProjectSamplesAnnotations/>}/>
-                                    <Route path="loops" element={<ProjectLoops/>}/>
+                                    <Route path="loops" element={<ProjectLoopOverview/>}/>
+                                    <Route path="loops/:loopId" element={<ProjectLoopDetail/>}/>
                                     <Route path="insights" element={<ProjectInsights/>}/>
                                     <Route path="settings" element={<ProjectSettings/>}/>
                                     <Route path="workspace" element={<ProjectWorkspace/>}/>

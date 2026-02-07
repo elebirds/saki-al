@@ -32,8 +32,10 @@ import {
     RuntimeMetricPoint,
     RuntimeTopKCandidate,
     LoopCreateRequest,
+    LoopUpdateRequest,
     LoopRound,
     LoopSummary,
+    RuntimePluginCatalogResponse,
     AnnotationBatch,
     AnnotationBatchItem,
     ProjectModel,
@@ -671,6 +673,16 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async getLoopById(loopId: string): Promise<ALLoop> {
+        const response = await this.client.get<ALLoop>(`/loops/${loopId}`);
+        return response.data;
+    }
+
+    async updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop> {
+        const response = await this.client.patch<ALLoop>(`/loops/${loopId}`, payload);
+        return response.data;
+    }
+
     async startLoop(loopId: string): Promise<ALLoop> {
         const response = await this.client.post<ALLoop>(`/loops/${loopId}:start`);
         return response.data;
@@ -698,6 +710,11 @@ export class RealApiService implements ApiService {
 
     async getLoopSummary(loopId: string): Promise<LoopSummary> {
         const response = await this.client.get<LoopSummary>(`/loops/${loopId}/summary`);
+        return response.data;
+    }
+
+    async getRuntimePlugins(): Promise<RuntimePluginCatalogResponse> {
+        const response = await this.client.get<RuntimePluginCatalogResponse>('/runtime/plugins');
         return response.data;
     }
 

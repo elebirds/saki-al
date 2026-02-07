@@ -31,8 +31,10 @@ import {
     RuntimeMetricPoint,
     RuntimeTopKCandidate,
     LoopCreateRequest,
+    LoopUpdateRequest,
     LoopRound,
     LoopSummary,
+    RuntimePluginCatalogResponse,
     AnnotationBatch,
     AnnotationBatchItem,
     ProjectModel,
@@ -185,6 +187,10 @@ export interface ApiService {
 
     createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop>;
 
+    getLoopById(loopId: string): Promise<ALLoop>;
+
+    updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop>;
+
     startLoop(loopId: string): Promise<ALLoop>;
 
     pauseLoop(loopId: string): Promise<ALLoop>;
@@ -196,6 +202,8 @@ export interface ApiService {
     getLoopRounds(loopId: string, limit?: number): Promise<LoopRound[]>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
+
+    getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
 
     getLoopJobs(loopId: string, limit?: number): Promise<RuntimeJob[]>;
 

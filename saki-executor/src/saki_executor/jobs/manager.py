@@ -109,11 +109,14 @@ class JobManager:
         project_id = str(payload.get("project_id") or "")
         source_commit_id = str(payload.get("source_commit_id") or "")
         query_strategy = str(payload.get("query_strategy") or "uncertainty_1_minus_max_conf")
+        mode = str(payload.get("mode") or "active_learning").lower()
+        iteration = int(payload.get("iteration") or (params.get("_iteration") or 1))
         final_status = JobStatus.FAILED
         logger.info(
-            "任务开始执行 job_id={} plugin_id={} query_strategy={}",
+            "任务开始执行 job_id={} plugin_id={} mode={} query_strategy={}",
             job_id,
             plugin_id,
+            mode,
             query_strategy,
         )
 
@@ -174,6 +177,29 @@ class JobManager:
             annotations = await self._fetch_all(job_id, "annotations", project_id, source_commit_id)
             unlabeled = await self._fetch_all(job_id, "unlabeled_samples", project_id, source_commit_id)
 
+            train_samples = samples
+            train_annotations = annotations
+            if mode == "simulation":
+                schedule = self._normalize_simulation_ratio_schedule(params.get("simulation_ratio_schedule"))
+                ratio = self._resolve_simulation_ratio(iteration=iteration, schedule=schedule)
+                train_samples, train_annotations = await plugin.select_simulation_subset(
+                    samples=samples,
+                    annotations=annotations,
+                    ratio=ratio,
+                    iteration=iteration,
+                    params=params,
+                )
+                await emit(
+                    "log",
+                    {
+                        "level": "INFO",
+                        "message": (
+                            f"simulation mode enabled iteration={iteration} ratio={ratio:.4f} "
+                            f"train_samples={len(train_samples)} train_annotations={len(train_annotations)}"
+                        ),
+                    },
+                )
+
             # Content-addressed local cache to reduce re-download.
             protected: set[str] = set()
             for item in samples + unlabeled:
@@ -190,13 +216,23 @@ class JobManager:
                 item["local_path"] = str(cached_path)
                 protected.add(str(asset_hash))
 
-            await plugin.prepare_data(workspace, labels, samples, annotations)
+            await plugin.prepare_data(workspace, labels, train_samples, train_annotations)
             output = await plugin.train(workspace, params, emit)
 
-            topk = int(params.get("topk", 200))
-            sampling_params = dict(params)
-            sampling_params["topk"] = topk
-            candidates = await plugin.predict_unlabeled(workspace, unlabeled, query_strategy, sampling_params)
+            candidates: list[dict[str, Any]] = []
+            if mode == "active_learning":
+                topk = int(params.get("topk", 200))
+                sampling_params = dict(params)
+                sampling_params["topk"] = topk
+                candidates = await plugin.predict_unlabeled(workspace, unlabeled, query_strategy, sampling_params)
+            elif mode == "simulation":
+                await emit("log", {"level": "INFO", "message": "simulation mode skips active-learning TopK sampling"})
+            else:
+                logger.warning("未知任务模式 mode={}，默认按 active_learning 执行选样。", mode)
+                topk = int(params.get("topk", 200))
+                sampling_params = dict(params)
+                sampling_params["topk"] = topk
+                candidates = await plugin.predict_unlabeled(workspace, unlabeled, query_strategy, sampling_params)
 
             artifacts: dict[str, Any] = {}
             for artifact in output.artifacts:
@@ -344,3 +380,27 @@ class JobManager:
             if self._stop_event.is_set():
                 raise asyncio.CancelledError("job stop requested")
         return items
+
+    @staticmethod
+    def _normalize_simulation_ratio_schedule(raw: Any) -> list[float]:
+        default_schedule = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0]
+        if not isinstance(raw, list):
+            return default_schedule
+
+        values: list[float] = []
+        for item in raw:
+            try:
+                ratio = float(item)
+            except Exception:
+                continue
+            values.append(max(0.0, min(1.0, ratio)))
+        return values or default_schedule
+
+    @staticmethod
+    def _resolve_simulation_ratio(*, iteration: int, schedule: list[float]) -> float:
+        if not schedule:
+            return 1.0
+        if iteration <= 1:
+            return float(schedule[0])
+        index = min(len(schedule) - 1, max(0, iteration - 1))
+        return float(schedule[index])

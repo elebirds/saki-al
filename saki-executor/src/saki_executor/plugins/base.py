@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 from typing import Any, Callable, Awaitable
 
@@ -83,3 +84,36 @@ class ExecutorPlugin(ABC):
     @abstractmethod
     async def stop(self, job_id: str) -> None:
         pass
+
+    async def select_simulation_subset(
+            self,
+            *,
+            samples: list[dict[str, Any]],
+            annotations: list[dict[str, Any]],
+            ratio: float,
+            iteration: int,
+            params: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        del iteration, params
+        if not samples or not annotations:
+            return samples, annotations
+
+        sample_map = {str(item.get("id") or ""): item for item in samples if item.get("id")}
+        labeled_sample_ids = sorted(
+            {
+                str(item.get("sample_id") or "")
+                for item in annotations
+                if str(item.get("sample_id") or "") in sample_map
+            }
+        )
+        if not labeled_sample_ids:
+            return samples, annotations
+
+        target = max(1, min(len(labeled_sample_ids), ceil(len(labeled_sample_ids) * ratio)))
+        selected_ids = set(labeled_sample_ids[:target])
+        selected_samples = [sample_map[sample_id] for sample_id in labeled_sample_ids if sample_id in selected_ids]
+        selected_annotations = [
+            item for item in annotations
+            if str(item.get("sample_id") or "") in selected_ids
+        ]
+        return selected_samples, selected_annotations

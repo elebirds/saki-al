@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     CPU_WORKERS: int = 4
     MEMORY_MB: int = 0
 
+    LOG_LEVEL: str = "INFO"
+    LOG_DIR: str = "logs"
+    LOG_FILE_NAME: str = "executor.log"
+    LOG_MAX_BYTES: int = 20 * 1024 * 1024
+    LOG_BACKUP_COUNT: int = 5
+
+    ENABLE_COMMAND_STDIN: bool = True
+
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 
 

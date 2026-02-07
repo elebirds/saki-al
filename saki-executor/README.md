@@ -9,3 +9,20 @@ cd saki-executor
 uv sync
 uv run python -m saki_executor.main
 ```
+
+## 运行时命令
+
+启动后可在当前终端输入：
+
+1. `help`
+2. `status`
+3. `plugins`
+4. `connect`
+5. `disconnect`
+6. `stop [job_id]`
+7. `loglevel <LEVEL>`
+8. `quit` / `exit`
+
+## 设计文档
+
+详见 `EXECUTOR_DESIGN.md`。

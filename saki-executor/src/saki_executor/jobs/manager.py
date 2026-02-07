@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -16,6 +17,8 @@ from saki_executor.sdk.reporter import JobReporter
 
 SendFn = Callable[[dict[str, Any]], Awaitable[None]]
 RequestFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+logger = logging.getLogger(__name__)
 
 
 class JobManager:
@@ -50,14 +53,30 @@ class JobManager:
     def busy(self) -> bool:
         return self._task is not None and not self._task.done()
 
+    def status_snapshot(self) -> dict[str, Any]:
+        return {
+            "executor_state": self.executor_state.value,
+            "busy": self.busy,
+            "current_job_id": self.current_job_id,
+            "last_job_id": self.last_job_id,
+            "last_job_status": self.last_job_status.value if self.last_job_status else None,
+        }
+
     async def assign_job(self, request_id: str, payload: dict[str, Any]) -> bool:
         async with self._lock:
             if self.busy:
+                logger.warning("拒绝任务分配：executor busy, request_id=%s", request_id)
                 return False
             self.current_job_id = str(payload.get("job_id") or "")
             self.executor_state = ExecutorState.RESERVED
             self._stop_event.clear()
             self._task = asyncio.create_task(self._run_job(payload))
+            logger.info(
+                "接受任务分配 request_id=%s job_id=%s plugin_id=%s",
+                request_id,
+                self.current_job_id,
+                str(payload.get("plugin_id") or ""),
+            )
             return True
 
     async def stop_job(self, job_id: str) -> bool:
@@ -72,6 +91,7 @@ class JobManager:
                 return False
             self._stop_event.set()
             plugin = self._active_plugin
+            logger.info("收到停止任务请求 job_id=%s", job_id)
         if plugin:
             try:
                 await plugin.stop(job_id)
@@ -91,6 +111,12 @@ class JobManager:
         source_commit_id = str(payload.get("source_commit_id") or "")
         query_strategy = str(payload.get("query_strategy") or "uncertainty_1_minus_max_conf")
         final_status = JobStatus.FAILED
+        logger.info(
+            "任务开始执行 job_id=%s plugin_id=%s query_strategy=%s",
+            job_id,
+            plugin_id,
+            query_strategy,
+        )
 
         workspace = Workspace(self.runs_dir, job_id)
         workspace.ensure()
@@ -212,6 +238,7 @@ class JobManager:
                 }
             )
             final_status = JobStatus.SUCCEEDED
+            logger.info("任务执行成功 job_id=%s", job_id)
         except asyncio.CancelledError:
             self.executor_state = ExecutorState.FINALIZING
             stop_event = reporter.status(JobStatus.STOPPED.value, "job stopped")
@@ -229,6 +256,7 @@ class JobManager:
                 }
             )
             final_status = JobStatus.STOPPED
+            logger.warning("任务被停止 job_id=%s", job_id)
         except Exception as exc:
             self.executor_state = ExecutorState.FINALIZING
             fail_event = reporter.status(JobStatus.FAILED.value, str(exc))
@@ -246,6 +274,7 @@ class JobManager:
                 }
             )
             final_status = JobStatus.FAILED
+            logger.exception("任务执行失败 job_id=%s error=%s", job_id, exc)
         finally:
             async with self._lock:
                 self.executor_state = ExecutorState.IDLE
@@ -255,6 +284,7 @@ class JobManager:
                 self._task = None
                 self._stop_event.clear()
                 self._active_plugin = None
+            logger.info("任务收尾完成 job_id=%s final_status=%s", job_id, final_status.value)
 
     async def _push_event(self, job_id: str, event: dict[str, Any]) -> None:
         if self._send_message is None:

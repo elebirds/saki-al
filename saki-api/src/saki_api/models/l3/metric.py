@@ -1,10 +1,13 @@
 import uuid
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 from sqlalchemy import Column
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.models.base import UUIDMixin, OPT_JSON
+
+if TYPE_CHECKING:
+    from saki_api.models.l3.job import Job
 
 
 class JobSampleMetric(UUIDMixin, SQLModel, table=True):
@@ -37,3 +40,6 @@ class JobSampleMetric(UUIDMixin, SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(OPT_JSON)
     )
+
+    # Relationships
+    job: "Job" = Relationship(back_populates="sample_metrics")

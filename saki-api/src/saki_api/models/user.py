@@ -12,7 +12,8 @@ from sqlmodel import Field, SQLModel, Relationship
 from saki_api.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from saki_api.models.rbac import UserSystemRole, ResourceMember
+    from saki_api.models.rbac import ResourceMember
+    from saki_api.models import Role
 
 
 class UserBase(SQLModel):
@@ -32,10 +33,6 @@ class UserBase(SQLModel):
         default=True,
         description="Whether the user account is active"
     )
-    must_change_password: bool = Field(
-        default=False,
-        description="Whether the user must change password on next login"
-    )
     avatar_url: Optional[str] = Field(
         default=None,
         max_length=500,
@@ -43,30 +40,41 @@ class UserBase(SQLModel):
     )
 
 
-class User(UserBase, TimestampMixin, UUIDMixin, table=True):
-    """
-    User database model.
-    
-    Roles are managed through:
-    - system_roles: System-wide roles (UserSystemRole)
-    - resource_memberships: Resource-specific roles (ResourceMember)
-    """
-    __tablename__ = "user"
-
-    hashed_password: str = Field(description="Hashed password")
-
+class InitedUserBase(UserBase):
     # Last login tracking
     last_login_at: Optional[datetime] = Field(
         default=None,
         description="Last login timestamp"
     )
 
-    # Relationships - System roles (global permissions)
-    system_roles: List["UserSystemRole"] = Relationship(
+
+class User(UserBase, TimestampMixin, UUIDMixin, table=True):
+    """
+    User database model.
+    """
+    __tablename__ = "user"
+
+    must_change_password: bool = Field(default=False, description="Must change password")
+    hashed_password: str = Field(description="Hashed password")
+
+    # A. 业务快捷方式：直接拿 Role 对象 (Many-to-Many)
+    # 注意：设置 overlaps 避免与一对多关系冲突
+    roles: List["Role"] = Relationship(
+        back_populates="users",
+        sa_relationship_kwargs={
+            "secondary": "user_system_role",
+            "primaryjoin": "User.id == UserSystemRole.user_id",
+            "secondaryjoin": "UserSystemRole.role_id == Role.id",
+            "viewonly": True,  # 强烈建议设为只读，通过 assignments 维护数据
+        }
+    )
+
+    # B. 管理路径：操作中间表对象 (One-to-Many)
+    role_assignments: List["UserSystemRole"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={
-            "foreign_keys": "[UserSystemRole.user_id]",
-            "cascade": "all, delete-orphan"
+            "cascade": "all, delete-orphan",
+            "foreign_keys": "[UserSystemRole.user_id]"
         }
     )
 
@@ -78,61 +86,3 @@ class User(UserBase, TimestampMixin, UUIDMixin, table=True):
             "cascade": "all, delete-orphan"
         }
     )
-
-
-# ============================================================================
-# Schema Models
-# ============================================================================
-
-class UserCreate(SQLModel):
-    """Schema for creating a user."""
-    email: str = Field(max_length=255)
-    password: str = Field(min_length=6)
-    full_name: Optional[str] = Field(default=None, max_length=100)
-    is_active: bool = Field(default=True)
-    # Role will be assigned separately or default role will be auto-assigned
-
-
-class UserRead(SQLModel):
-    """Schema for reading user data."""
-    id: str
-    email: str
-    full_name: Optional[str] = None
-    is_active: bool
-    must_change_password: bool = False
-    avatar_url: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-    last_login_at: Optional[datetime] = None
-
-    # Include role information
-    system_roles: List[dict] = []  # [{id, name, displayName}]
-
-    class Config:
-        from_attributes = True
-
-
-class UserUpdate(SQLModel):
-    """Schema for updating a user."""
-    email: Optional[str] = Field(default=None, max_length=255)
-    password: Optional[str] = Field(default=None, min_length=6)
-    full_name: Optional[str] = Field(default=None, max_length=100)
-    is_active: Optional[bool] = None
-    must_change_password: Optional[bool] = None
-    avatar_url: Optional[str] = Field(default=None, max_length=500)
-
-
-class UserWithPermissions(UserRead):
-    """Extended user schema with permission details."""
-    permissions: List[str] = []  # List of permission strings
-    is_super_admin: bool = False
-
-
-# ========================================================
-# User List Item
-# ========================================================
-class UserListItem(SQLModel):
-    """Simplified user info for member selection."""
-    id: str
-    email: str
-    full_name: Optional[str] = None

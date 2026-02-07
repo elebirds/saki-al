@@ -36,11 +36,17 @@ class AnnotationBase(SQLModel):
                                   description="ID of the project this annotation belongs to.")
 
     # 视图同步字段
-    # 逻辑同步 ID：用于跨视图同步同一标注
-    sync_id: uuid.UUID = Field(
+    # 组 ID：用于跨视图聚合同组标注（用户 + 系统映射）
+    group_id: uuid.UUID = Field(
         index=True,
         nullable=False,
-        description="Logical UUID for synchronizing annotations across views."
+        description="Group UUID for annotations across views."
+    )
+    # 血缘 ID：用于跨版本追踪同一逻辑标注
+    lineage_id: uuid.UUID = Field(
+        index=True,
+        nullable=False,
+        description="Logical lineage UUID for tracking annotation versions."
     )
     # 视图角色：标注所属视图角色（主视图/辅视图）
     view_role: str = Field(default="main", description="Role of the view this annotation belongs to.")

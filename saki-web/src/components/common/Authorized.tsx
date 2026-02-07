@@ -5,37 +5,33 @@
  */
 
 import React from 'react';
-import { usePermission, useResourcePermission } from '../../hooks/permission';
+import {usePermission, useResourcePermission} from '../../hooks/permission';
 
 // ============================================================================
 // Authorized Component
 // ============================================================================
 
 interface AuthorizedProps {
-  /**
-   * Required permission string (e.g., "dataset:create", "annotation:update:self")
-   */
-  permission: string;
-  /**
-   * Resource type (e.g., "dataset")
-   */
-  resourceType?: string;
-  /**
-   * Resource ID
-   */
-  resourceId?: string;
-  /**
-   * Resource owner ID (for 'owned' scope checking)
-   */
-  resourceOwnerId?: string;
-  /**
-   * Content to show when user doesn't have permission
-   */
-  fallback?: React.ReactNode;
-  /**
-   * Children to render when authorized
-   */
-  children: React.ReactNode;
+    /**
+     * Required permission string (e.g., "dataset:create", "annotation:update:self")
+     */
+    permission: string;
+    /**
+     * Resource type (e.g., "dataset")
+     */
+    resourceType?: string;
+    /**
+     * Resource ID
+     */
+    resourceId?: string;
+    /**
+     * Content to show when user doesn't have permission
+     */
+    fallback?: React.ReactNode;
+    /**
+     * Children to render when authorized
+     */
+    children: React.ReactNode;
 }
 
 /**
@@ -53,29 +49,27 @@ interface AuthorizedProps {
  *   permission="dataset:delete"
  *   resourceType="dataset"
  *   resourceId={datasetId}
- *   resourceOwnerId={dataset.ownerId}
  *   fallback={<Tooltip title="No permission"><Button disabled>Delete</Button></Tooltip>}
  * >
  *   <Button danger>Delete Dataset</Button>
  * </Authorized>
  */
 export const Authorized: React.FC<AuthorizedProps> = ({
-  permission,
-  resourceType,
-  resourceId,
-  resourceOwnerId,
-  fallback = null,
-  children,
-}) => {
-  const { can } = usePermission();
+                                                          permission,
+                                                          resourceType,
+                                                          resourceId,
+                                                          fallback = null,
+                                                          children,
+                                                      }) => {
+    const {can} = usePermission();
 
-  const hasAccess = can(permission, resourceType, resourceId, resourceOwnerId);
+    const hasAccess = can(permission, resourceType, resourceId);
 
-  if (hasAccess) {
-    return <>{children}</>;
-  }
+    if (hasAccess) {
+        return <>{children}</>;
+    }
 
-  return <>{fallback}</>;
+    return <>{fallback}</>;
 };
 
 // ============================================================================
@@ -83,18 +77,18 @@ export const Authorized: React.FC<AuthorizedProps> = ({
 // ============================================================================
 
 interface HasRoleProps {
-  /**
-   * Role name or array of role names to check
-   */
-  role: string | string[];
-  /**
-   * Content to show when user doesn't have the role
-   */
-  fallback?: React.ReactNode;
-  /**
-   * Children to render when user has the role
-   */
-  children: React.ReactNode;
+    /**
+     * Role name or array of role names to check
+     */
+    role: string | string[];
+    /**
+     * Content to show when user doesn't have the role
+     */
+    fallback?: React.ReactNode;
+    /**
+     * Children to render when user has the role
+     */
+    children: React.ReactNode;
 }
 
 /**
@@ -111,20 +105,20 @@ interface HasRoleProps {
  * </HasRole>
  */
 export const HasRole: React.FC<HasRoleProps> = ({
-  role,
-  fallback = null,
-  children,
-}) => {
-  const { hasRole, hasAnyRole } = usePermission();
+                                                    role,
+                                                    fallback = null,
+                                                    children,
+                                                }) => {
+    const {hasRole, hasAnyRole} = usePermission();
 
-  const roles = Array.isArray(role) ? role : [role];
-  const hasAccess = roles.length === 1 ? hasRole(roles[0]) : hasAnyRole(roles);
+    const roles = Array.isArray(role) ? role : [role];
+    const hasAccess = roles.length === 1 ? hasRole(roles[0]) : hasAnyRole(roles);
 
-  if (hasAccess) {
-    return <>{children}</>;
-  }
+    if (hasAccess) {
+        return <>{children}</>;
+    }
 
-  return <>{fallback}</>;
+    return <>{fallback}</>;
 };
 
 // ============================================================================
@@ -132,14 +126,14 @@ export const HasRole: React.FC<HasRoleProps> = ({
 // ============================================================================
 
 interface SuperAdminOnlyProps {
-  /**
-   * Content to show when user is not super admin
-   */
-  fallback?: React.ReactNode;
-  /**
-   * Children to render for super admins
-   */
-  children: React.ReactNode;
+    /**
+     * Content to show when user is not super admin
+     */
+    fallback?: React.ReactNode;
+    /**
+     * Children to render for super admins
+     */
+    children: React.ReactNode;
 }
 
 /**
@@ -151,16 +145,16 @@ interface SuperAdminOnlyProps {
  * </SuperAdminOnly>
  */
 export const SuperAdminOnly: React.FC<SuperAdminOnlyProps> = ({
-  fallback = null,
-  children,
-}) => {
-  const { isSuperAdmin } = usePermission();
+                                                                  fallback = null,
+                                                                  children,
+                                                              }) => {
+    const {isSuperAdmin} = usePermission();
 
-  if (isSuperAdmin) {
-    return <>{children}</>;
-  }
+    if (isSuperAdmin) {
+        return <>{children}</>;
+    }
 
-  return <>{fallback}</>;
+    return <>{fallback}</>;
 };
 
 // ============================================================================
@@ -168,30 +162,26 @@ export const SuperAdminOnly: React.FC<SuperAdminOnlyProps> = ({
 // ============================================================================
 
 interface ResourceAuthorizedProps {
-  /**
-   * Required permission string
-   */
-  permission: string;
-  /**
-   * Resource type
-   */
-  resourceType: string;
-  /**
-   * Resource ID
-   */
-  resourceId: string;
-  /**
-   * Resource owner ID
-   */
-  resourceOwnerId?: string;
-  /**
-   * Content to show when user doesn't have permission
-   */
-  fallback?: React.ReactNode;
-  /**
-   * Children to render when authorized
-   */
-  children: React.ReactNode;
+    /**
+     * Required permission string
+     */
+    permission: string;
+    /**
+     * Resource type
+     */
+    resourceType: string;
+    /**
+     * Resource ID
+     */
+    resourceId: string;
+    /**
+     * Content to show when user doesn't have permission
+     */
+    fallback?: React.ReactNode;
+    /**
+     * Children to render when authorized
+     */
+    children: React.ReactNode;
 }
 
 /**
@@ -208,20 +198,19 @@ interface ResourceAuthorizedProps {
  * </ResourceAuthorized>
  */
 export const ResourceAuthorized: React.FC<ResourceAuthorizedProps> = ({
-  permission,
-  resourceType,
-  resourceId,
-  resourceOwnerId,
-  fallback = null,
-  children,
-}) => {
-  const { can } = useResourcePermission(resourceType, resourceId, resourceOwnerId);
+                                                                          permission,
+                                                                          resourceType,
+                                                                          resourceId,
+                                                                          fallback = null,
+                                                                          children,
+                                                                      }) => {
+    const {can} = useResourcePermission(resourceType, resourceId);
 
-  if (can(permission)) {
-    return <>{children}</>;
-  }
+    if (can(permission)) {
+        return <>{children}</>;
+    }
 
-  return <>{fallback}</>;
+    return <>{fallback}</>;
 };
 
 // ============================================================================
@@ -229,11 +218,10 @@ export const ResourceAuthorized: React.FC<ResourceAuthorizedProps> = ({
 // ============================================================================
 
 interface WithAuthorizationOptions {
-  permission: string;
-  resourceType?: string;
-  resourceIdProp?: string;
-  resourceOwnerIdProp?: string;
-  fallback?: React.ReactNode;
+    permission: string;
+    resourceType?: string;
+    resourceIdProp?: string;
+    fallback?: React.ReactNode;
 }
 
 /**
@@ -246,39 +234,34 @@ interface WithAuthorizationOptions {
  * });
  */
 export function withAuthorization<P extends object>(
-  Component: React.ComponentType<P>,
-  options: WithAuthorizationOptions
+    Component: React.ComponentType<P>,
+    options: WithAuthorizationOptions
 ): React.FC<P> {
-  const {
-    permission,
-    resourceType,
-    resourceIdProp,
-    resourceOwnerIdProp,
-    fallback = null,
-  } = options;
+    const {
+        permission,
+        resourceType,
+        resourceIdProp,
+        fallback = null,
+    } = options;
 
-  const AuthorizedComponent: React.FC<P> = (props) => {
-    const resourceId = resourceIdProp ? (props as any)[resourceIdProp] : undefined;
-    const resourceOwnerId = resourceOwnerIdProp
-      ? (props as any)[resourceOwnerIdProp]
-      : undefined;
+    const AuthorizedComponent: React.FC<P> = (props) => {
+        const resourceId = resourceIdProp ? (props as any)[resourceIdProp] : undefined;
 
-    return (
-      <Authorized
-        permission={permission}
-        resourceType={resourceType}
-        resourceId={resourceId}
-        resourceOwnerId={resourceOwnerId}
-        fallback={fallback}
-      >
-        <Component {...props} />
-      </Authorized>
-    );
-  };
+        return (
+            <Authorized
+                permission={permission}
+                resourceType={resourceType}
+                resourceId={resourceId}
+                fallback={fallback}
+            >
+                <Component {...props} />
+            </Authorized>
+        );
+    };
 
-  AuthorizedComponent.displayName = `withAuthorization(${
-    Component.displayName || Component.name || 'Component'
-  })`;
+    AuthorizedComponent.displayName = `withAuthorization(${
+        Component.displayName || Component.name || 'Component'
+    })`;
 
-  return AuthorizedComponent;
+    return AuthorizedComponent;
 }

@@ -27,7 +27,7 @@ class BranchBase(SQLModel):
     name: str = Field(index=True, max_length=100, description="Branch name (e.g., 'master', 'al-iter-1').")
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True,
                                   description="ID of the project this branch belongs to.")
-    head_commit_id: str = Field(foreign_key="commit.id", description="ID of the latest commit on this branch.")
+    head_commit_id: uuid.UUID = Field(foreign_key="commit.id", description="ID of the latest commit on this branch.")
     description: str | None = Field(default=None, max_length=500, description="Description of this branch.")
     is_protected: bool = Field(default=False, description="Whether this branch is protected from deletion.")
 

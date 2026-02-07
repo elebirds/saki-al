@@ -43,6 +43,9 @@ class Scope(str, Enum):
     SELF = "self"
 
 
+VALID_SCOPE_STRS = [s.value for s in Scope]
+
+
 class AuditAction(str, Enum):
     """
     Audit log action types.
@@ -80,8 +83,39 @@ class AuditAction(str, Enum):
 class Permissions:
     """
     Predefined permission constants for common use cases.
+    
+    All permission constants are strings in format "target:action:scope".
+    You can convert them to Permission objects using Permission.from_string() or parse_permission().
+    
+    Examples:
+        >>> from saki_api.models.rbac import Permission, parse_permission
+        >>> perm = parse_permission(Permissions.DATASET_READ)
+        >>> print(perm.target)  # "dataset"
+        >>> print(perm.action)  # "read"
+        >>> print(perm.scope)   # "assigned"
     """
     ALL_PERMISSIONS = "*:*:all"  # 全局允许：所有权限
+
+    @staticmethod
+    def to_permission(permission_str: str) -> "Permission":
+        """
+        Convert a permission string to a Permission object.
+        
+        This is a convenience method that imports Permission class dynamically
+        to avoid circular imports.
+        
+        Args:
+            permission_str: Permission string (e.g., "dataset:read:all")
+            
+        Returns:
+            Permission object
+            
+        Examples:
+            >>> perm = Permissions.to_permission(Permissions.DATASET_READ)
+            >>> print(perm.target)  # "dataset"
+        """
+        from saki_api.models.rbac.permission import Permission
+        return Permission.from_string(permission_str)
 
     # ============================================================================
     # User Management Permissions
@@ -112,16 +146,12 @@ class Permissions:
     DATASET_READ_ALL = "dataset:read:all"  # 全局允许：读取数据集信息
     DATASET_UPDATE_ALL = "dataset:update:all"  # 全局允许：修改数据集信息
     DATASET_DELETE_ALL = "dataset:delete:all"  # 全局允许：删除数据集
-    DATASET_ASSIGN_ALL = "dataset:assign:all"  # 全局允许：分配数据集权限给用户
-    DATASET_EXPORT_ALL = "dataset:export:all"  # 全局允许：导出数据集
-    DATASET_IMPORT_ALL = "dataset:import:all"  # 全局允许：导入数据集
+    DATASET_ASSIGN_ALL = "dataset:assign:all"  # 全局允许：管理数据集成员和权限
     # Dataset - assigned scope
     DATASET_READ = "dataset:read:assigned"  # 成员允许：读取数据集信息
     DATASET_UPDATE = "dataset:update:assigned"  # 成员允许：修改数据集信息
     DATASET_DELETE = "dataset:delete:assigned"  # 成员允许：删除数据集（应该永远不分配此权限）
-    DATASET_ASSIGN = "dataset:assign:assigned"  # 成员允许：分配数据集权限给用户
-    DATASET_EXPORT = "dataset:export:assigned"  # 成员允许：导出数据集
-    DATASET_IMPORT = "dataset:import:assigned"  # 成员允许：导入数据集
+    DATASET_ASSIGN = "dataset:assign:assigned"  # 成员允许：管理数据集成员和权限
 
     # ============================================================================
     # Sample Permissions
@@ -138,28 +168,51 @@ class Permissions:
     SAMPLE_DELETE = "sample:delete:assigned"  # 成员允许：删除样本（即，删除样本）
 
     # ============================================================================
-    # Label Permissions
+    # Project Permissions (L2 Layer)
     # ============================================================================
-    # Label - global scope
-    LABEL_READ_ALL = "label:read:all"  # 全局允许：读取标签信息
-    LABEL_CREATE_ALL = "label:create:all"  # 全局允许：新建标签
-    LABEL_UPDATE_ALL = "label:update:all"  # 全局允许：更新标签
-    LABEL_DELETE_ALL = "label:delete:all"  # 全局允许：删除标签
-    # Label - assigned scope
-    LABEL_READ = "label:read:assigned"  # 成员允许：读取标签信息
-    LABEL_CREATE = "label:create:assigned"  # 成员允许：新建标签
-    LABEL_UPDATE = "label:update:assigned"  # 成员允许：更新标签
-    LABEL_DELETE = "label:delete:assigned"  # 成员允许：删除标签
+    # Project - global scope
+    PROJECT_CREATE_ALL = "project:create:all"  # 全局允许：新建项目
+    PROJECT_READ_ALL = "project:read:all"  # 全局允许：读取项目信息
+    PROJECT_UPDATE_ALL = "project:update:all"  # 全局允许：修改项目信息
+    PROJECT_DELETE_ALL = "project:delete:all"  # 全局允许：删除项目
+    PROJECT_ASSIGN_ALL = "project:assign:all"  # 全局允许：管理项目成员和权限
+    # Project - assigned scope
+    PROJECT_READ = "project:read:assigned"  # 成员允许：读取项目信息
+    PROJECT_UPDATE = "project:update:assigned"  # 成员允许：修改项目信息
+    PROJECT_DELETE = "project:delete:assigned"  # 成员允许：删除项目（应该永远不分配此权限）
+    PROJECT_ASSIGN = "project:assign:assigned"  # 成员允许：管理项目成员和权限
 
     # ============================================================================
-    # Annotation Permissions
+    # Label Permissions (L2 Layer)
     # ============================================================================
-    # Annotation - global scope
-    ANNOTATION_READ_ALL = "annotation:read:all"  # 全局允许：读取标注信息
-    ANNOTATION_MODIFY_ALL = "annotation:modify:all"  # 全局允许：修改标注信息
-    # Annotation - assigned scope
-    ANNOTATION_READ = "annotation:read:assigned"  # 成员允许：读取标注信息
-    ANNOTATION_MODIFY = "annotation:modify:assigned"  # 成员允许：修改标注信息
-    # Annotation - self scope
-    ANNOTATION_READ_SELF = "annotation:read:self"  # 自己允许：读取标注信息
-    ANNOTATION_MODIFY_SELF = "annotation:modify:self"  # 自己允许：修改标注信息
+    LABEL_MANAGE = "label:manage:assigned"  # 成员允许：创建/更新/删除项目标签
+    LABEL_READ = "label:read:assigned"  # 成员允许：读取项目标签
+
+    # ============================================================================
+    # Annotation Permissions (L2 Layer)
+    # ============================================================================
+    ANNOTATE = "annotation:create:assigned"  # 成员允许：创建/修改标注
+    ANNOTATION_READ = "annotation:read:assigned"  # 成员允许：读取标注
+    ANNOTATION_DELETE = "annotation:delete:assigned"  # 成员允许：删除标注
+    # Annotation - self scope (reserved)
+    ANNOTATE_SELF = "annotation:create:self"  # 仅本人：创建/修改标注（预留）
+    ANNOTATION_READ_SELF = "annotation:read:self"  # 仅本人：读取标注（预留）
+    ANNOTATION_DELETE_SELF = "annotation:delete:self"  # 仅本人：删除标注（预留）
+
+    # ============================================================================
+    # Commit Permissions (L2 Layer)
+    # ============================================================================
+    COMMIT_CREATE = "commit:create:assigned"  # 成员允许：创建 commit（保存标注）
+    COMMIT_READ = "commit:read:assigned"  # 成员允许：读取 commit 历史
+    # Commit - self scope (reserved)
+    COMMIT_CREATE_SELF = "commit:create:self"  # 仅本人：创建 commit（预留）
+    COMMIT_READ_SELF = "commit:read:self"  # 仅本人：读取 commit（预留）
+
+    # ============================================================================
+    # Branch Permissions (L2 Layer)
+    # ============================================================================
+    BRANCH_MANAGE = "branch:manage:assigned"  # 成员允许：创建/删除分支
+    BRANCH_READ = "branch:read:assigned"  # 成员允许：读取分支信息
+    BRANCH_SWITCH = "branch:switch:assigned"  # 成员允许：切换分支（移动 HEAD 指针）
+    # Branch - self scope (reserved)
+    BRANCH_READ_SELF = "branch:read:self"  # 仅本人：读取分支信息（预留）

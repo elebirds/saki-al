@@ -1,65 +1,116 @@
-/**
- * useAnnotationSync Hook
- * 
- * 统一管理标注同步功能。
- * - Classic: 调用后端 sync 接口，但后台不进行任何操作，直接返回
- * - FEDO: 调用后端 sync 接口，后台计算对应点集并生成对应侧的相应标注
- */
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {api} from '../../services/api';
+import {AnnotationDraftPayload, AnnotationSyncActionItem, AnnotationSyncResponse,} from '../../types';
 
-import { useState, useCallback } from 'react';
-import { api } from '../../services/api';
-import { SyncAction, SyncResponse } from '../../types';
+function convertKeysToCamel<T>(obj: unknown): T {
+    if (Array.isArray(obj)) {
+        return obj.map(item => convertKeysToCamel(item)) as T;
+    }
+    if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj as object).reduce((result, key) => {
+            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            (result as Record<string, unknown>)[camelKey] = convertKeysToCamel(
+                (obj as Record<string, unknown>)[key]
+            );
+            return result;
+        }, {} as T);
+    }
+    return obj as T;
+}
+
+function extractConflictPayload(error: unknown): AnnotationSyncResponse | null {
+    const anyError = error as { originalError?: any; statusCode?: number };
+    if (anyError?.statusCode !== 409) return null;
+    const raw = anyError.originalError?.response?.data;
+    if (!raw) return null;
+    const data = raw.data ?? raw;
+    return convertKeysToCamel<AnnotationSyncResponse>(data);
+}
 
 export interface UseAnnotationSyncOptions {
-  /** 是否启用同步（默认 true） */
-  enabled?: boolean;
+    projectId?: string;
+    sampleId?: string;
+    branchName?: string;
+    enabled?: boolean;
 }
 
 export interface UseAnnotationSyncReturn {
-  /** 是否正在同步中 */
-  isSyncing: boolean;
-  /** 同步状态是否就绪 */
-  isSyncReady: boolean;
-  /** 执行同步操作 */
-  sync: (sampleId: string, actions: SyncAction[]) => Promise<SyncResponse>;
+    baseCommitId: string | null;
+    seqId: number;
+    isSyncing: boolean;
+    loadSnapshot: () => Promise<AnnotationDraftPayload | null>;
+    syncActions: (
+        actions: AnnotationSyncActionItem[],
+        meta?: Record<string, any>
+    ) => Promise<AnnotationDraftPayload | null>;
 }
 
 export function useAnnotationSync(
-  options: UseAnnotationSyncOptions = {}
+    options: UseAnnotationSyncOptions
 ): UseAnnotationSyncReturn {
-  const { enabled = true } = options;
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isSyncReady, setIsSyncReady] = useState(true);
-
-  const sync = useCallback(async (sampleId: string, actions: SyncAction[]): Promise<SyncResponse> => {
-    if (!enabled || actions.length === 0) {
-      return {
+    const {
+        projectId,
         sampleId,
-        results: [],
-        ready: true,
-      };
-    }
+        branchName = 'master',
+        enabled = true,
+    } = options;
 
-    setIsSyncing(true);
-    setIsSyncReady(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [seqId, setSeqId] = useState(0);
+    const [baseCommitId, setBaseCommitId] = useState<string | null>(null);
+    const seqRef = useRef(0);
+    const baseCommitRef = useRef<string | null>(null);
 
-    try {
-      const response = await api.syncAnnotations(sampleId, actions);
-      setIsSyncReady(true);
-      return response;
-    } catch (error) {
-      console.error('Sync failed:', error);
-      setIsSyncReady(true);
-      throw error;
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [enabled]);
+    useEffect(() => {
+        seqRef.current = 0;
+        baseCommitRef.current = null;
+        setSeqId(0);
+        setBaseCommitId(null);
+    }, [projectId, sampleId, branchName]);
 
-  return {
-    isSyncing,
-    isSyncReady,
-    sync,
-  };
+    const applyResponse = useCallback((response: AnnotationSyncResponse) => {
+        seqRef.current = response.currentSeqId || 0;
+        baseCommitRef.current = response.baseCommitId || null;
+        setSeqId(seqRef.current);
+        setBaseCommitId(baseCommitRef.current);
+        return response.payload || null;
+    }, []);
+
+    const syncActions = useCallback(async (
+        actions: AnnotationSyncActionItem[],
+        meta?: Record<string, any>
+    ) => {
+        if (!enabled || !projectId || !sampleId) return null;
+        setIsSyncing(true);
+        try {
+            const response = await api.syncAnnotation(projectId, sampleId, {
+                baseCommitId: baseCommitRef.current,
+                lastSeqId: seqRef.current,
+                branchName,
+                actions,
+                meta,
+            });
+            return applyResponse(response);
+        } catch (error) {
+            const conflict = extractConflictPayload(error);
+            if (conflict) {
+                return applyResponse(conflict);
+            }
+            throw error;
+        } finally {
+            setIsSyncing(false);
+        }
+    }, [enabled, projectId, sampleId, branchName, applyResponse]);
+
+    const loadSnapshot = useCallback(async () => {
+        return syncActions([]);
+    }, [syncActions]);
+
+    return {
+        baseCommitId,
+        seqId,
+        isSyncing,
+        loadSnapshot,
+        syncActions,
+    };
 }
-

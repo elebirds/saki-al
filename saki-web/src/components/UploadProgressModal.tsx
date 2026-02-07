@@ -1,167 +1,159 @@
 import React from 'react';
-import { Modal, Progress, List, Tag, Typography, Space, Button } from 'antd';
-import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, FileOutlined } from '@ant-design/icons';
-import { UploadProgress, UploadFileResult } from '../types';
-import { useTranslation } from 'react-i18next';
+import {Button, List, Modal, Progress, Space, Tag, Typography} from 'antd';
+import {CheckCircleOutlined, CloseCircleOutlined, FileOutlined, LoadingOutlined} from '@ant-design/icons';
+import {UploadFileResult, UploadProgress} from '../types';
+import {useTranslation} from 'react-i18next';
 
-const { Text } = Typography;
+const {Text} = Typography;
 
 interface UploadProgressModalProps {
-  open: boolean;
-  progress: UploadProgress;
-  onClose: () => void;
-  onCancel: () => void;
+    open: boolean;
+    progress: UploadProgress;
+    onClose: () => void;
+    onCancel: () => void;
 }
 
 const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
-  open,
-  progress,
-  onClose,
-  onCancel,
-}) => {
-  const { t } = useTranslation();
-  const { status, currentFile, totalFiles, percentage, currentFilename, results, error } = progress;
+                                                                     open,
+                                                                     progress,
+                                                                     onClose,
+                                                                     onCancel,
+                                                                 }) => {
+    const {t} = useTranslation();
+    const {status, currentFile, totalFiles, percentage, currentFilename, results, error} = progress;
 
-  const isUploading = status === 'uploading';
-  const isComplete = status === 'complete';
-  const hasError = status === 'error';
+    const isUploading = status === 'uploading';
+    const isComplete = status === 'complete';
+    const hasError = status === 'error';
 
-  const successCount = results.filter((r) => r.status === 'success').length;
-  const errorCount = results.filter((r) => r.status === 'error').length;
+    const successCount = results.filter((r) => r.status === 'success').length;
+    const errorCount = results.filter((r) => r.status === 'error').length;
 
-  const getTitle = () => {
-    if (isComplete) {
-      return errorCount > 0 
-        ? t('upload.completeWithErrors', { success: successCount, errors: errorCount })
-        : t('upload.complete', { count: successCount });
-    }
-    if (hasError) {
-      return t('upload.failed');
-    }
-    return t('upload.uploading');
-  };
+    const getTitle = () => {
+        if (isComplete) {
+            return errorCount > 0
+                ? t('upload.completeWithErrors', {success: successCount, errors: errorCount})
+                : t('upload.complete', {count: successCount});
+        }
+        if (hasError) {
+            return t('upload.failed');
+        }
+        return t('upload.uploading');
+    };
 
-  const getStatusIcon = (result: UploadFileResult) => {
-    if (result.status === 'success') {
-      return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
-    }
-    return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />;
-  };
+    const getStatusIcon = (result: UploadFileResult) => {
+        if (result.status === 'success') {
+            return <CheckCircleOutlined className="text-green-500"/>;
+        }
+        return <CloseCircleOutlined className="text-red-500"/>;
+    };
 
-  return (
-    <Modal
-      title={getTitle()}
-      open={open}
-      onCancel={onClose}
-      footer={[
-        isUploading && (
-          <Button key="cancel" danger onClick={onCancel}>
-            {t('upload.cancel')}
-          </Button>
-        ),
-        (isComplete || hasError) && (
-          <Button key="close" type="primary" onClick={onClose}>
-            {t('upload.close')}
-          </Button>
-        ),
-      ].filter(Boolean)}
-      closable={!isUploading}
-      maskClosable={!isUploading}
-    >
-      <Space direction="vertical" style={{ width: '100%' }} size="large">
-        {/* Overall progress */}
-        <div>
-          <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-            <Text>
-              {isUploading && currentFilename && (
-                <>
-                  <LoadingOutlined style={{ marginRight: 8 }} />
-                  {currentFilename}
-                </>
-              )}
-            </Text>
-            <Text type="secondary">
-              {currentFile} / {totalFiles}
-            </Text>
-          </div>
-          <Progress 
-            percent={Math.round(percentage)} 
-            status={hasError ? 'exception' : isComplete ? 'success' : 'active'}
-            strokeColor={hasError ? '#ff4d4f' : undefined}
-          />
-        </div>
-
-        {/* Error message */}
-        {hasError && error && (
-          <div style={{ 
-            padding: '8px 12px', 
-            background: '#fff2f0', 
-            border: '1px solid #ffccc7',
-            borderRadius: 4 
-          }}>
-            <Text type="danger">{error}</Text>
-          </div>
-        )}
-
-        {/* File results list */}
-        {results.length > 0 && (
-          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-            <List
-              size="small"
-              dataSource={results}
-              renderItem={(item) => (
-                <List.Item style={{ padding: '8px 0', display: 'block' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {getStatusIcon(item)}
-                    <FileOutlined />
-                    <Text ellipsis style={{ maxWidth: 280, flex: 1 }}>{item.filename}</Text>
-                    {item.status === 'success' && (
-                      <Tag color="success">{t('upload.success')}</Tag>
-                    )}
-                    {item.status === 'error' && (
-                      <Tag color="error">{t('upload.error')}</Tag>
-                    )}
-                  </div>
-                  {/* Show error message below filename */}
-                  {item.status === 'error' && item.error && (
-                    <div style={{ 
-                      marginTop: 4, 
-                      marginLeft: 40,
-                      padding: '4px 8px',
-                      background: '#fff2f0',
-                      border: '1px solid #ffccc7',
-                      borderRadius: 4,
-                      fontSize: 12,
-                    }}>
-                      <Text type="danger" style={{ fontSize: 12 }}>{item.error}</Text>
+    return (
+        <Modal
+            title={getTitle()}
+            open={open}
+            onCancel={onClose}
+            footer={[
+                isUploading && (
+                    <Button key="cancel" danger onClick={onCancel}>
+                        {t('upload.cancel')}
+                    </Button>
+                ),
+                (isComplete || hasError) && (
+                    <Button key="close" type="primary" onClick={onClose}>
+                        {t('upload.close')}
+                    </Button>
+                ),
+            ].filter(Boolean)}
+            closable={!isUploading}
+            maskClosable={!isUploading}
+        >
+            <Space direction="vertical" className="w-full" size="large">
+                {/* Overall progress */}
+                <div>
+                    <div className="mb-2 flex justify-between">
+                        <Text>
+                            {isUploading && currentFilename && (
+                                <>
+                                    <LoadingOutlined className="mr-2"/>
+                                    {currentFilename}
+                                </>
+                            )}
+                        </Text>
+                        <Text type="secondary">
+                            {currentFile} / {totalFiles}
+                        </Text>
                     </div>
-                  )}
-                </List.Item>
-              )}
-            />
-          </div>
-        )}
+                    <Progress
+                        percent={Math.round(percentage)}
+                        status={hasError ? 'exception' : isComplete ? 'success' : 'active'}
+                        strokeColor={hasError ? '#ff4d4f' : undefined}
+                    />
+                </div>
 
-        {/* Summary when complete */}
-        {isComplete && (
-          <div style={{ textAlign: 'center', paddingTop: 8 }}>
-            <Space size="large">
-              <Text>
-                <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 4 }} />
-                {t('upload.successCount', { count: successCount })}
-              </Text>
-              {errorCount > 0 && (
-                <Text>
-                  <CloseCircleOutlined style={{ color: '#ff4d4f', marginRight: 4 }} />
-                  {t('upload.errorCount', { count: errorCount })}
-                </Text>
-              )}
+                {/* Error message */}
+                {hasError && error && (
+                    <div className="rounded border border-[#ffccc7] bg-[#fff2f0] px-3 py-2">
+                        <Text type="danger">{error}</Text>
+                    </div>
+                )}
+
+                {/* File results list */}
+                {results.length > 0 && (
+                    <div className="max-h-[300px] overflow-y-auto">
+                        <List
+                            size="small"
+                            dataSource={results}
+                            renderItem={(item) => (
+                                <List.Item className="block py-2">
+                                    <div className="flex items-center gap-2">
+                                        {getStatusIcon(item)}
+                                        <FileOutlined/>
+                                        <Text ellipsis className="max-w-[280px] flex-1">
+                                            {item.filename}
+                                        </Text>
+                                        {item.status === 'success' && (
+                                            <Tag color="success">{t('upload.success')}</Tag>
+                                        )}
+                                        {item.status === 'error' && (
+                                            <Tag color="error">{t('upload.error')}</Tag>
+                                        )}
+                                    </div>
+                                    {/* Show error message below filename */}
+                                    {item.status === 'error' && item.error && (
+                                        <div
+                                            className="ml-10 mt-1 rounded border border-[#ffccc7] bg-[#fff2f0] px-2 py-1 text-xs">
+                                            <Text type="danger" className="text-xs">
+                                                {item.error}
+                                            </Text>
+                                        </div>
+                                    )}
+                                </List.Item>
+                            )}
+                        />
+                    </div>
+                )}
+
+                {/* Summary when complete */}
+                {isComplete && (
+                    <div className="pt-2 text-center">
+                        <Space size="large">
+                            <Text>
+                                <CheckCircleOutlined className="mr-1 text-green-500"/>
+                                {t('upload.successCount', {count: successCount})}
+                            </Text>
+                            {errorCount > 0 && (
+                                <Text>
+                                    <CloseCircleOutlined className="mr-1 text-red-500"/>
+                                    {t('upload.errorCount', {count: errorCount})}
+                                </Text>
+                            )}
+                        </Space>
+                    </div>
+                )}
             </Space>
-          </div>
-        )}
-      </Space>
-    </Modal>
-  );
+        </Modal>
+    );
 };
 
 export default UploadProgressModal;

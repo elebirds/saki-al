@@ -13,6 +13,7 @@ from saki_api.models.enums import TrainingJobStatus
 if TYPE_CHECKING:
     from saki_api.models.l3.loop import ALLoop
     from saki_api.models.l3.metric import JobSampleMetric
+    from saki_api.models.l2.project import Project
 
 
 class JobBase(SQLModel):
@@ -37,5 +38,6 @@ class Job(JobBase, TimestampMixin, UUIDMixin, table=True):
     """
     __tablename__ = "job"
 
-    loop: "ALLoop" = Relationship(back_populates="training_jobs")
+    project: "Project" = Relationship(back_populates="jobs")
+    loop: "ALLoop" = Relationship(back_populates="jobs")
     sample_metrics: List["JobSampleMetric"] = Relationship(back_populates="job")

@@ -56,14 +56,14 @@ class AnnotationSource(str, Enum):
     IMPORTED = "imported"
 
 
-class AnnotationSystemType(str, Enum):
+class DatasetType(str, Enum):
     """
-    Enum for the type of annotation system/interface.
+    Enum for the type of dataset.
     Determines which annotation UI to use.
     """
-    # Classic annotation system - standard image annotation
+    # Classic - standard image annotation
     CLASSIC = "classic"
-    # FEDO annotation system - dual-view for satellite electron energy data
+    # FEDO - dual-view for satellite electron energy data
     FEDO = "fedo"
 
 

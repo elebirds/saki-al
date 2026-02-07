@@ -1,40 +1,59 @@
-from pathlib import Path
+import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from saki_api.api.api_v1.api import api_router
 from saki_api.core.config import settings
-from saki_api.core.exceptions import http_exception_handler, general_exception_handler
-from saki_api.core.middleware import ResponseWrapperMiddleware
-from saki_api.db.session import init_db
-import asyncio
+from saki_api.core.exceptions import (
+    AppException,
+    app_exception_handler,
+    http_exception_handler,
+    general_exception_handler
+)
+from saki_api.db.session import init_db, dispose_engine
+from saki_api.modules.annotation_factory import AnnotationSystemFactory
+
+
+def setup_logging():
+    """配置应用日志系统"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    # 设置 SQLAlchemy 日志级别为 WARNING，避免过多的 SQL 日志
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    应用生命周期管理。
+
+    Startup: 初始化数据库表，创建上传目录，初始化annotation handlers
+    Shutdown: 优雅关闭数据库连接池
+    """
+    # Startup
+    setup_logging()
+    await init_db()
+    AnnotationSystemFactory.discover_all()  # 初始化annotation handlers
+
+    yield
+
+    # Shutdown: 优雅关闭连接池
+    await dispose_engine()
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     description="API for Saki Active Learning Platform",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-async def on_startup():
-    """
-    Event handler triggered when the application starts.
-    Initializes the database tables asynchronously.
-    """
-    await init_db()
-
-    # Ensure upload directory exists for static file serving
-    upload_path = Path(settings.UPLOAD_DIR)
-    upload_path.mkdir(parents=True, exist_ok=True)
-
-    # Mount static files for serving uploaded images
-    app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
-
 
 # Set all CORS enabled origins
 if settings.BACKEND_CORS_ORIGINS:
@@ -46,14 +65,17 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_headers=["*"],
     )
 
-# 添加响应包装中间件（在CORS之后，这样CORS头会被保留）
-app.add_middleware(ResponseWrapperMiddleware)
+# 注意：审计上下文现在通过依赖项管理，不再需要中间件
+
+# 注册全局异常处理器（按优先级顺序注册）
+# 1. 业务异常处理器（最具体）
+app.add_exception_handler(AppException, app_exception_handler)
+# 2. FastAPI HTTP异常处理器
+app.add_exception_handler(HTTPException, http_exception_handler)
+# 3. 通用异常处理器（兜底，处理所有未捕获的异常）
+app.add_exception_handler(Exception, general_exception_handler)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
-
-# 注册全局异常处理器
-app.add_exception_handler(HTTPException, http_exception_handler)
-app.add_exception_handler(Exception, general_exception_handler)
 
 
 @app.get("/")

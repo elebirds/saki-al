@@ -15,7 +15,6 @@
     "no": "No",
     "save": "Save",
     "cancel": "Cancel",
-    "unknown": "Unknown",
     "edit": "Edit",
     "delete": "Delete",
     "actions": "Actions",
@@ -27,20 +26,39 @@
     "status": "Status",
     "role": "Role",
     "user": "User",
-    "confirm": "Confirm",
     "close": "Close",
-    "success": "Success",
-    "error": "Error",
     "operationFailed": "Operation failed",
     "noPermission": "You do not have permission to perform this action",
     "owner": "Owner",
-    "total": "Total {{total}} items",
     "of": "of",
-    "items": "items"
+    "items": "items",
+    "download": "Download",
+    "downloadSuccess": "Download started",
+    "downloadError": "Failed to download file",
+    "create": "Create",
+    "saveChanges": "Save Changes",
+    "placeholder": "-",
+    "sample": "Sample",
+    "networkErrorTitle": "Network Error",
+    "language": {
+      "english": "English",
+      "chinese": "Chinese"
+    },
+    "pagination": {
+      "range": "{{start}}-{{end}} of {{total}}",
+      "total": "{{total}} items"
+    },
+    "time": {
+      "justNow": "just now",
+      "minutesAgo": "{{count}} min ago",
+      "hoursAgo": "{{count}} hours ago",
+      "daysAgo": "{{count}} days ago",
+      "weeksAgo": "{{count}} weeks ago",
+      "monthsAgo": "{{count}} months ago"
+    }
   },
   "auth": {
     "login": {
-      "title": "Login",
       "subtitle": "Visual Active Learning Platform",
       "email": "Email",
       "password": "Password",
@@ -88,8 +106,6 @@
       "failed": "Password change failed"
     },
     "setup": {
-      "title": "Welcome to Saki",
-      "subtitle": "It looks like this is your first time running Saki. Let's set up your administrator account to get started.",
       "welcomeTitle": "Welcome to Saki",
       "welcomeDescription": "Saki is a powerful visual active learning platform that helps you efficiently annotate data and train models.",
       "feature1": "Smart annotation tools supporting multiple annotation types",
@@ -110,7 +126,6 @@
       "confirmPasswordRequired": "Please confirm your password!",
       "passwordMismatch": "The two passwords that you entered do not match!",
       "initializeButton": "Initialize System",
-      "initializeSuccess": "System initialized successfully! Please log in with your admin account.",
       "initializeFailed": "Setup failed",
       "readyTitle": "System Ready!",
       "readyDescription": "Congratulations! The system has been successfully initialized. You can now log in with your administrator account.",
@@ -120,247 +135,525 @@
       "back": "Back",
       "stepWelcome": "Welcome",
       "stepCreateAdmin": "Create Admin",
-      "stepReady": "Ready"
+      "stepReady": "Ready",
+      "adminEmailPlaceholder": "admin@example.com",
+      "adminNamePlaceholder": "Administrator",
+      "passwordPlaceholder": "Strong Password"
     },
     "logout": "Logout"
   },
-  "userManagement": {
-    "title": "User Management",
-    "addUser": "Add User",
-    "editUser": "Edit User",
-    "email": "Email",
-    "fullName": "Full Name",
-    "password": "Password",
-    "globalRole": "Global Role",
-    "isActive": "Active",
-    "emailRequired": "Please input a valid email!",
-    "passwordRequired": "Please input password!",
-    "passwordHelp": "Leave empty to keep current password",
-    "deleteConfirm": "Are you sure to delete this user?",
-    "deleteSuccess": "User deleted successfully",
-    "deleteError": "Failed to delete user",
-    "updateSuccess": "User updated successfully",
-    "createSuccess": "User created successfully",
-    "fetchError": "Failed to fetch users",
-    "cannotDeleteSelf": "Cannot delete your own account",
-    "manageRoles": "Manage Roles",
-    "currentRoles": "Current Roles",
-    "noRoles": "No roles assigned",
-    "assignRole": "Assign Role",
-    "selectRole": "Select a role",
-    "assign": "Assign",
-    "roleAssigned": "Role assigned successfully",
-    "roleRevoked": "Role revoked successfully",
-    "roles": {
-      "superAdmin": "Super Admin",
-      "admin": "Admin",
-      "annotator": "Annotator",
-      "viewer": "Viewer"
+  "user": {
+    "management": {
+      "title": "User Management",
+      "addUser": "Add User",
+      "editUser": "Edit User",
+      "emailRequired": "Please input a valid email!",
+      "passwordRequired": "Please input password!",
+      "passwordHelp": "Leave empty to keep current password",
+      "deleteConfirm": "Are you sure to delete this user?",
+      "deleteSuccess": "User deleted successfully",
+      "deleteError": "Failed to delete user",
+      "updateSuccess": "User updated successfully",
+      "createSuccess": "User created successfully",
+      "fetchError": "Failed to fetch users",
+      "cannotDeleteSelf": "Cannot delete your own account",
+      "manageRoles": "Manage Roles",
+      "currentRoles": "Current Roles",
+      "noRoles": "No roles assigned",
+      "assignRole": "Assign Role",
+      "selectRole": "Select a role",
+      "assign": "Assign",
+      "roleAssigned": "Role assigned successfully",
+      "roleRevoked": "Role revoked successfully",
+      "expiresAt": "Expires At",
+      "expiresAtTooltip": "Optional, set when the role assignment expires. Leave empty for permanent assignment",
+      "expiresAtPlaceholder": "Select expiration date",
+      "expired": "Expired",
+      "noExpiration": "Never expires",
+      "revoke": "Revoke"
+    },
+    "profile": {
+      "title": "User Profile",
+      "basicInfo": "Basic Information",
+      "systemRoles": "System Roles",
+      "permissions": "Permissions",
+      "noRoles": "No roles assigned",
+      "noPermissions": "No permissions",
+      "isSuperAdmin": "Super Administrator",
+      "createdAt": "Created At",
+      "updatedAt": "Updated At",
+      "lastLoginAt": "Last Login At",
+      "fetchError": "Failed to fetch user information",
+      "userNotFound": "User information not found",
+      "permissionScope": {
+        "all": "All",
+        "assigned": "Assigned",
+        "self": "Self",
+        "owned": "Owned"
+      },
+      "permissionResources": {
+        "user": "User Management",
+        "role": "Role Management",
+        "dataset": "Dataset Management",
+        "sample": "Sample Management",
+        "label": "Label Management",
+        "annotation": "Annotation Management",
+        "system": "System Management"
+      }
     }
   },
-  "datasetList": {
-    "title": "Datasets",
-    "newDataset": "New Dataset",
-    "createSuccess": "Dataset created successfully",
-    "createError": "Failed to create dataset",
-    "loadError": "Failed to load datasets",
-    "datasetName": "Dataset Name",
-    "namePlaceholder": "Enter dataset name",
-    "nameRequired": "Please enter dataset name",
-    "description": "Description",
-    "descriptionPlaceholder": "Enter dataset description (optional)",
-    "annotationSystem": "Annotation System",
-    "annotationSystemHelp": "Choose the annotation interface based on your data type. Cannot be changed after creation.",
-    "open": "Open",
-    "samples": "Samples",
-    "labeled": "Labeled",
-    "noDescription": "No description",
-    "empty": "No datasets",
-    "emptyHint": "Click the button above to create your first dataset"
-  },
-  "datasetDetail": {
-    "progress": "Annotation Progress",
-    "labeled": "Labeled",
-    "startLabeling": "Start Labeling",
-    "uploadData": "Upload Data",
-    "exportData": "Export Data",
-    "settings": "Settings",
-    "dataPool": "Data Pool",
-    "noSamples": "No data",
-    "backToList": "Back to List",
-    "basicInfo": "Basic Information",
-    "name": "Name",
-    "description": "Description",
-    "annotationSystem": "Annotation System",
-    "createdAt": "Created At",
-    "dangerZone": "Danger Zone",
-    "deleteDataset": "Delete Dataset",
-    "deleteConfirm": "Are you sure to delete this dataset?",
-    "deleteConfirmDesc": "This action cannot be undone. All samples and annotations will be deleted.",
-    "deleteSuccess": "Dataset deleted",
-    "deleteError": "Failed to delete dataset",
-    "exportSuccess": "Export successful",
-    "exportError": "Export failed",
-    "loadSamplesError": "Failed to load samples",
-    "sortByName": "By Name",
-    "sortByStatus": "By Status",
-    "sortByCreatedAt": "By Created At",
-    "sortByUpdatedAt": "By Updated At",
-    "sortByRemark": "By Remark",
-    "sortAsc": "Ascending",
-    "sortDesc": "Descending"
-  },
-  "datasetSettings": {
-    "successMessage": "Dataset settings saved successfully",
-    "errorMessage": "Failed to save dataset settings",
-    "loadLabelsError": "Failed to load labels",
-    "basicInfo": "Basic Information",
-    "datasetName": "Dataset Name",
-    "nameRequired": "Please enter dataset name",
-    "description": "Description",
-    "annotationSystem": "Annotation System",
-    "annotationSystemReadonly": "Annotation system cannot be changed as it would invalidate all existing annotations",
-    "labelManagement": "Label Management",
-    "noLabels": "No labels defined. Please add labels before starting annotation",
-    "newLabelName": "New Label Name",
-    "addLabel": "Add Label",
-    "saveSettings": "Save Settings",
-    "saveBasicInfo": "Save Basic Info",
-    "deleteDataset": "Delete Dataset",
-    "dangerZone": "Danger Zone",
-    "editLabel": "Edit Label",
-    "labelName": "Label Name",
-    "labelColor": "Label Color",
-    "labelAnnotationCount": "Annotation Count",
-    "labelExists": "A label with this name already exists",
-    "labelCreated": "Label created successfully",
-    "labelUpdated": "Label updated successfully",
-    "labelDeleted": "Label deleted successfully",
-    "labelHasAnnotations": "This label has {{count}} annotations",
-    "deleteWithAnnotations": "Are you sure you want to delete this label? All {{count}} annotations using this label will also be deleted."
-  },
-  "datasetMembers": {
-    "title": "Dataset Members",
-    "addMember": "Add Member",
-    "editMemberRole": "Edit Member Role",
-    "user": "User",
-    "selectUser": "Select a user",
-    "selectUserRequired": "Please select a user!",
-    "selectRole": "Select a role",
-    "selectRoleRequired": "Please select a role!",
-    "removeConfirm": "Are you sure to remove this member?",
-    "removeSuccess": "Member removed successfully",
-    "removeError": "Failed to remove member",
-    "updateRoleSuccess": "Member role updated successfully",
-    "addMemberSuccess": "Member added successfully",
-    "fetchError": "Failed to fetch members",
-    "roles": {
-      "owner": "Owner",
-      "manager": "Manager",
-      "annotator": "Annotator",
-      "reviewer": "Reviewer",
-      "viewer": "Viewer"
-    }
-  },
-  "workspace": {
-    "annotations": "Annotations",
-    "noAnnotations": "No annotations",
-    "submitNext": "Submit & Next",
-    "loading": "Loading...",
-    "label": "Label:",
-    "noLabelSelected": "Please select a label first",
-    "noLabelsConfigured": "No labels configured. Please configure labels in dataset settings first.",
-    "sampleList": "Sample List",
-    "samples": "samples",
-    "statusLabeled": "Labeled",
-    "statusUnlabeled": "Unlabeled",
-    "statusSkipped": "Skipped",
-    "tools": {
-      "select": "Select (V)",
-      "rect": "Rectangle (R)",
-      "obb": "Oriented BBox (O)",
-      "zoomIn": "Zoom In",
-      "zoomOut": "Zoom Out",
-      "resetView": "Reset View"
+  "dataset": {
+    "list": {
+      "title": "Datasets",
+      "newDataset": "New Dataset",
+      "createSuccess": "Dataset created successfully",
+      "createError": "Failed to create dataset",
+      "loadError": "Failed to load datasets",
+      "datasetName": "Dataset Name",
+      "namePlaceholder": "Enter dataset name",
+      "nameRequired": "Please enter dataset name",
+      "description": "Description",
+      "descriptionPlaceholder": "Enter dataset description (optional)",
+      "open": "Open",
+      "noDescription": "No description",
+      "empty": "No datasets",
+      "emptyHint": "Click the button above to create your first dataset",
+      "type": "Type",
+      "typeHelp": "Dataset type determines annotation workflow and model training.",
+      "noMore": "No more content."
     },
-    "help": "Scroll to Zoom • Drag to Pan (Select Mode) • Delete to Remove",
-    "undo": "Undo (Ctrl+Z)",
-    "redo": "Redo (Ctrl+Shift+Z)",
-    "sync": {
-      "syncing": "Syncing...",
-      "ready": "Sync Ready",
-      "initializing": "Initializing..."
+    "detail": {
+      "uploadData": "Upload Data",
+      "settings": "Settings",
+      "dataPool": "Data Pool",
+      "noSamples": "No data",
+      "backToList": "Back to List",
+      "loadSamplesError": "Failed to load samples",
+      "sortByName": "By Name",
+      "sortByCreatedAt": "By Created At",
+      "sortByUpdatedAt": "By Updated At",
+      "sortAsc": "Ascending",
+      "sortDesc": "Descending",
+      "deleteSampleConfirm": "Are you sure to delete this sample?",
+      "deleteSampleSuccess": "Sample deleted successfully",
+      "deleteSampleError": "Failed to delete sample",
+      "loadError": "Failed to load dataset",
+      "notFound": "Dataset not found.",
+      "pageStatus": "Page {{page}} / {{pages}} · {{total}} items"
     },
-    "noSamples": "No samples found for this dataset",
-    "back": "Back",
-    "backToDataset": "Back to dataset",
-    "noEditPermission": "You do not have edit permission",
-    "cannotEditOthersAnnotation": "You can only edit your own annotations",
-    "cannotDeleteOthersAnnotation": "You can only delete your own annotations",
-    "readOnly": "Read-only",
-    "annotationSource": {
-      "mine": "My annotation",
-      "others": "Others' annotation",
-      "auto": "Auto-generated"
+    "sampleAssets": {
+      "title": "Assets - {{name}}",
+      "assets": "Assets",
+      "primary": "Primary",
+      "noAssets": "No assets",
+      "loadError": "Failed to load assets"
+    },
+    "settings": {
+      "successMessage": "Dataset settings saved successfully",
+      "errorMessage": "Failed to save dataset settings",
+      "basicInfo": "Basic Information",
+      "datasetName": "Dataset Name",
+      "nameRequired": "Please enter dataset name",
+      "description": "Description",
+      "saveBasicInfo": "Save Basic Info",
+      "deleteDataset": "Delete Dataset",
+      "dangerZone": "Danger Zone",
+      "namePlaceholder": "Dataset name",
+      "descriptionPlaceholder": "Describe the dataset",
+      "deleteConfirm": "Delete this dataset?",
+      "deleteConfirmDesc": "This action cannot be undone.",
+      "deleteSuccess": "Dataset deleted",
+      "deleteError": "Failed to delete dataset"
+    },
+    "members": {
+      "title": "Dataset Members",
+      "addMember": "Add Member",
+      "editMemberRole": "Edit Member Role",
+      "user": "User",
+      "selectUser": "Select a user",
+      "selectUserRequired": "Please select a user!",
+      "selectRole": "Select a role",
+      "selectRoleRequired": "Please select a role!",
+      "removeConfirm": "Are you sure to remove this member?",
+      "removeSuccess": "Member removed successfully",
+      "removeError": "Failed to remove member",
+      "updateRoleSuccess": "Member role updated successfully",
+      "addMemberSuccess": "Member added successfully",
+      "fetchError": "Failed to fetch members"
     }
   },
   "annotation": {
-    "saved": "Saved",
-    "saveError": "Failed to save annotations",
-    "loadError": "Failed to load annotations"
-  },
-  "projectList": {
-    "title": "Projects",
-    "newProject": "New Project",
-    "createSuccess": "Project created successfully",
-    "createError": "Failed to create project",
-    "open": "Open",
-    "stats": "Stats",
-    "labeled": "Labeled",
-    "accuracy": "Accuracy"
-  },
-  "projectDetail": {
-    "dataPool": "Data Pool",
-    "settings": "Settings",
-    "progress": "Annotation Progress",
-    "labeled": "Labeled",
-    "startLabeling": "Start Labeling",
-    "trainModel": "Train Model",
-    "uploadData": "Upload Data"
-  },
-  "projectSettings": {
-    "successMessage": "Settings saved successfully",
-    "basicInfo": "Basic Information",
-    "projectName": "Project Name",
-    "description": "Description",
-    "taskType": "Task Type",
-    "annotationSystem": "Annotation System",
-    "annotationSystemReadonly": "Annotation system cannot be changed as it would invalidate all existing annotations",
-    "labelManagement": "Label Management",
-    "newLabelName": "New Label Name",
-    "addLabel": "Add Label",
-    "alConfig": "Active Learning Configuration",
-    "queryStrategy": "Query Strategy",
-    "strategies": {
-      "least_confidence": "Least Confidence",
-      "margin_sampling": "Margin Sampling",
-      "entropy_sampling": "Entropy Sampling",
-      "random": "Random Sampling"
+    "workspace": {
+      "annotations": "Annotations",
+      "noAnnotations": "No annotations",
+      "submitNext": "Save Draft & Next",
+      "loading": "Loading...",
+      "label": "Label:",
+      "noLabelSelected": "Please select a label first",
+      "noLabelsConfigured": "No labels configured. Please configure labels in dataset settings first.",
+      "sampleList": "Sample List",
+      "samples": "samples",
+      "tools": {
+        "select": "Select (V)",
+        "rect": "Rectangle (R)",
+        "obb": "Oriented BBox (O)",
+        "zoomIn": "Zoom In",
+        "zoomOut": "Zoom Out",
+        "resetView": "Reset View"
+      },
+      "sync": {
+        "syncing": "Syncing...",
+        "ready": "Sync Ready",
+        "initializing": "Initializing..."
+      },
+      "noSamples": "No samples found for this dataset",
+      "back": "Back",
+      "backToDataset": "Back to samples",
+      "noEditPermission": "You do not have edit permission",
+      "cannotEditOthersAnnotation": "You can only edit your own annotations",
+      "cannotDeleteOthersAnnotation": "You can only delete your own annotations",
+      "readOnly": "Read-only",
+      "annotationSource": {
+        "mine": "My annotation",
+        "others": "Others' annotation",
+        "auto": "Auto-generated"
+      },
+      "commitDrafts": "Commit Drafts",
+      "sort": {
+        "createdNewest": "Created (Newest)",
+        "createdOldest": "Created (Oldest)",
+        "updatedNewest": "Updated (Newest)",
+        "updatedOldest": "Updated (Oldest)",
+        "nameAZ": "Name (A-Z)",
+        "nameZA": "Name (Z-A)"
+      }
     },
-    "batchSize": "Query Batch Size",
-    "batchSizeHelp": "Number of samples to query in each iteration",
-    "modelConfig": "Model Configuration",
-    "baseModel": "Base Model",
-    "modelArchitecture": "Model Architecture",
-    "saveSettings": "Save Settings",
-    "fedoConfig": "FEDO Settings",
-    "thumbnailView": "Thumbnail View",
-    "deleteProject": "Delete Project",
-    "deleteConfirm": "Are you sure you want to delete this project?",
-    "deleteConfirmDesc": "This action cannot be undone.",
-    "deleteSuccess": "Project deleted",
-    "deleteError": "Failed to delete project",
-    "updateError": "Failed to update project"
+    "toolbar": {
+      "undoShortcut": "Undo (Ctrl+Z)",
+      "redoShortcut": "Redo (Ctrl+Shift+Z)"
+    }
+  },
+  "project": {
+    "list": {
+      "title": "Projects",
+      "newProject": "New Project",
+      "createSuccess": "Project created successfully",
+      "createError": "Failed to create project",
+      "stats": {
+        "datasets": "Datasets",
+        "labels": "Labels",
+        "branches": "Branches",
+        "commits": "Commits"
+      }
+    },
+    "form": {
+      "dataPool": "Data Pool"
+    },
+    "settings": {
+      "taskType": {
+        "classification": "Classification",
+        "detection": "Detection",
+        "segmentation": "Segmentation"
+      },
+      "updateError": "Failed to update project",
+      "sections": {
+        "basic": "Basic Info",
+        "labels": "Labels",
+        "members": "Members"
+      },
+      "status": {
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "loadProjectError": "Failed to load project",
+      "loadLabelsError": "Failed to load labels",
+      "loadMembersError": "Failed to load members",
+      "loadRolesError": "Failed to load roles",
+      "loadUsersError": "Failed to load users",
+      "updateSuccess": "Project updated",
+      "labelUpdated": "Label updated",
+      "labelCreated": "Label created",
+      "labelSaveError": "Failed to save label",
+      "labelDeleted": "Label deleted",
+      "labelDeleteError": "Failed to delete label",
+      "memberAdded": "Member added",
+      "memberAddError": "Failed to add member",
+      "memberRoleUpdated": "Role updated",
+      "memberRoleUpdateError": "Failed to update role",
+      "memberRemoved": "Member removed",
+      "memberRemoveError": "Failed to remove member",
+      "labels": {
+        "title": "Project Labels",
+        "subtitle": "Manage labels used in this project.",
+        "add": "Add Label",
+        "empty": "No labels yet",
+        "noPermission": "No permission to view labels",
+        "editTitle": "Edit Label",
+        "createTitle": "Create Label",
+        "deleteTitle": "Delete this label?",
+        "columns": {
+          "label": "Label",
+          "description": "Description",
+          "shortcut": "Shortcut",
+          "actions": "Actions"
+        },
+        "form": {
+          "name": "Name",
+          "nameRequired": "Name is required",
+          "namePlaceholder": "Label name",
+          "description": "Description",
+          "descriptionPlaceholder": "Optional description",
+          "shortcut": "Shortcut",
+          "shortcutPlaceholder": "Optional shortcut key",
+          "color": "Color"
+        }
+      },
+      "members": {
+        "title": "Project Members",
+        "subtitle": "Manage members and their roles in this project.",
+        "add": "Add Member",
+        "addTitle": "Add Member",
+        "editTitle": "Edit Member Role",
+        "noPermission": "You do not have permission to view or manage members.",
+        "empty": "No members found",
+        "currentUser": "Current user",
+        "defaultRole": "Member",
+        "ownerCannotRemove": "Project owner cannot be removed.",
+        "removeSelf": "You cannot remove yourself ({{name}}).",
+        "removeOwner": "You cannot remove the project owner ({{name}}).",
+        "removeConfirm": "Remove {{name}}?",
+        "remove": "Remove",
+        "columns": {
+          "member": "Member",
+          "role": "Role",
+          "actions": "Actions"
+        },
+        "form": {
+          "user": "User",
+          "userRequired": "Please select a user",
+          "userPlaceholder": "Select user",
+          "role": "Role",
+          "roleRequired": "Please select a role",
+          "rolePlaceholder": "Select role"
+        }
+      },
+      "basic": {
+        "title": "Project Info",
+        "titleWithName": "Project Info · {{name}}",
+        "subtitle": "Manage the basic information of this project.",
+        "projectName": "Project Name",
+        "projectNameRequired": "Name is required",
+        "projectNamePlaceholder": "Project name",
+        "taskType": "Task Type",
+        "taskTypeHint": "Task type determines annotation workflow and model training, and cannot be changed after creation.",
+        "description": "Description",
+        "descriptionPlaceholder": "Describe the project",
+        "status": "Status"
+      }
+    },
+    "common": {
+      "notFound": "Project not found."
+    },
+    "overview": {
+      "taskType": {
+        "classification": "Classification",
+        "detection": "Detection",
+        "segmentation": "Segmentation"
+      },
+      "status": {
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "noCommits": "No commits",
+      "noCommitsYet": "No commits yet",
+      "commits": "Commits",
+      "noDatasets": "No datasets linked to this project.",
+      "noDescription": "No description"
+    },
+    "commits": {
+      "title": "Commits",
+      "groupDate": "Commits on {{date}}",
+      "loadError": "Failed to load commits",
+      "filters": {
+        "allUsers": "All users",
+        "allTime": "All time"
+      },
+      "count": "{{count}} commits",
+      "empty": "No commits found on this branch.",
+      "noMessage": "No commit message",
+      "author": {
+        "system": "System",
+        "model": "Model",
+        "unknown": "Unknown User"
+      }
+    },
+    "commitDetail": {
+      "status": {
+        "added": "Added",
+        "removed": "Removed",
+        "modified": "Modified"
+      },
+      "annotationsLoadError": "Failed to load annotations",
+      "notFound": "Commit not found.",
+      "title": "Commit",
+      "committed": "committed {{time}}",
+      "viewParent": "View parent",
+      "backToHistory": "Back to history",
+      "noMessage": "No commit message",
+      "parentCommit": "Parent commit:",
+      "rootCommit": "Root commit",
+      "fileTree": "File tree",
+      "datasetCount": "{{count}} datasets",
+      "filterFiles": "Filter files",
+      "noFiles": "No files",
+      "summary": "Commit summary",
+      "samplesWithAnnotations": "Samples (with annotations)",
+      "annotations": "Annotations",
+      "diffOverview": "Diff overview",
+      "diff": {
+        "addedSamples": "+{{count}} samples",
+        "removedSamples": "-{{count}} samples",
+        "modifiedSamples": "{{count}} modified"
+      },
+      "selectionDetails": "Selection details",
+      "selectionHint": "Select a dataset, sample, or annotation on the left to view details.",
+      "datasetType": "Type: {{type}}",
+      "samplesLoaded": "Samples loaded: {{count}}",
+      "sampleId": "Sample ID: {{id}}",
+      "annotationsLoaded": "Annotations loaded: {{count}}",
+      "annotationType": "Type: {{type}}",
+      "annotationView": "View: {{view}}",
+      "annotationConfidence": "Confidence: {{confidence}}",
+      "annotationId": "Annotation ID: {{id}}",
+      "annotationCount": "{{count}} annotations"
+    },
+    "branches": {
+      "title": "Branches",
+      "loadError": "Failed to load branches",
+      "baseCommitNotFound": "Base commit not found",
+      "createSuccess": "Branch created",
+      "createError": "Failed to create branch",
+      "protected": "Branch protected",
+      "unprotected": "Branch unprotected",
+      "updateError": "Failed to update branch",
+      "deleteSuccess": "Branch deleted",
+      "deleteError": "Failed to delete branch",
+      "columns": {
+        "branch": "Branch",
+        "head": "Head",
+        "updated": "Updated",
+        "protected": "Protected",
+        "actions": "Actions"
+      },
+      "noCommits": "No commits",
+      "protectedLabel": "Protected",
+      "deleteTitle": "Delete this branch?",
+      "deleteMasterBlocked": "Master branch cannot be deleted.",
+      "deleteProtectedBlocked": "Protected branches cannot be deleted.",
+      "deleteWarning": "This action cannot be undone.",
+      "count": "{{filtered}} / {{total}} branches",
+      "searchPlaceholder": "Search branches",
+      "newBranch": "New Branch",
+      "listTitle": "Branch list",
+      "defaultBase": "Default base: {{branch}}",
+      "createTitle": "Create new branch",
+      "form": {
+        "name": "Branch name",
+        "nameRequired": "Please enter a branch name",
+        "nameTooLong": "Branch name is too long",
+        "namePlaceholder": "feature/my-branch",
+        "description": "Description",
+        "descriptionPlaceholder": "Optional description",
+        "baseBranch": "Base branch",
+        "baseBranchPlaceholder": "Select base branch",
+        "advancedSelection": "Advanced commit selection",
+        "baseCommit": "Base commit",
+        "baseCommitRequired": "Select a commit",
+        "baseCommitPlaceholder": "Select a commit",
+        "noMessage": "No message"
+      }
+    },
+    "samples": {
+      "filters": {
+        "all": "All",
+        "labeled": "Labeled",
+        "unlabeled": "Unlabeled",
+        "draft": "Draft",
+        "datasetPlaceholder": "Select dataset",
+        "searchPlaceholder": "Search samples",
+        "branchPlaceholder": "Branch"
+      },
+      "sort": {
+        "createdNewest": "Created (Newest)",
+        "createdOldest": "Created (Oldest)",
+        "updatedNewest": "Updated (Newest)",
+        "updatedOldest": "Updated (Oldest)",
+        "nameAZ": "Name (A-Z)",
+        "nameZA": "Name (Z-A)"
+      },
+      "commitDrafts": "Commit Drafts",
+      "emptySelectDataset": "Select a dataset to view samples.",
+      "emptyTitle": "No samples",
+      "emptyHint": "Try adjusting your filters or upload new samples.",
+      "commitModal": {
+        "title": "Commit Drafts",
+        "commit": "Commit",
+        "messageLabel": "Commit message",
+        "messagePlaceholder": "Describe this annotation milestone..."
+      }
+    },
+    "datasetSamples": {
+      "backToDatasets": "Back to datasets",
+      "datasetFallback": "Dataset",
+      "samples": "Samples",
+      "emptyTitle": "No samples yet",
+      "emptyHint": "Upload samples in dataset settings",
+      "upload": "Upload data",
+      "pagination": "Page {{page}} / {{totalPages}} · {{totalItems}} items"
+    },
+    "sidebar": {
+      "about": "About",
+      "noDescription": "No description provided.",
+      "stats": {
+        "datasets": "datasets",
+        "labels": "labels",
+        "branches": "branches",
+        "commits": "commits",
+        "members": "members"
+      },
+      "loops": {
+        "title": "AL Loops",
+        "empty": "No loops yet",
+        "comingSoon": "Coming soon"
+      },
+      "models": {
+        "title": "Models",
+        "empty": "No artifacts published",
+        "comingSoon": "Coming soon"
+      },
+      "sampleStatus": {
+        "title": "Sample Status",
+        "labeled": "Labeled",
+        "unlabeled": "Unlabeled",
+        "skipped": "Skipped",
+        "empty": "Not available yet"
+      }
+    },
+    "loops": {
+      "comingSoon": "AL Loops is coming soon."
+    },
+    "insights": {
+      "comingSoon": "Insights will be available soon."
+    },
+    "tabs": {
+      "overview": "Overview",
+      "samples": "Samples & Annotations",
+      "branches": "Branches",
+      "commits": "Commits",
+      "loops": "AL Loops",
+      "insights": "Insights",
+      "settings": "Settings"
+    }
   },
   "upload": {
     "uploading": "Uploading...",
@@ -375,150 +668,211 @@
     "errorCount": "{{count}} failed",
     "completeMessage": "Uploaded {{success}} of {{total}} files"
   },
-  "permissions": {
-    "roles": {
-      "superAdmin": "Super Admin",
-      "admin": "Admin",
-      "annotator": "Annotator",
-      "viewer": "Viewer",
-      "owner": "Owner",
-      "manager": "Manager",
-      "reviewer": "Reviewer"
-    },
-    "tabs": {
-      "basicInfo": "Basic Info",
-      "labels": "Labels",
-      "members": "Members",
-      "dangerZone": "Danger Zone"
+  "role": {
+    "management": {
+      "title": "Role Management",
+      "addRole": "Add Role",
+      "editRole": "Edit Role",
+      "name": "Role Name",
+      "displayName": "Display Name",
+      "description": "Description",
+      "color": "Color",
+      "colorRequired": "Please select a role color!",
+      "recommendedColors": "Recommended Colors",
+      "type": "Type",
+      "system": "System Role",
+      "resource": "Resource Role",
+      "permissions": "Permissions",
+      "permissionCount": "Permission Count",
+      "nameRequired": "Please enter role name!",
+      "displayNameRequired": "Please enter display name!",
+      "namePlaceholder": "Enter role name (letters, numbers, underscores)",
+      "displayNamePlaceholder": "Enter display name",
+      "descriptionPlaceholder": "Enter role description (optional)",
+      "deleteConfirm": "Are you sure to delete this role?",
+      "deleteSuccess": "Role deleted successfully",
+      "deleteError": "Failed to delete role",
+      "updateSuccess": "Role updated successfully",
+      "createSuccess": "Role created successfully",
+      "fetchError": "Failed to fetch roles",
+      "cannotEditSystemRole": "System preset roles cannot be edited",
+      "cannotDeleteSystemRole": "System preset roles cannot be deleted",
+      "systemRole": "System Preset Role",
+      "allTypes": "All Types",
+      "invalidPermissionsForSystemRole": "System roles can only use global permissions (ending with :all)",
+      "invalidPermissionsForResourceRole": "Resource roles can only use assigned permissions (ending with :assigned) or self permissions (ending with :self)",
+      "selectRoleTypeFirst": "Please select role type first",
+      "noSystemPermissions": "No permissions available for system roles",
+      "noResourcePermissions": "No permissions available for resource roles",
+      "permissionLabels": {
+        "userManagement": "User Management",
+        "userCreate": "Create User",
+        "userRead": "Read User",
+        "userUpdate": "Update User",
+        "userDelete": "Delete User",
+        "userList": "List Users",
+        "roleManagement": "Role Management",
+        "roleCreate": "Create Role",
+        "roleRead": "Read Role",
+        "roleUpdate": "Update Role",
+        "roleDelete": "Delete Role",
+        "roleAssign": "Assign Role",
+        "roleRevoke": "Revoke Role",
+        "roleAssignAdmin": "Assign Admin Permission",
+        "datasetManagementAll": "Dataset Management (All)",
+        "datasetCreateAll": "Create Dataset (All)",
+        "datasetReadAll": "Read Dataset (All)",
+        "datasetUpdateAll": "Update Dataset (All)",
+        "datasetDeleteAll": "Delete Dataset (All)",
+        "datasetAssignAll": "Assign Dataset (All)",
+        "datasetExportAll": "Export Dataset (All)",
+        "datasetImportAll": "Import Dataset (All)",
+        "datasetManagementAssigned": "Dataset Management (Assigned)",
+        "datasetReadAssigned": "Read Dataset (Assigned)",
+        "datasetUpdateAssigned": "Update Dataset (Assigned)",
+        "datasetAssignAssigned": "Assign Dataset (Assigned)",
+        "datasetExportAssigned": "Export Dataset (Assigned)",
+        "datasetImportAssigned": "Import Dataset (Assigned)",
+        "sampleManagementAll": "Sample Management (All)",
+        "sampleReadAll": "Read Sample (All)",
+        "sampleCreateAll": "Create Sample (All)",
+        "sampleUpdateAll": "Update Sample (All)",
+        "sampleDeleteAll": "Delete Sample (All)",
+        "sampleManagementAssigned": "Sample Management (Assigned)",
+        "sampleReadAssigned": "Read Sample (Assigned)",
+        "sampleCreateAssigned": "Create Sample (Assigned)",
+        "sampleUpdateAssigned": "Update Sample (Assigned)",
+        "sampleDeleteAssigned": "Delete Sample (Assigned)",
+        "labelManagementAll": "Label Management (All)",
+        "labelReadAll": "Read Label (All)",
+        "labelCreateAll": "Create Label (All)",
+        "labelUpdateAll": "Update Label (All)",
+        "labelDeleteAll": "Delete Label (All)",
+        "labelManagementAssigned": "Label Management (Assigned)",
+        "labelReadAssigned": "Read Label (Assigned)",
+        "labelCreateAssigned": "Create Label (Assigned)",
+        "labelUpdateAssigned": "Update Label (Assigned)",
+        "labelDeleteAssigned": "Delete Label (Assigned)",
+        "annotationManagementAll": "Annotation Management (All)",
+        "annotationReadAll": "Read Annotation (All)",
+        "annotationModifyAll": "Modify Annotation (All)",
+        "annotationManagementAssigned": "Annotation Management (Assigned)",
+        "annotationReadAssigned": "Read Annotation (Assigned)",
+        "annotationModifyAssigned": "Modify Annotation (Assigned)",
+        "annotationManagementSelf": "Annotation Management (Self)",
+        "annotationReadSelf": "Read Annotation (Self)",
+        "annotationModifySelf": "Modify Annotation (Self)"
+      }
     }
   },
-  "roles": {
-    "owner": "Owner",
-    "manager": "Manager",
-    "annotator": "Annotator",
-    "reviewer": "Reviewer",
-    "viewer": "Viewer",
-    "seniorAnnotator": "Senior Annotator"
-  },
-  "roleManagement": {
-    "title": "Role Management",
-    "addRole": "Add Role",
-    "editRole": "Edit Role",
-    "name": "Role Name",
-    "displayName": "Display Name",
-    "description": "Description",
-    "type": "Type",
-    "system": "System Role",
-    "resource": "Resource Role",
-    "permissions": "Permissions",
-    "permissionCount": "Permission Count",
-    "nameRequired": "Please enter role name!",
-    "displayNameRequired": "Please enter display name!",
-    "namePlaceholder": "Enter role name (letters, numbers, underscores)",
-    "displayNamePlaceholder": "Enter display name",
-    "descriptionPlaceholder": "Enter role description (optional)",
-    "deleteConfirm": "Are you sure to delete this role?",
-    "deleteSuccess": "Role deleted successfully",
-    "deleteError": "Failed to delete role",
-    "updateSuccess": "Role updated successfully",
-    "createSuccess": "Role created successfully",
-    "fetchError": "Failed to fetch roles",
-    "cannotEditSystemRole": "System preset roles cannot be edited",
-    "cannotDeleteSystemRole": "System preset roles cannot be deleted",
-    "systemRole": "System Preset Role",
-    "allTypes": "All Types",
-    "invalidPermissionsForSystemRole": "System roles can only use global permissions (ending with :all)",
-    "invalidPermissionsForResourceRole": "Resource roles can only use assigned permissions (ending with :assigned) or self permissions (ending with :self)",
-    "selectRoleTypeFirst": "Please select role type first",
-    "noSystemPermissions": "No permissions available for system roles",
-    "noResourcePermissions": "No permissions available for resource roles",
-    "permissionLabels": {
-      "userManagement": "User Management",
-      "userCreate": "Create User",
-      "userRead": "Read User",
-      "userUpdate": "Update User",
-      "userDelete": "Delete User",
-      "userList": "List Users",
-      "roleManagement": "Role Management",
-      "roleCreate": "Create Role",
-      "roleRead": "Read Role",
-      "roleUpdate": "Update Role",
-      "roleDelete": "Delete Role",
-      "roleAssign": "Assign Role",
-      "roleRevoke": "Revoke Role",
-      "roleAssignAdmin": "Assign Admin Permission",
-      "datasetManagementAll": "Dataset Management (All)",
-      "datasetCreateAll": "Create Dataset (All)",
-      "datasetReadAll": "Read Dataset (All)",
-      "datasetUpdateAll": "Update Dataset (All)",
-      "datasetDeleteAll": "Delete Dataset (All)",
-      "datasetAssignAll": "Assign Dataset (All)",
-      "datasetExportAll": "Export Dataset (All)",
-      "datasetImportAll": "Import Dataset (All)",
-      "datasetManagementAssigned": "Dataset Management (Assigned)",
-      "datasetReadAssigned": "Read Dataset (Assigned)",
-      "datasetUpdateAssigned": "Update Dataset (Assigned)",
-      "datasetAssignAssigned": "Assign Dataset (Assigned)",
-      "datasetExportAssigned": "Export Dataset (Assigned)",
-      "datasetImportAssigned": "Import Dataset (Assigned)",
-      "sampleManagementAll": "Sample Management (All)",
-      "sampleReadAll": "Read Sample (All)",
-      "sampleCreateAll": "Create Sample (All)",
-      "sampleUpdateAll": "Update Sample (All)",
-      "sampleDeleteAll": "Delete Sample (All)",
-      "sampleManagementAssigned": "Sample Management (Assigned)",
-      "sampleReadAssigned": "Read Sample (Assigned)",
-      "sampleCreateAssigned": "Create Sample (Assigned)",
-      "sampleUpdateAssigned": "Update Sample (Assigned)",
-      "sampleDeleteAssigned": "Delete Sample (Assigned)",
-      "labelManagementAll": "Label Management (All)",
-      "labelReadAll": "Read Label (All)",
-      "labelCreateAll": "Create Label (All)",
-      "labelUpdateAll": "Update Label (All)",
-      "labelDeleteAll": "Delete Label (All)",
-      "labelManagementAssigned": "Label Management (Assigned)",
-      "labelReadAssigned": "Read Label (Assigned)",
-      "labelCreateAssigned": "Create Label (Assigned)",
-      "labelUpdateAssigned": "Update Label (Assigned)",
-      "labelDeleteAssigned": "Delete Label (Assigned)",
-      "annotationManagementAll": "Annotation Management (All)",
-      "annotationReadAll": "Read Annotation (All)",
-      "annotationModifyAll": "Modify Annotation (All)",
-      "annotationManagementAssigned": "Annotation Management (Assigned)",
-      "annotationReadAssigned": "Read Annotation (Assigned)",
-      "annotationModifyAssigned": "Modify Annotation (Assigned)",
-      "annotationManagementSelf": "Annotation Management (Self)",
-      "annotationReadSelf": "Read Annotation (Self)",
-      "annotationModifySelf": "Modify Annotation (Self)"
+  "about": {
+    "hero": {
+      "subtitle": "Visual Active Learning Platform",
+      "description1": "Saki is a closed-loop intelligent annotation platform integrating dataset management, sample annotation (with version control), model training, and visual active learning.",
+      "description2": "With a human-in-the-loop workflow, high-value samples are prioritized for annotation and training to reduce cost and improve iteration efficiency.",
+      "tags": {
+        "humanLoop": "Human-in-the-loop",
+        "gitLike": "Git-like Versioning",
+        "activeLoop": "Active Learning Loop"
+      }
+    },
+    "sections": {
+      "dataAssets": {
+        "title": "Data & Assets",
+        "body": "Dataset management and content addressing ensure data traceability, reuse, and deduplication.",
+        "tags": {
+          "assetSha": "Asset SHA256",
+          "datasetSample": "Dataset/Sample",
+          "minio": "MinIO"
+        }
+      },
+      "annotationVersioning": {
+        "title": "Annotation Versioning",
+        "body": "Annotation records are immutable. Commit snapshots and branch pointers make version history traceable like Git.",
+        "tags": {
+          "annotation": "Annotation",
+          "commitMap": "Commit/CAMap",
+          "branch": "Branch"
+        }
+      },
+      "training": {
+        "title": "Training & Active Learning",
+        "body": "Runtime runs training/inference as stateless executors, continuously closing the loop to surface high-value samples.",
+        "tags": {
+          "alLoop": "ALLoop",
+          "jobMetric": "Job/Metric",
+          "model": "Model"
+        }
+      },
+      "coreWorkflow": {
+        "title": "Core Workflow",
+        "steps": {
+          "dataImport": "Data import",
+          "sampleAnnotation": "Sample annotation",
+          "versionSnapshot": "Version snapshot",
+          "modelTraining": "Model training",
+          "activeSampling": "Active learning sampling",
+          "iteration": "Iteration & optimization"
+        }
+      },
+      "techStack": {
+        "title": "Tech Stack Overview",
+        "frontend": {
+          "label": "Frontend",
+          "stack": "React 18 · Vite · TypeScript · Ant Design · Tailwind"
+        },
+        "backend": {
+          "label": "Backend",
+          "stack": "FastAPI · SQLModel · PostgreSQL · MinIO"
+        },
+        "runtime": {
+          "label": "Runtime",
+          "stack": "FastAPI · WebSocket · Subprocess · HTTPX"
+        }
+      },
+      "devStatus": {
+        "title": "Development Status",
+        "status": {
+          "completed": "Completed",
+          "inProgress": "In progress",
+          "planned": "Planned"
+        }
+      }
     }
   },
-  "userProfile": {
-    "title": "User Profile",
-    "basicInfo": "Basic Information",
-    "systemRoles": "System Roles",
-    "permissions": "Permissions",
-    "noRoles": "No roles assigned",
-    "noPermissions": "No permissions",
-    "isSuperAdmin": "Super Administrator",
-    "createdAt": "Created At",
-    "updatedAt": "Updated At",
-    "lastLoginAt": "Last Login At",
-    "fetchError": "Failed to fetch user information",
-    "userNotFound": "User information not found",
-    "permissionScope": {
-      "all": "All",
-      "assigned": "Assigned",
-      "self": "Self",
-      "owned": "Owned"
+  "layout": {
+    "header": {
+      "newProject": "New project",
+      "newDataset": "New dataset",
+      "user": "User"
     },
-    "permissionResources": {
-      "user": "User Management",
-      "role": "Role Management",
-      "dataset": "Dataset Management",
-      "sample": "Sample Management",
-      "label": "Label Management",
-      "annotation": "Annotation Management",
-      "system": "System Management"
+    "repoActionBar": {
+      "branches": "Branches",
+      "tags": "Tags",
+      "goToFile": "Go to file"
+    },
+    "repoHeader": {
+      "private": "Private",
+      "viewAll": "View all {{label}}",
+      "stats": {
+        "fork": "Fork"
+      }
+    },
+    "sidebar": {
+      "about": "About",
+      "aboutText": "Saki is a visual active learning platform.",
+      "readme": "Readme",
+      "activity": "Activity",
+      "stars": "stars",
+      "watching": "watching",
+      "forks": "forks",
+      "releases": "Releases",
+      "noReleases": "No releases published",
+      "createRelease": "Create a new release",
+      "packages": "Packages",
+      "noPackages": "No packages published",
+      "publishPackage": "Publish your first package",
+      "languages": "Languages"
     }
   }
 }

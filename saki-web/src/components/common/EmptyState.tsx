@@ -1,53 +1,36 @@
 /**
  * EmptyState Component
- * 
+ *
  * 通用的空状态组件
  */
 
 import React from 'react';
-import { Layout, Empty } from 'antd';
-
-const { Content } = Layout;
+import {Empty} from 'antd';
 
 export interface EmptyStateProps {
-  /** 描述文本 */
-  description?: string;
-  /** 是否使用布局容器 */
-  useLayout?: boolean;
+    /** 描述文本 */
+    description?: string;
+    /** 是否使用布局容器 */
+    useLayout?: boolean;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
-  description,
-  useLayout = true,
-}) => {
-  const content = <Empty description={description} />;
+                                                          description,
+                                                          useLayout = true,
+                                                      }) => {
+    const content = <Empty description={description}/>;
 
-  if (useLayout) {
+    if (useLayout) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                {content}
+            </div>
+        );
+    }
+
     return (
-      <Layout
-        style={{
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Content>{content}</Content>
-      </Layout>
+        <div className="flex h-full items-center justify-center">
+            {content}
+        </div>
     );
-  }
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100%',
-      }}
-    >
-      {content}
-    </div>
-  );
 };
-

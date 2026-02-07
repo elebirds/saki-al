@@ -10,8 +10,10 @@ from saki_api.models.enums import TaskType, ProjectStatus
 if TYPE_CHECKING:
     from saki_api.models.l1.dataset import Dataset
     from saki_api.models.l3.job import Job
+    from saki_api.models.l3.loop import ALLoop
     from saki_api.models.l2.branch import Branch
     from saki_api.models.l2.commit import Commit
+    from saki_api.models.l2.label import Label
 
 
 class ProjectDataset(SQLModel, table=True):
@@ -56,6 +58,8 @@ class Project(ProjectBase, TimestampMixin, UUIDMixin, table=True):
     # 2. 版本控制 (L2)
     branches: List["Branch"] = Relationship(back_populates="project", cascade_delete=True)
     commits: List["Commit"] = Relationship(back_populates="project", cascade_delete=True)
+    labels: List["Label"] = Relationship(back_populates="project", cascade_delete=True)
 
     # 3. 训练任务 (L3)
     jobs: List["Job"] = Relationship(back_populates="project")
+    loops: List["ALLoop"] = Relationship(back_populates="project", cascade_delete=True)

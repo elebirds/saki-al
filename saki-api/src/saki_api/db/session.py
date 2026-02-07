@@ -1,51 +1,98 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+from typing import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncEngine
 from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession as SQLModelAsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.config import settings
+from saki_api.db.audit import setup_audit_listeners
 
-def _get_async_engine() -> AsyncEngine:
-    database_url = settings.DATABASE_URL
-    
-    # 自动转换 URL
-    if database_url.startswith("sqlite:///"):
-        database_url = database_url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
-    elif database_url.startswith("postgresql://"):
-        # 显式使用 psycopg 驱动 (v3)
-        database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
-    
-    connect_args = {}
-    if "sqlite" in database_url:
-        connect_args = {"check_same_thread": False}
-    
-    return create_async_engine(
-        database_url,
-        echo=settings.SQL_ECHO,  # 建议从配置读取，生产环境设为 False
-        connect_args=connect_args,
-        # --- 性能优化参数 ---
-        pool_size=20,            # 连接池基础大小
-        max_overflow=10,         # 允许临时溢出的连接数
-        pool_pre_ping=True,      # 每次拿连接先检查，防止“断线”
-        pool_recycle=1800,       # 缩短回收时间到 30 分钟，适配部分云数据库
-    )
 
-engine = _get_async_engine()
+def get_engine_kwargs() -> dict:
+    """
+    根据数据库驱动类型动态构建引擎参数。
+    
+    SQLite 不支持连接池，需要特殊处理。
+    """
+    kwargs: dict = {
+        "echo": settings.SQL_ECHO,
+        "pool_pre_ping": True,  # 每次拿连接先检查，防止"断线"
+    }
 
-# 推荐：使用 sessionmaker 预定义 session 配置
-async_session_maker = sessionmaker(
-    engine, 
-    class_=SQLModelAsyncSession, 
-    expire_on_commit=False  # 异步模式下必须设为 False，防止意外的 IO
+    # 只有非 SQLite 数据库才启用连接池参数
+    if "sqlite" not in settings.DATABASE_URL:
+        kwargs.update({
+            "pool_size": settings.POOL_SIZE,
+            "max_overflow": settings.MAX_OVERFLOW,
+            "pool_recycle": settings.POOL_RECYCLE,
+        })
+    else:
+        # SQLite 特有配置
+        kwargs["connect_args"] = {"check_same_thread": False}
+
+    return kwargs
+
+
+# 创建全局唯一的异步引擎
+# DATABASE_URL 已经在 config.py 中预处理为异步驱动格式
+engine: AsyncEngine = create_async_engine(
+    settings.DATABASE_URL,
+    **get_engine_kwargs()
 )
 
-async def get_session():
+# 设置审计字段自动填充的事件监听器
+setup_audit_listeners()
+
+# 使用专用的 async_sessionmaker（SQLAlchemy 2.0+）
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,  # 异步模式下必须设为 False，防止意外的 IO
+)
+
+from contextvars import ContextVar
+from typing import Optional
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+# 定义一个全局上下文变量，用于存储异步会话
+_session_ctx: ContextVar[Optional[AsyncSession]] = ContextVar("db_session", default=None)
+
+
+def get_current_session() -> AsyncSession:
+    """获取当前上下文中的 session"""
+    session = _session_ctx.get()
+    if not session:
+        raise RuntimeError("当前上下文中没有活跃的 AsyncSession，请确保在 get_session 依赖范围内调用。")
+    return session
+
+
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with SessionLocal() as session:
+        # 将 session 放入上下文
+        token = _session_ctx.set(session)
+        try:
+            yield session
+            # 注意：由装饰器负责 commit 逻辑或在这里进行最后的最外层 commit
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            # 重置上下文，防止内存泄露或跨请求污染
+            _session_ctx.reset(token)
+            await session.close()
+
+
+async def dispose_engine():
     """
-    FastAPI 依赖注入函数。
-    使用 async with 确保连接在请求结束或报错时 100% 归还给连接池。
+    在应用关闭时销毁连接池。
+    
+    用于优雅关闭，避免数据库端出现"僵尸连接"。
     """
-    async with async_session_maker() as session:
-        yield session
+    await engine.dispose()
+
 
 async def init_db():
     """

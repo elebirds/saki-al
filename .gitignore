@@ -23,6 +23,7 @@ wheels/
 .coverage
 htmlcov/
 .env
+.venv/
 venv/
 env/
 ENV/

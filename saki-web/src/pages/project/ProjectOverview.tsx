@@ -1,0 +1,293 @@
+import React, {useCallback, useEffect, useMemo, useState} from 'react'
+import {Avatar, Button, Spin, Tag} from 'antd'
+import {FolderOutlined, HistoryOutlined} from '@ant-design/icons'
+import {useNavigate, useParams} from 'react-router-dom'
+import {useTranslation} from 'react-i18next'
+import {RepoActionBar} from '../../layouts/github/RepoActionBar'
+import {RepoHeader} from '../../layouts/github/RepoHeader'
+import {FileTable} from '../../layouts/github/FileTable'
+import {api} from '../../services/api'
+import {CommitHistoryItem, Dataset, Project, ProjectBranch, ResourceMember} from '../../types'
+import ProjectSidebar from './ProjectSidebar'
+
+
+const ProjectOverview: React.FC = () => {
+    const {projectId} = useParams<{ projectId: string }>()
+    const {t} = useTranslation()
+    const navigate = useNavigate()
+    const [project, setProject] = useState<Project | null>(null)
+    const [datasets, setDatasets] = useState<Dataset[]>([])
+    const [branches, setBranches] = useState<ProjectBranch[]>([])
+    const [commits, setCommits] = useState<CommitHistoryItem[]>([])
+    const [members, setMembers] = useState<ResourceMember[]>([])
+    const [loading, setLoading] = useState(true)
+    const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
+    const [sampleStats, setSampleStats] = useState({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+    const [selectedBranchName, setSelectedBranchName] = useState('master')
+
+    const formatRelativeTime = useCallback((value?: string) => {
+        if (!value) return t('common.placeholder')
+        const date = new Date(value)
+        const diffMs = Date.now() - date.getTime()
+        const minutes = Math.floor(diffMs / 60000)
+        if (minutes < 1) return t('common.time.justNow')
+        if (minutes < 60) return t('common.time.minutesAgo', {count: minutes})
+        const hours = Math.floor(minutes / 60)
+        if (hours < 24) return t('common.time.hoursAgo', {count: hours})
+        const days = Math.floor(hours / 24)
+        if (days < 7) return t('common.time.daysAgo', {count: days})
+        const weeks = Math.floor(days / 7)
+        if (weeks < 5) return t('common.time.weeksAgo', {count: weeks})
+        const months = Math.floor(days / 30)
+        return t('common.time.monthsAgo', {count: months})
+    }, [t])
+
+    const loadProject = useCallback(async () => {
+        if (!projectId) return
+        setLoading(true)
+        try {
+            const [projectData, datasetIds, branchData, commitData] = await Promise.all([
+                api.getProject(projectId),
+                api.getProjectDatasets(projectId),
+                api.getProjectBranches(projectId),
+                api.getProjectCommits(projectId),
+            ])
+
+            setProject(projectData)
+            setBranches(branchData)
+            setCommits(commitData)
+
+            const datasetResults = await Promise.all(datasetIds.map((id) => api.getDataset(id)))
+            const resolvedDatasets = datasetResults.filter(Boolean) as Dataset[]
+            setDatasets(resolvedDatasets)
+
+            try {
+                const memberList = await api.getProjectMembers(projectId)
+                setMembers(memberList)
+            } catch (error) {
+                setMembers([])
+            }
+
+            if (resolvedDatasets.length === 1) {
+                setSelectedDatasetId(resolvedDatasets[0].id)
+            }
+        } catch (error) {
+            console.error('Failed to load project overview', error)
+        } finally {
+            setLoading(false)
+        }
+    }, [projectId])
+
+    useEffect(() => {
+        loadProject()
+    }, [loadProject])
+
+    useEffect(() => {
+        if (selectedDatasetId && !datasets.find((dataset) => dataset.id === selectedDatasetId)) {
+            setSelectedDatasetId(null)
+        }
+        if (!selectedDatasetId && datasets.length === 1) {
+            setSelectedDatasetId(datasets[0].id)
+        }
+    }, [datasets, selectedDatasetId])
+
+    useEffect(() => {
+        if (datasets.length === 0) {
+            setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+            return
+        }
+
+        const loadStats = async () => {
+            const stats = await Promise.all(
+                datasets.map((dataset) =>
+                    api.getDatasetStats(dataset.id).catch(() => null)
+                )
+            )
+
+            const totals = stats.reduce(
+                (acc, stat) => {
+                    if (!stat) return acc
+                    acc.labeled += stat.labeledSamples || 0
+                    acc.unlabeled += stat.unlabeledSamples || 0
+                    acc.skipped += stat.skippedSamples || 0
+                    acc.total += stat.totalSamples || 0
+                    return acc
+                },
+                {labeled: 0, unlabeled: 0, skipped: 0, total: 0}
+            )
+
+            setSampleStats(totals)
+        }
+
+        loadStats()
+    }, [datasets])
+
+    useEffect(() => {
+        if (branches.length === 0) return
+        const master = branches.find((branch) => branch.name === 'master')?.name
+        setSelectedBranchName((prev) => prev || master || branches[0].name)
+    }, [branches])
+
+    const memberMap = useMemo(() => {
+        return new Map(members.map((member) => [member.userId, member]))
+    }, [members])
+
+    const activeBranchName = selectedBranchName || branches[0]?.name || 'master'
+    const activeBranch = branches.find((branch) => branch.name === activeBranchName) || branches[0]
+    const latestCommit = activeBranch?.headCommitId
+        ? commits.find((commit) => commit.id === activeBranch.headCommitId)
+        : commits[0]
+    const latestCommitAuthor = latestCommit?.authorId ? memberMap.get(latestCommit.authorId) : null
+    const latestCommitName = latestCommit
+        ? latestCommit.authorType === 'system'
+            ? t('project.commits.author.system')
+            : latestCommit.authorType === 'model'
+                ? t('project.commits.author.model')
+                : latestCommitAuthor?.userFullName || latestCommitAuthor?.userEmail || t('project.commits.author.unknown')
+        : t('project.overview.noCommits')
+
+    const latestCommitAvatar = latestCommitAuthor?.userAvatarUrl
+
+    if (loading) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                <Spin size="large"/>
+            </div>
+        )
+    }
+
+    if (!project) {
+        return (
+            <div className="text-github-muted">{t('project.common.notFound')}</div>
+        )
+    }
+
+    const taskTypeLabel = t(`project.overview.taskType.${project.taskType}`, project.taskType)
+    const statusLabel = t(`project.overview.status.${project.status}`, project.status)
+
+    return (
+        <div>
+            <RepoHeader
+                title={project.name}
+                visibilityLabel={taskTypeLabel}
+                stats={[{label: t('layout.repoHeader.stats.fork'), count: 0}]}
+            />
+
+            <div className="flex gap-6">
+                <div className="flex-1 min-w-0">
+                    <RepoActionBar
+                        branchName={activeBranchName}
+                        branchesCount={project.branchCount}
+                        tagsCount={project.labelCount}
+                        branches={branches.map((branch) => ({id: branch.id, name: branch.name}))}
+                        onBranchChange={(name) => setSelectedBranchName(name)}
+                        onBranchesClick={() => {
+                            if (projectId) {
+                                navigate(`/projects/${projectId}/branches`)
+                            }
+                        }}
+                    />
+                        <FileTable
+                            header={
+                                <>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <Avatar
+                                            size={24}
+                                            src={latestCommitAvatar}
+                                            className="bg-gradient-to-br from-green-400 to-blue-500"
+                                        >
+                                            {latestCommitName.charAt(0).toUpperCase()}
+                                        </Avatar>
+                                        <span
+                                            className="font-semibold text-sm text-github-text">{latestCommitName}</span>
+                                        <span className="text-github-muted text-sm truncate">
+                      {latestCommit?.message || activeBranch?.headCommitMessage || t('project.overview.noCommitsYet')}
+                    </span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-sm text-github-muted shrink-0">
+                                        {latestCommit?.id || activeBranch?.headCommitId ? (
+                                            <span className="font-mono text-xs">
+                                                {(latestCommit?.id || activeBranch?.headCommitId || '').slice(0, 7)}
+                                            </span>
+                                        ) : null}
+                                        <span>· {formatRelativeTime(latestCommit?.createdAt || activeBranch?.updatedAt)}</span>
+                                        <Button
+                                            type="link"
+                                            className="text-github-link! p-0!"
+                                            onClick={() => {
+                                                if (projectId) {
+                                                    navigate(`/projects/${projectId}/commits?branch=${activeBranchName}`)
+                                                }
+                                            }}
+                                        >
+                                            <HistoryOutlined className="mr-1"/>
+                                            <span
+                                                className="font-semibold text-github-text">{project.commitCount}</span> {t('project.overview.commits')}
+                                        </Button>
+                                    </div>
+                                </>
+                            }
+                        >
+                            {datasets.length === 0 ? (
+                                <div className="px-4 py-8 text-center text-github-muted">
+                                    {t('project.overview.noDatasets')}
+                                </div>
+                            ) : (
+                                datasets.map((dataset) => (
+                                    <div
+                                        key={dataset.id}
+                                        className="flex items-center px-4 py-2 hover:bg-github-base border-b border-github-border-muted last:border-b-0 text-sm"
+                                    >
+                                        <div className="flex items-center gap-3 w-55 shrink-0">
+                                            <FolderOutlined className="text-github-muted"/>
+                                            <Button
+                                                type="link"
+                                                className="text-github-link! p-0!"
+                                                onClick={() => {
+                                                    setSelectedDatasetId(dataset.id)
+                                                    if (projectId) {
+                                                        const params = new URLSearchParams()
+                                                        params.set('datasetId', dataset.id)
+                                                        params.set('branch', activeBranchName)
+                                                        navigate(`/projects/${projectId}/samples?${params.toString()}`)
+                                                    }
+                                                }}
+                                            >
+                                                {dataset.name}
+                                            </Button>
+                                        </div>
+                                        <div className="flex-1 text-github-muted truncate px-4">
+                                            {dataset.description || t('project.overview.noDescription')}
+                                        </div>
+                                        <div
+                                            className="flex items-center gap-2 text-github-muted text-right whitespace-nowrap shrink-0">
+                                            <Tag className="m-0!">{dataset.type}</Tag>
+                                            <span>{formatRelativeTime(dataset.updatedAt)}</span>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </FileTable>
+                </div>
+
+                <ProjectSidebar
+                    description={project.description}
+                    taskTypeLabel={taskTypeLabel}
+                    statusLabel={statusLabel}
+                    statusValue={project.status}
+                    stats={{
+                        datasets: project.datasetCount,
+                        labels: project.labelCount,
+                        branches: project.branchCount,
+                        commits: project.commitCount,
+                        members: members.length || undefined,
+                    }}
+                    members={members}
+                    sampleStatus={sampleStats}
+                />
+            </div>
+        </div>
+    )
+}
+
+export default ProjectOverview

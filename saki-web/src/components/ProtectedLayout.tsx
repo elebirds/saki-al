@@ -1,158 +1,175 @@
-import React from 'react';
-import { Layout, Menu, theme, Select, Button, Dropdown } from 'antd';
-import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
-import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
-import type { MenuProps } from 'antd';
-import { useAuthStore } from '../store/authStore';
-import { api } from '../services/api';
-import { useEffect } from 'react';
-import { usePermission } from '../hooks';
-
-const { Header, Content, Footer } = Layout;
+import React, {useEffect} from 'react'
+import {Navigate, Outlet, useLocation, useNavigate} from 'react-router-dom'
+import {useTranslation} from 'react-i18next'
+import type {MenuProps} from 'antd'
+import {
+    AppstoreOutlined,
+    CodeOutlined,
+    InfoCircleOutlined,
+    LogoutOutlined,
+    TeamOutlined,
+    UserOutlined
+} from '@ant-design/icons'
+import {useAuthStore} from '../store/authStore'
+import {api} from '../services/api'
+import {usePermission} from '../hooks'
+import {AppShell, type NavItem} from '../layouts'
 
 const ProtectedLayout: React.FC = () => {
-  const { t, i18n } = useTranslation();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const {
-    token: { colorBgContainer },
-  } = theme.useToken();
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const logout = useAuthStore((state) => state.logout);
-  const user = useAuthStore((state) => state.user);
-  const setToken = useAuthStore((state) => state.setToken);
-  
-  // Permission check
-  const { can, isSuperAdmin } = usePermission();
-  const canManageUsers = can('user:read') || isSuperAdmin;
-  const canManageRoles = can('role:read') || isSuperAdmin;
+    const {t, i18n} = useTranslation()
+    const location = useLocation()
+    const navigate = useNavigate()
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+    const logout = useAuthStore((state) => state.logout)
+    const user = useAuthStore((state) => state.user)
 
-  useEffect(() => {
-    let interval: number;
-    if (isAuthenticated) {
-      // Refresh token every 5 minutes
-      interval = setInterval(async () => {
-        try {
-          console.log('Refreshing token...');
-          const response = await api.refreshToken();
-          setToken(response.accessToken);
-          console.log('Token refreshed');
-        } catch (error) {
-          console.error('Token refresh failed', error);
-          // If refresh fails (e.g. 401), the interceptor will handle logout
+    const {can, isSuperAdmin} = usePermission()
+    const canManageUsers = can('user:read') || isSuperAdmin
+    const canManageRoles = can('role:read') || isSuperAdmin
+
+    useEffect(() => {
+        let interval: number
+        if (isAuthenticated) {
+            interval = window.setInterval(async () => {
+                try {
+                    const response = await api.refreshToken()
+                    const setTokens = useAuthStore.getState().setTokens
+                    setTokens(response.accessToken, response.refreshToken)
+                } catch (error) {
+                    console.error('Token refresh failed', error)
+                }
+            }, 5 * 60 * 1000)
         }
-      }, 5 * 60 * 1000);
+        return () => {
+            if (interval) window.clearInterval(interval)
+        }
+    }, [isAuthenticated])
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace/>
     }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isAuthenticated, setToken]);
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // 如果用户需要更改密码，且不在更改密码页面，强制跳转
-  if (user?.mustChangePassword && location.pathname !== '/change-password') {
-    return <Navigate to="/change-password" replace />;
-  }
-
-  const changeLanguage = (lng: string) => {
-    i18n.changeLanguage(lng);
-  };
-
-  // 根据当前路径确定选中的菜单项
-  const getSelectedKeys = () => {
-    const pathname = location.pathname;
-    if (pathname === '/users') {
-      return ['3'];
-    } else if (pathname === '/roles') {
-      return ['4'];
-    } else if (pathname === '/about') {
-      return ['2'];
-    } else if (pathname === '/' || pathname.startsWith('/datasets') || pathname.startsWith('/workspace')) {
-      return ['1'];
+    if (user?.mustChangePassword && location.pathname !== '/change-password') {
+        return <Navigate to="/change-password" replace/>
     }
-    // 默认选中数据集
-    return ['1'];
-  };
 
-  // Handle user menu click
-  const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'profile') {
-      navigate('/profile');
-    } else if (key === 'logout') {
-      logout();
+    const changeLanguage = (lng: string) => {
+        i18n.changeLanguage(lng)
     }
-  };
 
-  // User menu items
-  const userMenuItems: MenuProps['items'] = [
-    {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: t('userProfile.title'),
-    },
-    {
-      type: 'divider',
-    },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: t('auth.logout'),
-    },
-  ];
+    const navItems: NavItem[] = [
+        {
+            key: 'datasets',
+            label: t('app.datasets'),
+            path: '/',
+            icon: <CodeOutlined/>,
+        },
+        {
+            key: 'projects',
+            label: t('app.projects'),
+            path: '/projects',
+            icon: <AppstoreOutlined/>,
+        },
+        ...(canManageUsers
+            ? [
+                {
+                    key: 'users',
+                    label: t('user.management.title'),
+                    path: '/users',
+                    icon: <TeamOutlined/>,
+                },
+            ]
+            : []),
+        ...(canManageRoles
+            ? [
+                {
+                    key: 'roles',
+                    label: t('role.management.title'),
+                    path: '/roles',
+                    icon: <UserOutlined/>,
+                },
+            ]
+            : []),
+        {
+            key: 'about',
+            label: t('app.about'),
+            path: '/about',
+            icon: <InfoCircleOutlined/>,
+        },
+    ]
 
-  return (
-    <Layout className="layout" style={{ height: '100vh', overflow: 'hidden' }}>
-      <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div className="demo-logo" style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginRight: '20px' }}>
-            {t('app.title')}
-          </div>
-          <Menu
-            theme="dark"
-            mode="horizontal"
-            selectedKeys={getSelectedKeys()}
-            items={[
-              { key: '1', label: <Link to="/">{t('app.datasets')}</Link> },
-              ...(canManageUsers
-                ? [{ key: '3', label: <Link to="/users">{t('userManagement.title')}</Link> }] 
-                : []),
-              ...(canManageRoles
-                ? [{ key: '4', label: <Link to="/roles">{t('roleManagement.title')}</Link> }] 
-                : []),
-              { key: '2', label: <Link to="/about">{t('app.about')}</Link> },
+    const activeNavKey = (() => {
+        const pathname = location.pathname
+        if (pathname.startsWith('/users')) return 'users'
+        if (pathname.startsWith('/roles')) return 'roles'
+        if (pathname.startsWith('/about')) return 'about'
+        if (pathname.startsWith('/projects')) return 'projects'
+        if (pathname === '/' || pathname.startsWith('/datasets')) return 'datasets'
+        return 'datasets'
+    })()
+
+    const isProjectDetail = /^\/projects\/[^/]+/.test(location.pathname)
+    const isWorkspace = /^\/projects\/[^/]+\/workspace/.test(location.pathname)
+
+    const handleUserMenuClick: MenuProps['onClick'] = ({key}) => {
+        if (key === 'profile') {
+            navigate('/profile')
+        } else if (key === 'logout') {
+            logout()
+        }
+    }
+
+    const userMenuItems: MenuProps['items'] = [
+        {
+            key: 'profile',
+            icon: <UserOutlined/>,
+            label: t('user.profile.title'),
+        },
+        {
+            type: 'divider',
+        },
+        {
+            key: 'logout',
+            icon: <LogoutOutlined/>,
+            label: t('auth.logout'),
+        },
+    ]
+
+    return (
+        <AppShell
+            appTitle={t('app.title')}
+            repoOwner="saki"
+            repoName="saki-web"
+            navItems={navItems}
+            activeNavKey={activeNavKey}
+            onNavItemClick={(path) => navigate(path)}
+            language={i18n.language}
+            languageOptions={[
+                {value: 'en', label: t('common.language.english')},
+                {value: 'zh', label: t('common.language.chinese')},
             ]}
-          />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Select
-            defaultValue={i18n.language}
-            style={{ width: 120 }}
-            onChange={changeLanguage}
-            options={[
-              { value: 'en', label: 'English' },
-              { value: 'zh', label: '中文' },
-            ]}
-          />
-          <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
-            <Button type="text" style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <UserOutlined />
-              <span>{user?.fullName || user?.email}</span>
-            </Button>
-          </Dropdown>
-        </div>
-      </Header>
-      <Content style={{ padding: '0 50px', marginTop: '20px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div className="site-layout-content" style={{ background: colorBgContainer, padding: 24, flex: 1, overflow: 'hidden' }}>
-          <Outlet />
-        </div>
-      </Content>
-      <Footer style={{ textAlign: 'center', flexShrink: 0 }}>{t('app.footer')}</Footer>
-    </Layout>
-  );
-};
+            onLanguageChange={changeLanguage}
+            userName={user?.fullName || user?.email}
+            userMenuItems={userMenuItems}
+            onUserMenuClick={handleUserMenuClick}
+            footerText={t('app.footer')}
+            showHeaderBorder={!isProjectDetail}
+            contentClassName={
+                isWorkspace
+                    ? 'px-6 w-full h-full flex flex-col'
+                    : isProjectDetail
+                        ? 'max-w-[1280px] mx-auto px-6 h-full flex flex-col'
+                        : 'max-w-[1280px] mx-auto px-6 py-6 h-full flex flex-col'
+            }
+            contentCardClassName={
+                isProjectDetail
+                    ? 'bg-transparent border-0 p-0 h-full flex flex-col'
+                    : 'bg-github-panel rounded-md p-6 h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]'
+            }
+        >
+            <Outlet/>
+        </AppShell>
+    )
+}
 
-export default ProtectedLayout;
+export default ProtectedLayout

@@ -41,4 +41,4 @@ class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     # 关系
     project: "Project" = Relationship(back_populates="loops")
     branch: "Branch" = Relationship(back_populates="active_learning_loop")
-    training_jobs: List["Job"] = Relationship(back_populates="loop")
+    jobs: List["Job"] = Relationship(back_populates="loop")

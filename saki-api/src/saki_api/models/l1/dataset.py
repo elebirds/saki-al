@@ -12,7 +12,8 @@ from typing import List, Optional, TYPE_CHECKING
 from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.models.base import TimestampMixin, UUIDMixin
-from saki_api.models.enums import AnnotationSystemType
+from saki_api.models.enums import DatasetType
+from saki_api.models.user import User
 
 if TYPE_CHECKING:
     from saki_api.models.l1.sample import Sample
@@ -32,8 +33,8 @@ class DatasetBase(SQLModel):
         max_length=2000,
         description="Description of the dataset."
     )
-    annotation_system: AnnotationSystemType = Field(
-        default=AnnotationSystemType.CLASSIC,
+    type: DatasetType = Field(
+        default=DatasetType.CLASSIC,
         description="Type of annotation system/interface for this dataset."
     )
 
@@ -52,6 +53,8 @@ class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):
         index=True,
         description="Owner of the dataset"
     )
+
+    owner: "User" = Relationship(sa_relationship_kwargs={"viewonly": True})
 
     # Relationship to samples (one-to-many)
     samples: List["Sample"] = Relationship(back_populates="dataset")

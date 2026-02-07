@@ -4,15 +4,41 @@ Preset Role Configurations
 Defines system preset roles that are created on system initialization.
 These roles cannot be deleted.
 """
-
+import logging
+import uuid
 from typing import List, Dict, Any
 
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac import (
     Role, RoleType, RolePermission,
     Permissions,
 )
+
+
+# ============================================================================
+# Preset Role Constants
+# ============================================================================
+# These UUIDs are fixed and predictable so they can be referenced directly
+# without querying the database. They are deterministic based on role names.
+
+def _generate_preset_role_id(name: str) -> uuid.UUID:
+    """Generate a deterministic UUID for a preset role based on its name."""
+    # Using UUID v5 with a fixed namespace for consistency
+    return uuid.uuid5(uuid.NAMESPACE_DNS, f"preset-role.{name}")
+
+
+# Resource-level role IDs (used for dataset member assignments)
+DATASET_OWNER_ROLE_ID = _generate_preset_role_id("dataset_owner")
+DATASET_MANAGER_ROLE_ID = _generate_preset_role_id("dataset_manager")
+DATASET_VIEWER_ROLE_ID = _generate_preset_role_id("dataset_viewer")
+
+# System-level role IDs
+SUPER_ADMIN_ROLE_ID = _generate_preset_role_id("super_admin")
+ADMIN_ROLE_ID = _generate_preset_role_id("admin")
+CREATOR_ROLE_ID = _generate_preset_role_id("creator")
+USER_ROLE_ID = _generate_preset_role_id("user")
 
 # ============================================================================
 # Preset Role Definitions
@@ -23,6 +49,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
     # System Roles (Global Permissions)
     # ========================================================================
     {
+        "id": SUPER_ADMIN_ROLE_ID,
         "name": "super_admin",
         "display_name": "超级管理员",
         "description": "拥有系统所有权限，不受任何限制",
@@ -36,8 +63,11 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.ALL_PERMISSIONS,  # *:*:all - 全局所有权限
             Permissions.ROLE_ASSIGN_ADMIN,  # 授权管理员权限
         ],
+        "is_supremo": True,
+        "color": "red"
     },
     {
+        "id": ADMIN_ROLE_ID,
         "name": "admin",
         "display_name": "管理员",
         "description": "系统管理员，可管理用户和角色，完全访问所有数据集及其内容",
@@ -68,24 +98,17 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_UPDATE_ALL,
             Permissions.DATASET_DELETE_ALL,
             Permissions.DATASET_ASSIGN_ALL,
-            Permissions.DATASET_EXPORT_ALL,
-            Permissions.DATASET_IMPORT_ALL,
             # Sample - 样本完全访问
             Permissions.SAMPLE_READ_ALL,
             Permissions.SAMPLE_CREATE_ALL,
             Permissions.SAMPLE_UPDATE_ALL,
             Permissions.SAMPLE_DELETE_ALL,
-            # Label - 标签完全访问
-            Permissions.LABEL_READ_ALL,
-            Permissions.LABEL_CREATE_ALL,
-            Permissions.LABEL_UPDATE_ALL,
-            Permissions.LABEL_DELETE_ALL,
-            # Annotation - 标注完全访问
-            Permissions.ANNOTATION_READ_ALL,
-            Permissions.ANNOTATION_MODIFY_ALL,
         ],
+        "is_supremo": False,
+        "color": "green"
     },
     {
+        "id": CREATOR_ROLE_ID,
         "name": "creator",
         "display_name": "创作者",
         "description": "可创建和管理自己的数据集，可分配成员",
@@ -99,8 +122,11 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             # User list - 用于成员选择
             Permissions.USER_LIST,
         ],
+        "is_supremo": False,
+        "color": "cyan"
     },
     {
+        "id": USER_ROLE_ID,
         "name": "user",
         "display_name": "普通用户",
         "description": "默认用户角色，只能访问被分配的数据集",
@@ -111,6 +137,8 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "permissions": [
             # 无任何系统级权限 - 只能访问被分配的数据集资源
         ],
+        "is_supremo": False,
+        "color": "yellow"
     },
 
     # ========================================================================
@@ -118,9 +146,10 @@ PRESET_ROLES: List[Dict[str, Any]] = [
     # 资源级角色 - 这些角色的权限在特定数据集范围内生效
     # ========================================================================
     {
+        "id": DATASET_OWNER_ROLE_ID,
         "name": "dataset_owner",
         "display_name": "数据集所有者",
-        "description": "数据集的创建者，拥有完全控制权",
+        "description": "数据集的创建者，拥有完全控制权和成员管理权限",
         "type": RoleType.RESOURCE,
         "is_system": True,
         "sort_order": 10,
@@ -130,29 +159,22 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_UPDATE,
             Permissions.DATASET_DELETE,
             Permissions.DATASET_ASSIGN,
-            Permissions.DATASET_EXPORT,
-            Permissions.DATASET_IMPORT,
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
             Permissions.SAMPLE_UPDATE,
             Permissions.SAMPLE_DELETE,
-            # Label - 标签完全控制
-            Permissions.LABEL_READ,
-            Permissions.LABEL_CREATE,
-            Permissions.LABEL_UPDATE,
-            Permissions.LABEL_DELETE,
-            # Annotation - 标注完全控制
-            Permissions.ANNOTATION_READ,
-            Permissions.ANNOTATION_MODIFY,
             # User list - 用于成员选择
             Permissions.USER_LIST,
         ],
+        "is_supremo": True,
+        "color": "red"
     },
     {
+        "id": DATASET_MANAGER_ROLE_ID,
         "name": "dataset_manager",
         "display_name": "数据集管理员",
-        "description": "可管理数据集的大部分功能，但不能删除数据集",
+        "description": "可管理数据集的大部分功能（除删除外），可管理成员",
         "type": RoleType.RESOURCE,
         "is_system": True,
         "sort_order": 11,
@@ -161,29 +183,22 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_READ,
             Permissions.DATASET_UPDATE,
             Permissions.DATASET_ASSIGN,
-            Permissions.DATASET_EXPORT,
-            Permissions.DATASET_IMPORT,
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
             Permissions.SAMPLE_UPDATE,
             Permissions.SAMPLE_DELETE,
-            # Label - 标签完全控制
-            Permissions.LABEL_READ,
-            Permissions.LABEL_CREATE,
-            Permissions.LABEL_UPDATE,
-            Permissions.LABEL_DELETE,
-            # Annotation - 标注完全控制
-            Permissions.ANNOTATION_READ,
-            Permissions.ANNOTATION_MODIFY,
             # User list - 用于成员选择
             Permissions.USER_LIST,
         ],
+        "is_supremo": False,
+        "color": "green"
     },
     {
-        "name": "dataset_super_annotator",
-        "display_name": "超级标注员",
-        "description": "可编辑所有标注和标签，但不能管理样本",
+        "id": DATASET_VIEWER_ROLE_ID,
+        "name": "dataset_viewer",
+        "display_name": "数据集查看者",
+        "description": "只能查看数据集和样本内容，无法进行任何修改",
         "type": RoleType.RESOURCE,
         "is_system": True,
         "sort_order": 12,
@@ -192,95 +207,16 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_READ,
             # Sample - 只读
             Permissions.SAMPLE_READ,
-            # Label - 标签完全控制
-            Permissions.LABEL_READ,
-            Permissions.LABEL_CREATE,
-            Permissions.LABEL_UPDATE,
-            Permissions.LABEL_DELETE,
-            # Annotation - 标注完全控制
-            Permissions.ANNOTATION_READ,  # 可以看到所有标注
-            Permissions.ANNOTATION_MODIFY,  # 可以修改所有标注
         ],
-    },
-    {
-        "name": "dataset_senior_annotator",
-        "display_name": "高级标注员",
-        "description": "可编辑所有标注，但不能管理样本和标签",
-        "type": RoleType.RESOURCE,
-        "is_system": True,
-        "sort_order": 13,
-        "permissions": [
-            # Dataset - 只读
-            Permissions.DATASET_READ,
-            # Sample - 只读
-            Permissions.SAMPLE_READ,
-            # Label - 只读
-            Permissions.LABEL_READ,
-            # Annotation - 标注完全控制
-            Permissions.ANNOTATION_READ,  # 可以看到所有标注
-            Permissions.ANNOTATION_MODIFY,  # 可以修改所有标注
-        ],
-    },
-    {
-        "name": "dataset_normal_annotator",
-        "display_name": "普通标注员",
-        "description": "可查看所有标注，但只能修改和删除自己的标注",
-        "type": RoleType.RESOURCE,
-        "is_system": True,
-        "sort_order": 14,
-        "permissions": [
-            # Dataset - 只读
-            Permissions.DATASET_READ,
-            # Sample - 只读
-            Permissions.SAMPLE_READ,
-            # Label - 只读
-            Permissions.LABEL_READ,
-            # Annotation - 读取全部，修改自己的
-            Permissions.ANNOTATION_READ,  # 可以看到所有标注
-            Permissions.ANNOTATION_MODIFY_SELF,  # 只能修改自己的标注
-        ],
-    },
-    {
-        "name": "dataset_intership_annotator",
-        "display_name": "实习标注员",
-        "description": "只能查看和修改自己的标注",
-        "type": RoleType.RESOURCE,
-        "is_system": True,
-        "sort_order": 15,
-        "permissions": [
-            # Dataset - 只读
-            Permissions.DATASET_READ,
-            # Sample - 只读
-            Permissions.SAMPLE_READ,
-            # Label - 只读
-            Permissions.LABEL_READ,
-            # Annotation - 只能操作自己的
-            Permissions.ANNOTATION_READ_SELF,  # 只能看自己的标注
-            Permissions.ANNOTATION_MODIFY_SELF,  # 只能修改自己的标注
-        ],
-    },
-    {
-        "name": "dataset_viewer",
-        "display_name": "查看者",
-        "description": "只能查看数据集内容，无法进行任何修改",
-        "type": RoleType.RESOURCE,
-        "is_system": True,
-        "sort_order": 16,
-        "permissions": [
-            # Dataset - 只读
-            Permissions.DATASET_READ,
-            # Sample - 只读
-            Permissions.SAMPLE_READ,
-            # Label - 只读
-            Permissions.LABEL_READ,
-            # Annotation - 只读
-            Permissions.ANNOTATION_READ,
-        ],
+        "is_supremo": False,
+        "color": "purple"
     },
 ]
 
+logger = logging.getLogger(__name__)
 
-def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[str, Role]:
+
+async def init_preset_roles(session: AsyncSession) -> None:
     """
     Initialize preset roles in the database.
     
@@ -288,56 +224,22 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
     
     Args:
         session: Database session
-        update_existing: If True, update permissions for existing system roles
     
     Returns:
         Dictionary mapping role names to Role objects
     """
-    roles: Dict[str, Role] = {}
-    parent_mappings: Dict[str, str] = {}  # role_name -> parent_name
-
     for preset in PRESET_ROLES:
         # Check if role already exists
-        existing = session.exec(
+        result = await session.exec(
             select(Role).where(Role.name == preset["name"])
-        ).first()
+        )
+        existing = result.first()
 
         if existing:
-            roles[preset["name"]] = existing
-
-            # Update permissions and flags for existing system roles if requested
-            if update_existing and existing.is_system:
-                # Update is_super_admin and is_admin flags
-                existing.is_super_admin = preset.get("is_super_admin", False)
-                existing.is_admin = preset.get("is_admin", False)
-                session.add(existing)
-
-                # Get current permissions
-                current_perms = session.exec(
-                    select(RolePermission).where(RolePermission.role_id == existing.id)
-                ).all()
-                current_perm_set = {rp.permission for rp in current_perms}
-                preset_perm_set = set(preset.get("permissions", []))
-
-                # Add missing permissions
-                for perm in preset_perm_set - current_perm_set:
-                    rp = RolePermission(
-                        role_id=existing.id,
-                        permission=perm,
-                    )
-                    session.add(rp)
-
-                # Optionally remove extra permissions not in preset
-                # (commented out to allow custom additions to system roles)
-                # for perm in current_perm_set - preset_perm_set:
-                #     for rp in current_perms:
-                #         if rp.permission == perm:
-                #             session.delete(rp)
-
             continue
-
         # Create role
         role = Role(
+            id=preset["id"],
             name=preset["name"],
             display_name=preset["display_name"],
             description=preset.get("description"),
@@ -346,14 +248,11 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
             is_default=preset.get("is_default", False),
             is_super_admin=preset.get("is_super_admin", False),
             is_admin=preset.get("is_admin", False),
+            is_supremo=preset.get("is_supremo", False),
             sort_order=preset.get("sort_order", 0),
+            color=preset.get("color", None),
         )
         session.add(role)
-        session.flush()  # Get ID
-
-        # Store parent mapping for later
-        if "parent" in preset:
-            parent_mappings[preset["name"]] = preset["parent"]
 
         # Create permissions
         for perm in preset.get("permissions", []):
@@ -363,33 +262,4 @@ def init_preset_roles(session: Session, update_existing: bool = True) -> Dict[st
             )
             session.add(rp)
 
-        roles[preset["name"]] = role
-
-    # Set up parent relationships
-    for role_name, parent_name in parent_mappings.items():
-        if role_name in roles and parent_name in roles:
-            roles[role_name].parent_id = roles[parent_name].id
-            session.add(roles[role_name])
-
-    session.commit()
-
-    return roles
-
-
-def get_default_role(session: Session) -> Role:
-    """Get the default role for new users."""
-    return session.exec(
-        select(Role).where(Role.is_default == True, Role.type == RoleType.SYSTEM)
-    ).first()
-
-
-def get_role_by_name(session: Session, name: str) -> Role:
-    """Get a role by its name."""
-    return session.exec(
-        select(Role).where(Role.name == name)
-    ).first()
-
-
-def get_dataset_owner_role(session: Session) -> Role:
-    """Get the dataset_owner role."""
-    return get_role_by_name(session, "dataset_owner")
+        logger.info(f"Created {preset['name']} role {preset['display_name']}")

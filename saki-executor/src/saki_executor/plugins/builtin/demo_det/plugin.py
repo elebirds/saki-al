@@ -20,6 +20,10 @@ class DemoDetectionPlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
+    def display_name(self) -> str:
+        return "Demo Detection (Mock)"
+
+    @property
     def supported_job_types(self) -> list[str]:
         return ["train_detection"]
 
@@ -31,6 +35,27 @@ class DemoDetectionPlugin(ExecutorPlugin):
             "random_baseline",
             "plugin_native_strategy",
         ]
+
+    @property
+    def request_config_schema(self) -> dict[str, Any]:
+        return {
+            "title": "Demo Detection Request Config",
+            "fields": [
+                {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1, "max": 500},
+                {"key": "batch_size", "label": "Batch Size", "type": "integer", "required": True, "min": 1, "max": 2048},
+                {"key": "steps_per_epoch", "label": "Steps / Epoch", "type": "integer", "required": False, "min": 1, "max": 5000},
+                {"key": "topk", "label": "TopK", "type": "integer", "required": False, "min": 1, "max": 5000},
+            ],
+        }
+
+    @property
+    def default_request_config(self) -> dict[str, Any]:
+        return {
+            "epochs": 5,
+            "batch_size": 8,
+            "steps_per_epoch": 20,
+            "topk": 200,
+        }
 
     def validate_params(self, params: dict[str, Any]) -> None:
         epochs = int(params.get("epochs", 5))

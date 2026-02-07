@@ -39,6 +39,10 @@ class ExecutorPlugin(ABC):
         pass
 
     @property
+    def display_name(self) -> str:
+        return self.plugin_id
+
+    @property
     @abstractmethod
     def supported_job_types(self) -> list[str]:
         pass
@@ -47,6 +51,14 @@ class ExecutorPlugin(ABC):
     @abstractmethod
     def supported_strategies(self) -> list[str]:
         pass
+
+    @property
+    def request_config_schema(self) -> dict[str, Any]:
+        return {}
+
+    @property
+    def default_request_config(self) -> dict[str, Any]:
+        return {}
 
     @abstractmethod
     def validate_params(self, params: dict[str, Any]) -> None:

@@ -27,8 +27,11 @@ class RuntimeExecutorRead(BaseModel):
 
 
 class RuntimeExecutorSummary(BaseModel):
+    total_count: int
     online_count: int
     busy_count: int
+    available_count: int
+    availability_rate: float
     pending_assign_count: int
     pending_stop_count: int
     latest_heartbeat_at: datetime | None = None
@@ -37,3 +40,23 @@ class RuntimeExecutorSummary(BaseModel):
 class RuntimeExecutorListResponse(BaseModel):
     summary: RuntimeExecutorSummary
     items: list[RuntimeExecutorRead]
+
+
+class RuntimePluginRead(BaseModel):
+    plugin_id: str
+    display_name: str
+    version: str
+    supported_job_types: list[str] = Field(default_factory=list)
+    supported_strategies: list[str] = Field(default_factory=list)
+    request_config_schema: dict[str, Any] = Field(default_factory=dict)
+    default_request_config: dict[str, Any] = Field(default_factory=dict)
+    executors_total: int = 0
+    executors_online: int = 0
+    executors_available: int = 0
+    availability_rate: float = 0.0
+    has_conflict: bool = False
+    conflict_fields: list[str] = Field(default_factory=list)
+
+
+class RuntimePluginCatalogResponse(BaseModel):
+    items: list[RuntimePluginRead] = Field(default_factory=list)

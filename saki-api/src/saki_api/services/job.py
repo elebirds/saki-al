@@ -17,6 +17,7 @@ from saki_api.models.l3.job_event import JobEvent
 from saki_api.models.l3.job_metric_point import JobMetricPoint
 from saki_api.models.l3.loop import ALLoop
 from saki_api.models.l3.metric import JobSampleMetric
+from saki_api.models.l3.runtime_executor import RuntimeExecutor
 from saki_api.repositories.job import JobRepository
 from saki_api.repositories.job_event import JobEventRepository
 from saki_api.repositories.job_metric_point import JobMetricPointRepository
@@ -26,6 +27,7 @@ from saki_api.services.loop_config import (
     normalize_loop_global_config,
     merge_model_request_config,
 )
+from saki_api.services.runtime_plugin_catalog import extract_executor_plugins
 from saki_api.services.base import BaseService
 
 
@@ -46,6 +48,8 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             raise NotFoundAppException(f"Loop {loop_id} not found")
         if loop.project_id != payload.project_id:
             raise BadRequestAppException("Loop project_id and request.project_id mismatch")
+
+        await self._validate_plugin_id(payload.plugin_id)
 
         loop.current_iteration += 1
         self.session.add(loop)
@@ -79,6 +83,8 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             raise NotFoundAppException(f"Branch {payload.branch_id} not found")
         if branch.project_id != project_id:
             raise BadRequestAppException("Branch does not belong to this project")
+
+        await self._validate_plugin_id(payload.model_arch)
 
         existing_loop = await self.loop_repo.get_one(filters=[ALLoop.branch_id == payload.branch_id])
         if existing_loop:
@@ -124,6 +130,7 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         if payload.query_strategy is not None:
             loop.query_strategy = payload.query_strategy
         if payload.model_arch is not None:
+            await self._validate_plugin_id(payload.model_arch)
             loop.model_arch = payload.model_arch
         if payload.max_rounds is not None:
             loop.max_rounds = payload.max_rounds
@@ -153,6 +160,24 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         await self.session.flush()
         await self.session.refresh(loop)
         return loop
+
+    async def _known_plugin_ids(self) -> set[str]:
+        rows = await self.session.exec(select(RuntimeExecutor))
+        plugin_ids: set[str] = set()
+        for executor in rows.all():
+            for item in extract_executor_plugins(executor.plugin_ids or {}):
+                plugin_ids.add(item["plugin_id"])
+        return plugin_ids
+
+    async def _validate_plugin_id(self, plugin_id: str) -> None:
+        value = str(plugin_id or "").strip()
+        if not value:
+            raise BadRequestAppException("plugin_id/model_arch is required")
+        known_plugin_ids = await self._known_plugin_ids()
+        # Backward-compatible: before any executor registers capabilities,
+        # keep accepting plugin_id to avoid blocking bootstrap.
+        if known_plugin_ids and value not in known_plugin_ids:
+            raise BadRequestAppException(f"plugin_id/model_arch not found in runtime catalog: {value}")
 
     @transactional
     async def assign_executor(self, job_id: uuid.UUID, executor_id: str) -> Job:

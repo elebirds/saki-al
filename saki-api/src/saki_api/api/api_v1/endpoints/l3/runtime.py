@@ -19,7 +19,10 @@ from saki_api.schemas.l3.runtime_executor import (
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorSummary,
+    RuntimePluginCatalogResponse,
+    RuntimePluginRead,
 )
+from saki_api.services.runtime_plugin_catalog import aggregate_runtime_plugins
 
 router = APIRouter()
 
@@ -44,8 +47,10 @@ async def list_runtime_executors(
 
     items: list[RuntimeExecutorRead] = []
     latest_heartbeat_at: datetime | None = None
+    total_count = len(executors)
     online_count = 0
     busy_count = 0
+    available_count = 0
 
     for executor in executors:
         if executor.is_online:
@@ -54,6 +59,8 @@ async def list_runtime_executors(
                 latest_heartbeat_at = executor.last_seen_at
         if executor.status in {"busy", "reserved"}:
             busy_count += 1
+        if executor.is_online and executor.status not in {"busy", "reserved", "offline"}:
+            available_count += 1
 
         pending = await runtime_dispatcher.executor_pending_snapshot(
             executor_id=executor.executor_id,
@@ -78,8 +85,11 @@ async def list_runtime_executors(
 
     return RuntimeExecutorListResponse(
         summary=RuntimeExecutorSummary(
+            total_count=total_count,
             online_count=online_count,
             busy_count=busy_count,
+            available_count=available_count,
+            availability_rate=(available_count / total_count) if total_count > 0 else 0.0,
             pending_assign_count=int(dispatcher_snapshot["pending_assign_count"]),
             pending_stop_count=int(dispatcher_snapshot["pending_stop_count"]),
             latest_heartbeat_at=latest_heartbeat_at,
@@ -125,3 +135,23 @@ async def get_runtime_executor(
         pending_assign_count=pending["pending_assign_count"],
         pending_stop_count=pending["pending_stop_count"],
     )
+
+
+@router.get("/runtime/plugins", response_model=RuntimePluginCatalogResponse)
+async def list_runtime_plugins(
+        session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
+):
+    checker = PermissionChecker(session)
+    allowed = await checker.check(user_id=current_user_id, permission=Permissions.JOB_READ)
+    if not allowed:
+        allowed = await checker.check(user_id=current_user_id, permission=Permissions.PROJECT_READ_ALL)
+    if not allowed:
+        raise ForbiddenAppException("Permission denied: runtime:read")
+
+    rows = await session.exec(
+        select(RuntimeExecutor).order_by(RuntimeExecutor.is_online.desc(), RuntimeExecutor.last_seen_at.desc())
+    )
+    executors = list(rows.all())
+    items = [RuntimePluginRead(**item) for item in aggregate_runtime_plugins(executors)]
+    return RuntimePluginCatalogResponse(items=items)

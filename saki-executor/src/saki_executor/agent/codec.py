@@ -117,6 +117,9 @@ def build_register_message(
                 version=str(item.get("version") or ""),
                 supported_job_types=[str(v) for v in (item.get("supported_job_types") or [])],
                 supported_strategies=[str(v) for v in (item.get("supported_strategies") or [])],
+                display_name=str(item.get("display_name") or item.get("plugin_id") or ""),
+                request_config_schema=dict_to_struct(item.get("request_config_schema") or {}),
+                default_request_config=dict_to_struct(item.get("default_request_config") or {}),
             )
         )
 

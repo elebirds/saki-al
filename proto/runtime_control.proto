@@ -49,6 +49,9 @@ message PluginCapability {
   string version = 2;
   repeated string supported_job_types = 3;
   repeated string supported_strategies = 4;
+  string display_name = 5;
+  google.protobuf.Struct request_config_schema = 6;
+  google.protobuf.Struct default_request_config = 7;
 }
 
 message ResourceSummary {

@@ -31,6 +31,7 @@ class RuntimeSession:
     queue: asyncio.Queue[pb.RuntimeMessage]
     version: str
     plugins: set[str] = field(default_factory=set)
+    plugin_capabilities: dict[str, dict[str, Any]] = field(default_factory=dict)
     resources: dict[str, Any] = field(default_factory=dict)
     busy: bool = False
     current_job_id: Optional[str] = None
@@ -127,6 +128,42 @@ class RuntimeDispatcher:
             return int(value)
         except Exception:
             return default
+
+    @staticmethod
+    def _normalize_plugin_capabilities(
+            plugin_ids: set[str],
+            plugin_capabilities: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        by_id: dict[str, dict[str, Any]] = {}
+        for item in plugin_capabilities or []:
+            if not isinstance(item, dict):
+                continue
+            plugin_id = str(item.get("plugin_id") or "").strip()
+            if not plugin_id:
+                continue
+            by_id[plugin_id] = {
+                "plugin_id": plugin_id,
+                "display_name": str(item.get("display_name") or plugin_id),
+                "version": str(item.get("version") or ""),
+                "supported_job_types": sorted({str(v) for v in (item.get("supported_job_types") or []) if str(v)}),
+                "supported_strategies": sorted({str(v) for v in (item.get("supported_strategies") or []) if str(v)}),
+                "request_config_schema": dict(item.get("request_config_schema") or {}),
+                "default_request_config": dict(item.get("default_request_config") or {}),
+            }
+        for plugin_id in sorted(plugin_ids):
+            by_id.setdefault(
+                plugin_id,
+                {
+                    "plugin_id": plugin_id,
+                    "display_name": plugin_id,
+                    "version": "",
+                    "supported_job_types": [],
+                    "supported_strategies": [],
+                    "request_config_schema": {},
+                    "default_request_config": {},
+                },
+            )
+        return [by_id[key] for key in sorted(by_id.keys())]
 
     def _resource_satisfied(self, required: dict[str, Any], available: dict[str, Any]) -> bool:
         req_gpu = self._to_int((required or {}).get("gpu_count"), 0)
@@ -322,16 +359,21 @@ class RuntimeDispatcher:
             version: str,
             plugin_ids: set[str],
             resources: dict[str, Any],
+            plugin_capabilities: list[dict[str, Any]] | None = None,
     ) -> None:
         if not self._is_executor_allowed(executor_id):
             raise PermissionError(f"Executor {executor_id} is not in allowlist")
+
+        normalized_capabilities = self._normalize_plugin_capabilities(plugin_ids, plugin_capabilities)
+        plugin_id_set = {item["plugin_id"] for item in normalized_capabilities}
 
         async with self._lock:
             self._sessions[executor_id] = RuntimeSession(
                 executor_id=executor_id,
                 queue=queue,
                 version=version,
-                plugins=plugin_ids,
+                plugins=plugin_id_set,
+                plugin_capabilities={item["plugin_id"]: item for item in normalized_capabilities},
                 resources=resources,
                 busy=False,
                 current_job_id=None,
@@ -343,7 +385,7 @@ class RuntimeDispatcher:
             executor = row.first() or RuntimeExecutor(executor_id=executor_id)
             assert executor is not None
             executor.version = version
-            executor.plugin_ids = {"plugins": sorted(plugin_ids)}
+            executor.plugin_ids = {"plugins": normalized_capabilities}
             executor.resources = resources
             executor.status = "idle"
             executor.is_online = True

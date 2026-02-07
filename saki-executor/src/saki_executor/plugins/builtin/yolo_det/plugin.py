@@ -122,6 +122,10 @@ class YoloDetectionPlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
+    def display_name(self) -> str:
+        return "YOLO Detection (OBB)"
+
+    @property
     def supported_job_types(self) -> list[str]:
         return ["train_detection"]
 
@@ -134,6 +138,37 @@ class YoloDetectionPlugin(ExecutorPlugin):
             "random_baseline",
             "plugin_native_strategy",
         ]
+
+    @property
+    def request_config_schema(self) -> dict[str, Any]:
+        return {
+            "title": "YOLO Detection Request Config",
+            "fields": [
+                {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1, "max": 5000},
+                {"key": "batch", "label": "Batch Size", "type": "integer", "required": True, "min": 1, "max": 2048},
+                {"key": "imgsz", "label": "Image Size", "type": "integer", "required": True, "min": 64, "max": 4096},
+                {"key": "patience", "label": "Patience", "type": "integer", "required": False, "min": 1, "max": 1000},
+                {"key": "topk", "label": "TopK", "type": "integer", "required": False, "min": 1, "max": 5000},
+                {"key": "predict_conf", "label": "Predict Conf", "type": "number", "required": False, "min": 0.0, "max": 1.0},
+                {"key": "val_split_ratio", "label": "Val Split Ratio", "type": "number", "required": False, "min": 0.05, "max": 0.5},
+                {"key": "base_model", "label": "Base Model", "type": "string", "required": False},
+                {"key": "device", "label": "Device", "type": "string", "required": False},
+            ],
+        }
+
+    @property
+    def default_request_config(self) -> dict[str, Any]:
+        return {
+            "epochs": 30,
+            "batch": 16,
+            "imgsz": 640,
+            "patience": 20,
+            "topk": 200,
+            "predict_conf": 0.1,
+            "val_split_ratio": 0.2,
+            "base_model": "yolov8n-obb.pt",
+            "device": "0",
+        }
 
     def validate_params(self, params: dict[str, Any]) -> None:
         epochs = _to_int(params.get("epochs", 30), 30)

@@ -130,8 +130,11 @@ class AgentClient:
                 {
                     "plugin_id": plugin.plugin_id,
                     "version": plugin.version,
+                    "display_name": plugin.display_name,
                     "supported_job_types": plugin.supported_job_types,
                     "supported_strategies": plugin.supported_strategies,
+                    "request_config_schema": plugin.request_config_schema,
+                    "default_request_config": plugin.default_request_config,
                 }
             )
         return runtime_codec.build_register_message(

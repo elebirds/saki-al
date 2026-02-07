@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import time
 import uuid
@@ -255,15 +256,36 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 break
                             continue
 
-                        plugin_ids = {str(item.plugin_id) for item in register.plugins if item.plugin_id}
+                        plugin_capabilities = []
+                        for item in register.plugins:
+                            plugin_id = str(item.plugin_id or "").strip()
+                            if not plugin_id:
+                                continue
+                            plugin_capabilities.append(
+                                {
+                                    "plugin_id": plugin_id,
+                                    "display_name": str(item.display_name or plugin_id),
+                                    "version": str(item.version or ""),
+                                    "supported_job_types": [str(v) for v in item.supported_job_types],
+                                    "supported_strategies": [str(v) for v in item.supported_strategies],
+                                    "request_config_schema": runtime_codec.struct_to_dict(item.request_config_schema),
+                                    "default_request_config": runtime_codec.struct_to_dict(item.default_request_config),
+                                }
+                            )
+                        plugin_ids = {item["plugin_id"] for item in plugin_capabilities}
                         resources = runtime_codec.resource_summary_to_dict(register.resources)
                         try:
+                            register_kwargs = {
+                                "executor_id": executor_id,
+                                "queue": outbox,
+                                "version": str(register.version or ""),
+                                "plugin_ids": plugin_ids,
+                                "resources": resources,
+                            }
+                            if "plugin_capabilities" in inspect.signature(runtime_dispatcher.register).parameters:
+                                register_kwargs["plugin_capabilities"] = plugin_capabilities
                             await runtime_dispatcher.register(
-                                executor_id=executor_id,
-                                queue=outbox,
-                                version=str(register.version or ""),
-                                plugin_ids=plugin_ids,
-                                resources=resources,
+                                **register_kwargs,
                             )
                         except PermissionError as exc:
                             await outbox.put(

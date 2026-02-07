@@ -7,7 +7,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -71,6 +73,66 @@ def _map_status(status: int | str) -> TrainingJobStatus:
     return mapping.get(int(status), TrainingJobStatus.PENDING)
 
 
+class _RequestDedupCache:
+    def __init__(self, *, ttl_sec: int, max_entries: int) -> None:
+        self._ttl_sec = max(1, int(ttl_sec))
+        self._max_entries = max(64, int(max_entries))
+        self._entries: OrderedDict[str, tuple[str, float, pb.RuntimeMessage | None]] = OrderedDict()
+
+    @staticmethod
+    def _clone_message(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        cloned = pb.RuntimeMessage()
+        cloned.CopyFrom(message)
+        return cloned
+
+    def _evict(self) -> None:
+        now = time.monotonic()
+        expired_keys = [key for key, (_, expires_at, _) in self._entries.items() if expires_at <= now]
+        for key in expired_keys:
+            self._entries.pop(key, None)
+        while len(self._entries) > self._max_entries:
+            self._entries.popitem(last=False)
+
+    def get(self, request_id: str, payload_type: str) -> tuple[bool, pb.RuntimeMessage | None]:
+        if not request_id:
+            return False, None
+
+        self._evict()
+        cached = self._entries.get(request_id)
+        if cached is None:
+            return False, None
+
+        cached_payload, expires_at, response = cached
+        if cached_payload != payload_type:
+            return False, None
+        if expires_at <= time.monotonic():
+            self._entries.pop(request_id, None)
+            return False, None
+
+        self._entries.move_to_end(request_id)
+        if response is None:
+            return True, None
+        return True, self._clone_message(response)
+
+    def remember(
+        self,
+        request_id: str,
+        payload_type: str,
+        *,
+        response: pb.RuntimeMessage | None = None,
+    ) -> None:
+        if not request_id:
+            return
+        stored_response = self._clone_message(response) if response is not None else None
+        self._entries[request_id] = (
+            payload_type,
+            time.monotonic() + self._ttl_sec,
+            stored_response,
+        )
+        self._entries.move_to_end(request_id)
+        self._evict()
+
+
 class RuntimeControlService(pb_grpc.RuntimeControlServicer):
     def __init__(self) -> None:
         self.storage = get_storage_provider()
@@ -105,6 +167,10 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
 
         outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
         executor_id: Optional[str] = None
+        dedup_cache = _RequestDedupCache(
+            ttl_sec=settings.RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC,
+            max_entries=settings.RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES,
+        )
 
         async def _reader() -> None:
             nonlocal executor_id
@@ -188,20 +254,45 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         continue
 
                     if payload_type == "job_event":
-                        await self._persist_job_event(message.job_event)
+                        request = message.job_event
+                        request_id = str(request.request_id or "")
+                        duplicated, _ = dedup_cache.get(request_id, "job_event")
+                        if duplicated:
+                            logger.info("忽略重复 job_event request_id=%s", request_id)
+                            continue
+
+                        await self._persist_job_event(request)
+                        if request_id:
+                            dedup_cache.remember(request_id, "job_event")
                         continue
 
                     if payload_type == "job_result":
-                        await self._persist_job_result(message.job_result)
+                        request = message.job_result
+                        request_id = str(request.request_id or "")
+                        duplicated, _ = dedup_cache.get(request_id, "job_result")
+                        if duplicated:
+                            logger.info("忽略重复 job_result request_id=%s", request_id)
+                            continue
+
+                        await self._persist_job_result(request)
                         if executor_id:
                             await runtime_dispatcher.mark_executor_idle(
                                 executor_id=executor_id,
-                                job_id=message.job_result.job_id,
+                                job_id=request.job_id,
                             )
+                        if request_id:
+                            dedup_cache.remember(request_id, "job_result")
                         continue
 
                     if payload_type == "data_request":
                         request = message.data_request
+                        request_id = str(request.request_id or "")
+                        duplicated, cached_response = dedup_cache.get(request_id, "data_request")
+                        if duplicated:
+                            if cached_response is not None:
+                                await outbox.put(cached_response)
+                            logger.info("命中 data_request 幂等缓存 request_id=%s", request_id)
+                            continue
                         try:
                             response = await self._build_data_response(request)
                         except ValueError as exc:
@@ -229,10 +320,19 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 ),
                             )
                         await outbox.put(response)
+                        if request_id:
+                            dedup_cache.remember(request_id, "data_request", response=response)
                         continue
 
                     if payload_type == "upload_ticket_request":
                         request = message.upload_ticket_request
+                        request_id = str(request.request_id or "")
+                        duplicated, cached_response = dedup_cache.get(request_id, "upload_ticket_request")
+                        if duplicated:
+                            if cached_response is not None:
+                                await outbox.put(cached_response)
+                            logger.info("命中 upload_ticket_request 幂等缓存 request_id=%s", request_id)
+                            continue
                         try:
                             response = await self._build_upload_ticket_response(request)
                         except ValueError as exc:
@@ -258,15 +358,24 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 ),
                             )
                         await outbox.put(response)
+                        if request_id:
+                            dedup_cache.remember(request_id, "upload_ticket_request", response=response)
                         continue
 
                     if payload_type == "ack":
                         ack = message.ack
+                        request_id = str(ack.request_id or "")
+                        duplicated, _ = dedup_cache.get(request_id, "ack")
+                        if duplicated:
+                            logger.info("忽略重复 ack request_id=%s ack_for=%s", request_id, ack.ack_for)
+                            continue
                         await runtime_dispatcher.handle_ack(
                             ack_for=str(ack.ack_for or ""),
                             status=int(ack.status),
                             message=ack.message or None,
                         )
+                        if request_id:
+                            dedup_cache.remember(request_id, "ack")
                         continue
 
                     if payload_type == "error":

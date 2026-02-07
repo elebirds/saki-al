@@ -507,3 +507,352 @@ async def test_runtime_stream_data_request_invalid_uuid_returns_invalid_argument
         await client.close()
     finally:
         await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_duplicate_data_request_hits_idempotency_cache(monkeypatch):
+    service = RuntimeControlService()
+    build_calls: list[str] = []
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    async def fake_build_data_response(request: pb.DataRequest) -> pb.RuntimeMessage:
+        build_calls.append(str(request.request_id))
+        return pb.RuntimeMessage(
+            data_response=pb.DataResponse(
+                request_id="data-resp-fixed",
+                reply_to=request.request_id,
+                job_id=request.job_id,
+                query_type=request.query_type,
+                items=[],
+                next_cursor="",
+            )
+        )
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+    monkeypatch.setattr(service, "_build_data_response", fake_build_data_response)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-dup-data-1",
+                    executor_id="executor-dup-data-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        duplicate_request_id = "dup-data-request-1"
+        request_payload = pb.RuntimeMessage(
+            data_request=pb.DataRequest(
+                request_id=duplicate_request_id,
+                job_id="job-dup-data-1",
+                query_type=pb.LABELS,
+                project_id="11111111-1111-1111-1111-111111111111",
+                limit=10,
+            )
+        )
+        await client.send(request_payload)
+        first = await client.recv()
+        await client.send(request_payload)
+        second = await client.recv()
+
+        assert first.WhichOneof("payload") == "data_response"
+        assert second.WhichOneof("payload") == "data_response"
+        assert first.data_response.request_id == "data-resp-fixed"
+        assert second.data_response.request_id == "data-resp-fixed"
+        assert build_calls == [duplicate_request_id]
+        await client.close()
+    finally:
+        await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_duplicate_upload_ticket_request_hits_idempotency_cache(monkeypatch):
+    service = RuntimeControlService()
+    build_calls: list[str] = []
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    async def fake_build_upload_ticket_response(request: pb.UploadTicketRequest) -> pb.RuntimeMessage:
+        build_calls.append(str(request.request_id))
+        return pb.RuntimeMessage(
+            upload_ticket_response=pb.UploadTicketResponse(
+                request_id="upload-resp-fixed",
+                reply_to=request.request_id,
+                job_id=request.job_id,
+                upload_url="https://example/upload",
+                storage_uri="s3://bucket/path",
+                headers={"x-meta": "1"},
+            )
+        )
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+    monkeypatch.setattr(service, "_build_upload_ticket_response", fake_build_upload_ticket_response)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-dup-upload-1",
+                    executor_id="executor-dup-upload-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        duplicate_request_id = "dup-upload-request-1"
+        request_payload = pb.RuntimeMessage(
+            upload_ticket_request=pb.UploadTicketRequest(
+                request_id=duplicate_request_id,
+                job_id="job-dup-upload-1",
+                artifact_name="best.pt",
+                content_type="application/octet-stream",
+            )
+        )
+        await client.send(request_payload)
+        first = await client.recv()
+        await client.send(request_payload)
+        second = await client.recv()
+
+        assert first.WhichOneof("payload") == "upload_ticket_response"
+        assert second.WhichOneof("payload") == "upload_ticket_response"
+        assert first.upload_ticket_response.request_id == "upload-resp-fixed"
+        assert second.upload_ticket_response.request_id == "upload-resp-fixed"
+        assert build_calls == [duplicate_request_id]
+        await client.close()
+    finally:
+        await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_duplicate_job_event_only_persists_once(monkeypatch):
+    service = RuntimeControlService()
+    persisted: list[str] = []
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    async def fake_persist_job_event(message: pb.JobEvent) -> None:
+        persisted.append(str(message.request_id))
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+    monkeypatch.setattr(service, "_persist_job_event", fake_persist_job_event)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-dup-event-1",
+                    executor_id="executor-dup-event-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        message = pb.RuntimeMessage(
+            job_event=pb.JobEvent(
+                request_id="dup-event-1",
+                job_id="11111111-1111-1111-1111-111111111111",
+                seq=1,
+                ts=1,
+                status_event=pb.StatusEvent(status=pb.RUNNING, reason="running"),
+            )
+        )
+        await client.send(message)
+        await client.send(message)
+        await asyncio.sleep(0.1)
+        await client.close()
+
+        assert persisted == ["dup-event-1"]
+    finally:
+        await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_duplicate_job_result_only_persists_once(monkeypatch):
+    service = RuntimeControlService()
+    persisted: list[str] = []
+    mark_idle_calls: list[tuple[str, str | None]] = []
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    async def fake_mark_idle(*, executor_id: str, job_id: str | None = None) -> None:
+        mark_idle_calls.append((executor_id, job_id))
+
+    async def fake_persist_job_result(message: pb.JobResult) -> None:
+        persisted.append(str(message.request_id))
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "mark_executor_idle", fake_mark_idle)
+    monkeypatch.setattr(service, "_persist_job_result", fake_persist_job_result)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-dup-result-1",
+                    executor_id="executor-dup-result-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        message = pb.RuntimeMessage(
+            job_result=pb.JobResult(
+                request_id="dup-result-1",
+                job_id="11111111-1111-1111-1111-111111111111",
+                status=pb.SUCCEEDED,
+            )
+        )
+        await client.send(message)
+        await client.send(message)
+        await asyncio.sleep(0.1)
+        await client.close()
+
+        assert persisted == ["dup-result-1"]
+        assert mark_idle_calls == [("executor-dup-result-1", "11111111-1111-1111-1111-111111111111")]
+    finally:
+        await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_duplicate_ack_only_handles_once(monkeypatch):
+    service = RuntimeControlService()
+    ack_records: list[tuple[str, int, str | None]] = []
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    async def fake_handle_ack(*, ack_for: str, status: int, message: str | None = None) -> None:
+        ack_records.append((ack_for, status, message))
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "handle_ack", fake_handle_ack)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-dup-ack-1",
+                    executor_id="executor-dup-ack-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        message = pb.RuntimeMessage(
+            ack=pb.Ack(
+                request_id="dup-ack-request-1",
+                ack_for="assign-1",
+                status=pb.OK,
+                message="accepted",
+            )
+        )
+        await client.send(message)
+        await client.send(message)
+        await asyncio.sleep(0.1)
+        await client.close()
+
+        assert ack_records == [("assign-1", pb.OK, "accepted")]
+    finally:
+        await server.stop(grace=0)

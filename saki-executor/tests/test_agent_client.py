@@ -71,3 +71,78 @@ async def test_disconnect_force_disables_connection_and_fails_pending(tmp_path):
     assert pending_future.done() is True
     with pytest.raises(RuntimeError):
         pending_future.result()
+
+
+@pytest.mark.anyio
+async def test_duplicate_assign_job_returns_cached_ack_without_reassign(tmp_path):
+    client = _build_client(tmp_path)
+    assign_calls: list[str] = []
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_assign_job(request_id: str, payload: dict):  # noqa: ARG001
+        assign_calls.append(request_id)
+        return True
+
+    async def fake_send_message(message: pb.RuntimeMessage):
+        sent_messages.append(message)
+
+    client.job_manager.assign_job = fake_assign_job  # type: ignore[method-assign]
+    client.send_message = fake_send_message  # type: ignore[method-assign]
+
+    incoming = pb.RuntimeMessage(
+        assign_job=pb.AssignJob(
+            request_id="assign-dup-1",
+            job=pb.JobPayload(
+                job_id="11111111-1111-1111-1111-111111111111",
+                project_id="22222222-2222-2222-2222-222222222222",
+                loop_id="33333333-3333-3333-3333-333333333333",
+                source_commit_id="44444444-4444-4444-4444-444444444444",
+                job_type=pb.TRAIN_DETECTION,
+                plugin_id="demo_det_v1",
+                mode=pb.ACTIVE_LEARNING,
+            ),
+        )
+    )
+
+    await client._handle_incoming(incoming)  # noqa: SLF001
+    await client._handle_incoming(incoming)  # noqa: SLF001
+
+    assert assign_calls == ["assign-dup-1"]
+    assert len(sent_messages) == 2
+    assert sent_messages[0].ack.ack_for == "assign-dup-1"
+    assert sent_messages[1].ack.ack_for == "assign-dup-1"
+    assert sent_messages[0].SerializeToString() == sent_messages[1].SerializeToString()
+
+
+@pytest.mark.anyio
+async def test_duplicate_stop_job_returns_cached_ack_without_restop(tmp_path):
+    client = _build_client(tmp_path)
+    stop_calls: list[str] = []
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_stop_job(job_id: str):
+        stop_calls.append(job_id)
+        return True
+
+    async def fake_send_message(message: pb.RuntimeMessage):
+        sent_messages.append(message)
+
+    client.job_manager.stop_job = fake_stop_job  # type: ignore[method-assign]
+    client.send_message = fake_send_message  # type: ignore[method-assign]
+
+    incoming = pb.RuntimeMessage(
+        stop_job=pb.StopJob(
+            request_id="stop-dup-1",
+            job_id="job-dup-1",
+            reason="manual",
+        )
+    )
+
+    await client._handle_incoming(incoming)  # noqa: SLF001
+    await client._handle_incoming(incoming)  # noqa: SLF001
+
+    assert stop_calls == ["job-dup-1"]
+    assert len(sent_messages) == 2
+    assert sent_messages[0].ack.ack_for == "stop-dup-1"
+    assert sent_messages[1].ack.ack_for == "stop-dup-1"
+    assert sent_messages[0].SerializeToString() == sent_messages[1].SerializeToString()

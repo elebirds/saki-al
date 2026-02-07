@@ -165,6 +165,37 @@ async def test_stop_job_dispatches_command_and_clears_pending_stop_on_ack(dispat
 
 
 @pytest.mark.anyio
+async def test_stop_job_duplicate_request_is_deduplicated(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+    queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    job = await _create_pending_job(session_local)
+
+    await dispatcher.register(
+        executor_id="executor-dup-stop",
+        queue=queue,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={"gpu_count": 1, "memory_mb": 32000},
+    )
+    assigned = await dispatcher.assign_job(job)
+    assert assigned is not None
+    _ = await asyncio.wait_for(queue.get(), timeout=1)
+    await dispatcher.handle_ack(ack_for=assigned.request_id, status=pb.OK, message="accepted")
+
+    first_request_id, first_dispatched = await dispatcher.stop_job(str(job.id), reason="user_cancel")
+    second_request_id, second_dispatched = await dispatcher.stop_job(str(job.id), reason="user_cancel")
+
+    assert first_dispatched is True
+    assert second_dispatched is True
+    assert second_request_id == first_request_id
+
+    stop_message = await asyncio.wait_for(queue.get(), timeout=1)
+    assert stop_message.WhichOneof("payload") == "stop_job"
+    assert stop_message.stop_job.request_id == first_request_id
+    assert queue.empty()
+
+
+@pytest.mark.anyio
 async def test_dispatch_pending_jobs_skips_retry_not_ready(dispatcher_env):
     dispatcher, session_local = dispatcher_env
     queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()

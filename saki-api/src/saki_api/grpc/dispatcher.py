@@ -352,16 +352,18 @@ class RuntimeDispatcher:
         return AssignmentResult(request_id=request_id, executor_id=target.executor_id)
 
     async def stop_job(self, job_id: str, reason: str) -> tuple[str, bool]:
-        request_id = str(uuid.uuid4())
-        dispatched = False
-
         async with self._lock:
+            for pending_request_id, pending_job_id in self._pending_stop.items():
+                if pending_job_id == job_id:
+                    return pending_request_id, True
+
             target = None
             for session in self._sessions.values():
                 if session.current_job_id == job_id:
                     target = session
                     break
             if target:
+                request_id = str(uuid.uuid4())
                 await target.queue.put(
                     pb.RuntimeMessage(
                         stop_job=pb.StopJob(
@@ -372,8 +374,9 @@ class RuntimeDispatcher:
                     )
                 )
                 self._pending_stop[request_id] = job_id
-                dispatched = True
-        return request_id, dispatched
+                return request_id, True
+
+        return str(uuid.uuid4()), False
 
     async def send_data_response(self, executor_id: str, response_payload: pb.RuntimeMessage) -> None:
         async with self._lock:

@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     RUNTIME_MAX_RETRY_COUNT: int = 2
     RUNTIME_RETRY_BASE_DELAY_SEC: int = 10
     RUNTIME_EXECUTOR_ALLOWLIST: List[str] = []
+    RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC: int = 600
+    RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES: int = 2048
 
     # FEDO LUT local cache
     LUT_CACHE_DIR: str = "./data/lut_cache"

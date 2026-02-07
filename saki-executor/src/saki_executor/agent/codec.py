@@ -7,25 +7,30 @@ from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
+from saki_executor.jobs.state import JobStatus
 
-
-_STATUS_TO_TEXT: dict[int, str] = {
-    pb.CREATED: "created",
-    pb.QUEUED: "queued",
-    pb.RUNNING: "running",
-    pb.STOPPING: "stopping",
-    pb.STOPPED: "stopped",
-    pb.SUCCEEDED: "succeeded",
-    pb.FAILED: "failed",
+_STATUS_TO_ENUM: dict[str, int] = {
+    JobStatus.CREATED.value: pb.CREATED,
+    JobStatus.QUEUED.value: pb.QUEUED,
+    JobStatus.RUNNING.value: pb.RUNNING,
+    JobStatus.STOPPING.value: pb.STOPPING,
+    JobStatus.STOPPED.value: pb.STOPPED,
+    JobStatus.SUCCEEDED.value: pb.SUCCEEDED,
+    JobStatus.FAILED.value: pb.FAILED,
+    "pending": pb.QUEUED,
+    "success": pb.SUCCEEDED,
+    "cancelled": pb.STOPPED,
 }
-_TEXT_TO_STATUS: dict[str, int] = {value: key for key, value in _STATUS_TO_TEXT.items()}
-_TEXT_TO_STATUS.update(
-    {
-        "pending": pb.QUEUED,
-        "success": pb.SUCCEEDED,
-        "cancelled": pb.STOPPED,
-    }
-)
+
+_ENUM_TO_STATUS: dict[int, str] = {
+    pb.CREATED: JobStatus.CREATED.value,
+    pb.QUEUED: JobStatus.QUEUED.value,
+    pb.RUNNING: JobStatus.RUNNING.value,
+    pb.STOPPING: JobStatus.STOPPING.value,
+    pb.STOPPED: JobStatus.STOPPED.value,
+    pb.SUCCEEDED: JobStatus.SUCCEEDED.value,
+    pb.FAILED: JobStatus.FAILED.value,
+}
 
 _JOB_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN_DETECTION: "train_detection",
@@ -55,11 +60,26 @@ def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
 
 
 def struct_to_dict(payload: Struct | None) -> dict[str, Any]:
-    if payload is None:
-        return {}
-    if not payload.ListFields():
+    if payload is None or not payload.ListFields():
         return {}
     return dict(MessageToDict(payload, preserving_proto_field_name=True))
+
+
+def job_status_to_enum(status: str | JobStatus) -> int:
+    raw = status.value if isinstance(status, JobStatus) else str(status or "").lower()
+    return _STATUS_TO_ENUM.get(raw, pb.QUEUED)
+
+
+def status_enum_to_text(status: int) -> str:
+    return _ENUM_TO_STATUS.get(int(status), JobStatus.QUEUED.value)
+
+
+def text_to_query_type(query_type: str | None) -> int:
+    return _TEXT_TO_QUERY_TYPE.get((query_type or "").lower(), pb.LABELS)
+
+
+def query_type_to_text(query_type: int) -> str:
+    return _QUERY_TYPE_TO_TEXT.get(int(query_type), "labels")
 
 
 def _dict_to_resource_summary(resources: Mapping[str, Any] | None) -> pb.ResourceSummary:
@@ -81,332 +101,302 @@ def _resource_summary_to_dict(resources: pb.ResourceSummary) -> dict[str, Any]:
     }
 
 
-def _text_to_status(status: str | None) -> int:
-    return _TEXT_TO_STATUS.get((status or "").lower(), pb.QUEUED)
-
-
-def _ack_text_to_enum(status: str | None) -> int:
-    return pb.OK if (status or "").lower() == "ok" else pb.ERROR
-
-
-def _ack_enum_to_text(status: int) -> str:
-    return "ok" if status == pb.OK else "error"
-
-
-def _text_to_job_type(job_type: str | None) -> int:
-    return _TEXT_TO_JOB_TYPE.get((job_type or "").lower(), pb.TRAIN_DETECTION)
-
-
-def _job_type_to_text(job_type: int) -> str:
-    return _JOB_TYPE_TO_TEXT.get(int(job_type), "train_detection")
-
-
-def _text_to_job_mode(mode: str | None) -> int:
-    return _TEXT_TO_JOB_MODE.get((mode or "").lower(), pb.ACTIVE_LEARNING)
-
-
-def _job_mode_to_text(mode: int) -> str:
-    return _JOB_MODE_TO_TEXT.get(int(mode), "active_learning")
-
-
-def _text_to_query_type(query_type: str | None) -> int:
-    return _TEXT_TO_QUERY_TYPE.get((query_type or "").lower(), pb.LABELS)
-
-
-def _query_type_to_text(query_type: int) -> str:
-    return _QUERY_TYPE_TO_TEXT.get(int(query_type), "labels")
-
-
-def dict_to_runtime_message(message: dict[str, Any]) -> pb.RuntimeMessage:
-    msg_type = str(message.get("type") or "")
-
-    if msg_type == "register":
-        plugins: list[pb.PluginCapability] = []
-        for item in (message.get("plugins") or []):
-            plugins.append(
-                pb.PluginCapability(
-                    plugin_id=str(item.get("plugin_id") or ""),
-                    version=str(item.get("version") or ""),
-                    supported_job_types=[str(v) for v in (item.get("supported_job_types") or [])],
-                    supported_strategies=[str(v) for v in (item.get("supported_strategies") or [])],
-                )
-            )
-        return pb.RuntimeMessage(
-            register=pb.Register(
-                request_id=str(message.get("request_id") or ""),
-                executor_id=str(message.get("executor_id") or ""),
-                version=str(message.get("version") or ""),
-                plugins=plugins,
-                resources=_dict_to_resource_summary(message.get("resources") or {}),
+def build_register_message(
+    *,
+    request_id: str,
+    executor_id: str,
+    version: str,
+    plugins: list[dict[str, Any]],
+    resources: Mapping[str, Any],
+) -> pb.RuntimeMessage:
+    plugin_caps: list[pb.PluginCapability] = []
+    for item in plugins:
+        plugin_caps.append(
+            pb.PluginCapability(
+                plugin_id=str(item.get("plugin_id") or ""),
+                version=str(item.get("version") or ""),
+                supported_job_types=[str(v) for v in (item.get("supported_job_types") or [])],
+                supported_strategies=[str(v) for v in (item.get("supported_strategies") or [])],
             )
         )
 
-    if msg_type == "heartbeat":
-        return pb.RuntimeMessage(
-            heartbeat=pb.Heartbeat(
-                request_id=str(message.get("request_id") or ""),
-                executor_id=str(message.get("executor_id") or ""),
-                busy=bool(message.get("busy", False)),
-                current_job_id=str(message.get("current_job_id") or ""),
-                resources=_dict_to_resource_summary(message.get("resources") or {}),
-            )
+    return pb.RuntimeMessage(
+        register=pb.Register(
+            request_id=request_id,
+            executor_id=executor_id,
+            version=version,
+            plugins=plugin_caps,
+            resources=_dict_to_resource_summary(resources),
         )
+    )
 
-    if msg_type == "ack":
-        return pb.RuntimeMessage(
-            ack=pb.Ack(
-                request_id=str(message.get("request_id") or ""),
-                ack_for=str(message.get("ack_for") or ""),
-                status=_ack_text_to_enum(str(message.get("status") or "")),
-                message=str(message.get("message") or ""),
-            )
-        )
 
-    if msg_type == "job_event":
-        payload = message.get("payload") or {}
-        job_event = pb.JobEvent(
-            request_id=str(message.get("request_id") or ""),
-            job_id=str(message.get("job_id") or ""),
-            seq=int(message.get("seq") or 0),
-            ts=int(message.get("ts") or 0),
+def build_heartbeat_message(
+    *,
+    request_id: str,
+    executor_id: str,
+    busy: bool,
+    current_job_id: str | None,
+    resources: Mapping[str, Any],
+) -> pb.RuntimeMessage:
+    return pb.RuntimeMessage(
+        heartbeat=pb.Heartbeat(
+            request_id=request_id,
+            executor_id=executor_id,
+            busy=busy,
+            current_job_id=str(current_job_id or ""),
+            resources=_dict_to_resource_summary(resources),
         )
-        event_type = str(message.get("event_type") or "")
-        if event_type == "status":
-            job_event.status_event.status = _text_to_status(str(payload.get("status") or ""))
-            if payload.get("reason") is not None:
-                job_event.status_event.reason = str(payload.get("reason"))
-        elif event_type == "log":
-            job_event.log_event.level = str(payload.get("level") or "")
-            job_event.log_event.message = str(payload.get("message") or "")
-        elif event_type == "progress":
-            job_event.progress_event.epoch = int(payload.get("epoch") or 0)
-            job_event.progress_event.step = int(payload.get("step") or 0)
-            job_event.progress_event.total_steps = int(payload.get("total_steps") or 0)
-            job_event.progress_event.eta_sec = int(payload.get("eta_sec") or 0)
-        elif event_type == "metric":
-            job_event.metric_event.step = int(payload.get("step") or 0)
-            job_event.metric_event.epoch = int(payload.get("epoch") or 0)
-            metrics = payload.get("metrics") or {}
-            for metric_name, metric_value in metrics.items():
-                job_event.metric_event.metrics[str(metric_name)] = float(metric_value)
-        elif event_type == "artifact":
-            artifact = job_event.artifact_event.artifact
-            artifact.kind = str(payload.get("kind") or "artifact")
-            artifact.name = str(payload.get("name") or "")
-            artifact.uri = str(payload.get("uri") or "")
-            artifact.meta.CopyFrom(dict_to_struct(payload.get("meta") or {}))
-        else:
-            job_event.log_event.level = "WARN"
-            job_event.log_event.message = f"unknown event type: {event_type}"
-        return pb.RuntimeMessage(job_event=job_event)
+    )
 
-    if msg_type == "job_result":
-        job_result = pb.JobResult(
-            request_id=str(message.get("request_id") or ""),
-            job_id=str(message.get("job_id") or ""),
-            status=_text_to_status(str(message.get("status") or "")),
-            error_message=str(message.get("error_message") or ""),
+
+def build_ack_message(*, request_id: str, ack_for: str, ok: bool, message: str) -> pb.RuntimeMessage:
+    return pb.RuntimeMessage(
+        ack=pb.Ack(
+            request_id=request_id,
+            ack_for=ack_for,
+            status=pb.OK if ok else pb.ERROR,
+            message=message,
         )
-        metrics = message.get("metrics") or {}
-        for metric_name, metric_value in metrics.items():
+    )
+
+
+def build_data_request_message(
+    *,
+    request_id: str,
+    job_id: str,
+    query_type: str,
+    project_id: str,
+    commit_id: str,
+    cursor: str | None,
+    limit: int,
+) -> pb.RuntimeMessage:
+    return pb.RuntimeMessage(
+        data_request=pb.DataRequest(
+            request_id=request_id,
+            job_id=job_id,
+            query_type=text_to_query_type(query_type),
+            project_id=project_id,
+            commit_id=commit_id,
+            cursor=str(cursor or ""),
+            limit=int(limit),
+        )
+    )
+
+
+def build_upload_ticket_request_message(
+    *,
+    request_id: str,
+    job_id: str,
+    artifact_name: str,
+    content_type: str,
+) -> pb.RuntimeMessage:
+    return pb.RuntimeMessage(
+        upload_ticket_request=pb.UploadTicketRequest(
+            request_id=request_id,
+            job_id=job_id,
+            artifact_name=artifact_name,
+            content_type=content_type,
+        )
+    )
+
+
+def build_job_event_message(
+    *,
+    request_id: str,
+    job_id: str,
+    seq: int,
+    ts: int,
+    event_type: str,
+    payload: Mapping[str, Any],
+) -> pb.RuntimeMessage:
+    job_event = pb.JobEvent(
+        request_id=request_id,
+        job_id=job_id,
+        seq=int(seq),
+        ts=int(ts),
+    )
+
+    if event_type == "status":
+        job_event.status_event.status = job_status_to_enum(str(payload.get("status") or ""))
+        if payload.get("reason") is not None:
+            job_event.status_event.reason = str(payload.get("reason"))
+    elif event_type == "log":
+        job_event.log_event.level = str(payload.get("level") or "")
+        job_event.log_event.message = str(payload.get("message") or "")
+    elif event_type == "progress":
+        job_event.progress_event.epoch = int(payload.get("epoch") or 0)
+        job_event.progress_event.step = int(payload.get("step") or 0)
+        job_event.progress_event.total_steps = int(payload.get("total_steps") or 0)
+        job_event.progress_event.eta_sec = int(payload.get("eta_sec") or 0)
+    elif event_type == "metric":
+        job_event.metric_event.step = int(payload.get("step") or 0)
+        job_event.metric_event.epoch = int(payload.get("epoch") or 0)
+        for metric_name, metric_value in (payload.get("metrics") or {}).items():
             try:
-                job_result.metrics[str(metric_name)] = float(metric_value)
+                job_event.metric_event.metrics[str(metric_name)] = float(metric_value)
             except Exception:
                 continue
-        artifacts = message.get("artifacts") or {}
-        for name, artifact in artifacts.items():
-            if not isinstance(artifact, Mapping):
-                continue
-            job_result.artifacts.append(
-                pb.ArtifactItem(
-                    kind=str(artifact.get("kind") or "artifact"),
-                    name=str(name),
-                    uri=str(artifact.get("uri") or ""),
-                    meta=dict_to_struct(artifact.get("meta") or {}),
-                )
-            )
-        for candidate in (message.get("candidates") or []):
-            job_result.candidates.append(
-                pb.QueryCandidate(
-                    sample_id=str(candidate.get("sample_id") or ""),
-                    score=float(candidate.get("score") or 0.0),
-                    reason=dict_to_struct(candidate.get("reason") or {}),
-                )
-            )
-        return pb.RuntimeMessage(job_result=job_result)
+    elif event_type == "artifact":
+        artifact = job_event.artifact_event.artifact
+        artifact.kind = str(payload.get("kind") or "artifact")
+        artifact.name = str(payload.get("name") or "")
+        artifact.uri = str(payload.get("uri") or "")
+        artifact.meta.CopyFrom(dict_to_struct(payload.get("meta") or {}))
+    else:
+        job_event.log_event.level = "WARN"
+        job_event.log_event.message = f"unknown event type: {event_type}"
 
-    if msg_type == "data_request":
-        return pb.RuntimeMessage(
-            data_request=pb.DataRequest(
-                request_id=str(message.get("request_id") or ""),
-                job_id=str(message.get("job_id") or ""),
-                query_type=_text_to_query_type(str(message.get("query_type") or "")),
-                project_id=str(message.get("project_id") or ""),
-                commit_id=str(message.get("commit_id") or ""),
-                cursor=str(message.get("cursor") or ""),
-                limit=int(message.get("limit") or 0),
-            )
-        )
+    return pb.RuntimeMessage(job_event=job_event)
 
-    if msg_type == "upload_ticket_request":
-        return pb.RuntimeMessage(
-            upload_ticket_request=pb.UploadTicketRequest(
-                request_id=str(message.get("request_id") or ""),
-                job_id=str(message.get("job_id") or ""),
-                artifact_name=str(message.get("artifact_name") or ""),
-                content_type=str(message.get("content_type") or ""),
-            )
-        )
 
-    if msg_type == "error":
-        return pb.RuntimeMessage(
-            error=pb.Error(
-                request_id=str(message.get("request_id") or ""),
-                code=str(message.get("code") or ""),
-                message=str(message.get("message") or ""),
-                details=dict_to_struct(message.get("details") or {}),
+def build_job_result_message(
+    *,
+    request_id: str,
+    job_id: str,
+    status: str | JobStatus,
+    metrics: Mapping[str, Any],
+    artifacts: Mapping[str, Any],
+    candidates: list[dict[str, Any]],
+    error_message: str = "",
+) -> pb.RuntimeMessage:
+    job_result = pb.JobResult(
+        request_id=request_id,
+        job_id=job_id,
+        status=job_status_to_enum(status),
+        error_message=str(error_message or ""),
+    )
+    for metric_name, metric_value in (metrics or {}).items():
+        try:
+            job_result.metrics[str(metric_name)] = float(metric_value)
+        except Exception:
+            continue
+
+    for name, artifact in (artifacts or {}).items():
+        if not isinstance(artifact, Mapping):
+            continue
+        job_result.artifacts.append(
+            pb.ArtifactItem(
+                kind=str(artifact.get("kind") or "artifact"),
+                name=str(name),
+                uri=str(artifact.get("uri") or ""),
+                meta=dict_to_struct(artifact.get("meta") or {}),
             )
         )
 
-    raise ValueError(f"unsupported runtime message type: {msg_type}")
+    for candidate in candidates or []:
+        job_result.candidates.append(
+            pb.QueryCandidate(
+                sample_id=str(candidate.get("sample_id") or ""),
+                score=float(candidate.get("score") or 0.0),
+                reason=dict_to_struct(candidate.get("reason") or {}),
+            )
+        )
+
+    return pb.RuntimeMessage(job_result=job_result)
 
 
-def runtime_message_to_dict(message: pb.RuntimeMessage) -> dict[str, Any]:
+def get_message_request_id(message: pb.RuntimeMessage) -> str:
     payload_type = message.WhichOneof("payload")
+    if not payload_type:
+        return ""
+    payload = getattr(message, payload_type)
+    return str(getattr(payload, "request_id", "") or "")
 
-    if payload_type == "ack":
-        payload = message.ack
-        return {
-            "type": "ack",
-            "request_id": payload.request_id,
-            "ack_for": payload.ack_for,
-            "status": _ack_enum_to_text(int(payload.status)),
-            "message": payload.message,
-        }
 
-    if payload_type == "assign_job":
-        payload = message.assign_job
-        job = payload.job
-        return {
-            "type": "assign_job",
-            "request_id": payload.request_id,
-            "job": {
-                "job_id": job.job_id,
-                "project_id": job.project_id,
-                "loop_id": job.loop_id,
-                "source_commit_id": job.source_commit_id,
-                "job_type": _job_type_to_text(job.job_type),
-                "plugin_id": job.plugin_id,
-                "mode": _job_mode_to_text(job.mode),
-                "query_strategy": job.query_strategy,
-                "params": struct_to_dict(job.params),
-                "resources": _resource_summary_to_dict(job.resources),
-            },
-        }
+def set_message_request_id(message: pb.RuntimeMessage, request_id: str) -> None:
+    payload_type = message.WhichOneof("payload")
+    if not payload_type:
+        return
+    payload = getattr(message, payload_type)
+    if hasattr(payload, "request_id"):
+        setattr(payload, "request_id", request_id)
 
-    if payload_type == "stop_job":
-        payload = message.stop_job
-        return {
-            "type": "stop_job",
-            "request_id": payload.request_id,
-            "job_id": payload.job_id,
-            "reason": payload.reason,
-        }
 
-    if payload_type == "data_response":
-        payload = message.data_response
-        items: list[dict[str, Any]] = []
-        for item in payload.items:
-            item_type = item.WhichOneof("item")
-            if item_type == "label_item":
-                label_item = item.label_item
-                items.append(
-                    {
-                        "id": label_item.id,
-                        "name": label_item.name,
-                        "color": label_item.color,
-                    }
-                )
-            elif item_type == "sample_item":
-                sample_item = item.sample_item
-                items.append(
-                    {
-                        "id": sample_item.id,
-                        "asset_hash": sample_item.asset_hash,
-                        "download_url": sample_item.download_url,
-                        "width": int(sample_item.width),
-                        "height": int(sample_item.height),
-                        "meta": struct_to_dict(sample_item.meta),
-                    }
-                )
-            elif item_type == "annotation_item":
-                annotation_item = item.annotation_item
-                obb = struct_to_dict(annotation_item.obb)
-                items.append(
-                    {
-                        "id": annotation_item.id,
-                        "sample_id": annotation_item.sample_id,
-                        "category_id": annotation_item.category_id,
-                        "bbox_xywh": [float(v) for v in annotation_item.bbox_xywh],
-                        "obb": obb or None,
-                        "source": annotation_item.source,
-                        "confidence": float(annotation_item.confidence),
-                    }
-                )
-        return {
-            "type": "data_response",
-            "request_id": payload.request_id,
-            "reply_to": payload.reply_to,
-            "job_id": payload.job_id,
-            "query_type": _query_type_to_text(payload.query_type),
-            "items": items,
-            "next_cursor": payload.next_cursor or None,
-        }
+def parse_assign_job(assign_job: pb.AssignJob) -> dict[str, Any]:
+    job = assign_job.job
+    return {
+        "job_id": job.job_id,
+        "project_id": job.project_id,
+        "loop_id": job.loop_id,
+        "source_commit_id": job.source_commit_id,
+        "job_type": _JOB_TYPE_TO_TEXT.get(int(job.job_type), "train_detection"),
+        "plugin_id": job.plugin_id,
+        "mode": _JOB_MODE_TO_TEXT.get(int(job.mode), "active_learning"),
+        "query_strategy": job.query_strategy,
+        "params": struct_to_dict(job.params),
+        "resources": _resource_summary_to_dict(job.resources),
+    }
 
-    if payload_type == "upload_ticket_response":
-        payload = message.upload_ticket_response
-        return {
-            "type": "upload_ticket_response",
-            "request_id": payload.request_id,
-            "reply_to": payload.reply_to,
-            "job_id": payload.job_id,
-            "upload_url": payload.upload_url,
-            "storage_uri": payload.storage_uri,
-            "headers": dict(payload.headers),
-        }
 
-    if payload_type == "error":
-        payload = message.error
-        details = struct_to_dict(payload.details)
-        return {
-            "type": "error",
-            "request_id": payload.request_id,
-            "code": payload.code,
-            "message": payload.message,
-            "details": details,
-            "reply_to": str(details.get("reply_to") or details.get("request_id") or ""),
-            "ack_for": str(details.get("ack_for") or ""),
-            "error": payload.message or payload.code or "runtime error",
-        }
+def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
+    items: list[dict[str, Any]] = []
+    for item in data_response.items:
+        item_type = item.WhichOneof("item")
+        if item_type == "label_item":
+            label = item.label_item
+            items.append(
+                {
+                    "id": label.id,
+                    "name": label.name,
+                    "color": label.color,
+                }
+            )
+        elif item_type == "sample_item":
+            sample = item.sample_item
+            items.append(
+                {
+                    "id": sample.id,
+                    "asset_hash": sample.asset_hash,
+                    "download_url": sample.download_url,
+                    "width": int(sample.width),
+                    "height": int(sample.height),
+                    "meta": struct_to_dict(sample.meta),
+                }
+            )
+        elif item_type == "annotation_item":
+            ann = item.annotation_item
+            obb = struct_to_dict(ann.obb)
+            items.append(
+                {
+                    "id": ann.id,
+                    "sample_id": ann.sample_id,
+                    "category_id": ann.category_id,
+                    "bbox_xywh": [float(v) for v in ann.bbox_xywh],
+                    "obb": obb or None,
+                    "source": ann.source,
+                    "confidence": float(ann.confidence),
+                }
+            )
+    return {
+        "request_id": data_response.request_id,
+        "reply_to": data_response.reply_to,
+        "job_id": data_response.job_id,
+        "query_type": query_type_to_text(data_response.query_type),
+        "items": items,
+        "next_cursor": data_response.next_cursor or None,
+    }
 
-    if payload_type == "heartbeat":
-        payload = message.heartbeat
-        return {
-            "type": "heartbeat",
-            "request_id": payload.request_id,
-            "executor_id": payload.executor_id,
-            "busy": payload.busy,
-            "current_job_id": payload.current_job_id,
-            "resources": _resource_summary_to_dict(payload.resources),
-        }
 
-    if payload_type == "register":
-        payload = message.register
-        return {
-            "type": "register",
-            "request_id": payload.request_id,
-            "executor_id": payload.executor_id,
-            "version": payload.version,
-        }
+def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict[str, Any]:
+    return {
+        "request_id": upload_ticket.request_id,
+        "reply_to": upload_ticket.reply_to,
+        "job_id": upload_ticket.job_id,
+        "upload_url": upload_ticket.upload_url,
+        "storage_uri": upload_ticket.storage_uri,
+        "headers": dict(upload_ticket.headers),
+    }
 
-    raise ValueError(f"unsupported incoming runtime payload: {payload_type}")
+
+def parse_error(error_payload: pb.Error) -> dict[str, Any]:
+    details = struct_to_dict(error_payload.details)
+    return {
+        "request_id": error_payload.request_id,
+        "code": error_payload.code,
+        "message": error_payload.message,
+        "details": details,
+        "reply_to": str(details.get("reply_to") or details.get("request_id") or ""),
+        "ack_for": str(details.get("ack_for") or ""),
+        "error": error_payload.message or error_payload.code or "runtime error",
+    }

@@ -2,8 +2,10 @@ import asyncio
 
 import pytest
 
+from saki_executor.agent import codec as runtime_codec
 from saki_executor.agent.client import AgentClient
 from saki_executor.cache.asset_cache import AssetCache
+from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.jobs.manager import JobManager
 from saki_executor.plugins.registry import PluginRegistry
 
@@ -24,17 +26,17 @@ async def test_error_message_resolves_pending_request_with_error(tmp_path):
     client._pending["req-1"] = future  # noqa: SLF001
 
     await client._handle_incoming(  # noqa: SLF001
-        {
-            "type": "error",
-            "request_id": "err-1",
-            "reply_to": "req-1",
-            "code": "INTERNAL",
-            "message": "boom",
-            "details": {"reason": "boom"},
-        }
+        pb.RuntimeMessage(
+            error=pb.Error(
+                request_id="err-1",
+                code="INTERNAL",
+                message="boom",
+                details=runtime_codec.dict_to_struct({"reply_to": "req-1", "reason": "boom"}),
+            )
+        )
     )
 
     result = await asyncio.wait_for(future, timeout=1)
-    assert result["error"] == "boom"
-    assert result["code"] == "INTERNAL"
-
+    assert result.WhichOneof("payload") == "error"
+    assert result.error.code == "INTERNAL"
+    assert result.error.message == "boom"

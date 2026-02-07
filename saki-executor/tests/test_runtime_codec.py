@@ -2,22 +2,20 @@ from saki_executor.agent import codec
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 
 
-def test_runtime_message_roundtrip_for_ack():
-    message = {
-        "type": "ack",
-        "request_id": "r1",
-        "ack_for": "r0",
-        "status": "ok",
-        "message": "accepted",
-    }
-    pb_message = codec.dict_to_runtime_message(message)
-    decoded = codec.runtime_message_to_dict(pb_message)
-    assert decoded["type"] == "ack"
-    assert decoded["ack_for"] == "r0"
-    assert decoded["status"] == "ok"
+def test_build_ack_message():
+    message = codec.build_ack_message(
+        request_id="r1",
+        ack_for="r0",
+        ok=True,
+        message="accepted",
+    )
+    assert message.WhichOneof("payload") == "ack"
+    assert message.ack.request_id == "r1"
+    assert message.ack.ack_for == "r0"
+    assert message.ack.status == pb.OK
 
 
-def test_decode_assign_job_payload():
+def test_parse_assign_job_payload():
     runtime_message = pb.RuntimeMessage(
         assign_job=pb.AssignJob(
             request_id="req1",
@@ -35,39 +33,34 @@ def test_decode_assign_job_payload():
             ),
         )
     )
-    decoded = codec.runtime_message_to_dict(runtime_message)
-    assert decoded["type"] == "assign_job"
-    assert decoded["job"]["job_id"] == "job1"
-    assert decoded["job"]["params"]["epochs"] == 5
-    assert decoded["job"]["job_type"] == "train_detection"
-    assert decoded["job"]["mode"] == "active_learning"
+    payload = codec.parse_assign_job(runtime_message.assign_job)
+    assert payload["job_id"] == "job1"
+    assert payload["params"]["epochs"] == 5
+    assert payload["job_type"] == "train_detection"
+    assert payload["mode"] == "active_learning"
 
 
-def test_data_request_query_type_mapping():
-    message = {
-        "type": "data_request",
-        "request_id": "r1",
-        "job_id": "job1",
-        "query_type": "annotations",
-        "project_id": "project1",
-        "commit_id": "commit1",
-        "cursor": "",
-        "limit": 100,
-    }
-    pb_message = codec.dict_to_runtime_message(message)
-    assert pb_message.data_request.query_type == pb.ANNOTATIONS
-
-
-def test_error_message_decoding_includes_reply_to_and_error():
-    runtime_message = pb.RuntimeMessage(
-        error=pb.Error(
-            request_id="err-1",
-            code="INTERNAL",
-            message="boom",
-            details=codec.dict_to_struct({"reply_to": "req-1", "reason": "boom"}),
-        )
+def test_build_data_request_query_type_mapping():
+    message = codec.build_data_request_message(
+        request_id="r1",
+        job_id="job1",
+        query_type="annotations",
+        project_id="project1",
+        commit_id="commit1",
+        cursor="",
+        limit=100,
     )
-    decoded = codec.runtime_message_to_dict(runtime_message)
-    assert decoded["type"] == "error"
-    assert decoded["reply_to"] == "req-1"
-    assert decoded["error"] == "boom"
+    assert message.WhichOneof("payload") == "data_request"
+    assert message.data_request.query_type == pb.ANNOTATIONS
+
+
+def test_parse_error_message_includes_reply_to_and_error():
+    error_payload = pb.Error(
+        request_id="err-1",
+        code="INTERNAL",
+        message="boom",
+        details=codec.dict_to_struct({"reply_to": "req-1", "reason": "boom"}),
+    )
+    parsed = codec.parse_error(error_payload)
+    assert parsed["reply_to"] == "req-1"
+    assert parsed["error"] == "boom"

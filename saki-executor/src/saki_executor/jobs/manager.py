@@ -8,15 +8,17 @@ from typing import Any, Awaitable, Callable
 import httpx
 from loguru import logger
 
+from saki_executor.agent import codec as runtime_codec
 from saki_executor.cache.asset_cache import AssetCache
+from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.jobs.state import ExecutorState, JobStatus
 from saki_executor.jobs.workspace import Workspace
 from saki_executor.plugins.base import ExecutorPlugin
 from saki_executor.plugins.registry import PluginRegistry
 from saki_executor.sdk.reporter import JobReporter
 
-SendFn = Callable[[dict[str, Any]], Awaitable[None]]
-RequestFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
+RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage]]
 
 class JobManager:
     def __init__(
@@ -198,15 +200,22 @@ class JobManager:
 
             artifacts: dict[str, Any] = {}
             for artifact in output.artifacts:
-                ticket = await self._request_message(
-                    {
-                        "type": "upload_ticket_request",
-                        "request_id": str(uuid.uuid4()),
-                        "job_id": job_id,
-                        "artifact_name": artifact.name,
-                        "content_type": artifact.content_type,
-                    }
+                ticket_response = await self._request_message(
+                    runtime_codec.build_upload_ticket_request_message(
+                        request_id=str(uuid.uuid4()),
+                        job_id=job_id,
+                        artifact_name=artifact.name,
+                        content_type=artifact.content_type,
+                    )
                 )
+                payload_type = ticket_response.WhichOneof("payload")
+                if payload_type == "error":
+                    error_payload = runtime_codec.parse_error(ticket_response.error)
+                    raise RuntimeError(str(error_payload.get("error") or "upload ticket request failed"))
+                if payload_type != "upload_ticket_response":
+                    raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
+
+                ticket = runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
                 upload_url = str(ticket.get("upload_url") or "")
                 storage_uri = str(ticket.get("storage_uri") or "")
                 headers = ticket.get("headers") or {}
@@ -224,15 +233,14 @@ class JobManager:
             final_event = reporter.status(JobStatus.SUCCEEDED.value, "job succeeded")
             await self._push_event(job_id, final_event)
             await self._send_message(
-                {
-                    "type": "job_result",
-                    "request_id": str(uuid.uuid4()),
-                    "job_id": job_id,
-                    "status": JobStatus.SUCCEEDED.value,
-                    "metrics": output.metrics,
-                    "artifacts": artifacts,
-                    "candidates": candidates,
-                }
+                runtime_codec.build_job_result_message(
+                    request_id=str(uuid.uuid4()),
+                    job_id=job_id,
+                    status=JobStatus.SUCCEEDED.value,
+                    metrics=output.metrics,
+                    artifacts=artifacts,
+                    candidates=candidates,
+                )
             )
             final_status = JobStatus.SUCCEEDED
             logger.info("任务执行成功 job_id={}", job_id)
@@ -241,16 +249,15 @@ class JobManager:
             stop_event = reporter.status(JobStatus.STOPPED.value, "job stopped")
             await self._push_event(job_id, stop_event)
             await self._send_message(
-                {
-                    "type": "job_result",
-                    "request_id": str(uuid.uuid4()),
-                    "job_id": job_id,
-                    "status": JobStatus.STOPPED.value,
-                    "metrics": {},
-                    "artifacts": {},
-                    "candidates": [],
-                    "error_message": "stopped by request",
-                }
+                runtime_codec.build_job_result_message(
+                    request_id=str(uuid.uuid4()),
+                    job_id=job_id,
+                    status=JobStatus.STOPPED.value,
+                    metrics={},
+                    artifacts={},
+                    candidates=[],
+                    error_message="stopped by request",
+                )
             )
             final_status = JobStatus.STOPPED
             logger.warning("任务被停止 job_id={}", job_id)
@@ -259,16 +266,15 @@ class JobManager:
             fail_event = reporter.status(JobStatus.FAILED.value, str(exc))
             await self._push_event(job_id, fail_event)
             await self._send_message(
-                {
-                    "type": "job_result",
-                    "request_id": str(uuid.uuid4()),
-                    "job_id": job_id,
-                    "status": JobStatus.FAILED.value,
-                    "metrics": {},
-                    "artifacts": {},
-                    "candidates": [],
-                    "error_message": str(exc),
-                }
+                runtime_codec.build_job_result_message(
+                    request_id=str(uuid.uuid4()),
+                    job_id=job_id,
+                    status=JobStatus.FAILED.value,
+                    metrics={},
+                    artifacts={},
+                    candidates=[],
+                    error_message=str(exc),
+                )
             )
             final_status = JobStatus.FAILED
             logger.exception("任务执行失败 job_id={} error={}", job_id, exc)
@@ -287,15 +293,14 @@ class JobManager:
         if self._send_message is None:
             raise RuntimeError("job manager send transport is not configured")
         await self._send_message(
-            {
-                "type": "job_event",
-                "request_id": str(uuid.uuid4()),
-                "job_id": job_id,
-                "seq": event["seq"],
-                "ts": event["ts"],
-                "event_type": event["event_type"],
-                "payload": event["payload"],
-            }
+            runtime_codec.build_job_event_message(
+                request_id=str(uuid.uuid4()),
+                job_id=job_id,
+                seq=int(event["seq"]),
+                ts=int(event["ts"]),
+                event_type=str(event["event_type"]),
+                payload=event["payload"] or {},
+            )
         )
 
     async def _fetch_all(
@@ -312,18 +317,25 @@ class JobManager:
         items: list[dict[str, Any]] = []
         cursor: str | None = None
         while True:
-            response = await self._request_message(
-                {
-                    "type": "data_request",
-                    "request_id": str(uuid.uuid4()),
-                    "job_id": job_id,
-                    "query_type": query_type,
-                    "project_id": project_id,
-                    "commit_id": commit_id,
-                    "cursor": cursor,
-                    "limit": limit,
-                }
+            response_message = await self._request_message(
+                runtime_codec.build_data_request_message(
+                    request_id=str(uuid.uuid4()),
+                    job_id=job_id,
+                    query_type=query_type,
+                    project_id=project_id,
+                    commit_id=commit_id,
+                    cursor=cursor,
+                    limit=limit,
+                )
             )
+            payload_type = response_message.WhichOneof("payload")
+            if payload_type == "error":
+                error_payload = runtime_codec.parse_error(response_message.error)
+                raise RuntimeError(str(error_payload.get("error") or "data request failed"))
+            if payload_type != "data_response":
+                raise RuntimeError(f"unexpected data response payload: {payload_type}")
+
+            response = runtime_codec.parse_data_response(response_message.data_response)
             chunk = response.get("items") or []
             items.extend(chunk)
             cursor = response.get("next_cursor")

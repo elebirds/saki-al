@@ -94,7 +94,8 @@ class CommandServer:
             return
 
         if command in {"disconnect", "dc"}:
-            await self.client.disconnect()
+            force = any(arg in {"--force", "-f"} for arg in args)
+            await self.client.disconnect(force=force)
             return
 
         if command == "stop":
@@ -119,7 +120,7 @@ class CommandServer:
             "  status               查看当前执行器状态\n"
             "  plugins              查看已加载插件\n"
             "  connect              启用并发起连接\n"
-            "  disconnect           断开并暂停连接\n"
+            "  disconnect [--force] 断开并暂停连接（任务运行中默认拒绝，--force 会先 stop）\n"
             "  stop [job_id]        停止当前任务或指定 job_id\n"
             "  loglevel <LEVEL>     调整日志级别（DEBUG/INFO/WARNING/ERROR）\n"
             "  loglevel             查看当前日志级别\n"

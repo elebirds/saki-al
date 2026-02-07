@@ -8,5 +8,5 @@ Managed by `uv`.
 
 ```bash
 uv sync
-uv run uvicorn saki_runtime.main:app --reload
+uv run python -m saki_runtime.main
 ```

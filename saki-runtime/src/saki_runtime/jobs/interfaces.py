@@ -11,6 +11,15 @@ class PluginAdapter(ABC):
         """Return the python module or script path to run."""
         pass
 
+    @property
+    @abstractmethod
+    def plugin_version(self) -> str:
+        pass
+
+    @property
+    def capabilities(self) -> list[str]:
+        return []
+
     @abstractmethod
     def validate_params(self, params: Dict[str, Any]) -> None:
         pass

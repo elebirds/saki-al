@@ -37,10 +37,10 @@ class JobReporter:
             LogPayload(level=level, message=message, logger=logger).model_dump(),
         )
 
-    def progress(self, percentage: float, message: Optional[str] = None, eta_seconds: Optional[float] = None) -> None:
+    def progress(self, epoch: int, step: int, total_steps: int, eta_sec: Optional[int] = None) -> None:
         self._append(
             EventType.PROGRESS,
-            ProgressPayload(percentage=percentage, message=message, eta_seconds=eta_seconds).model_dump(),
+            ProgressPayload(epoch=epoch, step=step, total_steps=total_steps, eta_sec=eta_sec).model_dump(),
         )
 
     def metric(self, step: int, metrics: Dict[str, float], epoch: Optional[int] = None) -> None:
@@ -52,11 +52,11 @@ class JobReporter:
     def artifact(self, name: str, path: str, type: str, size_bytes: Optional[int] = None) -> None:
         self._append(
             EventType.ARTIFACT,
-            ArtifactPayload(name=name, path=path, type=type, size_bytes=size_bytes).model_dump(),
+            ArtifactPayload(kind=type, name=name, uri=path, meta={"size_bytes": size_bytes} if size_bytes else None).model_dump(),
         )
 
     def status(self, current: JobStatus, previous: JobStatus, message: Optional[str] = None) -> None:
         self._append(
             EventType.STATUS,
-            StatusPayload(current_status=current, previous_status=previous, message=message).model_dump(),
+            StatusPayload(status=current, reason=message).model_dump(),
         )

@@ -11,19 +11,19 @@ class SampleIR(BaseModel):
     @field_validator("uri")
     @classmethod
     def validate_uri(cls, v: str) -> str:
-        if not (v.startswith("file://") or v.startswith("s3://")):
-            raise ValueError("URI must start with 'file://' or 's3://'")
+        if not (v.startswith("file://") or v.startswith("s3://") or v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("URI must start with 'file://', 's3://', 'http://', or 'https://'")
         return v
 
 class LabelIR(BaseModel):
-    id: int
+    id: str
     name: str
     color: Optional[str] = None
 
 class DetAnnotationIR(BaseModel):
     id: Optional[str] = None
     sample_id: str
-    category_id: int
+    category_id: str
     bbox_xywh: List[float]
     obb: Optional[Dict[str, Any]] = None
     source: str

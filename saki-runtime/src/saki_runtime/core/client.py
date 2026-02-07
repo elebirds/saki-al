@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, AsyncIterator, Dict, List, Optional, Set, Type, TypeVar
+from typing import Any, AsyncIterator, Dict, List, Optional, Type, TypeVar
 
 import httpx
 from loguru import logger
@@ -115,55 +115,20 @@ class SakiClient:
         # If wrapped
         return [LabelIR.model_validate(item) for item in data.get("items", [])]
 
-    async def iter_samples(self, dataset_version_id: str) -> AsyncIterator[SampleIR]:
-        path = f"/internal/v1/dataset-versions/{dataset_version_id}/samples"
-        async for sample in self._iter_pages(
-            path, SampleIR, {"limit": 1000}
-        ):
+    async def iter_samples(self, commit_id: str) -> AsyncIterator[SampleIR]:
+        path = f"/internal/v1/commits/{commit_id}/samples"
+        async for sample in self._iter_pages(path, SampleIR, {"limit": 1000}):
             yield sample
 
-    async def iter_annotations(
-        self, label_version_id: str
-    ) -> AsyncIterator[DetAnnotationIR]:
-        path = f"/internal/v1/label-versions/{label_version_id}/annotations"
-        async for ann in self._iter_pages(
-            path, DetAnnotationIR, {"task_type": "detection", "limit": 1000}
-        ):
+    async def iter_annotations(self, commit_id: str) -> AsyncIterator[DetAnnotationIR]:
+        path = f"/internal/v1/commits/{commit_id}/annotations"
+        async for ann in self._iter_pages(path, DetAnnotationIR, {"limit": 1000}):
             yield ann
 
-    async def iter_unlabeled_samples(
-        self, dataset_version_id: str, label_version_id: str
-    ) -> AsyncIterator[SampleIR]:
-        path = f"/internal/v1/dataset-versions/{dataset_version_id}/unlabeled-samples"
-        params = {"label_version_id": label_version_id, "limit": 1000}
-
-        try:
-            async for sample in self._iter_pages(path, SampleIR, params):
-                yield sample
-        except RuntimeErrorBase as e:
-            if e.error_code == "NOT_FOUND":
-                logger.info(
-                    f"Unlabeled samples endpoint not found for {dataset_version_id}, falling back to client-side filtering."
-                )
-                async for sample in self._fallback_unlabeled_samples(
-                    dataset_version_id, label_version_id
-                ):
-                    yield sample
-            else:
-                raise e
-
-    async def _fallback_unlabeled_samples(
-        self, dataset_version_id: str, label_version_id: str
-    ) -> AsyncIterator[SampleIR]:
-        # 1. Fetch all annotated sample IDs
-        annotated_ids: Set[str] = set()
-        async for ann in self.iter_annotations(label_version_id):
-            annotated_ids.add(ann.sample_id)
-
-        # 2. Iterate all samples and filter
-        async for sample in self.iter_samples(dataset_version_id):
-            if sample.id not in annotated_ids:
-                yield sample
+    async def iter_unlabeled_samples(self, commit_id: str) -> AsyncIterator[SampleIR]:
+        path = f"/internal/v1/commits/{commit_id}/unlabeled-samples"
+        async for sample in self._iter_pages(path, SampleIR, {"limit": 1000}):
+            yield sample
 
 # Global client instance
 saki_client = SakiClient()

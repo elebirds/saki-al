@@ -4,15 +4,12 @@ from pydantic import BaseModel
 from saki_runtime.schemas.enums import JobStatus, JobType
 from saki_runtime.schemas.resources import JobResources
 
-class JobDataRef(BaseModel):
-    dataset_version_id: str
-    label_version_id: str
-
 class JobCreateRequest(BaseModel):
+    job_id: str
     job_type: JobType
     project_id: str
     plugin_id: str
-    data_ref: JobDataRef
+    source_commit_id: str
     params: Dict[str, Any]
     resources: JobResources
 
@@ -29,7 +26,7 @@ class JobInfo(BaseModel):
     created_at: int
     started_at: Optional[int] = None
     ended_at: Optional[int] = None
-    data_ref: JobDataRef
+    source_commit_id: str
     params: Dict[str, Any]
     resources: JobResources
     summary: Optional[Dict[str, Any]] = None

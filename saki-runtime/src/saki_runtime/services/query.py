@@ -1,4 +1,5 @@
 import hashlib
+import random
 from typing import Any, Dict, List
 
 from saki_runtime.core.client import saki_client
@@ -16,8 +17,7 @@ class QueryService:
         count = 0
         
         async for sample in saki_client.iter_unlabeled_samples(
-            request.unlabeled_ref.dataset_version_id,
-            request.unlabeled_ref.label_version_id
+            request.source_commit_id
         ):
             samples.append(sample)
             count += 1
@@ -51,18 +51,26 @@ class QueryService:
         # Deterministic pseudo score based on sample ID hash
         h = hashlib.md5(sample.id.encode()).hexdigest()
         pseudo_conf = int(h, 16) % 100 / 100.0
-        
+
         if request.strategy == "uncertainty":
-            # Uncertainty = 1 - confidence (simplified)
             score = 1.0 - pseudo_conf
             reason = {
                 "strategy": "uncertainty",
-                "pseudo_confidence": pseudo_conf,
-                "score": score
+                "max_conf": pseudo_conf,
+                "score": score,
+            }
+        elif request.strategy == "iou_diff":
+            # Pseudo IOU diff score
+            pseudo_iou = (int(h, 16) % 80) / 100.0
+            score = 1.0 - pseudo_iou
+            reason = {
+                "strategy": "iou_diff",
+                "iou": pseudo_iou,
+                "score": score,
             }
         else:
-            # Default fallback
-            score = pseudo_conf
+            random.seed(sample.id)
+            score = random.random()
             reason = {"strategy": "random", "score": score}
             
         return score, reason

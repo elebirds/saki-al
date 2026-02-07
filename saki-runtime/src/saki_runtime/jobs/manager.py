@@ -12,6 +12,7 @@ from saki_runtime.core.config import settings
 from saki_runtime.core.exceptions import conflict, not_found, invalid_argument
 from saki_runtime.jobs.interfaces import JobRunner, PluginAdapter
 from saki_runtime.jobs.state import JobStateMachine
+from saki_runtime.jobs.event_forwarder import EventForwarder
 from saki_runtime.jobs.workspace import Workspace
 from saki_runtime.schemas.enums import EventType, JobStatus
 from saki_runtime.schemas.events import (
@@ -74,6 +75,33 @@ class JobManager:
         self.plugins = plugins
         self.runs_dir = Path(settings.RUNS_DIR)
         self.gpu_locks = GPULockManager(self.runs_dir / "locks")
+        self.event_forwarder = EventForwarder(on_terminal=self._release_gpu_for_job)
+
+    def set_event_publisher(self, publisher) -> None:
+        self.event_forwarder.set_publisher(publisher)
+
+    async def _release_gpu_for_job(self, job_id: str) -> None:
+        ws = self._get_workspace(job_id)
+        config = ws.load_config()
+        if not config:
+            return
+        resources = config.get("resources") or {}
+        gpu = resources.get("gpu") or {}
+        device_ids = gpu.get("device_ids") or []
+        if device_ids:
+            self.gpu_locks.release(int(device_ids[0]))
+
+    def list_plugins(self) -> List[Dict[str, Any]]:
+        items = []
+        for plugin_id, adapter in self.plugins.items():
+            items.append(
+                {
+                    "id": plugin_id,
+                    "version": getattr(adapter, "plugin_version", "0.0.0"),
+                    "capabilities": getattr(adapter, "capabilities", []),
+                }
+            )
+        return items
 
     def _get_workspace(self, job_id: str) -> Workspace:
         return Workspace(str(self.runs_dir), job_id)
@@ -96,7 +124,7 @@ class JobManager:
             plugin_id=config["plugin_id"],
             status=JobStatus.CREATED,
             created_at=0, # Will be updated from events
-            data_ref=config["data_ref"],
+            source_commit_id=config["source_commit_id"],
             params=config["params"],
             resources=config["resources"],
         )
@@ -108,12 +136,12 @@ class JobManager:
         for event in store.tail(0):
             if event.type == EventType.STATUS:
                 payload = StatusPayload.model_validate(event.payload)
-                info.status = payload.current_status
-                if payload.current_status == JobStatus.CREATED:
+                info.status = payload.status
+                if payload.status == JobStatus.CREATED:
                     info.created_at = event.ts
-                elif payload.current_status == JobStatus.RUNNING:
+                elif payload.status == JobStatus.RUNNING:
                     info.started_at = event.ts
-                elif JobStateMachine.is_terminal(payload.current_status):
+                elif JobStateMachine.is_terminal(payload.status):
                     info.ended_at = event.ts
             elif event.type == EventType.METRIC:
                 # Keep latest metrics as summary
@@ -131,6 +159,10 @@ class JobManager:
             raise invalid_argument(f"Plugin {request.plugin_id} not found")
         
         plugin = self.plugins[request.plugin_id]
+
+        # Validate capability
+        if request.job_type.value not in getattr(plugin, "capabilities", []):
+            raise invalid_argument(f"Plugin {request.plugin_id} does not support {request.job_type.value}")
         
         # 2. Validate Params
         try:
@@ -139,12 +171,20 @@ class JobManager:
             raise invalid_argument(f"Invalid params for plugin {request.plugin_id}: {e}")
 
         # 3. Create Workspace
-        job_id = str(uuid.uuid4())
+        job_id = request.job_id
         ws = self._get_workspace(job_id)
+        if ws.config_path.exists():
+            return JobCreateResponse(
+                request_id=str(uuid.uuid4()),
+                job_id=job_id,
+                status=JobStatus.CREATED,
+            )
         ws.ensure_created()
         
         # Write config
-        ws.write_config(request.model_dump(mode="json"))
+        config = request.model_dump(mode="json")
+        config["plugin_version"] = getattr(plugin, "plugin_version", "0.0.0")
+        ws.write_config(config)
 
         # 4. Write Created Event
         event = EventEnvelope(
@@ -153,9 +193,8 @@ class JobManager:
             ts=int(time.time()),
             type=EventType.STATUS,
             payload=StatusPayload(
-                previous_status=JobStatus.CREATED, # Initial
-                current_status=JobStatus.CREATED,
-                message="Job created"
+                status=JobStatus.CREATED,
+                reason="Job created"
             ).model_dump()
         )
         ws.get_event_store().append(event)
@@ -200,12 +239,14 @@ class JobManager:
                 ts=int(time.time()),
                 type=EventType.STATUS,
                 payload=StatusPayload(
-                    previous_status=info.status,
-                    current_status=JobStatus.RUNNING,
-                    message="Job started"
+                    status=JobStatus.RUNNING,
+                    reason="Job started"
                 ).model_dump()
             )
             ws.get_event_store().append(event)
+
+            # Start forwarding events to API
+            self.event_forwarder.start(job_id, ws.get_event_store())
 
         except Exception as e:
             logger.error(f"Failed to start job {job_id}: {e}")
@@ -217,9 +258,8 @@ class JobManager:
                 ts=int(time.time()),
                 type=EventType.STATUS,
                 payload=StatusPayload(
-                    previous_status=info.status,
-                    current_status=JobStatus.FAILED,
-                    message=f"Failed to start: {str(e)}"
+                    status=JobStatus.FAILED,
+                    reason=f"Failed to start: {str(e)}"
                 ).model_dump()
             )
             ws.get_event_store().append(event)
@@ -241,9 +281,8 @@ class JobManager:
             ts=int(time.time()),
             type=EventType.STATUS,
             payload=StatusPayload(
-                previous_status=info.status,
-                current_status=JobStatus.STOPPING,
-                message="Job stopping"
+                status=JobStatus.STOPPING,
+                reason="Job stopping"
             ).model_dump()
         )
         ws.get_event_store().append(event)
@@ -264,9 +303,8 @@ class JobManager:
             ts=int(time.time()),
             type=EventType.STATUS,
             payload=StatusPayload(
-                previous_status=JobStatus.STOPPING,
-                current_status=JobStatus.STOPPED,
-                message="Job stopped by user"
+                status=JobStatus.STOPPED,
+                reason="Job stopped by user"
             ).model_dump()
         )
         ws.get_event_store().append(event)
@@ -295,18 +333,18 @@ class JobManager:
         # 1. System artifacts
         if ws.config_path.exists():
             artifacts.append(ArtifactPayload(
+                kind="config",
                 name="config.json",
-                path=ws.config_path.resolve().as_uri(),
-                type="config",
-                size_bytes=ws.config_path.stat().st_size
+                uri=ws.config_path.resolve().as_uri(),
+                meta={"size_bytes": ws.config_path.stat().st_size},
             ))
         
         if ws.events_path.exists():
             artifacts.append(ArtifactPayload(
+                kind="events",
                 name="events.jsonl",
-                path=ws.events_path.resolve().as_uri(),
-                type="events",
-                size_bytes=ws.events_path.stat().st_size
+                uri=ws.events_path.resolve().as_uri(),
+                meta={"size_bytes": ws.events_path.stat().st_size},
             ))
 
         # 2. Generated artifacts
@@ -314,10 +352,10 @@ class JobManager:
             for p in ws.artifacts_dir.rglob("*"):
                 if p.is_file():
                     artifacts.append(ArtifactPayload(
+                        kind="artifact",
                         name=p.name,
-                        path=p.resolve().as_uri(),
-                        type="artifact",
-                        size_bytes=p.stat().st_size
+                        uri=p.resolve().as_uri(),
+                        meta={"size_bytes": p.stat().st_size},
                     ))
         
         return artifacts

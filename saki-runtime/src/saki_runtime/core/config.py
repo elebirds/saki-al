@@ -1,19 +1,20 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Saki Model Runtime"
-    API_V1_STR: str = "/api/v1"
-    
-    # Saki API Configuration
-    SAKI_API_URL: str = "http://localhost:8000/api/v1"
-    SAKI_API_KEY: Optional[str] = None
+    RUNTIME_VERSION: str = "0.1.0"
 
-    # Internal API Configuration
+    # Saki API Configuration (HTTP internal IR)
     SAKI_BASE_URL: str = "http://localhost:8000"
     INTERNAL_TOKEN: str = "dev-secret"
     HTTP_TIMEOUT_SEC: int = 30
     
+    # gRPC Agent Configuration
+    API_GRPC_TARGET: str = "localhost:50051"
+    RUNTIME_AGENT_ID: str = "runtime-agent-1"
+    HEARTBEAT_INTERVAL_SEC: int = 10
+    COMMAND_TIMEOUT_SEC: int = 300
+
     # Runtime Configuration
     RUNS_DIR: str = "runs"
     

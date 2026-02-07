@@ -194,7 +194,7 @@ const ProjectOverview: React.FC = () => {
                                         <Avatar
                                             size={24}
                                             src={latestCommitAvatar}
-                                            className="bg-gradient-to-br from-green-400 to-blue-500"
+                                            className="bg-linear-to-br from-green-400 to-blue-500"
                                         >
                                             {latestCommitName.charAt(0).toUpperCase()}
                                         </Avatar>

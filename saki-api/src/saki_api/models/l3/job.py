@@ -23,6 +23,12 @@ class JobBase(SQLModel):
     iteration: int = Field(index=True, description="在该 Loop 中的迭代序号")
     status: TrainingJobStatus = Field(default=TrainingJobStatus.PENDING, index=True)
 
+    # Runtime 相关信息
+    job_type: str = Field(default="train_detection", description="Runtime job type")
+    plugin_id: str = Field(default="", description="Runtime plugin id")
+    params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    resources: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+
     # 版本追踪
     source_commit_id: uuid.UUID = Field(foreign_key="commit.id", description="训练输入的快照")
     result_commit_id: Optional[uuid.UUID] = Field(foreign_key="commit.id", description="推理产出的快照")

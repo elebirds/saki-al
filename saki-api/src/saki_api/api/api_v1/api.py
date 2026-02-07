@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from saki_api.api.api_v1.endpoints import (
     system, auth, users, roles, permissions, asset, dataset, sample
 )
+from saki_api.api.api_v1.endpoints.l3 import job as job_endpoints
+from saki_api.api.api_v1.endpoints.l3 import query as query_endpoints
 from saki_api.api.api_v1.endpoints.l2 import project, label, commit, branch, annotation
 
 api_router = APIRouter()
@@ -20,3 +22,6 @@ api_router.include_router(label.router, prefix="/labels", tags=["labels"])
 api_router.include_router(commit.router, prefix="/commits", tags=["commits"])
 api_router.include_router(branch.router, prefix="/branches", tags=["branches"])
 api_router.include_router(annotation.router, prefix="/annotations", tags=["annotations"])
+# L3 Layer endpoints
+api_router.include_router(job_endpoints.router, prefix="", tags=["jobs"])
+api_router.include_router(query_endpoints.router, prefix="", tags=["query"])

@@ -1,0 +1,213 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+import "google/protobuf/struct.proto";
+
+service RuntimeAgent {
+  rpc Stream(stream AgentMessage) returns (stream AgentMessage);
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  CREATED = 1;
+  QUEUED = 2;
+  RUNNING = 3;
+  STOPPING = 4;
+  STOPPED = 5;
+  SUCCEEDED = 6;
+  FAILED = 7;
+}
+
+enum JobType {
+  JOB_TYPE_UNSPECIFIED = 0;
+  TRAIN_DETECTION = 1;
+  SCORE_UNLABELED = 2;
+  EXPORT_MODEL = 3;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  INVALID_ARGUMENT = 1;
+  NOT_FOUND = 2;
+  CONFLICT = 3;
+  UNAUTHORIZED = 4;
+  FORBIDDEN = 5;
+  UNAVAILABLE = 6;
+  INTERNAL = 7;
+}
+
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  ACK_OK = 1;
+  ACK_ERROR = 2;
+}
+
+message Resources {
+  int32 gpu_count = 1;
+  repeated int32 gpu_device_ids = 2;
+  int32 cpu_workers = 3;
+  int32 memory_mb = 4;
+}
+
+message PluginInfo {
+  string id = 1;
+  string version = 2;
+  repeated string capabilities = 3;
+}
+
+message Register {
+  string agent_id = 1;
+  string version = 2;
+  repeated PluginInfo plugins = 3;
+  Resources resources = 4;
+}
+
+message Heartbeat {
+  string agent_id = 1;
+  int64 ts = 2;
+  Resources resources = 3;
+}
+
+message ModelRef {
+  string job_id = 1;
+  string artifact_name = 2;
+}
+
+message CreateJob {
+  string job_id = 1;
+  JobType job_type = 2;
+  string project_id = 3;
+  string source_commit_id = 4;
+  string plugin_id = 5;
+  google.protobuf.Struct params = 6;
+  Resources resources = 7;
+}
+
+message StartJob {
+  string job_id = 1;
+}
+
+message StopJob {
+  string job_id = 1;
+}
+
+message QuerySamples {
+  string project_id = 1;
+  string source_commit_id = 2;
+  string plugin_id = 3;
+  ModelRef model_ref = 4;
+  string unit = 5;
+  string strategy = 6;
+  int32 topk = 7;
+  google.protobuf.Struct params = 8;
+}
+
+message Command {
+  string request_id = 1;
+  oneof payload {
+    CreateJob create_job = 10;
+    StartJob start_job = 11;
+    StopJob stop_job = 12;
+    QuerySamples query_samples = 13;
+  }
+}
+
+message JobCreated {
+  string job_id = 1;
+  JobStatus status = 2;
+}
+
+message JobStatusResult {
+  string job_id = 1;
+  JobStatus status = 2;
+}
+
+message QueryCandidate {
+  string sample_id = 1;
+  double score = 2;
+  google.protobuf.Struct reason = 3;
+}
+
+message QueryResult {
+  string model_job_id = 1;
+  repeated QueryCandidate candidates = 2;
+}
+
+message Result {
+  string request_id = 1;
+  oneof payload {
+    JobCreated job_created = 10;
+    JobStatusResult job_status = 11;
+    QueryResult query_result = 12;
+  }
+}
+
+message LogEvent {
+  string level = 1;
+  string message = 2;
+  string logger = 3;
+}
+
+message ProgressEvent {
+  int32 epoch = 1;
+  int32 step = 2;
+  int32 total_steps = 3;
+  int32 eta_sec = 4;
+}
+
+message MetricEvent {
+  int32 step = 1;
+  int32 epoch = 2;
+  google.protobuf.Struct metrics = 3;
+}
+
+message ArtifactEvent {
+  string kind = 1;
+  string name = 2;
+  string uri = 3;
+  google.protobuf.Struct meta = 4;
+}
+
+message StatusEvent {
+  JobStatus status = 1;
+  string reason = 2;
+}
+
+message Event {
+  string job_id = 1;
+  int64 seq = 2;
+  int64 ts = 3;
+  oneof payload {
+    LogEvent log = 10;
+    ProgressEvent progress = 11;
+    MetricEvent metric = 12;
+    ArtifactEvent artifact = 13;
+    StatusEvent status = 14;
+  }
+}
+
+message Error {
+  string request_id = 1;
+  ErrorCode code = 2;
+  string message = 3;
+  google.protobuf.Struct details = 4;
+}
+
+message Ack {
+  string request_id = 1;
+  AckStatus status = 2;
+  string message = 3;
+}
+
+message AgentMessage {
+  oneof payload {
+    Register register = 1;
+    Heartbeat heartbeat = 2;
+    Command command = 3;
+    Event event = 4;
+    Result result = 5;
+    Error error = 6;
+    Ack ack = 7;
+  }
+}

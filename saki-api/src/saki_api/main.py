@@ -6,6 +6,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from saki_api.api.api_v1.api import api_router
+from saki_api.api.internal.router import internal_router
 from saki_api.core.config import settings
 from saki_api.core.exceptions import (
     AppException,
@@ -15,6 +16,7 @@ from saki_api.core.exceptions import (
 )
 from saki_api.db.session import init_db, dispose_engine
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
+from saki_api.grpc.runtime_agent import runtime_grpc_server
 
 
 def setup_logging():
@@ -40,10 +42,12 @@ async def lifespan(app: FastAPI):
     setup_logging()
     await init_db()
     AnnotationSystemFactory.discover_all()  # 初始化annotation handlers
+    await runtime_grpc_server.start()
 
     yield
 
     # Shutdown: 优雅关闭连接池
+    await runtime_grpc_server.stop()
     await dispose_engine()
 
 
@@ -76,6 +80,7 @@ app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(internal_router, prefix="/internal/v1")
 
 
 @app.get("/")

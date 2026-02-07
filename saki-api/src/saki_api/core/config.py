@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     REDIS_KEY_PREFIX: str = "saki"
     REDIS_WORKING_TTL_SECONDS: int = 86400  # 24 hours
 
+    # Internal runtime token
+    INTERNAL_TOKEN: str = "dev-secret"
+
+    # gRPC runtime agent bind
+    RUNTIME_GRPC_BIND: str = "0.0.0.0:50051"
+
     # FEDO LUT local cache
     LUT_CACHE_DIR: str = "./data/lut_cache"
 

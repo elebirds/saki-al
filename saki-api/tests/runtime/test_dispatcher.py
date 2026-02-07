@@ -37,7 +37,12 @@ async def dispatcher_env(tmp_path, monkeypatch):
         await engine.dispose()
 
 
-async def _create_pending_job(session_local: async_sessionmaker[AsyncSession], *, plugin_id: str = "demo_det_v1") -> Job:
+async def _create_pending_job(
+        session_local: async_sessionmaker[AsyncSession],
+        *,
+        plugin_id: str = "demo_det_v1",
+        resources: dict | None = None,
+) -> Job:
     job = Job(
         project_id=uuid.uuid4(),
         loop_id=uuid.uuid4(),
@@ -48,7 +53,7 @@ async def _create_pending_job(session_local: async_sessionmaker[AsyncSession], *
         mode="active_learning",
         query_strategy="uncertainty_1_minus_max_conf",
         params={},
-        resources={"gpu_count": 1, "memory_mb": 0},
+        resources=resources if isinstance(resources, dict) else {"gpu_count": 1, "memory_mb": 0},
         source_commit_id=uuid.uuid4(),
     )
     async with session_local() as session:
@@ -124,6 +129,50 @@ async def test_assign_and_ack_success_updates_job_and_executor(dispatcher_env):
         assert executor is not None
         assert executor.status == "busy"
         assert executor.current_job_id == str(job.id)
+
+
+@pytest.mark.anyio
+async def test_assign_respects_resource_capabilities_and_labels(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+    queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    job = await _create_pending_job(
+        session_local,
+        resources={
+            "gpu_count": 1,
+            "memory_mb": 0,
+            "capabilities": ["obb", "cuda"],
+            "labels": {"zone": "cn-north"},
+        },
+    )
+
+    await dispatcher.register(
+        executor_id="executor-cap-1",
+        queue=queue,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={
+            "gpu_count": 1,
+            "memory_mb": 32000,
+            "capabilities": ["cuda"],
+            "labels": {"zone": "cn-north"},
+        },
+    )
+    assigned = await dispatcher.assign_job(job)
+    assert assigned is None
+
+    await dispatcher.heartbeat(
+        executor_id="executor-cap-1",
+        busy=False,
+        current_job_id=None,
+        resources={
+            "gpu_count": 1,
+            "memory_mb": 32000,
+            "capabilities": ["obb", "cuda"],
+            "labels": {"zone": "cn-north"},
+        },
+    )
+    assigned_after_update = await dispatcher.assign_job(job)
+    assert assigned_after_update is not None
 
 
 @pytest.mark.anyio

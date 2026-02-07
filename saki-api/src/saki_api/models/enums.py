@@ -123,6 +123,7 @@ class LoopRoundStatus(str, Enum):
     TRAINING = "training"
     ANNOTATION = "annotation"
     COMPLETED = "completed"
+    COMPLETED_NO_CANDIDATES = "completed_no_candidates"
     FAILED = "failed"
 
 

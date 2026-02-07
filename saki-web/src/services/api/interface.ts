@@ -232,6 +232,16 @@ export interface ApiService {
 
     getModelArtifactDownloadUrl(modelId: string, artifactName: string, expiresInHours?: number): Promise<ModelArtifactDownload>;
 
+    getAssetDownloadUrl(
+        assetId: string,
+        expiresInHours?: number
+    ): Promise<{
+        assetId: string;
+        downloadUrl: string;
+        expiresIn: number;
+        filename?: string;
+    }>;
+
     createProjectBranch(
         projectId: string,
         payload: {

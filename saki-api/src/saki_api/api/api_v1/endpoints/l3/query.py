@@ -154,7 +154,11 @@ async def get_loop_summary(
         select(LoopRound).where(LoopRound.loop_id == loop_id).order_by(LoopRound.round_index.asc())
     )
     rounds = list(rows.all())
-    rounds_completed = [item for item in rounds if item.status.value == "completed"]
+    rounds_completed = [
+        item
+        for item in rounds
+        if item.status.value in {"completed", "completed_no_candidates"}
+    ]
     metrics_latest = rounds_completed[-1].metrics if rounds_completed else {}
     return LoopSummaryRead(
         loop_id=loop.id,

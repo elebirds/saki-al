@@ -131,7 +131,7 @@ export interface LoopRound {
     sourceCommitId: string;
     jobId?: string | null;
     annotationBatchId?: string | null;
-    status: 'training' | 'annotation' | 'completed' | 'failed';
+    status: 'training' | 'annotation' | 'completed' | 'completed_no_candidates' | 'failed';
     metrics: Record<string, any>;
     selectedCount: number;
     labeledCount: number;
@@ -193,6 +193,7 @@ export interface ProjectModel {
     projectId: string;
     jobId?: string | null;
     sourceCommitId?: string | null;
+    parentModelId?: string | null;
     pluginId: string;
     modelArch: string;
     name: string;

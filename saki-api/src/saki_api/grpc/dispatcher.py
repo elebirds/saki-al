@@ -137,6 +137,22 @@ class RuntimeDispatcher:
             return False
         if req_mem > 0 and avail_mem > 0 and avail_mem < req_mem:
             return False
+
+        req_capabilities = (required or {}).get("capabilities")
+        if isinstance(req_capabilities, list):
+            avail_capabilities = (available or {}).get("capabilities")
+            avail_set = {str(item) for item in (avail_capabilities or [])}
+            if any(str(item) not in avail_set for item in req_capabilities):
+                return False
+
+        req_labels = (required or {}).get("labels")
+        if isinstance(req_labels, dict):
+            avail_labels = (available or {}).get("labels")
+            if not isinstance(avail_labels, dict):
+                return False
+            for key, value in req_labels.items():
+                if str(avail_labels.get(str(key))) != str(value):
+                    return False
         return True
 
     @staticmethod

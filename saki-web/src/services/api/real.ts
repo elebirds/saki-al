@@ -809,6 +809,24 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async getAssetDownloadUrl(
+        assetId: string,
+        expiresInHours: number = 1
+    ): Promise<{
+        assetId: string;
+        downloadUrl: string;
+        expiresIn: number;
+        filename?: string;
+    }> {
+        const response = await this.client.get<{
+            assetId: string;
+            downloadUrl: string;
+            expiresIn: number;
+            filename?: string;
+        }>(`/assets/${assetId}/download-url`, {params: {expires_in_hours: expiresInHours}});
+        return response.data;
+    }
+
     async createProjectBranch(
         projectId: string,
         payload: {

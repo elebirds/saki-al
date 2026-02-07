@@ -17,6 +17,7 @@ class ModelRead(BaseModel):
     project_id: uuid.UUID
     job_id: Optional[uuid.UUID] = None
     source_commit_id: Optional[uuid.UUID] = None
+    parent_model_id: Optional[uuid.UUID] = None
     plugin_id: str
     model_arch: str
     name: str

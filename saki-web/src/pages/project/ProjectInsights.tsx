@@ -22,8 +22,11 @@ const STATUS_COLOR: Record<string, string> = {
     paused: 'warning',
     stopped: 'default',
     completed: 'success',
+    completed_no_candidates: 'gold',
     failed: 'error',
 };
+
+const ROUND_COMPLETED_STATUS = new Set(['completed', 'completed_no_candidates']);
 
 const ProjectInsights: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>();
@@ -144,7 +147,7 @@ const ProjectInsights: React.FC = () => {
                 </Col>
                 <Col xs={24} md={12} lg={6}>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="完成轮次" value={summary?.roundsCompleted ?? rounds.filter((x) => x.status === 'completed').length}/>
+                        <Statistic title="完成轮次" value={summary?.roundsCompleted ?? rounds.filter((x) => ROUND_COMPLETED_STATUS.has(x.status)).length}/>
                     </Card>
                 </Col>
                 <Col xs={24} md={12} lg={6}>

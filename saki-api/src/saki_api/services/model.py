@@ -49,6 +49,7 @@ class ModelService:
 
         loop = await self.session.get(ALLoop, job.loop_id)
         model_name = name or f"{loop.name if loop else 'loop'}-round-{job.round_index}"
+        parent_model_id = loop.latest_model_id if loop else None
 
         artifact_map = dict(job.artifacts or {})
         weights_path = ""
@@ -67,6 +68,7 @@ class ModelService:
             project_id=project_id,
             job_id=job.id,
             source_commit_id=job.source_commit_id,
+            parent_model_id=parent_model_id,
             plugin_id=job.plugin_id,
             model_arch=loop.model_arch if loop else job.plugin_id,
             name=model_name,

@@ -37,7 +37,7 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 #### saki-api
 - **L1 (Physical)**: ✅ 完成 (Asset去重, MinIO上传, Sample逻辑封装)
 - **L2 (Logic)**: ✅ 基本完成 (三层架构、标注流水线协议、项目概览与设置界面 已基本就绪)
-- **L3 (Experiment)**: ⏳ 计划中 (模型已定义，但可能需要修改以适配 Runtime 的需求，主动学习相关逻辑尚未开发)
+- **L3 (Experiment)**: ✅ 已落地主链路（Loop/Job/Round/Batch/Model + Runtime gRPC + Executor），当前持续收敛在“稳定性、可复现性、指标可信度”。
 #### saki-executor
 已完成基础闭环（注册/心跳/派发/事件/结果/停止/数据请求/上传票据），当前处于“强类型与可靠性收敛”阶段。
 

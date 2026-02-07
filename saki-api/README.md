@@ -19,6 +19,10 @@ cd saki-api
 alembic -c alembic.ini upgrade head
 ```
 
+当前主干迁移链已包含：
+- `20260207_0001`（runtime loop closure）
+- `20260207_0002`（model parent lineage）
+
 生成迁移（后续变更）：
 
 ```bash

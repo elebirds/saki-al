@@ -23,6 +23,7 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     # 溯源：这个模型是哪次训练任务产出的？
     job_id: uuid.UUID | None = Field(foreign_key="job.id")
     source_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
+    parent_model_id: uuid.UUID | None = Field(default=None, foreign_key="model.id", index=True)
     plugin_id: str = Field(default="", index=True)
     model_arch: str = Field(default="", index=True)
 
@@ -41,4 +42,7 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     # 关系
     job: Optional["Job"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[Model.job_id]"}
+    )
+    parent_model: Optional["Model"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[Model.parent_model_id]"}
     )

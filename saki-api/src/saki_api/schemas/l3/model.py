@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ModelRegisterFromJobRequest(BaseModel):
@@ -13,6 +13,8 @@ class ModelRegisterFromJobRequest(BaseModel):
 
 
 class ModelRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     project_id: uuid.UUID
     job_id: Optional[uuid.UUID] = None

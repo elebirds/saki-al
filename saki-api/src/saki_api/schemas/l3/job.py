@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from saki_api.models.enums import (
     TrainingJobStatus,
@@ -22,6 +22,7 @@ class LoopCreateRequest(BaseModel):
     query_strategy: str = "aug_iou_disagreement_v1"
     model_arch: str = "yolo_det_v1"
     global_config: Dict[str, Any] = Field(default_factory=dict)
+    model_request_config: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     status: ALLoopStatus = ALLoopStatus.DRAFT
     max_rounds: int = Field(default=5, ge=1)
@@ -33,7 +34,24 @@ class LoopCreateRequest(BaseModel):
     auto_register_model: bool = True
 
 
+class LoopUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    query_strategy: Optional[str] = None
+    model_arch: Optional[str] = None
+    global_config: Optional[Dict[str, Any]] = None
+    model_request_config: Optional[Dict[str, Any]] = None
+    max_rounds: Optional[int] = Field(default=None, ge=1)
+    query_batch_size: Optional[int] = Field(default=None, ge=1)
+    min_seed_labeled: Optional[int] = Field(default=None, ge=1)
+    min_new_labels_per_round: Optional[int] = Field(default=None, ge=1)
+    stop_patience_rounds: Optional[int] = Field(default=None, ge=1)
+    stop_min_gain: Optional[float] = None
+    auto_register_model: Optional[bool] = None
+
+
 class LoopRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     project_id: uuid.UUID
     branch_id: uuid.UUID
@@ -41,6 +59,7 @@ class LoopRead(BaseModel):
     query_strategy: str
     model_arch: str
     global_config: Dict[str, Any]
+    model_request_config: Dict[str, Any] = Field(default_factory=dict)
     current_iteration: int
     is_active: bool
     status: ALLoopStatus
@@ -71,6 +90,8 @@ class JobCreateRequest(BaseModel):
 
 
 class JobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     project_id: uuid.UUID
     loop_id: uuid.UUID
@@ -139,6 +160,8 @@ class JobArtifactsResponse(BaseModel):
 
 
 class LoopRoundRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     loop_id: uuid.UUID
     round_index: int
@@ -156,6 +179,8 @@ class LoopRoundRead(BaseModel):
 
 
 class AnnotationBatchRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     project_id: uuid.UUID
     loop_id: uuid.UUID
@@ -171,6 +196,8 @@ class AnnotationBatchRead(BaseModel):
 
 
 class AnnotationBatchItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     batch_id: uuid.UUID
     sample_id: uuid.UUID

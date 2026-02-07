@@ -41,6 +41,21 @@ def normalize_loop_global_config(raw_config: dict[str, Any] | None) -> dict[str,
     return config
 
 
+def extract_model_request_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
+    config = dict(raw_config or {})
+    payload = config.get("model_request_config")
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def merge_model_request_config(
+        raw_config: dict[str, Any] | None,
+        model_request_config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    config = dict(raw_config or {})
+    config["model_request_config"] = dict(model_request_config or {})
+    return config
+
+
 def round_split_seed(loop_id: uuid.UUID, round_index: int) -> int:
     digest = hashlib.sha256(f"{loop_id}:{round_index}".encode("utf-8")).hexdigest()
     return int(digest[:8], 16)

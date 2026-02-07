@@ -21,8 +21,11 @@ from saki_api.repositories.job import JobRepository
 from saki_api.repositories.job_event import JobEventRepository
 from saki_api.repositories.job_metric_point import JobMetricPointRepository
 from saki_api.repositories.loop import LoopRepository
-from saki_api.schemas.l3.job import JobCreateRequest, LoopCreateRequest
-from saki_api.services.loop_config import normalize_loop_global_config
+from saki_api.schemas.l3.job import JobCreateRequest, LoopCreateRequest, LoopUpdateRequest
+from saki_api.services.loop_config import (
+    normalize_loop_global_config,
+    merge_model_request_config,
+)
 from saki_api.services.base import BaseService
 
 
@@ -82,6 +85,10 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             raise BadRequestAppException("Branch already has a loop bound")
 
         normalized_global_config = normalize_loop_global_config(payload.global_config)
+        normalized_global_config = merge_model_request_config(
+            normalized_global_config,
+            payload.model_request_config,
+        )
 
         loop = ALLoop(
             project_id=project_id,
@@ -101,6 +108,47 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             stop_min_gain=payload.stop_min_gain,
             auto_register_model=payload.auto_register_model,
         )
+        self.session.add(loop)
+        await self.session.flush()
+        await self.session.refresh(loop)
+        return loop
+
+    @transactional
+    async def update_loop(self, loop_id: uuid.UUID, payload: LoopUpdateRequest) -> ALLoop:
+        loop = await self.loop_repo.get_by_id(loop_id)
+        if not loop:
+            raise NotFoundAppException(f"Loop {loop_id} not found")
+
+        if payload.name is not None:
+            loop.name = payload.name
+        if payload.query_strategy is not None:
+            loop.query_strategy = payload.query_strategy
+        if payload.model_arch is not None:
+            loop.model_arch = payload.model_arch
+        if payload.max_rounds is not None:
+            loop.max_rounds = payload.max_rounds
+        if payload.query_batch_size is not None:
+            loop.query_batch_size = payload.query_batch_size
+        if payload.min_seed_labeled is not None:
+            loop.min_seed_labeled = payload.min_seed_labeled
+        if payload.min_new_labels_per_round is not None:
+            loop.min_new_labels_per_round = payload.min_new_labels_per_round
+        if payload.stop_patience_rounds is not None:
+            loop.stop_patience_rounds = payload.stop_patience_rounds
+        if payload.stop_min_gain is not None:
+            loop.stop_min_gain = payload.stop_min_gain
+        if payload.auto_register_model is not None:
+            loop.auto_register_model = payload.auto_register_model
+
+        if payload.global_config is not None:
+            loop.global_config = normalize_loop_global_config(payload.global_config)
+
+        if payload.model_request_config is not None:
+            loop.global_config = merge_model_request_config(
+                loop.global_config,
+                payload.model_request_config,
+            )
+
         self.session.add(loop)
         await self.session.flush()
         await self.session.refresh(loop)

@@ -22,7 +22,15 @@ from saki_api.models import Permissions, ResourceType
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.job_event import JobEvent
 from saki_api.models.l3.loop_round import LoopRound
-from saki_api.schemas.l3.job import JobRead, LoopCreateRequest, LoopRead, LoopRoundRead, LoopSummaryRead
+from saki_api.schemas.l3.job import (
+    JobRead,
+    LoopCreateRequest,
+    LoopUpdateRequest,
+    LoopRead,
+    LoopRoundRead,
+    LoopSummaryRead,
+)
+from saki_api.services.loop_config import extract_model_request_config
 
 router = APIRouter()
 
@@ -53,6 +61,13 @@ async def _ensure_project_perm(
         raise ForbiddenAppException(f"Permission denied: {required}")
 
 
+def _build_loop_read(loop) -> LoopRead:
+    row = LoopRead.model_validate(loop, from_attributes=True)
+    return row.model_copy(
+        update={"model_request_config": extract_model_request_config(getattr(loop, "global_config", {}))}
+    )
+
+
 @router.get("/projects/{project_id}/loops", response_model=List[LoopRead])
 async def list_project_loops(
         *,
@@ -68,7 +83,7 @@ async def list_project_loops(
         required=Permissions.LOOP_READ,
     )
     loops = await job_service.list_loops(project_id)
-    return [LoopRead.model_validate(item) for item in loops]
+    return [_build_loop_read(item) for item in loops]
 
 
 @router.post("/projects/{project_id}/loops", response_model=LoopRead)
@@ -87,7 +102,45 @@ async def create_project_loop(
         required=Permissions.LOOP_MANAGE,
     )
     loop = await job_service.create_loop(project_id, payload)
-    return LoopRead.model_validate(loop)
+    return _build_loop_read(loop)
+
+
+@router.get("/loops/{loop_id}", response_model=LoopRead)
+async def get_loop(
+        *,
+        loop_id: uuid.UUID,
+        job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_READ,
+    )
+    return _build_loop_read(loop)
+
+
+@router.patch("/loops/{loop_id}", response_model=LoopRead)
+async def update_loop(
+        *,
+        loop_id: uuid.UUID,
+        payload: LoopUpdateRequest,
+        job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    updated = await job_service.update_loop(loop_id, payload)
+    return _build_loop_read(updated)
 
 
 @router.get("/loops/{loop_id}/jobs", response_model=List[JobRead])

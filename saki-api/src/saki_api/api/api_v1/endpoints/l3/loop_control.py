@@ -20,6 +20,7 @@ from saki_api.schemas.l3.job import (
     AnnotationBatchRead,
     AnnotationBatchItemRead,
 )
+from saki_api.services.loop_config import extract_model_request_config
 from saki_api.services.loop_orchestrator import loop_orchestrator
 
 router = APIRouter()
@@ -51,6 +52,13 @@ async def _ensure_project_perm(
         raise ForbiddenAppException(f"Permission denied: {required}")
 
 
+def _build_loop_read(loop) -> LoopRead:
+    row = LoopRead.model_validate(loop, from_attributes=True)
+    return row.model_copy(
+        update={"model_request_config": extract_model_request_config(getattr(loop, "global_config", {}))}
+    )
+
+
 @router.post("/loops/{loop_id}:start", response_model=LoopRead)
 async def start_loop(
         *,
@@ -74,7 +82,7 @@ async def start_loop(
     await session.commit()
     await session.refresh(loop)
     await loop_orchestrator.tick_once()
-    return LoopRead.model_validate(loop)
+    return _build_loop_read(loop)
 
 
 @router.post("/loops/{loop_id}:pause", response_model=LoopRead)
@@ -96,7 +104,7 @@ async def pause_loop(
     session.add(loop)
     await session.commit()
     await session.refresh(loop)
-    return LoopRead.model_validate(loop)
+    return _build_loop_read(loop)
 
 
 @router.post("/loops/{loop_id}:resume", response_model=LoopRead)
@@ -122,7 +130,7 @@ async def resume_loop(
     await session.commit()
     await session.refresh(loop)
     await loop_orchestrator.tick_once()
-    return LoopRead.model_validate(loop)
+    return _build_loop_read(loop)
 
 
 @router.post("/loops/{loop_id}:stop", response_model=LoopRead)
@@ -145,7 +153,7 @@ async def stop_loop(
     session.add(loop)
     await session.commit()
     await session.refresh(loop)
-    return LoopRead.model_validate(loop)
+    return _build_loop_read(loop)
 
 
 @router.get("/annotation-batches/{batch_id}", response_model=AnnotationBatchRead)

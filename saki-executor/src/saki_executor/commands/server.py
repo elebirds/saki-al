@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import select
 import shlex
 import sys
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from saki_executor.core.config import settings
+from saki_executor.core.logging import set_log_level, get_log_level
 
 if TYPE_CHECKING:
     from saki_executor.agent.client import AgentClient
     from saki_executor.jobs.manager import JobManager
     from saki_executor.plugins.registry import PluginRegistry
-
-logger = logging.getLogger(__name__)
 
 
 class CommandServer:
@@ -42,7 +42,7 @@ class CommandServer:
             try:
                 raw = await asyncio.to_thread(self._readline_with_timeout, 0.5)
             except Exception as exc:
-                logger.error("读取命令失败: %s", exc)
+                logger.error("读取命令失败: {}", exc)
                 await asyncio.sleep(1)
                 continue
 
@@ -60,7 +60,7 @@ class CommandServer:
             try:
                 await self.execute(command)
             except Exception:
-                logger.exception("执行命令失败: %s", command)
+                logger.exception("执行命令失败: {}", command)
 
     @staticmethod
     def _readline_with_timeout(timeout_sec: float) -> str | None:
@@ -110,7 +110,7 @@ class CommandServer:
             self.shutdown_event.set()
             return
 
-        logger.warning("未知命令: %s。输入 help 查看可用命令。", command_text)
+        logger.warning("未知命令: {}。输入 help 查看可用命令。", command_text)
 
     def _print_help(self) -> None:
         logger.info(
@@ -122,6 +122,7 @@ class CommandServer:
             "  disconnect           断开并暂停连接\n"
             "  stop [job_id]        停止当前任务或指定 job_id\n"
             "  loglevel <LEVEL>     调整日志级别（DEBUG/INFO/WARNING/ERROR）\n"
+            "  loglevel             查看当前日志级别\n"
             "  quit | exit          退出执行器进程"
         )
 
@@ -130,17 +131,18 @@ class CommandServer:
         transport_status = self.client.transport_snapshot()
         logger.info(
             "执行器状态:\n"
-            "  executor_state=%s\n"
-            "  busy=%s\n"
-            "  current_job_id=%s\n"
-            "  last_job_id=%s\n"
-            "  last_job_status=%s\n"
-            "  running=%s\n"
-            "  connected=%s\n"
-            "  connect_enabled=%s\n"
-            "  pending_requests=%s\n"
-            "  outbound_queue=%s\n"
-            "  last_heartbeat_ts=%s",
+            "  executor_state={}\n"
+            "  busy={}\n"
+            "  current_job_id={}\n"
+            "  last_job_id={}\n"
+            "  last_job_status={}\n"
+            "  running={}\n"
+            "  connected={}\n"
+            "  connect_enabled={}\n"
+            "  pending_requests={}\n"
+            "  outbound_queue={}\n"
+            "  last_heartbeat_ts={}\n"
+            "  log_level={}",
             job_status["executor_state"],
             job_status["busy"],
             job_status["current_job_id"],
@@ -152,6 +154,7 @@ class CommandServer:
             transport_status["pending_requests"],
             transport_status["outbox_size"],
             transport_status["last_heartbeat_ts"],
+            get_log_level(),
         )
 
     def _print_plugins(self) -> None:
@@ -163,7 +166,7 @@ class CommandServer:
             f"  - {plugin.plugin_id} v{plugin.version} | job_types={plugin.supported_job_types} | strategies={plugin.supported_strategies}"
             for plugin in plugins
         ]
-        logger.info("已加载插件:\n%s", "\n".join(plugin_lines))
+        logger.info("已加载插件:\n{}", "\n".join(plugin_lines))
 
     async def _stop_job(self, args: list[str]) -> None:
         job_id = args[0] if args else self.job_manager.current_job_id
@@ -172,22 +175,18 @@ class CommandServer:
             return
         stopped = await self.job_manager.stop_job(str(job_id))
         if stopped:
-            logger.info("已发送停止请求，job_id=%s", job_id)
+            logger.info("已发送停止请求，job_id={}", job_id)
         else:
-            logger.warning("停止失败，job_id=%s 未在运行或不可停止。", job_id)
+            logger.warning("停止失败，job_id={} 未在运行或不可停止。", job_id)
 
     def _set_log_level(self, args: list[str]) -> None:
         if not args:
-            logger.warning("请提供日志级别，例如: loglevel DEBUG")
+            logger.info("当前日志级别: {}", get_log_level())
             return
         level_name = args[0].upper()
-        level_value = getattr(logging, level_name, None)
-        if not isinstance(level_value, int):
-            logger.warning("无效日志级别: %s", args[0])
+        try:
+            set_log_level(level_name)
+        except ValueError:
+            logger.warning("无效日志级别: {}", args[0])
             return
-
-        root = logging.getLogger()
-        root.setLevel(level_value)
-        for handler in root.handlers:
-            handler.setLevel(level_value)
-        logger.info("日志级别已更新为 %s", level_name)
+        logger.info("日志级别已更新为 {}", level_name)

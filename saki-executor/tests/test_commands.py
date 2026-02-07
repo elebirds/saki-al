@@ -1,11 +1,11 @@
 import asyncio
-import logging
 
 import pytest
 
 from saki_executor.agent.client import AgentClient
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.commands.server import CommandServer
+from saki_executor.core.logging import get_log_level
 from saki_executor.jobs.manager import JobManager
 from saki_executor.plugins.registry import PluginRegistry
 
@@ -35,10 +35,10 @@ async def test_quit_command_sets_shutdown_event(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_loglevel_command_updates_root_logger_level(tmp_path):
+async def test_loglevel_command_updates_loguru_level(tmp_path):
     command_server, _, _, _ = _build_command_server(tmp_path)
     await command_server.execute("loglevel DEBUG")
-    assert logging.getLogger().level == logging.DEBUG
+    assert get_log_level() == "DEBUG"
 
 
 @pytest.mark.anyio

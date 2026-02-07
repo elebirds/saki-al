@@ -48,3 +48,18 @@ async def test_connect_disconnect_commands_control_transport(tmp_path):
     assert client.transport_snapshot()["connect_enabled"] is False
     await command_server.execute("connect")
     assert client.transport_snapshot()["connect_enabled"] is True
+
+
+@pytest.mark.anyio
+async def test_disconnect_force_command_when_busy(tmp_path):
+    command_server, _, manager, client = _build_command_server(tmp_path)
+    busy_task = asyncio.create_task(asyncio.sleep(60))
+    manager._task = busy_task  # noqa: SLF001
+    manager.current_job_id = "job-force-1"
+    try:
+        await command_server.execute("disconnect --force")
+        assert client.transport_snapshot()["connect_enabled"] is False
+    finally:
+        busy_task.cancel()
+        manager._task = None  # noqa: SLF001
+        manager.current_job_id = None

@@ -40,3 +40,34 @@ async def test_error_message_resolves_pending_request_with_error(tmp_path):
     assert result.WhichOneof("payload") == "error"
     assert result.error.code == "INTERNAL"
     assert result.error.message == "boom"
+
+
+@pytest.mark.anyio
+async def test_disconnect_rejects_when_busy_without_force(tmp_path):
+    client = _build_client(tmp_path)
+    busy_task = asyncio.create_task(asyncio.sleep(60))
+    client.job_manager._task = busy_task  # noqa: SLF001
+    client.job_manager.current_job_id = "job-1"
+    try:
+        disconnected = await client.disconnect(force=False)
+        assert disconnected is False
+        assert client.transport_snapshot()["connect_enabled"] is True
+    finally:
+        busy_task.cancel()
+        client.job_manager._task = None  # noqa: SLF001
+        client.job_manager.current_job_id = None
+
+
+@pytest.mark.anyio
+async def test_disconnect_force_disables_connection_and_fails_pending(tmp_path):
+    client = _build_client(tmp_path)
+    loop = asyncio.get_running_loop()
+    pending_future = loop.create_future()
+    client._pending["req-2"] = pending_future  # noqa: SLF001
+
+    disconnected = await client.disconnect(force=True)
+    assert disconnected is True
+    assert client.transport_snapshot()["connect_enabled"] is False
+    assert pending_future.done() is True
+    with pytest.raises(RuntimeError):
+        pending_future.result()

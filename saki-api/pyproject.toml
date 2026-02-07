@@ -5,7 +5,6 @@ description = "Saki Active Learning API"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "alembic>=1.13.2",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "sqlmodel>=0.0.8",

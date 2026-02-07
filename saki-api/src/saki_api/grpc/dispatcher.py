@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
+from sqlalchemy import inspect
 from sqlmodel import select
 
 from saki_api.core.config import settings
@@ -209,6 +210,23 @@ class RuntimeDispatcher:
             return
         loop.create_task(self.dispatch_pending_jobs())
 
+    @staticmethod
+    def _required_recovery_tables() -> tuple[str, ...]:
+        return (
+            RuntimeExecutor.__tablename__,
+            Job.__tablename__,
+        )
+
+    async def _has_required_recovery_tables(self, session) -> bool:
+        required_tables = self._required_recovery_tables()
+        connection = await session.connection()
+
+        def _check(sync_conn) -> bool:
+            table_inspector = inspect(sync_conn)
+            return all(table_inspector.has_table(table_name) for table_name in required_tables)
+
+        return await connection.run_sync(_check)
+
     async def recover_after_api_restart(self) -> dict[str, int]:
         """
         Reconcile runtime state after API process restart.
@@ -229,6 +247,18 @@ class RuntimeDispatcher:
         created_retry_jobs = 0
 
         async with SessionLocal() as session:
+            if not await self._has_required_recovery_tables(session):
+                logger.warning(
+                    "skip runtime restart recovery: missing tables (%s), waiting for auto create_all",
+                    ", ".join(self._required_recovery_tables()),
+                )
+                return {
+                    "reset_executors": 0,
+                    "recovered_pending_assignments": 0,
+                    "failed_running_jobs": 0,
+                    "created_retry_jobs": 0,
+                }
+
             executor_rows = await session.exec(select(RuntimeExecutor))
             for executor in executor_rows.all():
                 executor.is_online = False

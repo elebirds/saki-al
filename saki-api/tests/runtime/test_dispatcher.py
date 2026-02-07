@@ -501,3 +501,24 @@ async def test_recover_after_api_restart_clears_stale_assignments_and_running_jo
             assert executor.is_online is False
             assert executor.status == "offline"
             assert executor.current_job_id is None
+
+
+@pytest.mark.anyio
+async def test_recover_after_api_restart_skips_when_tables_missing(tmp_path, monkeypatch):
+    db_path = tmp_path / "runtime_dispatcher_empty.sqlite3"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    session_local = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+    dispatcher = dispatcher_module.RuntimeDispatcher()
+
+    try:
+        summary = await dispatcher.recover_after_api_restart()
+        assert summary == {
+            "reset_executors": 0,
+            "recovered_pending_assignments": 0,
+            "failed_running_jobs": 0,
+            "created_retry_jobs": 0,
+        }
+    finally:
+        await engine.dispose()

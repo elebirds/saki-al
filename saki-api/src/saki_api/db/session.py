@@ -97,10 +97,8 @@ async def dispose_engine():
 async def init_db():
     """
     初始化数据库。
-    默认不再使用 create_all 自动改表，建议通过 Alembic 执行迁移。
-    仅当 DB_AUTO_CREATE_TABLES=true 时才执行 create_all（开发兜底）。
+    快速开发模式：启动时总是执行 SQLModel.create_all。
+    若需要重建结构，直接删库/删表后重启服务。
     """
-    if not settings.DB_AUTO_CREATE_TABLES:
-        return
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)

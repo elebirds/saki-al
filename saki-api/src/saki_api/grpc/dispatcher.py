@@ -39,13 +39,40 @@ class AssignmentResult:
     executor_id: str
 
 
+@dataclass
+class PendingAssign:
+    request_id: str
+    job_id: str
+    executor_id: str
+    created_at: datetime
+
+
 class RuntimeDispatcher:
     def __init__(self) -> None:
         self._sessions: dict[str, RuntimeSession] = {}
-        self._pending_assign: dict[str, str] = {}
+        self._pending_assign: dict[str, PendingAssign] = {}
         self._pending_stop: dict[str, str] = {}
         self._lock = asyncio.Lock()
         self._dispatch_lock = asyncio.Lock()
+
+    def _clear_pending_for_executor(self, executor_id: str, job_ids: set[str] | None = None) -> None:
+        pending_assign_ids = [
+            request_id
+            for request_id, pending in self._pending_assign.items()
+            if pending.executor_id == executor_id
+            or (job_ids and pending.job_id in job_ids)
+        ]
+        for request_id in pending_assign_ids:
+            self._pending_assign.pop(request_id, None)
+
+        if job_ids:
+            pending_stop_ids = [
+                request_id
+                for request_id, pending_job_id in self._pending_stop.items()
+                if pending_job_id in job_ids
+            ]
+            for request_id in pending_stop_ids:
+                self._pending_stop.pop(request_id, None)
 
     def _is_executor_allowed(self, executor_id: str) -> bool:
         allowlist = settings.RUNTIME_EXECUTOR_ALLOWLIST
@@ -166,8 +193,13 @@ class RuntimeDispatcher:
         self._schedule_dispatch()
 
     async def unregister(self, executor_id: str) -> None:
+        removed_session: RuntimeSession | None = None
         async with self._lock:
-            self._sessions.pop(executor_id, None)
+            removed_session = self._sessions.pop(executor_id, None)
+
+        cleanup_job_ids: set[str] = set()
+        if removed_session and removed_session.current_job_id:
+            cleanup_job_ids.add(str(removed_session.current_job_id))
 
         async with SessionLocal() as session:
             row = await session.exec(select(RuntimeExecutor).where(RuntimeExecutor.executor_id == executor_id))
@@ -185,6 +217,7 @@ class RuntimeDispatcher:
                 )
             )
             for job in running_jobs.all():
+                cleanup_job_ids.add(str(job.id))
                 job.status = TrainingJobStatus.FAILED
                 job.last_error = "runtime_lost: stream closed"
                 job.ended_at = datetime.utcnow()
@@ -194,6 +227,9 @@ class RuntimeDispatcher:
                 if retry_job:
                     session.add(retry_job)
             await session.commit()
+
+        async with self._lock:
+            self._clear_pending_for_executor(executor_id, cleanup_job_ids)
 
         self._schedule_dispatch()
 
@@ -243,6 +279,7 @@ class RuntimeDispatcher:
         if not stale_ids:
             return
 
+        stale_job_ids: dict[str, set[str]] = {executor_id: set() for executor_id in stale_ids}
         async with SessionLocal() as session:
             for executor_id in stale_ids:
                 row = await session.exec(select(RuntimeExecutor).where(RuntimeExecutor.executor_id == executor_id))
@@ -261,6 +298,7 @@ class RuntimeDispatcher:
                     )
                 )
                 for job in running_jobs.all():
+                    stale_job_ids.setdefault(executor_id, set()).add(str(job.id))
                     job.status = TrainingJobStatus.FAILED
                     job.last_error = "runtime_lost: executor heartbeat timeout"
                     job.ended_at = datetime.utcnow()
@@ -273,6 +311,10 @@ class RuntimeDispatcher:
                     if retry_job:
                         session.add(retry_job)
             await session.commit()
+
+        async with self._lock:
+            for executor_id in stale_ids:
+                self._clear_pending_for_executor(executor_id, stale_job_ids.get(executor_id))
 
     async def assign_job(self, job: Job, check_stale: bool = True) -> Optional[AssignmentResult]:
         if check_stale:
@@ -289,7 +331,7 @@ class RuntimeDispatcher:
 
         async with self._lock:
             job_id = str(job.id)
-            if any(pending_job_id == job_id for pending_job_id in self._pending_assign.values()):
+            if any(pending.job_id == job_id for pending in self._pending_assign.values()):
                 return None
             if any(runtime_session.current_job_id == job_id for runtime_session in self._sessions.values()):
                 return None
@@ -306,7 +348,12 @@ class RuntimeDispatcher:
             request_id = str(uuid.uuid4())
             target.busy = True
             target.current_job_id = job_id
-            self._pending_assign[request_id] = job_id
+            self._pending_assign[request_id] = PendingAssign(
+                request_id=request_id,
+                job_id=job_id,
+                executor_id=target.executor_id,
+                created_at=datetime.utcnow(),
+            )
 
             await target.queue.put(
                 pb.RuntimeMessage(
@@ -391,11 +438,12 @@ class RuntimeDispatcher:
         is_ok = status == pb.OK
 
         if ack_for in self._pending_assign:
-            job_id = self._pending_assign.pop(ack_for)
+            pending = self._pending_assign.pop(ack_for)
+            job_id = pending.job_id
             release_executor_id: str | None = None
             async with self._lock:
                 for runtime_session in self._sessions.values():
-                    if runtime_session.current_job_id == job_id:
+                    if runtime_session.executor_id == pending.executor_id and runtime_session.current_job_id == job_id:
                         if not is_ok:
                             runtime_session.busy = False
                             runtime_session.current_job_id = None
@@ -435,6 +483,65 @@ class RuntimeDispatcher:
         if ack_for in self._pending_stop:
             self._pending_stop.pop(ack_for, None)
 
+    async def reap_assign_timeouts(self) -> None:
+        timeout_sec = max(1, int(settings.RUNTIME_ASSIGN_ACK_TIMEOUT_SEC))
+        now = datetime.utcnow()
+        timeout = timedelta(seconds=timeout_sec)
+
+        timed_out: list[PendingAssign] = []
+        async with self._lock:
+            for request_id, pending in list(self._pending_assign.items()):
+                if now - pending.created_at >= timeout:
+                    timed_out.append(pending)
+                    self._pending_assign.pop(request_id, None)
+                    runtime_session = self._sessions.get(pending.executor_id)
+                    if runtime_session and runtime_session.current_job_id == pending.job_id:
+                        runtime_session.busy = False
+                        runtime_session.current_job_id = None
+
+        if not timed_out:
+            return
+
+        timed_out_job_ids = {pending.job_id for pending in timed_out}
+        pending_stop_to_remove: list[str] = []
+        async with SessionLocal() as session:
+            for pending in timed_out:
+                try:
+                    job_uuid = uuid.UUID(pending.job_id)
+                except Exception:
+                    continue
+
+                job = await session.get(Job, job_uuid)
+                if job and job.status == TrainingJobStatus.PENDING:
+                    job.assigned_executor_id = None
+                    job.last_error = f"assign_ack_timeout executor={pending.executor_id}"
+                    session.add(job)
+
+                row = await session.exec(
+                    select(RuntimeExecutor).where(RuntimeExecutor.executor_id == pending.executor_id)
+                )
+                executor = row.first()
+                if executor and executor.current_job_id == pending.job_id:
+                    executor.status = "idle"
+                    executor.current_job_id = None
+                    executor.is_online = True
+                    executor.last_error = f"assign_ack_timeout job={pending.job_id}"
+                    executor.last_seen_at = datetime.utcnow()
+                    session.add(executor)
+
+            for request_id, pending_job_id in list(self._pending_stop.items()):
+                if pending_job_id in timed_out_job_ids:
+                    pending_stop_to_remove.append(request_id)
+
+            await session.commit()
+
+        if pending_stop_to_remove:
+            async with self._lock:
+                for request_id in pending_stop_to_remove:
+                    self._pending_stop.pop(request_id, None)
+
+        self._schedule_dispatch()
+
     async def mark_executor_idle(self, executor_id: str, job_id: str | None = None) -> None:
         async with self._lock:
             session = self._sessions.get(executor_id)
@@ -462,6 +569,7 @@ class RuntimeDispatcher:
             return
 
         async with self._dispatch_lock:
+            await self.reap_assign_timeouts()
             await self.mark_stale_executors()
             while True:
                 async with SessionLocal() as session:

@@ -242,3 +242,75 @@ async def test_dispatch_pending_jobs_skips_retry_not_ready(dispatcher_env):
         assert persisted_delayed is not None
         assert persisted_normal.assigned_executor_id == "executor-4"
         assert persisted_delayed.assigned_executor_id is None
+
+
+@pytest.mark.anyio
+async def test_assign_ack_timeout_releases_executor_and_redispatches(dispatcher_env, monkeypatch):
+    dispatcher, session_local = dispatcher_env
+    queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    job = await _create_pending_job(session_local)
+
+    monkeypatch.setattr(dispatcher_module.settings, "RUNTIME_ASSIGN_ACK_TIMEOUT_SEC", 1)
+
+    await dispatcher.register(
+        executor_id="executor-timeout-1",
+        queue=queue,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={"gpu_count": 1, "memory_mb": 32000},
+    )
+    assigned = await dispatcher.assign_job(job)
+    assert assigned is not None
+    first = await asyncio.wait_for(queue.get(), timeout=1)
+    assert first.WhichOneof("payload") == "assign_job"
+
+    pending = dispatcher._pending_assign.get(assigned.request_id)  # noqa: SLF001
+    assert pending is not None
+    pending.created_at = pending.created_at - timedelta(seconds=5)
+
+    await dispatcher.reap_assign_timeouts()
+    assert assigned.request_id not in dispatcher._pending_assign  # noqa: SLF001
+
+    async with session_local() as session:
+        persisted_job = await session.get(Job, job.id)
+        assert persisted_job is not None
+        assert persisted_job.status == TrainingJobStatus.PENDING
+        assert persisted_job.assigned_executor_id is None
+        assert "assign_ack_timeout" in (persisted_job.last_error or "")
+
+        executor = (
+            await session.exec(
+                select(RuntimeExecutor).where(RuntimeExecutor.executor_id == "executor-timeout-1")
+            )
+        ).first()
+        assert executor is not None
+        assert executor.status == "idle"
+        assert executor.current_job_id is None
+
+    await dispatcher.dispatch_pending_jobs()
+    second = await asyncio.wait_for(queue.get(), timeout=1)
+    assert second.WhichOneof("payload") == "assign_job"
+    assert second.assign_job.job.job_id == str(job.id)
+
+
+@pytest.mark.anyio
+async def test_unregister_clears_pending_assign_records(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+    queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    job = await _create_pending_job(session_local)
+
+    await dispatcher.register(
+        executor_id="executor-unregister-1",
+        queue=queue,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={"gpu_count": 1, "memory_mb": 32000},
+    )
+    assigned = await dispatcher.assign_job(job)
+    assert assigned is not None
+    first = await asyncio.wait_for(queue.get(), timeout=1)
+    assert first.WhichOneof("payload") == "assign_job"
+    assert assigned.request_id in dispatcher._pending_assign  # noqa: SLF001
+
+    await dispatcher.unregister("executor-unregister-1")
+    assert assigned.request_id not in dispatcher._pending_assign  # noqa: SLF001

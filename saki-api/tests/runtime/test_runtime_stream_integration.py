@@ -282,6 +282,8 @@ async def test_runtime_stream_allowlist_reject(monkeypatch):
         assert response.error.details.fields["request_id"].string_value == "register-req-allowlist"
         assert response.error.details.fields["reply_to"].string_value == "register-req-allowlist"
         assert response.error.details.fields["reason"].string_value == "executor is not in allowlist"
+        with pytest.raises(EOFError):
+            await client.recv(timeout=0.5)
         await client.close()
     finally:
         await server.stop(grace=0)

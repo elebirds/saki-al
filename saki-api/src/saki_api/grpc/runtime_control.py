@@ -167,13 +167,14 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
 
         outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
         executor_id: Optional[str] = None
+        close_stream_after_flush = False
         dedup_cache = _RequestDedupCache(
             ttl_sec=settings.RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC,
             max_entries=settings.RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES,
         )
 
         async def _reader() -> None:
-            nonlocal executor_id
+            nonlocal executor_id, close_stream_after_flush
             async for message in request_iterator:
                 try:
                     payload_type = message.WhichOneof("payload")
@@ -193,6 +194,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                     ),
                                 )
                             )
+                            if settings.RUNTIME_STREAM_REJECT_CLOSE:
+                                close_stream_after_flush = True
+                                break
                             continue
 
                         plugin_ids = {str(item.plugin_id) for item in register.plugins if item.plugin_id}
@@ -217,6 +221,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                     ),
                                 )
                             )
+                            if settings.RUNTIME_STREAM_REJECT_CLOSE:
+                                close_stream_after_flush = True
+                                break
                             continue
                         except Exception as exc:
                             await outbox.put(
@@ -230,6 +237,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                     ),
                                 )
                             )
+                            if settings.RUNTIME_STREAM_REJECT_CLOSE:
+                                close_stream_after_flush = True
+                                break
                             continue
 
                         await outbox.put(
@@ -395,8 +405,17 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         reader_task = asyncio.create_task(_reader())
         try:
             while True:
-                payload = await outbox.get()
+                if reader_task.done() and outbox.empty():
+                    break
+                try:
+                    payload = await asyncio.wait_for(outbox.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    if close_stream_after_flush and outbox.empty():
+                        break
+                    continue
                 yield payload
+                if close_stream_after_flush and outbox.empty():
+                    break
         finally:
             reader_task.cancel()
             if executor_id:

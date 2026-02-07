@@ -5,7 +5,6 @@ Annotation batch service for TopK -> annotation closed loop.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, UTC
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -13,10 +12,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.models.enums import AnnotationBatchStatus
 from saki_api.models.l2.branch import Branch
-from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.metric import JobSampleMetric
+from saki_api.services.annotation_batch_progress import refresh_batch_progress_by_commit
 
 
 class AnnotationBatchService:
@@ -106,39 +105,11 @@ class AnnotationBatchService:
         if not branch:
             raise NotFoundAppException(f"Branch {loop.branch_id} not found for batch")
 
-        item_rows = await self.session.exec(
-            select(AnnotationBatchItem).where(AnnotationBatchItem.batch_id == batch.id)
+        await refresh_batch_progress_by_commit(
+            session=self.session,
+            batch=batch,
+            commit_id=branch.head_commit_id,
         )
-        items = list(item_rows.all())
-        sample_ids = [item.sample_id for item in items]
-
-        annotated_sample_ids: set[uuid.UUID] = set()
-        if sample_ids:
-            camap_rows = await self.session.exec(
-                select(CommitAnnotationMap.sample_id)
-                .where(
-                    CommitAnnotationMap.commit_id == branch.head_commit_id,
-                    CommitAnnotationMap.sample_id.in_(sample_ids),
-                )
-                .distinct()
-            )
-            annotated_sample_ids = {row for row in camap_rows.all()}
-
-        now = datetime.now(UTC)
-        for item in items:
-            is_annotated = item.sample_id in annotated_sample_ids
-            if is_annotated and not item.is_annotated:
-                item.is_annotated = True
-                item.annotated_at = now
-            self.session.add(item)
-
-        annotated_count = sum(1 for item in items if (item.sample_id in annotated_sample_ids))
-        batch.annotated_count = annotated_count
-        if annotated_count >= batch.total_count and batch.total_count > 0:
-            batch.status = AnnotationBatchStatus.CLOSED
-            if not batch.closed_at:
-                batch.closed_at = now
-        self.session.add(batch)
         await self.session.commit()
         await self.session.refresh(batch)
         return batch

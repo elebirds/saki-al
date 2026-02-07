@@ -28,6 +28,14 @@ from saki_api.models.l3.loop import ALLoop
 from saki_api.models.l3.loop_round import LoopRound
 from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.models.l3.model import Model
+from saki_api.services.annotation_batch_progress import refresh_batch_progress_by_commit
+from saki_api.services.loop_config import (
+    normalize_loop_global_config,
+    round_split_seed,
+    to_bool,
+    to_int,
+)
+from saki_api.utils.storage import get_storage_provider
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +45,13 @@ class LoopOrchestrator:
         self.interval_sec = max(2, int(interval_sec or settings.RUNTIME_DISPATCH_INTERVAL_SEC))
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
+        self._storage = None
+
+    @property
+    def storage(self):
+        if self._storage is None:
+            self._storage = get_storage_provider()
+        return self._storage
 
     async def start(self) -> None:
         if self._task and not self._task.done():
@@ -160,8 +175,35 @@ class LoopOrchestrator:
         loop.current_iteration += 1
         round_index = int(loop.current_iteration)
 
-        params = dict(loop.global_config or {})
+        loop_config = normalize_loop_global_config(loop.global_config)
+        params = dict(loop_config)
+        params.pop("job_resources_default", None)
+        params.pop("selection", None)
         params.setdefault("topk", loop.query_batch_size)
+        params.setdefault("split_seed", round_split_seed(loop.id, round_index))
+
+        warm_start = to_bool(loop_config.get("warm_start"), True)
+        params["warm_start"] = warm_start
+
+        resources = dict(loop_config.get("job_resources_default") or {})
+
+        if warm_start and loop.latest_model_id:
+            parent_model = await session.get(Model, loop.latest_model_id)
+            if parent_model and parent_model.weights_path:
+                warm_start_uri = str(parent_model.weights_path)
+                presigned = self._build_presigned_download_url(warm_start_uri)
+                if warm_start_uri.startswith("s3://") and not presigned:
+                    logger.warning(
+                        "skip warm-start for loop=%s round=%s due to missing presigned download url",
+                        loop.id,
+                        round_index,
+                    )
+                else:
+                    params.setdefault("parent_model_id", str(parent_model.id))
+                    params.setdefault("base_model", warm_start_uri)
+                    if presigned:
+                        params.setdefault("base_model_download_url", presigned)
+
         job = Job(
             project_id=loop.project_id,
             loop_id=loop.id,
@@ -174,7 +216,7 @@ class LoopOrchestrator:
             mode="active_learning",
             query_strategy=loop.query_strategy,
             params=params,
-            resources={},
+            resources=resources,
             strategy_params={},
             metrics={},
             artifacts={},
@@ -237,8 +279,27 @@ class LoopOrchestrator:
             return None
 
         batch = await self._create_annotation_batch(session=session, loop=loop, job=job)
+        round_metrics = dict(job.metrics or {})
+        parent_model_id = str((job.params or {}).get("parent_model_id") or "")
+        if parent_model_id:
+            round_metrics.setdefault("parent_model_id", parent_model_id)
+
+        if batch is None:
+            round_metrics.setdefault("no_candidates", 1.0)
+            round_obj.metrics = round_metrics
+            round_obj.selected_count = 0
+            round_obj.status = LoopRoundStatus.COMPLETED_NO_CANDIDATES
+            round_obj.ended_at = datetime.now(UTC)
+            session.add(round_obj)
+
+            loop.status = ALLoopStatus.COMPLETED
+            loop.is_active = False
+            loop.last_error = "no_candidates"
+            session.add(loop)
+            return None
+
         round_obj.annotation_batch_id = batch.id
-        round_obj.metrics = dict(job.metrics or {})
+        round_obj.metrics = round_metrics
         round_obj.selected_count = int(batch.total_count)
         round_obj.status = LoopRoundStatus.ANNOTATION
         session.add(round_obj)
@@ -252,7 +313,7 @@ class LoopOrchestrator:
         session.add(loop)
         return None
 
-    async def _create_annotation_batch(self, *, session, loop: ALLoop, job: Job) -> AnnotationBatch:
+    async def _create_annotation_batch(self, *, session, loop: ALLoop, job: Job) -> AnnotationBatch | None:
         existing_rows = await session.exec(select(AnnotationBatch).where(AnnotationBatch.job_id == job.id))
         existing = existing_rows.first()
         if existing:
@@ -265,6 +326,18 @@ class LoopOrchestrator:
             .limit(loop.query_batch_size)
         )
         candidates = list(metric_rows.all())
+        loop_config = normalize_loop_global_config(loop.global_config)
+        selection = loop_config.get("selection") if isinstance(loop_config.get("selection"), dict) else {}
+        min_candidates_required = max(1, to_int(selection.get("min_candidates_required"), 1))
+        if len(candidates) < min_candidates_required:
+            logger.info(
+                "skip annotation batch job_id=%s candidates=%s min_candidates_required=%s",
+                job.id,
+                len(candidates),
+                min_candidates_required,
+            )
+            return None
+
         batch = AnnotationBatch(
             project_id=loop.project_id,
             loop_id=loop.id,
@@ -353,48 +426,23 @@ class LoopOrchestrator:
         )
 
     async def _refresh_batch_progress(self, *, session, batch: AnnotationBatch, commit_id: uuid.UUID) -> None:
-        rows = await session.exec(
-            select(AnnotationBatchItem).where(AnnotationBatchItem.batch_id == batch.id)
+        await refresh_batch_progress_by_commit(
+            session=session,
+            batch=batch,
+            commit_id=commit_id,
         )
-        items = list(rows.all())
-        if not items:
-            batch.annotated_count = 0
-            batch.status = AnnotationBatchStatus.CLOSED
-            batch.closed_at = datetime.now(UTC)
-            session.add(batch)
-            return
-
-        sample_ids = [item.sample_id for item in items]
-        camap_rows = await session.exec(
-            select(CommitAnnotationMap.sample_id)
-            .where(
-                CommitAnnotationMap.commit_id == commit_id,
-                CommitAnnotationMap.sample_id.in_(sample_ids),
-            )
-            .distinct()
-        )
-        annotated = {row for row in camap_rows.all()}
-        now = datetime.now(UTC)
-        for item in items:
-            should_annotated = item.sample_id in annotated
-            if should_annotated and not item.is_annotated:
-                item.is_annotated = True
-                item.annotated_at = now
-                session.add(item)
-
-        batch.annotated_count = len(annotated)
-        if batch.annotated_count >= batch.total_count and batch.total_count > 0:
-            batch.status = AnnotationBatchStatus.CLOSED
-            if not batch.closed_at:
-                batch.closed_at = now
-        session.add(batch)
 
     async def _should_early_stop(self, *, session, loop: ALLoop) -> bool:
         rounds_rows = await session.exec(
             select(LoopRound)
             .where(
                 LoopRound.loop_id == loop.id,
-                LoopRound.status == LoopRoundStatus.COMPLETED,
+                LoopRound.status.in_(
+                    [
+                        LoopRoundStatus.COMPLETED,
+                        LoopRoundStatus.COMPLETED_NO_CANDIDATES,
+                    ]
+                ),
             )
             .order_by(LoopRound.round_index.desc())
             .limit(loop.stop_patience_rounds + 1)
@@ -427,6 +475,7 @@ class LoopOrchestrator:
             project_id=loop.project_id,
             job_id=job.id,
             source_commit_id=job.source_commit_id,
+            parent_model_id=loop.latest_model_id,
             plugin_id=job.plugin_id,
             model_arch=loop.model_arch,
             name=f"{loop.name}-round-{job.round_index}",
@@ -440,6 +489,22 @@ class LoopOrchestrator:
         await session.flush()
         await session.refresh(model)
         return model
+
+    def _build_presigned_download_url(self, uri: str) -> str:
+        if not uri.startswith("s3://"):
+            return ""
+        bucket_and_path = uri[5:]
+        bucket, _, object_name = bucket_and_path.partition("/")
+        if not object_name:
+            return ""
+        if bucket and bucket != settings.MINIO_BUCKET_NAME:
+            logger.warning("skip warm-start presigned url due to bucket mismatch: %s", bucket)
+            return ""
+        try:
+            return self.storage.get_presigned_url(object_name)
+        except Exception:
+            logger.exception("build warm-start presigned url failed for uri=%s", uri)
+            return ""
 
 
 loop_orchestrator = LoopOrchestrator()

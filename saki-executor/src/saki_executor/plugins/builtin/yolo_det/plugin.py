@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
 import json
 import math
 from pathlib import Path
+import random
 import shutil
 import threading
 from typing import Any, Callable
+
+import httpx
 
 try:
     import numpy as np
@@ -39,6 +43,19 @@ def _to_int(value: Any, default: int = 0) -> int:
         return int(value)
     except Exception:
         return default
+
+
+def _to_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    raw = str(value).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -94,6 +111,7 @@ def _infer_image_hw(path: Path) -> tuple[int, int]:
 class YoloDetectionPlugin(ExecutorPlugin):
     def __init__(self) -> None:
         self._stop_flag = threading.Event()
+        self._prepare_stats: dict[str, Any] = {}
 
     @property
     def plugin_id(self) -> str:
@@ -139,10 +157,14 @@ class YoloDetectionPlugin(ExecutorPlugin):
         annotations: list[dict[str, Any]],
     ) -> None:
         data_root = workspace.data_dir
-        images_dir = data_root / "images" / "train"
-        labels_dir = data_root / "labels" / "train"
-        images_dir.mkdir(parents=True, exist_ok=True)
-        labels_dir.mkdir(parents=True, exist_ok=True)
+        images_train_dir = data_root / "images" / "train"
+        images_val_dir = data_root / "images" / "val"
+        labels_train_dir = data_root / "labels" / "train"
+        labels_val_dir = data_root / "labels" / "val"
+        images_train_dir.mkdir(parents=True, exist_ok=True)
+        images_val_dir.mkdir(parents=True, exist_ok=True)
+        labels_train_dir.mkdir(parents=True, exist_ok=True)
+        labels_val_dir.mkdir(parents=True, exist_ok=True)
 
         # 标签索引：保持后端顺序，保证 round 间一致性。
         label_id_to_idx: dict[str, int] = {}
@@ -163,16 +185,15 @@ class YoloDetectionPlugin(ExecutorPlugin):
             src = Path(local_path_raw)
             if not src.exists():
                 continue
-            dst = images_dir / f"{sample_id}.jpg"
-            shutil.copy2(src, dst)
             sample_map[sample_id] = {
-                "image_path": dst,
+                "source_path": src,
                 "width": _to_int(sample.get("width"), 0),
                 "height": _to_int(sample.get("height"), 0),
             }
 
         ann_by_sample: dict[str, list[str]] = {}
         skipped_count = 0
+        invalid_label_count = 0
         for ann in annotations:
             sample_id = str(ann.get("sample_id") or "")
             category_id = str(ann.get("category_id") or "")
@@ -185,7 +206,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             w = int(item["width"] or 0)
             if h <= 0 or w <= 0:
                 try:
-                    h, w = _infer_image_hw(Path(item["image_path"]))
+                    h, w = _infer_image_hw(Path(item["source_path"]))
                 except Exception:
                     skipped_count += 1
                     continue
@@ -193,37 +214,74 @@ class YoloDetectionPlugin(ExecutorPlugin):
             cls_idx = label_id_to_idx[category_id]
             line = self._annotation_to_yolo_obb_line(ann=ann, cls_idx=cls_idx, width=w, height=h)
             if not line:
-                skipped_count += 1
+                invalid_label_count += 1
                 continue
             ann_by_sample.setdefault(sample_id, []).append(line)
 
+        sample_ids = sorted(sample_map.keys())
+        split_seed, val_ratio = self._resolve_split_config(workspace)
+        val_degraded = len(sample_ids) < 5
+        train_ids: set[str] = set(sample_ids)
+        val_ids: set[str] = set()
+        if not val_degraded:
+            shuffled = list(sample_ids)
+            random.Random(split_seed).shuffle(shuffled)
+            val_count = max(1, int(round(len(shuffled) * val_ratio)))
+            if len(shuffled) - val_count < 1:
+                val_count = max(1, len(shuffled) - 1)
+            if val_count <= 0:
+                val_degraded = True
+            else:
+                val_ids = set(shuffled[:val_count])
+                train_ids = set(shuffled[val_count:])
+                if not train_ids or not val_ids:
+                    val_degraded = True
+                    train_ids = set(sample_ids)
+                    val_ids = set()
+
         for sample_id, item in sample_map.items():
-            label_file = labels_dir / f"{sample_id}.txt"
+            target_images_dir = images_train_dir
+            target_labels_dir = labels_train_dir
+            if not val_degraded and sample_id in val_ids:
+                target_images_dir = images_val_dir
+                target_labels_dir = labels_val_dir
+
+            src = Path(item["source_path"])
+            dst = target_images_dir / f"{sample_id}.jpg"
+            shutil.copy2(src, dst)
+
+            label_file = target_labels_dir / f"{sample_id}.txt"
             lines = ann_by_sample.get(sample_id, [])
             label_file.write_text("\n".join(lines), encoding="utf-8")
 
         dataset_yaml = {
             "path": str(data_root.resolve()),
             "train": "images/train",
-            "val": "images/train",
+            "val": "images/train" if val_degraded else "images/val",
             "names": names,
+            "val_degraded": val_degraded,
+            "split_seed": split_seed,
         }
         (data_root / "dataset.yaml").write_text(
             json.dumps(dataset_yaml, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
+        manifest = {
+            "sample_count": len(sample_map),
+            "train_sample_count": len(train_ids),
+            "val_sample_count": len(val_ids) if not val_degraded else 0,
+            "annotation_count": sum(len(v) for v in ann_by_sample.values()),
+            "label_count": len(names),
+            "invalid_label_count": invalid_label_count,
+            "skipped_annotation_count": skipped_count,
+            "val_degraded": val_degraded,
+            "split_seed": split_seed,
+            "val_split_ratio": val_ratio,
+        }
+        self._prepare_stats = manifest
         (data_root / "dataset_manifest.json").write_text(
-            json.dumps(
-                {
-                    "sample_count": len(sample_map),
-                    "annotation_count": sum(len(v) for v in ann_by_sample.values()),
-                    "label_count": len(names),
-                    "skipped_annotation_count": skipped_count,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
+            json.dumps(manifest, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
@@ -240,6 +298,11 @@ class YoloDetectionPlugin(ExecutorPlugin):
         patience = _to_int(params.get("patience", 20), 20)
         device = params.get("device", 0)
         base_model = str(params.get("base_model", "yolov8n-obb.pt") or "yolov8n-obb.pt")
+        resolved_base_model = await self._resolve_base_model(
+            workspace=workspace,
+            base_model=base_model,
+            params=params,
+        )
 
         dataset_yaml = workspace.data_dir / "dataset.yaml"
         if not dataset_yaml.exists():
@@ -250,7 +313,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             {
                 "level": "INFO",
                 "message": (
-                    f"YOLO training started base_model={base_model} "
+                    f"YOLO training started base_model={resolved_base_model} "
                     f"epochs={epochs} batch={batch} imgsz={imgsz} patience={patience} device={device}"
                 ),
             },
@@ -260,7 +323,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             self._run_train_sync,
             workspace=workspace,
             dataset_yaml=dataset_yaml,
-            base_model=base_model,
+            base_model=resolved_base_model,
             epochs=epochs,
             batch=batch,
             imgsz=imgsz,
@@ -281,6 +344,12 @@ class YoloDetectionPlugin(ExecutorPlugin):
             await emit("metric", {"step": idx, "epoch": idx, "metrics": metrics_row})
 
         metrics = dict(train_result["metrics"])
+        prepare_stats = dict(self._prepare_stats or {})
+        metrics.setdefault("invalid_label_count", float(_to_int(prepare_stats.get("invalid_label_count"), 0)))
+        metrics.setdefault(
+            "val_degraded",
+            1.0 if _to_bool(prepare_stats.get("val_degraded"), False) else 0.0,
+        )
         report_path = workspace.artifacts_dir / "report.json"
         report_path.write_text(
             json.dumps(
@@ -288,6 +357,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
                     "metrics": metrics,
                     "history": train_result["history"],
                     "train_dir": str(train_result["save_dir"]),
+                    "data_stats": prepare_stats,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -387,23 +457,25 @@ class YoloDetectionPlugin(ExecutorPlugin):
         corners: list[tuple[float, float]] | None = None
 
         if isinstance(obb, dict):
-            points = obb.get("points")
-            if isinstance(points, list) and len(points) >= 4:
-                parsed: list[tuple[float, float]] = []
-                for point in points[:4]:
-                    if not isinstance(point, (list, tuple)) or len(point) != 2:
-                        parsed = []
-                        break
-                    parsed.append((_to_float(point[0]), _to_float(point[1])))
-                if len(parsed) == 4:
-                    corners = parsed
-            if corners is None and {"cx", "cy", "width", "height"}.issubset(obb.keys()):
-                cx = _to_float(obb.get("cx"))
-                cy = _to_float(obb.get("cy"))
-                w = _to_float(obb.get("width"))
-                h = _to_float(obb.get("height"))
-                angle = _to_float(obb.get("angle"), 0.0)
-                corners = _rotated_rect_to_corners(cx, cy, w, h, angle)
+            required_fields = {"cx", "cy", "w", "h", "angle_deg", "normalized"}
+            if not required_fields.issubset(obb.keys()):
+                return None
+            if not _to_bool(obb.get("normalized"), False):
+                return None
+            cx = _to_float(obb.get("cx"))
+            cy = _to_float(obb.get("cy"))
+            w = _to_float(obb.get("w"))
+            h = _to_float(obb.get("h"))
+            angle = _to_float(obb.get("angle_deg"), 0.0)
+            if w <= 0 or h <= 0:
+                return None
+            corners = _rotated_rect_to_corners(
+                cx * float(width),
+                cy * float(height),
+                w * float(width),
+                h * float(height),
+                angle,
+            )
 
         if corners is None:
             bbox = ann.get("bbox_xywh")
@@ -418,6 +490,54 @@ class YoloDetectionPlugin(ExecutorPlugin):
         normalized = _normalize_obb_corners(corners, width=float(width), height=float(height))
         values = " ".join(f"{value:.6f}" for value in normalized)
         return f"{cls_idx} {values}"
+
+    async def _resolve_base_model(
+        self,
+        *,
+        workspace: Workspace,
+        base_model: str,
+        params: dict[str, Any],
+    ) -> str:
+        base_model_download_url = str(params.get("base_model_download_url") or "").strip()
+        if base_model_download_url:
+            target = workspace.cache_dir / "warm_start_base_model.pt"
+            await self._download_to_file(base_model_download_url, target)
+            return str(target)
+
+        if base_model.startswith("http://") or base_model.startswith("https://"):
+            target = workspace.cache_dir / "remote_base_model.pt"
+            await self._download_to_file(base_model, target)
+            return str(target)
+
+        if base_model.startswith("s3://"):
+            raise RuntimeError("base_model uses s3 URI but base_model_download_url is missing")
+        return base_model
+
+    async def _download_to_file(self, url: str, target: Path) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        async with httpx.AsyncClient(timeout=300, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            target.write_bytes(response.content)
+
+    def _resolve_split_config(self, workspace: Workspace) -> tuple[int, float]:
+        split_seed = 0
+        val_ratio = 0.2
+        payload: dict[str, Any] = {}
+        if workspace.config_path.exists():
+            try:
+                payload = json.loads(workspace.config_path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {}
+        params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+        split_seed = _to_int(params.get("split_seed"), 0)
+        val_ratio = _clamp(_to_float(params.get("val_split_ratio", 0.2), 0.2), 0.05, 0.5)
+        if split_seed <= 0:
+            loop_id = str(payload.get("loop_id") or "")
+            iteration = _to_int(payload.get("iteration"), 1)
+            digest = hashlib.sha256(f"{loop_id}:{iteration}".encode("utf-8")).hexdigest()
+            split_seed = int(digest[:8], 16)
+        return split_seed, val_ratio
 
     def _load_yolo(self):
         try:

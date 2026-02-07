@@ -22,17 +22,20 @@ from saki_api.grpc import runtime_codec
 from saki_api.grpc.dispatcher import runtime_dispatcher
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.grpc_gen import runtime_control_pb2_grpc as pb_grpc
-from saki_api.models.enums import AnnotationType, TrainingJobStatus
+from saki_api.models.enums import AnnotationType, AnnotationBatchStatus, TrainingJobStatus
 from saki_api.models.l1.asset import Asset
 from saki_api.models.l1.sample import Sample
 from saki_api.models.l2.annotation import Annotation
 from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l2.label import Label
 from saki_api.models.l2.project import ProjectDataset
+from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.job_event import JobEvent
 from saki_api.models.l3.job_metric_point import JobMetricPoint
+from saki_api.models.l3.loop import ALLoop
 from saki_api.models.l3.metric import JobSampleMetric
+from saki_api.services.loop_config import normalize_loop_global_config
 from saki_api.utils.storage import get_storage_provider
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,53 @@ def _parse_uuid(raw: str | None, field_name: str) -> uuid.UUID:
         return uuid.UUID(value)
     except Exception as exc:
         raise ValueError(f"invalid {field_name}: {value}") from exc
+
+
+def _to_bool(value: object, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    raw = str(value).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _to_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _normalize_obb_payload(data: dict) -> dict:
+    if not isinstance(data, dict):
+        return {}
+    required_fields = {"cx", "cy", "w", "h", "angle_deg", "normalized"}
+    if not required_fields.issubset(data.keys()):
+        return {}
+    if not _to_bool(data.get("normalized"), False):
+        return {}
+
+    cx = _to_float(data.get("cx"), 0.0)
+    cy = _to_float(data.get("cy"), 0.0)
+    w = _to_float(data.get("w"), 0.0)
+    h = _to_float(data.get("h"), 0.0)
+    angle_deg = _to_float(data.get("angle_deg"), 0.0)
+    if w <= 0.0 or h <= 0.0:
+        return {}
+
+    return {
+        "cx": cx,
+        "cy": cy,
+        "w": w,
+        "h": h,
+        "angle_deg": angle_deg,
+        "normalized": True,
+    }
 
 
 def _map_status(status: int | str) -> TrainingJobStatus:
@@ -636,6 +686,27 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             elif query_type in {"samples", "unlabeled_samples"}:
                 project_id = _parse_uuid(message.project_id, "project_id")
                 commit_id = _parse_uuid(message.commit_id, "commit_id") if query_type == "unlabeled_samples" else None
+                selection_exclude_open_batches = True
+                loop_id_for_filter: uuid.UUID | None = None
+
+                if query_type == "unlabeled_samples":
+                    job_id_raw = str(message.job_id or "").strip()
+                    if job_id_raw:
+                        try:
+                            job_id = uuid.UUID(job_id_raw)
+                        except Exception:
+                            job_id = None
+                        if job_id:
+                            job = await session.get(Job, job_id)
+                            if job and job.loop_id:
+                                loop_id_for_filter = job.loop_id
+                                loop = await session.get(ALLoop, job.loop_id)
+                                loop_config = normalize_loop_global_config(loop.global_config if loop else None)
+                                selection_config = loop_config.get("selection")
+                                if isinstance(selection_config, dict):
+                                    selection_exclude_open_batches = bool(
+                                        selection_config.get("exclude_open_batches", True)
+                                    )
 
                 ds_stmt = select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
                 dataset_ids = [row[0] for row in (await session.exec(ds_stmt)).all()]
@@ -665,6 +736,16 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         CommitAnnotationMap.commit_id == commit_id
                     )
                     sample_stmt = sample_stmt.where(Sample.id.not_in(annotated_subquery))
+                    if selection_exclude_open_batches and loop_id_for_filter:
+                        open_batch_sample_subquery = (
+                            select(AnnotationBatchItem.sample_id)
+                            .join(AnnotationBatch, AnnotationBatchItem.batch_id == AnnotationBatch.id)
+                            .where(
+                                AnnotationBatch.loop_id == loop_id_for_filter,
+                                AnnotationBatch.status == AnnotationBatchStatus.OPEN,
+                            )
+                        )
+                        sample_stmt = sample_stmt.where(Sample.id.not_in(open_batch_sample_subquery))
 
                 rows = list((await session.exec(sample_stmt)).all())
                 page = rows
@@ -721,6 +802,22 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 ann_stmt = select(Annotation).where(Annotation.id.in_(annotation_ids)) if annotation_ids else None
                 ann_rows = list((await session.exec(ann_stmt)).all()) if ann_stmt is not None else []
                 ann_map = {item.id: item for item in ann_rows}
+                sample_ids = list({item.sample_id for item in mappings})
+                sample_size_map: dict[uuid.UUID, tuple[int, int]] = {}
+                if sample_ids:
+                    sample_stmt = (
+                        select(Sample, Asset)
+                        .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
+                        .where(Sample.id.in_(sample_ids))
+                    )
+                    for sample, asset in (await session.exec(sample_stmt)).all():
+                        width = 0
+                        height = 0
+                        if asset:
+                            meta = asset.meta_info or {}
+                            width = int(meta.get("width") or 0)
+                            height = int(meta.get("height") or 0)
+                        sample_size_map[sample.id] = (width, height)
 
                 for mapping in mappings:
                     ann = ann_map.get(mapping.annotation_id)
@@ -738,12 +835,20 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         ]
                     elif ann.type == AnnotationType.OBB:
                         data = ann.data or {}
-                        cx = float(data.get("cx", 0.0))
-                        cy = float(data.get("cy", 0.0))
-                        w = float(data.get("width", 0.0))
-                        h = float(data.get("height", 0.0))
-                        bbox_xywh = [cx - w / 2, cy - h / 2, w, h]
-                        obb = data
+                        sample_width, sample_height = sample_size_map.get(ann.sample_id, (0, 0))
+                        normalized_obb = _normalize_obb_payload(data)
+                        if normalized_obb:
+                            cx = float(normalized_obb["cx"])
+                            cy = float(normalized_obb["cy"])
+                            w = float(normalized_obb["w"])
+                            h = float(normalized_obb["h"])
+                            if int(sample_width or 0) > 0 and int(sample_height or 0) > 0:
+                                cx *= float(sample_width)
+                                cy *= float(sample_height)
+                                w *= float(sample_width)
+                                h *= float(sample_height)
+                            bbox_xywh = [cx - w / 2, cy - h / 2, w, h]
+                        obb = normalized_obb
 
                     item = pb.AnnotationItem(
                         id=str(ann.id),

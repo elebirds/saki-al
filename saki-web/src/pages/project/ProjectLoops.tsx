@@ -70,10 +70,12 @@ const ROUND_STATUS_COLOR: Record<string, string> = {
     training: 'processing',
     annotation: 'warning',
     completed: 'success',
+    completed_no_candidates: 'gold',
     failed: 'error',
 };
 
 const TERMINAL_STATUS = new Set(['success', 'failed', 'cancelled']);
+const ROUND_COMPLETED_STATUS = new Set(['completed', 'completed_no_candidates']);
 
 const formatDateTime = (value?: string | null) => {
     if (!value) return '-';
@@ -821,7 +823,7 @@ const ProjectLoops: React.FC = () => {
                             <Tag color={LOOP_STATUS_COLOR[selectedLoop.status] || 'default'}>{selectedLoop.status}</Tag>
                         </Descriptions.Item>
                         <Descriptions.Item label="总轮次">{summary?.roundsTotal ?? rounds.length}</Descriptions.Item>
-                        <Descriptions.Item label="完成轮次">{summary?.roundsCompleted ?? rounds.filter((x) => x.status === 'completed').length}</Descriptions.Item>
+                        <Descriptions.Item label="完成轮次">{summary?.roundsCompleted ?? rounds.filter((x) => ROUND_COMPLETED_STATUS.has(x.status)).length}</Descriptions.Item>
                         <Descriptions.Item label="累计选样">{summary?.selectedTotal ?? rounds.reduce((acc, x) => acc + x.selectedCount, 0)}</Descriptions.Item>
                         <Descriptions.Item label="累计标注">{summary?.labeledTotal ?? rounds.reduce((acc, x) => acc + x.labeledCount, 0)}</Descriptions.Item>
                         <Descriptions.Item label="最新 mAP50">{Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}</Descriptions.Item>
@@ -919,6 +921,11 @@ const ProjectLoops: React.FC = () => {
                             <Descriptions.Item label="开始时间">{formatDateTime(jobDetail?.startedAt)}</Descriptions.Item>
                             <Descriptions.Item label="结束时间">{formatDateTime(jobDetail?.endedAt)}</Descriptions.Item>
                             <Descriptions.Item label="制品数量">{artifactsCount}</Descriptions.Item>
+                            <Descriptions.Item label="验证集降级">
+                                {(Number(jobDetail?.metrics?.valDegraded || 0) > 0.5)
+                                    ? <Tag color="warning">是</Tag>
+                                    : <Tag color="default">否</Tag>}
+                            </Descriptions.Item>
                         </Descriptions>
                         {jobDetail?.lastError ? (
                             <Alert type="error" showIcon className="mt-3" message={jobDetail.lastError}/>
@@ -1032,6 +1039,13 @@ const ProjectLoops: React.FC = () => {
                             {title: '版本', dataIndex: 'versionTag', width: 120},
                             {title: '状态', dataIndex: 'status', width: 120, render: (v: string) => <Tag>{v}</Tag>},
                             {title: '插件', dataIndex: 'pluginId', width: 140},
+                            {
+                                title: '父模型',
+                                width: 120,
+                                render: (_value: unknown, row: ProjectModel) => (
+                                    row.parentModelId ? <Text code>{row.parentModelId.slice(0, 8)}</Text> : '-'
+                                ),
+                            },
                             {
                                 title: 'mAP50',
                                 width: 100,

@@ -22,6 +22,7 @@ from saki_api.repositories.job_event import JobEventRepository
 from saki_api.repositories.job_metric_point import JobMetricPointRepository
 from saki_api.repositories.loop import LoopRepository
 from saki_api.schemas.l3.job import JobCreateRequest, LoopCreateRequest
+from saki_api.services.loop_config import normalize_loop_global_config
 from saki_api.services.base import BaseService
 
 
@@ -80,13 +81,15 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         if existing_loop:
             raise BadRequestAppException("Branch already has a loop bound")
 
+        normalized_global_config = normalize_loop_global_config(payload.global_config)
+
         loop = ALLoop(
             project_id=project_id,
             branch_id=payload.branch_id,
             name=payload.name,
             query_strategy=payload.query_strategy,
             model_arch=payload.model_arch,
-            global_config=payload.global_config,
+            global_config=normalized_global_config,
             current_iteration=0,
             is_active=payload.is_active,
             status=payload.status,

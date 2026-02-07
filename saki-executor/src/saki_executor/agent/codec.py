@@ -384,7 +384,9 @@ def runtime_message_to_dict(message: pb.RuntimeMessage) -> dict[str, Any]:
             "code": payload.code,
             "message": payload.message,
             "details": details,
-            "reply_to": str(details.get("reply_to") or ""),
+            "reply_to": str(details.get("reply_to") or details.get("request_id") or ""),
+            "ack_for": str(details.get("ack_for") or ""),
+            "error": payload.message or payload.code or "runtime error",
         }
 
     if payload_type == "heartbeat":

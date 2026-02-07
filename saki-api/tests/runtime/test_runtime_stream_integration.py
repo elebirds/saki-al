@@ -279,6 +279,9 @@ async def test_runtime_stream_allowlist_reject(monkeypatch):
         response = await client.recv()
         assert response.WhichOneof("payload") == "error"
         assert response.error.code == "FORBIDDEN"
+        assert response.error.details.fields["request_id"].string_value == "register-req-allowlist"
+        assert response.error.details.fields["reply_to"].string_value == "register-req-allowlist"
+        assert response.error.details.fields["reason"].string_value == "executor is not in allowlist"
         await client.close()
     finally:
         await server.stop(grace=0)
@@ -352,5 +355,35 @@ async def test_runtime_stream_duplicate_request_id_keeps_stream_alive(monkeypatc
         await asyncio.sleep(0.1)
         await client.close()
         assert heartbeat_calls == ["executor-dup-1", "executor-dup-1"]
+    finally:
+        await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_missing_executor_id_returns_structured_error():
+    service = RuntimeControlService()
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-missing-executor",
+                    executor_id="",
+                    version="0.1.0",
+                )
+            )
+        )
+        response = await client.recv()
+        assert response.WhichOneof("payload") == "error"
+        assert response.error.code == "INVALID_ARGUMENT"
+        assert response.error.details.fields["request_id"].string_value == "register-missing-executor"
+        assert response.error.details.fields["reply_to"].string_value == "register-missing-executor"
+        assert response.error.details.fields["reason"].string_value == "executor_id is required"
+        await client.close()
     finally:
         await server.stop(grace=0)

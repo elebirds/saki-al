@@ -142,11 +142,14 @@ class AgentClient:
 
         if msg_type == "error":
             logger.error("收到服务端错误消息: code={} message={} details={}", message.get("code"), message.get("message"), message.get("details"))
-            reply_to = str(message.get("reply_to") or message.get("ack_for") or "")
+            normalized = dict(message)
+            if not normalized.get("error"):
+                normalized["error"] = str(message.get("message") or message.get("code") or "runtime error")
+            reply_to = str(message.get("reply_to") or message.get("ack_for") or message.get("request_id") or "")
             if reply_to:
                 future = self._pending.get(reply_to)
                 if future and not future.done():
-                    future.set_result(message)
+                    future.set_result(normalized)
             return
 
         if msg_type == "ack":

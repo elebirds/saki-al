@@ -65,6 +65,29 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
     def __init__(self) -> None:
         self.storage = get_storage_provider()
 
+    @staticmethod
+    def _error_details(
+            *,
+            reason: str,
+            request_id: str | None = None,
+            reply_to: str | None = None,
+            job_id: str | None = None,
+            query_type: str | None = None,
+            ack_for: str | None = None,
+    ) -> dict[str, str]:
+        details: dict[str, str] = {"reason": reason}
+        if request_id:
+            details["request_id"] = request_id
+        if reply_to:
+            details["reply_to"] = reply_to
+        if job_id:
+            details["job_id"] = job_id
+        if query_type:
+            details["query_type"] = query_type
+        if ack_for:
+            details["ack_for"] = ack_for
+        return details
+
     async def Stream(self, request_iterator, context):
         metadata = dict(context.invocation_metadata())
         if metadata.get("x-internal-token") != settings.INTERNAL_TOKEN:
@@ -87,7 +110,11 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 runtime_codec.build_error_message(
                                     code="INVALID_ARGUMENT",
                                     message="executor_id is required",
-                                    details={"request_id": register.request_id},
+                                    details=self._error_details(
+                                        reason="executor_id is required",
+                                        request_id=register.request_id,
+                                        reply_to=register.request_id,
+                                    ),
                                 )
                             )
                             continue
@@ -107,7 +134,11 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 runtime_codec.build_error_message(
                                     code="FORBIDDEN",
                                     message=str(exc),
-                                    details={"request_id": register.request_id},
+                                    details=self._error_details(
+                                        reason=str(exc),
+                                        request_id=register.request_id,
+                                        reply_to=register.request_id,
+                                    ),
                                 )
                             )
                             continue
@@ -116,7 +147,11 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 runtime_codec.build_error_message(
                                     code="INTERNAL",
                                     message=f"register failed: {exc}",
-                                    details={"request_id": register.request_id},
+                                    details=self._error_details(
+                                        reason=f"register failed: {exc}",
+                                        request_id=register.request_id,
+                                        reply_to=register.request_id,
+                                    ),
                                 )
                             )
                             continue
@@ -163,11 +198,13 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             response = runtime_codec.build_error_message(
                                 code="INTERNAL",
                                 message=f"data request failed: {exc}",
-                                details={
-                                    "reply_to": request.request_id,
-                                    "job_id": request.job_id,
-                                    "query_type": runtime_codec.query_type_to_text(request.query_type),
-                                },
+                                details=self._error_details(
+                                    reason=f"data request failed: {exc}",
+                                    request_id=request.request_id,
+                                    reply_to=request.request_id,
+                                    job_id=request.job_id,
+                                    query_type=runtime_codec.query_type_to_text(request.query_type),
+                                ),
                             )
                         await outbox.put(response)
                         continue
@@ -180,7 +217,12 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             response = runtime_codec.build_error_message(
                                 code="INTERNAL",
                                 message=f"upload ticket failed: {exc}",
-                                details={"reply_to": request.request_id, "job_id": request.job_id},
+                                details=self._error_details(
+                                    reason=f"upload ticket failed: {exc}",
+                                    request_id=request.request_id,
+                                    reply_to=request.request_id,
+                                    job_id=request.job_id,
+                                ),
                             )
                         await outbox.put(response)
                         continue

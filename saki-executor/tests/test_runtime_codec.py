@@ -56,3 +56,18 @@ def test_data_request_query_type_mapping():
     }
     pb_message = codec.dict_to_runtime_message(message)
     assert pb_message.data_request.query_type == pb.ANNOTATIONS
+
+
+def test_error_message_decoding_includes_reply_to_and_error():
+    runtime_message = pb.RuntimeMessage(
+        error=pb.Error(
+            request_id="err-1",
+            code="INTERNAL",
+            message="boom",
+            details=codec.dict_to_struct({"reply_to": "req-1", "reason": "boom"}),
+        )
+    )
+    decoded = codec.runtime_message_to_dict(runtime_message)
+    assert decoded["type"] == "error"
+    assert decoded["reply_to"] == "req-1"
+    assert decoded["error"] == "boom"

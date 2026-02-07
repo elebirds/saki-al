@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     LOG_BACKUP_COUNT: int = 5
 
     ENABLE_COMMAND_STDIN: bool = True
+    DISCONNECT_FORCE_WAIT_SEC: int = 20
 
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 

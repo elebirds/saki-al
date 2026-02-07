@@ -94,8 +94,8 @@ class JobMetricPointRead(BaseModel):
 class JobCandidateRead(BaseModel):
     sample_id: uuid.UUID
     score: float
-    extra: Dict[str, float]
-    prediction_snapshot: Dict[str, float]
+    extra: Dict[str, Any]
+    prediction_snapshot: Dict[str, Any]
 
 
 class JobArtifactRead(BaseModel):

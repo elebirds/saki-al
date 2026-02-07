@@ -74,6 +74,31 @@ async def test_disconnect_force_disables_connection_and_fails_pending(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_disconnect_force_waits_for_stop_before_disconnect(tmp_path, monkeypatch):
+    client = _build_client(tmp_path)
+    monkeypatch.setattr("saki_executor.agent.client.settings.DISCONNECT_FORCE_WAIT_SEC", 1)
+
+    busy_task = asyncio.create_task(asyncio.sleep(60))
+    client.job_manager._task = busy_task  # noqa: SLF001
+    client.job_manager.current_job_id = "job-force-1"
+    stop_called: list[str] = []
+
+    async def fake_stop(job_id: str) -> bool:
+        stop_called.append(job_id)
+        client.job_manager._task = None  # noqa: SLF001
+        client.job_manager.current_job_id = None
+        busy_task.cancel()
+        return True
+
+    client.job_manager.stop_job = fake_stop  # type: ignore[method-assign]
+
+    disconnected = await client.disconnect(force=True)
+    assert disconnected is True
+    assert stop_called == ["job-force-1"]
+    assert client.transport_snapshot()["connect_enabled"] is False
+
+
+@pytest.mark.anyio
 async def test_duplicate_assign_job_returns_cached_ack_without_reassign(tmp_path):
     client = _build_client(tmp_path)
     assign_calls: list[str] = []

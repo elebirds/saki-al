@@ -87,8 +87,19 @@ class AgentClient:
             logger.warning("当前任务运行中，默认拒绝断开。若确认中断，请使用 disconnect --force。")
             return False
 
-        if self.job_manager.busy and force and self.job_manager.current_job_id:
-            await self.job_manager.stop_job(self.job_manager.current_job_id)
+        if self.job_manager.busy and force:
+            if self.job_manager.current_job_id:
+                logger.warning("收到强制断连请求，先尝试停止任务 job_id={}。", self.job_manager.current_job_id)
+                await self.job_manager.stop_job(self.job_manager.current_job_id)
+            wait_sec = max(0, int(settings.DISCONNECT_FORCE_WAIT_SEC))
+            if wait_sec > 0:
+                deadline = time.monotonic() + wait_sec
+                while self.job_manager.busy and time.monotonic() < deadline:
+                    await asyncio.sleep(0.2)
+            if self.job_manager.busy:
+                logger.warning("强制断连等待超时，仍有任务运行，继续断开连接。")
+            else:
+                logger.info("任务已停止，继续断开连接。")
 
         if not self._connect_enabled and not self._connected:
             logger.info("连接已是断开状态。")

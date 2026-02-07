@@ -4,7 +4,7 @@
 使用 SQLAlchemy 事件监听器结合 ContextVars 来自动填充 create_by、update_by 和时间戳字段。
 """
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import event
@@ -35,7 +35,7 @@ def setup_audit_listeners() -> None:
             connection: 数据库连接
             target: 要插入的模型实例
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # 处理时间戳字段
         if isinstance(target, TimestampMixin):
@@ -74,7 +74,7 @@ def setup_audit_listeners() -> None:
             connection: 数据库连接
             target: 要更新的模型实例
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # 处理时间戳字段 - 更新时自动更新 updated_at
         if isinstance(target, TimestampMixin):

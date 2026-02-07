@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -200,7 +200,7 @@ async def test_dispatch_pending_jobs_skips_retry_not_ready(dispatcher_env):
     dispatcher, session_local = dispatcher_env
     queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
 
-    future_retry_ts = int((datetime.utcnow() + timedelta(minutes=30)).timestamp())
+    future_retry_ts = int((datetime.now(UTC) + timedelta(minutes=30)).timestamp())
     normal_job = await _create_pending_job(session_local)
     delayed_job = Job(
         project_id=uuid.uuid4(),

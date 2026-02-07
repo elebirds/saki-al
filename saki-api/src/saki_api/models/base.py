@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import JSON
@@ -11,9 +11,9 @@ class TimestampMixin:
     """
     Mixin to add created_at and updated_at timestamps to a model.
     """
-    created_at: datetime = Field(default_factory=datetime.utcnow, alias="createdAt",
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), alias="createdAt",
                                  description="The time when the record was created.")
-    updated_at: datetime = Field(default_factory=datetime.utcnow, alias="updatedAt",
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC), alias="updatedAt",
                                  description="The time when the record was last updated.")
 
     class Config:

@@ -10,7 +10,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 import grpc
@@ -434,7 +434,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         if seq <= 0:
             return
 
-        event_ts = datetime.utcfromtimestamp(int(message.ts or int(datetime.utcnow().timestamp())))
+        event_ts = datetime.fromtimestamp(int(message.ts or int(datetime.now(UTC).timestamp())), UTC)
         event_type, payload, status_enum = runtime_codec.decode_job_event(message)
 
         async with SessionLocal() as session:
@@ -543,7 +543,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             job.status = mapped
             job.metrics = {**(job.metrics or {}), **metrics}
             job.artifacts = {**(job.artifacts or {}), **artifacts}
-            job.ended_at = datetime.utcnow()
+            job.ended_at = datetime.now(UTC)
             if mapped == TrainingJobStatus.FAILED:
                 job.last_error = str(message.error_message or "runtime failed")
 

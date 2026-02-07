@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
 from sqlmodel import select
@@ -30,7 +30,7 @@ class RuntimeSession:
     resources: dict[str, Any] = field(default_factory=dict)
     busy: bool = False
     current_job_id: Optional[str] = None
-    last_seen: datetime = field(default_factory=datetime.utcnow)
+    last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -143,7 +143,7 @@ class RuntimeDispatcher:
         if not_before is None:
             return True
         try:
-            return datetime.utcnow().timestamp() >= float(not_before)
+            return datetime.now(UTC).timestamp() >= float(not_before)
         except Exception:
             return True
 
@@ -157,7 +157,7 @@ class RuntimeDispatcher:
         params = dict(failed_job.params or {})
         params["_retry_of"] = str(failed_job.id)
         params["_retry_not_before_ts"] = int(
-            (datetime.utcnow() + timedelta(seconds=delay_sec)).timestamp()
+            (datetime.now(UTC) + timedelta(seconds=delay_sec)).timestamp()
         )
 
         retry_job = Job(
@@ -210,7 +210,7 @@ class RuntimeDispatcher:
                 resources=resources,
                 busy=False,
                 current_job_id=None,
-                last_seen=datetime.utcnow(),
+                last_seen=datetime.now(UTC),
             )
 
         async with SessionLocal() as session:
@@ -223,7 +223,7 @@ class RuntimeDispatcher:
             executor.status = "idle"
             executor.is_online = True
             executor.current_job_id = None
-            executor.last_seen_at = datetime.utcnow()
+            executor.last_seen_at = datetime.now(UTC)
             session.add(executor)
             await session.commit()
 
@@ -257,7 +257,7 @@ class RuntimeDispatcher:
                 cleanup_job_ids.add(str(job.id))
                 job.status = TrainingJobStatus.FAILED
                 job.last_error = "runtime_lost: stream closed"
-                job.ended_at = datetime.utcnow()
+                job.ended_at = datetime.now(UTC)
                 session.add(job)
 
                 retry_job = self._build_retry_job(failed_job=job, reason="runtime_lost: stream closed")
@@ -280,7 +280,7 @@ class RuntimeDispatcher:
         async with self._lock:
             session = self._sessions.get(executor_id)
             if session:
-                session.last_seen = datetime.utcnow()
+                session.last_seen = datetime.now(UTC)
                 session.busy = busy
                 session.current_job_id = current_job_id
                 session.resources = resources or session.resources
@@ -292,7 +292,7 @@ class RuntimeDispatcher:
                 executor.is_online = True
                 executor.status = "busy" if busy else "idle"
                 executor.current_job_id = current_job_id
-                executor.last_seen_at = datetime.utcnow()
+                executor.last_seen_at = datetime.now(UTC)
                 executor.resources = resources or executor.resources
                 db.add(executor)
                 await db.commit()
@@ -301,7 +301,7 @@ class RuntimeDispatcher:
             self._schedule_dispatch()
 
     async def mark_stale_executors(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         timeout = timedelta(seconds=settings.RUNTIME_HEARTBEAT_TIMEOUT_SEC)
 
         async with self._lock:
@@ -338,7 +338,7 @@ class RuntimeDispatcher:
                     stale_job_ids.setdefault(executor_id, set()).add(str(job.id))
                     job.status = TrainingJobStatus.FAILED
                     job.last_error = "runtime_lost: executor heartbeat timeout"
-                    job.ended_at = datetime.utcnow()
+                    job.ended_at = datetime.now(UTC)
                     session.add(job)
 
                     retry_job = self._build_retry_job(
@@ -389,7 +389,7 @@ class RuntimeDispatcher:
                 request_id=request_id,
                 job_id=job_id,
                 executor_id=target.executor_id,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
 
             await target.queue.put(
@@ -411,7 +411,7 @@ class RuntimeDispatcher:
                     )
                 )
             )
-            target.last_seen = datetime.utcnow()
+            target.last_seen = datetime.now(UTC)
 
         async with SessionLocal() as session:
             row = await session.exec(select(RuntimeExecutor).where(RuntimeExecutor.executor_id == target.executor_id))
@@ -420,7 +420,7 @@ class RuntimeDispatcher:
                 executor.status = "reserved"
                 executor.current_job_id = str(job.id)
                 executor.is_online = True
-                executor.last_seen_at = datetime.utcnow()
+                executor.last_seen_at = datetime.now(UTC)
                 session.add(executor)
 
             persisted_job = await session.get(Job, job.id)
@@ -493,11 +493,11 @@ class RuntimeDispatcher:
                     if is_ok:
                         job.status = TrainingJobStatus.RUNNING
                         if not job.started_at:
-                            job.started_at = datetime.utcnow()
+                            job.started_at = datetime.now(UTC)
                     else:
                         job.status = TrainingJobStatus.FAILED
                         job.last_error = message or "executor reject assignment"
-                        job.ended_at = datetime.utcnow()
+                        job.ended_at = datetime.now(UTC)
                         job.assigned_executor_id = None
                     session.add(job)
                     if release_executor_id:
@@ -513,7 +513,7 @@ class RuntimeDispatcher:
                                 executor.status = "idle"
                                 executor.current_job_id = None
                             executor.is_online = True
-                            executor.last_seen_at = datetime.utcnow()
+                            executor.last_seen_at = datetime.now(UTC)
                             session.add(executor)
                     await session.commit()
 
@@ -522,7 +522,7 @@ class RuntimeDispatcher:
 
     async def reap_assign_timeouts(self) -> None:
         timeout_sec = max(1, int(settings.RUNTIME_ASSIGN_ACK_TIMEOUT_SEC))
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         timeout = timedelta(seconds=timeout_sec)
 
         timed_out: list[PendingAssign] = []
@@ -563,7 +563,7 @@ class RuntimeDispatcher:
                     executor.current_job_id = None
                     executor.is_online = True
                     executor.last_error = f"assign_ack_timeout job={pending.job_id}"
-                    executor.last_seen_at = datetime.utcnow()
+                    executor.last_seen_at = datetime.now(UTC)
                     session.add(executor)
 
             for request_id, pending_job_id in list(self._pending_stop.items()):
@@ -586,7 +586,7 @@ class RuntimeDispatcher:
                 session.busy = False
                 if job_id is None or session.current_job_id == job_id:
                     session.current_job_id = None
-                session.last_seen = datetime.utcnow()
+                session.last_seen = datetime.now(UTC)
 
         async with SessionLocal() as db:
             row = await db.exec(select(RuntimeExecutor).where(RuntimeExecutor.executor_id == executor_id))
@@ -595,7 +595,7 @@ class RuntimeDispatcher:
                 executor.status = "idle"
                 executor.current_job_id = None
                 executor.is_online = True
-                executor.last_seen_at = datetime.utcnow()
+                executor.last_seen_at = datetime.now(UTC)
                 db.add(executor)
                 await db.commit()
 

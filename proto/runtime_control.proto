@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+service RuntimeControl {
+  rpc Stream(stream RuntimeMessage) returns (stream RuntimeMessage);
+}
+
+message PluginCapability {
+  string plugin_id = 1;
+  string version = 2;
+  repeated string supported_job_types = 3;
+  repeated string supported_strategies = 4;
+}
+
+message ResourceSummary {
+  int32 gpu_count = 1;
+  repeated int32 gpu_device_ids = 2;
+  int32 cpu_workers = 3;
+  int32 memory_mb = 4;
+}
+
+message Register {
+  string request_id = 1;
+  string executor_id = 2;
+  string version = 3;
+  repeated PluginCapability plugins = 4;
+  ResourceSummary resources = 5;
+}
+
+message Heartbeat {
+  string request_id = 1;
+  string executor_id = 2;
+  bool busy = 3;
+  string current_job_id = 4;
+  ResourceSummary resources = 5;
+}
+
+message JobPayload {
+  string job_id = 1;
+  string project_id = 2;
+  string loop_id = 3;
+  string source_commit_id = 4;
+  string job_type = 5;
+  string plugin_id = 6;
+  string mode = 7;
+  string query_strategy = 8;
+  string params_json = 9;
+  string resources_json = 10;
+}
+
+message AssignJob {
+  string request_id = 1;
+  JobPayload job = 2;
+}
+
+message StopJob {
+  string request_id = 1;
+  string job_id = 2;
+  string reason = 3;
+}
+
+message JobEvent {
+  string request_id = 1;
+  string job_id = 2;
+  int64 seq = 3;
+  int64 ts = 4;
+  string event_type = 5;
+  string payload_json = 6;
+}
+
+message QueryCandidate {
+  string sample_id = 1;
+  double score = 2;
+  string reason_json = 3;
+}
+
+message JobResult {
+  string request_id = 1;
+  string job_id = 2;
+  string status = 3;
+  string metrics_json = 4;
+  string artifacts_json = 5;
+  repeated QueryCandidate candidates = 6;
+  string error_message = 7;
+}
+
+message DataRequest {
+  string request_id = 1;
+  string job_id = 2;
+  string query_type = 3;
+  string project_id = 4;
+  string commit_id = 5;
+  string cursor = 6;
+  int32 limit = 7;
+}
+
+message DataResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string job_id = 3;
+  string query_type = 4;
+  string items_json = 5;
+  string next_cursor = 6;
+}
+
+message UploadTicketRequest {
+  string request_id = 1;
+  string job_id = 2;
+  string artifact_name = 3;
+  string content_type = 4;
+}
+
+message UploadTicketResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string job_id = 3;
+  string upload_url = 4;
+  string storage_uri = 5;
+  string headers_json = 6;
+}
+
+message Ack {
+  string request_id = 1;
+  string ack_for = 2;
+  string status = 3;
+  string message = 4;
+}
+
+message Error {
+  string request_id = 1;
+  string code = 2;
+  string message = 3;
+  string details_json = 4;
+}
+
+message RuntimeMessage {
+  oneof payload {
+    Register register = 1;
+    Heartbeat heartbeat = 2;
+    AssignJob assign_job = 3;
+    StopJob stop_job = 4;
+    JobEvent job_event = 5;
+    JobResult job_result = 6;
+    DataRequest data_request = 7;
+    DataResponse data_response = 8;
+    UploadTicketRequest upload_ticket_request = 9;
+    UploadTicketResponse upload_ticket_response = 10;
+    Ack ack = 11;
+    Error error = 12;
+  }
+}

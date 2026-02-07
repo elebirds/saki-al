@@ -5,6 +5,7 @@ import {
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
+    ALLoop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -22,6 +23,14 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
+    RuntimeArtifactsResponse,
+    RuntimeJob,
+    RuntimeJobCommandResponse,
+    RuntimeJobCreateRequest,
+    RuntimeJobEvent,
+    RuntimeMetricPoint,
+    RuntimeTopKCandidate,
+    LoopCreateRequest,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
@@ -164,6 +173,26 @@ export interface ApiService {
     getProjectDatasets(projectId: string): Promise<string[]>;
 
     getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
+
+    getProjectLoops(projectId: string): Promise<ALLoop[]>;
+
+    createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop>;
+
+    getLoopJobs(loopId: string, limit?: number): Promise<RuntimeJob[]>;
+
+    createLoopJob(loopId: string, payload: RuntimeJobCreateRequest, autoDispatch?: boolean): Promise<RuntimeJob>;
+
+    stopJob(jobId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
+
+    getJob(jobId: string): Promise<RuntimeJob>;
+
+    getJobEvents(jobId: string, afterSeq?: number): Promise<RuntimeJobEvent[]>;
+
+    getJobMetricSeries(jobId: string, limit?: number): Promise<RuntimeMetricPoint[]>;
+
+    getJobSamplingTopK(jobId: string, limit?: number): Promise<RuntimeTopKCandidate[]>;
+
+    getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse>;
 
     createProjectBranch(
         projectId: string,

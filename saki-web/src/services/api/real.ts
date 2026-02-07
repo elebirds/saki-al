@@ -6,6 +6,7 @@ import {
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
+    ALLoop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -23,6 +24,14 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
+    RuntimeArtifactsResponse,
+    RuntimeJob,
+    RuntimeJobCommandResponse,
+    RuntimeJobCreateRequest,
+    RuntimeJobEvent,
+    RuntimeMetricPoint,
+    RuntimeTopKCandidate,
+    LoopCreateRequest,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
@@ -642,6 +651,68 @@ export class RealApiService implements ApiService {
 
     async getProjectBranches(projectId: string): Promise<ProjectBranch[]> {
         const response = await this.client.get<ProjectBranch[]>(`/branches/projects/${projectId}/branches`);
+        return response.data;
+    }
+
+    async getProjectLoops(projectId: string): Promise<ALLoop[]> {
+        const response = await this.client.get<ALLoop[]>(`/projects/${projectId}/loops`);
+        return response.data;
+    }
+
+    async createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/projects/${projectId}/loops`, payload);
+        return response.data;
+    }
+
+    async getLoopJobs(loopId: string, limit: number = 50): Promise<RuntimeJob[]> {
+        const response = await this.client.get<RuntimeJob[]>(`/loops/${loopId}/jobs`, {params: {limit}});
+        return response.data;
+    }
+
+    async createLoopJob(
+        loopId: string,
+        payload: RuntimeJobCreateRequest,
+        autoDispatch: boolean = true
+    ): Promise<RuntimeJob> {
+        const response = await this.client.post<RuntimeJob>(
+            `/loops/${loopId}/jobs`,
+            payload,
+            {
+                params: {
+                    auto_dispatch: autoDispatch,
+                },
+            }
+        );
+        return response.data;
+    }
+
+    async stopJob(jobId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
+        const response = await this.client.post<RuntimeJobCommandResponse>(`/jobs/${jobId}:stop`, null, {params: {reason}});
+        return response.data;
+    }
+
+    async getJob(jobId: string): Promise<RuntimeJob> {
+        const response = await this.client.get<RuntimeJob>(`/jobs/${jobId}`);
+        return response.data;
+    }
+
+    async getJobEvents(jobId: string, afterSeq: number = 0): Promise<RuntimeJobEvent[]> {
+        const response = await this.client.get<RuntimeJobEvent[]>(`/jobs/${jobId}/events`, {params: {after_seq: afterSeq}});
+        return response.data;
+    }
+
+    async getJobMetricSeries(jobId: string, limit: number = 5000): Promise<RuntimeMetricPoint[]> {
+        const response = await this.client.get<RuntimeMetricPoint[]>(`/jobs/${jobId}/metrics/series`, {params: {limit}});
+        return response.data;
+    }
+
+    async getJobSamplingTopK(jobId: string, limit: number = 200): Promise<RuntimeTopKCandidate[]> {
+        const response = await this.client.get<RuntimeTopKCandidate[]>(`/jobs/${jobId}/sampling/topk`, {params: {limit}});
+        return response.data;
+    }
+
+    async getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse> {
+        const response = await this.client.get<RuntimeArtifactsResponse>(`/jobs/${jobId}/artifacts`);
         return response.data;
     }
 

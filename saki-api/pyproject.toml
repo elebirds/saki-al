@@ -29,6 +29,7 @@ dependencies = [
     "greenlet>=3.2.4",
     "pandas-stubs>=2.2.2.240807",
     "redis>=7.0.0",
+    "grpcio>=1.62.0",
 ]
 
 [build-system]

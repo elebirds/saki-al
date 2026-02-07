@@ -47,6 +47,28 @@ class Settings(BaseSettings):
                 return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
 
+    @field_validator("RUNTIME_EXECUTOR_ALLOWLIST", mode="before")
+    @classmethod
+    def parse_runtime_allowlist(cls, v: str | list[str] | None) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [item.strip() for item in v if item and item.strip()]
+        if isinstance(v, str):
+            stripped = v.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("[") and stripped.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except Exception:
+                    pass
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return []
+
     # MinIO Object Storage Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
@@ -58,6 +80,16 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_KEY_PREFIX: str = "saki"
     REDIS_WORKING_TTL_SECONDS: int = 86400  # 24 hours
+
+    # Runtime control plane
+    INTERNAL_TOKEN: str = "dev-secret"
+    RUNTIME_GRPC_BIND: str = "0.0.0.0:50051"
+    RUNTIME_HEARTBEAT_TIMEOUT_SEC: int = 30
+    RUNTIME_DISPATCH_INTERVAL_SEC: int = 3
+    RUNTIME_UPLOAD_URL_EXPIRE_HOURS: int = 2
+    RUNTIME_MAX_RETRY_COUNT: int = 2
+    RUNTIME_RETRY_BASE_DELAY_SEC: int = 10
+    RUNTIME_EXECUTOR_ALLOWLIST: List[str] = []
 
     # FEDO LUT local cache
     LUT_CACHE_DIR: str = "./data/lut_cache"

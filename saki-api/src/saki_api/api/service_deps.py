@@ -255,3 +255,18 @@ def get_annotation_sync_service(
 
 
 AnnotationSyncServiceDep = Annotated[AnnotationSyncService, Depends(get_annotation_sync_service)]
+
+# ============================================================================
+# Job Service Dependencies (L3 Layer)
+# ============================================================================
+
+from saki_api.services.job import JobService
+
+
+def get_job_service(
+        session: AsyncSession = Depends(get_session),
+) -> JobService:
+    return JobService(session=session)
+
+
+JobServiceDep = Annotated[JobService, Depends(get_job_service)]

@@ -14,6 +14,7 @@ from saki_api.core.exceptions import (
     general_exception_handler
 )
 from saki_api.db.session import init_db, dispose_engine
+from saki_api.grpc.runtime_control import runtime_grpc_server
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
 
 
@@ -40,10 +41,12 @@ async def lifespan(app: FastAPI):
     setup_logging()
     await init_db()
     AnnotationSystemFactory.discover_all()  # 初始化annotation handlers
+    await runtime_grpc_server.start()
 
     yield
 
     # Shutdown: 优雅关闭连接池
+    await runtime_grpc_server.stop()
     await dispose_engine()
 
 

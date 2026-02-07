@@ -27,6 +27,25 @@ _TEXT_TO_STATUS.update(
     }
 )
 
+_JOB_TYPE_TO_TEXT: dict[int, str] = {
+    pb.TRAIN_DETECTION: "train_detection",
+}
+_TEXT_TO_JOB_TYPE: dict[str, int] = {value: key for key, value in _JOB_TYPE_TO_TEXT.items()}
+
+_JOB_MODE_TO_TEXT: dict[int, str] = {
+    pb.ACTIVE_LEARNING: "active_learning",
+    pb.SIMULATION: "simulation",
+}
+_TEXT_TO_JOB_MODE: dict[str, int] = {value: key for key, value in _JOB_MODE_TO_TEXT.items()}
+
+_QUERY_TYPE_TO_TEXT: dict[int, str] = {
+    pb.LABELS: "labels",
+    pb.SAMPLES: "samples",
+    pb.ANNOTATIONS: "annotations",
+    pb.UNLABELED_SAMPLES: "unlabeled_samples",
+}
+_TEXT_TO_QUERY_TYPE: dict[str, int] = {value: key for key, value in _QUERY_TYPE_TO_TEXT.items()}
+
 
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
     struct = Struct()
@@ -72,6 +91,30 @@ def _ack_text_to_enum(status: str | None) -> int:
 
 def _ack_enum_to_text(status: int) -> str:
     return "ok" if status == pb.OK else "error"
+
+
+def _text_to_job_type(job_type: str | None) -> int:
+    return _TEXT_TO_JOB_TYPE.get((job_type or "").lower(), pb.TRAIN_DETECTION)
+
+
+def _job_type_to_text(job_type: int) -> str:
+    return _JOB_TYPE_TO_TEXT.get(int(job_type), "train_detection")
+
+
+def _text_to_job_mode(mode: str | None) -> int:
+    return _TEXT_TO_JOB_MODE.get((mode or "").lower(), pb.ACTIVE_LEARNING)
+
+
+def _job_mode_to_text(mode: int) -> str:
+    return _JOB_MODE_TO_TEXT.get(int(mode), "active_learning")
+
+
+def _text_to_query_type(query_type: str | None) -> int:
+    return _TEXT_TO_QUERY_TYPE.get((query_type or "").lower(), pb.LABELS)
+
+
+def _query_type_to_text(query_type: int) -> str:
+    return _QUERY_TYPE_TO_TEXT.get(int(query_type), "labels")
 
 
 def dict_to_runtime_message(message: dict[str, Any]) -> pb.RuntimeMessage:
@@ -197,7 +240,7 @@ def dict_to_runtime_message(message: dict[str, Any]) -> pb.RuntimeMessage:
             data_request=pb.DataRequest(
                 request_id=str(message.get("request_id") or ""),
                 job_id=str(message.get("job_id") or ""),
-                query_type=str(message.get("query_type") or ""),
+                query_type=_text_to_query_type(str(message.get("query_type") or "")),
                 project_id=str(message.get("project_id") or ""),
                 commit_id=str(message.get("commit_id") or ""),
                 cursor=str(message.get("cursor") or ""),
@@ -252,9 +295,9 @@ def runtime_message_to_dict(message: pb.RuntimeMessage) -> dict[str, Any]:
                 "project_id": job.project_id,
                 "loop_id": job.loop_id,
                 "source_commit_id": job.source_commit_id,
-                "job_type": job.job_type,
+                "job_type": _job_type_to_text(job.job_type),
                 "plugin_id": job.plugin_id,
-                "mode": job.mode,
+                "mode": _job_mode_to_text(job.mode),
                 "query_strategy": job.query_strategy,
                 "params": struct_to_dict(job.params),
                 "resources": _resource_summary_to_dict(job.resources),
@@ -315,7 +358,7 @@ def runtime_message_to_dict(message: pb.RuntimeMessage) -> dict[str, Any]:
             "request_id": payload.request_id,
             "reply_to": payload.reply_to,
             "job_id": payload.job_id,
-            "query_type": payload.query_type,
+            "query_type": _query_type_to_text(payload.query_type),
             "items": items,
             "next_cursor": payload.next_cursor or None,
         }
@@ -365,4 +408,3 @@ def runtime_message_to_dict(message: pb.RuntimeMessage) -> dict[str, Any]:
         }
 
     raise ValueError(f"unsupported incoming runtime payload: {payload_type}")
-

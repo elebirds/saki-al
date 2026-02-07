@@ -166,7 +166,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 details={
                                     "reply_to": request.request_id,
                                     "job_id": request.job_id,
-                                    "query_type": request.query_type,
+                                    "query_type": runtime_codec.query_type_to_text(request.query_type),
                                 },
                             )
                         await outbox.put(response)
@@ -379,7 +379,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             await session.commit()
 
     async def _build_data_response(self, message: pb.DataRequest) -> pb.RuntimeMessage:
-        query_type = str(message.query_type or "")
+        query_type = runtime_codec.query_type_to_text(message.query_type)
         request_id = str(uuid.uuid4())
         limit = max(1, min(5000, int(message.limit or 1000)))
         offset = _parse_cursor(message.cursor or "")
@@ -529,7 +529,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 request_id=request_id,
                 reply_to=message.request_id,
                 job_id=message.job_id,
-                query_type=query_type,
+                query_type=runtime_codec.text_to_query_type(query_type),
                 items=items,
                 next_cursor=next_cursor or "",
             )
@@ -589,4 +589,3 @@ class RuntimeGrpcServer:
 
 
 runtime_grpc_server = RuntimeGrpcServer()
-

@@ -26,9 +26,9 @@ def test_decode_assign_job_payload():
                 project_id="project1",
                 loop_id="loop1",
                 source_commit_id="commit1",
-                job_type="train_detection",
+                job_type=pb.TRAIN_DETECTION,
                 plugin_id="demo_det_v1",
-                mode="active_learning",
+                mode=pb.ACTIVE_LEARNING,
                 query_strategy="uncertainty_1_minus_max_conf",
                 params=codec.dict_to_struct({"epochs": 5}),
                 resources=pb.ResourceSummary(gpu_count=1, gpu_device_ids=[0], cpu_workers=4, memory_mb=0),
@@ -39,4 +39,20 @@ def test_decode_assign_job_payload():
     assert decoded["type"] == "assign_job"
     assert decoded["job"]["job_id"] == "job1"
     assert decoded["job"]["params"]["epochs"] == 5
+    assert decoded["job"]["job_type"] == "train_detection"
+    assert decoded["job"]["mode"] == "active_learning"
 
+
+def test_data_request_query_type_mapping():
+    message = {
+        "type": "data_request",
+        "request_id": "r1",
+        "job_id": "job1",
+        "query_type": "annotations",
+        "project_id": "project1",
+        "commit_id": "commit1",
+        "cursor": "",
+        "limit": 100,
+    }
+    pb_message = codec.dict_to_runtime_message(message)
+    assert pb_message.data_request.query_type == pb.ANNOTATIONS

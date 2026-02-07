@@ -25,6 +25,25 @@ enum AckStatus {
   ERROR = 2;
 }
 
+enum RuntimeJobType {
+  RUNTIME_JOB_TYPE_UNSPECIFIED = 0;
+  TRAIN_DETECTION = 1;
+}
+
+enum RuntimeJobMode {
+  RUNTIME_JOB_MODE_UNSPECIFIED = 0;
+  ACTIVE_LEARNING = 1;
+  SIMULATION = 2;
+}
+
+enum RuntimeQueryType {
+  RUNTIME_QUERY_TYPE_UNSPECIFIED = 0;
+  LABELS = 1;
+  SAMPLES = 2;
+  ANNOTATIONS = 3;
+  UNLABELED_SAMPLES = 4;
+}
+
 message PluginCapability {
   string plugin_id = 1;
   string version = 2;
@@ -60,9 +79,9 @@ message JobPayload {
   string project_id = 2;
   string loop_id = 3;
   string source_commit_id = 4;
-  string job_type = 5;
+  RuntimeJobType job_type = 5;
   string plugin_id = 6;
-  string mode = 7;
+  RuntimeJobMode mode = 7;
   string query_strategy = 8;
   google.protobuf.Struct params = 9;
   ResourceSummary resources = 10;
@@ -146,7 +165,7 @@ message JobResult {
 message DataRequest {
   string request_id = 1;
   string job_id = 2;
-  string query_type = 3;
+  RuntimeQueryType query_type = 3;
   string project_id = 4;
   string commit_id = 5;
   string cursor = 6;
@@ -190,7 +209,7 @@ message DataResponse {
   string request_id = 1;
   string reply_to = 2;
   string job_id = 3;
-  string query_type = 4;
+  RuntimeQueryType query_type = 4;
   repeated DataItem items = 5;
   string next_cursor = 6;
 }

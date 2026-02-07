@@ -29,6 +29,25 @@ _TEXT_TO_STATUS.update(
     }
 )
 
+_JOB_TYPE_TO_TEXT: dict[int, str] = {
+    pb.TRAIN_DETECTION: "train_detection",
+}
+_TEXT_TO_JOB_TYPE: dict[str, int] = {value: key for key, value in _JOB_TYPE_TO_TEXT.items()}
+
+_JOB_MODE_TO_TEXT: dict[int, str] = {
+    pb.ACTIVE_LEARNING: "active_learning",
+    pb.SIMULATION: "simulation",
+}
+_TEXT_TO_JOB_MODE: dict[str, int] = {value: key for key, value in _JOB_MODE_TO_TEXT.items()}
+
+_QUERY_TYPE_TO_TEXT: dict[int, str] = {
+    pb.LABELS: "labels",
+    pb.SAMPLES: "samples",
+    pb.ANNOTATIONS: "annotations",
+    pb.UNLABELED_SAMPLES: "unlabeled_samples",
+}
+_TEXT_TO_QUERY_TYPE: dict[str, int] = {value: key for key, value in _QUERY_TYPE_TO_TEXT.items()}
+
 
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
     struct = Struct()
@@ -59,6 +78,30 @@ def ack_status_to_text(status: int) -> str:
 
 def text_to_ack_status(status: str | None) -> int:
     return pb.OK if (status or "").lower() == "ok" else pb.ERROR
+
+
+def job_type_to_text(job_type: int) -> str:
+    return _JOB_TYPE_TO_TEXT.get(int(job_type), "train_detection")
+
+
+def text_to_job_type(job_type: str | None) -> int:
+    return _TEXT_TO_JOB_TYPE.get((job_type or "").lower(), pb.TRAIN_DETECTION)
+
+
+def job_mode_to_text(mode: int) -> str:
+    return _JOB_MODE_TO_TEXT.get(int(mode), "active_learning")
+
+
+def text_to_job_mode(mode: str | None) -> int:
+    return _TEXT_TO_JOB_MODE.get((mode or "").lower(), pb.ACTIVE_LEARNING)
+
+
+def query_type_to_text(query_type: int) -> str:
+    return _QUERY_TYPE_TO_TEXT.get(int(query_type), "labels")
+
+
+def text_to_query_type(query_type: str | None) -> int:
+    return _TEXT_TO_QUERY_TYPE.get((query_type or "").lower(), pb.LABELS)
 
 
 def resource_summary_to_dict(resources: pb.ResourceSummary) -> dict[str, Any]:
@@ -155,4 +198,3 @@ def decode_job_event(event: pb.JobEvent) -> tuple[str, dict[str, Any], int | Non
         return "artifact", payload, None
 
     return "log", {"level": "WARN", "message": "unknown event payload"}, None
-

@@ -22,3 +22,13 @@ def test_decode_status_event():
     assert payload["reason"] == "ok"
     assert status_enum == pb.RUNNING
 
+
+def test_query_job_mode_type_mapping():
+    assert runtime_codec.text_to_query_type("labels") == pb.LABELS
+    assert runtime_codec.query_type_to_text(pb.UNLABELED_SAMPLES) == "unlabeled_samples"
+
+    assert runtime_codec.text_to_job_type("train_detection") == pb.TRAIN_DETECTION
+    assert runtime_codec.job_type_to_text(pb.TRAIN_DETECTION) == "train_detection"
+
+    assert runtime_codec.text_to_job_mode("active_learning") == pb.ACTIVE_LEARNING
+    assert runtime_codec.job_mode_to_text(pb.SIMULATION) == "simulation"

@@ -317,9 +317,9 @@ class RuntimeDispatcher:
                             project_id=str(job.project_id),
                             loop_id=str(job.loop_id),
                             source_commit_id=str(job.source_commit_id),
-                            job_type=job.job_type or "",
+                            job_type=runtime_codec.text_to_job_type(job.job_type),
                             plugin_id=job.plugin_id or "",
-                            mode=job.mode or "",
+                            mode=runtime_codec.text_to_job_mode(job.mode),
                             query_strategy=job.query_strategy or "",
                             params=runtime_codec.dict_to_struct(job.params or {}),
                             resources=runtime_codec.dict_to_resource_summary(job.resources or {}),
@@ -488,4 +488,3 @@ class RuntimeDispatcher:
 
 
 runtime_dispatcher = RuntimeDispatcher()
-

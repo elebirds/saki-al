@@ -314,3 +314,33 @@ async def test_unregister_clears_pending_assign_records(dispatcher_env):
 
     await dispatcher.unregister("executor-unregister-1")
     assert assigned.request_id not in dispatcher._pending_assign  # noqa: SLF001
+
+
+@pytest.mark.anyio
+async def test_metrics_snapshot_and_executor_pending_snapshot(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+    queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    job = await _create_pending_job(session_local)
+
+    await dispatcher.register(
+        executor_id="executor-metric-1",
+        queue=queue,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={"gpu_count": 1, "memory_mb": 32000},
+    )
+    assigned = await dispatcher.assign_job(job)
+    assert assigned is not None
+
+    snapshot = await dispatcher.metrics_snapshot()
+    assert snapshot["session_online_count"] == 1
+    assert snapshot["pending_assign_count"] == 1
+    assert snapshot["pending_stop_count"] == 0
+    assert snapshot["latest_session_heartbeat_at"] is not None
+
+    pending = await dispatcher.executor_pending_snapshot(
+        executor_id="executor-metric-1",
+        current_job_id=str(job.id),
+    )
+    assert pending["pending_assign_count"] == 1
+    assert pending["pending_stop_count"] == 0

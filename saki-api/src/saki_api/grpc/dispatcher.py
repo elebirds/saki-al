@@ -55,6 +55,43 @@ class RuntimeDispatcher:
         self._lock = asyncio.Lock()
         self._dispatch_lock = asyncio.Lock()
 
+    async def metrics_snapshot(self) -> dict[str, Any]:
+        async with self._lock:
+            sessions = list(self._sessions.values())
+            pending_assign_items = list(self._pending_assign.values())
+            pending_stop_items = list(self._pending_stop.values())
+
+        latest_seen: datetime | None = None
+        for session in sessions:
+            if latest_seen is None or session.last_seen > latest_seen:
+                latest_seen = session.last_seen
+
+        return {
+            "session_online_count": len(sessions),
+            "session_busy_count": sum(1 for session in sessions if session.busy),
+            "pending_assign_count": len(pending_assign_items),
+            "pending_stop_count": len(pending_stop_items),
+            "latest_session_heartbeat_at": latest_seen,
+        }
+
+    async def executor_pending_snapshot(self, executor_id: str, current_job_id: str | None = None) -> dict[str, int]:
+        async with self._lock:
+            pending_assign_count = sum(
+                1
+                for pending in self._pending_assign.values()
+                if pending.executor_id == executor_id
+            )
+            pending_stop_count = 0
+            if current_job_id:
+                pending_stop_count = sum(
+                    1 for pending_job_id in self._pending_stop.values() if pending_job_id == current_job_id
+                )
+
+        return {
+            "pending_assign_count": pending_assign_count,
+            "pending_stop_count": pending_stop_count,
+        }
+
     def _clear_pending_for_executor(self, executor_id: str, job_ids: set[str] | None = None) -> None:
         pending_assign_ids = [
             request_id

@@ -45,6 +45,16 @@ def _parse_cursor(cursor: str | None) -> int:
         return 0
 
 
+def _parse_uuid(raw: str | None, field_name: str) -> uuid.UUID:
+    value = str(raw or "").strip()
+    if not value:
+        raise ValueError(f"{field_name} is required")
+    try:
+        return uuid.UUID(value)
+    except Exception as exc:
+        raise ValueError(f"invalid {field_name}: {value}") from exc
+
+
 def _map_status(status: int | str) -> TrainingJobStatus:
     if isinstance(status, str):
         status = runtime_codec.text_to_status(status)
@@ -194,6 +204,18 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         request = message.data_request
                         try:
                             response = await self._build_data_response(request)
+                        except ValueError as exc:
+                            response = runtime_codec.build_error_message(
+                                code="INVALID_ARGUMENT",
+                                message=str(exc),
+                                details=self._error_details(
+                                    reason=str(exc),
+                                    request_id=request.request_id,
+                                    reply_to=request.request_id,
+                                    job_id=request.job_id,
+                                    query_type=runtime_codec.query_type_to_text(request.query_type),
+                                ),
+                            )
                         except Exception as exc:
                             response = runtime_codec.build_error_message(
                                 code="INTERNAL",
@@ -213,6 +235,17 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         request = message.upload_ticket_request
                         try:
                             response = await self._build_upload_ticket_response(request)
+                        except ValueError as exc:
+                            response = runtime_codec.build_error_message(
+                                code="INVALID_ARGUMENT",
+                                message=str(exc),
+                                details=self._error_details(
+                                    reason=str(exc),
+                                    request_id=request.request_id,
+                                    reply_to=request.request_id,
+                                    job_id=request.job_id,
+                                ),
+                            )
                         except Exception as exc:
                             response = runtime_codec.build_error_message(
                                 code="INTERNAL",
@@ -421,6 +454,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             await session.commit()
 
     async def _build_data_response(self, message: pb.DataRequest) -> pb.RuntimeMessage:
+        valid_query_types = {pb.LABELS, pb.SAMPLES, pb.ANNOTATIONS, pb.UNLABELED_SAMPLES}
+        if int(message.query_type) not in valid_query_types:
+            raise ValueError(f"invalid query_type: {int(message.query_type)}")
         query_type = runtime_codec.query_type_to_text(message.query_type)
         request_id = str(uuid.uuid4())
         limit = max(1, min(5000, int(message.limit or 1000)))
@@ -431,7 +467,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
 
         async with SessionLocal() as session:
             if query_type == "labels":
-                project_id = uuid.UUID(str(message.project_id))
+                project_id = _parse_uuid(message.project_id, "project_id")
                 stmt = (
                     select(Label)
                     .where(Label.project_id == project_id)
@@ -456,45 +492,58 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                     )
 
             elif query_type in {"samples", "unlabeled_samples"}:
-                project_id = uuid.UUID(str(message.project_id))
-                commit_id = uuid.UUID(str(message.commit_id))
+                project_id = _parse_uuid(message.project_id, "project_id")
+                commit_id = _parse_uuid(message.commit_id, "commit_id") if query_type == "unlabeled_samples" else None
 
                 ds_stmt = select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
                 dataset_ids = [row[0] for row in (await session.exec(ds_stmt)).all()]
+                if not dataset_ids:
+                    return pb.RuntimeMessage(
+                        data_response=pb.DataResponse(
+                            request_id=request_id,
+                            reply_to=message.request_id,
+                            job_id=message.job_id,
+                            query_type=runtime_codec.text_to_query_type(query_type),
+                            items=[],
+                            next_cursor="",
+                        )
+                    )
 
-                all_samples_stmt = (
-                    select(Sample)
+                sample_stmt = (
+                    select(Sample, Asset)
+                    .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
                     .where(Sample.dataset_id.in_(dataset_ids))
                     .order_by(Sample.id)
+                    .offset(offset)
+                    .limit(limit + 1)
                 )
-                sample_rows = list((await session.exec(all_samples_stmt)).all())
-
                 if query_type == "unlabeled_samples":
-                    ann_stmt = select(CommitAnnotationMap.sample_id).where(CommitAnnotationMap.commit_id == commit_id)
-                    annotated_ids = {row[0] for row in (await session.exec(ann_stmt)).all()}
-                    sample_rows = [item for item in sample_rows if item.id not in annotated_ids]
+                    assert commit_id is not None
+                    annotated_subquery = select(CommitAnnotationMap.sample_id).where(
+                        CommitAnnotationMap.commit_id == commit_id
+                    )
+                    sample_stmt = sample_stmt.where(Sample.id.not_in(annotated_subquery))
 
-                page = sample_rows[offset: offset + limit + 1]
+                rows = list((await session.exec(sample_stmt)).all())
+                page = rows
                 if len(page) > limit:
                     page = page[:limit]
                     next_cursor = str(offset + limit)
 
-                for sample in page:
+                for sample, asset in page:
                     asset_hash = ""
                     download_url = ""
                     width = 0
                     height = 0
-                    if sample.primary_asset_id:
-                        asset = await session.get(Asset, sample.primary_asset_id)
-                        if asset:
-                            asset_hash = asset.hash or ""
-                            meta = asset.meta_info or {}
-                            width = int(meta.get("width") or 0)
-                            height = int(meta.get("height") or 0)
-                            try:
-                                download_url = self.storage.get_presigned_url(asset.path)
-                            except Exception:
-                                download_url = ""
+                    if asset:
+                        asset_hash = asset.hash or ""
+                        meta = asset.meta_info or {}
+                        width = int(meta.get("width") or 0)
+                        height = int(meta.get("height") or 0)
+                        try:
+                            download_url = self.storage.get_presigned_url(asset.path)
+                        except Exception:
+                            download_url = ""
 
                     if not download_url:
                         continue
@@ -513,7 +562,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                     )
 
             elif query_type == "annotations":
-                commit_id = uuid.UUID(str(message.commit_id))
+                commit_id = _parse_uuid(message.commit_id, "commit_id")
                 mapping_stmt = (
                     select(CommitAnnotationMap)
                     .where(CommitAnnotationMap.commit_id == commit_id)
@@ -580,6 +629,8 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
     async def _build_upload_ticket_response(self, message: pb.UploadTicketRequest) -> pb.RuntimeMessage:
         request_id = str(uuid.uuid4())
         job_id = str(message.job_id or "")
+        if not job_id:
+            raise ValueError("job_id is required")
         artifact_name = str(message.artifact_name or "artifact.bin")
         object_name = f"runtime/jobs/{job_id}/{artifact_name}"
         upload_url = self.storage.get_presigned_put_url(

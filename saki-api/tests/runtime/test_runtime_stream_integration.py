@@ -387,3 +387,123 @@ async def test_runtime_stream_missing_executor_id_returns_structured_error():
         await client.close()
     finally:
         await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_data_request_invalid_query_type_returns_invalid_argument(monkeypatch):
+    service = RuntimeControlService()
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-invalid-query-1",
+                    executor_id="executor-invalid-query-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        await client.send(
+            pb.RuntimeMessage(
+                data_request=pb.DataRequest(
+                    request_id="bad-query-1",
+                    job_id="job-1",
+                    query_type=pb.RUNTIME_QUERY_TYPE_UNSPECIFIED,
+                    project_id="project-1",
+                    commit_id="commit-1",
+                    limit=10,
+                )
+            )
+        )
+        response = await client.recv()
+        assert response.WhichOneof("payload") == "error"
+        assert response.error.code == "INVALID_ARGUMENT"
+        assert "invalid query_type" in response.error.message
+        await client.close()
+    finally:
+        await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_data_request_invalid_uuid_returns_invalid_argument(monkeypatch):
+    service = RuntimeControlService()
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-invalid-uuid-1",
+                    executor_id="executor-invalid-uuid-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        await client.send(
+            pb.RuntimeMessage(
+                data_request=pb.DataRequest(
+                    request_id="bad-uuid-1",
+                    job_id="job-1",
+                    query_type=pb.LABELS,
+                    project_id="not-a-uuid",
+                    commit_id="",
+                    limit=10,
+                )
+            )
+        )
+        response = await client.recv()
+        assert response.WhichOneof("payload") == "error"
+        assert response.error.code == "INVALID_ARGUMENT"
+        assert "invalid project_id" in response.error.message
+        await client.close()
+    finally:
+        await server.stop(grace=0)

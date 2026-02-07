@@ -795,6 +795,8 @@ class RuntimeGrpcServer:
                 logger.exception("Runtime watchdog loop failed")
 
     async def start(self) -> None:
+        recovery = await runtime_dispatcher.recover_after_api_restart()
+        logger.info("Runtime dispatcher recovery summary: %s", recovery)
         self._server.add_insecure_port(settings.RUNTIME_GRPC_BIND)
         await self._server.start()
         self._watchdog_task = asyncio.create_task(self._watchdog_loop())

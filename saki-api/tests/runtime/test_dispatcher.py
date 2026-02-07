@@ -58,6 +58,35 @@ async def _create_pending_job(session_local: async_sessionmaker[AsyncSession], *
     return job
 
 
+async def _create_job(
+        session_local: async_sessionmaker[AsyncSession],
+        *,
+        status: TrainingJobStatus = TrainingJobStatus.PENDING,
+        plugin_id: str = "demo_det_v1",
+        iteration: int = 1,
+        assigned_executor_id: str | None = None,
+) -> Job:
+    job = Job(
+        project_id=uuid.uuid4(),
+        loop_id=uuid.uuid4(),
+        iteration=iteration,
+        status=status,
+        job_type="train_detection",
+        plugin_id=plugin_id,
+        mode="active_learning",
+        query_strategy="uncertainty_1_minus_max_conf",
+        params={},
+        resources={"gpu_count": 1, "memory_mb": 0},
+        source_commit_id=uuid.uuid4(),
+        assigned_executor_id=assigned_executor_id,
+    )
+    async with session_local() as session:
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+    return job
+
+
 @pytest.mark.anyio
 async def test_assign_and_ack_success_updates_job_and_executor(dispatcher_env):
     dispatcher, session_local = dispatcher_env
@@ -78,6 +107,7 @@ async def test_assign_and_ack_success_updates_job_and_executor(dispatcher_env):
     assert message.WhichOneof("payload") == "assign_job"
     assert message.assign_job.job.job_id == str(job.id)
     assert message.assign_job.job.plugin_id == "demo_det_v1"
+    assert message.assign_job.job.iteration == 1
 
     await dispatcher.handle_ack(ack_for=assigned.request_id, status=pb.OK, message="accepted")
 
@@ -344,3 +374,81 @@ async def test_metrics_snapshot_and_executor_pending_snapshot(dispatcher_env):
     )
     assert pending["pending_assign_count"] == 1
     assert pending["pending_stop_count"] == 0
+
+
+@pytest.mark.anyio
+async def test_recover_after_api_restart_clears_stale_assignments_and_running_jobs(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+
+    pending_job = await _create_job(
+        session_local,
+        status=TrainingJobStatus.PENDING,
+        assigned_executor_id="executor-recover-1",
+        iteration=2,
+    )
+    running_job = await _create_job(
+        session_local,
+        status=TrainingJobStatus.RUNNING,
+        assigned_executor_id="executor-recover-2",
+        iteration=3,
+    )
+
+    async with session_local() as session:
+        session.add(
+            RuntimeExecutor(
+                executor_id="executor-recover-1",
+                version="0.1.0",
+                status="busy",
+                is_online=True,
+                current_job_id=str(pending_job.id),
+            )
+        )
+        session.add(
+            RuntimeExecutor(
+                executor_id="executor-recover-2",
+                version="0.1.0",
+                status="busy",
+                is_online=True,
+                current_job_id=str(running_job.id),
+            )
+        )
+        await session.commit()
+
+    summary = await dispatcher.recover_after_api_restart()
+    assert summary["reset_executors"] == 2
+    assert summary["recovered_pending_assignments"] == 1
+    assert summary["failed_running_jobs"] == 1
+    assert summary["created_retry_jobs"] == 1
+
+    async with session_local() as session:
+        persisted_pending = await session.get(Job, pending_job.id)
+        assert persisted_pending is not None
+        assert persisted_pending.status == TrainingJobStatus.PENDING
+        assert persisted_pending.assigned_executor_id is None
+        assert "api_restart_recover" in (persisted_pending.last_error or "")
+
+        persisted_running = await session.get(Job, running_job.id)
+        assert persisted_running is not None
+        assert persisted_running.status == TrainingJobStatus.FAILED
+        assert persisted_running.assigned_executor_id is None
+        assert persisted_running.ended_at is not None
+        assert "api restarted during running job" in (persisted_running.last_error or "")
+
+        retry_rows = await session.exec(
+            select(Job).where(
+                Job.loop_id == running_job.loop_id,
+                Job.status == TrainingJobStatus.PENDING,
+                Job.retry_count == running_job.retry_count + 1,
+            )
+        )
+        retry_jobs = list(retry_rows.all())
+        assert len(retry_jobs) == 1
+        assert retry_jobs[0].assigned_executor_id is None
+
+        executor_rows = await session.exec(select(RuntimeExecutor).order_by(RuntimeExecutor.executor_id.asc()))
+        executors = list(executor_rows.all())
+        assert len(executors) == 2
+        for executor in executors:
+            assert executor.is_online is False
+            assert executor.status == "offline"
+            assert executor.current_job_id is None

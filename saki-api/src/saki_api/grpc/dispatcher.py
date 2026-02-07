@@ -5,6 +5,7 @@ Runtime dispatcher for selecting executors and sending control messages.
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,8 @@ from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -189,6 +192,82 @@ class RuntimeDispatcher:
         except RuntimeError:
             return
         loop.create_task(self.dispatch_pending_jobs())
+
+    async def recover_after_api_restart(self) -> dict[str, int]:
+        """
+        Reconcile runtime state after API process restart.
+
+        - In-memory sessions/pending queues are reset.
+        - Persisted executors are marked offline.
+        - PENDING jobs with stale assignment are unassigned for redispatch.
+        - RUNNING assigned jobs are marked failed and optionally retried.
+        """
+        async with self._lock:
+            self._sessions.clear()
+            self._pending_assign.clear()
+            self._pending_stop.clear()
+
+        reset_executors = 0
+        recovered_pending_assignments = 0
+        failed_running_jobs = 0
+        created_retry_jobs = 0
+
+        async with SessionLocal() as session:
+            executor_rows = await session.exec(select(RuntimeExecutor))
+            for executor in executor_rows.all():
+                executor.is_online = False
+                executor.status = "offline"
+                executor.current_job_id = None
+                session.add(executor)
+                reset_executors += 1
+
+            pending_rows = await session.exec(
+                select(Job).where(
+                    Job.status == TrainingJobStatus.PENDING,
+                    Job.assigned_executor_id.is_not(None),
+                )
+            )
+            for job in pending_rows.all():
+                job.assigned_executor_id = None
+                job.last_error = "api_restart_recover: assignment cleared"
+                session.add(job)
+                recovered_pending_assignments += 1
+
+            running_rows = await session.exec(
+                select(Job).where(
+                    Job.status == TrainingJobStatus.RUNNING,
+                    Job.assigned_executor_id.is_not(None),
+                )
+            )
+            for job in running_rows.all():
+                job.status = TrainingJobStatus.FAILED
+                job.last_error = "runtime_lost: api restarted during running job"
+                job.ended_at = datetime.now(UTC)
+                job.assigned_executor_id = None
+                failed_running_jobs += 1
+                session.add(job)
+
+                retry_job = self._build_retry_job(
+                    failed_job=job,
+                    reason="runtime_lost: api restarted during running job",
+                )
+                if retry_job is not None:
+                    session.add(retry_job)
+                    created_retry_jobs += 1
+
+            await session.commit()
+
+        summary = {
+            "reset_executors": reset_executors,
+            "recovered_pending_assignments": recovered_pending_assignments,
+            "failed_running_jobs": failed_running_jobs,
+            "created_retry_jobs": created_retry_jobs,
+        }
+        logger.info(
+            "runtime restart recovery completed: %s",
+            summary,
+        )
+        return summary
 
     async def register(
             self,

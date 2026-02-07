@@ -185,6 +185,18 @@ class JobManager:
 
             train_samples = samples
             train_annotations = annotations
+            if mode == "active_learning":
+                labeled_sample_ids = {
+                    str(item.get("sample_id") or "")
+                    for item in annotations
+                    if item.get("sample_id")
+                }
+                if labeled_sample_ids:
+                    train_samples = [
+                        item for item in samples
+                        if str(item.get("id") or "") in labeled_sample_ids
+                    ]
+
             if mode == "simulation":
                 schedule = self._normalize_simulation_ratio_schedule(params.get("simulation_ratio_schedule"))
                 ratio = self._resolve_simulation_ratio(iteration=iteration, schedule=schedule)
@@ -208,7 +220,7 @@ class JobManager:
 
             # Content-addressed local cache to reduce re-download.
             protected: set[str] = set()
-            for item in samples:
+            for item in train_samples:
                 asset_hash = item.get("asset_hash")
                 download_url = item.get("download_url")
                 if not asset_hash or not download_url:

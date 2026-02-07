@@ -252,7 +252,7 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 2
     assert plugin.predict_calls == 1
-    assert plugin.prepare_samples_count == 4
+    assert plugin.prepare_samples_count == 2
     assert plugin.prepare_annotations_count == 2
 
 

@@ -37,6 +37,7 @@ export {
     useInitPermissions,
     useAnnotationPermission,
 } from './permission';
+export type {Scope as AccessScope} from '../types';
 
 // ============================================================================
 // System Hooks

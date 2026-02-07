@@ -4,6 +4,7 @@ export * from './access/user';
 export * from './permission';
 export * from './system';
 export * from './pagination';
+export * from './upload';
 
 
 export * from './l1/dataset';

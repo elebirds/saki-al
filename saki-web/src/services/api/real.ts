@@ -52,6 +52,7 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
+    UploadProgressEvent,
 } from '../../types';
 import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
@@ -1085,7 +1086,7 @@ export class RealApiService implements ApiService {
     async uploadSamplesWithProgress(
         datasetId: string,
         files: File[],
-        onProgress: (event: any) => void,
+        onProgress: (event: UploadProgressEvent) => void,
         signal?: AbortSignal
     ): Promise<void> {
         const formData = new FormData();

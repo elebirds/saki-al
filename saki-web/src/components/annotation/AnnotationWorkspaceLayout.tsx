@@ -9,7 +9,7 @@ import {Layout} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {EmptyState, LoadingState} from '../common';
 import {AnnotationSidebar, AnnotationToolbar, SampleList} from './index';
-import {Annotation, Label, Sample} from '../../types';
+import {Annotation, ProjectLabel, Sample} from '../../types';
 import {AccessScope, AnnotationLike, UseAnnotationStateReturn} from '../../hooks';
 
 const {Content, Sider} = Layout;
@@ -19,7 +19,7 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     loading: boolean;
     dataset: any | null;
     samples: Sample[];
-    labels: Label[];
+    labels: ProjectLabel[];
     currentIndex: number;
     currentSample: Sample | undefined;
 
@@ -53,6 +53,9 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     modifyScope?: AccessScope;
     canEditAnnotation?: (annotation: Annotation) => boolean;
     hasAnyEditPermission?: boolean;
+    onBack?: () => void;
+    backLabel?: string;
+    toolbarExtraActions?: ReactNode;
 }
 
 export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
@@ -81,6 +84,9 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                                                                         currentUserId,
                                                                         canEditAnnotation,
                                                                         hasAnyEditPermission = true,
+                                                                        onBack,
+                                                                        backLabel,
+                                                                        toolbarExtraActions,
                                                                     }: AnnotationWorkspaceLayoutProps<T>) {
     const {t} = useTranslation();
 
@@ -129,6 +135,9 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                         isSyncing,
                         isSyncReady,
                     }}
+                    onBack={onBack}
+                    backLabel={backLabel}
+                    extraActions={toolbarExtraActions}
                     hasAnyEditPermission={hasAnyEditPermission}
                 />
 
@@ -167,4 +176,3 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
         </Layout>
     );
 }
-

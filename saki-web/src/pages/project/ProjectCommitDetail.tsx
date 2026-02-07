@@ -191,7 +191,7 @@ const ProjectCommitDetail: React.FC = () => {
         }
     }
 
-    const updateTreeData = useCallback((list: CommitTreeNode[], key: string, updater: (node: CommitTreeNode) => CommitTreeNode) => {
+    const updateTreeData = useCallback((list: CommitTreeNode[], key: string, updater: (node: CommitTreeNode) => CommitTreeNode): CommitTreeNode[] => {
         return list.map((node) => {
             if (node.key === key) {
                 return updater(node)

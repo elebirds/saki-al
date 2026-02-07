@@ -382,8 +382,8 @@ export const usePermissionStore = create<PermissionState>()(
  */
 export function canModifyAnnotation(
     permission: string,
-    annotationCreatorId: string | undefined,
-    currentUserId: string | undefined
+    annotationCreatorId: string | null | undefined,
+    currentUserId: string | null | undefined
 ): boolean {
     const store = usePermissionStore.getState();
 

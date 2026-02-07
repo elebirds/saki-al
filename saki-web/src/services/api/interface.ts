@@ -51,6 +51,7 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
+    UploadProgressEvent,
 } from '../../types';
 
 
@@ -327,7 +328,7 @@ export interface ApiService {
     uploadSamplesWithProgress(
         datasetId: string,
         files: File[],
-        onProgress: (event: any) => void,
+        onProgress: (event: UploadProgressEvent) => void,
         signal?: AbortSignal
     ): Promise<void>;
 }

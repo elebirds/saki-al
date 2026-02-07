@@ -29,7 +29,8 @@ dependencies = [
     "greenlet>=3.2.4",
     "pandas-stubs>=2.2.2.240807",
     "redis>=7.0.0",
-    "grpcio>=1.62.0",
+    "grpcio>=1.78.0",
+    "protobuf>=6.31.1,<7",
 ]
 
 [build-system]
@@ -43,4 +44,5 @@ packages = ["src/saki_api"]
 dev = [
     "pytest>=7.0.0",
     "httpx>=0.24.0",
+    "grpcio-tools==1.78.*",
 ]

@@ -15,16 +15,28 @@ EXEC_OUT="$ROOT_DIR/saki-executor/src/saki_executor/grpc_gen"
 
 mkdir -p "$API_OUT" "$EXEC_OUT"
 
-uv run --with grpcio-tools python -m grpc_tools.protoc \
+uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
   --python_out="$API_OUT" \
   --grpc_python_out="$API_OUT" \
   "$PROTO_FILE"
 
-uv run --with grpcio-tools python -m grpc_tools.protoc \
+uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
   --python_out="$EXEC_OUT" \
   --grpc_python_out="$EXEC_OUT" \
   "$PROTO_FILE"
+
+for out in "$API_OUT" "$EXEC_OUT"; do
+  pb2_grpc_file="$out/runtime_control_pb2_grpc.py"
+  python3 -c "
+from pathlib import Path
+
+path = Path('$pb2_grpc_file')
+text = path.read_text(encoding='utf-8')
+text = text.replace('import runtime_control_pb2 as runtime__control__pb2', 'from . import runtime_control_pb2 as runtime__control__pb2')
+path.write_text(text, encoding='utf-8')
+"
+done
 
 echo "gRPC stubs generated for saki-api and saki-executor"

@@ -66,7 +66,9 @@ saki-executor/
 
 ---
 
-## 4. gRPC 通信模型（JSON over stream）
+## 4. gRPC 通信模型（protobuf 强类型）
+
+执行器与 API 均通过 `RuntimeControl.Stream(stream RuntimeMessage)` 双向流通信，消息使用 `RuntimeMessage.oneof payload` 强类型封装。
 
 ### 4.1 上行消息（executor -> api）
 
@@ -257,7 +259,7 @@ uv run python -m saki_executor.main
 
 ## 13. 当前已知限制
 
-1. gRPC 仍为 JSON over stream，尚未切换 pb2 强类型收发。
-2. 插件训练仍以 demo 形态为主，未接真实大模型训练栈。
+1. v1 仍以内置 demo 插件为主，真实训练栈与模型特化策略仍需继续补齐。
+2. `DataRequest.query_type` 仍使用字符串枚举，后续可进一步收敛为 proto enum。
 3. 命令系统目前为本地 stdin 通道，尚未提供远程管理端口。
 4. 单执行器固定单任务串行，扩展依赖多实例部署。

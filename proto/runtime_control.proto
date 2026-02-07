@@ -2,8 +2,27 @@ syntax = "proto3";
 
 package saki.runtime.v1;
 
+import "google/protobuf/struct.proto";
+
 service RuntimeControl {
   rpc Stream(stream RuntimeMessage) returns (stream RuntimeMessage);
+}
+
+enum RuntimeJobStatus {
+  RUNTIME_JOB_STATUS_UNSPECIFIED = 0;
+  CREATED = 1;
+  QUEUED = 2;
+  RUNNING = 3;
+  STOPPING = 4;
+  STOPPED = 5;
+  SUCCEEDED = 6;
+  FAILED = 7;
+}
+
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  OK = 1;
+  ERROR = 2;
 }
 
 message PluginCapability {
@@ -45,8 +64,8 @@ message JobPayload {
   string plugin_id = 6;
   string mode = 7;
   string query_strategy = 8;
-  string params_json = 9;
-  string resources_json = 10;
+  google.protobuf.Struct params = 9;
+  ResourceSummary resources = 10;
 }
 
 message AssignJob {
@@ -60,27 +79,66 @@ message StopJob {
   string reason = 3;
 }
 
+message StatusEvent {
+  RuntimeJobStatus status = 1;
+  string reason = 2;
+}
+
+message LogEvent {
+  string level = 1;
+  string message = 2;
+}
+
+message ProgressEvent {
+  int32 epoch = 1;
+  int32 step = 2;
+  int32 total_steps = 3;
+  int32 eta_sec = 4;
+}
+
+message MetricEvent {
+  int32 step = 1;
+  int32 epoch = 2;
+  map<string, double> metrics = 3;
+}
+
+message ArtifactItem {
+  string kind = 1;
+  string name = 2;
+  string uri = 3;
+  google.protobuf.Struct meta = 4;
+}
+
+message ArtifactEvent {
+  ArtifactItem artifact = 1;
+}
+
 message JobEvent {
   string request_id = 1;
   string job_id = 2;
   int64 seq = 3;
   int64 ts = 4;
-  string event_type = 5;
-  string payload_json = 6;
+  oneof event_payload {
+    StatusEvent status_event = 5;
+    LogEvent log_event = 6;
+    ProgressEvent progress_event = 7;
+    MetricEvent metric_event = 8;
+    ArtifactEvent artifact_event = 9;
+  }
 }
 
 message QueryCandidate {
   string sample_id = 1;
   double score = 2;
-  string reason_json = 3;
+  google.protobuf.Struct reason = 3;
 }
 
 message JobResult {
   string request_id = 1;
   string job_id = 2;
-  string status = 3;
-  string metrics_json = 4;
-  string artifacts_json = 5;
+  RuntimeJobStatus status = 3;
+  map<string, double> metrics = 4;
+  repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;
   string error_message = 7;
 }
@@ -95,12 +153,45 @@ message DataRequest {
   int32 limit = 7;
 }
 
+message LabelItem {
+  string id = 1;
+  string name = 2;
+  string color = 3;
+}
+
+message SampleItem {
+  string id = 1;
+  string asset_hash = 2;
+  string download_url = 3;
+  int32 width = 4;
+  int32 height = 5;
+  google.protobuf.Struct meta = 6;
+}
+
+message AnnotationItem {
+  string id = 1;
+  string sample_id = 2;
+  string category_id = 3;
+  repeated double bbox_xywh = 4;
+  google.protobuf.Struct obb = 5;
+  string source = 6;
+  double confidence = 7;
+}
+
+message DataItem {
+  oneof item {
+    LabelItem label_item = 1;
+    SampleItem sample_item = 2;
+    AnnotationItem annotation_item = 3;
+  }
+}
+
 message DataResponse {
   string request_id = 1;
   string reply_to = 2;
   string job_id = 3;
   string query_type = 4;
-  string items_json = 5;
+  repeated DataItem items = 5;
   string next_cursor = 6;
 }
 
@@ -117,13 +208,13 @@ message UploadTicketResponse {
   string job_id = 3;
   string upload_url = 4;
   string storage_uri = 5;
-  string headers_json = 6;
+  map<string, string> headers = 6;
 }
 
 message Ack {
   string request_id = 1;
   string ack_for = 2;
-  string status = 3;
+  AckStatus status = 3;
   string message = 4;
 }
 
@@ -131,7 +222,7 @@ message Error {
   string request_id = 1;
   string code = 2;
   string message = 3;
-  string details_json = 4;
+  google.protobuf.Struct details = 4;
 }
 
 message RuntimeMessage {

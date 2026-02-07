@@ -14,6 +14,8 @@ from sqlmodel import select
 
 from saki_api.core.config import settings
 from saki_api.db.session import SessionLocal
+from saki_api.grpc import runtime_codec
+from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
@@ -22,7 +24,7 @@ from saki_api.models.l3.runtime_executor import RuntimeExecutor
 @dataclass
 class RuntimeSession:
     executor_id: str
-    queue: asyncio.Queue[dict[str, Any]]
+    queue: asyncio.Queue[pb.RuntimeMessage]
     version: str
     plugins: set[str] = field(default_factory=set)
     resources: dict[str, Any] = field(default_factory=dict)
@@ -51,7 +53,8 @@ class RuntimeDispatcher:
             return True
         return executor_id in allowlist
 
-    def _to_int(self, value: Any, default: int = 0) -> int:
+    @staticmethod
+    def _to_int(value: Any, default: int = 0) -> int:
         try:
             return int(value)
         except Exception:
@@ -69,7 +72,8 @@ class RuntimeDispatcher:
             return False
         return True
 
-    def _is_retry_ready(self, job: Job) -> bool:
+    @staticmethod
+    def _is_retry_ready(job: Job) -> bool:
         params = job.params or {}
         not_before = params.get("_retry_not_before_ts")
         if not_before is None:
@@ -125,7 +129,7 @@ class RuntimeDispatcher:
     async def register(
             self,
             executor_id: str,
-            queue: asyncio.Queue[dict[str, Any]],
+            queue: asyncio.Queue[pb.RuntimeMessage],
             version: str,
             plugin_ids: set[str],
             resources: dict[str, Any],
@@ -298,7 +302,6 @@ class RuntimeDispatcher:
             if not candidates:
                 return None
 
-            # Least recently seen first to spread load.
             target = sorted(candidates, key=lambda item: item.last_seen)[0]
             request_id = str(uuid.uuid4())
             target.busy = True
@@ -306,22 +309,23 @@ class RuntimeDispatcher:
             self._pending_assign[request_id] = job_id
 
             await target.queue.put(
-                {
-                    "type": "assign_job",
-                    "request_id": request_id,
-                    "job": {
-                        "job_id": job_id,
-                        "project_id": str(job.project_id),
-                        "loop_id": str(job.loop_id),
-                        "source_commit_id": str(job.source_commit_id),
-                        "job_type": job.job_type,
-                        "plugin_id": job.plugin_id,
-                        "mode": job.mode,
-                        "query_strategy": job.query_strategy,
-                        "params": job.params,
-                        "resources": job.resources,
-                    },
-                }
+                pb.RuntimeMessage(
+                    assign_job=pb.AssignJob(
+                        request_id=request_id,
+                        job=pb.JobPayload(
+                            job_id=job_id,
+                            project_id=str(job.project_id),
+                            loop_id=str(job.loop_id),
+                            source_commit_id=str(job.source_commit_id),
+                            job_type=job.job_type or "",
+                            plugin_id=job.plugin_id or "",
+                            mode=job.mode or "",
+                            query_strategy=job.query_strategy or "",
+                            params=runtime_codec.dict_to_struct(job.params or {}),
+                            resources=runtime_codec.dict_to_resource_summary(job.resources or {}),
+                        ),
+                    )
+                )
             )
             target.last_seen = datetime.utcnow()
 
@@ -359,34 +363,37 @@ class RuntimeDispatcher:
                     break
             if target:
                 await target.queue.put(
-                    {
-                        "type": "stop_job",
-                        "request_id": request_id,
-                        "job_id": job_id,
-                        "reason": reason,
-                    }
+                    pb.RuntimeMessage(
+                        stop_job=pb.StopJob(
+                            request_id=request_id,
+                            job_id=job_id,
+                            reason=reason,
+                        )
+                    )
                 )
                 self._pending_stop[request_id] = job_id
                 dispatched = True
         return request_id, dispatched
 
-    async def send_data_response(self, executor_id: str, response_payload: dict[str, Any]) -> None:
+    async def send_data_response(self, executor_id: str, response_payload: pb.RuntimeMessage) -> None:
         async with self._lock:
             session = self._sessions.get(executor_id)
             if session:
                 await session.queue.put(response_payload)
 
-    async def send_upload_ticket_response(self, executor_id: str, response_payload: dict[str, Any]) -> None:
+    async def send_upload_ticket_response(self, executor_id: str, response_payload: pb.RuntimeMessage) -> None:
         await self.send_data_response(executor_id, response_payload)
 
-    async def handle_ack(self, ack_for: str, status: str, message: str | None = None) -> None:
+    async def handle_ack(self, ack_for: str, status: int, message: str | None = None) -> None:
+        is_ok = status == pb.OK
+
         if ack_for in self._pending_assign:
             job_id = self._pending_assign.pop(ack_for)
             release_executor_id: str | None = None
             async with self._lock:
                 for runtime_session in self._sessions.values():
                     if runtime_session.current_job_id == job_id:
-                        if status.lower() != "ok":
+                        if not is_ok:
                             runtime_session.busy = False
                             runtime_session.current_job_id = None
                         release_executor_id = runtime_session.executor_id
@@ -395,7 +402,7 @@ class RuntimeDispatcher:
             async with SessionLocal() as session:
                 job = await session.get(Job, uuid.UUID(job_id))
                 if job:
-                    if status.lower() == "ok":
+                    if is_ok:
                         job.status = TrainingJobStatus.RUNNING
                         if not job.started_at:
                             job.started_at = datetime.utcnow()
@@ -411,7 +418,7 @@ class RuntimeDispatcher:
                         )
                         executor = row.first()
                         if executor:
-                            if status.lower() == "ok":
+                            if is_ok:
                                 executor.status = "busy"
                                 executor.current_job_id = job_id
                             else:
@@ -481,3 +488,4 @@ class RuntimeDispatcher:
 
 
 runtime_dispatcher = RuntimeDispatcher()
+

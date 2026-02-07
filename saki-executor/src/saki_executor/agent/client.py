@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import time
 import uuid
@@ -10,19 +9,20 @@ from typing import Any
 import grpc
 from loguru import logger
 
+from saki_executor.agent import codec as runtime_codec
 from saki_executor.core.config import settings
+from saki_executor.grpc_gen import runtime_control_pb2 as pb
+from saki_executor.grpc_gen import runtime_control_pb2_grpc as pb_grpc
 from saki_executor.jobs.manager import JobManager
 from saki_executor.jobs.state import ExecutorState
 from saki_executor.plugins.registry import PluginRegistry
-
-_METHOD_PATH = "/saki.runtime.v1.RuntimeControl/Stream"
 
 
 class AgentClient:
     def __init__(self, plugin_registry: PluginRegistry, job_manager: JobManager):
         self.plugin_registry = plugin_registry
         self.job_manager = job_manager
-        self._outbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
         self._pending: dict[str, asyncio.Future] = {}
         self._running = False
         self._connected = False
@@ -30,8 +30,9 @@ class AgentClient:
         self._last_heartbeat_ts: int | None = None
         self._active_call: grpc.aio.StreamStreamCall | None = None
 
-    async def send_message(self, message: dict[str, Any]) -> None:
-        await self._outbox.put(message)
+    async def send_message(self, message: dict[str, Any] | pb.RuntimeMessage) -> None:
+        runtime_message = message if isinstance(message, pb.RuntimeMessage) else runtime_codec.dict_to_runtime_message(message)
+        await self._outbox.put(runtime_message)
 
     async def request_message(self, message: dict[str, Any], timeout_sec: int = 60) -> dict[str, Any]:
         request_id = str(message.get("request_id") or uuid.uuid4())
@@ -127,7 +128,7 @@ class AgentClient:
                 message = await asyncio.wait_for(self._outbox.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
-            yield json.dumps(message, ensure_ascii=False).encode("utf-8")
+            yield message
 
     async def _handle_incoming(self, message: dict[str, Any]) -> None:
         msg_type = message.get("type")
@@ -140,7 +141,7 @@ class AgentClient:
             return
 
         if msg_type == "error":
-            logger.error("收到服务端错误消息: {}", message)
+            logger.error("收到服务端错误消息: code={} message={} details={}", message.get("code"), message.get("message"), message.get("details"))
             reply_to = str(message.get("reply_to") or message.get("ack_for") or "")
             if reply_to:
                 future = self._pending.get(reply_to)
@@ -218,23 +219,19 @@ class AgentClient:
                     settings.EXECUTOR_ID,
                 )
                 async with grpc.aio.insecure_channel(settings.API_GRPC_TARGET) as channel:
-                    rpc = channel.stream_stream(
-                        _METHOD_PATH,
-                        request_serializer=lambda x: x,
-                        response_deserializer=lambda x: x,
-                    )
+                    stub = pb_grpc.RuntimeControlStub(channel)
                     metadata = [("x-internal-token", settings.INTERNAL_TOKEN)]
-                    call = rpc(self._request_iterator(), metadata=metadata)
+                    call = stub.Stream(self._request_iterator(), metadata=metadata)
                     self._active_call = call
 
                     await self.send_message(self._register_payload())
                     logger.info("已发送注册消息 executor_id={}", settings.EXECUTOR_ID)
                     heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
-                    async for raw in call:
+                    async for runtime_message in call:
                         if stop_event.is_set() or not self._connect_enabled:
                             break
-                        message = json.loads(raw.decode("utf-8"))
+                        message = runtime_codec.runtime_message_to_dict(runtime_message)
                         await self._handle_incoming(message)
 
                 backoff = 1

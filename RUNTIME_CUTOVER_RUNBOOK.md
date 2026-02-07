@@ -16,6 +16,8 @@
 4. 生产环境参数已确认：
    - `INTERNAL_TOKEN`
    - `RUNTIME_EXECUTOR_ALLOWLIST`
+   - `RUNTIME_ASSIGN_ACK_TIMEOUT_SEC`
+   - `RUNTIME_STREAM_REJECT_CLOSE`
    - `RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC`
    - `RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES`
 
@@ -25,6 +27,7 @@
 2. 先发布 `saki-api`（包含新 gRPC 服务端与调度/幂等逻辑）。
 3. 再发布 `saki-executor`（所有实例一并升级）。
 4. 确认所有 executor 重新注册在线，且无旧版本实例残留。
+5. 确认 API 启动日志中出现“runtime restart recovery completed”，并检查恢复摘要。
 
 ## 4. 验证清单
 

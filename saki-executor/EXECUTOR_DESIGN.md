@@ -130,6 +130,8 @@ saki-executor/
    - `prepare_data`
    - `train`
    - `predict_unlabeled`
+   - `predict_unlabeled_batch`（可选，默认回退到 `predict_unlabeled`）
+   - `select_simulation_subset`（可选，simulation 模式）
 6. 逐个制品申请上传票据并 PUT 上传对象存储。
 7. 回传 `job_result`（终态、指标、制品、TopK 候选）。
 8. 收尾：状态回到 `IDLE`。
@@ -208,7 +210,7 @@ saki-executor/
 2. `status`：查看执行器状态、当前任务、请求队列、最近心跳
 3. `plugins`：查看已加载插件与能力
 4. `connect`：启用并发起连接
-5. `disconnect`：断开并暂停连接
+5. `disconnect [--force]`：断开并暂停连接（`--force` 会先 stop 并等待收尾窗口）
 6. `stop [job_id]`：停止当前任务或指定任务
 7. `loglevel <LEVEL>`：动态调整日志级别
 8. `quit|exit`：触发优雅退出
@@ -242,6 +244,7 @@ saki-executor/
 4. `LOG_MAX_BYTES`
 5. `LOG_BACKUP_COUNT`
 6. `ENABLE_COMMAND_STDIN`
+7. `DISCONNECT_FORCE_WAIT_SEC`
 
 ---
 
@@ -263,3 +266,10 @@ uv run python -m saki_executor.main
 2. 命令系统目前为本地 stdin 通道，尚未提供远程管理端口。
 3. 单执行器固定单任务串行，扩展依赖多实例部署。
 4. 安全模型当前仍以 `internal token + allowlist` 为主，mTLS 尚未启用。
+
+---
+
+## 14. 协议补充（近期收敛项）
+
+1. `JobPayload` 已包含强类型 `iteration` 字段，simulation 比例调度不再依赖 `params._iteration`。
+2. 未知 `mode` 会受控失败并上报结构化终态，不再回退到隐式默认路径。

@@ -18,7 +18,7 @@ uv run python -m saki_executor.main
 2. `status`
 3. `plugins`
 4. `connect`
-5. `disconnect`
+5. `disconnect [--force]`
 6. `stop [job_id]`
 7. `loglevel <LEVEL>`
 8. `quit` / `exit`

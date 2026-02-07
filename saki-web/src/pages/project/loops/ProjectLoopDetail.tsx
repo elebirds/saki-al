@@ -245,6 +245,7 @@ const ProjectLoopDetail: React.FC = () => {
                         <Text type="secondary">Loop ID: {loop.id}</Text>
                     </Space>
                     <Space>
+                        <Button onClick={() => navigate('/runtime/executors')}>执行器状态</Button>
                         <Button
                             type="primary"
                             loading={controlLoading}

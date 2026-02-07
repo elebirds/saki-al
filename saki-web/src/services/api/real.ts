@@ -37,6 +37,8 @@ import {
     LoopRound,
     LoopSummary,
     RuntimePluginCatalogResponse,
+    RuntimeExecutorListResponse,
+    RuntimeExecutorRead,
     AnnotationBatch,
     AnnotationBatchItem,
     ProjectModel,
@@ -780,6 +782,16 @@ export class RealApiService implements ApiService {
             `/jobs/${jobId}/artifacts/${artifactName}:download-url`,
             {params: {expires_in_hours: expiresInHours}}
         );
+        return response.data;
+    }
+
+    async getRuntimeExecutors(): Promise<RuntimeExecutorListResponse> {
+        const response = await this.client.get<RuntimeExecutorListResponse>('/runtime/executors');
+        return response.data;
+    }
+
+    async getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead> {
+        const response = await this.client.get<RuntimeExecutorRead>(`/runtime/executors/${executorId}`);
         return response.data;
     }
 

@@ -24,6 +24,7 @@ import Register from './pages/user/Register';
 import ChangePassword from './pages/user/ChangePassword';
 import Setup from './pages/base/Setup';
 import NetworkError from './pages/base/NetworkError';
+import RuntimeExecutors from './pages/runtime/RuntimeExecutors';
 import SystemCheck from './components/SystemCheck';
 import ProtectedLayout from './components/ProtectedLayout';
 import {useInitPermissions, useInitSystemCapabilities} from './hooks';
@@ -72,6 +73,7 @@ const App: React.FC = () => {
                                     <Route path="workspace" element={<ProjectWorkspace/>}/>
                                     <Route path="workspace/:datasetId" element={<ProjectWorkspace/>}/>
                                 </Route>
+                                <Route path="/runtime/executors" element={<RuntimeExecutors/>}/>
                                 <Route
                                     path="/projects/:projectId/members"
                                     element={<Navigate to="../settings?section=members" replace/>}

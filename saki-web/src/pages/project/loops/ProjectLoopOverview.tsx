@@ -151,6 +151,7 @@ const ProjectLoopOverview: React.FC = () => {
                         <Text type="secondary">一个项目可包含多个 Loop，点击卡片进入单 Loop 详情。</Text>
                     </div>
                     <Space>
+                        <Button onClick={() => navigate('/runtime/executors')}>查看执行器状态</Button>
                         <Button onClick={loadData}>刷新</Button>
                         <Button
                             type="primary"

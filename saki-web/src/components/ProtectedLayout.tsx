@@ -4,6 +4,7 @@ import {useTranslation} from 'react-i18next'
 import type {MenuProps} from 'antd'
 import {
     AppstoreOutlined,
+    ClusterOutlined,
     CodeOutlined,
     InfoCircleOutlined,
     LogoutOutlined,
@@ -70,6 +71,12 @@ const ProtectedLayout: React.FC = () => {
             path: '/projects',
             icon: <AppstoreOutlined/>,
         },
+        {
+            key: 'runtime',
+            label: 'Runtime',
+            path: '/runtime/executors',
+            icon: <ClusterOutlined/>,
+        },
         ...(canManageUsers
             ? [
                 {
@@ -103,6 +110,7 @@ const ProtectedLayout: React.FC = () => {
         if (pathname.startsWith('/users')) return 'users'
         if (pathname.startsWith('/roles')) return 'roles'
         if (pathname.startsWith('/about')) return 'about'
+        if (pathname.startsWith('/runtime')) return 'runtime'
         if (pathname.startsWith('/projects')) return 'projects'
         if (pathname === '/' || pathname.startsWith('/datasets')) return 'datasets'
         return 'datasets'

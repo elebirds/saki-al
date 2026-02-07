@@ -260,6 +260,50 @@ export interface RuntimePluginCatalogResponse {
     items: RuntimePluginCatalogItem[];
 }
 
+export interface RuntimeExecutorPluginCapability {
+    pluginId: string;
+    displayName: string;
+    version: string;
+    supportedJobTypes: string[];
+    supportedStrategies: string[];
+    requestConfigSchema: RuntimeRequestConfigSchema;
+    defaultRequestConfig: Record<string, any>;
+}
+
+export interface RuntimeExecutorRead {
+    id: string;
+    executorId: string;
+    version: string;
+    status: string;
+    isOnline: boolean;
+    currentJobId?: string | null;
+    pluginIds: {
+        plugins?: RuntimeExecutorPluginCapability[];
+        ids?: string[];
+    } & Record<string, any>;
+    resources: Record<string, any>;
+    lastSeenAt?: string | null;
+    lastError?: string | null;
+    pendingAssignCount: number;
+    pendingStopCount: number;
+}
+
+export interface RuntimeExecutorSummary {
+    totalCount: number;
+    onlineCount: number;
+    busyCount: number;
+    availableCount: number;
+    availabilityRate: number;
+    pendingAssignCount: number;
+    pendingStopCount: number;
+    latestHeartbeatAt?: string | null;
+}
+
+export interface RuntimeExecutorListResponse {
+    summary: RuntimeExecutorSummary;
+    items: RuntimeExecutorRead[];
+}
+
 export interface ModelArtifactDownload {
     modelId: string;
     artifactName: string;

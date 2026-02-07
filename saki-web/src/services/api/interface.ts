@@ -36,6 +36,8 @@ import {
     LoopRound,
     LoopSummary,
     RuntimePluginCatalogResponse,
+    RuntimeExecutorListResponse,
+    RuntimeExecutorRead,
     AnnotationBatch,
     AnnotationBatchItem,
     ProjectModel,
@@ -222,6 +224,10 @@ export interface ApiService {
 
     getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse>;
     getJobArtifactDownloadUrl(jobId: string, artifactName: string, expiresInHours?: number): Promise<JobArtifactDownload>;
+
+    getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;
+
+    getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
 
     createAnnotationBatchFromJob(jobId: string, limit?: number): Promise<AnnotationBatch>;
 

@@ -326,6 +326,7 @@ def parse_assign_job(assign_job: pb.AssignJob) -> dict[str, Any]:
         "query_strategy": job.query_strategy,
         "params": struct_to_dict(job.params),
         "resources": _resource_summary_to_dict(job.resources),
+        "iteration": int(job.iteration or 0),
     }
 
 

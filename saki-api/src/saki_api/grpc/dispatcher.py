@@ -407,6 +407,7 @@ class RuntimeDispatcher:
                             query_strategy=job.query_strategy or "",
                             params=runtime_codec.dict_to_struct(job.params or {}),
                             resources=runtime_codec.dict_to_resource_summary(job.resources or {}),
+                            iteration=int(job.iteration or 0),
                         ),
                     )
                 )

@@ -111,7 +111,13 @@ class JobManager:
         source_commit_id = str(payload.get("source_commit_id") or "")
         query_strategy = str(payload.get("query_strategy") or "uncertainty_1_minus_max_conf")
         mode = str(payload.get("mode") or "active_learning").lower()
-        iteration = int(payload.get("iteration") or (params.get("_iteration") or 1))
+        raw_iteration = payload.get("iteration")
+        try:
+            iteration = int(raw_iteration)
+        except Exception:
+            iteration = 1
+        if iteration <= 0:
+            iteration = 1
         final_status = JobStatus.FAILED
         logger.info(
             "任务开始执行 job_id={} plugin_id={} mode={} query_strategy={}",
@@ -238,11 +244,7 @@ class JobManager:
             elif mode == "simulation":
                 await emit("log", {"level": "INFO", "message": "simulation mode skips active-learning TopK sampling"})
             else:
-                logger.warning("未知任务模式 mode={}，默认按 active_learning 执行选样。", mode)
-                topk = int(params.get("topk", 200))
-                sampling_params = dict(params)
-                sampling_params["topk"] = topk
-                candidates = await plugin.predict_unlabeled(workspace, unlabeled, query_strategy, sampling_params)
+                raise RuntimeError(f"unsupported mode: {mode}")
 
             artifacts: dict[str, Any] = {}
             for artifact in output.artifacts:

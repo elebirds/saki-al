@@ -2,6 +2,11 @@
 
 GPU 训练执行器，主动连接 `saki-api` 的 gRPC 控制面，执行训练、选样、日志上报与制品上传。
 
+默认内置插件：
+
+1. `yolo_det_v1`（默认，真实 YOLO 训练 + 增强 IoU 选样）
+2. `demo_det_v1`（回退用）
+
 ## 运行
 
 ```bash
@@ -9,6 +14,8 @@ cd saki-executor
 uv sync
 uv run python -m saki_executor.main
 ```
+
+如果使用 `yolo_det_v1`，运行环境需具备 CUDA（可选）并可安装 `ultralytics` 依赖。
 
 ## 运行时命令
 

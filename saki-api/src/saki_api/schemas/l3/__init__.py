@@ -9,6 +9,17 @@ from saki_api.schemas.l3.job import (
     JobArtifactsResponse,
     LoopCreateRequest,
     LoopRead,
+    LoopRoundRead,
+    AnnotationBatchRead,
+    AnnotationBatchItemRead,
+    AnnotationBatchCreateRequest,
+    LoopSummaryRead,
+)
+from saki_api.schemas.l3.model import (
+    ModelRegisterFromJobRequest,
+    ModelRead,
+    ModelPromoteRequest,
+    ModelArtifactDownloadResponse,
 )
 
 __all__ = [
@@ -22,4 +33,13 @@ __all__ = [
     "JobArtifactsResponse",
     "LoopCreateRequest",
     "LoopRead",
+    "LoopRoundRead",
+    "AnnotationBatchRead",
+    "AnnotationBatchItemRead",
+    "AnnotationBatchCreateRequest",
+    "LoopSummaryRead",
+    "ModelRegisterFromJobRequest",
+    "ModelRead",
+    "ModelPromoteRequest",
+    "ModelArtifactDownloadResponse",
 ]

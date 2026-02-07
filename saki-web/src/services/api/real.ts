@@ -32,6 +32,12 @@ import {
     RuntimeMetricPoint,
     RuntimeTopKCandidate,
     LoopCreateRequest,
+    LoopRound,
+    LoopSummary,
+    AnnotationBatch,
+    AnnotationBatchItem,
+    ProjectModel,
+    ModelArtifactDownload,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
@@ -664,6 +670,36 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async startLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:start`);
+        return response.data;
+    }
+
+    async pauseLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:pause`);
+        return response.data;
+    }
+
+    async resumeLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:resume`);
+        return response.data;
+    }
+
+    async stopLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:stop`);
+        return response.data;
+    }
+
+    async getLoopRounds(loopId: string, limit: number = 200): Promise<LoopRound[]> {
+        const response = await this.client.get<LoopRound[]>(`/loops/${loopId}/rounds`, {params: {limit}});
+        return response.data;
+    }
+
+    async getLoopSummary(loopId: string): Promise<LoopSummary> {
+        const response = await this.client.get<LoopSummary>(`/loops/${loopId}/summary`);
+        return response.data;
+    }
+
     async getLoopJobs(loopId: string, limit: number = 50): Promise<RuntimeJob[]> {
         const response = await this.client.get<RuntimeJob[]>(`/loops/${loopId}/jobs`, {params: {limit}});
         return response.data;
@@ -713,6 +749,62 @@ export class RealApiService implements ApiService {
 
     async getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse> {
         const response = await this.client.get<RuntimeArtifactsResponse>(`/jobs/${jobId}/artifacts`);
+        return response.data;
+    }
+
+    async createAnnotationBatchFromJob(jobId: string, limit: number = 200): Promise<AnnotationBatch> {
+        const response = await this.client.post<AnnotationBatch>(
+            `/jobs/${jobId}/sampling/batches`,
+            {limit},
+        );
+        return response.data;
+    }
+
+    async getAnnotationBatch(batchId: string): Promise<AnnotationBatch> {
+        const response = await this.client.get<AnnotationBatch>(`/annotation-batches/${batchId}`);
+        return response.data;
+    }
+
+    async getAnnotationBatchItems(batchId: string, limit: number = 5000): Promise<AnnotationBatchItem[]> {
+        const response = await this.client.get<AnnotationBatchItem[]>(`/annotation-batches/${batchId}/items`, {params: {limit}});
+        return response.data;
+    }
+
+    async registerModelFromJob(
+        projectId: string,
+        payload: {
+            jobId: string;
+            name?: string;
+            versionTag?: string;
+            status?: string;
+        }
+    ): Promise<ProjectModel> {
+        const response = await this.client.post<ProjectModel>(
+            `/projects/${projectId}/models:register-from-job`,
+            payload,
+        );
+        return response.data;
+    }
+
+    async getProjectModels(projectId: string, limit: number = 100): Promise<ProjectModel[]> {
+        const response = await this.client.get<ProjectModel[]>(`/projects/${projectId}/models`, {params: {limit}});
+        return response.data;
+    }
+
+    async promoteModel(modelId: string, status: string = 'production'): Promise<ProjectModel> {
+        const response = await this.client.post<ProjectModel>(`/models/${modelId}:promote`, {status});
+        return response.data;
+    }
+
+    async getModelArtifactDownloadUrl(
+        modelId: string,
+        artifactName: string,
+        expiresInHours: number = 2
+    ): Promise<ModelArtifactDownload> {
+        const response = await this.client.get<ModelArtifactDownload>(
+            `/models/${modelId}/artifacts/${artifactName}:download-url`,
+            {params: {expires_in_hours: expiresInHours}}
+        );
         return response.data;
     }
 
@@ -838,6 +930,7 @@ export class RealApiService implements ApiService {
         datasetId: string,
         params: {
             q?: string;
+            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;
@@ -851,6 +944,7 @@ export class RealApiService implements ApiService {
             {
                 params: {
                     q: params.q,
+                    batch_id: params.batchId,
                     status: params.status,
                     branch_name: params.branchName,
                     sort_by: params.sortBy,

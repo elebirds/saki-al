@@ -5,10 +5,16 @@ L3 Job Endpoints.
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.api.service_deps import JobServiceDep
+from saki_api.api.service_deps import JobServiceDep, AnnotationBatchServiceDep
+from saki_api.core.exceptions import ForbiddenAppException
+from saki_api.core.rbac.checker import PermissionChecker
+from saki_api.core.rbac.dependencies import get_current_user_id
+from saki_api.db.session import get_session
 from saki_api.grpc.dispatcher import runtime_dispatcher
+from saki_api.models import Permissions, ResourceType
 from saki_api.models.enums import TrainingJobStatus
 from saki_api.schemas.l3.job import (
     JobCreateRequest,
@@ -19,9 +25,38 @@ from saki_api.schemas.l3.job import (
     JobCandidateRead,
     JobArtifactsResponse,
     JobArtifactRead,
+    AnnotationBatchRead,
+    AnnotationBatchCreateRequest,
 )
 
 router = APIRouter()
+
+
+async def _ensure_project_perm(
+        *,
+        session: AsyncSession,
+        current_user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        required: str,
+) -> None:
+    checker = PermissionChecker(session)
+    ok = await checker.check(
+        user_id=current_user_id,
+        permission=required,
+        resource_type=ResourceType.PROJECT,
+        resource_id=str(project_id),
+    )
+    if not ok:
+        # Backward-compatible fallback for historical roles not yet granted L3 permissions.
+        fallback = Permissions.PROJECT_READ if required == Permissions.JOB_READ else Permissions.PROJECT_UPDATE
+        ok = await checker.check(
+            user_id=current_user_id,
+            permission=fallback,
+            resource_type=ResourceType.PROJECT,
+            resource_id=str(project_id),
+        )
+    if not ok:
+        raise ForbiddenAppException(f"Permission denied: {required}")
 
 
 @router.post("/loops/{loop_id}/jobs", response_model=JobRead)
@@ -31,10 +66,20 @@ async def create_job(
         payload: JobCreateRequest,
         auto_dispatch: bool = Query(True),
         job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """
     Create a pending runtime job and dispatch to an idle executor.
     """
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.JOB_MANAGE,
+    )
+
     job = await job_service.create_job_for_loop(loop_id, payload)
 
     if auto_dispatch:
@@ -52,11 +97,19 @@ async def stop_job(
         job_id: uuid.UUID,
         reason: str = Query(default="user requested stop"),
         job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """
     Request executor to stop a job. Operation is idempotent.
     """
     job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_MANAGE,
+    )
     if job.status in {
         TrainingJobStatus.SUCCESS,
         TrainingJobStatus.FAILED,
@@ -84,8 +137,16 @@ async def get_job(
         *,
         job_id: uuid.UUID,
         job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_READ,
+    )
     return JobRead.model_validate(job)
 
 
@@ -95,7 +156,16 @@ async def get_job_events(
         job_id: uuid.UUID,
         after_seq: int = Query(default=0, ge=0),
         job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_READ,
+    )
     events = await job_service.list_events(job_id, after_seq=after_seq)
     return [
         JobEventRead(seq=e.seq, ts=e.ts, event_type=e.event_type, payload=e.payload)
@@ -109,7 +179,16 @@ async def get_job_metric_series(
         job_id: uuid.UUID,
         limit: int = Query(default=5000, ge=1, le=100000),
         job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_READ,
+    )
     points = await job_service.list_metric_series(job_id, limit=limit)
     return [
         JobMetricPointRead(
@@ -129,7 +208,16 @@ async def get_job_sampling_topk(
         job_id: uuid.UUID,
         limit: int = Query(default=200, ge=1, le=5000),
         job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_READ,
+    )
     candidates = await job_service.list_sampling_candidates(job_id, limit=limit)
     return [
         JobCandidateRead(
@@ -147,9 +235,39 @@ async def get_job_artifacts(
         *,
         job_id: uuid.UUID,
         job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_READ,
+    )
     artifacts = await job_service.list_artifacts(job_id)
     return JobArtifactsResponse(
         job_id=job_id,
         artifacts=[JobArtifactRead(**item) for item in artifacts],
     )
+
+
+@router.post("/jobs/{job_id}/sampling/batches", response_model=AnnotationBatchRead)
+async def create_annotation_batch_from_job(
+        *,
+        job_id: uuid.UUID,
+        payload: AnnotationBatchCreateRequest,
+        batch_service: AnnotationBatchServiceDep,
+        job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    job = await job_service.get_by_id_or_raise(job_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=job.project_id,
+        required=Permissions.JOB_MANAGE,
+    )
+    batch = await batch_service.create_from_job(job_id=job_id, limit=payload.limit)
+    return AnnotationBatchRead.model_validate(batch)

@@ -1,3 +1,5 @@
+export type ALLoopStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed' | 'failed';
+
 export interface ALLoop {
     id: string;
     projectId: string;
@@ -8,6 +10,17 @@ export interface ALLoop {
     globalConfig: Record<string, any>;
     currentIteration: number;
     isActive: boolean;
+    status: ALLoopStatus;
+    maxRounds: number;
+    queryBatchSize: number;
+    minSeedLabeled: number;
+    minNewLabelsPerRound: number;
+    stopPatienceRounds: number;
+    stopMinGain: number;
+    autoRegisterModel: boolean;
+    lastJobId?: string | null;
+    latestModelId?: string | null;
+    lastError?: string | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -19,6 +32,7 @@ export interface RuntimeJob {
     projectId: string;
     loopId: string;
     iteration: number;
+    roundIndex: number;
     status: RuntimeJobStatus;
     jobType: string;
     pluginId: string;
@@ -35,6 +49,8 @@ export interface RuntimeJob {
     artifacts: Record<string, any>;
     params: Record<string, any>;
     resources: Record<string, any>;
+    strategyParams: Record<string, any>;
+    modelId?: string | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -46,6 +62,14 @@ export interface LoopCreateRequest {
     modelArch?: string;
     globalConfig?: Record<string, any>;
     isActive?: boolean;
+    status?: ALLoopStatus;
+    maxRounds?: number;
+    queryBatchSize?: number;
+    minSeedLabeled?: number;
+    minNewLabelsPerRound?: number;
+    stopPatienceRounds?: number;
+    stopMinGain?: number;
+    autoRegisterModel?: boolean;
 }
 
 export interface RuntimeJobCreateRequest {
@@ -57,6 +81,7 @@ export interface RuntimeJobCreateRequest {
     queryStrategy?: string;
     params?: Record<string, any>;
     resources?: Record<string, any>;
+    strategyParams?: Record<string, any>;
 }
 
 export interface RuntimeJobCommandResponse {
@@ -83,8 +108,8 @@ export interface RuntimeMetricPoint {
 export interface RuntimeTopKCandidate {
     sampleId: string;
     score: number;
-    extra: Record<string, number>;
-    predictionSnapshot: Record<string, number>;
+    extra: Record<string, any>;
+    predictionSnapshot: Record<string, any>;
 }
 
 export interface RuntimeArtifact {
@@ -97,4 +122,94 @@ export interface RuntimeArtifact {
 export interface RuntimeArtifactsResponse {
     jobId: string;
     artifacts: RuntimeArtifact[];
+}
+
+export interface LoopRound {
+    id: string;
+    loopId: string;
+    roundIndex: number;
+    sourceCommitId: string;
+    jobId?: string | null;
+    annotationBatchId?: string | null;
+    status: 'training' | 'annotation' | 'completed' | 'failed';
+    metrics: Record<string, any>;
+    selectedCount: number;
+    labeledCount: number;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface LoopSummary {
+    loopId: string;
+    status: ALLoopStatus;
+    roundsTotal: number;
+    roundsCompleted: number;
+    selectedTotal: number;
+    labeledTotal: number;
+    metricsLatest: Record<string, any>;
+}
+
+export interface AnnotationBatch {
+    id: string;
+    projectId: string;
+    loopId: string;
+    jobId: string;
+    roundIndex: number;
+    status: 'open' | 'closed';
+    totalCount: number;
+    annotatedCount: number;
+    closedAt?: string | null;
+    meta: Record<string, any>;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface AnnotationBatchItem {
+    id: string;
+    batchId: string;
+    sampleId: string;
+    rank: number;
+    score: number;
+    reason: Record<string, any>;
+    predictionSnapshot: Record<string, any>;
+    isAnnotated: boolean;
+    annotatedAt?: string | null;
+    annotationCommitId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ModelArtifact {
+    name: string;
+    kind: string;
+    uri: string;
+    meta: Record<string, any>;
+}
+
+export interface ProjectModel {
+    id: string;
+    projectId: string;
+    jobId?: string | null;
+    sourceCommitId?: string | null;
+    pluginId: string;
+    modelArch: string;
+    name: string;
+    versionTag: string;
+    weightsPath: string;
+    status: string;
+    metrics: Record<string, any>;
+    artifacts: Record<string, any>;
+    promotedAt?: string | null;
+    createdBy?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ModelArtifactDownload {
+    modelId: string;
+    artifactName: string;
+    downloadUrl: string;
+    expiresInHours: number;
 }

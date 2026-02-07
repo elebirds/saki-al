@@ -10,7 +10,7 @@ from typing import List
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppException, BadRequestAppException
-from saki_api.core.rbac.presets import DATASET_OWNER_ROLE_ID
+from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID
 from saki_api.db.transaction import transactional
 from saki_api.models import ResourceType
 from saki_api.models.enums import AuthorType
@@ -28,10 +28,6 @@ from saki_api.schemas.resource_member import ResourceMemberCreateRequest, Resour
 from saki_api.services.base import BaseService
 
 logger = logging.getLogger(__name__)
-
-# TODO: Define PROJECT_OWNER_ROLE_ID in presets
-PROJECT_OWNER_ROLE_ID = DATASET_OWNER_ROLE_ID  # Use same for now
-
 
 class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, ProjectUpdate]):
     """

@@ -19,7 +19,7 @@ def aug_iou_disagreement(sample_id: str) -> tuple[float, dict[str, Any]]:
     rng = random.Random(_seed_from(sample_id, "aug_iou"))
     raw_iou = rng.uniform(0.0, 1.0)
     score = 1.0 - raw_iou
-    return score, {"aug_iou": raw_iou}
+    return score, {"mean_iou": raw_iou, "strategy": "mock_aug_iou"}
 
 
 def random_baseline(sample_id: str) -> tuple[float, dict[str, Any]]:
@@ -40,7 +40,7 @@ def score_by_strategy(strategy: str, sample_id: str) -> tuple[float, dict[str, A
     key = (strategy or "").lower()
     if key in {"uncertainty", "uncertainty_1_minus_max_conf"}:
         return uncertainty_1_minus_max_conf(sample_id)
-    if key in {"iou_diff", "aug_iou_disagreement"}:
+    if key in {"iou_diff", "aug_iou_disagreement", "aug_iou_disagreement_v1"}:
         return aug_iou_disagreement(sample_id)
     if key in {"random", "random_baseline"}:
         return random_baseline(sample_id)

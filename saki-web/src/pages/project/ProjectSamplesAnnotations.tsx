@@ -27,6 +27,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
     const selectedDatasetId = searchParams.get('datasetId') || '';
     const q = searchParams.get('q') || '';
+    const batchId = searchParams.get('batchId') || '';
     const status = (searchParams.get('status') || 'all') as 'all' | 'labeled' | 'unlabeled' | 'draft';
     const sortValue = searchParams.get('sort') || 'createdAt:desc';
     const branchName = searchParams.get('branch') || 'master';
@@ -57,6 +58,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
         datasetId: selectedDatasetId || undefined,
         filters: {
             q: q || undefined,
+            batchId: batchId || undefined,
             status,
             branchName,
             sortBy,
@@ -115,6 +117,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
         if (!projectId || !selectedDatasetId) return;
         const response = await api.getProjectSamples(projectId, selectedDatasetId, {
             q: q || undefined,
+            batchId: batchId || undefined,
             status,
             branchName,
             sortBy,
@@ -128,12 +131,13 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('sampleId', firstSample.id);
         nextParams.set('branch', branchName);
         nextParams.set('q', q);
+        if (batchId) nextParams.set('batchId', batchId);
         nextParams.set('status', status);
         nextParams.set('sort', sortValue);
         nextParams.set('page', '1');
         nextParams.set('pageSize', String(pageSize));
         navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [projectId, selectedDatasetId, q, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate]);
+    }, [projectId, selectedDatasetId, q, batchId, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate]);
 
     const handleSampleClick = useCallback((sample: ProjectSample) => {
         if (!projectId || !selectedDatasetId) return;
@@ -141,12 +145,13 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('sampleId', sample.id);
         nextParams.set('branch', branchName);
         nextParams.set('q', q);
+        if (batchId) nextParams.set('batchId', batchId);
         nextParams.set('status', status);
         nextParams.set('sort', sortValue);
         nextParams.set('page', String(page));
         nextParams.set('pageSize', String(pageSize));
         navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [projectId, selectedDatasetId, branchName, q, status, sortValue, page, pageSize, navigate]);
+    }, [projectId, selectedDatasetId, branchName, q, batchId, status, sortValue, page, pageSize, navigate]);
 
     const handleCommit = useCallback(async (message: string) => {
         if (!projectId) return;

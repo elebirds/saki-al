@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/saki"
     SQL_ECHO: bool = False
+    DB_AUTO_CREATE_TABLES: bool = False
 
     # Connection pool settings (only used for non-SQLite databases)
     POOL_SIZE: int = 20

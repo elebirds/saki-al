@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from saki_api.models.l3.job_event import JobEvent
     from saki_api.models.l3.job_metric_point import JobMetricPoint
     from saki_api.models.l2.project import Project
+    from saki_api.models.l3.loop_round import LoopRound
+    from saki_api.models.l3.model import Model
 
 
 class JobBase(SQLModel):
@@ -48,6 +50,9 @@ class JobBase(SQLModel):
     # Aggregated outputs
     metrics: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON), description="权重路径等")
+    round_index: int = Field(default=0, ge=0, index=True)
+    strategy_params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    model_id: Optional[uuid.UUID] = Field(default=None, foreign_key="model.id", index=True)
 
 
 class Job(JobBase, TimestampMixin, UUIDMixin, table=True):
@@ -57,7 +62,14 @@ class Job(JobBase, TimestampMixin, UUIDMixin, table=True):
     __tablename__ = "job"
 
     project: "Project" = Relationship(back_populates="jobs")
-    loop: "ALLoop" = Relationship(back_populates="jobs")
+    loop: "ALLoop" = Relationship(
+        back_populates="jobs",
+        sa_relationship_kwargs={"foreign_keys": "[Job.loop_id]"},
+    )
     sample_metrics: List["JobSampleMetric"] = Relationship(back_populates="job")
     events: List["JobEvent"] = Relationship(back_populates="job")
     metric_points: List["JobMetricPoint"] = Relationship(back_populates="job")
+    rounds: List["LoopRound"] = Relationship(back_populates="job")
+    model: Optional["Model"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[Job.model_id]"}
+    )

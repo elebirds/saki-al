@@ -15,6 +15,7 @@ from saki_api.models import Permissions, ResourceType
 from saki_api.models.l1.sample import Sample
 from saki_api.models.l2.annotation_draft import AnnotationDraft
 from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.models.l3.annotation_batch import AnnotationBatchItem, AnnotationBatch
 from saki_api.repositories.branch import BranchRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.pagination import PaginationResponse
@@ -269,6 +270,7 @@ async def list_project_samples(
         current_user_id: uuid.UUID = Depends(get_current_user_id),
         branch_name: str = Query("master"),
         q: str | None = Query(None, description="Search by name or remark"),
+        batch_id: uuid.UUID | None = Query(None, description="Filter by annotation batch"),
         status: str = Query("all", description="all|labeled|unlabeled|draft"),
         sort_by: str = Query("createdAt"),
         sort_order: str = Query("desc"),
@@ -300,6 +302,17 @@ async def list_project_samples(
                 Sample.remark.ilike(pattern),
             )
         )
+
+    if batch_id:
+        batch_stmt = (
+            select(AnnotationBatchItem.sample_id)
+            .join(AnnotationBatch, AnnotationBatch.id == AnnotationBatchItem.batch_id)
+            .where(
+                AnnotationBatchItem.batch_id == batch_id,
+                AnnotationBatch.project_id == project_id,
+            )
+        )
+        statement = statement.where(Sample.id.in_(batch_stmt))
 
     # Status filter
     labeled_subq = select(CommitAnnotationMap.sample_id).where(

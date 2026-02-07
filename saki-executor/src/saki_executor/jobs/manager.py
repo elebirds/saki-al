@@ -492,10 +492,16 @@ class JobManager:
                     score = float(candidate.get("score") or 0.0)
                 except Exception:
                     score = 0.0
+                reason_payload = candidate.get("reason") or {}
+                if not isinstance(reason_payload, dict):
+                    reason_payload = {}
+                prediction_snapshot = candidate.get("prediction_snapshot")
+                if isinstance(prediction_snapshot, dict) and prediction_snapshot:
+                    reason_payload = {**reason_payload, "prediction_snapshot": prediction_snapshot}
                 payload = {
                     "sample_id": sample_id,
                     "score": score,
-                    "reason": candidate.get("reason") or {},
+                    "reason": reason_payload,
                 }
                 counter += 1
                 key = (score, counter, payload)
@@ -511,7 +517,14 @@ class JobManager:
                 break
 
         ranked = sorted(heap, key=lambda item: item[0], reverse=True)
-        return [item[2] for item in ranked]
+        output: list[dict[str, Any]] = []
+        for rank, item in enumerate(ranked, start=1):
+            payload = item[2]
+            reason = payload.get("reason")
+            if isinstance(reason, dict):
+                payload["reason"] = {**reason, "rank": rank}
+            output.append(payload)
+        return output
 
     @staticmethod
     def _normalize_simulation_ratio_schedule(raw: Any) -> list[float]:

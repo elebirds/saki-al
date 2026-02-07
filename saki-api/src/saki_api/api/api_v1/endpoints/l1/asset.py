@@ -13,9 +13,11 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, File, UploadFile, Query, Path, HTTPException, status
+from fastapi import APIRouter, File, UploadFile, Query, Path, HTTPException, status, Depends
 
 from saki_api.api.service_deps import AssetServiceDep
+from saki_api.core.rbac.dependencies import require_permission
+from saki_api.models import Permissions
 from saki_api.models.enums import StorageType
 from saki_api.models.l1.asset import Asset
 from saki_api.repositories.query import Pagination
@@ -55,6 +57,7 @@ def to_list_item(asset: Asset | AssetRead) -> AssetListItem:
     response_model=AssetUploadResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Upload and create/get asset",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_CREATE_ALL))],
     responses={
         201: {"description": "Asset created or retrieved (duplicate)"},
         400: {"description": "Invalid file or upload failed"}
@@ -98,6 +101,7 @@ async def upload_asset(
     "/{asset_id}",
     response_model=AssetRead,
     summary="Get asset details",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
     responses={404: {"description": "Asset not found"}}
 )
 async def get_asset(
@@ -112,6 +116,7 @@ async def get_asset(
     "/hash/{file_hash}",
     response_model=Optional[AssetRead],
     summary="Get asset by content hash",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
     responses={404: {"description": "Asset not found"}}
 )
 async def get_asset_by_hash(
@@ -133,6 +138,7 @@ async def get_asset_by_hash(
     "/{asset_id}/download-url",
     response_model=AssetDownloadResponse,
     summary="Get presigned download URL",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
     responses={404: {"description": "Asset not found"}}
 )
 async def get_download_url(
@@ -163,6 +169,7 @@ async def get_download_url(
     "/{asset_id}/metadata",
     response_model=AssetMetadataResponse,
     summary="Get asset metadata",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
     responses={404: {"description": "Asset not found"}}
 )
 async def get_asset_metadata(
@@ -193,6 +200,7 @@ async def get_asset_metadata(
     "",
     response_model=PaginationResponse[AssetListItem],
     summary="List assets with pagination",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
 )
 async def list_assets(
         service: AssetServiceDep,
@@ -218,6 +226,7 @@ async def list_assets(
     "/by-extension/{extension}",
     response_model=PaginationResponse[AssetListItem],
     summary="List assets by file extension",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
 )
 async def list_assets_by_extension(
         extension: str,
@@ -236,7 +245,8 @@ async def list_assets_by_extension(
 @router.get(
     "/{asset_id}/exists",
     response_model=dict,
-    summary="Check if asset file exists in storage"
+    summary="Check if asset file exists in storage",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
 )
 async def check_asset_exists(
         asset_id: uuid.UUID,
@@ -261,6 +271,7 @@ async def check_asset_exists(
     "/{asset_id}",
     response_model=dict,
     summary="Delete asset record",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_DELETE_ALL))],
     responses={404: {"description": "Asset not found"}}
 )
 async def delete_asset(
@@ -286,6 +297,7 @@ async def delete_asset(
     "/{asset_id}/hard-delete",
     response_model=dict,
     summary="Permanently delete asset from storage (DESTRUCTIVE)",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_DELETE_ALL))],
     responses={404: {"description": "Asset not found"}, 400: {"description": "Deletion failed"}}
 )
 async def hard_delete_asset(
@@ -326,7 +338,8 @@ async def hard_delete_asset(
 @router.get(
     "/stats/by-extension",
     response_model=list[AssetStorageStats],
-    summary="Get storage statistics by extension"
+    summary="Get storage statistics by extension",
+    dependencies=[Depends(require_permission(Permissions.SAMPLE_READ_ALL))],
 )
 async def get_storage_stats_by_extension(
         service: AssetServiceDep,

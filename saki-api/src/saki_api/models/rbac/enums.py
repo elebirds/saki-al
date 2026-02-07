@@ -216,3 +216,13 @@ class Permissions:
     BRANCH_SWITCH = "branch:switch:assigned"  # 成员允许：切换分支（移动 HEAD 指针）
     # Branch - self scope (reserved)
     BRANCH_READ_SELF = "branch:read:self"  # 仅本人：读取分支信息（预留）
+
+    # ============================================================================
+    # Active Learning / Runtime Permissions (L3 Layer)
+    # ============================================================================
+    LOOP_READ = "loop:read:assigned"  # 成员允许：读取 Loop 信息
+    LOOP_MANAGE = "loop:manage:assigned"  # 成员允许：创建/启动/暂停/停止 Loop
+    JOB_READ = "job:read:assigned"  # 成员允许：读取任务信息/事件/指标
+    JOB_MANAGE = "job:manage:assigned"  # 成员允许：创建/停止任务
+    MODEL_READ = "model:read:assigned"  # 成员允许：读取模型信息
+    MODEL_MANAGE = "model:manage:assigned"  # 成员允许：注册/晋升模型

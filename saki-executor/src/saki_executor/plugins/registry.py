@@ -1,5 +1,6 @@
 from saki_executor.plugins.base import ExecutorPlugin
 from saki_executor.plugins.builtin.demo_det.plugin import DemoDetectionPlugin
+from saki_executor.plugins.builtin.yolo_det.plugin import YoloDetectionPlugin
 
 
 class PluginRegistry:
@@ -16,4 +17,6 @@ class PluginRegistry:
         return list(self._plugins.values())
 
     def load_builtin(self) -> None:
+        # 首选真实 YOLO 插件；保留 demo 作为紧急回退。
+        self.register(YoloDetectionPlugin())
         self.register(DemoDetectionPlugin())

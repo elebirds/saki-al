@@ -8,9 +8,12 @@ from fastapi import APIRouter, Depends
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.core.exceptions import NotFoundAppException
+from saki_api.core.exceptions import NotFoundAppException, ForbiddenAppException
+from saki_api.core.rbac.checker import PermissionChecker
+from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.db.session import get_session
 from saki_api.grpc.dispatcher import runtime_dispatcher
+from saki_api.models import Permissions
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
 from saki_api.schemas.l3.runtime_executor import (
     RuntimeExecutorListResponse,
@@ -24,7 +27,15 @@ router = APIRouter()
 @router.get("/runtime/executors", response_model=RuntimeExecutorListResponse)
 async def list_runtime_executors(
         session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
 ):
+    checker = PermissionChecker(session)
+    allowed = await checker.check(user_id=current_user_id, permission=Permissions.JOB_READ)
+    if not allowed:
+        allowed = await checker.check(user_id=current_user_id, permission=Permissions.PROJECT_READ_ALL)
+    if not allowed:
+        raise ForbiddenAppException("Permission denied: runtime:read")
+
     rows = await session.exec(
         select(RuntimeExecutor).order_by(RuntimeExecutor.is_online.desc(), RuntimeExecutor.last_seen_at.desc())
     )
@@ -82,7 +93,15 @@ async def get_runtime_executor(
         *,
         executor_id: str,
         session: AsyncSession = Depends(get_session),
+        current_user_id=Depends(get_current_user_id),
 ):
+    checker = PermissionChecker(session)
+    allowed = await checker.check(user_id=current_user_id, permission=Permissions.JOB_READ)
+    if not allowed:
+        allowed = await checker.check(user_id=current_user_id, permission=Permissions.PROJECT_READ_ALL)
+    if not allowed:
+        raise ForbiddenAppException("Permission denied: runtime:read")
+
     row = await session.exec(select(RuntimeExecutor).where(RuntimeExecutor.executor_id == executor_id))
     executor = row.first()
     if not executor:

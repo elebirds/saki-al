@@ -4,6 +4,7 @@ import {ProjectSample} from '../../types';
 
 export interface ProjectSampleFilters {
     q?: string;
+    batchId?: string;
     status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
     branchName?: string;
     sortBy?: string;
@@ -31,6 +32,7 @@ export function useProjectSampleList(options: UseProjectSampleListOptions) {
     const {projectId, datasetId, filters, enabled = true} = options;
     const {
         q,
+        batchId,
         status,
         branchName,
         sortBy,
@@ -53,6 +55,7 @@ export function useProjectSampleList(options: UseProjectSampleListOptions) {
         try {
             const response = await api.getProjectSamples(projectId, datasetId, {
                 q,
+                batchId,
                 status,
                 branchName,
                 sortBy,
@@ -77,6 +80,7 @@ export function useProjectSampleList(options: UseProjectSampleListOptions) {
         enabled,
         q,
         status,
+        batchId,
         branchName,
         sortBy,
         sortOrder,

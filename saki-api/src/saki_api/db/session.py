@@ -96,9 +96,11 @@ async def dispose_engine():
 
 async def init_db():
     """
-    初始化数据库表。
-    注意：在生产环境中通常推荐使用 Alembic 做迁移，而不是 create_all。
+    初始化数据库。
+    默认不再使用 create_all 自动改表，建议通过 Alembic 执行迁移。
+    仅当 DB_AUTO_CREATE_TABLES=true 时才执行 create_all（开发兜底）。
     """
+    if not settings.DB_AUTO_CREATE_TABLES:
+        return
     async with engine.begin() as conn:
-        # run_sync 是在异步环境中调用同步建表函数的标准做法
         await conn.run_sync(SQLModel.metadata.create_all)

@@ -50,6 +50,7 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             project_id=payload.project_id,
             loop_id=loop_id,
             iteration=loop.current_iteration,
+            round_index=loop.current_iteration,
             status=TrainingJobStatus.PENDING,
             source_commit_id=payload.source_commit_id,
             job_type=payload.job_type,
@@ -58,6 +59,7 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             query_strategy=payload.query_strategy,
             params=payload.params,
             resources=payload.resources,
+            strategy_params=payload.strategy_params,
             metrics={},
             artifacts={},
         )
@@ -87,6 +89,14 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             global_config=payload.global_config,
             current_iteration=0,
             is_active=payload.is_active,
+            status=payload.status,
+            max_rounds=payload.max_rounds,
+            query_batch_size=payload.query_batch_size,
+            min_seed_labeled=payload.min_seed_labeled,
+            min_new_labels_per_round=payload.min_new_labels_per_round,
+            stop_patience_rounds=payload.stop_patience_rounds,
+            stop_min_gain=payload.stop_min_gain,
+            auto_register_model=payload.auto_register_model,
         )
         self.session.add(loop)
         await self.session.flush()

@@ -31,6 +31,12 @@ import {
     RuntimeMetricPoint,
     RuntimeTopKCandidate,
     LoopCreateRequest,
+    LoopRound,
+    LoopSummary,
+    AnnotationBatch,
+    AnnotationBatchItem,
+    ProjectModel,
+    ModelArtifactDownload,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
@@ -178,6 +184,18 @@ export interface ApiService {
 
     createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop>;
 
+    startLoop(loopId: string): Promise<ALLoop>;
+
+    pauseLoop(loopId: string): Promise<ALLoop>;
+
+    resumeLoop(loopId: string): Promise<ALLoop>;
+
+    stopLoop(loopId: string): Promise<ALLoop>;
+
+    getLoopRounds(loopId: string, limit?: number): Promise<LoopRound[]>;
+
+    getLoopSummary(loopId: string): Promise<LoopSummary>;
+
     getLoopJobs(loopId: string, limit?: number): Promise<RuntimeJob[]>;
 
     createLoopJob(loopId: string, payload: RuntimeJobCreateRequest, autoDispatch?: boolean): Promise<RuntimeJob>;
@@ -193,6 +211,25 @@ export interface ApiService {
     getJobSamplingTopK(jobId: string, limit?: number): Promise<RuntimeTopKCandidate[]>;
 
     getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse>;
+
+    createAnnotationBatchFromJob(jobId: string, limit?: number): Promise<AnnotationBatch>;
+
+    getAnnotationBatch(batchId: string): Promise<AnnotationBatch>;
+
+    getAnnotationBatchItems(batchId: string, limit?: number): Promise<AnnotationBatchItem[]>;
+
+    registerModelFromJob(projectId: string, payload: {
+        jobId: string;
+        name?: string;
+        versionTag?: string;
+        status?: string;
+    }): Promise<ProjectModel>;
+
+    getProjectModels(projectId: string, limit?: number): Promise<ProjectModel[]>;
+
+    promoteModel(modelId: string, status?: string): Promise<ProjectModel>;
+
+    getModelArtifactDownloadUrl(modelId: string, artifactName: string, expiresInHours?: number): Promise<ModelArtifactDownload>;
 
     createProjectBranch(
         projectId: string,
@@ -243,6 +280,7 @@ export interface ApiService {
         datasetId: string,
         params: {
             q?: string;
+            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;

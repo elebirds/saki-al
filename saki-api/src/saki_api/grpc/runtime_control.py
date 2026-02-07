@@ -135,7 +135,13 @@ class _RequestDedupCache:
 
 class RuntimeControlService(pb_grpc.RuntimeControlServicer):
     def __init__(self) -> None:
-        self.storage = get_storage_provider()
+        self._storage = None
+
+    @property
+    def storage(self):
+        if self._storage is None:
+            self._storage = get_storage_provider()
+        return self._storage
 
     @staticmethod
     def _error_details(
@@ -557,6 +563,13 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 except Exception:
                     continue
                 reason = runtime_codec.struct_to_dict(item.reason)
+                prediction_snapshot = {}
+                extra = reason if isinstance(reason, dict) else {}
+                if isinstance(extra, dict):
+                    snap = extra.get("prediction_snapshot")
+                    if isinstance(snap, dict):
+                        prediction_snapshot = snap
+                        extra = {k: v for k, v in extra.items() if k != "prediction_snapshot"}
 
                 exists_stmt = select(JobSampleMetric).where(
                     JobSampleMetric.job_id == job_id,
@@ -565,7 +578,8 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 existing = (await session.exec(exists_stmt)).first()
                 if existing:
                     existing.score = score
-                    existing.extra = reason if isinstance(reason, dict) else {}
+                    existing.extra = extra
+                    existing.prediction_snapshot = prediction_snapshot
                     session.add(existing)
                 else:
                     session.add(
@@ -573,8 +587,8 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             job_id=job_id,
                             sample_id=sample_id,
                             score=score,
-                            extra=reason if isinstance(reason, dict) else {},
-                            prediction_snapshot={},
+                            extra=extra,
+                            prediction_snapshot=prediction_snapshot,
                         )
                     )
 
@@ -811,4 +825,19 @@ class RuntimeGrpcServer:
         await self._server.stop(grace=1)
 
 
-runtime_grpc_server = RuntimeGrpcServer()
+_runtime_grpc_server: RuntimeGrpcServer | None = None
+
+
+def get_runtime_grpc_server() -> RuntimeGrpcServer:
+    global _runtime_grpc_server
+    if _runtime_grpc_server is None:
+        _runtime_grpc_server = RuntimeGrpcServer()
+    return _runtime_grpc_server
+
+
+class _LazyRuntimeGrpcServer:
+    def __getattr__(self, item):
+        return getattr(get_runtime_grpc_server(), item)
+
+
+runtime_grpc_server = _LazyRuntimeGrpcServer()

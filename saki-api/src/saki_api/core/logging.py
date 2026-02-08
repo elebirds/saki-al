@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging as std_logging
+import logging as pylog
 import sys
 from pathlib import Path
 
@@ -64,7 +64,7 @@ def _apply_sinks(level: str) -> None:
             encoding="utf-8",
         )
 
-    std_logging.getLogger("sqlalchemy.engine").setLevel(std_logging.WARNING)
+    pylog.getLogger("sqlalchemy.engine").setLevel(pylog.WARNING)
 
 
 def setup_logging(

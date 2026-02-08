@@ -5,7 +5,7 @@ Background orchestrator for active-learning loops.
 from __future__ import annotations
 
 import asyncio
-import logging
+from loguru import logger
 import uuid
 from datetime import datetime, UTC
 
@@ -37,7 +37,6 @@ from saki_api.services.loop_config import (
 )
 from saki_api.utils.storage import get_storage_provider
 
-logger = logging.getLogger(__name__)
 
 
 class LoopOrchestrator:
@@ -58,7 +57,7 @@ class LoopOrchestrator:
             return
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run(), name="loop-orchestrator")
-        logger.info("loop orchestrator started interval=%ss", self.interval_sec)
+        logger.info("主动学习编排器已启动 interval_sec={}", self.interval_sec)
 
     async def stop(self) -> None:
         self._stop_event.set()
@@ -68,7 +67,7 @@ class LoopOrchestrator:
             except asyncio.CancelledError:
                 pass
         self._task = None
-        logger.info("loop orchestrator stopped")
+        logger.info("主动学习编排器已停止")
 
     async def tick_once(self) -> None:
         await self._tick()
@@ -78,7 +77,7 @@ class LoopOrchestrator:
             try:
                 await self._tick()
             except Exception as exc:
-                logger.exception("loop orchestrator tick failed: %s", exc)
+                logger.exception("主动学习编排器轮询失败 error={}", exc)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self.interval_sec)
             except asyncio.TimeoutError:
@@ -194,7 +193,7 @@ class LoopOrchestrator:
                 presigned = self._build_presigned_download_url(warm_start_uri)
                 if warm_start_uri.startswith("s3://") and not presigned:
                     logger.warning(
-                        "skip warm-start for loop=%s round=%s due to missing presigned download url",
+                        "跳过 warm-start：缺少预签名下载地址 loop_id={} round_index={}",
                         loop.id,
                         round_index,
                     )
@@ -331,7 +330,7 @@ class LoopOrchestrator:
         min_candidates_required = max(1, to_int(selection.get("min_candidates_required"), 1))
         if len(candidates) < min_candidates_required:
             logger.info(
-                "skip annotation batch job_id=%s candidates=%s min_candidates_required=%s",
+                "跳过标注批次创建：候选样本不足 job_id={} candidates={} min_candidates_required={}",
                 job.id,
                 len(candidates),
                 min_candidates_required,
@@ -498,12 +497,16 @@ class LoopOrchestrator:
         if not object_name:
             return ""
         if bucket and bucket != settings.MINIO_BUCKET_NAME:
-            logger.warning("skip warm-start presigned url due to bucket mismatch: %s", bucket)
+            logger.warning(
+                "跳过 warm-start 预签名地址生成：桶名不匹配 bucket={} expected={}",
+                bucket,
+                settings.MINIO_BUCKET_NAME,
+            )
             return ""
         try:
             return self.storage.get_presigned_url(object_name)
         except Exception:
-            logger.exception("build warm-start presigned url failed for uri=%s", uri)
+            logger.exception("生成 warm-start 预签名地址失败 uri={}", uri)
             return ""
 
 

@@ -8,7 +8,7 @@ Manages sample creation workflow including:
 - Metadata extraction
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import List, Optional
 
@@ -25,7 +25,6 @@ from saki_api.repositories.sample import SampleRepository
 from saki_api.schemas.sample import SampleRead
 from saki_api.services.base import BaseService
 
-logger = logging.getLogger(__name__)
 
 
 class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead]):
@@ -107,7 +106,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             upload_context
         )
         if not is_valid:
-            logger.error(f"File validation failed: {error_msg}")
+            logger.error("文件校验失败 error={}", error_msg)
             raise BadRequestAppException(f"File validation failed: {error_msg}")
 
     async def _process_single_file(
@@ -172,7 +171,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             sample.meta_info.update(process_result.sample_fields["meta_info"])
 
         created_sample = await self.repository.create(sample.model_dump())
-        logger.debug(f"Created sample: {created_sample.id}")
+        logger.debug("已创建样本 sample_id={}", created_sample.id)
 
         return SampleRead.model_validate(created_sample)
 
@@ -201,7 +200,12 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             BadRequestAppException: If upload fails
         """
         created_samples = []
-        logger.info(f"Processing {len(files)} files for dataset {dataset.id} (type={dataset.type})")
+        logger.info(
+            "开始批量处理数据集文件 dataset_id={} dataset_type={} file_count={}",
+            dataset.id,
+            dataset.type,
+            len(files),
+        )
 
         # Initialize facade and upload context
         facade = self._initialize_handler(dataset.type)
@@ -210,7 +214,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         # Process each file
         for file in files:
             try:
-                logger.debug(f"Processing file: {file.filename}")
+                logger.debug("开始处理文件 filename={}", file.filename)
 
                 # Validate file
                 await self._validate_file(file, facade, upload_context)
@@ -223,10 +227,10 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                 created_samples.append(created_sample)
 
             except Exception as e:
-                logger.error(f"Failed to process file {file.filename}: {str(e)}", exc_info=True)
+                logger.exception("处理文件失败 filename={} error={}", file.filename, e)
                 raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
 
-        logger.info(f"Successfully created {len(created_samples)} samples")
+        logger.info("批量处理完成，成功创建样本数量={}", len(created_samples))
         return created_samples
 
     async def process_single_file_with_progress(
@@ -254,7 +258,12 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         Raises:
             BadRequestAppException: If upload fails
         """
-        logger.info(f"Processing file {file.filename} for dataset {dataset.id} (type={dataset.type})")
+        logger.info(
+            "开始处理单文件 dataset_id={} dataset_type={} filename={}",
+            dataset.id,
+            dataset.type,
+            file.filename,
+        )
 
         # Initialize facade and upload context
         facade = self._initialize_handler(dataset.type)
@@ -274,11 +283,11 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
 
             # Create sample record
             created_sample = await self._create_sample_from_result(dataset.id, process_result)
-            logger.info(f"Successfully created sample: {created_sample.id}")
+            logger.info("单文件处理成功，样本已创建 sample_id={}", created_sample.id)
             return created_sample
 
         except Exception as e:
-            logger.error(f"Failed to process file {file.filename}: {str(e)}", exc_info=True)
+            logger.exception("单文件处理失败 filename={} error={}", file.filename, e)
             raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
 
     async def get_asset_for_sample(
@@ -307,7 +316,12 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         try:
             return uuid.UUID(sample.asset_group[asset_key])
         except (ValueError, TypeError):
-            logger.error(f"Invalid asset ID in sample {sample_id}: {sample.asset_group.get(asset_key)}")
+            logger.error(
+                "样本中的资产 ID 无效 sample_id={} asset_key={} asset_id={}",
+                sample_id,
+                asset_key,
+                sample.asset_group.get(asset_key),
+            )
             return None
 
     async def get_all_assets_for_sample(
@@ -333,7 +347,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             try:
                 asset_ids.append(uuid.UUID(asset_id_str))
             except (ValueError, TypeError):
-                logger.warning(f"Invalid asset ID in sample {sample_id}: {asset_id_str}")
+                logger.warning("样本中的资产 ID 无效 sample_id={} asset_id={}", sample_id, asset_id_str)
 
         return asset_ids
 

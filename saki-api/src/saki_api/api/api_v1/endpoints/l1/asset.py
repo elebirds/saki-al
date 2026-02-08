@@ -9,7 +9,7 @@ Provides endpoints for:
 - Storage statistics
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import Optional
 
@@ -30,7 +30,6 @@ from saki_api.schemas.asset import (
     AssetStorageStats,
 )
 
-logger = logging.getLogger(__name__)
 
 from saki_api.schemas.pagination import PaginationResponse
 
@@ -325,7 +324,7 @@ async def hard_delete_asset(
     # Delete from database
     await service.delete(asset_id)
 
-    logger.warning(f"Permanently deleted asset {asset_id}: {asset.original_filename}")
+    logger.warning("资产已被永久删除 asset_id={} filename={}", asset_id, asset.original_filename)
     return {
         "success": True,
         "asset_id": asset_id,

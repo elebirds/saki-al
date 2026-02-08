@@ -1,10 +1,9 @@
 import functools
-import logging
+from loguru import logger
 from typing import Any, Callable, TypeVar, cast
 
 from saki_api.db.session import get_current_session
 
-logger = logging.getLogger(__name__)
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -31,7 +30,7 @@ def transactional(func: F) -> F:
                 return result
             except Exception as e:
                 # 执行失败，会自动回滚到进入此装饰器之前的状态
-                logger.error(f"Transaction error in {func.__name__}: {str(e)}")
+                logger.error("事务执行失败 func={} error={}", func.__name__, e)
                 raise e
 
     return cast(F, wrapper)

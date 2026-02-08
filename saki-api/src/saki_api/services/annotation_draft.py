@@ -2,7 +2,7 @@
 Annotation Draft Service - Business logic for Draft staging area.
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -21,7 +21,6 @@ from saki_api.services.annotation_batch_progress import backfill_open_batch_item
 from saki_api.services.base import BaseService
 from saki_api.services.project import ProjectService
 
-logger = logging.getLogger(__name__)
 
 
 class AnnotationDraftService(BaseService[AnnotationDraft, AnnotationDraftRepository, dict, dict]):

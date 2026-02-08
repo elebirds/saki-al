@@ -5,7 +5,7 @@ Runtime dispatcher for selecting executors and sending control messages.
 from __future__ import annotations
 
 import asyncio
-import logging
+from loguru import logger
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -22,7 +22,6 @@ from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
 
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -286,7 +285,7 @@ class RuntimeDispatcher:
         async with SessionLocal() as session:
             if not await self._has_required_recovery_tables(session):
                 logger.warning(
-                    "skip runtime restart recovery: missing tables (%s), waiting for auto create_all",
+                    "跳过 runtime 重启恢复：缺少表结构 tables={}，等待 create_all",
                     ", ".join(self._required_recovery_tables()),
                 )
                 return {
@@ -347,7 +346,7 @@ class RuntimeDispatcher:
             "created_retry_jobs": created_retry_jobs,
         }
         logger.info(
-            "runtime restart recovery completed: %s",
+            "runtime 重启恢复完成 summary={}",
             summary,
         )
         return summary

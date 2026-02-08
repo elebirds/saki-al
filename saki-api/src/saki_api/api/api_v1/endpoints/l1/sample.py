@@ -2,7 +2,7 @@
 Sample Endpoints.
 """
 import json
-import logging
+from loguru import logger
 import uuid
 from typing import List
 
@@ -21,8 +21,6 @@ from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.sample import SampleRead
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -154,7 +152,7 @@ async def upload_samples_with_progress(
                 yield f"data: {json.dumps({'event': 'file_complete', 'index': index, 'filename': file.filename, 'success': True, 'sample_id': str(sample.id)})}\n\n"
 
             except Exception as e:
-                logger.error(f"Error uploading file {file.filename}: {e}", exc_info=True)
+                logger.exception("文件上传失败 filename={} error={}", file.filename, e)
                 results.append({
                     "filename": file.filename,
                     "status": "error",
@@ -236,7 +234,11 @@ async def list_samples(
                 primary_asset_url = await asset_service.get_presigned_download_url(sample.primary_asset_id)
                 sample_read.primary_asset_url = primary_asset_url
             except Exception as e:
-                logger.warning(f"Failed to get presigned URL for asset {sample.primary_asset_id}: {str(e)}")
+                logger.warning(
+                    "获取资产预签名下载地址失败 asset_id={} error={}",
+                    sample.primary_asset_id,
+                    e,
+                )
 
         result.append(sample_read)
 

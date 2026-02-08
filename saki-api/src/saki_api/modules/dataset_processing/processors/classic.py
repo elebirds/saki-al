@@ -232,7 +232,7 @@ class ClassicProcessor(BaseDatasetProcessor):
             )
 
         except Exception as e:
-            self.logger.error(f"Error processing image {filename}: {e}")
+            self.logger.error("处理图像失败 filename={} error={}", filename, e)
             self.emit(EventType.PROCESS_ERROR, {"filename": filename, "error": str(e)})
             return ProcessResult(
                 success=False,

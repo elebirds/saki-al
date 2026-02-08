@@ -10,7 +10,7 @@ Manages sample creation workflow including:
 
 from loguru import logger
 import uuid
-from typing import List, Optional
+from typing import Any, AsyncIterator, List, Optional
 
 from fastapi import UploadFile
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -20,7 +20,7 @@ from saki_api.models.enums import DatasetType
 from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l1.sample import Sample
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
-from saki_api.modules.dataset_processing.base import UploadContext, ProgressCallback
+from saki_api.modules.dataset_processing.base import UploadContext, ProgressCallback, EventType, ProgressInfo
 from saki_api.repositories.sample import SampleRepository
 from saki_api.schemas.sample import SampleRead
 from saki_api.services.base import BaseService
@@ -289,6 +289,94 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         except Exception as e:
             logger.exception("单文件处理失败 filename={} error={}", file.filename, e)
             raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
+
+    async def iter_upload_progress_events(
+            self,
+            *,
+            dataset: Dataset,
+            files: List[UploadFile],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        Stream upload progress events for a batch of files.
+        """
+        results: list[dict[str, Any]] = []
+        yield {"event": "start", "total": len(files)}
+
+        facade = self._initialize_handler(dataset.type)
+        upload_context = self._build_upload_context(dataset.id)
+
+        for index, file in enumerate(files):
+            filename = file.filename or ""
+            yield {"event": "file_start", "index": index, "filename": filename}
+
+            progress_events: list[dict[str, Any]] = []
+
+            def progress_callback(event_type: EventType, progress: ProgressInfo):
+                del event_type
+                progress_events.append(
+                    {
+                        "event": "progress",
+                        "file_index": index,
+                        "filename": filename,
+                        "stage": progress.stage,
+                        "message": progress.message,
+                        "percentage": progress.percentage,
+                        "current": progress.current,
+                        "total": progress.total,
+                    }
+                )
+
+            try:
+                await self._validate_file(file, facade, upload_context)
+                process_result = await self._process_single_file(
+                    file,
+                    facade,
+                    upload_context,
+                    progress_callback=progress_callback,
+                )
+
+                for event in progress_events:
+                    yield event
+
+                created_sample = await self._create_sample_from_result(dataset.id, process_result)
+                results.append(
+                    {
+                        "id": str(created_sample.id),
+                        "filename": filename,
+                        "status": "success",
+                    }
+                )
+                yield {
+                    "event": "file_complete",
+                    "index": index,
+                    "filename": filename,
+                    "success": True,
+                    "sample_id": str(created_sample.id),
+                }
+            except Exception as exc:
+                logger.exception("文件上传失败 filename={} error={}", filename, exc)
+                results.append(
+                    {
+                        "filename": filename,
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
+                yield {
+                    "event": "file_error",
+                    "index": index,
+                    "filename": filename,
+                    "error": str(exc),
+                }
+
+        success_count = sum(1 for item in results if item.get("status") == "success")
+        error_count = len(results) - success_count
+        yield {
+            "event": "complete",
+            "uploaded": success_count,
+            "errors": error_count,
+            "results": results,
+        }
 
     async def get_asset_for_sample(
             self,

@@ -258,6 +258,126 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             )
         return items, next_cursor
 
+    async def _resolve_unlabeled_selection_filter(
+        self,
+        *,
+        session,
+        query_type: str,
+        job_id_raw: str,
+    ) -> tuple[bool, uuid.UUID | None]:
+        selection_exclude_open_batches = True
+        loop_id_for_filter: uuid.UUID | None = None
+        if query_type != "unlabeled_samples":
+            return selection_exclude_open_batches, loop_id_for_filter
+
+        job_id_value = str(job_id_raw or "").strip()
+        if not job_id_value:
+            return selection_exclude_open_batches, loop_id_for_filter
+
+        try:
+            job_id = uuid.UUID(job_id_value)
+        except Exception:
+            return selection_exclude_open_batches, loop_id_for_filter
+
+        job = await session.get(Job, job_id)
+        if not job or not job.loop_id:
+            return selection_exclude_open_batches, loop_id_for_filter
+
+        loop_id_for_filter = job.loop_id
+        loop = await session.get(ALLoop, job.loop_id)
+        loop_config = normalize_loop_global_config(loop.global_config if loop else None)
+        selection_config = loop_config.get("selection")
+        if isinstance(selection_config, dict):
+            selection_exclude_open_batches = bool(selection_config.get("exclude_open_batches", True))
+        return selection_exclude_open_batches, loop_id_for_filter
+
+    async def _list_project_dataset_ids(
+        self,
+        *,
+        session,
+        project_id: uuid.UUID,
+    ) -> list[uuid.UUID]:
+        ds_stmt = select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
+        dataset_ids_raw = list((await session.exec(ds_stmt)).all())
+        dataset_ids: list[uuid.UUID] = []
+        for value in self._extract_scalar_values(dataset_ids_raw):
+            if not value:
+                continue
+            try:
+                dataset_ids.append(uuid.UUID(str(value)))
+            except Exception:
+                continue
+        return dataset_ids
+
+    def _build_samples_query(
+        self,
+        *,
+        query_type: str,
+        dataset_ids: list[uuid.UUID],
+        limit: int,
+        offset: int,
+        commit_id: uuid.UUID | None,
+        selection_exclude_open_batches: bool,
+        loop_id_for_filter: uuid.UUID | None,
+    ):
+        sample_stmt = (
+            select(Sample, Asset)
+            .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
+            .where(Sample.dataset_id.in_(dataset_ids))
+            .order_by(Sample.id)
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        if query_type != "unlabeled_samples":
+            return sample_stmt
+        if commit_id is None:
+            raise ValueError("commit_id is required")
+
+        annotated_subquery = select(CommitAnnotationMap.sample_id).where(
+            CommitAnnotationMap.commit_id == commit_id
+        )
+        sample_stmt = sample_stmt.where(Sample.id.not_in(annotated_subquery))
+        if selection_exclude_open_batches and loop_id_for_filter:
+            open_batch_sample_subquery = (
+                select(AnnotationBatchItem.sample_id)
+                .join(AnnotationBatch, AnnotationBatchItem.batch_id == AnnotationBatch.id)
+                .where(
+                    AnnotationBatch.loop_id == loop_id_for_filter,
+                    AnnotationBatch.status == AnnotationBatchStatus.OPEN,
+                )
+            )
+            sample_stmt = sample_stmt.where(Sample.id.not_in(open_batch_sample_subquery))
+        return sample_stmt
+
+    def _build_sample_data_item(self, *, sample: Sample, asset: Asset | None) -> pb.DataItem | None:
+        asset_hash = ""
+        download_url = ""
+        width = 0
+        height = 0
+        if asset:
+            asset_hash = asset.hash or ""
+            meta = asset.meta_info or {}
+            width = int(meta.get("width") or 0)
+            height = int(meta.get("height") or 0)
+            try:
+                download_url = self.storage.get_presigned_url(asset.path)
+            except Exception:
+                download_url = ""
+
+        if not download_url:
+            return None
+
+        return pb.DataItem(
+            sample_item=pb.SampleItem(
+                id=str(sample.id),
+                asset_hash=asset_hash,
+                download_url=download_url,
+                width=width,
+                height=height,
+                meta=runtime_codec.dict_to_struct(sample.meta_info or {}),
+            )
+        )
+
     async def _query_samples_items(
         self,
         *,
@@ -269,98 +389,33 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         limit: int,
         offset: int,
     ) -> tuple[list[pb.DataItem], str | None]:
-        selection_exclude_open_batches = True
-        loop_id_for_filter: uuid.UUID | None = None
-
-        if query_type == "unlabeled_samples":
-            job_id_value = str(job_id_raw or "").strip()
-            if job_id_value:
-                try:
-                    job_id = uuid.UUID(job_id_value)
-                except Exception:
-                    job_id = None
-                if job_id:
-                    job = await session.get(Job, job_id)
-                    if job and job.loop_id:
-                        loop_id_for_filter = job.loop_id
-                        loop = await session.get(ALLoop, job.loop_id)
-                        loop_config = normalize_loop_global_config(loop.global_config if loop else None)
-                        selection_config = loop_config.get("selection")
-                        if isinstance(selection_config, dict):
-                            selection_exclude_open_batches = bool(
-                                selection_config.get("exclude_open_batches", True)
-                            )
-
-        ds_stmt = select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
-        dataset_ids_raw = list((await session.exec(ds_stmt)).all())
-        dataset_ids = [
-            uuid.UUID(str(value))
-            for value in self._extract_scalar_values(dataset_ids_raw)
-            if value
-        ]
+        selection_exclude_open_batches, loop_id_for_filter = await self._resolve_unlabeled_selection_filter(
+            session=session,
+            query_type=query_type,
+            job_id_raw=job_id_raw,
+        )
+        dataset_ids = await self._list_project_dataset_ids(session=session, project_id=project_id)
         if not dataset_ids:
             return [], None
 
-        sample_stmt = (
-            select(Sample, Asset)
-            .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
-            .where(Sample.dataset_id.in_(dataset_ids))
-            .order_by(Sample.id)
-            .offset(offset)
-            .limit(limit + 1)
+        sample_stmt = self._build_samples_query(
+            query_type=query_type,
+            dataset_ids=dataset_ids,
+            limit=limit,
+            offset=offset,
+            commit_id=commit_id,
+            selection_exclude_open_batches=selection_exclude_open_batches,
+            loop_id_for_filter=loop_id_for_filter,
         )
-        if query_type == "unlabeled_samples":
-            if commit_id is None:
-                raise ValueError("commit_id is required")
-            annotated_subquery = select(CommitAnnotationMap.sample_id).where(
-                CommitAnnotationMap.commit_id == commit_id
-            )
-            sample_stmt = sample_stmt.where(Sample.id.not_in(annotated_subquery))
-            if selection_exclude_open_batches and loop_id_for_filter:
-                open_batch_sample_subquery = (
-                    select(AnnotationBatchItem.sample_id)
-                    .join(AnnotationBatch, AnnotationBatchItem.batch_id == AnnotationBatch.id)
-                    .where(
-                        AnnotationBatch.loop_id == loop_id_for_filter,
-                        AnnotationBatch.status == AnnotationBatchStatus.OPEN,
-                    )
-                )
-                sample_stmt = sample_stmt.where(Sample.id.not_in(open_batch_sample_subquery))
-
         rows = list((await session.exec(sample_stmt)).all())
         page, next_cursor = self._paginate_rows(rows, limit=limit, offset=offset)
 
         items: list[pb.DataItem] = []
         for sample, asset in page:
-            asset_hash = ""
-            download_url = ""
-            width = 0
-            height = 0
-            if asset:
-                asset_hash = asset.hash or ""
-                meta = asset.meta_info or {}
-                width = int(meta.get("width") or 0)
-                height = int(meta.get("height") or 0)
-                try:
-                    download_url = self.storage.get_presigned_url(asset.path)
-                except Exception:
-                    download_url = ""
-
-            if not download_url:
+            item = self._build_sample_data_item(sample=sample, asset=asset)
+            if item is None:
                 continue
-
-            items.append(
-                pb.DataItem(
-                    sample_item=pb.SampleItem(
-                        id=str(sample.id),
-                        asset_hash=asset_hash,
-                        download_url=download_url,
-                        width=width,
-                        height=height,
-                        meta=runtime_codec.dict_to_struct(sample.meta_info or {}),
-                    )
-                )
-            )
+            items.append(item)
         return items, next_cursor
 
     async def _query_annotations_items(

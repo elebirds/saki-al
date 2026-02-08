@@ -284,6 +284,72 @@ async def test_training_round_without_candidates_completes_loop(orchestrator_env
 
 
 @pytest.mark.anyio
+async def test_training_round_partial_failed_is_treated_as_completed(orchestrator_env):
+    session_local, orchestrator = orchestrator_env
+    project, branch, loop = await _seed_loop_graph(session_local)
+
+    async with session_local() as session:
+        job = Job(
+            project_id=project.id,
+            loop_id=loop.id,
+            iteration=1,
+            round_index=1,
+            status=TrainingJobStatus.PARTIAL_FAILED,
+            source_commit_id=branch.head_commit_id,
+            job_type="train_detection",
+            plugin_id="yolo_det_v1",
+            mode="active_learning",
+            query_strategy="aug_iou_disagreement_v1",
+            params={},
+            resources={},
+            strategy_params={},
+            metrics={"map50": 0.41},
+            artifacts={},
+            last_error="optional artifact upload failed: confusion_matrix.png",
+        )
+        session.add(job)
+        await session.flush()
+        await session.refresh(job)
+
+        round_obj = LoopRound(
+            loop_id=loop.id,
+            round_index=1,
+            source_commit_id=branch.head_commit_id,
+            job_id=job.id,
+            status=LoopRoundStatus.TRAINING,
+            metrics={},
+            selected_count=0,
+            labeled_count=0,
+        )
+        session.add(round_obj)
+        await session.commit()
+
+    async with session_local() as session:
+        db_loop = await session.get(ALLoop, loop.id)
+        db_round = await session.exec(select(LoopRound).where(LoopRound.loop_id == loop.id))
+        db_round_obj = db_round.first()
+        db_branch = await session.get(Branch, branch.id)
+        assert db_loop is not None
+        assert db_round_obj is not None
+        assert db_branch is not None
+
+        dispatch_job_id = await orchestrator._handle_training_round(  # noqa: SLF001
+            session=session,
+            loop=db_loop,
+            round_obj=db_round_obj,
+            branch=db_branch,
+        )
+        assert dispatch_job_id is None
+        await session.commit()
+
+        await session.refresh(db_loop)
+        await session.refresh(db_round_obj)
+        assert db_round_obj.status == LoopRoundStatus.COMPLETED_NO_CANDIDATES
+        assert db_loop.status == ALLoopStatus.COMPLETED
+        assert db_loop.last_error == "no_candidates"
+
+
+@pytest.mark.anyio
 async def test_refresh_batch_progress_backfills_annotation_commit(orchestrator_env):
     session_local, orchestrator = orchestrator_env
     project, branch, loop = await _seed_loop_graph(session_local)

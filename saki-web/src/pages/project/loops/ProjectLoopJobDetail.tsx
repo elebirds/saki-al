@@ -41,11 +41,12 @@ const JOB_STATUS_COLOR: Record<string, string> = {
     pending: 'default',
     running: 'processing',
     success: 'success',
+    partial_failed: 'warning',
     failed: 'error',
     cancelled: 'warning',
 };
 
-const TERMINAL_STATUS = new Set(['success', 'failed', 'cancelled']);
+const TERMINAL_STATUS = new Set(['success', 'partial_failed', 'failed', 'cancelled']);
 
 const formatDateTime = (value?: string | null) => {
     if (!value) return '-';
@@ -157,6 +158,9 @@ const ProjectLoopJobDetail: React.FC = () => {
             const uri = String(artifact.uri || '');
             if (uri.startsWith('http://') || uri.startsWith('https://')) {
                 updates[artifact.name] = uri;
+                continue;
+            }
+            if (!uri.startsWith('s3://')) {
                 continue;
             }
             try {
@@ -332,7 +336,12 @@ const ProjectLoopJobDetail: React.FC = () => {
                     <Descriptions.Item label="TopK 数量">{topk.length}</Descriptions.Item>
                 </Descriptions>
                 {job.lastError ? (
-                    <Alert className="!mt-3" type="error" showIcon message={job.lastError}/>
+                    <Alert
+                        className="!mt-3"
+                        type={job.status === 'partial_failed' ? 'warning' : 'error'}
+                        showIcon
+                        message={job.lastError}
+                    />
                 ) : null}
             </Card>
 

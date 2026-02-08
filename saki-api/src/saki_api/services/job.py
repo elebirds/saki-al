@@ -44,6 +44,11 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         self.job_metric_repo = JobMetricPointRepository(session)
         self.storage = get_storage_provider()
 
+    @staticmethod
+    def _is_downloadable_uri(uri: str | None) -> bool:
+        raw = str(uri or "").strip()
+        return raw.startswith("s3://") or raw.startswith("http://") or raw.startswith("https://")
+
     @transactional
     async def create_job_for_loop(self, loop_id: uuid.UUID, payload: JobCreateRequest) -> Job:
         loop = await self.loop_repo.get_by_id(loop_id)
@@ -243,11 +248,14 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         for name, value in (job.artifacts or {}).items():
             if not isinstance(value, dict):
                 continue
+            uri = str(value.get("uri", ""))
+            if not self._is_downloadable_uri(uri):
+                continue
             artifacts.append(
                 {
                     "name": name,
                     "kind": str(value.get("kind", "artifact")),
-                    "uri": str(value.get("uri", "")),
+                    "uri": uri,
                     "meta": value.get("meta") or {},
                 }
             )

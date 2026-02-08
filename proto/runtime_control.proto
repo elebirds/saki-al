@@ -17,6 +17,7 @@ enum RuntimeJobStatus {
   STOPPED = 5;
   SUCCEEDED = 6;
   FAILED = 7;
+  PARTIAL_FAILED = 8;
 }
 
 enum AckStatus {

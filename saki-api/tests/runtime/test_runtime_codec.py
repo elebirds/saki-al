@@ -23,6 +23,11 @@ def test_decode_status_event():
     assert status_enum == pb.RUNNING
 
 
+def test_partial_failed_status_codec_mapping():
+    assert runtime_codec.status_to_text(pb.PARTIAL_FAILED) == "partial_failed"
+    assert runtime_codec.text_to_status("partial_failed") == pb.PARTIAL_FAILED
+
+
 def test_query_job_mode_type_mapping():
     assert runtime_codec.text_to_query_type("labels") == pb.LABELS
     assert runtime_codec.query_type_to_text(pb.UNLABELED_SAMPLES) == "unlabeled_samples"

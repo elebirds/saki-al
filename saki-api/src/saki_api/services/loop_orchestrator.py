@@ -435,7 +435,7 @@ class LoopOrchestrator:
 
         if job.status in {TrainingJobStatus.PENDING, TrainingJobStatus.RUNNING}:
             return None
-        if job.status != TrainingJobStatus.SUCCESS:
+        if job.status not in {TrainingJobStatus.SUCCESS, TrainingJobStatus.PARTIAL_FAILED}:
             round_obj.status = LoopRoundStatus.FAILED
             round_obj.ended_at = datetime.now(UTC)
             loop.status = ALLoopStatus.FAILED

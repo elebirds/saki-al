@@ -99,3 +99,17 @@ def test_build_register_message_with_accelerators():
     assert list(message.register.plugins[0].supported_accelerators) == [pb.CPU, pb.CUDA]
     assert message.register.plugins[0].supports_auto_fallback is True
     assert len(message.register.resources.accelerators) >= 2
+
+
+def test_partial_failed_status_codec_mapping():
+    message = codec.build_job_result_message(
+        request_id="result-1",
+        job_id="job-1",
+        status="partial_failed",
+        metrics={},
+        artifacts={},
+        candidates=[],
+        error_message="optional artifact upload failed",
+    )
+    assert message.job_result.status == pb.PARTIAL_FAILED
+    assert codec.status_enum_to_text(pb.PARTIAL_FAILED) == "partial_failed"

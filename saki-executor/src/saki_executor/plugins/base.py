@@ -19,6 +19,7 @@ class TrainArtifact:
     path: Path
     content_type: str = "application/octet-stream"
     meta: dict[str, Any] | None = None
+    required: bool = False
 
 
 @dataclass

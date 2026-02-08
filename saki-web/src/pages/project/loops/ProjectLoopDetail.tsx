@@ -47,6 +47,7 @@ const JOB_STATUS_COLOR: Record<string, string> = {
     pending: 'default',
     running: 'processing',
     success: 'success',
+    partial_failed: 'warning',
     failed: 'error',
     cancelled: 'warning',
 };

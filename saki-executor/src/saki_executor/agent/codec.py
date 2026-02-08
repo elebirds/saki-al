@@ -17,9 +17,11 @@ _STATUS_TO_ENUM: dict[str, int] = {
     JobStatus.STOPPED.value: pb.STOPPED,
     JobStatus.SUCCEEDED.value: pb.SUCCEEDED,
     JobStatus.FAILED.value: pb.FAILED,
+    JobStatus.PARTIAL_FAILED.value: pb.PARTIAL_FAILED,
     "pending": pb.QUEUED,
     "success": pb.SUCCEEDED,
     "cancelled": pb.STOPPED,
+    "partial_failed": pb.PARTIAL_FAILED,
 }
 
 _ENUM_TO_STATUS: dict[int, str] = {
@@ -30,6 +32,7 @@ _ENUM_TO_STATUS: dict[int, str] = {
     pb.STOPPED: JobStatus.STOPPED.value,
     pb.SUCCEEDED: JobStatus.SUCCEEDED.value,
     pb.FAILED: JobStatus.FAILED.value,
+    pb.PARTIAL_FAILED: JobStatus.PARTIAL_FAILED.value,
 }
 
 _JOB_TYPE_TO_TEXT: dict[int, str] = {

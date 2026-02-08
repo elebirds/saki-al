@@ -106,14 +106,23 @@ class DemoDetectionInternal:
         model_path.write_text("demo-model-weights", encoding="utf-8")
         report_path.write_text(json.dumps({"metrics": metrics}, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        await emit("artifact", {"kind": "weights", "name": "best.pt", "uri": str(model_path), "meta": {"size": model_path.stat().st_size}})
-        await emit("artifact", {"kind": "report", "name": "report.json", "uri": str(report_path), "meta": {"size": report_path.stat().st_size}})
-
         return TrainOutput(
             metrics=metrics,
             artifacts=[
-                TrainArtifact(kind="weights", name="best.pt", path=model_path, content_type="application/octet-stream"),
-                TrainArtifact(kind="report", name="report.json", path=report_path, content_type="application/json"),
+                TrainArtifact(
+                    kind="weights",
+                    name="best.pt",
+                    path=model_path,
+                    content_type="application/octet-stream",
+                    required=True,
+                ),
+                TrainArtifact(
+                    kind="report",
+                    name="report.json",
+                    path=report_path,
+                    content_type="application/json",
+                    required=True,
+                ),
             ],
         )
 

@@ -21,6 +21,12 @@ from saki_executor.sdk.reporter import JobReporter
 SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage]]
 
+
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+UPLOAD_MAX_ATTEMPTS = 3
+UPLOAD_RETRY_BACKOFF_SEC = (1.0, 2.0)
+
+
 class JobManager:
     def __init__(
             self,
@@ -85,6 +91,7 @@ class JobManager:
                 if self.last_job_id == job_id and self.last_job_status in {
                     JobStatus.SUCCEEDED,
                     JobStatus.FAILED,
+                    JobStatus.PARTIAL_FAILED,
                     JobStatus.STOPPED,
                 }:
                     return True
@@ -152,11 +159,12 @@ class JobManager:
                     metrics={str(k): float(v) for k, v in metrics.items()},
                 )
             elif event_type == "artifact":
-                event = reporter.artifact(
-                    kind=str(event_payload.get("kind", "artifact")),
-                    name=str(event_payload.get("name", "")),
-                    uri=str(event_payload.get("uri", "")),
-                    meta=event_payload.get("meta") or {},
+                event = reporter.log(
+                    "WARN",
+                    (
+                        "plugin artifact event is ignored; "
+                        f"artifact_name={str(event_payload.get('name', ''))}"
+                    ),
                 )
             elif event_type == "status":
                 event = reporter.status(
@@ -259,53 +267,82 @@ class JobManager:
                 raise RuntimeError(f"unsupported mode: {mode}")
 
             artifacts: dict[str, Any] = {}
+            optional_upload_failures: list[str] = []
             for artifact in output.artifacts:
-                ticket_response = await self._request_message(
-                    runtime_codec.build_upload_ticket_request_message(
-                        request_id=str(uuid.uuid4()),
+                artifact_path = Path(artifact.path)
+                required = bool(getattr(artifact, "required", False))
+                try:
+                    ticket = await self._request_upload_ticket(
                         job_id=job_id,
                         artifact_name=artifact.name,
                         content_type=artifact.content_type,
                     )
-                )
-                payload_type = ticket_response.WhichOneof("payload")
-                if payload_type == "error":
-                    error_payload = runtime_codec.parse_error(ticket_response.error)
-                    raise RuntimeError(str(error_payload.get("error") or "upload ticket request failed"))
-                if payload_type != "upload_ticket_response":
-                    raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
+                    upload_url = str(ticket.get("upload_url") or "")
+                    storage_uri = str(ticket.get("storage_uri") or "")
+                    headers = {
+                        str(key): str(value)
+                        for key, value in (ticket.get("headers") or {}).items()
+                    }
+                    size = artifact_path.stat().st_size
+                    await self._upload_artifact_with_retry(
+                        artifact_path=artifact_path,
+                        upload_url=upload_url,
+                        headers=headers,
+                    )
+                except Exception as exc:
+                    message = f"artifact={artifact.name} required={required} error={exc}"
+                    if required:
+                        raise RuntimeError(f"required artifact upload failed: {message}") from exc
+                    optional_upload_failures.append(message)
+                    logger.warning("非关键制品上传失败，忽略并继续 job_id={} {}", job_id, message)
+                    continue
 
-                ticket = runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
-                upload_url = str(ticket.get("upload_url") or "")
-                storage_uri = str(ticket.get("storage_uri") or "")
-                headers = ticket.get("headers") or {}
-                artifact_path = Path(artifact.path)
-                size = artifact_path.stat().st_size
-                async with httpx.AsyncClient(timeout=180) as client:
-                    with artifact_path.open("rb") as file_obj:
-                        response = await client.put(upload_url, content=file_obj, headers=headers)
-                        response.raise_for_status()
                 artifacts[artifact.name] = {
                     "kind": artifact.kind,
                     "uri": storage_uri,
                     "meta": artifact.meta or {"size": size},
                 }
+                artifact_event = reporter.artifact(
+                    kind=artifact.kind,
+                    name=artifact.name,
+                    uri=storage_uri,
+                    meta=artifact.meta or {"size": size},
+                )
+                await self._push_event(job_id, artifact_event)
 
             self.executor_state = ExecutorState.FINALIZING
-            final_event = reporter.status(JobStatus.SUCCEEDED.value, "job succeeded")
-            await self._push_event(job_id, final_event)
-            await self._send_message(
-                runtime_codec.build_job_result_message(
-                    request_id=str(uuid.uuid4()),
-                    job_id=job_id,
-                    status=JobStatus.SUCCEEDED.value,
-                    metrics=output.metrics,
-                    artifacts=artifacts,
-                    candidates=candidates,
+            if optional_upload_failures:
+                reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
+                final_event = reporter.status(JobStatus.PARTIAL_FAILED.value, reason)
+                await self._push_event(job_id, final_event)
+                await self._send_message(
+                    runtime_codec.build_job_result_message(
+                        request_id=str(uuid.uuid4()),
+                        job_id=job_id,
+                        status=JobStatus.PARTIAL_FAILED.value,
+                        metrics=output.metrics,
+                        artifacts=artifacts,
+                        candidates=candidates,
+                        error_message=reason,
+                    )
                 )
-            )
-            final_status = JobStatus.SUCCEEDED
-            logger.info("任务执行成功 job_id={}", job_id)
+                final_status = JobStatus.PARTIAL_FAILED
+                logger.warning("任务部分成功（非关键制品上传失败） job_id={} reason={}", job_id, reason)
+            else:
+                final_event = reporter.status(JobStatus.SUCCEEDED.value, "job succeeded")
+                await self._push_event(job_id, final_event)
+                await self._send_message(
+                    runtime_codec.build_job_result_message(
+                        request_id=str(uuid.uuid4()),
+                        job_id=job_id,
+                        status=JobStatus.SUCCEEDED.value,
+                        metrics=output.metrics,
+                        artifacts=artifacts,
+                        candidates=candidates,
+                    )
+                )
+                final_status = JobStatus.SUCCEEDED
+                logger.info("任务执行成功 job_id={}", job_id)
         except asyncio.CancelledError:
             self.executor_state = ExecutorState.FINALIZING
             stop_event = reporter.status(JobStatus.STOPPED.value, "job stopped")
@@ -350,6 +387,71 @@ class JobManager:
                 self._stop_event.clear()
                 self._active_plugin = None
             logger.info("任务收尾完成 job_id={} final_status={}", job_id, final_status.value)
+
+    async def _request_upload_ticket(
+            self,
+            *,
+            job_id: str,
+            artifact_name: str,
+            content_type: str,
+    ) -> dict[str, Any]:
+        if self._request_message is None:
+            raise RuntimeError("job manager request transport is not configured")
+        ticket_response = await self._request_message(
+            runtime_codec.build_upload_ticket_request_message(
+                request_id=str(uuid.uuid4()),
+                job_id=job_id,
+                artifact_name=artifact_name,
+                content_type=content_type,
+            )
+        )
+        payload_type = ticket_response.WhichOneof("payload")
+        if payload_type == "error":
+            error_payload = runtime_codec.parse_error(ticket_response.error)
+            raise RuntimeError(str(error_payload.get("error") or "upload ticket request failed"))
+        if payload_type != "upload_ticket_response":
+            raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
+        return runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
+
+    async def _iter_file_chunks(self, artifact_path: Path, chunk_size: int = UPLOAD_CHUNK_SIZE):
+        with artifact_path.open("rb") as file_obj:
+            while True:
+                chunk = await asyncio.to_thread(file_obj.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+
+    async def _upload_artifact_with_retry(
+            self,
+            *,
+            artifact_path: Path,
+            upload_url: str,
+            headers: dict[str, str],
+    ) -> None:
+        if not upload_url:
+            raise RuntimeError("upload url is empty")
+        attempt = 0
+        last_error: Exception | None = None
+        while attempt < UPLOAD_MAX_ATTEMPTS:
+            attempt += 1
+            try:
+                async with httpx.AsyncClient(timeout=180) as client:
+                    response = await client.put(
+                        upload_url,
+                        content=self._iter_file_chunks(artifact_path),
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt >= UPLOAD_MAX_ATTEMPTS:
+                    break
+                backoff = UPLOAD_RETRY_BACKOFF_SEC[min(attempt - 1, len(UPLOAD_RETRY_BACKOFF_SEC) - 1)]
+                await asyncio.sleep(backoff)
+        raise RuntimeError(
+            f"upload failed after {UPLOAD_MAX_ATTEMPTS} attempts artifact={artifact_path.name}"
+        ) from last_error
 
     async def _push_event(self, job_id: str, event: dict[str, Any]) -> None:
         if self._send_message is None:

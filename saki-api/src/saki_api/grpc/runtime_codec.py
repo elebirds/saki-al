@@ -18,6 +18,7 @@ _STATUS_TO_TEXT: dict[int, str] = {
     pb.STOPPED: "stopped",
     pb.SUCCEEDED: "succeeded",
     pb.FAILED: "failed",
+    pb.PARTIAL_FAILED: "partial_failed",
 }
 
 _TEXT_TO_STATUS: dict[str, int] = {value: key for key, value in _STATUS_TO_TEXT.items()}
@@ -26,6 +27,7 @@ _TEXT_TO_STATUS.update(
         "pending": pb.QUEUED,
         "success": pb.SUCCEEDED,
         "cancelled": pb.STOPPED,
+        "partial_failed": pb.PARTIAL_FAILED,
     }
 )
 

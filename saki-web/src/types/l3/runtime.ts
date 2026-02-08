@@ -26,7 +26,7 @@ export interface ALLoop {
     updatedAt: string;
 }
 
-export type RuntimeJobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+export type RuntimeJobStatus = 'pending' | 'running' | 'success' | 'partial_failed' | 'failed' | 'cancelled';
 
 export interface RuntimeJob {
     id: string;

@@ -19,3 +19,4 @@ class JobStatus(str, Enum):
     STOPPED = "stopped"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    PARTIAL_FAILED = "partial_failed"

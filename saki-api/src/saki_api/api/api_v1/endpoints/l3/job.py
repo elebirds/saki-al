@@ -114,6 +114,7 @@ async def stop_job(
     if job.status in {
         TrainingJobStatus.SUCCESS,
         TrainingJobStatus.FAILED,
+        TrainingJobStatus.PARTIAL_FAILED,
         TrainingJobStatus.CANCELLED,
     }:
         return JobCommandResponse(

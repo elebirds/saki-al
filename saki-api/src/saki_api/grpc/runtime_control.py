@@ -107,6 +107,11 @@ def _normalize_obb_payload(data: dict) -> dict:
     }
 
 
+def _is_downloadable_artifact_uri(uri: str | None) -> bool:
+    raw = str(uri or "").strip()
+    return raw.startswith("s3://") or raw.startswith("http://") or raw.startswith("https://")
+
+
 def _map_status(status: int | str) -> TrainingJobStatus:
     if isinstance(status, str):
         status = runtime_codec.text_to_status(status)
@@ -119,6 +124,7 @@ def _map_status(status: int | str) -> TrainingJobStatus:
         pb.STOPPED: TrainingJobStatus.CANCELLED,
         pb.SUCCEEDED: TrainingJobStatus.SUCCESS,
         pb.FAILED: TrainingJobStatus.FAILED,
+        pb.PARTIAL_FAILED: TrainingJobStatus.PARTIAL_FAILED,
     }
     return mapping.get(int(status), TrainingJobStatus.PENDING)
 
@@ -815,9 +821,14 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 job.status = mapped
                 if mapped == TrainingJobStatus.RUNNING and not job.started_at:
                     job.started_at = event_ts
-                if mapped in (TrainingJobStatus.SUCCESS, TrainingJobStatus.FAILED, TrainingJobStatus.CANCELLED):
+                if mapped in (
+                    TrainingJobStatus.SUCCESS,
+                    TrainingJobStatus.FAILED,
+                    TrainingJobStatus.PARTIAL_FAILED,
+                    TrainingJobStatus.CANCELLED,
+                ):
                     job.ended_at = event_ts
-                if mapped == TrainingJobStatus.FAILED:
+                if mapped in (TrainingJobStatus.FAILED, TrainingJobStatus.PARTIAL_FAILED):
                     job.last_error = payload.get("reason") or payload.get("message")
             elif event_type == "metric":
                 metrics = payload.get("metrics") or {}
@@ -855,11 +866,12 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                     job.metrics = agg
             elif event_type == "artifact":
                 name = str(payload.get("name") or "")
-                if name:
+                uri = str(payload.get("uri") or "")
+                if name and _is_downloadable_artifact_uri(uri):
                     artifacts = dict(job.artifacts or {})
                     artifacts[name] = {
                         "kind": payload.get("kind", "artifact"),
-                        "uri": payload.get("uri", ""),
+                        "uri": uri,
                         "meta": payload.get("meta") or {},
                     }
                     job.artifacts = artifacts
@@ -882,9 +894,12 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             name = str(item.name or "")
             if not name:
                 continue
+            uri = str(item.uri or "")
+            if not _is_downloadable_artifact_uri(uri):
+                continue
             artifacts[name] = {
                 "kind": str(item.kind or "artifact"),
-                "uri": str(item.uri or ""),
+                "uri": uri,
                 "meta": runtime_codec.struct_to_dict(item.meta),
             }
 
@@ -898,7 +913,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             job.metrics = {**(job.metrics or {}), **metrics}
             job.artifacts = {**(job.artifacts or {}), **artifacts}
             job.ended_at = datetime.now(UTC)
-            if mapped == TrainingJobStatus.FAILED:
+            if mapped in (TrainingJobStatus.FAILED, TrainingJobStatus.PARTIAL_FAILED):
                 job.last_error = str(message.error_message or "runtime failed")
 
             for item in message.candidates:

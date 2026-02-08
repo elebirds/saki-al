@@ -7,6 +7,7 @@ def test_runtime_status_mapping():
     assert _map_status(pb.CREATED) == TrainingJobStatus.PENDING
     assert _map_status(pb.RUNNING) == TrainingJobStatus.RUNNING
     assert _map_status(pb.SUCCEEDED) == TrainingJobStatus.SUCCESS
+    assert _map_status(pb.PARTIAL_FAILED) == TrainingJobStatus.PARTIAL_FAILED
     assert _map_status(pb.FAILED) == TrainingJobStatus.FAILED
     assert _map_status(pb.STOPPED) == TrainingJobStatus.CANCELLED
 

@@ -473,36 +473,6 @@ class YoloDetectionInternal:
         best_path = Path(train_result["best_path"])
         extra_artifacts: list[TrainArtifact] = list(train_result.get("extra_artifacts", []))
 
-        await emit(
-            "artifact",
-            {
-                "kind": "weights",
-                "name": "best.pt",
-                "uri": str(best_path),
-                "meta": {"size": best_path.stat().st_size},
-            },
-        )
-        await emit(
-            "artifact",
-            {
-                "kind": "report",
-                "name": "report.json",
-                "uri": str(report_path),
-                "meta": {"size": report_path.stat().st_size},
-            },
-        )
-
-        for artifact in extra_artifacts:
-            await emit(
-                "artifact",
-                {
-                    "kind": artifact.kind,
-                    "name": artifact.name,
-                    "uri": str(artifact.path),
-                    "meta": artifact.meta or {"size": artifact.path.stat().st_size},
-                },
-            )
-
         return TrainOutput(
             metrics=metrics,
             artifacts=[
@@ -511,12 +481,14 @@ class YoloDetectionInternal:
                     name="best.pt",
                     path=best_path,
                     content_type="application/octet-stream",
+                    required=True,
                 ),
                 TrainArtifact(
                     kind="report",
                     name="report.json",
                     path=report_path,
                     content_type="application/json",
+                    required=True,
                 ),
                 *extra_artifacts,
             ],

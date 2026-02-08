@@ -53,6 +53,7 @@ const JOB_STATUS_COLOR: Record<string, string> = {
     pending: 'default',
     running: 'processing',
     success: 'success',
+    partial_failed: 'warning',
     failed: 'error',
     cancelled: 'warning',
 };
@@ -74,7 +75,7 @@ const ROUND_STATUS_COLOR: Record<string, string> = {
     failed: 'error',
 };
 
-const TERMINAL_STATUS = new Set(['success', 'failed', 'cancelled']);
+const TERMINAL_STATUS = new Set(['success', 'partial_failed', 'failed', 'cancelled']);
 const ROUND_COMPLETED_STATUS = new Set(['completed', 'completed_no_candidates']);
 
 const formatDateTime = (value?: string | null) => {
@@ -1005,7 +1006,12 @@ const ProjectLoops: React.FC = () => {
                             </Descriptions.Item>
                         </Descriptions>
                         {jobDetail?.lastError ? (
-                            <Alert type="error" showIcon className="mt-3" message={jobDetail.lastError}/>
+                            <Alert
+                                type={jobDetail.status === 'partial_failed' ? 'warning' : 'error'}
+                                showIcon
+                                className="mt-3"
+                                message={jobDetail.lastError}
+                            />
                         ) : null}
                         <Paragraph className="!mb-0 !mt-3">
                             <Text type="secondary">超参：{JSON.stringify(jobDetail?.params || {})}</Text>

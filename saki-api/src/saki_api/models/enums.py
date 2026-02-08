@@ -101,6 +101,7 @@ class TrainingJobStatus(str, Enum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+    PARTIAL_FAILED = "partial_failed"
     CANCELLED = "cancelled"
 
 

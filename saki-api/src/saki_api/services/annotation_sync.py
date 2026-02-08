@@ -228,20 +228,7 @@ class AnnotationSyncService:
             "base_commit_id": str(base_commit_id) if base_commit_id else None,
         }
 
-    async def apply_actions(
-            self,
-            *,
-            project_id: uuid.UUID,
-            sample_id: uuid.UUID,
-            user_id: uuid.UUID,
-            branch_name: str,
-            current_snapshot: Dict[str, Any],
-            actions: List[Dict[str, Any]],
-            meta: Optional[Dict[str, Any]],
-            sync_handler,
-            context,
-    ) -> Dict[str, Any]:
-        annotations = current_snapshot.get("annotations") or []
+    def _index_snapshot_annotations(self, annotations: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         items_by_id: Dict[str, Dict[str, Any]] = {}
         for item in annotations:
             normalized = self._ensure_item_ids(item)
@@ -249,120 +236,73 @@ class AnnotationSyncService:
             group_id = normalized.get("group_id")
             if item_id and group_id:
                 items_by_id[str(item_id)] = normalized
+        return items_by_id
 
-        delete_keys: List[str] = []
-        upserts: Dict[str, str] = {}
+    @staticmethod
+    def _remove_group_items(
+            *,
+            items_by_id: Dict[str, Dict[str, Any]],
+            group_id: str,
+            delete_keys: List[str],
+    ) -> None:
+        for item_id, item in list(items_by_id.items()):
+            if str(item.get("group_id")) == group_id:
+                items_by_id.pop(item_id, None)
+                delete_keys.append(item_id)
 
-        def remove_group(group_id: str) -> None:
-            for item_id, item in list(items_by_id.items()):
-                if str(item.get("group_id")) == group_id:
-                    items_by_id.pop(item_id, None)
-                    delete_keys.append(item_id)
+    @staticmethod
+    def _find_item_by_group(
+            *,
+            items_by_id: Dict[str, Dict[str, Any]],
+            group_id: str,
+    ) -> Dict[str, Any] | None:
+        for item in items_by_id.values():
+            if str(item.get("group_id")) == group_id:
+                return item
+        return None
 
-        for action in actions:
-            action_type = action.get("type")
-            group_id = action.get("group_id") or action.get("groupId")
-            if not group_id:
-                raise BadRequestAppException("group_id is required for sync actions")
-            group_id = str(group_id)
-
-            if action_type not in ("add", "update", "delete"):
-                raise BadRequestAppException("Invalid sync action type")
-
-            if action_type == "delete":
-                existing = None
-                for item in items_by_id.values():
-                    if str(item.get("group_id")) == group_id:
-                        existing = item
-                        break
-                remove_group(group_id)
-                extra = (existing or {}).get("extra") or {}
-                result = sync_handler.on_annotation_delete(
-                    annotation_id=group_id,
-                    extra=extra,
-                    context=context,
+    def _filter_generated_items(
+            self,
+            *,
+            generated: List[Dict[str, Any]] | None,
+            group_id: str,
+            items_by_id: Dict[str, Dict[str, Any]],
+            delete_keys: List[str],
+    ) -> List[Dict[str, Any]]:
+        generated_items: List[Dict[str, Any]] = []
+        for gen in generated or []:
+            if gen.get("_action") in ("delete_children", "delete_group"):
+                target_group_id = gen.get("group_id") or gen.get("parent_id") or group_id
+                self._remove_group_items(
+                    items_by_id=items_by_id,
+                    group_id=str(target_group_id),
+                    delete_keys=delete_keys,
                 )
-                if result.generated:
-                    for gen in result.generated:
-                        if gen.get("_action") in ("delete_children", "delete_group"):
-                            target_group_id = gen.get("group_id") or gen.get("parent_id") or group_id
-                            remove_group(str(target_group_id))
-                else:
-                    remove_group(group_id)
                 continue
-
-            data = action.get("data") or {}
-            if not data:
-                raise BadRequestAppException("Action data is required for add/update")
-
-            item = self._build_item_from_action(
-                project_id=project_id,
-                sample_id=sample_id,
-                user_id=user_id,
-                group_id=group_id,
-                data=data,
-            )
-
-            if action_type == "update":
-                remove_group(group_id)
-
-            ann_type = self._coerce_annotation_type(item.get("type"))
-            label_id = item.get("label_id")
-            extra = item.get("extra") or {}
-            geometry = item.get("data") or {}
-
-            if action_type == "add":
-                result = sync_handler.on_annotation_create(
-                    annotation_id=group_id,
-                    label_id=str(label_id),
-                    ann_type=ann_type,
-                    data=geometry,
-                    extra=extra,
-                    context=context,
+            if gen.get("_action") == "regenerate_children":
+                self._remove_group_items(
+                    items_by_id=items_by_id,
+                    group_id=group_id,
+                    delete_keys=delete_keys,
                 )
-            else:
-                result = sync_handler.on_annotation_update(
-                    annotation_id=group_id,
-                    label_id=str(label_id) if label_id else None,
-                    ann_type=ann_type,
-                    data=geometry,
-                    extra=extra,
-                    context=context,
-                )
+                continue
+            generated_items.append(gen)
+        return generated_items
 
-            item_id = str(item.get("id") or group_id)
-            items_by_id[item_id] = item
-            upserts[item_id] = json.dumps(item, ensure_ascii=False, default=str)
-
-            generated_items = []
-            if result.generated:
-                for gen in result.generated:
-                    if gen.get("_action") in ("delete_children", "delete_group"):
-                        target_group_id = gen.get("group_id") or gen.get("parent_id") or group_id
-                        remove_group(str(target_group_id))
-                        continue
-                    if gen.get("_action") == "regenerate_children":
-                        remove_group(group_id)
-                        continue
-                    generated_items.append(gen)
-
-            for gen in generated_items:
-                gen_item = self._build_item_from_generated(
-                    project_id=project_id,
-                    sample_id=sample_id,
-                    user_id=user_id,
-                    generated=gen,
-                    parent_group_id=group_id,
-                )
-                gen_item_id = gen_item.get("id")
-                if not gen_item_id:
-                    continue
-                items_by_id[str(gen_item_id)] = gen_item
-                upserts[str(gen_item_id)] = json.dumps(gen_item, ensure_ascii=False, default=str)
-
+    async def _persist_working_actions(
+            self,
+            *,
+            project_id: uuid.UUID,
+            sample_id: uuid.UUID,
+            user_id: uuid.UUID,
+            branch_name: str,
+            delete_keys: List[str],
+            upserts: Dict[str, str],
+            meta: Optional[Dict[str, Any]],
+            mark_dirty: bool,
+    ) -> Dict[str, Any]:
         redis = get_redis_client()
         key = self.working_service._build_key(project_id, sample_id, user_id, branch_name)
-        mark_dirty = len(actions) > 0
         async with redis.pipeline() as pipe:
             if delete_keys:
                 pipe.hdel(key, *delete_keys)
@@ -378,5 +318,188 @@ class AnnotationSyncService:
             results = await pipe.execute()
 
         raw_snapshot = results[-2] if len(results) >= 2 else {}
-        parsed = self.working_service._parse_hash(raw_snapshot or {})
-        return parsed
+        return self.working_service._parse_hash(raw_snapshot or {})
+
+    @staticmethod
+    def _extract_action_group_id(action: Dict[str, Any]) -> str:
+        group_id = action.get("group_id") or action.get("groupId")
+        if not group_id:
+            raise BadRequestAppException("group_id is required for sync actions")
+        return str(group_id)
+
+    def _apply_delete_action(
+            self,
+            *,
+            group_id: str,
+            items_by_id: Dict[str, Dict[str, Any]],
+            delete_keys: List[str],
+            sync_handler,
+            context,
+    ) -> None:
+        existing = self._find_item_by_group(items_by_id=items_by_id, group_id=group_id)
+        self._remove_group_items(
+            items_by_id=items_by_id,
+            group_id=group_id,
+            delete_keys=delete_keys,
+        )
+        extra = (existing or {}).get("extra") or {}
+        result = sync_handler.on_annotation_delete(
+            annotation_id=group_id,
+            extra=extra,
+            context=context,
+        )
+        if result.generated:
+            for gen in result.generated:
+                if gen.get("_action") in ("delete_children", "delete_group"):
+                    target_group_id = gen.get("group_id") or gen.get("parent_id") or group_id
+                    self._remove_group_items(
+                        items_by_id=items_by_id,
+                        group_id=str(target_group_id),
+                        delete_keys=delete_keys,
+                    )
+        else:
+            self._remove_group_items(
+                items_by_id=items_by_id,
+                group_id=group_id,
+                delete_keys=delete_keys,
+            )
+
+    def _apply_upsert_action(
+            self,
+            *,
+            action: Dict[str, Any],
+            action_type: str,
+            group_id: str,
+            project_id: uuid.UUID,
+            sample_id: uuid.UUID,
+            user_id: uuid.UUID,
+            items_by_id: Dict[str, Dict[str, Any]],
+            delete_keys: List[str],
+            upserts: Dict[str, str],
+            sync_handler,
+            context,
+    ) -> None:
+        data = action.get("data") or {}
+        if not data:
+            raise BadRequestAppException("Action data is required for add/update")
+
+        item = self._build_item_from_action(
+            project_id=project_id,
+            sample_id=sample_id,
+            user_id=user_id,
+            group_id=group_id,
+            data=data,
+        )
+
+        if action_type == "update":
+            self._remove_group_items(
+                items_by_id=items_by_id,
+                group_id=group_id,
+                delete_keys=delete_keys,
+            )
+
+        ann_type = self._coerce_annotation_type(item.get("type"))
+        label_id = item.get("label_id")
+        extra = item.get("extra") or {}
+        geometry = item.get("data") or {}
+        if action_type == "add":
+            result = sync_handler.on_annotation_create(
+                annotation_id=group_id,
+                label_id=str(label_id),
+                ann_type=ann_type,
+                data=geometry,
+                extra=extra,
+                context=context,
+            )
+        else:
+            result = sync_handler.on_annotation_update(
+                annotation_id=group_id,
+                label_id=str(label_id) if label_id else None,
+                ann_type=ann_type,
+                data=geometry,
+                extra=extra,
+                context=context,
+            )
+
+        item_id = str(item.get("id") or group_id)
+        items_by_id[item_id] = item
+        upserts[item_id] = json.dumps(item, ensure_ascii=False, default=str)
+
+        generated_items = self._filter_generated_items(
+            generated=result.generated,
+            group_id=group_id,
+            items_by_id=items_by_id,
+            delete_keys=delete_keys,
+        )
+        for gen in generated_items:
+            gen_item = self._build_item_from_generated(
+                project_id=project_id,
+                sample_id=sample_id,
+                user_id=user_id,
+                generated=gen,
+                parent_group_id=group_id,
+            )
+            gen_item_id = gen_item.get("id")
+            if not gen_item_id:
+                continue
+            items_by_id[str(gen_item_id)] = gen_item
+            upserts[str(gen_item_id)] = json.dumps(gen_item, ensure_ascii=False, default=str)
+
+    async def apply_actions(
+            self,
+            *,
+            project_id: uuid.UUID,
+            sample_id: uuid.UUID,
+            user_id: uuid.UUID,
+            branch_name: str,
+            current_snapshot: Dict[str, Any],
+            actions: List[Dict[str, Any]],
+            meta: Optional[Dict[str, Any]],
+            sync_handler,
+            context,
+    ) -> Dict[str, Any]:
+        annotations = current_snapshot.get("annotations") or []
+        items_by_id = self._index_snapshot_annotations(annotations)
+        delete_keys: List[str] = []
+        upserts: Dict[str, str] = {}
+
+        for action in actions:
+            action_type = action.get("type")
+            if action_type not in ("add", "update", "delete"):
+                raise BadRequestAppException("Invalid sync action type")
+            group_id = self._extract_action_group_id(action)
+
+            if action_type == "delete":
+                self._apply_delete_action(
+                    group_id=group_id,
+                    items_by_id=items_by_id,
+                    delete_keys=delete_keys,
+                    sync_handler=sync_handler,
+                    context=context,
+                )
+                continue
+
+            self._apply_upsert_action(
+                action=action,
+                action_type=action_type,
+                group_id=group_id,
+                project_id=project_id,
+                sample_id=sample_id,
+                user_id=user_id,
+                items_by_id=items_by_id,
+                delete_keys=delete_keys,
+                upserts=upserts,
+                sync_handler=sync_handler,
+                context=context,
+            )
+
+        return await self._persist_working_actions(
+            project_id=project_id,
+            sample_id=sample_id,
+            user_id=user_id,
+            branch_name=branch_name,
+            delete_keys=delete_keys,
+            upserts=upserts,
+            meta=meta,
+            mark_dirty=len(actions) > 0,
+        )

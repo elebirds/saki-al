@@ -1124,69 +1124,87 @@ class RuntimeDispatcher:
 
         await self._try_persist_runtime_stats()
 
+    async def _collect_timed_out_assignments(self, *, now: datetime, timeout: timedelta) -> list[PendingAssign]:
+        timed_out: list[PendingAssign] = []
+        async with self._lock:
+            for request_id, pending in list(self._pending_assign.items()):
+                if now - pending.created_at < timeout:
+                    continue
+                timed_out.append(pending)
+                self._pending_assign.pop(request_id, None)
+                runtime_session = self._sessions.get(pending.executor_id)
+                if runtime_session and runtime_session.current_job_id == pending.job_id:
+                    runtime_session.busy = False
+                    runtime_session.current_job_id = None
+        return timed_out
+
+    async def _apply_single_assign_timeout(self, *, session, pending: PendingAssign, timeout_sec: int) -> None:
+        logger.warning(
+            "任务派发等待 ACK 超时 request_id={} job_id={} executor_id={} timeout_sec={}",
+            pending.request_id,
+            pending.job_id,
+            pending.executor_id,
+            timeout_sec,
+        )
+        try:
+            job_uuid = uuid.UUID(pending.job_id)
+        except Exception:
+            return
+
+        job = await session.get(Job, job_uuid)
+        if job and job.status == TrainingJobStatus.PENDING:
+            job.assigned_executor_id = None
+            job.last_error = f"assign_ack_timeout executor={pending.executor_id}"
+            session.add(job)
+
+        row = await session.exec(
+            select(RuntimeExecutor).where(RuntimeExecutor.executor_id == pending.executor_id)
+        )
+        executor = row.first()
+        if executor and executor.current_job_id == pending.job_id:
+            executor.status = "idle"
+            executor.current_job_id = None
+            executor.is_online = True
+            executor.last_error = f"assign_ack_timeout job={pending.job_id}"
+            executor.last_seen_at = datetime.now(UTC)
+            session.add(executor)
+
+    async def _collect_pending_stop_to_remove(self, *, job_ids: set[str]) -> list[str]:
+        async with self._lock:
+            return [
+                request_id
+                for request_id, pending_job_id in self._pending_stop.items()
+                if pending_job_id in job_ids
+            ]
+
+    async def _remove_pending_stop_requests(self, *, request_ids: list[str]) -> None:
+        if not request_ids:
+            return
+        async with self._lock:
+            for request_id in request_ids:
+                self._pending_stop.pop(request_id, None)
+
     async def reap_assign_timeouts(self) -> None:
         timeout_sec = max(1, int(settings.RUNTIME_ASSIGN_ACK_TIMEOUT_SEC))
         now = datetime.now(UTC)
         timeout = timedelta(seconds=timeout_sec)
-
-        timed_out: list[PendingAssign] = []
-        async with self._lock:
-            for request_id, pending in list(self._pending_assign.items()):
-                if now - pending.created_at >= timeout:
-                    timed_out.append(pending)
-                    self._pending_assign.pop(request_id, None)
-                    runtime_session = self._sessions.get(pending.executor_id)
-                    if runtime_session and runtime_session.current_job_id == pending.job_id:
-                        runtime_session.busy = False
-                        runtime_session.current_job_id = None
+        timed_out = await self._collect_timed_out_assignments(now=now, timeout=timeout)
 
         if not timed_out:
             return
 
         timed_out_job_ids = {pending.job_id for pending in timed_out}
-        pending_stop_to_remove: list[str] = []
+        pending_stop_to_remove = await self._collect_pending_stop_to_remove(job_ids=timed_out_job_ids)
         async with SessionLocal() as session:
             for pending in timed_out:
-                logger.warning(
-                    "任务派发等待 ACK 超时 request_id={} job_id={} executor_id={} timeout_sec={}",
-                    pending.request_id,
-                    pending.job_id,
-                    pending.executor_id,
-                    timeout_sec,
+                await self._apply_single_assign_timeout(
+                    session=session,
+                    pending=pending,
+                    timeout_sec=timeout_sec,
                 )
-                try:
-                    job_uuid = uuid.UUID(pending.job_id)
-                except Exception:
-                    continue
-
-                job = await session.get(Job, job_uuid)
-                if job and job.status == TrainingJobStatus.PENDING:
-                    job.assigned_executor_id = None
-                    job.last_error = f"assign_ack_timeout executor={pending.executor_id}"
-                    session.add(job)
-
-                row = await session.exec(
-                    select(RuntimeExecutor).where(RuntimeExecutor.executor_id == pending.executor_id)
-                )
-                executor = row.first()
-                if executor and executor.current_job_id == pending.job_id:
-                    executor.status = "idle"
-                    executor.current_job_id = None
-                    executor.is_online = True
-                    executor.last_error = f"assign_ack_timeout job={pending.job_id}"
-                    executor.last_seen_at = datetime.now(UTC)
-                    session.add(executor)
-
-            for request_id, pending_job_id in list(self._pending_stop.items()):
-                if pending_job_id in timed_out_job_ids:
-                    pending_stop_to_remove.append(request_id)
-
             await session.commit()
 
-        if pending_stop_to_remove:
-            async with self._lock:
-                for request_id in pending_stop_to_remove:
-                    self._pending_stop.pop(request_id, None)
+        await self._remove_pending_stop_requests(request_ids=pending_stop_to_remove)
 
         await self._try_persist_runtime_stats(force=True)
         self._schedule_dispatch()

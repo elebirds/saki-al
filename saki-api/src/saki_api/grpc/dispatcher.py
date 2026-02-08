@@ -475,6 +475,73 @@ class RuntimeDispatcher:
 
         return await connection.run_sync(_check)
 
+    @staticmethod
+    def _empty_recovery_summary() -> dict[str, int]:
+        return {
+            "reset_executors": 0,
+            "recovered_pending_assignments": 0,
+            "failed_running_jobs": 0,
+            "created_retry_jobs": 0,
+        }
+
+    async def _reset_runtime_memory_state(self) -> None:
+        async with self._lock:
+            self._sessions.clear()
+            self._pending_assign.clear()
+            self._pending_stop.clear()
+
+    async def _mark_all_executors_offline(self, *, session) -> int:
+        reset_executors = 0
+        executor_rows = await session.exec(select(RuntimeExecutor))
+        for executor in executor_rows.all():
+            executor.is_online = False
+            executor.status = "offline"
+            executor.current_job_id = None
+            session.add(executor)
+            reset_executors += 1
+        return reset_executors
+
+    async def _clear_pending_assignments(self, *, session) -> int:
+        recovered_pending_assignments = 0
+        pending_rows = await session.exec(
+            select(Job).where(
+                Job.status == TrainingJobStatus.PENDING,
+                Job.assigned_executor_id.is_not(None),
+            )
+        )
+        for job in pending_rows.all():
+            job.assigned_executor_id = None
+            job.last_error = "api_restart_recover: assignment cleared"
+            session.add(job)
+            recovered_pending_assignments += 1
+        return recovered_pending_assignments
+
+    async def _fail_running_jobs_and_create_retry(self, *, session) -> tuple[int, int]:
+        failed_running_jobs = 0
+        created_retry_jobs = 0
+        running_rows = await session.exec(
+            select(Job).where(
+                Job.status == TrainingJobStatus.RUNNING,
+                Job.assigned_executor_id.is_not(None),
+            )
+        )
+        for job in running_rows.all():
+            job.status = TrainingJobStatus.FAILED
+            job.last_error = "runtime_lost: api restarted during running job"
+            job.ended_at = datetime.now(UTC)
+            job.assigned_executor_id = None
+            failed_running_jobs += 1
+            session.add(job)
+
+            retry_job = self._build_retry_job(
+                failed_job=job,
+                reason="runtime_lost: api restarted during running job",
+            )
+            if retry_job is not None:
+                session.add(retry_job)
+                created_retry_jobs += 1
+        return failed_running_jobs, created_retry_jobs
+
     async def recover_after_api_restart(self) -> dict[str, int]:
         """
         Reconcile runtime state after API process restart.
@@ -484,15 +551,8 @@ class RuntimeDispatcher:
         - PENDING jobs with stale assignment are unassigned for redispatch.
         - RUNNING assigned jobs are marked failed and optionally retried.
         """
-        async with self._lock:
-            self._sessions.clear()
-            self._pending_assign.clear()
-            self._pending_stop.clear()
-
-        reset_executors = 0
-        recovered_pending_assignments = 0
-        failed_running_jobs = 0
-        created_retry_jobs = 0
+        await self._reset_runtime_memory_state()
+        summary = self._empty_recovery_summary()
 
         async with SessionLocal() as session:
             if not await self._has_required_recovery_tables(session):
@@ -500,63 +560,21 @@ class RuntimeDispatcher:
                     "跳过 runtime 重启恢复：缺少表结构 tables={}，等待 create_all",
                     ", ".join(self._required_recovery_tables()),
                 )
-                return {
-                    "reset_executors": 0,
-                    "recovered_pending_assignments": 0,
-                    "failed_running_jobs": 0,
-                    "created_retry_jobs": 0,
-                }
+                return summary
 
-            executor_rows = await session.exec(select(RuntimeExecutor))
-            for executor in executor_rows.all():
-                executor.is_online = False
-                executor.status = "offline"
-                executor.current_job_id = None
-                session.add(executor)
-                reset_executors += 1
-
-            pending_rows = await session.exec(
-                select(Job).where(
-                    Job.status == TrainingJobStatus.PENDING,
-                    Job.assigned_executor_id.is_not(None),
-                )
+            summary["reset_executors"] = await self._mark_all_executors_offline(session=session)
+            summary["recovered_pending_assignments"] = await self._clear_pending_assignments(
+                session=session
             )
-            for job in pending_rows.all():
-                job.assigned_executor_id = None
-                job.last_error = "api_restart_recover: assignment cleared"
-                session.add(job)
-                recovered_pending_assignments += 1
-
-            running_rows = await session.exec(
-                select(Job).where(
-                    Job.status == TrainingJobStatus.RUNNING,
-                    Job.assigned_executor_id.is_not(None),
-                )
+            (
+                summary["failed_running_jobs"],
+                summary["created_retry_jobs"],
+            ) = await self._fail_running_jobs_and_create_retry(
+                session=session
             )
-            for job in running_rows.all():
-                job.status = TrainingJobStatus.FAILED
-                job.last_error = "runtime_lost: api restarted during running job"
-                job.ended_at = datetime.now(UTC)
-                job.assigned_executor_id = None
-                failed_running_jobs += 1
-                session.add(job)
-
-                retry_job = self._build_retry_job(
-                    failed_job=job,
-                    reason="runtime_lost: api restarted during running job",
-                )
-                if retry_job is not None:
-                    session.add(retry_job)
-                    created_retry_jobs += 1
 
             await session.commit()
 
-        summary = {
-            "reset_executors": reset_executors,
-            "recovered_pending_assignments": recovered_pending_assignments,
-            "failed_running_jobs": failed_running_jobs,
-            "created_retry_jobs": created_retry_jobs,
-        }
         logger.info(
             "runtime 重启恢复完成 summary={}",
             summary,

@@ -204,6 +204,123 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             }
         )
 
+    @staticmethod
+    def _create_progress_state(
+            *,
+            filename: str,
+            progress_callback: Optional[ProgressCallback],
+    ) -> Optional[ProgressInfo]:
+        if not progress_callback:
+            return None
+        progress = ProgressInfo(
+            current=0,
+            total=6,
+            percentage=0,
+            message=f"Starting FEDO processing: {filename}",
+            stage="fedo_process",
+        )
+        progress_callback(EventType.PROCESS_PROGRESS, progress)
+        return progress
+
+    async def _upload_generated_assets(
+            self,
+            *,
+            fedo_data: FedoData,
+            context: UploadContext,
+            sample_id: str,
+    ) -> dict[str, Any]:
+        time_energy_asset = await self._upload_generated_bytes(
+            content=fedo_data.time_energy_image_bytes,
+            filename="time_energy.png",
+            content_type="image/png",
+            meta_info={
+                "generated": True,
+                "type": "fedo_visualization",
+                "view": "time-energy",
+            },
+        )
+        l_omegad_asset = await self._upload_generated_bytes(
+            content=fedo_data.l_wd_image_bytes,
+            filename="l_omegad.png",
+            content_type="image/png",
+            meta_info={
+                "generated": True,
+                "type": "fedo_visualization",
+                "view": "L-omegad",
+            },
+        )
+        lookup_asset = await self._upload_generated_bytes(
+            content=fedo_data.lookup_table_bytes,
+            filename="lookup.npz",
+            content_type="application/octet-stream",
+            meta_info={
+                "generated": True,
+                "type": "fedo_lookup_table",
+            },
+        )
+        lookup_local_path = self._persist_local_lookup_table(
+            content=fedo_data.lookup_table_bytes,
+            context=context,
+            sample_id=sample_id,
+        )
+        data_asset = await self._upload_generated_bytes(
+            content=fedo_data.data_bytes,
+            filename="data.npz",
+            content_type="application/octet-stream",
+            meta_info={
+                "generated": True,
+                "type": "fedo_data",
+            },
+        )
+        return {
+            "time_energy_asset": time_energy_asset,
+            "l_omegad_asset": l_omegad_asset,
+            "lookup_asset": lookup_asset,
+            "data_asset": data_asset,
+            "lookup_local_path": lookup_local_path,
+        }
+
+    @staticmethod
+    def _build_result_metadata(
+            *,
+            fedo_metadata: dict[str, Any],
+            lookup_asset,
+            data_asset,
+            lookup_local_path: Optional[str],
+    ) -> dict[str, Any]:
+        return {
+            **fedo_metadata,
+            "lookup_asset_id": str(lookup_asset.id),
+            "data_asset_id": str(data_asset.id),
+            "lookup_object_path": lookup_asset.path,
+            "data_object_path": data_asset.path,
+            "lookup_local_path": lookup_local_path,
+        }
+
+    def _emit_process_complete_event(
+            self,
+            *,
+            filename: str,
+            sample_id: str,
+            raw_asset,
+            time_energy_asset,
+            l_omegad_asset,
+            lookup_asset,
+            data_asset,
+    ) -> None:
+        self.emit(
+            EventType.PROCESS_COMPLETE,
+            {
+                "filename": filename,
+                "sample_id": sample_id,
+                "raw_asset_id": str(raw_asset.id),
+                "time_energy_asset_id": str(time_energy_asset.id),
+                "l_omegad_asset_id": str(l_omegad_asset.id),
+                "lookup_asset_id": str(lookup_asset.id),
+                "data_asset_id": str(data_asset.id),
+            },
+        )
+
     async def process_upload(
             self,
             file: UploadFile,
@@ -233,15 +350,10 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
         sample_id = self.generate_id()
 
         self.emit(EventType.PROCESS_START, {"filename": filename})
-
-        progress = None
-        if progress_callback:
-            progress = ProgressInfo(
-                current=0, total=6, percentage=0,
-                message=f"Starting FEDO processing: {filename}",
-                stage="fedo_process"
-            )
-            progress_callback(EventType.PROCESS_PROGRESS, progress)
+        progress = self._create_progress_state(
+            filename=filename,
+            progress_callback=progress_callback,
+        )
 
         try:
             self._update_progress(progress_callback, progress, 1, "Uploading raw data file", "fedo_upload_raw")
@@ -253,72 +365,35 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             fedo_config = self._get_fedo_config(context)
 
             self._update_progress(progress_callback, progress, 3, "Calculating physics", ProcessingStage.FEDO_PHYSICS)
-            result = self._process_file_with_processor(
+            fedo_data = self._process_file_with_processor(
                 file_content=file_content,
                 fedo_config=fedo_config,
             )
 
             self._update_progress(progress_callback, progress, 4, "Generating visualizations", "fedo_viz")
-
-            time_energy_asset = await self._upload_generated_bytes(
-                content=result.time_energy_image_bytes,
-                filename="time_energy.png",
-                content_type="image/png",
-                meta_info={
-                    "generated": True,
-                    "type": "fedo_visualization",
-                    "view": "time-energy",
-                }
-            )
-
-            l_omegad_asset = await self._upload_generated_bytes(
-                content=result.l_wd_image_bytes,
-                filename="l_omegad.png",
-                content_type="image/png",
-                meta_info={
-                    "generated": True,
-                    "type": "fedo_visualization",
-                    "view": "L-omegad",
-                }
-            )
-
-            lookup_asset = await self._upload_generated_bytes(
-                content=result.lookup_table_bytes,
-                filename="lookup.npz",
-                content_type="application/octet-stream",
-                meta_info={
-                    "generated": True,
-                    "type": "fedo_lookup_table",
-                }
-            )
-            lookup_local_path = self._persist_local_lookup_table(
-                content=result.lookup_table_bytes,
+            generated_assets = await self._upload_generated_assets(
+                fedo_data=fedo_data,
                 context=context,
                 sample_id=sample_id,
             )
-
-            data_asset = await self._upload_generated_bytes(
-                content=result.data_bytes,
-                filename="data.npz",
-                content_type="application/octet-stream",
-                meta_info={
-                    "generated": True,
-                    "type": "fedo_data",
-                }
-            )
+            time_energy_asset = generated_assets["time_energy_asset"]
+            l_omegad_asset = generated_assets["l_omegad_asset"]
+            lookup_asset = generated_assets["lookup_asset"]
+            data_asset = generated_assets["data_asset"]
+            lookup_local_path = generated_assets["lookup_local_path"]
 
             self._update_progress(progress_callback, progress, 5, "Finalizing", "fedo_finalize")
             self._update_progress(progress_callback, progress, 6, "Processing complete", "fedo_complete")
 
-            self.emit(EventType.PROCESS_COMPLETE, {
-                "filename": filename,
-                "sample_id": sample_id,
-                "raw_asset_id": str(raw_asset.id),
-                "time_energy_asset_id": str(time_energy_asset.id),
-                "l_omegad_asset_id": str(l_omegad_asset.id),
-                "lookup_asset_id": str(lookup_asset.id),
-                "data_asset_id": str(data_asset.id),
-            })
+            self._emit_process_complete_event(
+                filename=filename,
+                sample_id=sample_id,
+                raw_asset=raw_asset,
+                time_energy_asset=time_energy_asset,
+                l_omegad_asset=l_omegad_asset,
+                lookup_asset=lookup_asset,
+                data_asset=data_asset,
+            )
 
             return self._build_process_result(
                 filename=filename,
@@ -328,14 +403,12 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
                 l_omegad_asset_id=str(l_omegad_asset.id),
                 lookup_asset_id=str(lookup_asset.id),
                 data_asset_id=str(data_asset.id),
-                metadata={
-                    **result.metadata,
-                    "lookup_asset_id": str(lookup_asset.id),
-                    "data_asset_id": str(data_asset.id),
-                    "lookup_object_path": lookup_asset.path,
-                    "data_object_path": data_asset.path,
-                    "lookup_local_path": lookup_local_path,
-                },
+                metadata=self._build_result_metadata(
+                    fedo_metadata=fedo_data.metadata,
+                    lookup_asset=lookup_asset,
+                    data_asset=data_asset,
+                    lookup_local_path=lookup_local_path,
+                ),
             )
 
         except Exception as e:

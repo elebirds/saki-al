@@ -3,11 +3,13 @@ L3 Query Endpoints for loop/job listing.
 """
 
 import asyncio
+import contextlib
 import uuid
 from typing import List
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, Depends
 from jose import JWTError, jwt
+from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.websockets import WebSocketState
 
@@ -289,6 +291,11 @@ async def stream_job_events(
 
             await asyncio.sleep(1)
     except WebSocketDisconnect:
+        logger.debug("任务事件流连接断开 job_id={} after_seq={}", parsed_job_id, cursor)
         return
     except Exception:
+        logger.exception("任务事件流处理失败 job_id={} after_seq={}", parsed_job_id, cursor)
+        if websocket.client_state == WebSocketState.CONNECTED:
+            with contextlib.suppress(Exception):
+                await websocket.close(code=1011, reason="internal error")
         return

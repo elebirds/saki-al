@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
@@ -13,6 +13,8 @@ from saki_api.grpc.runtime_control import RuntimeControlService
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
+from saki_api.models.l3.job_event import JobEvent
+from saki_api.models.l3.job_metric_point import JobMetricPoint
 from saki_api.services.job import JobService
 
 
@@ -173,3 +175,80 @@ async def test_job_service_list_artifacts_filters_local_uri(runtime_artifact_env
                 "meta": {},
             }
         ]
+
+
+@pytest.mark.anyio
+async def test_persist_job_event_metric_upsert_with_single_step(runtime_artifact_env):
+    session_local = runtime_artifact_env
+    service = RuntimeControlService()
+    job = await _create_job(session_local)
+
+    await service._persist_job_event(
+        pb.JobEvent(
+            request_id="metric-evt-1",
+            job_id=str(job.id),
+            seq=1,
+            ts=10,
+            metric_event=pb.MetricEvent(
+                step=5,
+                epoch=1,
+                metrics={"loss": 0.9, "map50": 0.3},
+            ),
+        )
+    )
+    await service._persist_job_event(
+        pb.JobEvent(
+            request_id="metric-evt-2",
+            job_id=str(job.id),
+            seq=2,
+            ts=11,
+            metric_event=pb.MetricEvent(
+                step=5,
+                epoch=2,
+                metrics={"loss": 0.8},
+            ),
+        )
+    )
+    # Duplicate seq should be ignored by dedup logic in persistence layer.
+    await service._persist_job_event(
+        pb.JobEvent(
+            request_id="metric-evt-2-dup",
+            job_id=str(job.id),
+            seq=2,
+            ts=12,
+            metric_event=pb.MetricEvent(
+                step=5,
+                epoch=3,
+                metrics={"loss": 0.1},
+            ),
+        )
+    )
+
+    async with session_local() as session:
+        persisted = await session.get(Job, job.id)
+        assert persisted is not None
+        assert persisted.metrics == {"loss": 0.8, "map50": 0.3}
+
+        metric_rows = list(
+            (
+                await session.exec(
+                    select(JobMetricPoint)
+                    .where(JobMetricPoint.job_id == job.id)
+                    .order_by(JobMetricPoint.metric_name.asc())
+                )
+            ).all()
+        )
+        assert len(metric_rows) == 2
+        assert metric_rows[0].metric_name == "loss"
+        assert metric_rows[0].metric_value == 0.8
+        assert metric_rows[0].epoch == 2
+        assert metric_rows[0].step == 5
+        assert metric_rows[1].metric_name == "map50"
+        assert metric_rows[1].metric_value == 0.3
+        assert metric_rows[1].epoch == 1
+        assert metric_rows[1].step == 5
+
+        event_count = (
+            await session.exec(select(JobEvent).where(JobEvent.job_id == job.id))
+        ).all()
+        assert len(event_count) == 2

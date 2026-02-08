@@ -944,67 +944,130 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             session.add(event)
 
             if event_type == "status" and status_enum is not None:
-                mapped = _map_status(status_enum)
-                job.status = mapped
-                if mapped == TrainingJobStatus.RUNNING and not job.started_at:
-                    job.started_at = event_ts
-                if mapped in (
-                    TrainingJobStatus.SUCCESS,
-                    TrainingJobStatus.FAILED,
-                    TrainingJobStatus.PARTIAL_FAILED,
-                    TrainingJobStatus.CANCELLED,
-                ):
-                    job.ended_at = event_ts
-                if mapped in (TrainingJobStatus.FAILED, TrainingJobStatus.PARTIAL_FAILED):
-                    job.last_error = payload.get("reason") or payload.get("message")
+                self._apply_status_event(
+                    job=job,
+                    status_enum=status_enum,
+                    payload=payload,
+                    event_ts=event_ts,
+                )
             elif event_type == "metric":
-                metrics = payload.get("metrics") or {}
-                step = int(payload.get("step") or 0)
-                epoch = payload.get("epoch")
-                if isinstance(metrics, dict):
-                    agg = dict(job.metrics or {})
-                    for metric_name, metric_value in metrics.items():
-                        try:
-                            value = float(metric_value)
-                        except Exception:
-                            continue
-                        agg[str(metric_name)] = value
-                        existing_stmt = select(JobMetricPoint).where(
-                            JobMetricPoint.job_id == job_id,
-                            JobMetricPoint.step == step,
-                            JobMetricPoint.metric_name == str(metric_name),
-                        )
-                        existing_point = (await session.exec(existing_stmt)).first()
-                        if existing_point:
-                            existing_point.metric_value = value
-                            existing_point.epoch = int(epoch) if epoch is not None else None
-                            existing_point.ts = event_ts
-                            session.add(existing_point)
-                        else:
-                            metric_row = JobMetricPoint(
-                                job_id=job_id,
-                                step=step,
-                                epoch=int(epoch) if epoch is not None else None,
-                                metric_name=str(metric_name),
-                                metric_value=value,
-                                ts=event_ts,
-                            )
-                            session.add(metric_row)
-                    job.metrics = agg
+                await self._apply_metric_event(
+                    session=session,
+                    job=job,
+                    job_id=job_id,
+                    payload=payload,
+                    event_ts=event_ts,
+                )
             elif event_type == "artifact":
-                name = str(payload.get("name") or "")
-                uri = str(payload.get("uri") or "")
-                if name and _is_downloadable_artifact_uri(uri):
-                    artifacts = dict(job.artifacts or {})
-                    artifacts[name] = {
-                        "kind": payload.get("kind", "artifact"),
-                        "uri": uri,
-                        "meta": payload.get("meta") or {},
-                    }
-                    job.artifacts = artifacts
+                self._apply_artifact_event(job=job, payload=payload)
 
             session.add(job)
             await session.commit()
+
+    @staticmethod
+    def _apply_status_event(
+            *,
+            job: Job,
+            status_enum: int,
+            payload: dict[str, object],
+            event_ts: datetime,
+    ) -> None:
+        mapped = _map_status(status_enum)
+        job.status = mapped
+        if mapped == TrainingJobStatus.RUNNING and not job.started_at:
+            job.started_at = event_ts
+        if mapped in (
+            TrainingJobStatus.SUCCESS,
+            TrainingJobStatus.FAILED,
+            TrainingJobStatus.PARTIAL_FAILED,
+            TrainingJobStatus.CANCELLED,
+        ):
+            job.ended_at = event_ts
+        if mapped in (TrainingJobStatus.FAILED, TrainingJobStatus.PARTIAL_FAILED):
+            job.last_error = payload.get("reason") or payload.get("message")
+
+    @staticmethod
+    def _parse_metric_payload(payload: dict[str, object]) -> tuple[int, int | None, dict[str, float]]:
+        step = int(payload.get("step") or 0)
+        raw_epoch = payload.get("epoch")
+        epoch: int | None
+        try:
+            epoch = int(raw_epoch) if raw_epoch is not None else None
+        except Exception:
+            epoch = None
+
+        raw_metrics = payload.get("metrics")
+        if not isinstance(raw_metrics, dict):
+            return step, epoch, {}
+
+        metrics: dict[str, float] = {}
+        for metric_name, metric_value in raw_metrics.items():
+            try:
+                metrics[str(metric_name)] = float(metric_value)
+            except Exception:
+                continue
+        return step, epoch, metrics
+
+    async def _apply_metric_event(
+            self,
+            *,
+            session,
+            job: Job,
+            job_id: uuid.UUID,
+            payload: dict[str, object],
+            event_ts: datetime,
+    ) -> None:
+        step, epoch, metrics = self._parse_metric_payload(payload)
+        if not metrics:
+            return
+
+        metric_names = list(metrics.keys())
+        existing_stmt = (
+            select(JobMetricPoint)
+            .where(
+                JobMetricPoint.job_id == job_id,
+                JobMetricPoint.step == step,
+                JobMetricPoint.metric_name.in_(metric_names),
+            )
+        )
+        existing_points = list((await session.exec(existing_stmt)).all())
+        existing_map = {point.metric_name: point for point in existing_points}
+
+        aggregated = dict(job.metrics or {})
+        for metric_name, value in metrics.items():
+            aggregated[metric_name] = value
+            existing = existing_map.get(metric_name)
+            if existing:
+                existing.metric_value = value
+                existing.epoch = epoch
+                existing.ts = event_ts
+                session.add(existing)
+                continue
+            session.add(
+                JobMetricPoint(
+                    job_id=job_id,
+                    step=step,
+                    epoch=epoch,
+                    metric_name=metric_name,
+                    metric_value=value,
+                    ts=event_ts,
+                )
+            )
+        job.metrics = aggregated
+
+    @staticmethod
+    def _apply_artifact_event(*, job: Job, payload: dict[str, object]) -> None:
+        name = str(payload.get("name") or "")
+        uri = str(payload.get("uri") or "")
+        if not name or not _is_downloadable_artifact_uri(uri):
+            return
+        artifacts = dict(job.artifacts or {})
+        artifacts[name] = {
+            "kind": payload.get("kind", "artifact"),
+            "uri": uri,
+            "meta": payload.get("meta") or {},
+        }
+        job.artifacts = artifacts
 
     async def _persist_job_result(self, message: pb.JobResult) -> None:
         job_id_raw = message.job_id

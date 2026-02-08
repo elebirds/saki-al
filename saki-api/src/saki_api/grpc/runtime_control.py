@@ -305,8 +305,8 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 continue
             try:
                 dataset_ids.append(uuid.UUID(str(value)))
-            except Exception:
-                continue
+            except Exception as exc:
+                raise ValueError(f"invalid dataset_id in project {project_id}: {value}") from exc
         return dataset_ids
 
     def _build_samples_query(

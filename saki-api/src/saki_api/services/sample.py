@@ -326,6 +326,8 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                     }
                 )
 
+            created_sample: SampleRead | None = None
+            processing_error: Exception | None = None
             try:
                 await self._validate_file(file, facade, upload_context)
                 process_result = await self._process_single_file(
@@ -334,11 +336,15 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                     upload_context,
                     progress_callback=progress_callback,
                 )
-
-                for event in progress_events:
-                    yield event
-
                 created_sample = await self._create_sample_from_result(dataset.id, process_result)
+            except Exception as exc:
+                processing_error = exc
+                logger.exception("文件上传失败 filename={} error={}", filename, exc)
+
+            for event in progress_events:
+                yield event
+
+            if processing_error is None and created_sample is not None:
                 results.append(
                     {
                         "id": str(created_sample.id),
@@ -353,20 +359,20 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                     "success": True,
                     "sample_id": str(created_sample.id),
                 }
-            except Exception as exc:
-                logger.exception("文件上传失败 filename={} error={}", filename, exc)
+            else:
+                error_text = str(processing_error) if processing_error is not None else "unknown error"
                 results.append(
                     {
                         "filename": filename,
                         "status": "error",
-                        "error": str(exc),
+                        "error": error_text,
                     }
                 )
                 yield {
                     "event": "file_error",
                     "index": index,
                     "filename": filename,
-                    "error": str(exc),
+                    "error": error_text,
                 }
 
         success_count = sum(1 for item in results if item.get("status") == "success")

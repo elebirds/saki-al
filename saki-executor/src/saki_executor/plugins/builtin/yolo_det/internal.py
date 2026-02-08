@@ -425,29 +425,52 @@ class YoloDetectionInternal:
             },
         )
 
-        train_result = await asyncio.to_thread(
-            self._run_train_sync,
-            workspace=workspace,
-            dataset_yaml=dataset_yaml,
-            base_model=resolved_base_model,
-            epochs=epochs,
-            batch=batch,
-            imgsz=imgsz,
-            patience=patience,
-            device=device,
+        loop = asyncio.get_running_loop()
+        epoch_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+        def _on_epoch_update(payload: dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(epoch_queue.put_nowait, payload)
+
+        train_task = asyncio.create_task(
+            asyncio.to_thread(
+                self._run_train_sync,
+                workspace=workspace,
+                dataset_yaml=dataset_yaml,
+                base_model=resolved_base_model,
+                epochs=epochs,
+                batch=batch,
+                imgsz=imgsz,
+                patience=patience,
+                device=device,
+                epoch_callback=_on_epoch_update,
+            )
         )
 
-        for idx, metrics_row in enumerate(train_result["history"], start=1):
+        while True:
+            if train_task.done() and epoch_queue.empty():
+                break
+            try:
+                epoch_payload = await asyncio.wait_for(epoch_queue.get(), timeout=0.2)
+            except asyncio.TimeoutError:
+                continue
+            step = max(1, _to_int(epoch_payload.get("step"), 0))
+            epoch = max(1, _to_int(epoch_payload.get("epoch"), step))
+            total_steps = max(1, _to_int(epoch_payload.get("total_steps"), epochs))
+            eta_sec = max(0, _to_int(epoch_payload.get("eta_sec"), 0))
+            metrics_payload = epoch_payload.get("metrics")
+            metrics_row = metrics_payload if isinstance(metrics_payload, dict) else {}
             await emit(
                 "progress",
                 {
-                    "epoch": idx,
-                    "step": idx,
-                    "total_steps": max(1, len(train_result["history"])),
-                    "eta_sec": 0,
+                    "epoch": epoch,
+                    "step": step,
+                    "total_steps": total_steps,
+                    "eta_sec": eta_sec,
                 },
             )
-            await emit("metric", {"step": idx, "epoch": idx, "metrics": metrics_row})
+            await emit("metric", {"step": step, "epoch": epoch, "metrics": metrics_row})
+
+        train_result = await train_task
 
         metrics = dict(train_result["metrics"])
         prepare_stats = dict(self._prepare_stats or {})
@@ -654,12 +677,38 @@ class YoloDetectionInternal:
         imgsz: int,
         patience: int,
         device: Any,
+        epoch_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         if self._stop_flag.is_set():
             raise RuntimeError("training stopped before start")
 
         YOLO = self._load_yolo()
         model = YOLO(base_model)
+
+        def _emit_epoch_update(trainer: Any) -> None:
+            if self._stop_flag.is_set():
+                setattr(trainer, "stop", True)
+                return
+            if epoch_callback is None:
+                return
+            epoch = int(getattr(trainer, "epoch", -1)) + 1
+            total_steps = max(1, _to_int(getattr(trainer, "epochs", epochs), epochs))
+            epoch_time = _to_float(getattr(trainer, "epoch_time", 0.0), 0.0)
+            remaining_epochs = max(0, total_steps - epoch)
+            eta_sec = int(max(0.0, epoch_time * remaining_epochs)) if epoch_time > 0 else 0
+            raw_metrics = getattr(trainer, "metrics", {}) or {}
+            metrics = self._normalize_metrics(raw_metrics)
+            epoch_callback(
+                {
+                    "step": max(1, epoch),
+                    "epoch": max(1, epoch),
+                    "total_steps": total_steps,
+                    "eta_sec": eta_sec,
+                    "metrics": metrics,
+                }
+            )
+
+        model.add_callback("on_fit_epoch_end", _emit_epoch_update)
         train_output = model.train(
             data=str(dataset_yaml),
             epochs=epochs,
@@ -740,6 +789,20 @@ class YoloDetectionInternal:
             "extra_artifacts": extra_artifacts,
         }
 
+    def _normalize_metrics(self, raw: dict[str, Any] | Any) -> dict[str, float]:
+        source = raw if isinstance(raw, dict) else {}
+        row = {str(k): _to_float(v, 0.0) for k, v in source.items()}
+        map50_keys = ("metrics/mAP50(B)", "metrics/mAP50(M)", "metrics/mAP50")
+        map50_95_keys = ("metrics/mAP50-95(B)", "metrics/mAP50-95(M)", "metrics/mAP50-95")
+        precision_keys = ("metrics/precision(B)", "metrics/precision(M)", "metrics/precision")
+        recall_keys = ("metrics/recall(B)", "metrics/recall(M)", "metrics/recall")
+        return {
+            "map50": self._pick_metric(row, map50_keys),
+            "map50_95": self._pick_metric(row, map50_95_keys),
+            "precision": self._pick_metric(row, precision_keys),
+            "recall": self._pick_metric(row, recall_keys),
+        }
+
     def _parse_results_csv(self, path: Path) -> list[dict[str, float]]:
         if not path.exists():
             return []
@@ -759,9 +822,9 @@ class YoloDetectionInternal:
                 rows.append(row)
         return rows
 
-    def _pick_metric(self, row: dict[str, str], keys: tuple[str, ...]) -> float:
+    def _pick_metric(self, row: dict[str, Any], keys: tuple[str, ...]) -> float:
         for key in keys:
-            if key in row and row[key] != "":
+            if key in row and row[key] not in ("", None):
                 return _to_float(row[key], 0.0)
         return 0.0
 

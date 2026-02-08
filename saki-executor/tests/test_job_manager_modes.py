@@ -336,11 +336,14 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
     plugin = _ModeAwarePlugin()
     manager = _build_manager(tmp_path, plugin)
     sent_messages: list[pb.RuntimeMessage] = []
+    request_calls = 0
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
 
     async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        nonlocal request_calls
+        request_calls += 1
         payload_type = message.WhichOneof("payload")
         assert payload_type == "data_request"
         request = message.data_request
@@ -375,3 +378,6 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
     result = result_messages[0].job_result
     assert result.status == pb.FAILED
     assert "unsupported mode" in result.error_message
+    assert request_calls == 0
+    assert plugin.prepare_samples_count == 0
+    assert plugin.predict_calls == 0

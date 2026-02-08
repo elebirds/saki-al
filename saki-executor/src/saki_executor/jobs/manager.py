@@ -13,6 +13,7 @@ from saki_executor.agent import codec as runtime_codec
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.jobs.contracts import ArtifactUploadTicket, FetchedPage, JobExecutionRequest
+from saki_executor.jobs.orchestration.runner import JobPipelineRunner
 from saki_executor.jobs.state import ExecutorState, JobStatus
 from saki_executor.jobs.workspace import Workspace
 from saki_executor.plugins.base import ExecutorPlugin
@@ -111,274 +112,87 @@ class JobManager:
     async def _run_job(self, request: JobExecutionRequest) -> None:
         if self._send_message is None or self._request_message is None:
             raise RuntimeError("job manager transport is not configured")
-
-        job_id = request.job_id
-        plugin_id = request.plugin_id
-        params = request.params
-        project_id = request.project_id
-        source_commit_id = request.source_commit_id
-        query_strategy = request.query_strategy
-        mode = request.mode
-        iteration = request.iteration
         final_status = JobStatus.FAILED
         logger.info(
             "任务开始执行 job_id={} plugin_id={} mode={} query_strategy={}",
-            job_id,
-            plugin_id,
-            mode,
-            query_strategy,
+            request.job_id,
+            request.plugin_id,
+            request.mode,
+            request.query_strategy,
         )
-
-        workspace = Workspace(self.runs_dir, job_id)
-        workspace.ensure()
-        workspace.write_config(request.raw_payload)
-        reporter = JobReporter(job_id, workspace.events_path)
-
-        async def emit(event_type: str, event_payload: dict[str, Any]) -> None:
-            if self._stop_event.is_set():
-                raise asyncio.CancelledError("job stop requested")
-            if event_type == "log":
-                event = reporter.log(level=str(event_payload.get("level", "INFO")), message=str(event_payload.get("message", "")))
-            elif event_type == "progress":
-                event = reporter.progress(
-                    epoch=int(event_payload.get("epoch", 0)),
-                    step=int(event_payload.get("step", 0)),
-                    total_steps=int(event_payload.get("total_steps", 0)),
-                    eta_sec=event_payload.get("eta_sec"),
-                )
-            elif event_type == "metric":
-                metrics = event_payload.get("metrics") or {}
-                event = reporter.metric(
-                    step=int(event_payload.get("step", 0)),
-                    epoch=event_payload.get("epoch"),
-                    metrics={str(k): float(v) for k, v in metrics.items()},
-                )
-            elif event_type == "artifact":
-                event = reporter.log(
-                    "WARN",
-                    (
-                        "plugin artifact event is ignored; "
-                        f"artifact_name={str(event_payload.get('name', ''))}"
-                    ),
-                )
-            elif event_type == "status":
-                event = reporter.status(
-                    status=str(event_payload.get("status", JobStatus.RUNNING.value)),
-                    reason=event_payload.get("reason"),
-                )
-            else:
-                event = reporter.log("WARN", f"unknown event type: {event_type}")
-            await self._push_event(job_id, event)
-
         try:
-            plugin = self.plugin_registry.get(plugin_id)
-            if not plugin:
-                raise RuntimeError(f"plugin not found: {plugin_id}")
-            plugin.validate_params(params)
-            self._active_plugin = plugin
-
-            self.executor_state = ExecutorState.RUNNING
-            await emit("status", {"status": JobStatus.CREATED.value, "reason": "job created"})
-            await emit("status", {"status": JobStatus.QUEUED.value, "reason": "job queued"})
-            await emit("status", {"status": JobStatus.RUNNING.value, "reason": "job running"})
-
-            labels = await self._fetch_all(job_id, "labels", project_id, source_commit_id)
-            samples = await self._fetch_all(job_id, "samples", project_id, source_commit_id)
-            annotations = await self._fetch_all(job_id, "annotations", project_id, source_commit_id)
-
-            train_samples = samples
-            train_annotations = annotations
-            if mode == "active_learning":
-                labeled_sample_ids = {
-                    str(item.get("sample_id") or "")
-                    for item in annotations
-                    if item.get("sample_id")
-                }
-                if labeled_sample_ids:
-                    train_samples = [
-                        item for item in samples
-                        if str(item.get("id") or "") in labeled_sample_ids
-                    ]
-
-            if mode == "simulation":
-                schedule = self._normalize_simulation_ratio_schedule(params.get("simulation_ratio_schedule"))
-                ratio = self._resolve_simulation_ratio(iteration=iteration, schedule=schedule)
-                train_samples, train_annotations = await plugin.select_simulation_subset(
-                    samples=samples,
-                    annotations=annotations,
-                    ratio=ratio,
-                    iteration=iteration,
-                    params=params,
-                )
-                await emit(
-                    "log",
-                    {
-                        "level": "INFO",
-                        "message": (
-                            f"simulation mode enabled iteration={iteration} ratio={ratio:.4f} "
-                            f"train_samples={len(train_samples)} train_annotations={len(train_annotations)}"
-                        ),
-                    },
-                )
-
-            # Content-addressed local cache to reduce re-download.
-            protected: set[str] = set()
-            for item in train_samples:
-                asset_hash = item.get("asset_hash")
-                download_url = item.get("download_url")
-                if not asset_hash or not download_url:
-                    continue
-                cached_path = await self.cache.ensure_cached(
-                    str(asset_hash),
-                    str(download_url),
-                    protected=protected,
-                    pin_job_id=job_id,
-                )
-                item["local_path"] = str(cached_path)
-                protected.add(str(asset_hash))
-
-            await plugin.prepare_data(workspace, labels, train_samples, train_annotations)
-            output = await plugin.train(workspace, params, emit)
-
-            candidates: list[dict[str, Any]] = []
-            if mode == "active_learning":
-                topk = int(params.get("topk", 200))
-                sampling_params = dict(params)
-                sampling_params["topk"] = topk
-                candidates = await self._collect_topk_candidates_streaming(
-                    plugin=plugin,
-                    workspace=workspace,
-                    job_id=job_id,
-                    project_id=project_id,
-                    commit_id=source_commit_id,
-                    strategy=query_strategy,
-                    params=sampling_params,
-                    protected=protected,
-                    topk=topk,
-                )
-            elif mode == "simulation":
-                await emit("log", {"level": "INFO", "message": "simulation mode skips active-learning TopK sampling"})
-            else:
-                raise RuntimeError(f"unsupported mode: {mode}")
-
-            artifacts: dict[str, Any] = {}
-            optional_upload_failures: list[str] = []
-            for artifact in output.artifacts:
-                artifact_path = Path(artifact.path)
-                required = bool(getattr(artifact, "required", False))
-                try:
-                    ticket = await self._request_upload_ticket(
-                        job_id=job_id,
-                        artifact_name=artifact.name,
-                        content_type=artifact.content_type,
-                    )
-                    upload_url = ticket.upload_url
-                    storage_uri = ticket.storage_uri
-                    headers = dict(ticket.headers)
-                    size = artifact_path.stat().st_size
-                    await self._upload_artifact_with_retry(
-                        artifact_path=artifact_path,
-                        upload_url=upload_url,
-                        headers=headers,
-                    )
-                except Exception as exc:
-                    message = f"artifact={artifact.name} required={required} error={exc}"
-                    if required:
-                        raise RuntimeError(f"required artifact upload failed: {message}") from exc
-                    optional_upload_failures.append(message)
-                    logger.warning("非关键制品上传失败，忽略并继续 job_id={} {}", job_id, message)
-                    continue
-
-                artifacts[artifact.name] = {
-                    "kind": artifact.kind,
-                    "uri": storage_uri,
-                    "meta": artifact.meta or {"size": size},
-                }
-                artifact_event = reporter.artifact(
-                    kind=artifact.kind,
-                    name=artifact.name,
-                    uri=storage_uri,
-                    meta=artifact.meta or {"size": size},
-                )
-                await self._push_event(job_id, artifact_event)
-
-            self.executor_state = ExecutorState.FINALIZING
-            if optional_upload_failures:
-                reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
-                final_event = reporter.status(JobStatus.PARTIAL_FAILED.value, reason)
-                await self._push_event(job_id, final_event)
-                await self._send_message(
-                    runtime_codec.build_job_result_message(
-                        request_id=str(uuid.uuid4()),
-                        job_id=job_id,
-                        status=JobStatus.PARTIAL_FAILED.value,
-                        metrics=output.metrics,
-                        artifacts=artifacts,
-                        candidates=candidates,
-                        error_message=reason,
-                    )
-                )
-                final_status = JobStatus.PARTIAL_FAILED
-                logger.warning("任务部分成功（非关键制品上传失败） job_id={} reason={}", job_id, reason)
-            else:
-                final_event = reporter.status(JobStatus.SUCCEEDED.value, "job succeeded")
-                await self._push_event(job_id, final_event)
-                await self._send_message(
-                    runtime_codec.build_job_result_message(
-                        request_id=str(uuid.uuid4()),
-                        job_id=job_id,
-                        status=JobStatus.SUCCEEDED.value,
-                        metrics=output.metrics,
-                        artifacts=artifacts,
-                        candidates=candidates,
-                    )
-                )
-                final_status = JobStatus.SUCCEEDED
-                logger.info("任务执行成功 job_id={}", job_id)
+            result = await JobPipelineRunner(manager=self, request=request).run()
+            final_status = result.status
         except asyncio.CancelledError:
-            self.executor_state = ExecutorState.FINALIZING
-            stop_event = reporter.status(JobStatus.STOPPED.value, "job stopped")
-            await self._push_event(job_id, stop_event)
-            await self._send_message(
-                runtime_codec.build_job_result_message(
-                    request_id=str(uuid.uuid4()),
-                    job_id=job_id,
-                    status=JobStatus.STOPPED.value,
-                    metrics={},
-                    artifacts={},
-                    candidates=[],
-                    error_message="stopped by request",
-                )
-            )
-            final_status = JobStatus.STOPPED
-            logger.warning("任务被停止 job_id={}", job_id)
+            final_status = await self._publish_stopped_result(request)
         except Exception as exc:
-            self.executor_state = ExecutorState.FINALIZING
-            fail_event = reporter.status(JobStatus.FAILED.value, str(exc))
-            await self._push_event(job_id, fail_event)
-            await self._send_message(
-                runtime_codec.build_job_result_message(
-                    request_id=str(uuid.uuid4()),
-                    job_id=job_id,
-                    status=JobStatus.FAILED.value,
-                    metrics={},
-                    artifacts={},
-                    candidates=[],
-                    error_message=str(exc),
-                )
-            )
-            final_status = JobStatus.FAILED
-            logger.exception("任务执行失败 job_id={} error={}", job_id, exc)
+            final_status = await self._publish_failed_result(request, exc)
         finally:
-            async with self._lock:
-                self.executor_state = ExecutorState.IDLE
-                self.last_job_id = job_id
-                self.last_job_status = final_status
-                self.current_job_id = None
-                self._task = None
-                self._stop_event.clear()
-                self._active_plugin = None
-            logger.info("任务收尾完成 job_id={} final_status={}", job_id, final_status.value)
+            await self._reset_after_job(request.job_id, final_status)
+
+    def _ensure_reporter(self, request: JobExecutionRequest) -> JobReporter:
+        workspace = Workspace(self.runs_dir, request.job_id)
+        workspace.ensure()
+        if not workspace.config_path.exists():
+            workspace.write_config(request.raw_payload)
+        return JobReporter(request.job_id, workspace.events_path)
+
+    async def _publish_stopped_result(self, request: JobExecutionRequest) -> JobStatus:
+        if self._send_message is None:
+            raise RuntimeError("job manager send transport is not configured")
+        self.executor_state = ExecutorState.FINALIZING
+        reporter = self._ensure_reporter(request)
+        await self._push_event(
+            request.job_id,
+            reporter.status(JobStatus.STOPPED.value, "job stopped"),
+        )
+        await self._send_message(
+            runtime_codec.build_job_result_message(
+                request_id=str(uuid.uuid4()),
+                job_id=request.job_id,
+                status=JobStatus.STOPPED.value,
+                metrics={},
+                artifacts={},
+                candidates=[],
+                error_message="stopped by request",
+            )
+        )
+        logger.warning("任务被停止 job_id={}", request.job_id)
+        return JobStatus.STOPPED
+
+    async def _publish_failed_result(self, request: JobExecutionRequest, exc: Exception) -> JobStatus:
+        if self._send_message is None:
+            raise RuntimeError("job manager send transport is not configured")
+        self.executor_state = ExecutorState.FINALIZING
+        reporter = self._ensure_reporter(request)
+        await self._push_event(
+            request.job_id,
+            reporter.status(JobStatus.FAILED.value, str(exc)),
+        )
+        await self._send_message(
+            runtime_codec.build_job_result_message(
+                request_id=str(uuid.uuid4()),
+                job_id=request.job_id,
+                status=JobStatus.FAILED.value,
+                metrics={},
+                artifacts={},
+                candidates=[],
+                error_message=str(exc),
+            )
+        )
+        logger.exception("任务执行失败 job_id={} error={}", request.job_id, exc)
+        return JobStatus.FAILED
+
+    async def _reset_after_job(self, job_id: str, final_status: JobStatus) -> None:
+        async with self._lock:
+            self.executor_state = ExecutorState.IDLE
+            self.last_job_id = job_id
+            self.last_job_status = final_status
+            self.current_job_id = None
+            self._task = None
+            self._stop_event.clear()
+            self._active_plugin = None
+        logger.info("任务收尾完成 job_id={} final_status={}", job_id, final_status.value)
 
     async def _request_upload_ticket(
             self,

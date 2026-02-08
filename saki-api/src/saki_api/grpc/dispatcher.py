@@ -129,23 +129,54 @@ class RuntimeDispatcher:
 
         return await connection.run_sync(_check)
 
+    def _should_skip_stats_persist(self, *, now: datetime, force: bool) -> bool:
+        if force:
+            return False
+        if self._stats_last_persist_at is None:
+            return False
+        return (now - self._stats_last_persist_at) < self._stats_persist_interval
+
+    async def _snapshot_pending_counts(self) -> tuple[int, int]:
+        async with self._lock:
+            return len(self._pending_assign), len(self._pending_stop)
+
+    @staticmethod
+    def _compute_executor_stats(executors: list[RuntimeExecutor]) -> tuple[int, int, int, int, float]:
+        total_count = len(executors)
+        online_count = sum(1 for executor in executors if executor.is_online)
+        busy_count = sum(1 for executor in executors if executor.status in {"busy", "reserved"})
+        available_count = sum(
+            1
+            for executor in executors
+            if executor.is_online and executor.status not in {"busy", "reserved", "offline"}
+        )
+        availability_rate = (available_count / total_count) if total_count > 0 else 0.0
+        return total_count, online_count, busy_count, available_count, availability_rate
+
+    async def _cleanup_stats_if_due(self, *, session, now: datetime) -> None:
+        cleanup_due = (
+            self._stats_last_cleanup_at is None
+            or (now - self._stats_last_cleanup_at) >= self._stats_cleanup_interval
+        )
+        if not cleanup_due:
+            return
+        cutoff = now - self._stats_retention
+        await session.exec(
+            delete(RuntimeExecutorStats).where(RuntimeExecutorStats.ts < cutoff)
+        )
+        self._stats_last_cleanup_at = now
+
     async def _persist_runtime_stats(self, force: bool = False) -> None:
         now = datetime.now(UTC)
-        if not force and self._stats_last_persist_at and (now - self._stats_last_persist_at) < self._stats_persist_interval:
+        if self._should_skip_stats_persist(now=now, force=force):
             return
 
         async with self._stats_lock:
             now = datetime.now(UTC)
-            if (
-                    not force
-                    and self._stats_last_persist_at
-                    and (now - self._stats_last_persist_at) < self._stats_persist_interval
-            ):
+            if self._should_skip_stats_persist(now=now, force=force):
                 return
 
-            async with self._lock:
-                pending_assign_count = len(self._pending_assign)
-                pending_stop_count = len(self._pending_stop)
+            pending_assign_count, pending_stop_count = await self._snapshot_pending_counts()
 
             async with SessionLocal() as session:
                 if not await self._has_required_stats_tables(session):
@@ -153,15 +184,13 @@ class RuntimeDispatcher:
 
                 rows = await session.exec(select(RuntimeExecutor))
                 executors = list(rows.all())
-                total_count = len(executors)
-                online_count = sum(1 for executor in executors if executor.is_online)
-                busy_count = sum(1 for executor in executors if executor.status in {"busy", "reserved"})
-                available_count = sum(
-                    1
-                    for executor in executors
-                    if executor.is_online and executor.status not in {"busy", "reserved", "offline"}
-                )
-                availability_rate = (available_count / total_count) if total_count > 0 else 0.0
+                (
+                    total_count,
+                    online_count,
+                    busy_count,
+                    available_count,
+                    availability_rate,
+                ) = self._compute_executor_stats(executors)
 
                 session.add(
                     RuntimeExecutorStats(
@@ -175,17 +204,7 @@ class RuntimeDispatcher:
                         pending_stop_count=pending_stop_count,
                     )
                 )
-
-                cleanup_due = (
-                    self._stats_last_cleanup_at is None
-                    or (now - self._stats_last_cleanup_at) >= self._stats_cleanup_interval
-                )
-                if cleanup_due:
-                    cutoff = now - self._stats_retention
-                    await session.exec(
-                        delete(RuntimeExecutorStats).where(RuntimeExecutorStats.ts < cutoff)
-                    )
-                    self._stats_last_cleanup_at = now
+                await self._cleanup_stats_if_due(session=session, now=now)
 
                 await session.commit()
 

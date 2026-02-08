@@ -145,6 +145,145 @@ class LoopOrchestrator:
         if dispatch_job_id:
             await self._dispatch_job(dispatch_job_id)
 
+    @staticmethod
+    def _validate_recover_mode(mode: str) -> None:
+        if mode not in {"retry_same_params", "rerun_with_overrides"}:
+            raise BadRequestAppException(f"invalid recover mode: {mode}")
+
+    async def _find_active_round_job(
+            self,
+            *,
+            session,
+            loop_id: uuid.UUID,
+            round_index: int,
+    ) -> Job | None:
+        rows = await session.exec(
+            select(Job)
+            .where(
+                Job.loop_id == loop_id,
+                Job.round_index == round_index,
+                Job.status.in_([TrainingJobStatus.PENDING, TrainingJobStatus.RUNNING]),
+            )
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        )
+        return rows.first()
+
+    @staticmethod
+    def _mark_recovered_round_and_loop(
+            *,
+            loop: ALLoop,
+            round_obj: LoopRound,
+            job_id: uuid.UUID,
+            start_now: bool,
+    ) -> None:
+        round_obj.status = LoopRoundStatus.TRAINING
+        round_obj.job_id = job_id
+        round_obj.ended_at = None
+        if start_now:
+            round_obj.started_at = datetime.now(UTC)
+        elif round_obj.started_at is None:
+            round_obj.started_at = datetime.now(UTC)
+        loop.status = ALLoopStatus.RUNNING
+        loop.is_active = True
+        loop.last_error = None
+        loop.last_job_id = job_id
+
+    @staticmethod
+    def _ensure_recoverable_state(*, loop: ALLoop, latest_round: LoopRound) -> None:
+        if latest_round.status != LoopRoundStatus.FAILED and loop.status != ALLoopStatus.FAILED:
+            raise BadRequestAppException("loop latest round is not failed")
+
+    async def _find_failed_round_job(
+            self,
+            *,
+            session,
+            loop: ALLoop,
+            latest_round: LoopRound,
+    ) -> Job | None:
+        if latest_round.job_id:
+            job = await session.get(Job, latest_round.job_id)
+            if job and job.status == TrainingJobStatus.FAILED:
+                return job
+        rows = await session.exec(
+            select(Job)
+            .where(
+                Job.loop_id == loop.id,
+                Job.round_index == latest_round.round_index,
+                Job.status == TrainingJobStatus.FAILED,
+            )
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        )
+        return rows.first()
+
+    @staticmethod
+    def _resolve_recover_job_config(
+            *,
+            failed_job: Job,
+            mode: str,
+            overrides: dict[str, object] | None,
+    ) -> tuple[str, str, dict[str, object], dict[str, object]]:
+        params = dict(failed_job.params or {})
+        resources = dict(failed_job.resources or {})
+        plugin_id = str(failed_job.plugin_id or "")
+        query_strategy = str(failed_job.query_strategy or "")
+
+        if mode == "rerun_with_overrides":
+            payload = dict(overrides or {})
+            override_query_strategy = payload.get("query_strategy")
+            if override_query_strategy is not None:
+                query_strategy = str(override_query_strategy or "")
+            override_plugin_id = payload.get("plugin_id")
+            if override_plugin_id is not None:
+                plugin_id = str(override_plugin_id or "")
+
+            override_params = payload.get("params")
+            if override_params is not None:
+                if not isinstance(override_params, dict):
+                    raise BadRequestAppException("overrides.params must be an object")
+                params = dict(override_params)
+
+            override_resources = payload.get("resources")
+            if override_resources is not None:
+                if not isinstance(override_resources, dict):
+                    raise BadRequestAppException("overrides.resources must be an object")
+                resources = dict(override_resources)
+
+        if not plugin_id:
+            raise BadRequestAppException("plugin_id is required for recover")
+        if not query_strategy:
+            raise BadRequestAppException("query_strategy is required for recover")
+        return plugin_id, query_strategy, params, resources
+
+    @staticmethod
+    def _build_recovered_job(
+            *,
+            failed_job: Job,
+            latest_round: LoopRound,
+            plugin_id: str,
+            query_strategy: str,
+            params: dict[str, object],
+            resources: dict[str, object],
+    ) -> Job:
+        return Job(
+            project_id=failed_job.project_id,
+            loop_id=failed_job.loop_id,
+            iteration=int(failed_job.iteration or latest_round.round_index),
+            round_index=int(failed_job.round_index or latest_round.round_index),
+            status=TrainingJobStatus.PENDING,
+            source_commit_id=failed_job.source_commit_id,
+            job_type=failed_job.job_type,
+            plugin_id=plugin_id,
+            mode=failed_job.mode,
+            query_strategy=query_strategy,
+            params=params,
+            resources=resources,
+            strategy_params=dict(failed_job.strategy_params or {}),
+            metrics={},
+            artifacts={},
+        )
+
     async def recover_failed_loop(
             self,
             *,
@@ -152,8 +291,7 @@ class LoopOrchestrator:
             mode: str,
             overrides: dict[str, object] | None,
     ) -> uuid.UUID:
-        if mode not in {"retry_same_params", "rerun_with_overrides"}:
-            raise BadRequestAppException(f"invalid recover mode: {mode}")
+        self._validate_recover_mode(mode)
 
         dispatch_job_id: uuid.UUID | None = None
         async with self._session_local() as session:
@@ -165,27 +303,18 @@ class LoopOrchestrator:
             if not latest_round:
                 raise BadRequestAppException("loop has no round to recover")
 
-            active_rows = await session.exec(
-                select(Job)
-                .where(
-                    Job.loop_id == loop.id,
-                    Job.round_index == latest_round.round_index,
-                    Job.status.in_([TrainingJobStatus.PENDING, TrainingJobStatus.RUNNING]),
-                )
-                .order_by(Job.created_at.desc())
-                .limit(1)
+            active_job = await self._find_active_round_job(
+                session=session,
+                loop_id=loop.id,
+                round_index=latest_round.round_index,
             )
-            active_job = active_rows.first()
             if active_job:
-                latest_round.status = LoopRoundStatus.TRAINING
-                latest_round.job_id = active_job.id
-                latest_round.ended_at = None
-                if latest_round.started_at is None:
-                    latest_round.started_at = datetime.now(UTC)
-                loop.status = ALLoopStatus.RUNNING
-                loop.is_active = True
-                loop.last_error = None
-                loop.last_job_id = active_job.id
+                self._mark_recovered_round_and_loop(
+                    loop=loop,
+                    round_obj=latest_round,
+                    job_id=active_job.id,
+                    start_now=False,
+                )
                 session.add(latest_round)
                 session.add(loop)
                 await session.commit()
@@ -195,91 +324,39 @@ class LoopOrchestrator:
                     return active_job.id
 
             if not dispatch_job_id:
-                if latest_round.status != LoopRoundStatus.FAILED and loop.status != ALLoopStatus.FAILED:
-                    raise BadRequestAppException("loop latest round is not failed")
-
-                failed_job: Job | None = None
-                if latest_round.job_id:
-                    job = await session.get(Job, latest_round.job_id)
-                    if job and job.status == TrainingJobStatus.FAILED:
-                        failed_job = job
-                if failed_job is None:
-                    failed_rows = await session.exec(
-                        select(Job)
-                        .where(
-                            Job.loop_id == loop.id,
-                            Job.round_index == latest_round.round_index,
-                            Job.status == TrainingJobStatus.FAILED,
-                        )
-                        .order_by(Job.created_at.desc())
-                        .limit(1)
-                    )
-                    failed_job = failed_rows.first()
+                self._ensure_recoverable_state(loop=loop, latest_round=latest_round)
+                failed_job = await self._find_failed_round_job(
+                    session=session,
+                    loop=loop,
+                    latest_round=latest_round,
+                )
                 if failed_job is None:
                     raise BadRequestAppException("latest round has no failed job to recover")
 
-                params = dict(failed_job.params or {})
-                resources = dict(failed_job.resources or {})
-                plugin_id = str(failed_job.plugin_id or "")
-                query_strategy = str(failed_job.query_strategy or "")
-
-                if mode == "rerun_with_overrides":
-                    payload = dict(overrides or {})
-                    override_query_strategy = payload.get("query_strategy")
-                    if override_query_strategy is not None:
-                        query_strategy = str(override_query_strategy or "")
-                    override_plugin_id = payload.get("plugin_id")
-                    if override_plugin_id is not None:
-                        plugin_id = str(override_plugin_id or "")
-
-                    override_params = payload.get("params")
-                    if override_params is not None:
-                        if not isinstance(override_params, dict):
-                            raise BadRequestAppException("overrides.params must be an object")
-                        params = dict(override_params)
-
-                    override_resources = payload.get("resources")
-                    if override_resources is not None:
-                        if not isinstance(override_resources, dict):
-                            raise BadRequestAppException("overrides.resources must be an object")
-                        resources = dict(override_resources)
-
-                if not plugin_id:
-                    raise BadRequestAppException("plugin_id is required for recover")
-                if not query_strategy:
-                    raise BadRequestAppException("query_strategy is required for recover")
-
-                recovered_job = Job(
-                    project_id=failed_job.project_id,
-                    loop_id=failed_job.loop_id,
-                    iteration=int(failed_job.iteration or latest_round.round_index),
-                    round_index=int(failed_job.round_index or latest_round.round_index),
-                    status=TrainingJobStatus.PENDING,
-                    source_commit_id=failed_job.source_commit_id,
-                    job_type=failed_job.job_type,
+                plugin_id, query_strategy, params, resources = self._resolve_recover_job_config(
+                    failed_job=failed_job,
+                    mode=mode,
+                    overrides=overrides,
+                )
+                recovered_job = self._build_recovered_job(
+                    failed_job=failed_job,
+                    latest_round=latest_round,
                     plugin_id=plugin_id,
-                    mode=failed_job.mode,
                     query_strategy=query_strategy,
                     params=params,
                     resources=resources,
-                    strategy_params=dict(failed_job.strategy_params or {}),
-                    metrics={},
-                    artifacts={},
                 )
                 session.add(recovered_job)
                 await session.flush()
                 await session.refresh(recovered_job)
 
-                latest_round.job_id = recovered_job.id
-                latest_round.status = LoopRoundStatus.TRAINING
-                latest_round.started_at = datetime.now(UTC)
-                latest_round.ended_at = None
+                self._mark_recovered_round_and_loop(
+                    loop=loop,
+                    round_obj=latest_round,
+                    job_id=recovered_job.id,
+                    start_now=True,
+                )
                 session.add(latest_round)
-
-                loop.status = ALLoopStatus.RUNNING
-                loop.is_active = True
-                loop.last_error = None
-                loop.last_job_id = recovered_job.id
                 session.add(loop)
 
                 await session.commit()

@@ -22,7 +22,6 @@ SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage]]
 
 
-UPLOAD_CHUNK_SIZE = 1024 * 1024
 UPLOAD_MAX_ATTEMPTS = 3
 UPLOAD_RETRY_BACKOFF_SEC = (1.0, 2.0)
 
@@ -413,14 +412,6 @@ class JobManager:
             raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
         return runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
 
-    async def _iter_file_chunks(self, artifact_path: Path, chunk_size: int = UPLOAD_CHUNK_SIZE):
-        with artifact_path.open("rb") as file_obj:
-            while True:
-                chunk = await asyncio.to_thread(file_obj.read, chunk_size)
-                if not chunk:
-                    break
-                yield chunk
-
     async def _upload_artifact_with_retry(
             self,
             *,
@@ -430,6 +421,10 @@ class JobManager:
     ) -> None:
         if not upload_url:
             raise RuntimeError("upload url is empty")
+        payload = await asyncio.to_thread(artifact_path.read_bytes)
+        request_headers = dict(headers)
+        if not any(str(key).lower() == "content-length" for key in request_headers):
+            request_headers["Content-Length"] = str(len(payload))
         attempt = 0
         last_error: Exception | None = None
         while attempt < UPLOAD_MAX_ATTEMPTS:
@@ -438,13 +433,52 @@ class JobManager:
                 async with httpx.AsyncClient(timeout=180) as client:
                     response = await client.put(
                         upload_url,
-                        content=self._iter_file_chunks(artifact_path),
-                        headers=headers,
+                        content=payload,
+                        headers=request_headers,
                     )
+                    status_code = int(response.status_code)
+                    if 400 <= status_code < 500:
+                        logger.error(
+                            "制品上传失败（不可重试） artifact={} attempt={} status={}",
+                            artifact_path.name,
+                            attempt,
+                            status_code,
+                        )
+                        response.raise_for_status()
                     response.raise_for_status()
+                logger.info(
+                    "制品上传成功 artifact={} attempt={} status={}",
+                    artifact_path.name,
+                    attempt,
+                    int(response.status_code),
+                )
                 return
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                status_code = int(exc.response.status_code) if exc.response is not None else 0
+                logger.warning(
+                    "制品上传失败 artifact={} attempt={} status={} error={}",
+                    artifact_path.name,
+                    attempt,
+                    status_code,
+                    type(exc).__name__,
+                )
+                if 400 <= status_code < 500:
+                    raise RuntimeError(
+                        f"upload failed with non-retryable status={status_code} artifact={artifact_path.name}"
+                    ) from exc
+                if attempt >= UPLOAD_MAX_ATTEMPTS:
+                    break
+                backoff = UPLOAD_RETRY_BACKOFF_SEC[min(attempt - 1, len(UPLOAD_RETRY_BACKOFF_SEC) - 1)]
+                await asyncio.sleep(backoff)
             except Exception as exc:
                 last_error = exc
+                logger.warning(
+                    "制品上传异常 artifact={} attempt={} error={}",
+                    artifact_path.name,
+                    attempt,
+                    type(exc).__name__,
+                )
                 if attempt >= UPLOAD_MAX_ATTEMPTS:
                     break
                 backoff = UPLOAD_RETRY_BACKOFF_SEC[min(attempt - 1, len(UPLOAD_RETRY_BACKOFF_SEC) - 1)]

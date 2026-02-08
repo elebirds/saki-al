@@ -118,7 +118,9 @@ def _mock_data_items(query_type: int) -> list[pb.DataItem]:
     return []
 
 
-def _make_fake_request(fail_upload_attempts: dict[str, int]):
+def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
+    header_overrides = upload_headers or {}
+
     async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
         payload_type = message.WhichOneof("payload")
         if payload_type == "data_request":
@@ -137,6 +139,8 @@ def _make_fake_request(fail_upload_attempts: dict[str, int]):
             req = message.upload_ticket_request
             name = str(req.artifact_name)
             upload_url = f"https://upload.local/{name}"
+            headers = {"x-fail-attempts": "0"}
+            headers.update(header_overrides.get(name, {}))
             return pb.RuntimeMessage(
                 upload_ticket_response=pb.UploadTicketResponse(
                     request_id=f"upload-{req.request_id}",
@@ -144,7 +148,7 @@ def _make_fake_request(fail_upload_attempts: dict[str, int]):
                     job_id=req.job_id,
                     upload_url=upload_url,
                     storage_uri=f"s3://bucket/runtime/{name}",
-                    headers={"x-fail-attempts": str(fail_upload_attempts.get(name, 0))},
+                    headers=headers,
                 )
             )
         raise AssertionError(f"unexpected request payload: {payload_type}")
@@ -156,6 +160,7 @@ def _install_async_client_mock(monkeypatch):
     state = {
         "attempts": {},
         "uploaded_bytes": {},
+        "headers": {},
     }
 
     class _AsyncClientMock:
@@ -170,19 +175,32 @@ def _install_async_client_mock(monkeypatch):
             return False
 
         async def put(self, url: str, *, content=None, headers=None):
-            if content is None or not hasattr(content, "__aiter__"):
-                raise RuntimeError("content must be async iterable")
+            if content is None:
+                raise RuntimeError("content is required")
 
-            data = bytearray()
-            async for chunk in content:
-                data.extend(chunk)
+            if isinstance(content, (bytes, bytearray)):
+                data = bytes(content)
+            elif hasattr(content, "__aiter__"):
+                data = bytearray()
+                async for chunk in content:
+                    data.extend(chunk)
+                data = bytes(data)
+            else:
+                raise RuntimeError("unsupported content type")
 
-            headers = headers or {}
+            headers = dict(headers or {})
             fail_attempts = int(headers.get("x-fail-attempts", "0"))
+            read_error_attempts = int(headers.get("x-read-error-attempts", "0"))
+            forced_status = int(headers.get("x-force-status", "0") or 0)
             state["uploaded_bytes"][url] = bytes(data)
             state["attempts"][url] = state["attempts"].get(url, 0) + 1
+            state["headers"][url] = headers
 
             request = httpx.Request("PUT", url)
+            if state["attempts"][url] <= read_error_attempts:
+                raise httpx.ReadError("simulated read error", request=request)
+            if forced_status:
+                return httpx.Response(forced_status, request=request, text="forced status")
             if state["attempts"][url] <= fail_attempts:
                 return httpx.Response(500, request=request, text="upload failed")
             return httpx.Response(200, request=request, text="ok")
@@ -205,7 +223,10 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
         backoff_calls.append(delay)
 
     monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
-    manager.set_transport(fake_send, _make_fake_request({"confusion_matrix.png": 2}))
+    manager.set_transport(
+        fake_send,
+        _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "2"}}),
+    )
 
     accepted = await manager.assign_job(
         "assign-artifact-1",
@@ -230,8 +251,10 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
     assert result.status == pb.SUCCEEDED
 
     optional_url = "https://upload.local/confusion_matrix.png"
+    best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][optional_url] == 3
     assert backoff_calls == [1.0, 2.0]
+    assert upload_state["headers"][best_url].get("Content-Length") == str(len(upload_state["uploaded_bytes"][best_url]))
 
     artifact_events = [
         m.job_event for m in sent_messages
@@ -259,7 +282,10 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
         del delay
 
     monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
-    manager.set_transport(fake_send, _make_fake_request({"confusion_matrix.png": 3}))
+    manager.set_transport(
+        fake_send,
+        _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "3"}}),
+    )
 
     accepted = await manager.assign_job(
         "assign-artifact-2",
@@ -299,7 +325,7 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
         del delay
 
     monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
-    manager.set_transport(fake_send, _make_fake_request({"best.pt": 3}))
+    manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-fail-attempts": "3"}}))
 
     accepted = await manager.assign_job(
         "assign-artifact-3",
@@ -323,3 +349,87 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
     result = result_messages[0].job_result
     assert result.status == pb.FAILED
     assert "required artifact upload failed" in result.error_message
+
+
+@pytest.mark.anyio
+async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
+    manager = _build_manager(tmp_path)
+    sent_messages: list[pb.RuntimeMessage] = []
+    backoff_calls: list[float] = []
+    upload_state = _install_async_client_mock(monkeypatch)
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_sleep(delay: float) -> None:
+        backoff_calls.append(delay)
+
+    monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
+    manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-read-error-attempts": "2"}}))
+
+    accepted = await manager.assign_job(
+        "assign-artifact-4",
+        {
+            "job_id": "job-artifact-4",
+            "project_id": "project-1",
+            "source_commit_id": "commit-1",
+            "plugin_id": "artifact_plugin",
+            "mode": "simulation",
+            "iteration": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "params": {"simulation_ratio_schedule": [1.0]},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    best_url = "https://upload.local/best.pt"
+    assert upload_state["attempts"][best_url] == 3
+    assert backoff_calls == [1.0, 2.0]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
+    assert len(result_messages) == 1
+    assert result_messages[0].job_result.status == pb.SUCCEEDED
+
+
+@pytest.mark.anyio
+async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
+    manager = _build_manager(tmp_path)
+    sent_messages: list[pb.RuntimeMessage] = []
+    backoff_calls: list[float] = []
+    upload_state = _install_async_client_mock(monkeypatch)
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_sleep(delay: float) -> None:
+        backoff_calls.append(delay)
+
+    monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
+    manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-force-status": "403"}}))
+
+    accepted = await manager.assign_job(
+        "assign-artifact-5",
+        {
+            "job_id": "job-artifact-5",
+            "project_id": "project-1",
+            "source_commit_id": "commit-1",
+            "plugin_id": "artifact_plugin",
+            "mode": "simulation",
+            "iteration": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "params": {"simulation_ratio_schedule": [1.0]},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    best_url = "https://upload.local/best.pt"
+    assert upload_state["attempts"][best_url] == 1
+    assert backoff_calls == []
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].job_result
+    assert result.status == pb.FAILED
+    assert "non-retryable status=403" in result.error_message

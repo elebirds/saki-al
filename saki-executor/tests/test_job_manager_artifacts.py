@@ -5,10 +5,11 @@ from typing import Any
 import httpx
 import pytest
 
-import saki_executor.jobs.manager as manager_module
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.jobs.manager import JobManager
+from saki_executor.jobs.services.artifact_uploader import ArtifactUploader
+import saki_executor.jobs.services.artifact_uploader as uploader_module
 from saki_executor.plugins.base import ExecutorPlugin, TrainArtifact, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
 
@@ -156,7 +157,7 @@ def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
     return fake_request
 
 
-def _install_async_client_mock(monkeypatch):
+def _install_async_client_mock(manager: JobManager):
     state = {
         "attempts": {},
         "uploaded_bytes": {},
@@ -205,7 +206,7 @@ def _install_async_client_mock(monkeypatch):
                 return httpx.Response(500, request=request, text="upload failed")
             return httpx.Response(200, request=request, text="ok")
 
-    monkeypatch.setattr(manager_module.httpx, "AsyncClient", _AsyncClientMock)
+    manager._artifact_uploader = ArtifactUploader(client_factory=_AsyncClientMock)  # noqa: SLF001
     return state
 
 
@@ -214,7 +215,7 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
     backoff_calls: list[float] = []
-    upload_state = _install_async_client_mock(monkeypatch)
+    upload_state = _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
@@ -222,7 +223,7 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
     async def fake_sleep(delay: float) -> None:
         backoff_calls.append(delay)
 
-    monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(
         fake_send,
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "2"}}),
@@ -273,7 +274,7 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
 async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, monkeypatch):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
-    _install_async_client_mock(monkeypatch)
+    _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
@@ -281,7 +282,7 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
     async def fake_sleep(delay: float) -> None:
         del delay
 
-    monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(
         fake_send,
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "3"}}),
@@ -316,7 +317,7 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
 async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatch):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
-    _install_async_client_mock(monkeypatch)
+    _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
@@ -324,7 +325,7 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
     async def fake_sleep(delay: float) -> None:
         del delay
 
-    monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-fail-attempts": "3"}}))
 
     accepted = await manager.assign_job(
@@ -356,7 +357,7 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
     backoff_calls: list[float] = []
-    upload_state = _install_async_client_mock(monkeypatch)
+    upload_state = _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
@@ -364,7 +365,7 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
     async def fake_sleep(delay: float) -> None:
         backoff_calls.append(delay)
 
-    monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-read-error-attempts": "2"}}))
 
     accepted = await manager.assign_job(
@@ -397,7 +398,7 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
     backoff_calls: list[float] = []
-    upload_state = _install_async_client_mock(monkeypatch)
+    upload_state = _install_async_client_mock(manager)
 
     async def fake_send(message: pb.RuntimeMessage) -> None:
         sent_messages.append(message)
@@ -405,7 +406,7 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
     async def fake_sleep(delay: float) -> None:
         backoff_calls.append(delay)
 
-    monkeypatch.setattr(manager_module.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-force-status": "403"}}))
 
     accepted = await manager.assign_job(

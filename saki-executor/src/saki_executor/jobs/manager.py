@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import heapq
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-import httpx
 from loguru import logger
 
 from saki_executor.agent import codec as runtime_codec
@@ -14,6 +12,7 @@ from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.jobs.contracts import ArtifactUploadTicket, FetchedPage, JobExecutionRequest
 from saki_executor.jobs.orchestration.runner import JobPipelineRunner
+from saki_executor.jobs.services import ArtifactUploader, DataGateway, SamplingService
 from saki_executor.jobs.state import ExecutorState, JobStatus
 from saki_executor.jobs.workspace import Workspace
 from saki_executor.plugins.base import ExecutorPlugin
@@ -22,10 +21,7 @@ from saki_executor.sdk.reporter import JobReporter
 
 SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage]]
-
-
-UPLOAD_MAX_ATTEMPTS = 3
-UPLOAD_RETRY_BACKOFF_SEC = (1.0, 2.0)
+HttpClientFactory = Callable[..., Any]
 
 
 class JobManager:
@@ -36,6 +32,7 @@ class JobManager:
             plugin_registry: PluginRegistry,
             send_message: SendFn | None = None,
             request_message: RequestFn | None = None,
+            http_client_factory: HttpClientFactory | None = None,
     ) -> None:
         self.runs_dir = runs_dir
         self.cache = cache
@@ -51,6 +48,13 @@ class JobManager:
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._lock = asyncio.Lock()
+        self._data_gateway = DataGateway(request_message_getter=lambda: self._request_message)
+        self._sampling_service = SamplingService(
+            fetch_page=self._fetch_page,
+            cache=self.cache,
+            stop_event=self._stop_event,
+        )
+        self._artifact_uploader = ArtifactUploader(client_factory=http_client_factory)
 
     def set_transport(self, send_message: SendFn, request_message: RequestFn) -> None:
         self._send_message = send_message
@@ -201,24 +205,10 @@ class JobManager:
             artifact_name: str,
             content_type: str,
     ) -> ArtifactUploadTicket:
-        if self._request_message is None:
-            raise RuntimeError("job manager request transport is not configured")
-        ticket_response = await self._request_message(
-            runtime_codec.build_upload_ticket_request_message(
-                request_id=str(uuid.uuid4()),
-                job_id=job_id,
-                artifact_name=artifact_name,
-                content_type=content_type,
-            )
-        )
-        payload_type = ticket_response.WhichOneof("payload")
-        if payload_type == "error":
-            error_payload = runtime_codec.parse_error(ticket_response.error)
-            raise RuntimeError(str(error_payload.get("error") or "upload ticket request failed"))
-        if payload_type != "upload_ticket_response":
-            raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
-        return ArtifactUploadTicket.from_dict(
-            runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
+        return await self._data_gateway.request_upload_ticket(
+            job_id=job_id,
+            artifact_name=artifact_name,
+            content_type=content_type,
         )
 
     async def _upload_artifact_with_retry(
@@ -228,73 +218,11 @@ class JobManager:
             upload_url: str,
             headers: dict[str, str],
     ) -> None:
-        if not upload_url:
-            raise RuntimeError("upload url is empty")
-        payload = await asyncio.to_thread(artifact_path.read_bytes)
-        request_headers = dict(headers)
-        if not any(str(key).lower() == "content-length" for key in request_headers):
-            request_headers["Content-Length"] = str(len(payload))
-        attempt = 0
-        last_error: Exception | None = None
-        while attempt < UPLOAD_MAX_ATTEMPTS:
-            attempt += 1
-            try:
-                async with httpx.AsyncClient(timeout=180) as client:
-                    response = await client.put(
-                        upload_url,
-                        content=payload,
-                        headers=request_headers,
-                    )
-                    status_code = int(response.status_code)
-                    if 400 <= status_code < 500:
-                        logger.error(
-                            "制品上传失败（不可重试） artifact={} attempt={} status={}",
-                            artifact_path.name,
-                            attempt,
-                            status_code,
-                        )
-                        response.raise_for_status()
-                    response.raise_for_status()
-                logger.info(
-                    "制品上传成功 artifact={} attempt={} status={}",
-                    artifact_path.name,
-                    attempt,
-                    int(response.status_code),
-                )
-                return
-            except httpx.HTTPStatusError as exc:
-                last_error = exc
-                status_code = int(exc.response.status_code) if exc.response is not None else 0
-                logger.warning(
-                    "制品上传失败 artifact={} attempt={} status={} error={}",
-                    artifact_path.name,
-                    attempt,
-                    status_code,
-                    type(exc).__name__,
-                )
-                if 400 <= status_code < 500:
-                    raise RuntimeError(
-                        f"upload failed with non-retryable status={status_code} artifact={artifact_path.name}"
-                    ) from exc
-                if attempt >= UPLOAD_MAX_ATTEMPTS:
-                    break
-                backoff = UPLOAD_RETRY_BACKOFF_SEC[min(attempt - 1, len(UPLOAD_RETRY_BACKOFF_SEC) - 1)]
-                await asyncio.sleep(backoff)
-            except Exception as exc:
-                last_error = exc
-                logger.warning(
-                    "制品上传异常 artifact={} attempt={} error={}",
-                    artifact_path.name,
-                    attempt,
-                    type(exc).__name__,
-                )
-                if attempt >= UPLOAD_MAX_ATTEMPTS:
-                    break
-                backoff = UPLOAD_RETRY_BACKOFF_SEC[min(attempt - 1, len(UPLOAD_RETRY_BACKOFF_SEC) - 1)]
-                await asyncio.sleep(backoff)
-        raise RuntimeError(
-            f"upload failed after {UPLOAD_MAX_ATTEMPTS} attempts artifact={artifact_path.name}"
-        ) from last_error
+        await self._artifact_uploader.upload_with_retry(
+            artifact_path=artifact_path,
+            upload_url=upload_url,
+            headers=headers,
+        )
 
     async def _push_event(self, job_id: str, event: dict[str, Any]) -> None:
         if self._send_message is None:
@@ -318,28 +246,14 @@ class JobManager:
             commit_id: str,
             limit: int = 1000,
     ) -> list[dict[str, Any]]:
-        if self._request_message is None:
-            raise RuntimeError("job manager request transport is not configured")
-
-        items: list[dict[str, Any]] = []
-        cursor: str | None = None
-        while True:
-            response = await self._fetch_page(
-                job_id=job_id,
-                query_type=query_type,
-                project_id=project_id,
-                commit_id=commit_id,
-                cursor=cursor,
-                limit=limit,
-            )
-            chunk = response.items
-            items.extend(chunk)
-            cursor = response.next_cursor
-            if not cursor:
-                break
-            if self._stop_event.is_set():
-                raise asyncio.CancelledError("job stop requested")
-        return items
+        return await self._data_gateway.fetch_all(
+            job_id=job_id,
+            query_type=query_type,
+            project_id=project_id,
+            commit_id=commit_id,
+            limit=limit,
+            stop_event=self._stop_event,
+        )
 
     async def _fetch_page(
             self,
@@ -351,27 +265,14 @@ class JobManager:
             cursor: str | None,
             limit: int,
     ) -> FetchedPage:
-        if self._request_message is None:
-            raise RuntimeError("job manager request transport is not configured")
-
-        response_message = await self._request_message(
-            runtime_codec.build_data_request_message(
-                request_id=str(uuid.uuid4()),
-                job_id=job_id,
-                query_type=query_type,
-                project_id=project_id,
-                commit_id=commit_id,
-                cursor=cursor,
-                limit=limit,
-            )
+        return await self._data_gateway.fetch_page(
+            job_id=job_id,
+            query_type=query_type,
+            project_id=project_id,
+            commit_id=commit_id,
+            cursor=cursor,
+            limit=limit,
         )
-        payload_type = response_message.WhichOneof("payload")
-        if payload_type == "error":
-            error_payload = runtime_codec.parse_error(response_message.error)
-            raise RuntimeError(str(error_payload.get("error") or "data request failed"))
-        if payload_type != "data_response":
-            raise RuntimeError(f"unexpected data response payload: {payload_type}")
-        return FetchedPage.from_dict(runtime_codec.parse_data_response(response_message.data_response))
 
     async def _collect_topk_candidates_streaming(
             self,
@@ -386,90 +287,17 @@ class JobManager:
             protected: set[str],
             topk: int,
     ) -> list[dict[str, Any]]:
-        page_size = max(1, min(5000, int(params.get("unlabeled_page_size", 1000))))
-        target_topk = max(1, topk)
-        cursor: str | None = None
-        heap: list[tuple[float, int, dict[str, Any]]] = []
-        counter = 0
-
-        while True:
-            if self._stop_event.is_set():
-                raise asyncio.CancelledError("job stop requested")
-
-            response = await self._fetch_page(
-                job_id=job_id,
-                query_type="unlabeled_samples",
-                project_id=project_id,
-                commit_id=commit_id,
-                cursor=cursor,
-                limit=page_size,
-            )
-            chunk = response.items
-            if not chunk and not response.next_cursor:
-                break
-
-            # Download current page samples on demand, avoiding full-dataset prefetch.
-            for item in chunk:
-                asset_hash = item.get("asset_hash")
-                download_url = item.get("download_url")
-                if not asset_hash or not download_url:
-                    continue
-                cached_path = await self.cache.ensure_cached(
-                    str(asset_hash),
-                    str(download_url),
-                    protected=protected,
-                    pin_job_id=job_id,
-                )
-                item["local_path"] = str(cached_path)
-                protected.add(str(asset_hash))
-
-            batch = await plugin.predict_unlabeled_batch(
-                workspace=workspace,
-                unlabeled_samples=chunk,
-                strategy=strategy,
-                params=params,
-            )
-            for candidate in batch or []:
-                sample_id = str(candidate.get("sample_id") or "")
-                if not sample_id:
-                    continue
-                try:
-                    score = float(candidate.get("score") or 0.0)
-                except Exception:
-                    score = 0.0
-                reason_payload = candidate.get("reason") or {}
-                if not isinstance(reason_payload, dict):
-                    reason_payload = {}
-                prediction_snapshot = candidate.get("prediction_snapshot")
-                if isinstance(prediction_snapshot, dict) and prediction_snapshot:
-                    reason_payload = {**reason_payload, "prediction_snapshot": prediction_snapshot}
-                payload = {
-                    "sample_id": sample_id,
-                    "score": score,
-                    "reason": reason_payload,
-                }
-                counter += 1
-                key = (score, counter, payload)
-                if len(heap) < target_topk:
-                    heapq.heappush(heap, key)
-                else:
-                    smallest = heap[0]
-                    if score > smallest[0]:
-                        heapq.heapreplace(heap, key)
-
-            cursor = response.next_cursor
-            if not cursor:
-                break
-
-        ranked = sorted(heap, key=lambda item: item[0], reverse=True)
-        output: list[dict[str, Any]] = []
-        for rank, item in enumerate(ranked, start=1):
-            payload = item[2]
-            reason = payload.get("reason")
-            if isinstance(reason, dict):
-                payload["reason"] = {**reason, "rank": rank}
-            output.append(payload)
-        return output
+        return await self._sampling_service.collect_topk_candidates_streaming(
+            plugin=plugin,
+            workspace=workspace,
+            job_id=job_id,
+            project_id=project_id,
+            commit_id=commit_id,
+            strategy=strategy,
+            params=params,
+            protected=protected,
+            topk=topk,
+        )
 
     @staticmethod
     def _normalize_simulation_ratio_schedule(raw: Any) -> list[float]:

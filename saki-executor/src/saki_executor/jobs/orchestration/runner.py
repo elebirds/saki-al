@@ -30,105 +30,29 @@ class JobPipelineRunner:
         self._validate_request()
         plugin = self._resolve_plugin()
         workspace, reporter, emitter = self._prepare_workspace()
+        await self._emit_start_status(emitter)
 
-        self._manager.executor_state = ExecutorState.RUNNING
-        await emitter.emit_status(JobStatus.CREATED, "job created")
-        await emitter.emit_status(JobStatus.QUEUED, "job queued")
-        await emitter.emit_status(JobStatus.RUNNING, "job running")
-
-        data_service = TrainingDataService(
-            fetch_all=self._manager._fetch_all,  # noqa: SLF001
-            cache=self._manager.cache,
-            stop_event=self._manager._stop_event,  # noqa: SLF001
-            normalize_simulation_ratio_schedule=self._manager._normalize_simulation_ratio_schedule,  # noqa: SLF001
-            resolve_simulation_ratio=lambda iteration, schedule: self._manager._resolve_simulation_ratio(  # noqa: SLF001
-                iteration=iteration,
-                schedule=schedule,
-            ),
-        )
-        data_bundle = await data_service.prepare(
-            request=self._request,
+        output, protected = await self._run_training_pipeline(
             plugin=plugin,
-            emit=emitter.emit,
+            workspace=workspace,
+            emitter=emitter,
         )
-
-        await plugin.prepare_data(
-            workspace,
-            data_bundle.labels,
-            data_bundle.train_samples,
-            data_bundle.train_annotations,
+        candidates = await self._collect_candidates(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+            protected=protected,
         )
-        output = await plugin.train(workspace, self._request.params, emitter.emit)
-
-        candidates: list[dict[str, Any]] = []
-        if self._request.mode == "active_learning":
-            topk = int(self._request.params.get("topk", 200))
-            sampling_params = dict(self._request.params)
-            sampling_params["topk"] = topk
-            candidates = await self._manager._collect_topk_candidates_streaming(  # noqa: SLF001
-                plugin=plugin,
-                workspace=workspace,
-                job_id=self._request.job_id,
-                project_id=self._request.project_id,
-                commit_id=self._request.source_commit_id,
-                strategy=self._request.query_strategy,
-                params=sampling_params,
-                protected=data_bundle.protected,
-                topk=topk,
-            )
-        else:
-            await emitter.emit(
-                "log",
-                {"level": "INFO", "message": "simulation mode skips active-learning TopK sampling"},
-            )
-
         artifacts, optional_upload_failures = await self._upload_artifacts(
             output_artifacts=output.artifacts,
             reporter=reporter,
         )
-        self._manager.executor_state = ExecutorState.FINALIZING
-
-        if optional_upload_failures:
-            reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
-            await self._manager._push_event(  # noqa: SLF001
-                self._job_id,
-                reporter.status(JobStatus.PARTIAL_FAILED.value, reason),
-            )
-            await self._send_result(
-                status=JobStatus.PARTIAL_FAILED,
-                metrics=output.metrics,
-                artifacts=artifacts,
-                candidates=candidates,
-                error_message=reason,
-            )
-            logger.warning("任务部分成功（非关键制品上传失败） job_id={} reason={}", self._job_id, reason)
-            return JobFinalResult(
-                job_id=self._job_id,
-                status=JobStatus.PARTIAL_FAILED,
-                metrics=output.metrics,
-                artifacts=artifacts,
-                candidates=candidates,
-                error_message=reason,
-            )
-
-        await self._manager._push_event(  # noqa: SLF001
-            self._job_id,
-            reporter.status(JobStatus.SUCCEEDED.value, "job succeeded"),
-        )
-        await self._send_result(
-            status=JobStatus.SUCCEEDED,
+        return await self._finalize_result(
+            reporter=reporter,
             metrics=output.metrics,
             artifacts=artifacts,
             candidates=candidates,
-        )
-        logger.info("任务执行成功 job_id={}", self._job_id)
-        return JobFinalResult(
-            job_id=self._job_id,
-            status=JobStatus.SUCCEEDED,
-            metrics=output.metrics,
-            artifacts=artifacts,
-            candidates=candidates,
-            error_message="",
+            optional_upload_failures=optional_upload_failures,
         )
 
     def _validate_request(self) -> None:
@@ -158,6 +82,124 @@ class JobPipelineRunner:
             push_event=_push_event,
         )
         return workspace, reporter, emitter
+
+    async def _emit_start_status(self, emitter: JobEventEmitter) -> None:
+        self._manager.executor_state = ExecutorState.RUNNING
+        await emitter.emit_status(JobStatus.CREATED, "job created")
+        await emitter.emit_status(JobStatus.QUEUED, "job queued")
+        await emitter.emit_status(JobStatus.RUNNING, "job running")
+
+    async def _run_training_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: JobEventEmitter,
+    ) -> tuple[Any, set[str]]:
+        data_service = TrainingDataService(
+            fetch_all=self._manager._fetch_all,  # noqa: SLF001
+            cache=self._manager.cache,
+            stop_event=self._manager._stop_event,  # noqa: SLF001
+            normalize_simulation_ratio_schedule=self._manager._normalize_simulation_ratio_schedule,  # noqa: SLF001
+            resolve_simulation_ratio=lambda iteration, schedule: self._manager._resolve_simulation_ratio(  # noqa: SLF001
+                iteration=iteration,
+                schedule=schedule,
+            ),
+        )
+        data_bundle = await data_service.prepare(
+            request=self._request,
+            plugin=plugin,
+            emit=emitter.emit,
+        )
+        await plugin.prepare_data(
+            workspace,
+            data_bundle.labels,
+            data_bundle.train_samples,
+            data_bundle.train_annotations,
+        )
+        output = await plugin.train(workspace, self._request.params, emitter.emit)
+        return output, data_bundle.protected
+
+    async def _collect_candidates(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: JobEventEmitter,
+        protected: set[str],
+    ) -> list[dict[str, Any]]:
+        if self._request.mode != "active_learning":
+            await emitter.emit(
+                "log",
+                {"level": "INFO", "message": "simulation mode skips active-learning TopK sampling"},
+            )
+            return []
+        topk = int(self._request.params.get("topk", 200))
+        sampling_params = dict(self._request.params)
+        sampling_params["topk"] = topk
+        return await self._manager._collect_topk_candidates_streaming(  # noqa: SLF001
+            plugin=plugin,
+            workspace=workspace,
+            job_id=self._request.job_id,
+            project_id=self._request.project_id,
+            commit_id=self._request.source_commit_id,
+            strategy=self._request.query_strategy,
+            params=sampling_params,
+            protected=protected,
+            topk=topk,
+        )
+
+    async def _finalize_result(
+        self,
+        *,
+        reporter: JobReporter,
+        metrics: dict[str, Any],
+        artifacts: dict[str, Any],
+        candidates: list[dict[str, Any]],
+        optional_upload_failures: list[str],
+    ) -> JobFinalResult:
+        self._manager.executor_state = ExecutorState.FINALIZING
+        if optional_upload_failures:
+            reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
+            await self._manager._push_event(  # noqa: SLF001
+                self._job_id,
+                reporter.status(JobStatus.PARTIAL_FAILED.value, reason),
+            )
+            await self._send_result(
+                status=JobStatus.PARTIAL_FAILED,
+                metrics=metrics,
+                artifacts=artifacts,
+                candidates=candidates,
+                error_message=reason,
+            )
+            logger.warning("任务部分成功（非关键制品上传失败） job_id={} reason={}", self._job_id, reason)
+            return JobFinalResult(
+                job_id=self._job_id,
+                status=JobStatus.PARTIAL_FAILED,
+                metrics=metrics,
+                artifacts=artifacts,
+                candidates=candidates,
+                error_message=reason,
+            )
+        await self._manager._push_event(  # noqa: SLF001
+            self._job_id,
+            reporter.status(JobStatus.SUCCEEDED.value, "job succeeded"),
+        )
+        await self._send_result(
+            status=JobStatus.SUCCEEDED,
+            metrics=metrics,
+            artifacts=artifacts,
+            candidates=candidates,
+        )
+        logger.info("任务执行成功 job_id={}", self._job_id)
+        return JobFinalResult(
+            job_id=self._job_id,
+            status=JobStatus.SUCCEEDED,
+            metrics=metrics,
+            artifacts=artifacts,
+            candidates=candidates,
+            error_message="",
+        )
 
     async def _upload_artifacts(
         self,
@@ -232,4 +274,3 @@ class JobPipelineRunner:
                 error_message=error_message,
             )
         )
-

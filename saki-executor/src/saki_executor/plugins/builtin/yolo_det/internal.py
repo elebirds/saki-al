@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import csv
 import hashlib
 import json
 import math
 from pathlib import Path
-import shutil
 import threading
 from typing import Any, Callable
 import warnings
@@ -31,12 +29,22 @@ from saki_executor.hardware.probe import (
 )
 from saki_executor.plugins.base import EventCallback, TrainArtifact, TrainOutput
 from saki_executor.plugins.builtin.yolo_det.prepare_pipeline import prepare_yolo_dataset
+from saki_executor.plugins.builtin.yolo_det.metrics_parser import (
+    normalize_metrics as normalize_metrics_row,
+    parse_results_csv as parse_results_csv_rows,
+    pick_metric as pick_metric_value,
+)
+from saki_executor.plugins.builtin.yolo_det.predict_pipeline import (
+    predict_with_augmentations,
+    score_unlabeled_samples,
+)
 from saki_executor.plugins.builtin.yolo_det.train_async import (
     load_prepare_stats,
     normalize_training_metrics,
     resolve_train_config,
     run_train_with_epoch_stream,
 )
+from saki_executor.plugins.builtin.yolo_det.train_sync_runner import run_train_sync
 from saki_executor.strategies.aug_iou import (
     build_detection_boxes,
     score_aug_iou_disagreement,
@@ -545,116 +553,23 @@ class YoloDetectionInternal:
         device: Any,
         epoch_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
-        if self._stop_flag.is_set():
-            raise RuntimeError("training stopped before start")
-
-        YOLO = self._load_yolo()
-        self._ensure_cjk_plot_font()
-        model = YOLO(base_model)
-
-        def _emit_epoch_update(trainer: Any) -> None:
-            if self._stop_flag.is_set():
-                setattr(trainer, "stop", True)
-                return
-            if epoch_callback is None:
-                return
-            epoch = int(getattr(trainer, "epoch", -1)) + 1
-            total_steps = max(1, _to_int(getattr(trainer, "epochs", epochs), epochs))
-            epoch_time = _to_float(getattr(trainer, "epoch_time", 0.0), 0.0)
-            remaining_epochs = max(0, total_steps - epoch)
-            eta_sec = int(max(0.0, epoch_time * remaining_epochs)) if epoch_time > 0 else 0
-            raw_metrics = getattr(trainer, "metrics", {}) or {}
-            metrics = self._normalize_metrics(raw_metrics)
-            epoch_callback(
-                {
-                    "step": max(1, epoch),
-                    "epoch": max(1, epoch),
-                    "total_steps": total_steps,
-                    "eta_sec": eta_sec,
-                    "metrics": metrics,
-                }
-            )
-
-        model.add_callback("on_fit_epoch_end", _emit_epoch_update)
-        train_output = model.train(
-            data=str(dataset_yaml),
+        return run_train_sync(
+            workspace=workspace,
+            dataset_yaml=dataset_yaml,
+            base_model=base_model,
             epochs=epochs,
             batch=batch,
             imgsz=imgsz,
             patience=patience,
             device=device,
-            project=str(workspace.root),
-            name="yolo_train",
-            exist_ok=True,
-            verbose=False,
+            stop_flag=self._stop_flag,
+            load_yolo=self._load_yolo,
+            ensure_cjk_plot_font=self._ensure_cjk_plot_font,
+            normalize_metrics=self._normalize_metrics,
+            to_float=_to_float,
+            to_int=_to_int,
+            epoch_callback=epoch_callback,
         )
-        if self._stop_flag.is_set():
-            raise RuntimeError("training stopped")
-
-        save_dir_raw = getattr(train_output, "save_dir", None)
-        if not save_dir_raw and getattr(model, "trainer", None) is not None:
-            save_dir_raw = getattr(model.trainer, "save_dir", None)
-        if not save_dir_raw:
-            raise RuntimeError("failed to locate YOLO save directory")
-        save_dir = Path(str(save_dir_raw))
-
-        best_path = save_dir / "weights" / "best.pt"
-        if not best_path.exists():
-            fallback = save_dir / "weights" / "last.pt"
-            if fallback.exists():
-                best_path = fallback
-            else:
-                raise RuntimeError(f"no weights artifact found under {save_dir / 'weights'}")
-
-        # 固定上传路径，便于 API 侧注册制品。
-        final_best = workspace.artifacts_dir / "best.pt"
-        shutil.copy2(best_path, final_best)
-
-        metrics: dict[str, float] = {}
-        if hasattr(train_output, "results_dict"):
-            raw_metrics = getattr(train_output, "results_dict", {}) or {}
-            for k, v in raw_metrics.items():
-                try:
-                    metrics[str(k)] = float(v)
-                except Exception:
-                    continue
-
-        history = self._parse_results_csv(save_dir / "results.csv")
-        if history:
-            latest = history[-1]
-            metrics.setdefault("map50", _to_float(latest.get("map50"), 0.0))
-            metrics.setdefault("map50_95", _to_float(latest.get("map50_95"), 0.0))
-            metrics.setdefault("precision", _to_float(latest.get("precision"), 0.0))
-            metrics.setdefault("recall", _to_float(latest.get("recall"), 0.0))
-
-        extra_artifacts: list[TrainArtifact] = []
-        confusion_candidates = [
-            ("confusion_matrix.png", "confusion_matrix"),
-            ("confusion_matrix_normalized.png", "confusion_matrix_normalized"),
-        ]
-        for filename, kind in confusion_candidates:
-            source = save_dir / filename
-            if not source.exists():
-                continue
-            target = workspace.artifacts_dir / filename
-            shutil.copy2(source, target)
-            extra_artifacts.append(
-                TrainArtifact(
-                    kind=kind,
-                    name=filename,
-                    path=target,
-                    content_type="image/png",
-                    meta={"size": target.stat().st_size},
-                )
-            )
-
-        return {
-            "metrics": metrics,
-            "history": history,
-            "save_dir": str(save_dir),
-            "best_path": str(final_best),
-            "extra_artifacts": extra_artifacts,
-        }
 
     def _ensure_cjk_plot_font(self) -> None:
         if self._font_setup_done:
@@ -690,43 +605,13 @@ class YoloDetectionInternal:
             self._font_setup_done = True
 
     def _normalize_metrics(self, raw: dict[str, Any] | Any) -> dict[str, float]:
-        source = raw if isinstance(raw, dict) else {}
-        row = {str(k): _to_float(v, 0.0) for k, v in source.items()}
-        map50_keys = ("metrics/mAP50(B)", "metrics/mAP50(M)", "metrics/mAP50")
-        map50_95_keys = ("metrics/mAP50-95(B)", "metrics/mAP50-95(M)", "metrics/mAP50-95")
-        precision_keys = ("metrics/precision(B)", "metrics/precision(M)", "metrics/precision")
-        recall_keys = ("metrics/recall(B)", "metrics/recall(M)", "metrics/recall")
-        return {
-            "map50": self._pick_metric(row, map50_keys),
-            "map50_95": self._pick_metric(row, map50_95_keys),
-            "precision": self._pick_metric(row, precision_keys),
-            "recall": self._pick_metric(row, recall_keys),
-        }
+        return normalize_metrics_row(raw, _to_float)
 
     def _parse_results_csv(self, path: Path) -> list[dict[str, float]]:
-        if not path.exists():
-            return []
-        rows: list[dict[str, float]] = []
-        with path.open("r", encoding="utf-8") as fp:
-            reader = csv.DictReader(fp)
-            for item in reader:
-                row: dict[str, float] = {}
-                map50_keys = ("metrics/mAP50(B)", "metrics/mAP50(M)", "metrics/mAP50")
-                map50_95_keys = ("metrics/mAP50-95(B)", "metrics/mAP50-95(M)", "metrics/mAP50-95")
-                precision_keys = ("metrics/precision(B)", "metrics/precision(M)", "metrics/precision")
-                recall_keys = ("metrics/recall(B)", "metrics/recall(M)", "metrics/recall")
-                row["map50"] = self._pick_metric(item, map50_keys)
-                row["map50_95"] = self._pick_metric(item, map50_95_keys)
-                row["precision"] = self._pick_metric(item, precision_keys)
-                row["recall"] = self._pick_metric(item, recall_keys)
-                rows.append(row)
-        return rows
+        return parse_results_csv_rows(path, _to_float)
 
     def _pick_metric(self, row: dict[str, Any], keys: tuple[str, ...]) -> float:
-        for key in keys:
-            if key in row and row[key] not in ("", None):
-                return _to_float(row[key], 0.0)
-        return 0.0
+        return pick_metric_value(row, keys, _to_float)
 
     def _score_unlabeled_sync(
         self,
@@ -738,51 +623,20 @@ class YoloDetectionInternal:
         imgsz: int,
         device: Any,
     ) -> list[dict[str, Any]]:
-        YOLO = self._load_yolo()
-        model = YOLO(model_path)
-        candidates: list[dict[str, Any]] = []
-
-        for sample in unlabeled_samples:
-            if self._stop_flag.is_set():
-                raise RuntimeError("sampling stopped")
-
-            sample_id = str(sample.get("id") or "")
-            local_path = str(sample.get("local_path") or "")
-            if not sample_id or not local_path:
-                continue
-            image_path = Path(local_path)
-            if not image_path.exists():
-                continue
-
-            if (strategy or "").lower() in {"aug_iou_disagreement_v1", "aug_iou_disagreement"}:
-                preds_by_aug = self._predict_with_aug(
-                    model=model,
-                    image_path=image_path,
-                    conf=conf,
-                    imgsz=imgsz,
-                    device=device,
-                )
-                boxes_by_aug = [build_detection_boxes(item) for item in preds_by_aug]
-                score, reason = score_aug_iou_disagreement(boxes_by_aug)
-                prediction_snapshot = {
-                    "strategy": "aug_iou_disagreement_v1",
-                    "aug_count": len(preds_by_aug),
-                    "pred_per_aug": [len(item) for item in preds_by_aug],
-                    "base_predictions": preds_by_aug[0][:30] if preds_by_aug else [],
-                }
-                candidates.append(
-                    {
-                        "sample_id": sample_id,
-                        "score": score,
-                        "reason": reason,
-                        "prediction_snapshot": prediction_snapshot,
-                    }
-                )
-            else:
-                score, reason = score_by_strategy(strategy, sample_id)
-                candidates.append({"sample_id": sample_id, "score": score, "reason": reason})
-
-        return candidates
+        return score_unlabeled_samples(
+            model_path=model_path,
+            unlabeled_samples=unlabeled_samples,
+            strategy=strategy,
+            conf=conf,
+            imgsz=imgsz,
+            device=device,
+            stop_flag=self._stop_flag,
+            load_yolo=self._load_yolo,
+            predict_with_aug=self._predict_with_aug,
+            build_detection_boxes=build_detection_boxes,
+            score_aug_iou_disagreement=score_aug_iou_disagreement,
+            score_by_strategy=score_by_strategy,
+        )
 
     def _predict_with_aug(
         self,
@@ -793,34 +647,20 @@ class YoloDetectionInternal:
         imgsz: int,
         device: Any,
     ) -> list[list[dict[str, Any]]]:
-        self._ensure_image_deps()
-        with Image.open(image_path) as img:
-            rgb = img.convert("RGB")
-            image = np.array(rgb)
-
-        h, w = image.shape[:2]
-        transforms: list[tuple[str, Callable[[np.ndarray], np.ndarray]]] = [
-            ("identity", lambda arr: arr),
-            ("hflip", lambda arr: np.ascontiguousarray(arr[:, ::-1, :])),
-            ("vflip", lambda arr: np.ascontiguousarray(arr[::-1, :, :])),
-            ("bright", lambda arr: np.clip(arr.astype(np.float32) * 1.2, 0, 255).astype(np.uint8)),
-        ]
-
-        results_by_aug: list[list[dict[str, Any]]] = []
-        for name, transform in transforms:
-            aug_img = transform(image)
-            predicts = model.predict(
-                source=aug_img,
-                conf=conf,
-                imgsz=imgsz,
-                device=device,
-                verbose=False,
-            )
-            first = predicts[0] if predicts else None
-            rows = self._extract_predictions(first)
-            rows = [self._inverse_aug_box(name=name, row=item, width=w, height=h) for item in rows]
-            results_by_aug.append(rows)
-        return results_by_aug
+        if Image is None or np is None:
+            raise RuntimeError("numpy and pillow are required for yolo_det_v1 plugin")
+        return predict_with_augmentations(
+            model=model,
+            image_path=image_path,
+            conf=conf,
+            imgsz=imgsz,
+            device=device,
+            ensure_image_deps=self._ensure_image_deps,
+            image_cls=Image,
+            np_mod=np,
+            extract_predictions=self._extract_predictions,
+            inverse_aug_box=self._inverse_aug_box,
+        )
 
     def _extract_predictions(self, result) -> list[dict[str, Any]]:
         if result is None:

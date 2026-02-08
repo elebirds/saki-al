@@ -49,6 +49,7 @@
         --github-input: #f6f8fa;
         --github-input-border: #d0d7de;
         --github-badge: #eaeef2;
+        --github-selected-bg: rgba(9, 105, 218, 0.12);
     }
 
     :root.dark, .dark {
@@ -98,6 +99,7 @@
         --github-input: #21262d;
         --github-input-border: #30363d;
         --github-badge: #30363d;
+        --github-selected-bg: rgba(47, 129, 247, 0.24);
     }
 }
 

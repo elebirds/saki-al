@@ -103,9 +103,9 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
     }
 
     return (
-        <div className="flex h-full">
+        <div className="flex h-full bg-github-base text-github-text">
             {/* Left Sidebar - Sample List */}
-            <aside className="w-[250px] shrink-0 border-r border-[#f0f0f0] bg-white">
+            <aside className="w-[250px] shrink-0">
                 <SampleList
                     samples={samples}
                     currentIndex={currentIndex}

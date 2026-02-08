@@ -81,7 +81,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
     const {t} = useTranslation();
 
     return (
-        <div className="flex items-center gap-2.5 border-b border-[#f0f0f0] bg-white p-2.5">
+        <div className="flex items-center gap-2.5 border-b border-github-border bg-github-panel p-2.5 text-github-text">
             {/* Back Button */}
             {onBack ? (
                 <>

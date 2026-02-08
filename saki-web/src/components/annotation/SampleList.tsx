@@ -20,13 +20,13 @@ export const SampleList: React.FC<SampleListProps> = ({
 
     return (
         <div
-            className="flex h-full flex-col border-r border-[#f0f0f0] bg-white"
+            className="flex h-full flex-col border-r border-github-border bg-github-panel text-github-text"
         >
             <div
-                className="border-b border-[#f0f0f0] bg-[#fafafa] p-4"
+                className="border-b border-github-border bg-github-base p-4"
             >
                 <Text strong>{t('annotation.workspace.sampleList')}</Text>
-                <div className="mt-2 text-xs text-[#666]">
+                <div className="mt-2 text-xs text-github-muted">
                     {samples.length} {t('annotation.workspace.samples')}
                 </div>
             </div>
@@ -39,7 +39,9 @@ export const SampleList: React.FC<SampleListProps> = ({
                     renderItem={(sample, index) => (
                         <List.Item
                             className={`cursor-pointer border-l-[3px] px-4 py-2 ${
-                                index === currentIndex ? 'border-[#1890ff] bg-[#e6f7ff]' : 'border-transparent bg-transparent'
+                                index === currentIndex
+                                    ? 'border-[#1890ff] bg-[var(--github-selected-bg)]'
+                                    : 'border-transparent bg-transparent'
                             }`}
                             onClick={() => onSampleSelect(index)}
                         >
@@ -48,7 +50,7 @@ export const SampleList: React.FC<SampleListProps> = ({
                             >
                                 <div className="min-w-0 flex-1">
                                     <div
-                                        className="mb-1 text-xs text-[#666]"
+                                        className="mb-1 text-xs text-github-muted"
                                     >
                                         #{index + 1}
                                     </div>

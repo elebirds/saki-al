@@ -4,7 +4,7 @@ L3 Job schemas for runtime execution APIs.
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -47,6 +47,21 @@ class LoopUpdateRequest(BaseModel):
     stop_patience_rounds: Optional[int] = Field(default=None, ge=1)
     stop_min_gain: Optional[float] = None
     auto_register_model: Optional[bool] = None
+
+
+LoopRecoverMode = Literal["retry_same_params", "rerun_with_overrides"]
+
+
+class LoopRecoverOverrides(BaseModel):
+    query_strategy: Optional[str] = None
+    plugin_id: Optional[str] = None
+    params: Optional[Dict[str, Any]] = None
+    resources: Optional[Dict[str, Any]] = None
+
+
+class LoopRecoverRequest(BaseModel):
+    mode: LoopRecoverMode = "retry_same_params"
+    overrides: Optional[LoopRecoverOverrides] = None
 
 
 class LoopRead(BaseModel):

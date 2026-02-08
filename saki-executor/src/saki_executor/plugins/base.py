@@ -60,6 +60,14 @@ class ExecutorPlugin(ABC):
     def default_request_config(self) -> dict[str, Any]:
         return {}
 
+    @property
+    def supported_accelerators(self) -> list[str]:
+        return ["cpu"]
+
+    @property
+    def supports_auto_fallback(self) -> bool:
+        return True
+
     @abstractmethod
     def validate_params(self, params: dict[str, Any]) -> None:
         pass

@@ -33,6 +33,7 @@ import {
     RuntimeMetricPoint,
     RuntimeTopKCandidate,
     LoopCreateRequest,
+    LoopRecoverRequest,
     LoopUpdateRequest,
     LoopRound,
     LoopSummary,
@@ -690,6 +691,11 @@ export class RealApiService implements ApiService {
 
     async startLoop(loopId: string): Promise<ALLoop> {
         const response = await this.client.post<ALLoop>(`/loops/${loopId}:start`);
+        return response.data;
+    }
+
+    async recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:recover`, payload);
         return response.data;
     }
 

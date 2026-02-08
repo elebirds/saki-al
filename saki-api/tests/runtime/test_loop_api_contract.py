@@ -9,12 +9,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
 from saki_api.api.api_v1.endpoints.l3 import query as loop_query_endpoint
+from saki_api.api.api_v1.endpoints.l3 import loop_control as loop_control_endpoint
 from saki_api.db.session import _session_ctx
-from saki_api.models.enums import AuthorType, TaskType
+from saki_api.models.enums import AuthorType, TaskType, ALLoopStatus
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.project import Project
-from saki_api.schemas.l3.job import LoopCreateRequest, LoopRead, LoopUpdateRequest
+from saki_api.schemas.l3.job import LoopCreateRequest, LoopRead, LoopUpdateRequest, LoopRecoverRequest, LoopRecoverOverrides
 from saki_api.services.job import JobService
 
 
@@ -162,5 +163,120 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
             assert updated.model_arch == "demo_det_v1"
             assert updated.query_strategy == "random_baseline"
             assert updated.model_request_config == {"epochs": 30, "lr": 0.001}
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_loop_control_start_failed_defaults_to_recover(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+
+    recover_calls: list[tuple[str, str]] = []
+
+    async def fake_recover_failed_loop(*, loop_id, mode, overrides):
+        recover_calls.append((str(loop_id), str(mode)))
+        return uuid.uuid4()
+
+    monkeypatch.setattr(loop_control_endpoint.loop_orchestrator, "recover_failed_loop", fake_recover_failed_loop)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = JobService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-failed",
+                    branch_id=branch.id,
+                ),
+            )
+            loop.status = ALLoopStatus.FAILED
+            session.add(loop)
+            await session.commit()
+            await session.refresh(loop)
+
+            resp = await loop_control_endpoint.start_loop(
+                loop_id=loop.id,
+                job_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert resp.id == loop.id
+            assert recover_calls == [(str(loop.id), "retry_same_params")]
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_loop_control_recover_endpoint_accepts_overrides(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+    captured: dict[str, object] = {}
+
+    async def fake_recover_failed_loop(*, loop_id, mode, overrides):
+        captured["loop_id"] = str(loop_id)
+        captured["mode"] = mode
+        captured["overrides"] = overrides
+        return uuid.uuid4()
+
+    monkeypatch.setattr(loop_control_endpoint.loop_orchestrator, "recover_failed_loop", fake_recover_failed_loop)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = JobService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-recover",
+                    branch_id=branch.id,
+                ),
+            )
+            loop.status = ALLoopStatus.FAILED
+            session.add(loop)
+            await session.commit()
+            await session.refresh(loop)
+
+            payload = LoopRecoverRequest(
+                mode="rerun_with_overrides",
+                overrides=LoopRecoverOverrides(
+                    plugin_id="demo_det_v1",
+                    query_strategy="random_baseline",
+                    params={"epochs": 5},
+                    resources={"gpu_count": 0},
+                ),
+            )
+            resp = await loop_control_endpoint.recover_loop(
+                loop_id=loop.id,
+                payload=payload,
+                job_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert resp.id == loop.id
+            assert captured["mode"] == "rerun_with_overrides"
+            assert captured["overrides"] == {
+                "query_strategy": "random_baseline",
+                "plugin_id": "demo_det_v1",
+                "params": {"epochs": 5},
+                "resources": {"gpu_count": 0},
+            }
         finally:
             _session_ctx.reset(token)

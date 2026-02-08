@@ -8,6 +8,8 @@ import {
     Form,
     Input,
     InputNumber,
+    Modal,
+    Radio,
     Select,
     Spin,
     Switch,
@@ -23,6 +25,7 @@ import {
     ALLoop,
     LoopRound,
     LoopSummary,
+    LoopRecoverMode,
     LoopUpdateRequest,
     RuntimeJob,
     RuntimePluginCatalogItem,
@@ -62,23 +65,39 @@ type LoopConfigForm = {
     modelRequestConfig: Record<string, any>;
 };
 
+type LoopRecoverForm = {
+    mode: LoopRecoverMode;
+    pluginId?: string;
+    queryStrategy?: string;
+    paramsJson?: string;
+    resourcesJson?: string;
+};
+
 const ProjectLoopDetail: React.FC = () => {
     const {projectId, loopId} = useParams<{ projectId: string; loopId: string }>();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [controlLoading, setControlLoading] = useState(false);
+    const [recoverOpen, setRecoverOpen] = useState(false);
+    const [recoverLoading, setRecoverLoading] = useState(false);
     const [loop, setLoop] = useState<ALLoop | null>(null);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
     const [rounds, setRounds] = useState<LoopRound[]>([]);
     const [jobs, setJobs] = useState<RuntimeJob[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [configForm] = Form.useForm<LoopConfigForm>();
+    const [recoverForm] = Form.useForm<LoopRecoverForm>();
 
     const selectedPluginId = Form.useWatch('modelArch', configForm);
+    const recoverMode = Form.useWatch('mode', recoverForm) || 'retry_same_params';
     const selectedPlugin = useMemo(
         () => plugins.find((item) => item.pluginId === selectedPluginId),
         [plugins, selectedPluginId],
+    );
+    const latestFailedJob = useMemo(
+        () => jobs.find((item) => item.status === 'failed') || null,
+        [jobs],
     );
 
     const renderDynamicField = (field: RuntimeRequestConfigField) => {
@@ -198,6 +217,19 @@ const ProjectLoopDetail: React.FC = () => {
 
     const handleLoopControl = async (action: 'start' | 'pause' | 'resume' | 'stop') => {
         if (!loopId) return;
+        if (action === 'start' && loop?.status === 'failed') {
+            const defaultParams = latestFailedJob?.params || selectedPlugin?.defaultRequestConfig || {};
+            const defaultResources = latestFailedJob?.resources || {};
+            recoverForm.setFieldsValue({
+                mode: 'retry_same_params',
+                pluginId: latestFailedJob?.pluginId || loop.modelArch,
+                queryStrategy: latestFailedJob?.queryStrategy || loop.queryStrategy,
+                paramsJson: JSON.stringify(defaultParams, null, 2),
+                resourcesJson: JSON.stringify(defaultResources, null, 2),
+            });
+            setRecoverOpen(true);
+            return;
+        }
         setControlLoading(true);
         try {
             if (action === 'start') await api.startLoop(loopId);
@@ -210,6 +242,56 @@ const ProjectLoopDetail: React.FC = () => {
             message.error(error?.message || 'Loop 控制失败');
         } finally {
             setControlLoading(false);
+        }
+    };
+
+    const handleRecover = async () => {
+        if (!loopId) return;
+        try {
+            const values = await recoverForm.validateFields();
+            const mode = values.mode || 'retry_same_params';
+            const payload: {
+                mode: LoopRecoverMode;
+                overrides?: {
+                    pluginId?: string;
+                    queryStrategy?: string;
+                    params?: Record<string, any>;
+                    resources?: Record<string, any>;
+                };
+            } = { mode };
+
+            if (mode === 'rerun_with_overrides') {
+                const overrides: Record<string, any> = {};
+                if (values.pluginId?.trim()) overrides.pluginId = values.pluginId.trim();
+                if (values.queryStrategy?.trim()) overrides.queryStrategy = values.queryStrategy.trim();
+
+                if (values.paramsJson?.trim()) {
+                    const parsed = JSON.parse(values.paramsJson);
+                    if (parsed && typeof parsed !== 'object') {
+                        throw new Error('params 必须是 JSON 对象');
+                    }
+                    overrides.params = parsed || {};
+                }
+                if (values.resourcesJson?.trim()) {
+                    const parsed = JSON.parse(values.resourcesJson);
+                    if (parsed && typeof parsed !== 'object') {
+                        throw new Error('resources 必须是 JSON 对象');
+                    }
+                    overrides.resources = parsed || {};
+                }
+                payload.overrides = overrides;
+            }
+
+            setRecoverLoading(true);
+            await api.recoverLoop(loopId, payload);
+            setRecoverOpen(false);
+            message.success('恢复任务已创建并开始派发');
+            await refreshLoopData();
+        } catch (error: any) {
+            if (error?.errorFields) return;
+            message.error(error?.message || '恢复 Loop 失败');
+        } finally {
+            setRecoverLoading(false);
         }
     };
 
@@ -424,6 +506,47 @@ const ProjectLoopDetail: React.FC = () => {
                     ]}
                 />
             </Card>
+
+            <Modal
+                title="失败后恢复"
+                open={recoverOpen}
+                onCancel={() => setRecoverOpen(false)}
+                onOk={handleRecover}
+                confirmLoading={recoverLoading}
+                okText="确认恢复"
+                destroyOnClose
+            >
+                <Form form={recoverForm} layout="vertical">
+                    <Form.Item name="mode" label="恢复模式" initialValue="retry_same_params">
+                        <Radio.Group>
+                            <Radio value="retry_same_params">快速重试（沿用参数）</Radio>
+                            <Radio value="rerun_with_overrides">按新参数重跑（同轮新建 job）</Radio>
+                        </Radio.Group>
+                    </Form.Item>
+                    {recoverMode === 'rerun_with_overrides' ? (
+                        <>
+                            <Form.Item name="pluginId" label="插件 ID">
+                                <Select
+                                    allowClear
+                                    options={plugins.map((item) => ({
+                                        label: `${item.displayName} (${item.pluginId})`,
+                                        value: item.pluginId,
+                                    }))}
+                                />
+                            </Form.Item>
+                            <Form.Item name="queryStrategy" label="采样策略">
+                                <Input placeholder="例如：aug_iou_disagreement" />
+                            </Form.Item>
+                            <Form.Item name="paramsJson" label="params(JSON)">
+                                <Input.TextArea rows={6} />
+                            </Form.Item>
+                            <Form.Item name="resourcesJson" label="resources(JSON)">
+                                <Input.TextArea rows={4} />
+                            </Form.Item>
+                        </>
+                    ) : null}
+                </Form>
+            </Modal>
         </div>
     );
 };

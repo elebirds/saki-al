@@ -19,6 +19,7 @@ from saki_api.schemas.l3.job import (
     LoopRead,
     AnnotationBatchRead,
     AnnotationBatchItemRead,
+    LoopRecoverRequest,
 )
 from saki_api.services.loop_config import extract_model_request_config
 from saki_api.services.loop_orchestrator import loop_orchestrator
@@ -76,6 +77,15 @@ async def start_loop(
     )
     if loop.status == ALLoopStatus.COMPLETED:
         raise BadRequestAppException("Completed loop cannot be started")
+    if loop.status == ALLoopStatus.FAILED:
+        await loop_orchestrator.recover_failed_loop(
+            loop_id=loop.id,
+            mode="retry_same_params",
+            overrides=None,
+        )
+        await session.refresh(loop)
+        return _build_loop_read(loop)
+
     loop.status = ALLoopStatus.RUNNING
     loop.is_active = True
     session.add(loop)
@@ -130,6 +140,31 @@ async def resume_loop(
     await session.commit()
     await session.refresh(loop)
     await loop_orchestrator.tick_once()
+    return _build_loop_read(loop)
+
+
+@router.post("/loops/{loop_id}:recover", response_model=LoopRead)
+async def recover_loop(
+        *,
+        loop_id: uuid.UUID,
+        payload: LoopRecoverRequest,
+        job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    await loop_orchestrator.recover_failed_loop(
+        loop_id=loop.id,
+        mode=payload.mode,
+        overrides=payload.overrides.model_dump(exclude_none=True) if payload.overrides else None,
+    )
+    await session.refresh(loop)
     return _build_loop_read(loop)
 
 

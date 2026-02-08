@@ -44,6 +44,20 @@ enum RuntimeQueryType {
   UNLABELED_SAMPLES = 4;
 }
 
+enum AcceleratorType {
+  ACCELERATOR_TYPE_UNSPECIFIED = 0;
+  CPU = 1;
+  CUDA = 2;
+  MPS = 3;
+}
+
+message AcceleratorCapability {
+  AcceleratorType type = 1;
+  bool available = 2;
+  int32 device_count = 3;
+  repeated string device_ids = 4;
+}
+
 message PluginCapability {
   string plugin_id = 1;
   string version = 2;
@@ -52,6 +66,8 @@ message PluginCapability {
   string display_name = 5;
   google.protobuf.Struct request_config_schema = 6;
   google.protobuf.Struct default_request_config = 7;
+  repeated AcceleratorType supported_accelerators = 8;
+  bool supports_auto_fallback = 9;
 }
 
 message ResourceSummary {
@@ -59,6 +75,7 @@ message ResourceSummary {
   repeated int32 gpu_device_ids = 2;
   int32 cpu_workers = 3;
   int32 memory_mb = 4;
+  repeated AcceleratorCapability accelerators = 5;
 }
 
 message Register {

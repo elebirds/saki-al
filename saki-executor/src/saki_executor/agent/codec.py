@@ -51,6 +51,13 @@ _QUERY_TYPE_TO_TEXT: dict[int, str] = {
 }
 _TEXT_TO_QUERY_TYPE: dict[str, int] = {value: key for key, value in _QUERY_TYPE_TO_TEXT.items()}
 
+_ACCELERATOR_TYPE_TO_TEXT: dict[int, str] = {
+    pb.CPU: "cpu",
+    pb.CUDA: "cuda",
+    pb.MPS: "mps",
+}
+_TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCELERATOR_TYPE_TO_TEXT.items()}
+
 
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
     struct = Struct()
@@ -82,22 +89,109 @@ def query_type_to_text(query_type: int) -> str:
     return _QUERY_TYPE_TO_TEXT.get(int(query_type), "labels")
 
 
+def accelerator_type_to_text(accelerator: int) -> str:
+    return _ACCELERATOR_TYPE_TO_TEXT.get(int(accelerator), "")
+
+
+def text_to_accelerator_type(accelerator: str | None) -> int:
+    return _TEXT_TO_ACCELERATOR_TYPE.get((accelerator or "").strip().lower(), pb.ACCELERATOR_TYPE_UNSPECIFIED)
+
+
 def _dict_to_resource_summary(resources: Mapping[str, Any] | None) -> pb.ResourceSummary:
     payload = resources or {}
+    gpu_ids = [int(item) for item in (payload.get("gpu_device_ids") or [])]
+    accelerators_payload = payload.get("accelerators") or []
+    accelerators: list[pb.AcceleratorCapability] = []
+
+    if isinstance(accelerators_payload, list):
+        for item in accelerators_payload:
+            if not isinstance(item, Mapping):
+                continue
+            accelerator_type = text_to_accelerator_type(str(item.get("type") or ""))
+            if accelerator_type == pb.ACCELERATOR_TYPE_UNSPECIFIED:
+                continue
+            device_ids_raw = item.get("device_ids") or []
+            device_ids = [str(v) for v in device_ids_raw if str(v)]
+            device_count = int(item.get("device_count") or (len(device_ids) if device_ids else 0))
+            accelerators.append(
+                pb.AcceleratorCapability(
+                    type=accelerator_type,
+                    available=bool(item.get("available")),
+                    device_count=device_count,
+                    device_ids=device_ids,
+                )
+            )
+
+    gpu_count = int(payload.get("gpu_count") or 0)
+    if not accelerators:
+        if gpu_count > 0:
+            accelerators.append(
+                pb.AcceleratorCapability(
+                    type=pb.CUDA,
+                    available=True,
+                    device_count=gpu_count,
+                    device_ids=[str(item) for item in gpu_ids] or [str(idx) for idx in range(gpu_count)],
+                )
+            )
+        accelerators.append(
+            pb.AcceleratorCapability(
+                type=pb.CPU,
+                available=True,
+                device_count=1,
+                device_ids=["cpu"],
+            )
+        )
+
     return pb.ResourceSummary(
-        gpu_count=int(payload.get("gpu_count") or 0),
-        gpu_device_ids=[int(item) for item in (payload.get("gpu_device_ids") or [])],
+        gpu_count=gpu_count,
+        gpu_device_ids=gpu_ids,
         cpu_workers=int(payload.get("cpu_workers") or 0),
         memory_mb=int(payload.get("memory_mb") or 0),
+        accelerators=accelerators,
     )
 
 
 def _resource_summary_to_dict(resources: pb.ResourceSummary) -> dict[str, Any]:
+    accelerators: list[dict[str, Any]] = []
+    for item in resources.accelerators:
+        accelerator_type = accelerator_type_to_text(item.type)
+        if not accelerator_type:
+            continue
+        accelerators.append(
+            {
+                "type": accelerator_type,
+                "available": bool(item.available),
+                "device_count": int(item.device_count),
+                "device_ids": [str(v) for v in item.device_ids],
+            }
+        )
+    if not accelerators:
+        gpu_count = int(resources.gpu_count)
+        gpu_ids = [int(item) for item in resources.gpu_device_ids]
+        if gpu_count > 0:
+            accelerators.append(
+                {
+                    "type": "cuda",
+                    "available": True,
+                    "device_count": gpu_count,
+                    "device_ids": [str(item) for item in gpu_ids] or [str(idx) for idx in range(gpu_count)],
+                }
+            )
+        accelerators.append(
+            {
+                "type": "cpu",
+                "available": True,
+                "device_count": 1,
+                "device_ids": ["cpu"],
+            }
+        )
+
     return {
         "gpu_count": int(resources.gpu_count),
         "gpu_device_ids": [int(item) for item in resources.gpu_device_ids],
         "cpu_workers": int(resources.cpu_workers),
         "memory_mb": int(resources.memory_mb),
+        "accelerators": accelerators,
     }
 
 
@@ -120,6 +214,12 @@ def build_register_message(
                 display_name=str(item.get("display_name") or item.get("plugin_id") or ""),
                 request_config_schema=dict_to_struct(item.get("request_config_schema") or {}),
                 default_request_config=dict_to_struct(item.get("default_request_config") or {}),
+                supported_accelerators=[
+                    text_to_accelerator_type(str(v))
+                    for v in (item.get("supported_accelerators") or [])
+                    if text_to_accelerator_type(str(v)) != pb.ACCELERATOR_TYPE_UNSPECIFIED
+                ],
+                supports_auto_fallback=bool(item.get("supports_auto_fallback", True)),
             )
         )
 

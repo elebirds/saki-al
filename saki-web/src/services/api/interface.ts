@@ -32,6 +32,7 @@ import {
     RuntimeMetricPoint,
     RuntimeTopKCandidate,
     LoopCreateRequest,
+    LoopRecoverRequest,
     LoopUpdateRequest,
     LoopRound,
     LoopSummary,
@@ -197,6 +198,8 @@ export interface ApiService {
     updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop>;
 
     startLoop(loopId: string): Promise<ALLoop>;
+
+    recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop>;
 
     pauseLoop(loopId: string): Promise<ALLoop>;
 

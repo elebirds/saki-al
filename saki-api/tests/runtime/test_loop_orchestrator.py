@@ -30,7 +30,7 @@ async def orchestrator_env(tmp_path):
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    orchestrator = LoopOrchestrator(interval_sec=2)
+    orchestrator = LoopOrchestrator(interval_sec=2, session_local=session_local)
     try:
         yield session_local, orchestrator
     finally:
@@ -95,6 +95,57 @@ async def _seed_loop_graph(session_local: async_sessionmaker[AsyncSession]) -> t
         await session.refresh(loop)
         await session.refresh(project)
         return project, branch, loop
+
+
+async def _seed_failed_round(
+    session_local: async_sessionmaker[AsyncSession],
+    *,
+    params: dict | None = None,
+    resources: dict | None = None,
+) -> tuple[Project, Branch, ALLoop, Job]:
+    project, branch, loop = await _seed_loop_graph(session_local)
+    async with session_local() as session:
+        db_loop = await session.get(ALLoop, loop.id)
+        assert db_loop is not None
+        failed_job = Job(
+            project_id=project.id,
+            loop_id=loop.id,
+            iteration=1,
+            round_index=1,
+            status=TrainingJobStatus.FAILED,
+            source_commit_id=branch.head_commit_id,
+            job_type="train_detection",
+            plugin_id="yolo_det_v1",
+            mode="active_learning",
+            query_strategy="aug_iou_disagreement_v1",
+            params=dict(params or {"epochs": 30, "device": "auto"}),
+            resources=dict(resources or {"gpu_count": 1, "memory_mb": 0}),
+            strategy_params={},
+            metrics={},
+            artifacts={},
+            last_error="train failed",
+        )
+        session.add(failed_job)
+        await session.flush()
+        await session.refresh(failed_job)
+
+        round_obj = LoopRound(
+            loop_id=loop.id,
+            round_index=1,
+            source_commit_id=branch.head_commit_id,
+            job_id=failed_job.id,
+            status=LoopRoundStatus.FAILED,
+            metrics={},
+            selected_count=0,
+            labeled_count=0,
+        )
+        session.add(round_obj)
+        db_loop.current_iteration = 1
+        db_loop.status = ALLoopStatus.FAILED
+        db_loop.last_error = "job failed"
+        session.add(db_loop)
+        await session.commit()
+    return project, branch, loop, failed_job
 
 
 @pytest.mark.anyio
@@ -315,3 +366,121 @@ async def test_refresh_batch_progress_backfills_annotation_commit(orchestrator_e
         assert item is not None
         assert item.is_annotated is True
         assert item.annotation_commit_id == branch.head_commit_id
+
+
+@pytest.mark.anyio
+async def test_recover_failed_loop_retry_same_params(orchestrator_env, monkeypatch):
+    session_local, orchestrator = orchestrator_env
+    _project, _branch, loop, failed_job = await _seed_failed_round(session_local)
+
+    async def fake_assign(job):
+        return None
+
+    async def fake_dispatch_pending_jobs():
+        return None
+
+    monkeypatch.setattr("saki_api.services.loop_orchestrator.runtime_dispatcher.assign_job", fake_assign)
+    monkeypatch.setattr("saki_api.services.loop_orchestrator.runtime_dispatcher.dispatch_pending_jobs", fake_dispatch_pending_jobs)
+
+    recovered_job_id = await orchestrator.recover_failed_loop(
+        loop_id=loop.id,
+        mode="retry_same_params",
+        overrides=None,
+    )
+
+    async with session_local() as session:
+        rows = await session.exec(select(Job).where(Job.loop_id == loop.id).order_by(Job.created_at.asc()))
+        jobs = list(rows.all())
+        assert len(jobs) == 2
+        recovered = jobs[-1]
+        assert recovered.id == recovered_job_id
+        assert recovered.status == TrainingJobStatus.PENDING
+        assert recovered.round_index == failed_job.round_index
+        assert recovered.iteration == failed_job.iteration
+        assert recovered.plugin_id == failed_job.plugin_id
+        assert recovered.query_strategy == failed_job.query_strategy
+        assert recovered.params == failed_job.params
+        assert recovered.resources == failed_job.resources
+
+        db_loop = await session.get(ALLoop, loop.id)
+        assert db_loop is not None
+        assert db_loop.status == ALLoopStatus.RUNNING
+        assert db_loop.last_error is None
+        assert db_loop.last_job_id == recovered.id
+
+        round_row = await session.exec(select(LoopRound).where(LoopRound.loop_id == loop.id))
+        round_obj = round_row.first()
+        assert round_obj is not None
+        assert round_obj.status == LoopRoundStatus.TRAINING
+        assert round_obj.job_id == recovered.id
+
+
+@pytest.mark.anyio
+async def test_recover_failed_loop_rerun_with_overrides(orchestrator_env, monkeypatch):
+    session_local, orchestrator = orchestrator_env
+    _project, _branch, loop, _failed_job = await _seed_failed_round(
+        session_local,
+        params={"epochs": 30, "device": "auto"},
+        resources={"gpu_count": 1, "memory_mb": 0},
+    )
+
+    async def fake_assign(job):
+        return None
+
+    async def fake_dispatch_pending_jobs():
+        return None
+
+    monkeypatch.setattr("saki_api.services.loop_orchestrator.runtime_dispatcher.assign_job", fake_assign)
+    monkeypatch.setattr("saki_api.services.loop_orchestrator.runtime_dispatcher.dispatch_pending_jobs", fake_dispatch_pending_jobs)
+
+    recovered_job_id = await orchestrator.recover_failed_loop(
+        loop_id=loop.id,
+        mode="rerun_with_overrides",
+        overrides={
+            "plugin_id": "demo_det_v1",
+            "query_strategy": "random_baseline",
+            "params": {"epochs": 5, "device": "cpu"},
+            "resources": {"gpu_count": 0, "memory_mb": 512},
+        },
+    )
+
+    async with session_local() as session:
+        recovered = await session.get(Job, recovered_job_id)
+        assert recovered is not None
+        assert recovered.status == TrainingJobStatus.PENDING
+        assert recovered.plugin_id == "demo_det_v1"
+        assert recovered.query_strategy == "random_baseline"
+        assert recovered.params == {"epochs": 5, "device": "cpu"}
+        assert recovered.resources == {"gpu_count": 0, "memory_mb": 512}
+
+
+@pytest.mark.anyio
+async def test_recover_failed_loop_is_idempotent_with_existing_pending_job(orchestrator_env, monkeypatch):
+    session_local, orchestrator = orchestrator_env
+    _project, _branch, loop, _failed_job = await _seed_failed_round(session_local)
+
+    async def fake_assign(job):
+        return None
+
+    async def fake_dispatch_pending_jobs():
+        return None
+
+    monkeypatch.setattr("saki_api.services.loop_orchestrator.runtime_dispatcher.assign_job", fake_assign)
+    monkeypatch.setattr("saki_api.services.loop_orchestrator.runtime_dispatcher.dispatch_pending_jobs", fake_dispatch_pending_jobs)
+
+    first_job_id = await orchestrator.recover_failed_loop(
+        loop_id=loop.id,
+        mode="retry_same_params",
+        overrides=None,
+    )
+    second_job_id = await orchestrator.recover_failed_loop(
+        loop_id=loop.id,
+        mode="retry_same_params",
+        overrides=None,
+    )
+
+    assert first_job_id == second_job_id
+    async with session_local() as session:
+        rows = await session.exec(select(Job).where(Job.loop_id == loop.id))
+        jobs = list(rows.all())
+        assert len(jobs) == 2

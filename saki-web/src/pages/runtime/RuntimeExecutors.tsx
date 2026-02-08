@@ -208,6 +208,10 @@ const RuntimeExecutors: React.FC = () => {
 
     const summary = data?.summary;
     const plugins = useMemo(() => extractPlugins(selectedExecutor), [selectedExecutor]);
+    const accelerators = useMemo(() => {
+        const raw = selectedExecutor?.resources?.accelerators;
+        return Array.isArray(raw) ? raw : [];
+    }, [selectedExecutor]);
     const trendData = useMemo<RuntimeExecutorStatsPoint[]>(() => {
         if (!stats?.points?.length) return [];
         return [...stats.points].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
@@ -491,6 +495,29 @@ const RuntimeExecutors: React.FC = () => {
                                     ) : null}
 
                                     <div className="rounded-md border border-github-border bg-github-panel p-3 shadow-sm" style={{ backgroundColor: 'var(--github-panel)' }}>
+                                        <div className="mb-2 text-sm font-medium text-github-text">硬件能力 ({accelerators.length})</div>
+                                        {accelerators.length === 0 ? (
+                                            <Empty description="未上报硬件能力" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {accelerators.map((accelerator: any) => (
+                                                    <div key={`${accelerator.type}-${(accelerator.deviceIds || []).join(',')}`} className="rounded border border-github-border-muted bg-github-header p-2" style={{ backgroundColor: 'var(--github-header)' }}>
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="text-sm font-medium text-github-text">{String(accelerator.type || '').toUpperCase()}</div>
+                                                            <Tag color={accelerator.available ? 'success' : 'default'}>
+                                                                {accelerator.available ? 'available' : 'unavailable'}
+                                                            </Tag>
+                                                        </div>
+                                                        <div className="mt-1 text-xs text-github-muted">
+                                                            count={accelerator.deviceCount || 0} ids={(accelerator.deviceIds || []).join(', ') || '-'}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3 shadow-sm" style={{ backgroundColor: 'var(--github-panel)' }}>
                                         <div className="mb-2 text-sm font-medium text-github-text">插件能力 ({plugins.length})</div>
                                         {plugins.length === 0 ? (
                                             <Empty description="未上报插件能力" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -513,6 +540,18 @@ const RuntimeExecutors: React.FC = () => {
                                                                     <Tag key={item}>{item}</Tag>
                                                                 ))
                                                             )}
+                                                        </div>
+                                                        <div className="mt-2 flex flex-wrap gap-1">
+                                                            {(plugin.supportedAccelerators || []).length === 0 ? (
+                                                                <span className="text-xs text-github-muted">未声明加速后端</span>
+                                                            ) : (
+                                                                plugin.supportedAccelerators.map((item) => (
+                                                                    <Tag key={item} color="blue">{item}</Tag>
+                                                                ))
+                                                            )}
+                                                            <Tag color={plugin.supportsAutoFallback ? 'success' : 'default'}>
+                                                                auto fallback: {plugin.supportsAutoFallback ? 'on' : 'off'}
+                                                            </Tag>
                                                         </div>
                                                     </div>
                                                 ))}

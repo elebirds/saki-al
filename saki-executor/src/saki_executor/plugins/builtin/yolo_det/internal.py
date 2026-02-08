@@ -23,6 +23,12 @@ except Exception:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
 
 from saki_executor.jobs.workspace import Workspace
+from saki_executor.hardware.probe import (
+    ACCELERATOR_PRIORITY,
+    available_accelerators,
+    normalize_accelerator_name,
+    probe_hardware,
+)
 from saki_executor.plugins.base import EventCallback, TrainArtifact, TrainOutput
 from saki_executor.strategies.aug_iou import (
     build_detection_boxes,
@@ -140,6 +146,14 @@ class YoloDetectionInternal:
         ]
 
     @property
+    def supported_accelerators(self) -> list[str]:
+        return ["cuda", "cpu"]
+
+    @property
+    def supports_auto_fallback(self) -> bool:
+        return True
+
+    @property
     def request_config_schema(self) -> dict[str, Any]:
         return {
             "title": "YOLO Detection Request Config",
@@ -167,7 +181,7 @@ class YoloDetectionInternal:
             "predict_conf": 0.1,
             "val_split_ratio": 0.2,
             "base_model": "yolov8n-obb.pt",
-            "device": "0",
+            "device": "auto",
         }
 
     def validate_params(self, params: dict[str, Any]) -> None:
@@ -183,6 +197,60 @@ class YoloDetectionInternal:
             raise ValueError("imgsz must be > 0")
         if topk <= 0:
             raise ValueError("topk must be > 0")
+
+    def _resolve_device(self, params: dict[str, Any]) -> tuple[Any, str, str]:
+        requested_raw = params.get("device", "auto")
+        requested = normalize_accelerator_name(requested_raw) or "auto"
+        preferred_backend = normalize_accelerator_name(params.get("_resolved_device_backend"))
+
+        available = available_accelerators(
+            probe_hardware(
+                cpu_workers=1,
+                memory_mb=0,
+            )
+        )
+        supported = {
+            normalize_accelerator_name(item)
+            for item in self.supported_accelerators
+            if normalize_accelerator_name(item) and normalize_accelerator_name(item) != "auto"
+        }
+        supported = supported or {"cpu"}
+        candidates = available & supported
+
+        if requested != "auto":
+            if requested == "cuda" and requested not in candidates:
+                raise ValueError(
+                    f"Invalid CUDA 'device={requested_raw}' requested. Use 'device=cpu' if no CUDA device is available."
+                )
+            if requested not in candidates:
+                raise ValueError(
+                    f"Requested device '{requested_raw}' is not available on this executor. "
+                    f"available={sorted(available)} supported={sorted(supported)}"
+                )
+            params["_resolved_device_backend"] = requested
+            if requested == "cuda":
+                raw = str(requested_raw).strip()
+                if raw and (raw.isdigit() or raw.startswith("cuda:") or "," in raw):
+                    return requested_raw, str(requested_raw), requested
+                return "0", str(requested_raw), requested
+            if requested == "mps":
+                return "mps", str(requested_raw), requested
+            return "cpu", str(requested_raw), requested
+
+        order = list(ACCELERATOR_PRIORITY)
+        if preferred_backend in order:
+            order = [preferred_backend] + [item for item in order if item != preferred_backend]
+        resolved_backend = next((item for item in order if item in candidates), "")
+        if not resolved_backend:
+            raise ValueError(
+                f"No available accelerator for auto mode. available={sorted(available)} supported={sorted(supported)}"
+            )
+        params["_resolved_device_backend"] = resolved_backend
+        if resolved_backend == "cuda":
+            return "0", str(requested_raw), resolved_backend
+        if resolved_backend == "mps":
+            return "mps", str(requested_raw), resolved_backend
+        return "cpu", str(requested_raw), resolved_backend
 
     async def prepare_data(
         self,
@@ -333,7 +401,7 @@ class YoloDetectionInternal:
         batch = _to_int(params.get("batch", params.get("batch_size", 16)), 16)
         imgsz = _to_int(params.get("imgsz", 640), 640)
         patience = _to_int(params.get("patience", 20), 20)
-        device = params.get("device", 0)
+        device, requested_device, resolved_backend = self._resolve_device(params)
         base_model = str(params.get("base_model", "yolov8n-obb.pt") or "yolov8n-obb.pt")
         resolved_base_model = await self._resolve_base_model(
             workspace=workspace,
@@ -351,7 +419,8 @@ class YoloDetectionInternal:
                 "level": "INFO",
                 "message": (
                     f"YOLO training started base_model={resolved_base_model} "
-                    f"epochs={epochs} batch={batch} imgsz={imgsz} patience={patience} device={device}"
+                    f"epochs={epochs} batch={batch} imgsz={imgsz} patience={patience} "
+                    f"requested_device={requested_device} resolved_backend={resolved_backend} device={device}"
                 ),
             },
         )
@@ -474,7 +543,7 @@ class YoloDetectionInternal:
         base_model = str(params.get("base_model", "yolov8n-obb.pt") or "yolov8n-obb.pt")
         conf = _to_float(params.get("predict_conf", 0.1), 0.1)
         imgsz = _to_int(params.get("imgsz", 640), 640)
-        device = params.get("device", 0)
+        device, _requested_device, _resolved_backend = self._resolve_device(params)
 
         best_path = workspace.artifacts_dir / "best.pt"
         model_path = str(best_path if best_path.exists() else base_model)

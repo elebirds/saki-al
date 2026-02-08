@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 import uuid
 from collections import OrderedDict
@@ -14,6 +13,7 @@ from saki_executor.agent import codec as runtime_codec
 from saki_executor.core.config import settings
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.grpc_gen import runtime_control_pb2_grpc as pb_grpc
+from saki_executor.hardware.probe import probe_hardware
 from saki_executor.jobs.manager import JobManager
 from saki_executor.jobs.state import ExecutorState
 from saki_executor.plugins.registry import PluginRegistry
@@ -115,13 +115,10 @@ class AgentClient:
         return True
 
     def _resource_payload(self) -> dict[str, Any]:
-        gpu_ids = [int(item.strip()) for item in settings.DEFAULT_GPU_IDS.split(",") if item.strip()]
-        return {
-            "gpu_count": len(gpu_ids),
-            "gpu_device_ids": gpu_ids,
-            "cpu_workers": settings.CPU_WORKERS or (os.cpu_count() or 1),
-            "memory_mb": settings.MEMORY_MB,
-        }
+        return probe_hardware(
+            cpu_workers=settings.CPU_WORKERS,
+            memory_mb=settings.MEMORY_MB,
+        )
 
     def _register_message(self) -> pb.RuntimeMessage:
         plugins = []
@@ -133,6 +130,8 @@ class AgentClient:
                     "display_name": plugin.display_name,
                     "supported_job_types": plugin.supported_job_types,
                     "supported_strategies": plugin.supported_strategies,
+                    "supported_accelerators": plugin.supported_accelerators,
+                    "supports_auto_fallback": plugin.supports_auto_fallback,
                     "request_config_schema": plugin.request_config_schema,
                     "default_request_config": plugin.default_request_config,
                 }

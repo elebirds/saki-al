@@ -1,6 +1,8 @@
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from saki_executor.plugins.builtin.yolo_det import plugin as yolo_plugin_module
 from saki_executor.plugins.builtin.yolo_det.plugin import YoloDetectionPlugin
 from saki_executor.jobs.workspace import Workspace
@@ -123,3 +125,48 @@ def test_yolo_prepare_data_infers_hw_from_source_path(tmp_path: Path, monkeypatc
     label_file = workspace.data_dir / "labels" / "train" / "sample-1.txt"
     assert label_file.exists()
     assert label_file.read_text(encoding="utf-8").strip()
+
+
+def test_yolo_plugin_auto_device_falls_back_to_cpu(monkeypatch):
+    plugin = YoloDetectionPlugin()
+    params = {"device": "auto"}
+
+    monkeypatch.setattr(
+        "saki_executor.plugins.builtin.yolo_det.internal.probe_hardware",
+        lambda **kwargs: {
+            "gpu_count": 0,
+            "gpu_device_ids": [],
+            "cpu_workers": 1,
+            "memory_mb": 0,
+            "accelerators": [
+                {"type": "cpu", "available": True, "device_count": 1, "device_ids": ["cpu"]},
+            ],
+        },
+    )
+
+    device, requested, resolved = plugin._internal._resolve_device(params)  # noqa: SLF001
+    assert requested == "auto"
+    assert resolved == "cpu"
+    assert device == "cpu"
+    assert params["_resolved_device_backend"] == "cpu"
+
+
+def test_yolo_plugin_explicit_cuda_without_cuda_raises(monkeypatch):
+    plugin = YoloDetectionPlugin()
+    params = {"device": "0"}
+
+    monkeypatch.setattr(
+        "saki_executor.plugins.builtin.yolo_det.internal.probe_hardware",
+        lambda **kwargs: {
+            "gpu_count": 0,
+            "gpu_device_ids": [],
+            "cpu_workers": 1,
+            "memory_mb": 0,
+            "accelerators": [
+                {"type": "cpu", "available": True, "device_count": 1, "device_ids": ["cpu"]},
+            ],
+        },
+    )
+
+    with pytest.raises(ValueError, match="Invalid CUDA"):
+        plugin._internal._resolve_device(params)  # noqa: SLF001

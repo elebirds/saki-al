@@ -509,6 +509,15 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             plugin_id = str(item.plugin_id or "").strip()
                             if not plugin_id:
                                 continue
+                            supported_accelerators = [
+                                runtime_codec.accelerator_type_to_text(v)
+                                for v in item.supported_accelerators
+                                if runtime_codec.accelerator_type_to_text(v)
+                            ]
+                            supports_auto_fallback = bool(item.supports_auto_fallback)
+                            if not supported_accelerators and not supports_auto_fallback:
+                                # Proto3 bool cannot distinguish "unset" from false; keep backward-compatible default.
+                                supports_auto_fallback = True
                             plugin_capabilities.append(
                                 {
                                     "plugin_id": plugin_id,
@@ -518,6 +527,8 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                     "supported_strategies": [str(v) for v in item.supported_strategies],
                                     "request_config_schema": runtime_codec.struct_to_dict(item.request_config_schema),
                                     "default_request_config": runtime_codec.struct_to_dict(item.default_request_config),
+                                    "supported_accelerators": supported_accelerators,
+                                    "supports_auto_fallback": supports_auto_fallback,
                                 }
                             )
                         plugin_ids = {item["plugin_id"] for item in plugin_capabilities}

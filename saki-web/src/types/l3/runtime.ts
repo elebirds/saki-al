@@ -89,6 +89,20 @@ export interface LoopUpdateRequest {
     autoRegisterModel?: boolean;
 }
 
+export type LoopRecoverMode = 'retry_same_params' | 'rerun_with_overrides';
+
+export interface LoopRecoverOverrides {
+    queryStrategy?: string;
+    pluginId?: string;
+    params?: Record<string, any>;
+    resources?: Record<string, any>;
+}
+
+export interface LoopRecoverRequest {
+    mode: LoopRecoverMode;
+    overrides?: LoopRecoverOverrides;
+}
+
 export interface RuntimeJobCreateRequest {
     projectId: string;
     sourceCommitId: string;
@@ -246,6 +260,8 @@ export interface RuntimePluginCatalogItem {
     version: string;
     supportedJobTypes: string[];
     supportedStrategies: string[];
+    supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
+    supportsAutoFallback: boolean;
     requestConfigSchema: RuntimeRequestConfigSchema;
     defaultRequestConfig: Record<string, any>;
     executorsTotal: number;
@@ -266,8 +282,17 @@ export interface RuntimeExecutorPluginCapability {
     version: string;
     supportedJobTypes: string[];
     supportedStrategies: string[];
+    supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
+    supportsAutoFallback: boolean;
     requestConfigSchema: RuntimeRequestConfigSchema;
     defaultRequestConfig: Record<string, any>;
+}
+
+export interface RuntimeAcceleratorCapability {
+    type: 'cpu' | 'cuda' | 'mps';
+    available: boolean;
+    deviceCount: number;
+    deviceIds: string[];
 }
 
 export interface RuntimeExecutorRead {
@@ -281,7 +306,9 @@ export interface RuntimeExecutorRead {
         plugins?: RuntimeExecutorPluginCapability[];
         ids?: string[];
     } & Record<string, any>;
-    resources: Record<string, any>;
+    resources: {
+        accelerators?: RuntimeAcceleratorCapability[];
+    } & Record<string, any>;
     lastSeenAt?: string | null;
     lastError?: string | null;
     pendingAssignCount: number;

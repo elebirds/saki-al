@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.models  # noqa: F401  # Ensure all SQLModel metadata is imported.
 import saki_api.grpc.dispatcher as dispatcher_module
+from saki_api.grpc import runtime_codec
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
@@ -43,6 +44,7 @@ async def _create_pending_job(
         *,
         plugin_id: str = "demo_det_v1",
         resources: dict | None = None,
+        params: dict | None = None,
 ) -> Job:
     job = Job(
         project_id=uuid.uuid4(),
@@ -53,7 +55,7 @@ async def _create_pending_job(
         plugin_id=plugin_id,
         mode="active_learning",
         query_strategy="uncertainty_1_minus_max_conf",
-        params={},
+        params=dict(params or {}),
         resources=resources if isinstance(resources, dict) else {"gpu_count": 1, "memory_mb": 0},
         source_commit_id=uuid.uuid4(),
     )
@@ -175,6 +177,104 @@ async def test_assign_respects_resource_capabilities_and_labels(dispatcher_env):
     assigned_after_update = await dispatcher.assign_job(job)
     assert assigned_after_update is not None
 
+
+@pytest.mark.anyio
+async def test_assign_auto_prefers_cuda_backend_and_persists_resolved_device(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+    queue_cpu: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    queue_cuda: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    job = await _create_pending_job(
+        session_local,
+        resources={"gpu_count": 0, "memory_mb": 0},
+        params={"device": "auto"},
+    )
+
+    await dispatcher.register(
+        executor_id="executor-auto-cpu",
+        queue=queue_cpu,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={
+            "gpu_count": 0,
+            "memory_mb": 32000,
+            "accelerators": [
+                {"type": "cpu", "available": True, "device_count": 1, "device_ids": ["cpu"]},
+            ],
+        },
+    )
+    await dispatcher.register(
+        executor_id="executor-auto-cuda",
+        queue=queue_cuda,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={
+            "gpu_count": 1,
+            "memory_mb": 32000,
+            "accelerators": [
+                {"type": "cuda", "available": True, "device_count": 1, "device_ids": ["0"]},
+                {"type": "cpu", "available": True, "device_count": 1, "device_ids": ["cpu"]},
+            ],
+        },
+    )
+
+    assigned = await dispatcher.assign_job(job)
+    assert assigned is not None
+    assert assigned.executor_id == "executor-auto-cuda"
+    assert queue_cpu.empty()
+
+    message = await asyncio.wait_for(queue_cuda.get(), timeout=1)
+    assert message.WhichOneof("payload") == "assign_job"
+    params = runtime_codec.struct_to_dict(message.assign_job.job.params)
+    assert params.get("_resolved_device_backend") == "cuda"
+
+    async with session_local() as session:
+        persisted_job = await session.get(Job, job.id)
+        assert persisted_job is not None
+        assert (persisted_job.params or {}).get("_resolved_device_backend") == "cuda"
+
+
+@pytest.mark.anyio
+async def test_assign_explicit_cuda_rejects_cpu_only_executor(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+    queue_cpu: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    queue_cuda: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+    job = await _create_pending_job(
+        session_local,
+        resources={"gpu_count": 0, "memory_mb": 0},
+        params={"device": "0"},
+    )
+
+    await dispatcher.register(
+        executor_id="executor-explicit-cpu",
+        queue=queue_cpu,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={
+            "gpu_count": 0,
+            "memory_mb": 32000,
+            "accelerators": [
+                {"type": "cpu", "available": True, "device_count": 1, "device_ids": ["cpu"]},
+            ],
+        },
+    )
+    assert await dispatcher.assign_job(job) is None
+
+    await dispatcher.register(
+        executor_id="executor-explicit-cuda",
+        queue=queue_cuda,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={
+            "gpu_count": 1,
+            "memory_mb": 32000,
+            "accelerators": [
+                {"type": "cuda", "available": True, "device_count": 1, "device_ids": ["0"]},
+            ],
+        },
+    )
+    assigned = await dispatcher.assign_job(job)
+    assert assigned is not None
+    assert assigned.executor_id == "executor-explicit-cuda"
 
 @pytest.mark.anyio
 async def test_assign_and_ack_failure_releases_executor(dispatcher_env):

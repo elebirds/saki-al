@@ -9,7 +9,9 @@ import {
     Input,
     InputNumber,
     List,
+    Modal,
     Progress,
+    Radio,
     Select,
     Spin,
     Table,
@@ -34,6 +36,7 @@ import {
     ALLoop,
     AnnotationBatch,
     LoopCreateRequest,
+    LoopRecoverMode,
     LoopRound,
     LoopSummary,
     ProjectBranch,
@@ -114,6 +117,14 @@ const eventToText = (event: RuntimeJobEvent): string => {
     return `${event.eventType} ${JSON.stringify(event.payload || {})}`;
 };
 
+type LoopRecoverForm = {
+    mode: LoopRecoverMode;
+    pluginId?: string;
+    queryStrategy?: string;
+    paramsJson?: string;
+    resourcesJson?: string;
+};
+
 const ProjectLoops: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>();
     const navigate = useNavigate();
@@ -144,6 +155,8 @@ const ProjectLoops: React.FC = () => {
     const [startJobLoading, setStartJobLoading] = useState<boolean>(false);
     const [stopJobLoading, setStopJobLoading] = useState<boolean>(false);
     const [loopControlLoading, setLoopControlLoading] = useState<boolean>(false);
+    const [recoverOpen, setRecoverOpen] = useState<boolean>(false);
+    const [recoverLoading, setRecoverLoading] = useState<boolean>(false);
     const [batchCreateLoading, setBatchCreateLoading] = useState<boolean>(false);
     const [modelLoading, setModelLoading] = useState<boolean>(false);
 
@@ -158,6 +171,8 @@ const ProjectLoops: React.FC = () => {
         batchSize: number;
         resourcesGpuCount: number;
     }>();
+    const [recoverForm] = Form.useForm<LoopRecoverForm>();
+    const recoverMode = Form.useWatch('mode', recoverForm) || 'retry_same_params';
 
     const selectedLoop = useMemo(
         () => loops.find((item) => item.id === selectedLoopId),
@@ -166,6 +181,10 @@ const ProjectLoops: React.FC = () => {
     const selectedBranch = useMemo(
         () => branches.find((item) => item.id === selectedLoop?.branchId),
         [branches, selectedLoop?.branchId],
+    );
+    const latestFailedJob = useMemo(
+        () => jobs.find((item) => item.status === 'failed') || null,
+        [jobs],
     );
 
     const metricNames = useMemo(() => {
@@ -462,6 +481,17 @@ const ProjectLoops: React.FC = () => {
 
     const handleLoopControl = async (action: 'start' | 'pause' | 'resume' | 'stop') => {
         if (!selectedLoop) return;
+        if (action === 'start' && selectedLoop.status === 'failed') {
+            recoverForm.setFieldsValue({
+                mode: 'retry_same_params',
+                pluginId: latestFailedJob?.pluginId || selectedLoop.modelArch,
+                queryStrategy: latestFailedJob?.queryStrategy || selectedLoop.queryStrategy,
+                paramsJson: JSON.stringify(latestFailedJob?.params || {}, null, 2),
+                resourcesJson: JSON.stringify(latestFailedJob?.resources || {}, null, 2),
+            });
+            setRecoverOpen(true);
+            return;
+        }
         setLoopControlLoading(true);
         try {
             if (action === 'start') await api.startLoop(selectedLoop.id);
@@ -474,6 +504,56 @@ const ProjectLoops: React.FC = () => {
             message.error(error?.message || 'Loop 控制失败');
         } finally {
             setLoopControlLoading(false);
+        }
+    };
+
+    const handleRecoverLoop = async () => {
+        if (!selectedLoop) return;
+        try {
+            const values = await recoverForm.validateFields();
+            const mode = values.mode || 'retry_same_params';
+            const payload: {
+                mode: LoopRecoverMode;
+                overrides?: {
+                    pluginId?: string;
+                    queryStrategy?: string;
+                    params?: Record<string, any>;
+                    resources?: Record<string, any>;
+                };
+            } = {mode};
+
+            if (mode === 'rerun_with_overrides') {
+                const overrides: Record<string, any> = {};
+                if (values.pluginId?.trim()) overrides.pluginId = values.pluginId.trim();
+                if (values.queryStrategy?.trim()) overrides.queryStrategy = values.queryStrategy.trim();
+
+                if (values.paramsJson?.trim()) {
+                    const parsed = JSON.parse(values.paramsJson);
+                    if (parsed && typeof parsed !== 'object') {
+                        throw new Error('params 必须是 JSON 对象');
+                    }
+                    overrides.params = parsed || {};
+                }
+                if (values.resourcesJson?.trim()) {
+                    const parsed = JSON.parse(values.resourcesJson);
+                    if (parsed && typeof parsed !== 'object') {
+                        throw new Error('resources 必须是 JSON 对象');
+                    }
+                    overrides.resources = parsed || {};
+                }
+                payload.overrides = overrides;
+            }
+
+            setRecoverLoading(true);
+            await api.recoverLoop(selectedLoop.id, payload);
+            setRecoverOpen(false);
+            message.success('恢复任务已创建并开始派发');
+            await loadMeta();
+        } catch (error: any) {
+            if (error?.errorFields) return;
+            message.error(error?.message || '恢复 Loop 失败');
+        } finally {
+            setRecoverLoading(false);
         }
     };
 
@@ -1073,6 +1153,41 @@ const ProjectLoops: React.FC = () => {
                     />
                 )}
             </Card>
+
+            <Modal
+                title="失败后恢复"
+                open={recoverOpen}
+                onCancel={() => setRecoverOpen(false)}
+                onOk={handleRecoverLoop}
+                confirmLoading={recoverLoading}
+                okText="确认恢复"
+                destroyOnClose
+            >
+                <Form form={recoverForm} layout="vertical">
+                    <Form.Item name="mode" label="恢复模式" initialValue="retry_same_params">
+                        <Radio.Group>
+                            <Radio value="retry_same_params">快速重试（沿用参数）</Radio>
+                            <Radio value="rerun_with_overrides">按新参数重跑（同轮新建 job）</Radio>
+                        </Radio.Group>
+                    </Form.Item>
+                    {recoverMode === 'rerun_with_overrides' ? (
+                        <>
+                            <Form.Item name="pluginId" label="插件 ID">
+                                <Input placeholder="例如：yolo_det_v1"/>
+                            </Form.Item>
+                            <Form.Item name="queryStrategy" label="采样策略">
+                                <Input placeholder="例如：aug_iou_disagreement"/>
+                            </Form.Item>
+                            <Form.Item name="paramsJson" label="params(JSON)">
+                                <Input.TextArea rows={6}/>
+                            </Form.Item>
+                            <Form.Item name="resourcesJson" label="resources(JSON)">
+                                <Input.TextArea rows={4}/>
+                            </Form.Item>
+                        </>
+                    ) : null}
+                </Form>
+            </Modal>
         </div>
     );
 };

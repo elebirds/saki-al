@@ -38,6 +38,14 @@ class YoloDetectionPlugin(ExecutorPlugin):
         return self._internal.supported_strategies
 
     @property
+    def supported_accelerators(self) -> list[str]:
+        return self._internal.supported_accelerators
+
+    @property
+    def supports_auto_fallback(self) -> bool:
+        return self._internal.supports_auto_fallback
+
+    @property
     def request_config_schema(self) -> dict[str, Any]:
         return self._internal.request_config_schema
 

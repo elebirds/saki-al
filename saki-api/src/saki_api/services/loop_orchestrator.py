@@ -12,6 +12,7 @@ from datetime import datetime, UTC
 from sqlmodel import select, func
 
 from saki_api.core.config import settings
+from saki_api.core.exceptions import BadRequestAppException
 from saki_api.db.session import SessionLocal
 from saki_api.grpc.dispatcher import runtime_dispatcher
 from saki_api.models.enums import (
@@ -40,11 +41,12 @@ from saki_api.utils.storage import get_storage_provider
 
 
 class LoopOrchestrator:
-    def __init__(self, interval_sec: int | None = None) -> None:
+    def __init__(self, interval_sec: int | None = None, session_local=SessionLocal) -> None:
         self.interval_sec = max(2, int(interval_sec or settings.RUNTIME_DISPATCH_INTERVAL_SEC))
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
         self._storage = None
+        self._session_local = session_local
 
     @property
     def storage(self):
@@ -84,7 +86,7 @@ class LoopOrchestrator:
                 continue
 
     async def _tick(self) -> None:
-        async with SessionLocal() as session:
+        async with self._session_local() as session:
             rows = await session.exec(
                 select(ALLoop.id).where(
                     ALLoop.is_active.is_(True),
@@ -98,7 +100,7 @@ class LoopOrchestrator:
 
     async def _process_loop(self, loop_id: uuid.UUID) -> None:
         dispatch_job_id: uuid.UUID | None = None
-        async with SessionLocal() as session:
+        async with self._session_local() as session:
             loop = await session.get(ALLoop, loop_id)
             if not loop or loop.status != ALLoopStatus.RUNNING or not loop.is_active:
                 return
@@ -141,21 +143,152 @@ class LoopOrchestrator:
                 await session.commit()
 
         if dispatch_job_id:
-            async with SessionLocal() as session:
-                job = await session.get(Job, dispatch_job_id)
-                if job:
-                    logger.info("开始派发轮次任务 loop_id={} job_id={} round_index={}", job.loop_id, job.id, job.round_index)
-                    assigned = await runtime_dispatcher.assign_job(job)
-                    if not assigned:
-                        logger.warning("轮次任务未即时派发成功，转入统一派发队列 job_id={}", job.id)
-                        await runtime_dispatcher.dispatch_pending_jobs()
-                    else:
-                        logger.info(
-                            "轮次任务派发成功 request_id={} job_id={} executor_id={}",
-                            assigned.request_id,
-                            job.id,
-                            assigned.executor_id,
+            await self._dispatch_job(dispatch_job_id)
+
+    async def recover_failed_loop(
+            self,
+            *,
+            loop_id: uuid.UUID,
+            mode: str,
+            overrides: dict[str, object] | None,
+    ) -> uuid.UUID:
+        if mode not in {"retry_same_params", "rerun_with_overrides"}:
+            raise BadRequestAppException(f"invalid recover mode: {mode}")
+
+        dispatch_job_id: uuid.UUID | None = None
+        async with self._session_local() as session:
+            loop = await session.get(ALLoop, loop_id)
+            if not loop:
+                raise BadRequestAppException(f"Loop {loop_id} not found")
+
+            latest_round = await self._latest_round(session, loop.id)
+            if not latest_round:
+                raise BadRequestAppException("loop has no round to recover")
+
+            active_rows = await session.exec(
+                select(Job)
+                .where(
+                    Job.loop_id == loop.id,
+                    Job.round_index == latest_round.round_index,
+                    Job.status.in_([TrainingJobStatus.PENDING, TrainingJobStatus.RUNNING]),
+                )
+                .order_by(Job.created_at.desc())
+                .limit(1)
+            )
+            active_job = active_rows.first()
+            if active_job:
+                latest_round.status = LoopRoundStatus.TRAINING
+                latest_round.job_id = active_job.id
+                latest_round.ended_at = None
+                if latest_round.started_at is None:
+                    latest_round.started_at = datetime.now(UTC)
+                loop.status = ALLoopStatus.RUNNING
+                loop.is_active = True
+                loop.last_error = None
+                loop.last_job_id = active_job.id
+                session.add(latest_round)
+                session.add(loop)
+                await session.commit()
+                if active_job.status == TrainingJobStatus.PENDING:
+                    dispatch_job_id = active_job.id
+                else:
+                    return active_job.id
+
+            if not dispatch_job_id:
+                if latest_round.status != LoopRoundStatus.FAILED and loop.status != ALLoopStatus.FAILED:
+                    raise BadRequestAppException("loop latest round is not failed")
+
+                failed_job: Job | None = None
+                if latest_round.job_id:
+                    job = await session.get(Job, latest_round.job_id)
+                    if job and job.status == TrainingJobStatus.FAILED:
+                        failed_job = job
+                if failed_job is None:
+                    failed_rows = await session.exec(
+                        select(Job)
+                        .where(
+                            Job.loop_id == loop.id,
+                            Job.round_index == latest_round.round_index,
+                            Job.status == TrainingJobStatus.FAILED,
                         )
+                        .order_by(Job.created_at.desc())
+                        .limit(1)
+                    )
+                    failed_job = failed_rows.first()
+                if failed_job is None:
+                    raise BadRequestAppException("latest round has no failed job to recover")
+
+                params = dict(failed_job.params or {})
+                resources = dict(failed_job.resources or {})
+                plugin_id = str(failed_job.plugin_id or "")
+                query_strategy = str(failed_job.query_strategy or "")
+
+                if mode == "rerun_with_overrides":
+                    payload = dict(overrides or {})
+                    override_query_strategy = payload.get("query_strategy")
+                    if override_query_strategy is not None:
+                        query_strategy = str(override_query_strategy or "")
+                    override_plugin_id = payload.get("plugin_id")
+                    if override_plugin_id is not None:
+                        plugin_id = str(override_plugin_id or "")
+
+                    override_params = payload.get("params")
+                    if override_params is not None:
+                        if not isinstance(override_params, dict):
+                            raise BadRequestAppException("overrides.params must be an object")
+                        params = dict(override_params)
+
+                    override_resources = payload.get("resources")
+                    if override_resources is not None:
+                        if not isinstance(override_resources, dict):
+                            raise BadRequestAppException("overrides.resources must be an object")
+                        resources = dict(override_resources)
+
+                if not plugin_id:
+                    raise BadRequestAppException("plugin_id is required for recover")
+                if not query_strategy:
+                    raise BadRequestAppException("query_strategy is required for recover")
+
+                recovered_job = Job(
+                    project_id=failed_job.project_id,
+                    loop_id=failed_job.loop_id,
+                    iteration=int(failed_job.iteration or latest_round.round_index),
+                    round_index=int(failed_job.round_index or latest_round.round_index),
+                    status=TrainingJobStatus.PENDING,
+                    source_commit_id=failed_job.source_commit_id,
+                    job_type=failed_job.job_type,
+                    plugin_id=plugin_id,
+                    mode=failed_job.mode,
+                    query_strategy=query_strategy,
+                    params=params,
+                    resources=resources,
+                    strategy_params=dict(failed_job.strategy_params or {}),
+                    metrics={},
+                    artifacts={},
+                )
+                session.add(recovered_job)
+                await session.flush()
+                await session.refresh(recovered_job)
+
+                latest_round.job_id = recovered_job.id
+                latest_round.status = LoopRoundStatus.TRAINING
+                latest_round.started_at = datetime.now(UTC)
+                latest_round.ended_at = None
+                session.add(latest_round)
+
+                loop.status = ALLoopStatus.RUNNING
+                loop.is_active = True
+                loop.last_error = None
+                loop.last_job_id = recovered_job.id
+                session.add(loop)
+
+                await session.commit()
+                dispatch_job_id = recovered_job.id
+
+        if dispatch_job_id:
+            await self._dispatch_job(dispatch_job_id)
+            return dispatch_job_id
+        raise BadRequestAppException("recover failed: no dispatchable job")
 
     async def _latest_round(self, session, loop_id: uuid.UUID) -> LoopRound | None:
         rows = await session.exec(
@@ -165,6 +298,24 @@ class LoopOrchestrator:
             .limit(1)
         )
         return rows.first()
+
+    async def _dispatch_job(self, job_id: uuid.UUID) -> None:
+        async with self._session_local() as session:
+            job = await session.get(Job, job_id)
+            if not job:
+                return
+            logger.info("开始派发轮次任务 loop_id={} job_id={} round_index={}", job.loop_id, job.id, job.round_index)
+            assigned = await runtime_dispatcher.assign_job(job)
+            if not assigned:
+                logger.warning("轮次任务未即时派发成功，转入统一派发队列 job_id={}", job.id)
+                await runtime_dispatcher.dispatch_pending_jobs()
+            else:
+                logger.info(
+                    "轮次任务派发成功 request_id={} job_id={} executor_id={}",
+                    assigned.request_id,
+                    job.id,
+                    assigned.executor_id,
+                )
 
     async def _count_labeled_samples(self, session, commit_id: uuid.UUID) -> int:
         row = await session.exec(

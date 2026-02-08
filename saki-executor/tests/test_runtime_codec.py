@@ -66,3 +66,36 @@ def test_parse_error_message_includes_reply_to_and_error():
     parsed = codec.parse_error(error_payload)
     assert parsed["reply_to"] == "req-1"
     assert parsed["error"] == "boom"
+
+
+def test_build_register_message_with_accelerators():
+    message = codec.build_register_message(
+        request_id="reg-1",
+        executor_id="executor-1",
+        version="0.1.0",
+        plugins=[
+            {
+                "plugin_id": "demo_det_v1",
+                "version": "0.1.0",
+                "display_name": "Demo",
+                "supported_job_types": ["train_detection"],
+                "supported_strategies": ["random_baseline"],
+                "supported_accelerators": ["cpu", "cuda"],
+                "supports_auto_fallback": True,
+            }
+        ],
+        resources={
+            "gpu_count": 1,
+            "gpu_device_ids": [0],
+            "cpu_workers": 4,
+            "memory_mb": 1024,
+            "accelerators": [
+                {"type": "cuda", "available": True, "device_count": 1, "device_ids": ["0"]},
+                {"type": "cpu", "available": True, "device_count": 1, "device_ids": ["cpu"]},
+            ],
+        },
+    )
+    assert message.WhichOneof("payload") == "register"
+    assert list(message.register.plugins[0].supported_accelerators) == [pb.CPU, pb.CUDA]
+    assert message.register.plugins[0].supports_auto_fallback is True
+    assert len(message.register.resources.accelerators) >= 2

@@ -68,6 +68,8 @@ class RuntimePluginRead(BaseModel):
     version: str
     supported_job_types: list[str] = Field(default_factory=list)
     supported_strategies: list[str] = Field(default_factory=list)
+    supported_accelerators: list[str] = Field(default_factory=list)
+    supports_auto_fallback: bool = True
     request_config_schema: dict[str, Any] = Field(default_factory=dict)
     default_request_config: dict[str, Any] = Field(default_factory=dict)
     executors_total: int = 0

@@ -11,6 +11,8 @@ PLUGIN_COMPARE_FIELDS = (
     "version",
     "supported_job_types",
     "supported_strategies",
+    "supported_accelerators",
+    "supports_auto_fallback",
     "request_config_schema",
     "default_request_config",
 )
@@ -44,6 +46,8 @@ def extract_executor_plugins(raw_payload: dict[str, Any] | None) -> list[dict[st
                 "version": str(item.get("version") or ""),
                 "supported_job_types": _normalize_text_list(item.get("supported_job_types")),
                 "supported_strategies": _normalize_text_list(item.get("supported_strategies")),
+                "supported_accelerators": _normalize_text_list(item.get("supported_accelerators")),
+                "supports_auto_fallback": bool(item.get("supports_auto_fallback", True)),
                 "request_config_schema": dict(item.get("request_config_schema") or {}),
                 "default_request_config": dict(item.get("default_request_config") or {}),
             }

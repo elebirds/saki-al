@@ -232,6 +232,18 @@ class RuntimeDispatcher:
             plugin_id = str(item.get("plugin_id") or "").strip()
             if not plugin_id:
                 continue
+            supported_accelerators = sorted(
+                {
+                    str(v).strip().lower()
+                    for v in (item.get("supported_accelerators") or [])
+                    if str(v).strip().lower() in {"cpu", "cuda", "mps"}
+                }
+            )
+            supports_auto_fallback = bool(item.get("supports_auto_fallback"))
+            if "supports_auto_fallback" not in item:
+                supports_auto_fallback = True
+            if "supports_auto_fallback" in item and not supports_auto_fallback and not supported_accelerators:
+                supports_auto_fallback = True
             by_id[plugin_id] = {
                 "plugin_id": plugin_id,
                 "display_name": str(item.get("display_name") or plugin_id),
@@ -240,6 +252,8 @@ class RuntimeDispatcher:
                 "supported_strategies": sorted({str(v) for v in (item.get("supported_strategies") or []) if str(v)}),
                 "request_config_schema": dict(item.get("request_config_schema") or {}),
                 "default_request_config": dict(item.get("default_request_config") or {}),
+                "supported_accelerators": supported_accelerators,
+                "supports_auto_fallback": supports_auto_fallback,
             }
         for plugin_id in sorted(plugin_ids):
             by_id.setdefault(
@@ -252,9 +266,87 @@ class RuntimeDispatcher:
                     "supported_strategies": [],
                     "request_config_schema": {},
                     "default_request_config": {},
+                    "supported_accelerators": ["cpu", "cuda", "mps"],
+                    "supports_auto_fallback": True,
                 },
             )
         return [by_id[key] for key in sorted(by_id.keys())]
+
+    @staticmethod
+    def _normalize_accelerator_name(value: Any) -> str:
+        raw = str(value or "").strip().lower()
+        if raw in {"cpu", "cuda", "mps", "auto"}:
+            return raw
+        if not raw:
+            return ""
+        if raw.startswith("cuda:"):
+            return "cuda"
+        parts = [item.strip() for item in raw.split(",") if item.strip()]
+        if parts and all(part.isdigit() for part in parts):
+            return "cuda"
+        if raw.isdigit():
+            return "cuda"
+        return ""
+
+    def _extract_requested_accelerator(self, job: Job) -> tuple[str | None, bool]:
+        params = job.params if isinstance(job.params, dict) else {}
+        resources = job.resources if isinstance(job.resources, dict) else {}
+
+        raw_value: Any = params.get("device")
+        if raw_value is None:
+            raw_value = resources.get("accelerator")
+        if raw_value is None:
+            return None, True
+
+        normalized = self._normalize_accelerator_name(raw_value)
+        if not normalized or normalized == "auto":
+            return None, True
+        return normalized, False
+
+    def _available_accelerators(self, resources: dict[str, Any]) -> set[str]:
+        raw_items = (resources or {}).get("accelerators")
+        available: set[str] = set()
+        if isinstance(raw_items, list):
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+                accelerator = self._normalize_accelerator_name(item.get("type"))
+                if accelerator and accelerator != "auto" and bool(item.get("available")):
+                    available.add(accelerator)
+        if not available:
+            if self._to_int((resources or {}).get("gpu_count"), 0) > 0:
+                available.add("cuda")
+            available.add("cpu")
+        return available
+
+    def _plugin_supported_accelerators(self, runtime_session: RuntimeSession, plugin_id: str) -> set[str]:
+        capability = runtime_session.plugin_capabilities.get(plugin_id) if plugin_id else None
+        raw = capability.get("supported_accelerators") if isinstance(capability, dict) else None
+        supported: set[str] = set()
+        if isinstance(raw, list):
+            for item in raw:
+                accelerator = self._normalize_accelerator_name(item)
+                if accelerator and accelerator != "auto":
+                    supported.add(accelerator)
+        if not supported:
+            return {"cuda", "mps", "cpu"}
+        return supported
+
+    def _resolve_accelerator_for_session(self, job: Job, runtime_session: RuntimeSession) -> str | None:
+        available = self._available_accelerators(runtime_session.resources or {})
+        supported = self._plugin_supported_accelerators(runtime_session, str(job.plugin_id or ""))
+        candidates = available & supported
+        if not candidates:
+            return None
+
+        requested, is_auto = self._extract_requested_accelerator(job)
+        if not is_auto and requested:
+            return requested if requested in candidates else None
+
+        for accelerator in ("cuda", "mps", "cpu"):
+            if accelerator in candidates:
+                return accelerator
+        return None
 
     def _resource_satisfied(self, required: dict[str, Any], available: dict[str, Any]) -> bool:
         req_gpu = self._to_int((required or {}).get("gpu_count"), 0)
@@ -635,6 +727,9 @@ class RuntimeDispatcher:
         if check_stale:
             await self.mark_stale_executors()
 
+        resolved_backend: str | None = None
+        dispatch_params: dict[str, Any] = dict(job.params or {})
+
         async with SessionLocal() as session:
             persisted = await session.get(Job, job.id)
             if (
@@ -650,16 +745,27 @@ class RuntimeDispatcher:
                 return None
             if any(runtime_session.current_job_id == job_id for runtime_session in self._sessions.values()):
                 return None
-            candidates = [
-                s for s in self._sessions.values()
-                if (not s.busy)
-                and ((not job.plugin_id) or (job.plugin_id in s.plugins))
-                and self._resource_satisfied(job.resources or {}, s.resources or {})
-            ]
+            candidates: list[tuple[RuntimeSession, str]] = []
+            for runtime_session in self._sessions.values():
+                if runtime_session.busy:
+                    continue
+                if job.plugin_id and job.plugin_id not in runtime_session.plugins:
+                    continue
+                if not self._resource_satisfied(job.resources or {}, runtime_session.resources or {}):
+                    continue
+                resolved = self._resolve_accelerator_for_session(job, runtime_session)
+                if not resolved:
+                    continue
+                candidates.append((runtime_session, resolved))
             if not candidates:
                 return None
 
-            target = sorted(candidates, key=lambda item: item.last_seen)[0]
+            backend_priority = {"cuda": 0, "mps": 1, "cpu": 2}
+            target, resolved_backend = sorted(
+                candidates,
+                key=lambda item: (backend_priority.get(item[1], 99), item[0].last_seen),
+            )[0]
+            dispatch_params["_resolved_device_backend"] = resolved_backend
             request_id = str(uuid.uuid4())
             target.busy = True
             target.current_job_id = job_id
@@ -683,7 +789,7 @@ class RuntimeDispatcher:
                             plugin_id=job.plugin_id or "",
                             mode=runtime_codec.text_to_job_mode(job.mode),
                             query_strategy=job.query_strategy or "",
-                            params=runtime_codec.dict_to_struct(job.params or {}),
+                            params=runtime_codec.dict_to_struct(dispatch_params),
                             resources=runtime_codec.dict_to_resource_summary(job.resources or {}),
                             iteration=int(job.iteration or 0),
                         ),
@@ -696,6 +802,12 @@ class RuntimeDispatcher:
                 request_id,
                 job_id,
                 target.executor_id,
+            )
+            logger.info(
+                "任务设备后端已解析 job_id={} executor_id={} backend={}",
+                job_id,
+                target.executor_id,
+                resolved_backend,
             )
 
         async with SessionLocal() as session:
@@ -715,6 +827,10 @@ class RuntimeDispatcher:
                     and not persisted_job.assigned_executor_id
             ):
                 persisted_job.assigned_executor_id = target.executor_id
+                params_payload = dict(persisted_job.params or {})
+                if resolved_backend:
+                    params_payload["_resolved_device_backend"] = resolved_backend
+                persisted_job.params = params_payload
                 session.add(persisted_job)
             await session.commit()
 

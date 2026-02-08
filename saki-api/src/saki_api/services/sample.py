@@ -290,6 +290,103 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             logger.exception("单文件处理失败 filename={} error={}", file.filename, e)
             raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
 
+    @staticmethod
+    def _build_progress_event(
+            *,
+            index: int,
+            filename: str,
+            progress: ProgressInfo,
+    ) -> dict[str, Any]:
+        return {
+            "event": "progress",
+            "file_index": index,
+            "filename": filename,
+            "stage": progress.stage,
+            "message": progress.message,
+            "percentage": progress.percentage,
+            "current": progress.current,
+            "total": progress.total,
+        }
+
+    async def _process_single_file_with_collected_progress(
+            self,
+            *,
+            dataset: Dataset,
+            file: UploadFile,
+            index: int,
+            facade,
+            upload_context: UploadContext,
+    ) -> tuple[SampleRead | None, Exception | None, list[dict[str, Any]]]:
+        filename = file.filename or ""
+        progress_events: list[dict[str, Any]] = []
+
+        def progress_callback(event_type: EventType, progress: ProgressInfo):
+            del event_type
+            progress_events.append(
+                self._build_progress_event(
+                    index=index,
+                    filename=filename,
+                    progress=progress,
+                )
+            )
+
+        created_sample: SampleRead | None = None
+        processing_error: Exception | None = None
+        try:
+            await self._validate_file(file, facade, upload_context)
+            process_result = await self._process_single_file(
+                file,
+                facade,
+                upload_context,
+                progress_callback=progress_callback,
+            )
+            created_sample = await self._create_sample_from_result(dataset.id, process_result)
+        except Exception as exc:
+            processing_error = exc
+            logger.exception("文件上传失败 filename={} error={}", filename, exc)
+
+        return created_sample, processing_error, progress_events
+
+    @staticmethod
+    def _build_file_complete_event(
+            *,
+            index: int,
+            filename: str,
+            sample_id: str,
+    ) -> dict[str, Any]:
+        return {
+            "event": "file_complete",
+            "index": index,
+            "filename": filename,
+            "success": True,
+            "sample_id": sample_id,
+        }
+
+    @staticmethod
+    def _build_file_error_event(
+            *,
+            index: int,
+            filename: str,
+            error: str,
+    ) -> dict[str, Any]:
+        return {
+            "event": "file_error",
+            "index": index,
+            "filename": filename,
+            "error": error,
+        }
+
+    @staticmethod
+    def _build_complete_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+        success_count = sum(1 for item in results if item.get("status") == "success")
+        error_count = len(results) - success_count
+        return {
+            "event": "complete",
+            "uploaded": success_count,
+            "errors": error_count,
+            "results": results,
+        }
+
     async def iter_upload_progress_events(
             self,
             *,
@@ -308,38 +405,13 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         for index, file in enumerate(files):
             filename = file.filename or ""
             yield {"event": "file_start", "index": index, "filename": filename}
-
-            progress_events: list[dict[str, Any]] = []
-
-            def progress_callback(event_type: EventType, progress: ProgressInfo):
-                del event_type
-                progress_events.append(
-                    {
-                        "event": "progress",
-                        "file_index": index,
-                        "filename": filename,
-                        "stage": progress.stage,
-                        "message": progress.message,
-                        "percentage": progress.percentage,
-                        "current": progress.current,
-                        "total": progress.total,
-                    }
-                )
-
-            created_sample: SampleRead | None = None
-            processing_error: Exception | None = None
-            try:
-                await self._validate_file(file, facade, upload_context)
-                process_result = await self._process_single_file(
-                    file,
-                    facade,
-                    upload_context,
-                    progress_callback=progress_callback,
-                )
-                created_sample = await self._create_sample_from_result(dataset.id, process_result)
-            except Exception as exc:
-                processing_error = exc
-                logger.exception("文件上传失败 filename={} error={}", filename, exc)
+            created_sample, processing_error, progress_events = await self._process_single_file_with_collected_progress(
+                dataset=dataset,
+                file=file,
+                index=index,
+                facade=facade,
+                upload_context=upload_context,
+            )
 
             for event in progress_events:
                 yield event
@@ -352,13 +424,11 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                         "status": "success",
                     }
                 )
-                yield {
-                    "event": "file_complete",
-                    "index": index,
-                    "filename": filename,
-                    "success": True,
-                    "sample_id": str(created_sample.id),
-                }
+                yield self._build_file_complete_event(
+                    index=index,
+                    filename=filename,
+                    sample_id=str(created_sample.id),
+                )
             else:
                 error_text = str(processing_error) if processing_error is not None else "unknown error"
                 results.append(
@@ -368,21 +438,13 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                         "error": error_text,
                     }
                 )
-                yield {
-                    "event": "file_error",
-                    "index": index,
-                    "filename": filename,
-                    "error": error_text,
-                }
+                yield self._build_file_error_event(
+                    index=index,
+                    filename=filename,
+                    error=error_text,
+                )
 
-        success_count = sum(1 for item in results if item.get("status") == "success")
-        error_count = len(results) - success_count
-        yield {
-            "event": "complete",
-            "uploaded": success_count,
-            "errors": error_count,
-            "results": results,
-        }
+        yield self._build_complete_summary(results)
 
     async def get_asset_for_sample(
             self,

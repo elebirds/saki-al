@@ -418,14 +418,14 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             items.append(item)
         return items, next_cursor
 
-    async def _query_annotations_items(
+    async def _list_commit_annotation_mappings(
         self,
         *,
         session,
         commit_id: uuid.UUID,
         limit: int,
         offset: int,
-    ) -> tuple[list[pb.DataItem], str | None]:
+    ) -> tuple[list[CommitAnnotationMap], str | None]:
         mapping_stmt = (
             select(CommitAnnotationMap)
             .where(CommitAnnotationMap.commit_id == commit_id)
@@ -435,72 +435,133 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         )
         mappings_all = list((await session.exec(mapping_stmt)).all())
         mappings_page_raw, next_cursor = self._paginate_rows(mappings_all, limit=limit, offset=offset)
-        mappings = list(mappings_page_raw)
+        return list(mappings_page_raw), next_cursor
 
+    async def _load_annotations_map(
+        self,
+        *,
+        session,
+        mappings: list[CommitAnnotationMap],
+    ) -> dict[uuid.UUID, Annotation]:
         annotation_ids = [item.annotation_id for item in mappings]
-        ann_stmt = select(Annotation).where(Annotation.id.in_(annotation_ids)) if annotation_ids else None
-        ann_rows = list((await session.exec(ann_stmt)).all()) if ann_stmt is not None else []
-        ann_map = {item.id: item for item in ann_rows}
+        if not annotation_ids:
+            return {}
+        ann_stmt = select(Annotation).where(Annotation.id.in_(annotation_ids))
+        ann_rows = list((await session.exec(ann_stmt)).all())
+        return {item.id: item for item in ann_rows}
+
+    async def _load_sample_size_map(
+        self,
+        *,
+        session,
+        mappings: list[CommitAnnotationMap],
+    ) -> dict[uuid.UUID, tuple[int, int]]:
         sample_ids = list({item.sample_id for item in mappings})
+        if not sample_ids:
+            return {}
+
+        sample_stmt = (
+            select(Sample, Asset)
+            .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
+            .where(Sample.id.in_(sample_ids))
+        )
         sample_size_map: dict[uuid.UUID, tuple[int, int]] = {}
-        if sample_ids:
-            sample_stmt = (
-                select(Sample, Asset)
-                .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
-                .where(Sample.id.in_(sample_ids))
-            )
-            for sample, asset in (await session.exec(sample_stmt)).all():
-                width = 0
-                height = 0
-                if asset:
-                    meta = asset.meta_info or {}
-                    width = int(meta.get("width") or 0)
-                    height = int(meta.get("height") or 0)
-                sample_size_map[sample.id] = (width, height)
+        for sample, asset in (await session.exec(sample_stmt)).all():
+            width = 0
+            height = 0
+            if asset:
+                meta = asset.meta_info or {}
+                width = int(meta.get("width") or 0)
+                height = int(meta.get("height") or 0)
+            sample_size_map[sample.id] = (width, height)
+        return sample_size_map
+
+    @staticmethod
+    def _build_annotation_geometry(
+        *,
+        ann: Annotation,
+        sample_size_map: dict[uuid.UUID, tuple[int, int]],
+    ) -> tuple[list[float], dict | None]:
+        bbox_xywh = [0.0, 0.0, 0.0, 0.0]
+        obb = None
+        if ann.type == AnnotationType.RECT:
+            data = ann.data or {}
+            bbox_xywh = [
+                float(data.get("x", 0.0)),
+                float(data.get("y", 0.0)),
+                float(data.get("width", 0.0)),
+                float(data.get("height", 0.0)),
+            ]
+            return bbox_xywh, obb
+
+        if ann.type == AnnotationType.OBB:
+            data = ann.data or {}
+            sample_width, sample_height = sample_size_map.get(ann.sample_id, (0, 0))
+            normalized_obb = _normalize_obb_payload(data)
+            if normalized_obb:
+                cx = float(normalized_obb["cx"])
+                cy = float(normalized_obb["cy"])
+                w = float(normalized_obb["w"])
+                h = float(normalized_obb["h"])
+                if int(sample_width or 0) > 0 and int(sample_height or 0) > 0:
+                    cx *= float(sample_width)
+                    cy *= float(sample_height)
+                    w *= float(sample_width)
+                    h *= float(sample_height)
+                bbox_xywh = [cx - w / 2, cy - h / 2, w, h]
+            obb = normalized_obb
+        return bbox_xywh, obb
+
+    def _build_annotation_data_item(
+        self,
+        *,
+        ann: Annotation,
+        sample_size_map: dict[uuid.UUID, tuple[int, int]],
+    ) -> pb.DataItem:
+        bbox_xywh, obb = self._build_annotation_geometry(
+            ann=ann,
+            sample_size_map=sample_size_map,
+        )
+        item = pb.AnnotationItem(
+            id=str(ann.id),
+            sample_id=str(ann.sample_id),
+            category_id=str(ann.label_id),
+            bbox_xywh=bbox_xywh,
+            source=ann.source.value,
+            confidence=float(ann.confidence or 0.0),
+        )
+        if obb:
+            item.obb.CopyFrom(runtime_codec.dict_to_struct(obb))
+        return pb.DataItem(annotation_item=item)
+
+    async def _query_annotations_items(
+        self,
+        *,
+        session,
+        commit_id: uuid.UUID,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[pb.DataItem], str | None]:
+        mappings, next_cursor = await self._list_commit_annotation_mappings(
+            session=session,
+            commit_id=commit_id,
+            limit=limit,
+            offset=offset,
+        )
+        ann_map = await self._load_annotations_map(session=session, mappings=mappings)
+        sample_size_map = await self._load_sample_size_map(session=session, mappings=mappings)
 
         items: list[pb.DataItem] = []
         for mapping in mappings:
             ann = ann_map.get(mapping.annotation_id)
             if not ann:
                 continue
-            bbox_xywh = [0.0, 0.0, 0.0, 0.0]
-            obb = None
-            if ann.type == AnnotationType.RECT:
-                data = ann.data or {}
-                bbox_xywh = [
-                    float(data.get("x", 0.0)),
-                    float(data.get("y", 0.0)),
-                    float(data.get("width", 0.0)),
-                    float(data.get("height", 0.0)),
-                ]
-            elif ann.type == AnnotationType.OBB:
-                data = ann.data or {}
-                sample_width, sample_height = sample_size_map.get(ann.sample_id, (0, 0))
-                normalized_obb = _normalize_obb_payload(data)
-                if normalized_obb:
-                    cx = float(normalized_obb["cx"])
-                    cy = float(normalized_obb["cy"])
-                    w = float(normalized_obb["w"])
-                    h = float(normalized_obb["h"])
-                    if int(sample_width or 0) > 0 and int(sample_height or 0) > 0:
-                        cx *= float(sample_width)
-                        cy *= float(sample_height)
-                        w *= float(sample_width)
-                        h *= float(sample_height)
-                    bbox_xywh = [cx - w / 2, cy - h / 2, w, h]
-                obb = normalized_obb
-
-            item = pb.AnnotationItem(
-                id=str(ann.id),
-                sample_id=str(ann.sample_id),
-                category_id=str(ann.label_id),
-                bbox_xywh=bbox_xywh,
-                source=ann.source.value,
-                confidence=float(ann.confidence or 0.0),
+            items.append(
+                self._build_annotation_data_item(
+                    ann=ann,
+                    sample_size_map=sample_size_map,
+                )
             )
-            if obb:
-                item.obb.CopyFrom(runtime_codec.dict_to_struct(obb))
-            items.append(pb.DataItem(annotation_item=item))
 
         return items, next_cursor
 

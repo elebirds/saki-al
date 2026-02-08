@@ -362,6 +362,86 @@ async def test_build_data_response_unlabeled_samples_excludes_annotated_and_open
     assert returned_ids == {str(eligible_sample.id)}
 
 
+@pytest.mark.anyio
+async def test_build_data_response_annotations_maps_obb_with_sample_size(data_response_env):
+    service, session_local = data_response_env
+    context = await _seed_runtime_context(session_local)
+
+    async with session_local() as session:
+        sample = await _create_sample(
+            session,
+            dataset_id=context["dataset_id"],
+            name="obb-sample",
+            object_key="runtime/obb-sample.jpg",
+            width=200,
+            height=100,
+        )
+
+        label = Label(
+            project_id=context["project_id"],
+            name="truck",
+            color="#00ff00",
+        )
+        session.add(label)
+        await session.flush()
+
+        annotation = Annotation(
+            sample_id=sample.id,
+            label_id=label.id,
+            project_id=context["project_id"],
+            group_id=uuid.uuid4(),
+            lineage_id=uuid.uuid4(),
+            type=AnnotationType.OBB,
+            source=AnnotationSource.MANUAL,
+            data={
+                "cx": 0.5,
+                "cy": 0.5,
+                "w": 0.4,
+                "h": 0.2,
+                "angle_deg": 15.0,
+                "normalized": True,
+            },
+            confidence=0.9,
+        )
+        session.add(annotation)
+        await session.flush()
+
+        session.add(
+            CommitAnnotationMap(
+                commit_id=context["commit_id"],
+                sample_id=sample.id,
+                annotation_id=annotation.id,
+                project_id=context["project_id"],
+            )
+        )
+        await session.commit()
+
+    response = await service._build_data_response(  # noqa: SLF001
+        pb.DataRequest(
+            request_id="annotations-obb-1",
+            job_id=str(context["job_id"]),
+            query_type=pb.ANNOTATIONS,
+            project_id=str(context["project_id"]),
+            commit_id=str(context["commit_id"]),
+            limit=100,
+        )
+    )
+
+    assert response.WhichOneof("payload") == "data_response"
+    items = [item.annotation_item for item in response.data_response.items if item.WhichOneof("item") == "annotation_item"]
+    assert len(items) == 1
+    item = items[0]
+    assert item.sample_id == str(sample.id)
+    assert item.category_id == str(label.id)
+    assert pytest.approx(item.bbox_xywh[0], rel=0.0, abs=1e-6) == 60.0
+    assert pytest.approx(item.bbox_xywh[1], rel=0.0, abs=1e-6) == 40.0
+    assert pytest.approx(item.bbox_xywh[2], rel=0.0, abs=1e-6) == 80.0
+    assert pytest.approx(item.bbox_xywh[3], rel=0.0, abs=1e-6) == 20.0
+    obb_payload = dict(item.obb)
+    assert obb_payload["normalized"] is True
+    assert pytest.approx(float(obb_payload["angle_deg"]), rel=0.0, abs=1e-6) == 15.0
+
+
 def test_extract_scalar_values_handles_scalar_and_tuple():
     scalar_value = uuid.uuid4()
     tuple_value = uuid.uuid4()

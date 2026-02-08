@@ -952,6 +952,141 @@ class RuntimeDispatcher:
     async def send_upload_ticket_response(self, executor_id: str, response_payload: pb.RuntimeMessage) -> None:
         await self.send_data_response(executor_id, response_payload)
 
+    @staticmethod
+    def _resolve_ack_reason(ack_reason: int, detail: str | None) -> tuple[str, str]:
+        detail_text = str(detail or "").strip()
+        reason_text = runtime_codec.ack_reason_to_text(ack_reason)
+        resolved_reason = detail_text or reason_text or "rejected"
+        return reason_text, resolved_reason
+
+    async def _sync_session_for_assign_ack(self, *, pending: PendingAssign, is_ok: bool) -> str | None:
+        release_executor_id: str | None = None
+        async with self._lock:
+            for runtime_session in self._sessions.values():
+                if runtime_session.executor_id == pending.executor_id and runtime_session.current_job_id == pending.job_id:
+                    if not is_ok:
+                        runtime_session.busy = False
+                        runtime_session.current_job_id = None
+                    release_executor_id = runtime_session.executor_id
+                    break
+        return release_executor_id
+
+    @staticmethod
+    def _apply_job_assign_ack(
+        *,
+        job: Job,
+        is_ok: bool,
+        ack_for: str,
+        pending: PendingAssign,
+        ack_type: int,
+        reason_text: str,
+        resolved_reason: str,
+    ) -> None:
+        if is_ok:
+            job.status = TrainingJobStatus.RUNNING
+            if not job.started_at:
+                job.started_at = datetime.now(UTC)
+            logger.info(
+                "任务已开始执行（ACK 成功） request_id={} job_id={} executor_id={}",
+                ack_for,
+                pending.job_id,
+                pending.executor_id,
+            )
+            return
+
+        job.status = TrainingJobStatus.FAILED
+        job.last_error = resolved_reason or "executor reject assignment"
+        job.ended_at = datetime.now(UTC)
+        job.assigned_executor_id = None
+        logger.warning(
+            "任务派发被拒绝（ACK 失败） request_id={} job_id={} executor_id={} ack_type={} ack_reason={} reason={}",
+            ack_for,
+            pending.job_id,
+            pending.executor_id,
+            runtime_codec.ack_type_to_text(ack_type),
+            reason_text,
+            resolved_reason or "executor reject assignment",
+        )
+
+    async def _apply_executor_assign_ack(
+        self,
+        *,
+        session,
+        release_executor_id: str,
+        is_ok: bool,
+        job_id: str,
+    ) -> None:
+        row = await session.exec(
+            select(RuntimeExecutor).where(RuntimeExecutor.executor_id == release_executor_id)
+        )
+        executor = row.first()
+        if not executor:
+            return
+        if is_ok:
+            executor.status = "busy"
+            executor.current_job_id = job_id
+        else:
+            executor.status = "idle"
+            executor.current_job_id = None
+        executor.is_online = True
+        executor.last_seen_at = datetime.now(UTC)
+        session.add(executor)
+
+    async def _persist_assign_ack(
+        self,
+        *,
+        pending: PendingAssign,
+        is_ok: bool,
+        ack_for: str,
+        ack_type: int,
+        reason_text: str,
+        resolved_reason: str,
+        release_executor_id: str | None,
+    ) -> None:
+        async with SessionLocal() as session:
+            job = await session.get(Job, uuid.UUID(pending.job_id))
+            if job:
+                self._apply_job_assign_ack(
+                    job=job,
+                    is_ok=is_ok,
+                    ack_for=ack_for,
+                    pending=pending,
+                    ack_type=ack_type,
+                    reason_text=reason_text,
+                    resolved_reason=resolved_reason,
+                )
+                session.add(job)
+                if release_executor_id:
+                    await self._apply_executor_assign_ack(
+                        session=session,
+                        release_executor_id=release_executor_id,
+                        is_ok=is_ok,
+                        job_id=pending.job_id,
+                    )
+                await session.commit()
+
+    @staticmethod
+    def _log_stop_ack(
+        *,
+        ack_for: str,
+        stop_job_id: str | None,
+        is_ok: bool,
+        ack_type: int,
+        reason_text: str,
+        resolved_reason: str,
+    ) -> None:
+        if is_ok:
+            logger.info("停止任务请求已确认（ACK 成功） request_id={} job_id={}", ack_for, stop_job_id)
+            return
+        logger.warning(
+            "停止任务请求确认失败（ACK 非 OK） request_id={} job_id={} ack_type={} ack_reason={} reason={}",
+            ack_for,
+            stop_job_id,
+            runtime_codec.ack_type_to_text(ack_type),
+            reason_text,
+            resolved_reason,
+        )
+
     async def handle_ack(
             self,
             ack_for: str,
@@ -961,81 +1096,31 @@ class RuntimeDispatcher:
             detail: str | None = None,
     ) -> None:
         is_ok = status == pb.OK
-        detail_text = str(detail or "").strip()
-        reason_text = runtime_codec.ack_reason_to_text(ack_reason)
-        resolved_reason = detail_text or reason_text or "rejected"
+        reason_text, resolved_reason = self._resolve_ack_reason(ack_reason, detail)
 
-        if ack_for in self._pending_assign:
-            pending = self._pending_assign.pop(ack_for)
-            job_id = pending.job_id
-            release_executor_id: str | None = None
-            async with self._lock:
-                for runtime_session in self._sessions.values():
-                    if runtime_session.executor_id == pending.executor_id and runtime_session.current_job_id == job_id:
-                        if not is_ok:
-                            runtime_session.busy = False
-                            runtime_session.current_job_id = None
-                        release_executor_id = runtime_session.executor_id
-                        break
+        pending = self._pending_assign.pop(ack_for, None)
+        if pending:
+            release_executor_id = await self._sync_session_for_assign_ack(pending=pending, is_ok=is_ok)
+            await self._persist_assign_ack(
+                pending=pending,
+                is_ok=is_ok,
+                ack_for=ack_for,
+                ack_type=ack_type,
+                reason_text=reason_text,
+                resolved_reason=resolved_reason,
+                release_executor_id=release_executor_id,
+            )
 
-            async with SessionLocal() as session:
-                job = await session.get(Job, uuid.UUID(job_id))
-                if job:
-                    if is_ok:
-                        job.status = TrainingJobStatus.RUNNING
-                        if not job.started_at:
-                            job.started_at = datetime.now(UTC)
-                        logger.info(
-                            "任务已开始执行（ACK 成功） request_id={} job_id={} executor_id={}",
-                            ack_for,
-                            job_id,
-                            pending.executor_id,
-                        )
-                    else:
-                        job.status = TrainingJobStatus.FAILED
-                        job.last_error = resolved_reason or "executor reject assignment"
-                        job.ended_at = datetime.now(UTC)
-                        job.assigned_executor_id = None
-                        logger.warning(
-                            "任务派发被拒绝（ACK 失败） request_id={} job_id={} executor_id={} ack_type={} ack_reason={} reason={}",
-                            ack_for,
-                            job_id,
-                            pending.executor_id,
-                            runtime_codec.ack_type_to_text(ack_type),
-                            reason_text,
-                            resolved_reason or "executor reject assignment",
-                        )
-                    session.add(job)
-                    if release_executor_id:
-                        row = await session.exec(
-                            select(RuntimeExecutor).where(RuntimeExecutor.executor_id == release_executor_id)
-                        )
-                        executor = row.first()
-                        if executor:
-                            if is_ok:
-                                executor.status = "busy"
-                                executor.current_job_id = job_id
-                            else:
-                                executor.status = "idle"
-                                executor.current_job_id = None
-                            executor.is_online = True
-                            executor.last_seen_at = datetime.now(UTC)
-                            session.add(executor)
-                    await session.commit()
-
-        if ack_for in self._pending_stop:
-            stop_job_id = self._pending_stop.pop(ack_for, None)
-            if is_ok:
-                logger.info("停止任务请求已确认（ACK 成功） request_id={} job_id={}", ack_for, stop_job_id)
-            else:
-                logger.warning(
-                    "停止任务请求确认失败（ACK 非 OK） request_id={} job_id={} ack_type={} ack_reason={} reason={}",
-                    ack_for,
-                    stop_job_id,
-                    runtime_codec.ack_type_to_text(ack_type),
-                    reason_text,
-                    resolved_reason,
-                )
+        stop_job_id = self._pending_stop.pop(ack_for, None)
+        if stop_job_id is not None:
+            self._log_stop_ack(
+                ack_for=ack_for,
+                stop_job_id=stop_job_id,
+                is_ok=is_ok,
+                ack_type=ack_type,
+                reason_text=reason_text,
+                resolved_reason=resolved_reason,
+            )
 
         await self._try_persist_runtime_stats()
 

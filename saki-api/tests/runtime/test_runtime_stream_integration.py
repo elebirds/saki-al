@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
 import grpc
 import pytest
 from google.protobuf.struct_pb2 import Struct
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
 
+import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
 import saki_api.grpc.runtime_control as runtime_control_module
 from saki_api.core.config import settings
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.grpc_gen import runtime_control_pb2_grpc as pb_grpc
 from saki_api.grpc.runtime_control import RuntimeControlService
+from saki_api.models.enums import StorageType, TaskType
+from saki_api.models.l1.asset import Asset
+from saki_api.models.l1.dataset import Dataset
+from saki_api.models.l1.sample import Sample
+from saki_api.models.l2.project import Project, ProjectDataset
+from saki_api.models.user import User
 
 
 class _StreamClient:
@@ -509,6 +520,138 @@ async def test_runtime_stream_data_request_invalid_uuid_returns_invalid_argument
         await client.close()
     finally:
         await server.stop(grace=0)
+
+
+@pytest.mark.anyio
+async def test_runtime_stream_data_request_samples_returns_data_response(monkeypatch, tmp_path):
+    service = RuntimeControlService()
+
+    class _DummyStorage:
+        @staticmethod
+        def get_presigned_url(object_name: str) -> str:
+            return f"https://example.test/download/{object_name}"
+
+    service._storage = _DummyStorage()  # noqa: SLF001
+
+    db_path = tmp_path / "runtime_stream_data_request_samples.sqlite3"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    session_local = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    monkeypatch.setattr(runtime_control_module, "SessionLocal", session_local)
+
+    async with session_local() as session:
+        user = User(
+            email=f"stream-{uuid.uuid4().hex[:8]}@example.com",
+            hashed_password="hashed",
+            full_name="stream user",
+            is_active=True,
+        )
+        session.add(user)
+        await session.flush()
+
+        dataset = Dataset(
+            name=f"dataset-{uuid.uuid4().hex[:6]}",
+            owner_id=user.id,
+        )
+        project = Project(
+            name=f"project-{uuid.uuid4().hex[:6]}",
+            task_type=TaskType.DETECTION,
+            config={},
+        )
+        session.add(dataset)
+        session.add(project)
+        await session.flush()
+
+        session.add(ProjectDataset(project_id=project.id, dataset_id=dataset.id))
+
+        asset = Asset(
+            hash=f"{uuid.uuid4().hex}{uuid.uuid4().hex}",
+            storage_type=StorageType.S3,
+            path="runtime/stream-sample.jpg",
+            bucket="test-bucket",
+            original_filename="stream-sample.jpg",
+            extension=".jpg",
+            mime_type="image/jpeg",
+            size=128,
+            meta_info={"width": 320, "height": 240},
+        )
+        session.add(asset)
+        await session.flush()
+
+        sample = Sample(
+            dataset_id=dataset.id,
+            name="stream-sample",
+            asset_group={"image_main": str(asset.id)},
+            primary_asset_id=asset.id,
+            meta_info={"case": "stream"},
+        )
+        session.add(sample)
+        await session.commit()
+        project_id = str(project.id)
+        sample_id = str(sample.id)
+
+    async def fake_register(
+        *,
+        executor_id: str,
+        queue: asyncio.Queue[pb.RuntimeMessage],
+        version: str,
+        plugin_ids: set[str],
+        resources: dict[str, Any],
+    ) -> None:
+        return
+
+    async def fake_unregister(executor_id: str) -> None:
+        return
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
+
+    server = grpc.aio.server()
+    pb_grpc.add_RuntimeControlServicer_to_server(service, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+
+    try:
+        client = _StreamClient(target=f"127.0.0.1:{port}", token=settings.INTERNAL_TOKEN)
+        await client.send(
+            pb.RuntimeMessage(
+                register=pb.Register(
+                    request_id="register-samples-1",
+                    executor_id="executor-samples-1",
+                    version="0.1.0",
+                )
+            )
+        )
+        register_resp = await client.recv()
+        assert register_resp.WhichOneof("payload") == "ack"
+
+        await client.send(
+            pb.RuntimeMessage(
+                data_request=pb.DataRequest(
+                    request_id="samples-req-1",
+                    job_id="job-samples-1",
+                    query_type=pb.SAMPLES,
+                    project_id=project_id,
+                    commit_id="",
+                    limit=10,
+                )
+            )
+        )
+        response = await client.recv()
+        assert response.WhichOneof("payload") == "data_response"
+        sample_items = [
+            item.sample_item
+            for item in response.data_response.items
+            if item.WhichOneof("item") == "sample_item"
+        ]
+        assert len(sample_items) == 1
+        assert sample_items[0].id == sample_id
+        assert sample_items[0].download_url.startswith("https://example.test/download/")
+        await client.close()
+    finally:
+        await server.stop(grace=0)
+        await engine.dispose()
 
 
 @pytest.mark.anyio

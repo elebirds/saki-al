@@ -216,6 +216,248 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             details["ack_for"] = ack_for
         return details
 
+    @staticmethod
+    def _extract_scalar_values(rows: list[object]) -> list[object]:
+        values: list[object] = []
+        for row in rows:
+            if isinstance(row, (tuple, list)):
+                if row:
+                    values.append(row[0])
+                continue
+            values.append(row)
+        return values
+
+    @staticmethod
+    def _paginate_rows(rows: list[object], *, limit: int, offset: int) -> tuple[list[object], str | None]:
+        page = rows
+        next_cursor: str | None = None
+        if len(page) > limit:
+            page = page[:limit]
+            next_cursor = str(offset + limit)
+        return page, next_cursor
+
+    async def _query_labels_items(
+        self,
+        *,
+        session,
+        project_id: uuid.UUID,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[pb.DataItem], str | None]:
+        stmt = (
+            select(Label)
+            .where(Label.project_id == project_id)
+            .order_by(Label.id)
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        rows = list((await session.exec(stmt)).all())
+        page, next_cursor = self._paginate_rows(rows, limit=limit, offset=offset)
+
+        items: list[pb.DataItem] = []
+        for item in page:
+            items.append(
+                pb.DataItem(
+                    label_item=pb.LabelItem(
+                        id=str(item.id),
+                        name=item.name or "",
+                        color=item.color or "",
+                    )
+                )
+            )
+        return items, next_cursor
+
+    async def _query_samples_items(
+        self,
+        *,
+        session,
+        query_type: str,
+        project_id: uuid.UUID,
+        commit_id: uuid.UUID | None,
+        job_id_raw: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[pb.DataItem], str | None]:
+        selection_exclude_open_batches = True
+        loop_id_for_filter: uuid.UUID | None = None
+
+        if query_type == "unlabeled_samples":
+            job_id_value = str(job_id_raw or "").strip()
+            if job_id_value:
+                try:
+                    job_id = uuid.UUID(job_id_value)
+                except Exception:
+                    job_id = None
+                if job_id:
+                    job = await session.get(Job, job_id)
+                    if job and job.loop_id:
+                        loop_id_for_filter = job.loop_id
+                        loop = await session.get(ALLoop, job.loop_id)
+                        loop_config = normalize_loop_global_config(loop.global_config if loop else None)
+                        selection_config = loop_config.get("selection")
+                        if isinstance(selection_config, dict):
+                            selection_exclude_open_batches = bool(
+                                selection_config.get("exclude_open_batches", True)
+                            )
+
+        ds_stmt = select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
+        dataset_ids_raw = list((await session.exec(ds_stmt)).all())
+        dataset_ids = [
+            uuid.UUID(str(value))
+            for value in self._extract_scalar_values(dataset_ids_raw)
+            if value
+        ]
+        if not dataset_ids:
+            return [], None
+
+        sample_stmt = (
+            select(Sample, Asset)
+            .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
+            .where(Sample.dataset_id.in_(dataset_ids))
+            .order_by(Sample.id)
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        if query_type == "unlabeled_samples":
+            if commit_id is None:
+                raise ValueError("commit_id is required")
+            annotated_subquery = select(CommitAnnotationMap.sample_id).where(
+                CommitAnnotationMap.commit_id == commit_id
+            )
+            sample_stmt = sample_stmt.where(Sample.id.not_in(annotated_subquery))
+            if selection_exclude_open_batches and loop_id_for_filter:
+                open_batch_sample_subquery = (
+                    select(AnnotationBatchItem.sample_id)
+                    .join(AnnotationBatch, AnnotationBatchItem.batch_id == AnnotationBatch.id)
+                    .where(
+                        AnnotationBatch.loop_id == loop_id_for_filter,
+                        AnnotationBatch.status == AnnotationBatchStatus.OPEN,
+                    )
+                )
+                sample_stmt = sample_stmt.where(Sample.id.not_in(open_batch_sample_subquery))
+
+        rows = list((await session.exec(sample_stmt)).all())
+        page, next_cursor = self._paginate_rows(rows, limit=limit, offset=offset)
+
+        items: list[pb.DataItem] = []
+        for sample, asset in page:
+            asset_hash = ""
+            download_url = ""
+            width = 0
+            height = 0
+            if asset:
+                asset_hash = asset.hash or ""
+                meta = asset.meta_info or {}
+                width = int(meta.get("width") or 0)
+                height = int(meta.get("height") or 0)
+                try:
+                    download_url = self.storage.get_presigned_url(asset.path)
+                except Exception:
+                    download_url = ""
+
+            if not download_url:
+                continue
+
+            items.append(
+                pb.DataItem(
+                    sample_item=pb.SampleItem(
+                        id=str(sample.id),
+                        asset_hash=asset_hash,
+                        download_url=download_url,
+                        width=width,
+                        height=height,
+                        meta=runtime_codec.dict_to_struct(sample.meta_info or {}),
+                    )
+                )
+            )
+        return items, next_cursor
+
+    async def _query_annotations_items(
+        self,
+        *,
+        session,
+        commit_id: uuid.UUID,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[pb.DataItem], str | None]:
+        mapping_stmt = (
+            select(CommitAnnotationMap)
+            .where(CommitAnnotationMap.commit_id == commit_id)
+            .order_by(CommitAnnotationMap.sample_id)
+            .offset(offset)
+            .limit(limit + 1)
+        )
+        mappings_all = list((await session.exec(mapping_stmt)).all())
+        mappings_page_raw, next_cursor = self._paginate_rows(mappings_all, limit=limit, offset=offset)
+        mappings = list(mappings_page_raw)
+
+        annotation_ids = [item.annotation_id for item in mappings]
+        ann_stmt = select(Annotation).where(Annotation.id.in_(annotation_ids)) if annotation_ids else None
+        ann_rows = list((await session.exec(ann_stmt)).all()) if ann_stmt is not None else []
+        ann_map = {item.id: item for item in ann_rows}
+        sample_ids = list({item.sample_id for item in mappings})
+        sample_size_map: dict[uuid.UUID, tuple[int, int]] = {}
+        if sample_ids:
+            sample_stmt = (
+                select(Sample, Asset)
+                .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
+                .where(Sample.id.in_(sample_ids))
+            )
+            for sample, asset in (await session.exec(sample_stmt)).all():
+                width = 0
+                height = 0
+                if asset:
+                    meta = asset.meta_info or {}
+                    width = int(meta.get("width") or 0)
+                    height = int(meta.get("height") or 0)
+                sample_size_map[sample.id] = (width, height)
+
+        items: list[pb.DataItem] = []
+        for mapping in mappings:
+            ann = ann_map.get(mapping.annotation_id)
+            if not ann:
+                continue
+            bbox_xywh = [0.0, 0.0, 0.0, 0.0]
+            obb = None
+            if ann.type == AnnotationType.RECT:
+                data = ann.data or {}
+                bbox_xywh = [
+                    float(data.get("x", 0.0)),
+                    float(data.get("y", 0.0)),
+                    float(data.get("width", 0.0)),
+                    float(data.get("height", 0.0)),
+                ]
+            elif ann.type == AnnotationType.OBB:
+                data = ann.data or {}
+                sample_width, sample_height = sample_size_map.get(ann.sample_id, (0, 0))
+                normalized_obb = _normalize_obb_payload(data)
+                if normalized_obb:
+                    cx = float(normalized_obb["cx"])
+                    cy = float(normalized_obb["cy"])
+                    w = float(normalized_obb["w"])
+                    h = float(normalized_obb["h"])
+                    if int(sample_width or 0) > 0 and int(sample_height or 0) > 0:
+                        cx *= float(sample_width)
+                        cy *= float(sample_height)
+                        w *= float(sample_width)
+                        h *= float(sample_height)
+                    bbox_xywh = [cx - w / 2, cy - h / 2, w, h]
+                obb = normalized_obb
+
+            item = pb.AnnotationItem(
+                id=str(ann.id),
+                sample_id=str(ann.sample_id),
+                category_id=str(ann.label_id),
+                bbox_xywh=bbox_xywh,
+                source=ann.source.value,
+                confidence=float(ann.confidence or 0.0),
+            )
+            if obb:
+                item.obb.CopyFrom(runtime_codec.dict_to_struct(obb))
+            items.append(pb.DataItem(annotation_item=item))
+
+        return items, next_cursor
+
     async def Stream(self, request_iterator, context):
         metadata = dict(context.invocation_metadata())
         if metadata.get("x-internal-token") != settings.INTERNAL_TOKEN:
@@ -411,6 +653,13 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 ),
                             )
                         except Exception as exc:
+                            logger.exception(
+                                "data_request 处理失败 request_id={} job_id={} query_type={} error={}",
+                                request.request_id,
+                                request.job_id,
+                                runtime_codec.query_type_to_text(request.query_type),
+                                exc,
+                            )
                             response = runtime_codec.build_error_message(
                                 code="INTERNAL",
                                 message=f"data request failed: {exc}",
@@ -692,213 +941,35 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         limit = max(1, min(5000, int(message.limit or 1000)))
         offset = _parse_cursor(message.cursor or "")
 
-        items: list[pb.DataItem] = []
-        next_cursor: Optional[str] = None
-
         async with SessionLocal() as session:
             if query_type == "labels":
                 project_id = _parse_uuid(message.project_id, "project_id")
-                stmt = (
-                    select(Label)
-                    .where(Label.project_id == project_id)
-                    .order_by(Label.id)
-                    .offset(offset)
-                    .limit(limit + 1)
+                items, next_cursor = await self._query_labels_items(
+                    session=session,
+                    project_id=project_id,
+                    limit=limit,
+                    offset=offset,
                 )
-                rows = list((await session.exec(stmt)).all())
-                if len(rows) > limit:
-                    rows = rows[:limit]
-                    next_cursor = str(offset + limit)
-
-                for item in rows:
-                    items.append(
-                        pb.DataItem(
-                            label_item=pb.LabelItem(
-                                id=str(item.id),
-                                name=item.name or "",
-                                color=item.color or "",
-                            )
-                        )
-                    )
-
             elif query_type in {"samples", "unlabeled_samples"}:
                 project_id = _parse_uuid(message.project_id, "project_id")
                 commit_id = _parse_uuid(message.commit_id, "commit_id") if query_type == "unlabeled_samples" else None
-                selection_exclude_open_batches = True
-                loop_id_for_filter: uuid.UUID | None = None
-
-                if query_type == "unlabeled_samples":
-                    job_id_raw = str(message.job_id or "").strip()
-                    if job_id_raw:
-                        try:
-                            job_id = uuid.UUID(job_id_raw)
-                        except Exception:
-                            job_id = None
-                        if job_id:
-                            job = await session.get(Job, job_id)
-                            if job and job.loop_id:
-                                loop_id_for_filter = job.loop_id
-                                loop = await session.get(ALLoop, job.loop_id)
-                                loop_config = normalize_loop_global_config(loop.global_config if loop else None)
-                                selection_config = loop_config.get("selection")
-                                if isinstance(selection_config, dict):
-                                    selection_exclude_open_batches = bool(
-                                        selection_config.get("exclude_open_batches", True)
-                                    )
-
-                ds_stmt = select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
-                dataset_ids = [row[0] for row in (await session.exec(ds_stmt)).all()]
-                if not dataset_ids:
-                    return pb.RuntimeMessage(
-                        data_response=pb.DataResponse(
-                            request_id=request_id,
-                            reply_to=message.request_id,
-                            job_id=message.job_id,
-                            query_type=runtime_codec.text_to_query_type(query_type),
-                            items=[],
-                            next_cursor="",
-                        )
-                    )
-
-                sample_stmt = (
-                    select(Sample, Asset)
-                    .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
-                    .where(Sample.dataset_id.in_(dataset_ids))
-                    .order_by(Sample.id)
-                    .offset(offset)
-                    .limit(limit + 1)
+                items, next_cursor = await self._query_samples_items(
+                    session=session,
+                    query_type=query_type,
+                    project_id=project_id,
+                    commit_id=commit_id,
+                    job_id_raw=str(message.job_id or ""),
+                    limit=limit,
+                    offset=offset,
                 )
-                if query_type == "unlabeled_samples":
-                    assert commit_id is not None
-                    annotated_subquery = select(CommitAnnotationMap.sample_id).where(
-                        CommitAnnotationMap.commit_id == commit_id
-                    )
-                    sample_stmt = sample_stmt.where(Sample.id.not_in(annotated_subquery))
-                    if selection_exclude_open_batches and loop_id_for_filter:
-                        open_batch_sample_subquery = (
-                            select(AnnotationBatchItem.sample_id)
-                            .join(AnnotationBatch, AnnotationBatchItem.batch_id == AnnotationBatch.id)
-                            .where(
-                                AnnotationBatch.loop_id == loop_id_for_filter,
-                                AnnotationBatch.status == AnnotationBatchStatus.OPEN,
-                            )
-                        )
-                        sample_stmt = sample_stmt.where(Sample.id.not_in(open_batch_sample_subquery))
-
-                rows = list((await session.exec(sample_stmt)).all())
-                page = rows
-                if len(page) > limit:
-                    page = page[:limit]
-                    next_cursor = str(offset + limit)
-
-                for sample, asset in page:
-                    asset_hash = ""
-                    download_url = ""
-                    width = 0
-                    height = 0
-                    if asset:
-                        asset_hash = asset.hash or ""
-                        meta = asset.meta_info or {}
-                        width = int(meta.get("width") or 0)
-                        height = int(meta.get("height") or 0)
-                        try:
-                            download_url = self.storage.get_presigned_url(asset.path)
-                        except Exception:
-                            download_url = ""
-
-                    if not download_url:
-                        continue
-
-                    items.append(
-                        pb.DataItem(
-                            sample_item=pb.SampleItem(
-                                id=str(sample.id),
-                                asset_hash=asset_hash,
-                                download_url=download_url,
-                                width=width,
-                                height=height,
-                                meta=runtime_codec.dict_to_struct(sample.meta_info or {}),
-                            )
-                        )
-                    )
-
             elif query_type == "annotations":
                 commit_id = _parse_uuid(message.commit_id, "commit_id")
-                mapping_stmt = (
-                    select(CommitAnnotationMap)
-                    .where(CommitAnnotationMap.commit_id == commit_id)
-                    .order_by(CommitAnnotationMap.sample_id)
-                    .offset(offset)
-                    .limit(limit + 1)
+                items, next_cursor = await self._query_annotations_items(
+                    session=session,
+                    commit_id=commit_id,
+                    limit=limit,
+                    offset=offset,
                 )
-                mappings = list((await session.exec(mapping_stmt)).all())
-                if len(mappings) > limit:
-                    mappings = mappings[:limit]
-                    next_cursor = str(offset + limit)
-
-                annotation_ids = [item.annotation_id for item in mappings]
-                ann_stmt = select(Annotation).where(Annotation.id.in_(annotation_ids)) if annotation_ids else None
-                ann_rows = list((await session.exec(ann_stmt)).all()) if ann_stmt is not None else []
-                ann_map = {item.id: item for item in ann_rows}
-                sample_ids = list({item.sample_id for item in mappings})
-                sample_size_map: dict[uuid.UUID, tuple[int, int]] = {}
-                if sample_ids:
-                    sample_stmt = (
-                        select(Sample, Asset)
-                        .join(Asset, Sample.primary_asset_id == Asset.id, isouter=True)
-                        .where(Sample.id.in_(sample_ids))
-                    )
-                    for sample, asset in (await session.exec(sample_stmt)).all():
-                        width = 0
-                        height = 0
-                        if asset:
-                            meta = asset.meta_info or {}
-                            width = int(meta.get("width") or 0)
-                            height = int(meta.get("height") or 0)
-                        sample_size_map[sample.id] = (width, height)
-
-                for mapping in mappings:
-                    ann = ann_map.get(mapping.annotation_id)
-                    if not ann:
-                        continue
-                    bbox_xywh = [0.0, 0.0, 0.0, 0.0]
-                    obb = None
-                    if ann.type == AnnotationType.RECT:
-                        data = ann.data or {}
-                        bbox_xywh = [
-                            float(data.get("x", 0.0)),
-                            float(data.get("y", 0.0)),
-                            float(data.get("width", 0.0)),
-                            float(data.get("height", 0.0)),
-                        ]
-                    elif ann.type == AnnotationType.OBB:
-                        data = ann.data or {}
-                        sample_width, sample_height = sample_size_map.get(ann.sample_id, (0, 0))
-                        normalized_obb = _normalize_obb_payload(data)
-                        if normalized_obb:
-                            cx = float(normalized_obb["cx"])
-                            cy = float(normalized_obb["cy"])
-                            w = float(normalized_obb["w"])
-                            h = float(normalized_obb["h"])
-                            if int(sample_width or 0) > 0 and int(sample_height or 0) > 0:
-                                cx *= float(sample_width)
-                                cy *= float(sample_height)
-                                w *= float(sample_width)
-                                h *= float(sample_height)
-                            bbox_xywh = [cx - w / 2, cy - h / 2, w, h]
-                        obb = normalized_obb
-
-                    item = pb.AnnotationItem(
-                        id=str(ann.id),
-                        sample_id=str(ann.sample_id),
-                        category_id=str(ann.label_id),
-                        bbox_xywh=bbox_xywh,
-                        source=ann.source.value,
-                        confidence=float(ann.confidence or 0.0),
-                    )
-                    if obb:
-                        item.obb.CopyFrom(runtime_codec.dict_to_struct(obb))
-                    items.append(pb.DataItem(annotation_item=item))
 
         return pb.RuntimeMessage(
             data_response=pb.DataResponse(

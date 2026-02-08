@@ -596,6 +596,54 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             )
         return plugin_capabilities
 
+    @staticmethod
+    def _apply_reject_close_policy(state: _RuntimeStreamState) -> bool:
+        if settings.RUNTIME_STREAM_REJECT_CLOSE:
+            state.close_stream_after_flush = True
+            return False
+        return True
+
+    async def _emit_register_reject(
+        self,
+        *,
+        state: _RuntimeStreamState,
+        register: pb.Register,
+        code: str,
+        message: str,
+        reason: str,
+    ) -> bool:
+        request_id = str(register.request_id or "")
+        await self._emit_stream_error(
+            state=state,
+            code=code,
+            message=message,
+            request_id=request_id or None,
+            reply_to=request_id,
+            reason=reason,
+        )
+        return self._apply_reject_close_policy(state)
+
+    def _build_dispatcher_register_kwargs(
+        self,
+        *,
+        state: _RuntimeStreamState,
+        register: pb.Register,
+        executor_id: str,
+        plugin_capabilities: list[dict[str, object]],
+    ) -> dict[str, object]:
+        plugin_ids = {item["plugin_id"] for item in plugin_capabilities}
+        resources = runtime_codec.resource_summary_to_dict(register.resources)
+        register_kwargs: dict[str, object] = {
+            "executor_id": executor_id,
+            "queue": state.outbox,
+            "version": str(register.version or ""),
+            "plugin_ids": plugin_ids,
+            "resources": resources,
+        }
+        if "plugin_capabilities" in inspect.signature(runtime_dispatcher.register).parameters:
+            register_kwargs["plugin_capabilities"] = plugin_capabilities
+        return register_kwargs
+
     async def _emit_stream_error(
         self,
         *,
@@ -637,62 +685,42 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             len(register.plugins),
         )
         if not executor_id:
-            await self._emit_stream_error(
+            return await self._emit_register_reject(
                 state=state,
+                register=register,
                 code="INVALID_ARGUMENT",
                 message="executor_id is required",
-                request_id=register.request_id or None,
-                reply_to=register.request_id or "",
                 reason="executor_id is required",
             )
-            if settings.RUNTIME_STREAM_REJECT_CLOSE:
-                state.close_stream_after_flush = True
-                return False
-            return True
 
         plugin_capabilities = self._build_plugin_capabilities(register)
-        plugin_ids = {item["plugin_id"] for item in plugin_capabilities}
-        resources = runtime_codec.resource_summary_to_dict(register.resources)
         try:
-            register_kwargs: dict[str, object] = {
-                "executor_id": executor_id,
-                "queue": state.outbox,
-                "version": str(register.version or ""),
-                "plugin_ids": plugin_ids,
-                "resources": resources,
-            }
-            if "plugin_capabilities" in inspect.signature(runtime_dispatcher.register).parameters:
-                register_kwargs["plugin_capabilities"] = plugin_capabilities
+            register_kwargs = self._build_dispatcher_register_kwargs(
+                state=state,
+                register=register,
+                executor_id=executor_id,
+                plugin_capabilities=plugin_capabilities,
+            )
             await runtime_dispatcher.register(**register_kwargs)
         except PermissionError as exc:
             logger.warning("执行器注册被拒绝 executor_id={} reason={}", executor_id, exc)
-            await self._emit_stream_error(
+            return await self._emit_register_reject(
                 state=state,
+                register=register,
                 code="FORBIDDEN",
                 message=str(exc),
-                request_id=register.request_id or None,
-                reply_to=register.request_id or "",
                 reason=str(exc),
             )
-            if settings.RUNTIME_STREAM_REJECT_CLOSE:
-                state.close_stream_after_flush = True
-                return False
-            return True
         except Exception as exc:
             logger.exception("执行器注册失败 executor_id={} error={}", executor_id, exc)
             error_text = f"register failed: {exc}"
-            await self._emit_stream_error(
+            return await self._emit_register_reject(
                 state=state,
+                register=register,
                 code="INTERNAL",
                 message=error_text,
-                request_id=register.request_id or None,
-                reply_to=register.request_id or "",
                 reason=error_text,
             )
-            if settings.RUNTIME_STREAM_REJECT_CLOSE:
-                state.close_stream_after_flush = True
-                return False
-            return True
 
         await state.outbox.put(
             runtime_codec.build_ack_message(

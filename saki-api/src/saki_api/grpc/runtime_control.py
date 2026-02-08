@@ -200,29 +200,6 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         return self._storage
 
     @staticmethod
-    def _error_details(
-            *,
-            reason: str,
-            request_id: str | None = None,
-            reply_to: str | None = None,
-            job_id: str | None = None,
-            query_type: str | None = None,
-            ack_for: str | None = None,
-    ) -> dict[str, str]:
-        details: dict[str, str] = {"reason": reason}
-        if request_id:
-            details["request_id"] = request_id
-        if reply_to:
-            details["reply_to"] = reply_to
-        if job_id:
-            details["job_id"] = job_id
-        if query_type:
-            details["query_type"] = query_type
-        if ack_for:
-            details["ack_for"] = ack_for
-        return details
-
-    @staticmethod
     def _extract_scalar_values(rows: list[object]) -> list[object]:
         values: list[object] = []
         for row in rows:
@@ -498,11 +475,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 runtime_codec.build_error_message(
                                     code="INVALID_ARGUMENT",
                                     message="executor_id is required",
-                                    details=self._error_details(
-                                        reason="executor_id is required",
-                                        request_id=register.request_id,
-                                        reply_to=register.request_id,
-                                    ),
+                                    request_id=register.request_id or None,
+                                    reply_to=register.request_id or "",
+                                    reason="executor_id is required",
                                 )
                             )
                             if settings.RUNTIME_STREAM_REJECT_CLOSE:
@@ -558,11 +533,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 runtime_codec.build_error_message(
                                     code="FORBIDDEN",
                                     message=str(exc),
-                                    details=self._error_details(
-                                        reason=str(exc),
-                                        request_id=register.request_id,
-                                        reply_to=register.request_id,
-                                    ),
+                                    request_id=register.request_id or None,
+                                    reply_to=register.request_id or "",
+                                    reason=str(exc),
                                 )
                             )
                             if settings.RUNTIME_STREAM_REJECT_CLOSE:
@@ -575,11 +548,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 runtime_codec.build_error_message(
                                     code="INTERNAL",
                                     message=f"register failed: {exc}",
-                                    details=self._error_details(
-                                        reason=f"register failed: {exc}",
-                                        request_id=register.request_id,
-                                        reply_to=register.request_id,
-                                    ),
+                                    request_id=register.request_id or None,
+                                    reply_to=register.request_id or "",
+                                    reason=f"register failed: {exc}",
                                 )
                             )
                             if settings.RUNTIME_STREAM_REJECT_CLOSE:
@@ -591,7 +562,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             runtime_codec.build_ack_message(
                                 ack_for=register.request_id,
                                 status=pb.OK,
-                                message="registered",
+                                ack_type="register",
+                                ack_reason="registered",
+                                detail="registered",
                             )
                         )
                         logger.info("执行器注册成功 executor_id={}", executor_id)
@@ -661,13 +634,11 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             response = runtime_codec.build_error_message(
                                 code="INVALID_ARGUMENT",
                                 message=str(exc),
-                                details=self._error_details(
-                                    reason=str(exc),
-                                    request_id=request.request_id,
-                                    reply_to=request.request_id,
-                                    job_id=request.job_id,
-                                    query_type=runtime_codec.query_type_to_text(request.query_type),
-                                ),
+                                request_id=request.request_id or None,
+                                reply_to=request.request_id,
+                                job_id=request.job_id,
+                                query_type=int(request.query_type),
+                                reason=str(exc),
                             )
                         except Exception as exc:
                             logger.exception(
@@ -680,13 +651,11 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             response = runtime_codec.build_error_message(
                                 code="INTERNAL",
                                 message=f"data request failed: {exc}",
-                                details=self._error_details(
-                                    reason=f"data request failed: {exc}",
-                                    request_id=request.request_id,
-                                    reply_to=request.request_id,
-                                    job_id=request.job_id,
-                                    query_type=runtime_codec.query_type_to_text(request.query_type),
-                                ),
+                                request_id=request.request_id or None,
+                                reply_to=request.request_id,
+                                job_id=request.job_id,
+                                query_type=int(request.query_type),
+                                reason=f"data request failed: {exc}",
                             )
                         await outbox.put(response)
                         if request_id:
@@ -708,23 +677,19 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             response = runtime_codec.build_error_message(
                                 code="INVALID_ARGUMENT",
                                 message=str(exc),
-                                details=self._error_details(
-                                    reason=str(exc),
-                                    request_id=request.request_id,
-                                    reply_to=request.request_id,
-                                    job_id=request.job_id,
-                                ),
+                                request_id=request.request_id or None,
+                                reply_to=request.request_id,
+                                job_id=request.job_id,
+                                reason=str(exc),
                             )
                         except Exception as exc:
                             response = runtime_codec.build_error_message(
                                 code="INTERNAL",
                                 message=f"upload ticket failed: {exc}",
-                                details=self._error_details(
-                                    reason=f"upload ticket failed: {exc}",
-                                    request_id=request.request_id,
-                                    reply_to=request.request_id,
-                                    job_id=request.job_id,
-                                ),
+                                request_id=request.request_id or None,
+                                reply_to=request.request_id,
+                                job_id=request.job_id,
+                                reason=f"upload ticket failed: {exc}",
                             )
                         await outbox.put(response)
                         if request_id:
@@ -741,7 +706,9 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         await runtime_dispatcher.handle_ack(
                             ack_for=str(ack.ack_for or ""),
                             status=int(ack.status),
-                            message=ack.message or None,
+                            ack_type=int(ack.type),
+                            ack_reason=int(ack.reason),
+                            detail=ack.detail or None,
                         )
                         if request_id:
                             dedup_cache.remember(request_id, "ack")
@@ -750,10 +717,12 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                     if payload_type == "error":
                         err = message.error
                         logger.error(
-                            "收到执行器错误消息 code={} message={} details={}",
+                            "收到执行器错误消息 code={} message={} reason={} reply_to={} ack_for={}",
                             err.code,
                             err.message,
-                            runtime_codec.struct_to_dict(err.details),
+                            err.reason,
+                            err.reply_to,
+                            err.ack_for,
                         )
                         continue
 

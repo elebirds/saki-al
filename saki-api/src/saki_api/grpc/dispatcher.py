@@ -874,8 +874,18 @@ class RuntimeDispatcher:
     async def send_upload_ticket_response(self, executor_id: str, response_payload: pb.RuntimeMessage) -> None:
         await self.send_data_response(executor_id, response_payload)
 
-    async def handle_ack(self, ack_for: str, status: int, message: str | None = None) -> None:
+    async def handle_ack(
+            self,
+            ack_for: str,
+            status: int,
+            ack_type: int = pb.ACK_TYPE_REQUEST,
+            ack_reason: int = pb.ACK_REASON_UNSPECIFIED,
+            detail: str | None = None,
+    ) -> None:
         is_ok = status == pb.OK
+        detail_text = str(detail or "").strip()
+        reason_text = runtime_codec.ack_reason_to_text(ack_reason)
+        resolved_reason = detail_text or reason_text or "rejected"
 
         if ack_for in self._pending_assign:
             pending = self._pending_assign.pop(ack_for)
@@ -905,15 +915,17 @@ class RuntimeDispatcher:
                         )
                     else:
                         job.status = TrainingJobStatus.FAILED
-                        job.last_error = message or "executor reject assignment"
+                        job.last_error = resolved_reason or "executor reject assignment"
                         job.ended_at = datetime.now(UTC)
                         job.assigned_executor_id = None
                         logger.warning(
-                            "任务派发被拒绝（ACK 失败） request_id={} job_id={} executor_id={} reason={}",
+                            "任务派发被拒绝（ACK 失败） request_id={} job_id={} executor_id={} ack_type={} ack_reason={} reason={}",
                             ack_for,
                             job_id,
                             pending.executor_id,
-                            message or "executor reject assignment",
+                            runtime_codec.ack_type_to_text(ack_type),
+                            reason_text,
+                            resolved_reason or "executor reject assignment",
                         )
                     session.add(job)
                     if release_executor_id:
@@ -939,10 +951,12 @@ class RuntimeDispatcher:
                 logger.info("停止任务请求已确认（ACK 成功） request_id={} job_id={}", ack_for, stop_job_id)
             else:
                 logger.warning(
-                    "停止任务请求确认失败（ACK 非 OK） request_id={} job_id={} reason={}",
+                    "停止任务请求确认失败（ACK 非 OK） request_id={} job_id={} ack_type={} ack_reason={} reason={}",
                     ack_for,
                     stop_job_id,
-                    message or "",
+                    runtime_codec.ack_type_to_text(ack_type),
+                    reason_text,
+                    resolved_reason,
                 )
 
         await self._try_persist_runtime_stats()

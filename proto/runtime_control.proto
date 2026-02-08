@@ -26,6 +26,24 @@ enum AckStatus {
   ERROR = 2;
 }
 
+enum AckType {
+  ACK_TYPE_UNSPECIFIED = 0;
+  ACK_TYPE_REGISTER = 1;
+  ACK_TYPE_ASSIGN_JOB = 2;
+  ACK_TYPE_STOP_JOB = 3;
+  ACK_TYPE_REQUEST = 4;
+}
+
+enum AckReason {
+  ACK_REASON_UNSPECIFIED = 0;
+  ACK_REASON_REGISTERED = 1;
+  ACK_REASON_ACCEPTED = 2;
+  ACK_REASON_EXECUTOR_BUSY = 3;
+  ACK_REASON_STOPPING = 4;
+  ACK_REASON_JOB_NOT_RUNNING = 5;
+  ACK_REASON_REJECTED = 6;
+}
+
 enum RuntimeJobType {
   RUNTIME_JOB_TYPE_UNSPECIFIED = 0;
   TRAIN_DETECTION = 1;
@@ -256,14 +274,20 @@ message Ack {
   string request_id = 1;
   string ack_for = 2;
   AckStatus status = 3;
-  string message = 4;
+  AckType type = 4;
+  AckReason reason = 5;
+  string detail = 6;
 }
 
 message Error {
   string request_id = 1;
   string code = 2;
   string message = 3;
-  google.protobuf.Struct details = 4;
+  string reply_to = 4;
+  string ack_for = 5;
+  string job_id = 6;
+  RuntimeQueryType query_type = 7;
+  string reason = 8;
 }
 
 message RuntimeMessage {

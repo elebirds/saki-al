@@ -122,7 +122,13 @@ async def test_runtime_logging_assign_and_ack_success(dispatcher_env, monkeypatc
     assert assigned is not None
     _ = await asyncio.wait_for(queue.get(), timeout=1)
 
-    await dispatcher.handle_ack(ack_for=assigned.request_id, status=pb.OK, message="accepted")
+    await dispatcher.handle_ack(
+        ack_for=assigned.request_id,
+        status=pb.OK,
+        ack_type=pb.ACK_TYPE_ASSIGN_JOB,
+        ack_reason=pb.ACK_REASON_ACCEPTED,
+        detail="accepted",
+    )
 
     assert capture.has("任务已派发，等待 ACK")
     assert capture.has("任务已开始执行（ACK 成功）")

@@ -31,7 +31,8 @@ async def test_error_message_resolves_pending_request_with_error(tmp_path):
                 request_id="err-1",
                 code="INTERNAL",
                 message="boom",
-                details=runtime_codec.dict_to_struct({"reply_to": "req-1", "reason": "boom"}),
+                reply_to="req-1",
+                reason="boom",
             )
         )
     )

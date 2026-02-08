@@ -61,7 +61,7 @@ async def test_runtime_stream_e2e_happy_path(monkeypatch):
     persisted_events: list[pb.JobEvent] = []
     persisted_results: list[pb.JobResult] = []
     heartbeats: list[tuple[str, bool, str]] = []
-    ack_records: list[tuple[str, int, str | None]] = []
+    ack_records: list[tuple[str, int, int, int, str | None]] = []
     mark_idle_records: list[tuple[str, str | None]] = []
     unregister_records: list[str] = []
 
@@ -112,8 +112,15 @@ async def test_runtime_stream_e2e_happy_path(monkeypatch):
     async def fake_unregister(executor_id: str) -> None:
         unregister_records.append(executor_id)
 
-    async def fake_handle_ack(*, ack_for: str, status: int, message: str | None = None) -> None:
-        ack_records.append((ack_for, status, message))
+    async def fake_handle_ack(
+        *,
+        ack_for: str,
+        status: int,
+        ack_type: int,
+        ack_reason: int,
+        detail: str | None = None,
+    ) -> None:
+        ack_records.append((ack_for, status, ack_type, ack_reason, detail))
 
     monkeypatch.setattr(service, "_persist_job_event", fake_persist_event)
     monkeypatch.setattr(service, "_persist_job_result", fake_persist_result)
@@ -152,8 +159,10 @@ async def test_runtime_stream_e2e_happy_path(monkeypatch):
 
         first = await client.recv()
         assert first.WhichOneof("payload") == "ack"
-        assert first.ack.message == "registered"
         assert first.ack.status == pb.OK
+        assert first.ack.type == pb.ACK_TYPE_REGISTER
+        assert first.ack.reason == pb.ACK_REASON_REGISTERED
+        assert first.ack.detail == "registered"
 
         second = await client.recv()
         assert second.WhichOneof("payload") == "assign_job"
@@ -165,7 +174,9 @@ async def test_runtime_stream_e2e_happy_path(monkeypatch):
                     request_id="ack-req-1",
                     ack_for="assign-req-1",
                     status=pb.OK,
-                    message="accepted",
+                    type=pb.ACK_TYPE_ASSIGN_JOB,
+                    reason=pb.ACK_REASON_ACCEPTED,
+                    detail="accepted",
                 )
             )
         )
@@ -221,7 +232,13 @@ async def test_runtime_stream_e2e_happy_path(monkeypatch):
         await asyncio.sleep(0.1)
 
         assert len(ack_records) == 1
-        assert ack_records[0][0] == "assign-req-1"
+        assert ack_records[0] == (
+            "assign-req-1",
+            pb.OK,
+            pb.ACK_TYPE_ASSIGN_JOB,
+            pb.ACK_REASON_ACCEPTED,
+            "accepted",
+        )
         assert len(heartbeats) == 1
         assert len(persisted_events) == 1
         assert len(persisted_results) == 1
@@ -290,9 +307,9 @@ async def test_runtime_stream_allowlist_reject(monkeypatch):
         response = await client.recv()
         assert response.WhichOneof("payload") == "error"
         assert response.error.code == "FORBIDDEN"
-        assert response.error.details.fields["request_id"].string_value == "register-req-allowlist"
-        assert response.error.details.fields["reply_to"].string_value == "register-req-allowlist"
-        assert response.error.details.fields["reason"].string_value == "executor is not in allowlist"
+        assert response.error.request_id == "register-req-allowlist"
+        assert response.error.reply_to == "register-req-allowlist"
+        assert response.error.reason == "executor is not in allowlist"
         with pytest.raises(EOFError):
             await client.recv(timeout=0.5)
         await client.close()
@@ -394,9 +411,9 @@ async def test_runtime_stream_missing_executor_id_returns_structured_error():
         response = await client.recv()
         assert response.WhichOneof("payload") == "error"
         assert response.error.code == "INVALID_ARGUMENT"
-        assert response.error.details.fields["request_id"].string_value == "register-missing-executor"
-        assert response.error.details.fields["reply_to"].string_value == "register-missing-executor"
-        assert response.error.details.fields["reason"].string_value == "executor_id is required"
+        assert response.error.request_id == "register-missing-executor"
+        assert response.error.reply_to == "register-missing-executor"
+        assert response.error.reason == "executor_id is required"
         await client.close()
     finally:
         await server.stop(grace=0)
@@ -944,7 +961,7 @@ async def test_runtime_stream_duplicate_job_result_only_persists_once(monkeypatc
 @pytest.mark.anyio
 async def test_runtime_stream_duplicate_ack_only_handles_once(monkeypatch):
     service = RuntimeControlService()
-    ack_records: list[tuple[str, int, str | None]] = []
+    ack_records: list[tuple[str, int, int, int, str | None]] = []
 
     async def fake_register(
         *,
@@ -959,8 +976,15 @@ async def test_runtime_stream_duplicate_ack_only_handles_once(monkeypatch):
     async def fake_unregister(executor_id: str) -> None:
         return
 
-    async def fake_handle_ack(*, ack_for: str, status: int, message: str | None = None) -> None:
-        ack_records.append((ack_for, status, message))
+    async def fake_handle_ack(
+        *,
+        ack_for: str,
+        status: int,
+        ack_type: int,
+        ack_reason: int,
+        detail: str | None = None,
+    ) -> None:
+        ack_records.append((ack_for, status, ack_type, ack_reason, detail))
 
     monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
     monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "unregister", fake_unregister)
@@ -990,7 +1014,9 @@ async def test_runtime_stream_duplicate_ack_only_handles_once(monkeypatch):
                 request_id="dup-ack-request-1",
                 ack_for="assign-1",
                 status=pb.OK,
-                message="accepted",
+                type=pb.ACK_TYPE_ASSIGN_JOB,
+                reason=pb.ACK_REASON_ACCEPTED,
+                detail="accepted",
             )
         )
         await client.send(message)
@@ -998,6 +1024,14 @@ async def test_runtime_stream_duplicate_ack_only_handles_once(monkeypatch):
         await asyncio.sleep(0.1)
         await client.close()
 
-        assert ack_records == [("assign-1", pb.OK, "accepted")]
+        assert ack_records == [
+            (
+                "assign-1",
+                pb.OK,
+                pb.ACK_TYPE_ASSIGN_JOB,
+                pb.ACK_REASON_ACCEPTED,
+                "accepted",
+            )
+        ]
     finally:
         await server.stop(grace=0)

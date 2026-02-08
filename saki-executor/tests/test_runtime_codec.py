@@ -7,12 +7,17 @@ def test_build_ack_message():
         request_id="r1",
         ack_for="r0",
         ok=True,
-        message="accepted",
+        ack_type="assign_job",
+        ack_reason="accepted",
+        detail="accepted",
     )
     assert message.WhichOneof("payload") == "ack"
     assert message.ack.request_id == "r1"
     assert message.ack.ack_for == "r0"
     assert message.ack.status == pb.OK
+    assert message.ack.type == pb.ACK_TYPE_ASSIGN_JOB
+    assert message.ack.reason == pb.ACK_REASON_ACCEPTED
+    assert message.ack.detail == "accepted"
 
 
 def test_parse_assign_job_payload():
@@ -61,11 +66,14 @@ def test_parse_error_message_includes_reply_to_and_error():
         request_id="err-1",
         code="INTERNAL",
         message="boom",
-        details=codec.dict_to_struct({"reply_to": "req-1", "reason": "boom"}),
+        reply_to="req-1",
+        reason="boom",
+        query_type=pb.LABELS,
     )
     parsed = codec.parse_error(error_payload)
     assert parsed["reply_to"] == "req-1"
     assert parsed["error"] == "boom"
+    assert parsed["query_type"] == "labels"
 
 
 def test_build_register_message_with_accelerators():

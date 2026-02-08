@@ -57,6 +57,24 @@ _ACCELERATOR_TYPE_TO_TEXT: dict[int, str] = {
 }
 _TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCELERATOR_TYPE_TO_TEXT.items()}
 
+_ACK_TYPE_TO_TEXT: dict[int, str] = {
+    pb.ACK_TYPE_REGISTER: "register",
+    pb.ACK_TYPE_ASSIGN_JOB: "assign_job",
+    pb.ACK_TYPE_STOP_JOB: "stop_job",
+    pb.ACK_TYPE_REQUEST: "request",
+}
+_TEXT_TO_ACK_TYPE: dict[str, int] = {value: key for key, value in _ACK_TYPE_TO_TEXT.items()}
+
+_ACK_REASON_TO_TEXT: dict[int, str] = {
+    pb.ACK_REASON_REGISTERED: "registered",
+    pb.ACK_REASON_ACCEPTED: "accepted",
+    pb.ACK_REASON_EXECUTOR_BUSY: "executor_busy",
+    pb.ACK_REASON_STOPPING: "stopping",
+    pb.ACK_REASON_JOB_NOT_RUNNING: "job_not_running",
+    pb.ACK_REASON_REJECTED: "rejected",
+}
+_TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
+
 
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
     struct = Struct()
@@ -87,6 +105,22 @@ def ack_status_to_text(status: int) -> str:
 
 def text_to_ack_status(status: str | None) -> int:
     return pb.OK if (status or "").lower() == "ok" else pb.ERROR
+
+
+def ack_type_to_text(ack_type: int) -> str:
+    return _ACK_TYPE_TO_TEXT.get(int(ack_type), "request")
+
+
+def text_to_ack_type(ack_type: str | None) -> int:
+    return _TEXT_TO_ACK_TYPE.get((ack_type or "").strip().lower(), pb.ACK_TYPE_REQUEST)
+
+
+def ack_reason_to_text(reason: int) -> str:
+    return _ACK_REASON_TO_TEXT.get(int(reason), "rejected")
+
+
+def text_to_ack_reason(reason: str | None) -> int:
+    return _TEXT_TO_ACK_REASON.get((reason or "").strip().lower(), pb.ACK_REASON_REJECTED)
 
 
 def job_type_to_text(job_type: int) -> str:
@@ -223,15 +257,21 @@ def build_ack_message(
         *,
         ack_for: str,
         status: int,
-        message: str,
+        ack_type: int | str,
+        ack_reason: int | str,
+        detail: str = "",
         request_id: str | None = None,
 ) -> pb.RuntimeMessage:
+    ack_type_value = ack_type if isinstance(ack_type, int) else text_to_ack_type(ack_type)
+    ack_reason_value = ack_reason if isinstance(ack_reason, int) else text_to_ack_reason(ack_reason)
     return pb.RuntimeMessage(
         ack=pb.Ack(
             request_id=request_id or str(uuid.uuid4()),
             ack_for=ack_for,
             status=status,
-            message=message,
+            type=int(ack_type_value),
+            reason=int(ack_reason_value),
+            detail=detail,
         )
     )
 
@@ -240,15 +280,28 @@ def build_error_message(
         *,
         code: str,
         message: str,
-        details: Mapping[str, Any] | None = None,
+        reply_to: str = "",
+        ack_for: str = "",
+        job_id: str = "",
+        query_type: int | str | None = None,
+        reason: str = "",
         request_id: str | None = None,
 ) -> pb.RuntimeMessage:
+    query_type_value = pb.RUNTIME_QUERY_TYPE_UNSPECIFIED
+    if isinstance(query_type, int):
+        query_type_value = query_type
+    elif isinstance(query_type, str):
+        query_type_value = text_to_query_type(query_type)
     return pb.RuntimeMessage(
         error=pb.Error(
             request_id=request_id or str(uuid.uuid4()),
             code=code,
             message=message,
-            details=dict_to_struct(details),
+            reply_to=reply_to,
+            ack_for=ack_for,
+            job_id=job_id,
+            query_type=query_type_value,
+            reason=reason,
         )
     )
 

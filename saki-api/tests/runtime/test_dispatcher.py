@@ -117,7 +117,13 @@ async def test_assign_and_ack_success_updates_job_and_executor(dispatcher_env):
     assert message.assign_job.job.plugin_id == "demo_det_v1"
     assert message.assign_job.job.iteration == 1
 
-    await dispatcher.handle_ack(ack_for=assigned.request_id, status=pb.OK, message="accepted")
+    await dispatcher.handle_ack(
+        ack_for=assigned.request_id,
+        status=pb.OK,
+        ack_type=pb.ACK_TYPE_ASSIGN_JOB,
+        ack_reason=pb.ACK_REASON_ACCEPTED,
+        detail="accepted",
+    )
 
     async with session_local() as session:
         persisted_job = await session.get(Job, job.id)
@@ -293,7 +299,13 @@ async def test_assign_and_ack_failure_releases_executor(dispatcher_env):
     assert assigned is not None
     _ = await asyncio.wait_for(queue.get(), timeout=1)
 
-    await dispatcher.handle_ack(ack_for=assigned.request_id, status=pb.ERROR, message="reject assignment")
+    await dispatcher.handle_ack(
+        ack_for=assigned.request_id,
+        status=pb.ERROR,
+        ack_type=pb.ACK_TYPE_ASSIGN_JOB,
+        ack_reason=pb.ACK_REASON_REJECTED,
+        detail="reject assignment",
+    )
 
     async with session_local() as session:
         persisted_job = await session.get(Job, job.id)
@@ -327,7 +339,13 @@ async def test_stop_job_dispatches_command_and_clears_pending_stop_on_ack(dispat
     assigned = await dispatcher.assign_job(job)
     assert assigned is not None
     _ = await asyncio.wait_for(queue.get(), timeout=1)
-    await dispatcher.handle_ack(ack_for=assigned.request_id, status=pb.OK, message="accepted")
+    await dispatcher.handle_ack(
+        ack_for=assigned.request_id,
+        status=pb.OK,
+        ack_type=pb.ACK_TYPE_ASSIGN_JOB,
+        ack_reason=pb.ACK_REASON_ACCEPTED,
+        detail="accepted",
+    )
 
     request_id, dispatched = await dispatcher.stop_job(str(job.id), reason="user_cancel")
     assert dispatched is True
@@ -337,7 +355,13 @@ async def test_stop_job_dispatches_command_and_clears_pending_stop_on_ack(dispat
     assert stop_message.stop_job.job_id == str(job.id)
     assert stop_message.stop_job.reason == "user_cancel"
 
-    await dispatcher.handle_ack(ack_for=request_id, status=pb.OK, message="stopping")
+    await dispatcher.handle_ack(
+        ack_for=request_id,
+        status=pb.OK,
+        ack_type=pb.ACK_TYPE_STOP_JOB,
+        ack_reason=pb.ACK_REASON_STOPPING,
+        detail="stopping",
+    )
     assert request_id not in dispatcher._pending_stop
 
     _, dispatched_missing = await dispatcher.stop_job("missing-job-id", reason="none")
@@ -360,7 +384,13 @@ async def test_stop_job_duplicate_request_is_deduplicated(dispatcher_env):
     assigned = await dispatcher.assign_job(job)
     assert assigned is not None
     _ = await asyncio.wait_for(queue.get(), timeout=1)
-    await dispatcher.handle_ack(ack_for=assigned.request_id, status=pb.OK, message="accepted")
+    await dispatcher.handle_ack(
+        ack_for=assigned.request_id,
+        status=pb.OK,
+        ack_type=pb.ACK_TYPE_ASSIGN_JOB,
+        ack_reason=pb.ACK_REASON_ACCEPTED,
+        detail="accepted",
+    )
 
     first_request_id, first_dispatched = await dispatcher.stop_job(str(job.id), reason="user_cancel")
     second_request_id, second_dispatched = await dispatcher.stop_job(str(job.id), reason="user_cancel")

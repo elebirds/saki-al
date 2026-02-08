@@ -61,6 +61,24 @@ _ACCELERATOR_TYPE_TO_TEXT: dict[int, str] = {
 }
 _TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCELERATOR_TYPE_TO_TEXT.items()}
 
+_ACK_TYPE_TO_TEXT: dict[int, str] = {
+    pb.ACK_TYPE_REGISTER: "register",
+    pb.ACK_TYPE_ASSIGN_JOB: "assign_job",
+    pb.ACK_TYPE_STOP_JOB: "stop_job",
+    pb.ACK_TYPE_REQUEST: "request",
+}
+_TEXT_TO_ACK_TYPE: dict[str, int] = {value: key for key, value in _ACK_TYPE_TO_TEXT.items()}
+
+_ACK_REASON_TO_TEXT: dict[int, str] = {
+    pb.ACK_REASON_REGISTERED: "registered",
+    pb.ACK_REASON_ACCEPTED: "accepted",
+    pb.ACK_REASON_EXECUTOR_BUSY: "executor_busy",
+    pb.ACK_REASON_STOPPING: "stopping",
+    pb.ACK_REASON_JOB_NOT_RUNNING: "job_not_running",
+    pb.ACK_REASON_REJECTED: "rejected",
+}
+_TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
+
 
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
     struct = Struct()
@@ -98,6 +116,22 @@ def accelerator_type_to_text(accelerator: int) -> str:
 
 def text_to_accelerator_type(accelerator: str | None) -> int:
     return _TEXT_TO_ACCELERATOR_TYPE.get((accelerator or "").strip().lower(), pb.ACCELERATOR_TYPE_UNSPECIFIED)
+
+
+def ack_type_to_text(ack_type: int) -> str:
+    return _ACK_TYPE_TO_TEXT.get(int(ack_type), "request")
+
+
+def text_to_ack_type(ack_type: str | None) -> int:
+    return _TEXT_TO_ACK_TYPE.get((ack_type or "").strip().lower(), pb.ACK_TYPE_REQUEST)
+
+
+def ack_reason_to_text(reason: int) -> str:
+    return _ACK_REASON_TO_TEXT.get(int(reason), "rejected")
+
+
+def text_to_ack_reason(reason: str | None) -> int:
+    return _TEXT_TO_ACK_REASON.get((reason or "").strip().lower(), pb.ACK_REASON_REJECTED)
 
 
 def _dict_to_resource_summary(resources: Mapping[str, Any] | None) -> pb.ResourceSummary:
@@ -256,13 +290,23 @@ def build_heartbeat_message(
     )
 
 
-def build_ack_message(*, request_id: str, ack_for: str, ok: bool, message: str) -> pb.RuntimeMessage:
+def build_ack_message(
+    *,
+    request_id: str,
+    ack_for: str,
+    ok: bool,
+    ack_type: str,
+    ack_reason: str,
+    detail: str = "",
+) -> pb.RuntimeMessage:
     return pb.RuntimeMessage(
         ack=pb.Ack(
             request_id=request_id,
             ack_for=ack_for,
             status=pb.OK if ok else pb.ERROR,
-            message=message,
+            type=text_to_ack_type(ack_type),
+            reason=text_to_ack_reason(ack_reason),
+            detail=detail,
         )
     )
 
@@ -497,13 +541,17 @@ def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict
 
 
 def parse_error(error_payload: pb.Error) -> dict[str, Any]:
-    details = struct_to_dict(error_payload.details)
+    query_type = ""
+    if int(error_payload.query_type) != pb.RUNTIME_QUERY_TYPE_UNSPECIFIED:
+        query_type = query_type_to_text(error_payload.query_type)
     return {
         "request_id": error_payload.request_id,
         "code": error_payload.code,
         "message": error_payload.message,
-        "details": details,
-        "reply_to": str(details.get("reply_to") or details.get("request_id") or ""),
-        "ack_for": str(details.get("ack_for") or ""),
-        "error": error_payload.message or error_payload.code or "runtime error",
+        "reply_to": error_payload.reply_to,
+        "ack_for": error_payload.ack_for,
+        "job_id": error_payload.job_id,
+        "query_type": query_type,
+        "reason": error_payload.reason,
+        "error": error_payload.reason or error_payload.message or error_payload.code or "runtime error",
     }

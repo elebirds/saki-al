@@ -220,10 +220,12 @@ class AgentClient:
         if payload_type == "error":
             parsed = runtime_codec.parse_error(message.error)
             logger.error(
-                "收到服务端错误消息: code={} message={} details={}",
+                "收到服务端错误消息: code={} message={} reason={} reply_to={} ack_for={}",
                 parsed.get("code"),
                 parsed.get("message"),
-                parsed.get("details"),
+                parsed.get("reason"),
+                parsed.get("reply_to"),
+                parsed.get("ack_for"),
             )
             reply_to = str(parsed.get("reply_to") or parsed.get("ack_for") or parsed.get("request_id") or "")
             if reply_to:
@@ -234,7 +236,12 @@ class AgentClient:
 
         if payload_type == "ack":
             ack = message.ack
-            if str(ack.message or "") == "registered" and int(ack.status) == pb.OK and not self.job_manager.busy:
+            if (
+                int(ack.status) == pb.OK
+                and int(ack.type) == pb.ACK_TYPE_REGISTER
+                and int(ack.reason) == pb.ACK_REASON_REGISTERED
+                and not self.job_manager.busy
+            ):
                 self.job_manager.executor_state = ExecutorState.IDLE
                 self._connected = True
                 logger.info("执行器注册成功 executor_id={}", settings.EXECUTOR_ID)
@@ -256,7 +263,9 @@ class AgentClient:
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
                 ok=accepted,
-                message="accepted" if accepted else "executor busy",
+                ack_type="assign_job",
+                ack_reason="accepted" if accepted else "executor_busy",
+                detail="accepted" if accepted else "executor busy",
             )
             await self.send_message(ack_message)
             self._cache_control_ack(request_id, ack_message)
@@ -278,7 +287,9 @@ class AgentClient:
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
                 ok=stopped,
-                message="stopping" if stopped else "job not running",
+                ack_type="stop_job",
+                ack_reason="stopping" if stopped else "job_not_running",
+                detail="stopping" if stopped else "job not running",
             )
             await self.send_message(ack_message)
             self._cache_control_ack(request_id, ack_message)

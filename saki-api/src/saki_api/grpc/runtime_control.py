@@ -7,12 +7,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+from dataclasses import dataclass
 from loguru import logger
 import time
 import uuid
 from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 import grpc
 from sqlmodel import select
@@ -187,6 +187,14 @@ class _RequestDedupCache:
         )
         self._entries.move_to_end(request_id)
         self._evict()
+
+
+@dataclass
+class _RuntimeStreamState:
+    outbox: asyncio.Queue[pb.RuntimeMessage]
+    dedup_cache: _RequestDedupCache
+    executor_id: str | None = None
+    close_stream_after_flush: bool = False
 
 
 class RuntimeControlService(pb_grpc.RuntimeControlServicer):
@@ -441,314 +449,409 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
 
         return items, next_cursor
 
+    @staticmethod
+    def _build_plugin_capabilities(register: pb.Register) -> list[dict[str, object]]:
+        plugin_capabilities: list[dict[str, object]] = []
+        for item in register.plugins:
+            plugin_id = str(item.plugin_id or "").strip()
+            if not plugin_id:
+                continue
+            supported_accelerators = [
+                runtime_codec.accelerator_type_to_text(v)
+                for v in item.supported_accelerators
+                if runtime_codec.accelerator_type_to_text(v)
+            ]
+            supports_auto_fallback = bool(item.supports_auto_fallback)
+            if not supported_accelerators and not supports_auto_fallback:
+                # Proto3 bool cannot distinguish "unset" from false; keep backward-compatible default.
+                supports_auto_fallback = True
+            plugin_capabilities.append(
+                {
+                    "plugin_id": plugin_id,
+                    "display_name": str(item.display_name or plugin_id),
+                    "version": str(item.version or ""),
+                    "supported_job_types": [str(v) for v in item.supported_job_types],
+                    "supported_strategies": [str(v) for v in item.supported_strategies],
+                    "request_config_schema": runtime_codec.struct_to_dict(item.request_config_schema),
+                    "default_request_config": runtime_codec.struct_to_dict(item.default_request_config),
+                    "supported_accelerators": supported_accelerators,
+                    "supports_auto_fallback": supports_auto_fallback,
+                }
+            )
+        return plugin_capabilities
+
+    async def _emit_stream_error(
+        self,
+        *,
+        state: _RuntimeStreamState,
+        code: str,
+        message: str,
+        request_id: str | None,
+        reply_to: str,
+        reason: str,
+        job_id: str | None = None,
+        query_type: int | None = None,
+    ) -> None:
+        await state.outbox.put(
+            runtime_codec.build_error_message(
+                code=code,
+                message=message,
+                request_id=request_id,
+                reply_to=reply_to,
+                reason=reason,
+                job_id=job_id,
+                query_type=query_type,
+            )
+        )
+
+    async def _handle_stream_register(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        register = message.register
+        state.executor_id = str(register.executor_id or "")
+        executor_id = state.executor_id
+
+        logger.info(
+            "收到执行器注册请求 executor_id={} version={} plugin_count={}",
+            executor_id or "<empty>",
+            str(register.version or ""),
+            len(register.plugins),
+        )
+        if not executor_id:
+            await self._emit_stream_error(
+                state=state,
+                code="INVALID_ARGUMENT",
+                message="executor_id is required",
+                request_id=register.request_id or None,
+                reply_to=register.request_id or "",
+                reason="executor_id is required",
+            )
+            if settings.RUNTIME_STREAM_REJECT_CLOSE:
+                state.close_stream_after_flush = True
+                return False
+            return True
+
+        plugin_capabilities = self._build_plugin_capabilities(register)
+        plugin_ids = {item["plugin_id"] for item in plugin_capabilities}
+        resources = runtime_codec.resource_summary_to_dict(register.resources)
+        try:
+            register_kwargs: dict[str, object] = {
+                "executor_id": executor_id,
+                "queue": state.outbox,
+                "version": str(register.version or ""),
+                "plugin_ids": plugin_ids,
+                "resources": resources,
+            }
+            if "plugin_capabilities" in inspect.signature(runtime_dispatcher.register).parameters:
+                register_kwargs["plugin_capabilities"] = plugin_capabilities
+            await runtime_dispatcher.register(**register_kwargs)
+        except PermissionError as exc:
+            logger.warning("执行器注册被拒绝 executor_id={} reason={}", executor_id, exc)
+            await self._emit_stream_error(
+                state=state,
+                code="FORBIDDEN",
+                message=str(exc),
+                request_id=register.request_id or None,
+                reply_to=register.request_id or "",
+                reason=str(exc),
+            )
+            if settings.RUNTIME_STREAM_REJECT_CLOSE:
+                state.close_stream_after_flush = True
+                return False
+            return True
+        except Exception as exc:
+            logger.exception("执行器注册失败 executor_id={} error={}", executor_id, exc)
+            error_text = f"register failed: {exc}"
+            await self._emit_stream_error(
+                state=state,
+                code="INTERNAL",
+                message=error_text,
+                request_id=register.request_id or None,
+                reply_to=register.request_id or "",
+                reason=error_text,
+            )
+            if settings.RUNTIME_STREAM_REJECT_CLOSE:
+                state.close_stream_after_flush = True
+                return False
+            return True
+
+        await state.outbox.put(
+            runtime_codec.build_ack_message(
+                ack_for=register.request_id,
+                status=pb.OK,
+                ack_type="register",
+                ack_reason="registered",
+                detail="registered",
+            )
+        )
+        logger.info("执行器注册成功 executor_id={}", executor_id)
+        return True
+
+    async def _handle_stream_heartbeat(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        heartbeat = message.heartbeat
+        if not state.executor_id:
+            return True
+        await runtime_dispatcher.heartbeat(
+            executor_id=state.executor_id,
+            busy=bool(heartbeat.busy),
+            current_job_id=heartbeat.current_job_id or None,
+            resources=runtime_codec.resource_summary_to_dict(heartbeat.resources),
+        )
+        return True
+
+    async def _handle_stream_job_event(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        request = message.job_event
+        request_id = str(request.request_id or "")
+        duplicated, _ = state.dedup_cache.get(request_id, "job_event")
+        if duplicated:
+            logger.info("忽略重复 job_event request_id={}", request_id)
+            return True
+
+        await self._persist_job_event(request)
+        if request_id:
+            state.dedup_cache.remember(request_id, "job_event")
+        return True
+
+    async def _handle_stream_job_result(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        request = message.job_result
+        request_id = str(request.request_id or "")
+        duplicated, _ = state.dedup_cache.get(request_id, "job_result")
+        if duplicated:
+            logger.info("忽略重复 job_result request_id={}", request_id)
+            return True
+
+        await self._persist_job_result(request)
+        logger.info(
+            "收到任务结果并完成持久化 request_id={} job_id={} status={}",
+            request_id,
+            request.job_id,
+            request.status,
+        )
+        if state.executor_id:
+            await runtime_dispatcher.mark_executor_idle(
+                executor_id=state.executor_id,
+                job_id=request.job_id,
+            )
+        if request_id:
+            state.dedup_cache.remember(request_id, "job_result")
+        return True
+
+    async def _handle_stream_data_request(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        request = message.data_request
+        request_id = str(request.request_id or "")
+        duplicated, cached_response = state.dedup_cache.get(request_id, "data_request")
+        if duplicated:
+            if cached_response is not None:
+                await state.outbox.put(cached_response)
+            logger.info("命中 data_request 幂等缓存 request_id={}", request_id)
+            return True
+
+        try:
+            response = await self._build_data_response(request)
+        except ValueError as exc:
+            response = runtime_codec.build_error_message(
+                code="INVALID_ARGUMENT",
+                message=str(exc),
+                request_id=request.request_id or None,
+                reply_to=request.request_id,
+                job_id=request.job_id,
+                query_type=int(request.query_type),
+                reason=str(exc),
+            )
+        except Exception as exc:
+            logger.exception(
+                "data_request 处理失败 request_id={} job_id={} query_type={} error={}",
+                request.request_id,
+                request.job_id,
+                runtime_codec.query_type_to_text(request.query_type),
+                exc,
+            )
+            response = runtime_codec.build_error_message(
+                code="INTERNAL",
+                message=f"data request failed: {exc}",
+                request_id=request.request_id or None,
+                reply_to=request.request_id,
+                job_id=request.job_id,
+                query_type=int(request.query_type),
+                reason=f"data request failed: {exc}",
+            )
+        await state.outbox.put(response)
+        if request_id:
+            state.dedup_cache.remember(request_id, "data_request", response=response)
+        return True
+
+    async def _handle_stream_upload_ticket_request(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        request = message.upload_ticket_request
+        request_id = str(request.request_id or "")
+        duplicated, cached_response = state.dedup_cache.get(request_id, "upload_ticket_request")
+        if duplicated:
+            if cached_response is not None:
+                await state.outbox.put(cached_response)
+            logger.info("命中 upload_ticket_request 幂等缓存 request_id={}", request_id)
+            return True
+
+        try:
+            response = await self._build_upload_ticket_response(request)
+        except ValueError as exc:
+            response = runtime_codec.build_error_message(
+                code="INVALID_ARGUMENT",
+                message=str(exc),
+                request_id=request.request_id or None,
+                reply_to=request.request_id,
+                job_id=request.job_id,
+                reason=str(exc),
+            )
+        except Exception as exc:
+            response = runtime_codec.build_error_message(
+                code="INTERNAL",
+                message=f"upload ticket failed: {exc}",
+                request_id=request.request_id or None,
+                reply_to=request.request_id,
+                job_id=request.job_id,
+                reason=f"upload ticket failed: {exc}",
+            )
+        await state.outbox.put(response)
+        if request_id:
+            state.dedup_cache.remember(request_id, "upload_ticket_request", response=response)
+        return True
+
+    async def _handle_stream_ack(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        ack = message.ack
+        request_id = str(ack.request_id or "")
+        duplicated, _ = state.dedup_cache.get(request_id, "ack")
+        if duplicated:
+            logger.info("忽略重复 ack request_id={} ack_for={}", request_id, ack.ack_for)
+            return True
+        await runtime_dispatcher.handle_ack(
+            ack_for=str(ack.ack_for or ""),
+            status=int(ack.status),
+            ack_type=int(ack.type),
+            ack_reason=int(ack.reason),
+            detail=ack.detail or None,
+        )
+        if request_id:
+            state.dedup_cache.remember(request_id, "ack")
+        return True
+
+    async def _handle_stream_error(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        del state
+        err = message.error
+        logger.error(
+            "收到执行器错误消息 code={} message={} reason={} reply_to={} ack_for={}",
+            err.code,
+            err.message,
+            err.reason,
+            err.reply_to,
+            err.ack_for,
+        )
+        return True
+
+    async def _dispatch_stream_message(
+        self,
+        *,
+        message: pb.RuntimeMessage,
+        state: _RuntimeStreamState,
+    ) -> bool:
+        payload_type = message.WhichOneof("payload")
+        if payload_type == "register":
+            return await self._handle_stream_register(message=message, state=state)
+        if payload_type == "heartbeat":
+            return await self._handle_stream_heartbeat(message=message, state=state)
+        if payload_type == "job_event":
+            return await self._handle_stream_job_event(message=message, state=state)
+        if payload_type == "job_result":
+            return await self._handle_stream_job_result(message=message, state=state)
+        if payload_type == "data_request":
+            return await self._handle_stream_data_request(message=message, state=state)
+        if payload_type == "upload_ticket_request":
+            return await self._handle_stream_upload_ticket_request(message=message, state=state)
+        if payload_type == "ack":
+            return await self._handle_stream_ack(message=message, state=state)
+        if payload_type == "error":
+            return await self._handle_stream_error(message=message, state=state)
+        logger.warning("未知 runtime 消息类型 payload_type={}", payload_type)
+        return True
+
     async def Stream(self, request_iterator, context):
         metadata = dict(context.invocation_metadata())
         if metadata.get("x-internal-token") != settings.INTERNAL_TOKEN:
             logger.warning("拒绝未授权 runtime 连接 peer={}", context.peer())
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid internal token")
 
-        outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
-        executor_id: Optional[str] = None
-        close_stream_after_flush = False
-        dedup_cache = _RequestDedupCache(
-            ttl_sec=settings.RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC,
-            max_entries=settings.RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES,
+        state = _RuntimeStreamState(
+            outbox=asyncio.Queue(),
+            dedup_cache=_RequestDedupCache(
+                ttl_sec=settings.RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC,
+                max_entries=settings.RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES,
+            ),
         )
 
         async def _reader() -> None:
-            nonlocal executor_id, close_stream_after_flush
             async for message in request_iterator:
                 try:
-                    payload_type = message.WhichOneof("payload")
-
-                    if payload_type == "register":
-                        register = message.register
-                        executor_id = str(register.executor_id or "")
-                        logger.info(
-                            "收到执行器注册请求 executor_id={} version={} plugin_count={}",
-                            executor_id or "<empty>",
-                            str(register.version or ""),
-                            len(register.plugins),
-                        )
-                        if not executor_id:
-                            await outbox.put(
-                                runtime_codec.build_error_message(
-                                    code="INVALID_ARGUMENT",
-                                    message="executor_id is required",
-                                    request_id=register.request_id or None,
-                                    reply_to=register.request_id or "",
-                                    reason="executor_id is required",
-                                )
-                            )
-                            if settings.RUNTIME_STREAM_REJECT_CLOSE:
-                                close_stream_after_flush = True
-                                break
-                            continue
-
-                        plugin_capabilities = []
-                        for item in register.plugins:
-                            plugin_id = str(item.plugin_id or "").strip()
-                            if not plugin_id:
-                                continue
-                            supported_accelerators = [
-                                runtime_codec.accelerator_type_to_text(v)
-                                for v in item.supported_accelerators
-                                if runtime_codec.accelerator_type_to_text(v)
-                            ]
-                            supports_auto_fallback = bool(item.supports_auto_fallback)
-                            if not supported_accelerators and not supports_auto_fallback:
-                                # Proto3 bool cannot distinguish "unset" from false; keep backward-compatible default.
-                                supports_auto_fallback = True
-                            plugin_capabilities.append(
-                                {
-                                    "plugin_id": plugin_id,
-                                    "display_name": str(item.display_name or plugin_id),
-                                    "version": str(item.version or ""),
-                                    "supported_job_types": [str(v) for v in item.supported_job_types],
-                                    "supported_strategies": [str(v) for v in item.supported_strategies],
-                                    "request_config_schema": runtime_codec.struct_to_dict(item.request_config_schema),
-                                    "default_request_config": runtime_codec.struct_to_dict(item.default_request_config),
-                                    "supported_accelerators": supported_accelerators,
-                                    "supports_auto_fallback": supports_auto_fallback,
-                                }
-                            )
-                        plugin_ids = {item["plugin_id"] for item in plugin_capabilities}
-                        resources = runtime_codec.resource_summary_to_dict(register.resources)
-                        try:
-                            register_kwargs = {
-                                "executor_id": executor_id,
-                                "queue": outbox,
-                                "version": str(register.version or ""),
-                                "plugin_ids": plugin_ids,
-                                "resources": resources,
-                            }
-                            if "plugin_capabilities" in inspect.signature(runtime_dispatcher.register).parameters:
-                                register_kwargs["plugin_capabilities"] = plugin_capabilities
-                            await runtime_dispatcher.register(
-                                **register_kwargs,
-                            )
-                        except PermissionError as exc:
-                            logger.warning("执行器注册被拒绝 executor_id={} reason={}", executor_id, exc)
-                            await outbox.put(
-                                runtime_codec.build_error_message(
-                                    code="FORBIDDEN",
-                                    message=str(exc),
-                                    request_id=register.request_id or None,
-                                    reply_to=register.request_id or "",
-                                    reason=str(exc),
-                                )
-                            )
-                            if settings.RUNTIME_STREAM_REJECT_CLOSE:
-                                close_stream_after_flush = True
-                                break
-                            continue
-                        except Exception as exc:
-                            logger.exception("执行器注册失败 executor_id={} error={}", executor_id, exc)
-                            await outbox.put(
-                                runtime_codec.build_error_message(
-                                    code="INTERNAL",
-                                    message=f"register failed: {exc}",
-                                    request_id=register.request_id or None,
-                                    reply_to=register.request_id or "",
-                                    reason=f"register failed: {exc}",
-                                )
-                            )
-                            if settings.RUNTIME_STREAM_REJECT_CLOSE:
-                                close_stream_after_flush = True
-                                break
-                            continue
-
-                        await outbox.put(
-                            runtime_codec.build_ack_message(
-                                ack_for=register.request_id,
-                                status=pb.OK,
-                                ack_type="register",
-                                ack_reason="registered",
-                                detail="registered",
-                            )
-                        )
-                        logger.info("执行器注册成功 executor_id={}", executor_id)
-                        continue
-
-                    if payload_type == "heartbeat":
-                        heartbeat = message.heartbeat
-                        if not executor_id:
-                            continue
-                        await runtime_dispatcher.heartbeat(
-                            executor_id=executor_id,
-                            busy=bool(heartbeat.busy),
-                            current_job_id=heartbeat.current_job_id or None,
-                            resources=runtime_codec.resource_summary_to_dict(heartbeat.resources),
-                        )
-                        continue
-
-                    if payload_type == "job_event":
-                        request = message.job_event
-                        request_id = str(request.request_id or "")
-                        duplicated, _ = dedup_cache.get(request_id, "job_event")
-                        if duplicated:
-                            logger.info("忽略重复 job_event request_id={}", request_id)
-                            continue
-
-                        await self._persist_job_event(request)
-                        if request_id:
-                            dedup_cache.remember(request_id, "job_event")
-                        continue
-
-                    if payload_type == "job_result":
-                        request = message.job_result
-                        request_id = str(request.request_id or "")
-                        duplicated, _ = dedup_cache.get(request_id, "job_result")
-                        if duplicated:
-                            logger.info("忽略重复 job_result request_id={}", request_id)
-                            continue
-
-                        await self._persist_job_result(request)
-                        logger.info(
-                            "收到任务结果并完成持久化 request_id={} job_id={} status={}",
-                            request_id,
-                            request.job_id,
-                            request.status,
-                        )
-                        if executor_id:
-                            await runtime_dispatcher.mark_executor_idle(
-                                executor_id=executor_id,
-                                job_id=request.job_id,
-                            )
-                        if request_id:
-                            dedup_cache.remember(request_id, "job_result")
-                        continue
-
-                    if payload_type == "data_request":
-                        request = message.data_request
-                        request_id = str(request.request_id or "")
-                        duplicated, cached_response = dedup_cache.get(request_id, "data_request")
-                        if duplicated:
-                            if cached_response is not None:
-                                await outbox.put(cached_response)
-                            logger.info("命中 data_request 幂等缓存 request_id={}", request_id)
-                            continue
-                        try:
-                            response = await self._build_data_response(request)
-                        except ValueError as exc:
-                            response = runtime_codec.build_error_message(
-                                code="INVALID_ARGUMENT",
-                                message=str(exc),
-                                request_id=request.request_id or None,
-                                reply_to=request.request_id,
-                                job_id=request.job_id,
-                                query_type=int(request.query_type),
-                                reason=str(exc),
-                            )
-                        except Exception as exc:
-                            logger.exception(
-                                "data_request 处理失败 request_id={} job_id={} query_type={} error={}",
-                                request.request_id,
-                                request.job_id,
-                                runtime_codec.query_type_to_text(request.query_type),
-                                exc,
-                            )
-                            response = runtime_codec.build_error_message(
-                                code="INTERNAL",
-                                message=f"data request failed: {exc}",
-                                request_id=request.request_id or None,
-                                reply_to=request.request_id,
-                                job_id=request.job_id,
-                                query_type=int(request.query_type),
-                                reason=f"data request failed: {exc}",
-                            )
-                        await outbox.put(response)
-                        if request_id:
-                            dedup_cache.remember(request_id, "data_request", response=response)
-                        continue
-
-                    if payload_type == "upload_ticket_request":
-                        request = message.upload_ticket_request
-                        request_id = str(request.request_id or "")
-                        duplicated, cached_response = dedup_cache.get(request_id, "upload_ticket_request")
-                        if duplicated:
-                            if cached_response is not None:
-                                await outbox.put(cached_response)
-                            logger.info("命中 upload_ticket_request 幂等缓存 request_id={}", request_id)
-                            continue
-                        try:
-                            response = await self._build_upload_ticket_response(request)
-                        except ValueError as exc:
-                            response = runtime_codec.build_error_message(
-                                code="INVALID_ARGUMENT",
-                                message=str(exc),
-                                request_id=request.request_id or None,
-                                reply_to=request.request_id,
-                                job_id=request.job_id,
-                                reason=str(exc),
-                            )
-                        except Exception as exc:
-                            response = runtime_codec.build_error_message(
-                                code="INTERNAL",
-                                message=f"upload ticket failed: {exc}",
-                                request_id=request.request_id or None,
-                                reply_to=request.request_id,
-                                job_id=request.job_id,
-                                reason=f"upload ticket failed: {exc}",
-                            )
-                        await outbox.put(response)
-                        if request_id:
-                            dedup_cache.remember(request_id, "upload_ticket_request", response=response)
-                        continue
-
-                    if payload_type == "ack":
-                        ack = message.ack
-                        request_id = str(ack.request_id or "")
-                        duplicated, _ = dedup_cache.get(request_id, "ack")
-                        if duplicated:
-                            logger.info("忽略重复 ack request_id={} ack_for={}", request_id, ack.ack_for)
-                            continue
-                        await runtime_dispatcher.handle_ack(
-                            ack_for=str(ack.ack_for or ""),
-                            status=int(ack.status),
-                            ack_type=int(ack.type),
-                            ack_reason=int(ack.reason),
-                            detail=ack.detail or None,
-                        )
-                        if request_id:
-                            dedup_cache.remember(request_id, "ack")
-                        continue
-
-                    if payload_type == "error":
-                        err = message.error
-                        logger.error(
-                            "收到执行器错误消息 code={} message={} reason={} reply_to={} ack_for={}",
-                            err.code,
-                            err.message,
-                            err.reason,
-                            err.reply_to,
-                            err.ack_for,
-                        )
-                        continue
-
-                    logger.warning("未知 runtime 消息类型 payload_type={}", payload_type)
+                    should_continue = await self._dispatch_stream_message(message=message, state=state)
+                    if not should_continue:
+                        break
                 except Exception:
                     logger.exception("处理 runtime 消息失败")
 
         reader_task = asyncio.create_task(_reader())
         try:
             while True:
-                if reader_task.done() and outbox.empty():
+                if reader_task.done() and state.outbox.empty():
                     break
                 try:
-                    payload = await asyncio.wait_for(outbox.get(), timeout=0.5)
+                    payload = await asyncio.wait_for(state.outbox.get(), timeout=0.5)
                 except asyncio.TimeoutError:
-                    if close_stream_after_flush and outbox.empty():
+                    if state.close_stream_after_flush and state.outbox.empty():
                         break
                     continue
                 yield payload
-                if close_stream_after_flush and outbox.empty():
+                if state.close_stream_after_flush and state.outbox.empty():
                     break
         finally:
             reader_task.cancel()
-            if executor_id:
-                logger.info("runtime 流已关闭，开始注销执行器 executor_id={}", executor_id)
-                await runtime_dispatcher.unregister(executor_id)
+            if state.executor_id:
+                logger.info("runtime 流已关闭，开始注销执行器 executor_id={}", state.executor_id)
+                await runtime_dispatcher.unregister(state.executor_id)
 
     async def _persist_job_event(self, message: pb.JobEvent) -> None:
         job_id_raw = message.job_id

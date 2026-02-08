@@ -52,6 +52,15 @@ class PendingAssign:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class _AssignmentReservation:
+    request_id: str
+    job_id: str
+    executor_id: str
+    resolved_backend: str
+    dispatch_params: dict[str, Any]
+
+
 class RuntimeDispatcher:
     def __init__(self) -> None:
         self._sessions: dict[str, RuntimeSession] = {}
@@ -723,50 +732,85 @@ class RuntimeDispatcher:
 
         await self._try_persist_runtime_stats(force=True)
 
-    async def assign_job(self, job: Job, check_stale: bool = True) -> Optional[AssignmentResult]:
-        if check_stale:
-            await self.mark_stale_executors()
-
-        resolved_backend: str | None = None
-        dispatch_params: dict[str, Any] = dict(job.params or {})
-
+    async def _is_job_dispatchable(self, job_id: uuid.UUID) -> bool:
         async with SessionLocal() as session:
-            persisted = await session.get(Job, job.id)
-            if (
-                    (not persisted)
-                    or persisted.status != TrainingJobStatus.PENDING
-                    or bool(persisted.assigned_executor_id)
-            ):
-                return None
+            persisted = await session.get(Job, job_id)
+            return bool(
+                persisted
+                and persisted.status == TrainingJobStatus.PENDING
+                and not persisted.assigned_executor_id
+            )
 
+    def _has_inflight_assignment_locked(self, job_id: str) -> bool:
+        if any(pending.job_id == job_id for pending in self._pending_assign.values()):
+            return True
+        return any(runtime_session.current_job_id == job_id for runtime_session in self._sessions.values())
+
+    def _select_assignment_candidate_locked(self, job: Job) -> tuple[RuntimeSession, str] | None:
+        candidates: list[tuple[RuntimeSession, str]] = []
+        for runtime_session in self._sessions.values():
+            if runtime_session.busy:
+                continue
+            if job.plugin_id and job.plugin_id not in runtime_session.plugins:
+                continue
+            if not self._resource_satisfied(job.resources or {}, runtime_session.resources or {}):
+                continue
+            resolved = self._resolve_accelerator_for_session(job, runtime_session)
+            if not resolved:
+                continue
+            candidates.append((runtime_session, resolved))
+
+        if not candidates:
+            return None
+
+        backend_priority = {"cuda": 0, "mps": 1, "cpu": 2}
+        return sorted(
+            candidates,
+            key=lambda item: (backend_priority.get(item[1], 99), item[0].last_seen),
+        )[0]
+
+    @staticmethod
+    def _build_assign_message(job: Job, reservation: _AssignmentReservation) -> pb.RuntimeMessage:
+        return pb.RuntimeMessage(
+            assign_job=pb.AssignJob(
+                request_id=reservation.request_id,
+                job=pb.JobPayload(
+                    job_id=reservation.job_id,
+                    project_id=str(job.project_id),
+                    loop_id=str(job.loop_id),
+                    source_commit_id=str(job.source_commit_id),
+                    job_type=runtime_codec.text_to_job_type(job.job_type),
+                    plugin_id=job.plugin_id or "",
+                    mode=runtime_codec.text_to_job_mode(job.mode),
+                    query_strategy=job.query_strategy or "",
+                    params=runtime_codec.dict_to_struct(reservation.dispatch_params),
+                    resources=runtime_codec.dict_to_resource_summary(job.resources or {}),
+                    iteration=int(job.iteration or 0),
+                ),
+            )
+        )
+
+    async def _reserve_assignment(self, job: Job) -> _AssignmentReservation | None:
+        job_id = str(job.id)
         async with self._lock:
-            job_id = str(job.id)
-            if any(pending.job_id == job_id for pending in self._pending_assign.values()):
-                return None
-            if any(runtime_session.current_job_id == job_id for runtime_session in self._sessions.values()):
-                return None
-            candidates: list[tuple[RuntimeSession, str]] = []
-            for runtime_session in self._sessions.values():
-                if runtime_session.busy:
-                    continue
-                if job.plugin_id and job.plugin_id not in runtime_session.plugins:
-                    continue
-                if not self._resource_satisfied(job.resources or {}, runtime_session.resources or {}):
-                    continue
-                resolved = self._resolve_accelerator_for_session(job, runtime_session)
-                if not resolved:
-                    continue
-                candidates.append((runtime_session, resolved))
-            if not candidates:
+            if self._has_inflight_assignment_locked(job_id):
                 return None
 
-            backend_priority = {"cuda": 0, "mps": 1, "cpu": 2}
-            target, resolved_backend = sorted(
-                candidates,
-                key=lambda item: (backend_priority.get(item[1], 99), item[0].last_seen),
-            )[0]
+            selected = self._select_assignment_candidate_locked(job)
+            if selected is None:
+                return None
+
+            target, resolved_backend = selected
+            dispatch_params: dict[str, Any] = dict(job.params or {})
             dispatch_params["_resolved_device_backend"] = resolved_backend
             request_id = str(uuid.uuid4())
+            reservation = _AssignmentReservation(
+                request_id=request_id,
+                job_id=job_id,
+                executor_id=target.executor_id,
+                resolved_backend=resolved_backend,
+                dispatch_params=dispatch_params,
+            )
             target.busy = True
             target.current_job_id = job_id
             self._pending_assign[request_id] = PendingAssign(
@@ -776,26 +820,15 @@ class RuntimeDispatcher:
                 created_at=datetime.now(UTC),
             )
 
-            await target.queue.put(
-                pb.RuntimeMessage(
-                    assign_job=pb.AssignJob(
-                        request_id=request_id,
-                        job=pb.JobPayload(
-                            job_id=job_id,
-                            project_id=str(job.project_id),
-                            loop_id=str(job.loop_id),
-                            source_commit_id=str(job.source_commit_id),
-                            job_type=runtime_codec.text_to_job_type(job.job_type),
-                            plugin_id=job.plugin_id or "",
-                            mode=runtime_codec.text_to_job_mode(job.mode),
-                            query_strategy=job.query_strategy or "",
-                            params=runtime_codec.dict_to_struct(dispatch_params),
-                            resources=runtime_codec.dict_to_resource_summary(job.resources or {}),
-                            iteration=int(job.iteration or 0),
-                        ),
-                    )
-                )
-            )
+            try:
+                await target.queue.put(self._build_assign_message(job, reservation))
+            except Exception:
+                self._pending_assign.pop(request_id, None)
+                if target.current_job_id == job_id:
+                    target.current_job_id = None
+                target.busy = False
+                raise
+
             target.last_seen = datetime.now(UTC)
             logger.info(
                 "任务已派发，等待 ACK request_id={} job_id={} executor_id={}",
@@ -809,33 +842,78 @@ class RuntimeDispatcher:
                 target.executor_id,
                 resolved_backend,
             )
+            return reservation
 
+    async def _persist_assignment(self, job_id: uuid.UUID, reservation: _AssignmentReservation) -> bool:
+        now = datetime.now(UTC)
+        assigned = False
         async with SessionLocal() as session:
-            row = await session.exec(select(RuntimeExecutor).where(RuntimeExecutor.executor_id == target.executor_id))
+            row = await session.exec(
+                select(RuntimeExecutor).where(RuntimeExecutor.executor_id == reservation.executor_id)
+            )
             executor = row.first()
             if executor:
                 executor.status = "reserved"
-                executor.current_job_id = str(job.id)
+                executor.current_job_id = str(job_id)
                 executor.is_online = True
-                executor.last_seen_at = datetime.now(UTC)
+                executor.last_seen_at = now
                 session.add(executor)
 
-            persisted_job = await session.get(Job, job.id)
+            persisted_job = await session.get(Job, job_id)
             if (
-                    persisted_job
-                    and persisted_job.status == TrainingJobStatus.PENDING
-                    and not persisted_job.assigned_executor_id
+                persisted_job
+                and persisted_job.status == TrainingJobStatus.PENDING
+                and not persisted_job.assigned_executor_id
             ):
-                persisted_job.assigned_executor_id = target.executor_id
+                persisted_job.assigned_executor_id = reservation.executor_id
                 params_payload = dict(persisted_job.params or {})
-                if resolved_backend:
-                    params_payload["_resolved_device_backend"] = resolved_backend
+                params_payload["_resolved_device_backend"] = reservation.resolved_backend
                 persisted_job.params = params_payload
                 session.add(persisted_job)
+                assigned = True
+            elif executor and executor.current_job_id == str(job_id):
+                executor.status = "idle"
+                executor.current_job_id = None
+                session.add(executor)
+
             await session.commit()
 
+        return assigned
+
+    async def _release_assignment_reservation(self, reservation: _AssignmentReservation) -> None:
+        async with self._lock:
+            self._pending_assign.pop(reservation.request_id, None)
+            runtime_session = self._sessions.get(reservation.executor_id)
+            if runtime_session and runtime_session.current_job_id == reservation.job_id:
+                runtime_session.busy = False
+                runtime_session.current_job_id = None
+                runtime_session.last_seen = datetime.now(UTC)
+
+    async def assign_job(self, job: Job, check_stale: bool = True) -> Optional[AssignmentResult]:
+        if check_stale:
+            await self.mark_stale_executors()
+
+        if not await self._is_job_dispatchable(job.id):
+            return None
+
+        reservation = await self._reserve_assignment(job)
+        if reservation is None:
+            return None
+
+        try:
+            assigned = await self._persist_assignment(job.id, reservation)
+        except Exception:
+            await self._release_assignment_reservation(reservation)
+            await self._try_persist_runtime_stats()
+            raise
+
+        if not assigned:
+            await self._release_assignment_reservation(reservation)
+            await self._try_persist_runtime_stats()
+            return None
+
         await self._try_persist_runtime_stats()
-        return AssignmentResult(request_id=request_id, executor_id=target.executor_id)
+        return AssignmentResult(request_id=reservation.request_id, executor_id=reservation.executor_id)
 
     async def stop_job(self, job_id: str, reason: str) -> tuple[str, bool]:
         async with self._lock:

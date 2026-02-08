@@ -10,6 +10,7 @@ import random
 import shutil
 import threading
 from typing import Any, Callable
+import warnings
 
 import httpx
 
@@ -115,9 +116,21 @@ def _infer_image_hw(path: Path) -> tuple[int, int]:
 
 
 class YoloDetectionInternal:
+    _CJK_FONT_CANDIDATES = (
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Noto Sans CJK SC",
+        "Source Han Sans SC",
+        "WenQuanYi Zen Hei",
+        "Microsoft YaHei",
+        "SimHei",
+    )
+
     def __init__(self) -> None:
         self._stop_flag = threading.Event()
         self._prepare_stats: dict[str, Any] = {}
+        self._font_setup_lock = threading.Lock()
+        self._font_setup_done = False
 
     @property
     def plugin_id(self) -> str:
@@ -683,6 +696,7 @@ class YoloDetectionInternal:
             raise RuntimeError("training stopped before start")
 
         YOLO = self._load_yolo()
+        self._ensure_cjk_plot_font()
         model = YOLO(base_model)
 
         def _emit_epoch_update(trainer: Any) -> None:
@@ -788,6 +802,39 @@ class YoloDetectionInternal:
             "best_path": str(final_best),
             "extra_artifacts": extra_artifacts,
         }
+
+    def _ensure_cjk_plot_font(self) -> None:
+        if self._font_setup_done:
+            return
+        with self._font_setup_lock:
+            if self._font_setup_done:
+                return
+            try:
+                import matplotlib  # type: ignore
+                from matplotlib import font_manager  # type: ignore
+            except Exception:
+                self._font_setup_done = True
+                return
+
+            available_fonts = {str(item.name or "").strip() for item in font_manager.fontManager.ttflist}
+            selected = next(
+                (name for name in self._CJK_FONT_CANDIDATES if name in available_fonts),
+                "",
+            )
+            if selected:
+                sans_serif = [str(item) for item in matplotlib.rcParams.get("font.sans-serif", [])]
+                merged = [selected, *[item for item in sans_serif if item != selected]]
+                matplotlib.rcParams["font.family"] = ["sans-serif"]
+                matplotlib.rcParams["font.sans-serif"] = merged
+                matplotlib.rcParams["axes.unicode_minus"] = False
+            else:
+                warnings.warn(
+                    "No CJK font found for matplotlib plots. Install one of: "
+                    + ", ".join(self._CJK_FONT_CANDIDATES),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            self._font_setup_done = True
 
     def _normalize_metrics(self, raw: dict[str, Any] | Any) -> dict[str, float]:
         source = raw if isinstance(raw, dict) else {}

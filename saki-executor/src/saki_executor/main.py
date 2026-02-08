@@ -20,6 +20,7 @@ async def run() -> None:
         log_file_name=settings.LOG_FILE_NAME,
         max_bytes=settings.LOG_MAX_BYTES,
         backup_count=settings.LOG_BACKUP_COUNT,
+        color_mode=settings.LOG_COLOR_MODE,
     )
 
     registry = PluginRegistry()

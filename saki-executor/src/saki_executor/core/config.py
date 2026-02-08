@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,9 +23,18 @@ class Settings(BaseSettings):
     LOG_FILE_NAME: str = "executor.log"
     LOG_MAX_BYTES: int = 20 * 1024 * 1024
     LOG_BACKUP_COUNT: int = 5
+    LOG_COLOR_MODE: str = "auto"
 
     ENABLE_COMMAND_STDIN: bool = True
     DISCONNECT_FORCE_WAIT_SEC: int = 20
+
+    @field_validator("LOG_COLOR_MODE", mode="before")
+    @classmethod
+    def parse_log_color_mode(cls, v: str | None) -> str:
+        mode = str(v or "auto").strip().lower()
+        if mode not in {"auto", "on", "off"}:
+            return "auto"
+        return mode
 
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 

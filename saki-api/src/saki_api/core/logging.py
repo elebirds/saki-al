@@ -28,26 +28,37 @@ def _normalize_color_mode(mode: str) -> str:
     return normalized
 
 
-def _resolve_colorize(mode: str) -> bool:
+def _resolve_colorize(mode: str, stream) -> bool:
     if mode == "on":
         return True
     if mode == "off":
         return False
-    return bool(getattr(sys.stderr, "isatty", lambda: False)())
+    return bool(getattr(stream, "isatty", lambda: False)())
 
 
 def _apply_sinks(level: str) -> None:
     logger.remove()
-    console_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} | {message}"
+    # Spring Boot 风格：时间、级别、PID、线程、Logger、消息分层着色。
+    console_format = (
+        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> "
+        "<level>{level: <8}</level> "
+        "<magenta>{process.id}</magenta> "
+        "<white>---</white> "
+        "<cyan>[{thread.name: <14}]</cyan> "
+        "<blue>{name: <36}</blue> "
+        "<white>:</white> "
+        "<level>{message}</level>"
+    )
     file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} | {message}"
 
+    console_stream = sys.stdout
     logger.add(
-        sys.stderr,
+        console_stream,
         level=level,
         format=console_format,
         backtrace=False,
         diagnose=False,
-        colorize=_resolve_colorize(_LOG_COLOR_MODE),
+        colorize=_resolve_colorize(_LOG_COLOR_MODE, console_stream),
     )
 
     if _LOG_FILE_PATH is not None:

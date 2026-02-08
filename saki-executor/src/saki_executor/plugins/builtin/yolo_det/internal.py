@@ -6,7 +6,6 @@ import hashlib
 import json
 import math
 from pathlib import Path
-import random
 import shutil
 import threading
 from typing import Any, Callable
@@ -31,6 +30,13 @@ from saki_executor.hardware.probe import (
     probe_hardware,
 )
 from saki_executor.plugins.base import EventCallback, TrainArtifact, TrainOutput
+from saki_executor.plugins.builtin.yolo_det.prepare_pipeline import prepare_yolo_dataset
+from saki_executor.plugins.builtin.yolo_det.train_async import (
+    load_prepare_stats,
+    normalize_training_metrics,
+    resolve_train_config,
+    run_train_with_epoch_stream,
+)
 from saki_executor.strategies.aug_iou import (
     build_detection_boxes,
     score_aug_iou_disagreement,
@@ -128,7 +134,6 @@ class YoloDetectionInternal:
 
     def __init__(self) -> None:
         self._stop_flag = threading.Event()
-        self._prepare_stats: dict[str, Any] = {}
         self._font_setup_lock = threading.Lock()
         self._font_setup_done = False
 
@@ -273,134 +278,15 @@ class YoloDetectionInternal:
         annotations: list[dict[str, Any]],
         infer_image_hw: Callable[[Path], tuple[int, int]] | None = None,
     ) -> None:
-        infer_hw = infer_image_hw or _infer_image_hw
-        data_root = workspace.data_dir
-        images_train_dir = data_root / "images" / "train"
-        images_val_dir = data_root / "images" / "val"
-        labels_train_dir = data_root / "labels" / "train"
-        labels_val_dir = data_root / "labels" / "val"
-        images_train_dir.mkdir(parents=True, exist_ok=True)
-        images_val_dir.mkdir(parents=True, exist_ok=True)
-        labels_train_dir.mkdir(parents=True, exist_ok=True)
-        labels_val_dir.mkdir(parents=True, exist_ok=True)
-
-        # 标签索引：保持后端顺序，保证 round 间一致性。
-        label_id_to_idx: dict[str, int] = {}
-        names: dict[int, str] = {}
-        for idx, item in enumerate(labels):
-            label_id = str(item.get("id") or "")
-            if not label_id:
-                continue
-            label_id_to_idx[label_id] = idx
-            names[idx] = str(item.get("name") or f"class_{idx}")
-
-        sample_map: dict[str, dict[str, Any]] = {}
-        for sample in samples:
-            sample_id = str(sample.get("id") or "")
-            local_path_raw = str(sample.get("local_path") or "")
-            if not sample_id or not local_path_raw:
-                continue
-            src = Path(local_path_raw)
-            if not src.exists():
-                continue
-            sample_map[sample_id] = {
-                "source_path": src,
-                "width": _to_int(sample.get("width"), 0),
-                "height": _to_int(sample.get("height"), 0),
-            }
-
-        ann_by_sample: dict[str, list[str]] = {}
-        skipped_count = 0
-        invalid_label_count = 0
-        for ann in annotations:
-            sample_id = str(ann.get("sample_id") or "")
-            category_id = str(ann.get("category_id") or "")
-            if sample_id not in sample_map or category_id not in label_id_to_idx:
-                skipped_count += 1
-                continue
-
-            item = sample_map[sample_id]
-            h = int(item["height"] or 0)
-            w = int(item["width"] or 0)
-            if h <= 0 or w <= 0:
-                try:
-                    h, w = infer_hw(Path(item["source_path"]))
-                except Exception:
-                    skipped_count += 1
-                    continue
-
-            cls_idx = label_id_to_idx[category_id]
-            line = self._annotation_to_yolo_obb_line(ann=ann, cls_idx=cls_idx, width=w, height=h)
-            if not line:
-                invalid_label_count += 1
-                continue
-            ann_by_sample.setdefault(sample_id, []).append(line)
-
-        sample_ids = sorted(sample_map.keys())
-        split_seed, val_ratio = self._resolve_split_config(workspace)
-        val_degraded = len(sample_ids) < 5
-        train_ids: set[str] = set(sample_ids)
-        val_ids: set[str] = set()
-        if not val_degraded:
-            shuffled = list(sample_ids)
-            random.Random(split_seed).shuffle(shuffled)
-            val_count = max(1, int(round(len(shuffled) * val_ratio)))
-            if len(shuffled) - val_count < 1:
-                val_count = max(1, len(shuffled) - 1)
-            if val_count <= 0:
-                val_degraded = True
-            else:
-                val_ids = set(shuffled[:val_count])
-                train_ids = set(shuffled[val_count:])
-                if not train_ids or not val_ids:
-                    val_degraded = True
-                    train_ids = set(sample_ids)
-                    val_ids = set()
-
-        for sample_id, item in sample_map.items():
-            target_images_dir = images_train_dir
-            target_labels_dir = labels_train_dir
-            if not val_degraded and sample_id in val_ids:
-                target_images_dir = images_val_dir
-                target_labels_dir = labels_val_dir
-
-            src = Path(item["source_path"])
-            dst = target_images_dir / f"{sample_id}.jpg"
-            shutil.copy2(src, dst)
-
-            label_file = target_labels_dir / f"{sample_id}.txt"
-            lines = ann_by_sample.get(sample_id, [])
-            label_file.write_text("\n".join(lines), encoding="utf-8")
-
-        dataset_yaml = {
-            "path": str(data_root.resolve()),
-            "train": "images/train",
-            "val": "images/train" if val_degraded else "images/val",
-            "names": names,
-            "val_degraded": val_degraded,
-            "split_seed": split_seed,
-        }
-        (data_root / "dataset.yaml").write_text(
-            json.dumps(dataset_yaml, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-        manifest = {
-            "sample_count": len(sample_map),
-            "train_sample_count": len(train_ids),
-            "val_sample_count": len(val_ids) if not val_degraded else 0,
-            "annotation_count": sum(len(v) for v in ann_by_sample.values()),
-            "label_count": len(names),
-            "invalid_label_count": invalid_label_count,
-            "skipped_annotation_count": skipped_count,
-            "val_degraded": val_degraded,
-            "split_seed": split_seed,
-            "val_split_ratio": val_ratio,
-        }
-        self._prepare_stats = manifest
-        (data_root / "dataset_manifest.json").write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        prepare_yolo_dataset(
+            workspace=workspace,
+            labels=labels,
+            samples=samples,
+            annotations=annotations,
+            infer_image_hw=infer_image_hw or _infer_image_hw,
+            to_int=_to_int,
+            annotation_to_line=self._annotation_to_yolo_obb_line,
+            resolve_split_config=self._resolve_split_config,
         )
 
     async def train(
@@ -410,88 +296,47 @@ class YoloDetectionInternal:
         emit: EventCallback,
     ) -> TrainOutput:
         self._stop_flag.clear()
-        epochs = _to_int(params.get("epochs", 30), 30)
-        batch = _to_int(params.get("batch", params.get("batch_size", 16)), 16)
-        imgsz = _to_int(params.get("imgsz", 640), 640)
-        patience = _to_int(params.get("patience", 20), 20)
-        device, requested_device, resolved_backend = self._resolve_device(params)
-        base_model = str(params.get("base_model", "yolov8n-obb.pt") or "yolov8n-obb.pt")
-        resolved_base_model = await self._resolve_base_model(
+        config = await resolve_train_config(
             workspace=workspace,
-            base_model=base_model,
             params=params,
+            to_int=_to_int,
+            resolve_device=self._resolve_device,
+            resolve_base_model=self._resolve_base_model,
+        )
+        train_result = await run_train_with_epoch_stream(
+            workspace=workspace,
+            config=config,
+            emit=emit,
+            run_train_sync=self._run_train_sync,
+            to_int=_to_int,
+        )
+        prepare_stats = load_prepare_stats(workspace)
+        metrics = normalize_training_metrics(
+            metrics=dict(train_result["metrics"]),
+            prepare_stats=prepare_stats,
+            to_int=_to_int,
+            to_bool=_to_bool,
+        )
+        report_path = self._write_training_report(
+            workspace=workspace,
+            metrics=metrics,
+            train_result=train_result,
+            prepare_stats=prepare_stats,
+        )
+        return self._build_train_output(
+            metrics=metrics,
+            train_result=train_result,
+            report_path=report_path,
         )
 
-        dataset_yaml = workspace.data_dir / "dataset.yaml"
-        if not dataset_yaml.exists():
-            raise RuntimeError(f"dataset file not found: {dataset_yaml}")
-
-        await emit(
-            "log",
-            {
-                "level": "INFO",
-                "message": (
-                    f"YOLO training started base_model={resolved_base_model} "
-                    f"epochs={epochs} batch={batch} imgsz={imgsz} patience={patience} "
-                    f"requested_device={requested_device} resolved_backend={resolved_backend} device={device}"
-                ),
-            },
-        )
-
-        loop = asyncio.get_running_loop()
-        epoch_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-
-        def _on_epoch_update(payload: dict[str, Any]) -> None:
-            loop.call_soon_threadsafe(epoch_queue.put_nowait, payload)
-
-        train_task = asyncio.create_task(
-            asyncio.to_thread(
-                self._run_train_sync,
-                workspace=workspace,
-                dataset_yaml=dataset_yaml,
-                base_model=resolved_base_model,
-                epochs=epochs,
-                batch=batch,
-                imgsz=imgsz,
-                patience=patience,
-                device=device,
-                epoch_callback=_on_epoch_update,
-            )
-        )
-
-        while True:
-            if train_task.done() and epoch_queue.empty():
-                break
-            try:
-                epoch_payload = await asyncio.wait_for(epoch_queue.get(), timeout=0.2)
-            except asyncio.TimeoutError:
-                continue
-            step = max(1, _to_int(epoch_payload.get("step"), 0))
-            epoch = max(1, _to_int(epoch_payload.get("epoch"), step))
-            total_steps = max(1, _to_int(epoch_payload.get("total_steps"), epochs))
-            eta_sec = max(0, _to_int(epoch_payload.get("eta_sec"), 0))
-            metrics_payload = epoch_payload.get("metrics")
-            metrics_row = metrics_payload if isinstance(metrics_payload, dict) else {}
-            await emit(
-                "progress",
-                {
-                    "epoch": epoch,
-                    "step": step,
-                    "total_steps": total_steps,
-                    "eta_sec": eta_sec,
-                },
-            )
-            await emit("metric", {"step": step, "epoch": epoch, "metrics": metrics_row})
-
-        train_result = await train_task
-
-        metrics = dict(train_result["metrics"])
-        prepare_stats = dict(self._prepare_stats or {})
-        metrics.setdefault("invalid_label_count", float(_to_int(prepare_stats.get("invalid_label_count"), 0)))
-        metrics.setdefault(
-            "val_degraded",
-            1.0 if _to_bool(prepare_stats.get("val_degraded"), False) else 0.0,
-        )
+    def _write_training_report(
+        self,
+        *,
+        workspace: Workspace,
+        metrics: dict[str, Any],
+        train_result: dict[str, Any],
+        prepare_stats: dict[str, Any],
+    ) -> Path:
         report_path = workspace.artifacts_dir / "report.json"
         report_path.write_text(
             json.dumps(
@@ -506,9 +351,17 @@ class YoloDetectionInternal:
             ),
             encoding="utf-8",
         )
+        return report_path
+
+    def _build_train_output(
+        self,
+        *,
+        metrics: dict[str, Any],
+        train_result: dict[str, Any],
+        report_path: Path,
+    ) -> TrainOutput:
         best_path = Path(train_result["best_path"])
         extra_artifacts: list[TrainArtifact] = list(train_result.get("extra_artifacts", []))
-
         return TrainOutput(
             metrics=metrics,
             artifacts=[

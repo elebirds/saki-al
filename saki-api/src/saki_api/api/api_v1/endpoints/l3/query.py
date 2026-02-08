@@ -68,6 +68,91 @@ def _build_loop_read(loop) -> LoopRead:
     )
 
 
+async def _authenticate_stream_token(websocket: WebSocket) -> uuid.UUID | None:
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008, reason="missing token")
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if not payload.get("sub"):
+            raise JWTError("invalid token payload")
+        return uuid.UUID(str(payload["sub"]))
+    except JWTError:
+        await websocket.close(code=1008, reason="invalid token")
+        return None
+    except Exception:
+        await websocket.close(code=1008, reason="invalid token subject")
+        return None
+
+
+async def _authorize_stream_job_access(
+        *,
+        websocket: WebSocket,
+        user_id: uuid.UUID,
+        parsed_job_id: uuid.UUID,
+) -> bool:
+    async with SessionLocal() as session:
+        job = await session.get(Job, parsed_job_id)
+        if not job:
+            await websocket.close(code=1008, reason="job not found")
+            return False
+        checker = PermissionChecker(session)
+        allowed = await checker.check(
+            user_id=user_id,
+            permission=Permissions.JOB_READ,
+            resource_type=ResourceType.PROJECT,
+            resource_id=str(job.project_id),
+        )
+        if not allowed:
+            allowed = await checker.check(
+                user_id=user_id,
+                permission=Permissions.PROJECT_READ,
+                resource_type=ResourceType.PROJECT,
+                resource_id=str(job.project_id),
+            )
+        if not allowed:
+            await websocket.close(code=1008, reason="permission denied")
+            return False
+    return True
+
+
+async def _stream_job_events_loop(
+        *,
+        websocket: WebSocket,
+        parsed_job_id: uuid.UUID,
+        cursor: int,
+) -> int:
+    while True:
+        if websocket.client_state != WebSocketState.CONNECTED:
+            break
+
+        async with SessionLocal() as session:
+            job_service = JobService(session=session)
+            events = await job_service.list_events_chunk(
+                parsed_job_id,
+                after_seq=cursor,
+                limit=500,
+                ensure_job_exists=False,
+            )
+
+        if events:
+            for event in events:
+                await websocket.send_json(
+                    {
+                        "seq": event.seq,
+                        "ts": event.ts.isoformat(),
+                        "eventType": event.event_type,
+                        "event_type": event.event_type,
+                        "payload": event.payload,
+                    }
+                )
+                cursor = max(cursor, event.seq)
+
+        await asyncio.sleep(1)
+    return cursor
+
+
 @router.get("/projects/{project_id}/loops", response_model=List[LoopRead])
 async def list_project_loops(
         *,
@@ -216,20 +301,8 @@ async def stream_job_events(
         job_id: str,
         after_seq: int = 0,
 ):
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=1008, reason="missing token")
-        return
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        if not payload.get("sub"):
-            raise JWTError("invalid token payload")
-        user_id = uuid.UUID(str(payload["sub"]))
-    except JWTError:
-        await websocket.close(code=1008, reason="invalid token")
-        return
-    except Exception:
-        await websocket.close(code=1008, reason="invalid token subject")
+    user_id = await _authenticate_stream_token(websocket)
+    if user_id is None:
         return
 
     try:
@@ -238,58 +311,22 @@ async def stream_job_events(
         await websocket.close(code=1008, reason="invalid job_id")
         return
 
-    async with SessionLocal() as session:
-        job = await session.get(Job, parsed_job_id)
-        if not job:
-            await websocket.close(code=1008, reason="job not found")
-            return
-        checker = PermissionChecker(session)
-        allowed = await checker.check(
-            user_id=user_id,
-            permission=Permissions.JOB_READ,
-            resource_type=ResourceType.PROJECT,
-            resource_id=str(job.project_id),
-        )
-        if not allowed:
-            allowed = await checker.check(
-                user_id=user_id,
-                permission=Permissions.PROJECT_READ,
-                resource_type=ResourceType.PROJECT,
-                resource_id=str(job.project_id),
-            )
-        if not allowed:
-            await websocket.close(code=1008, reason="permission denied")
-            return
+    authorized = await _authorize_stream_job_access(
+        websocket=websocket,
+        user_id=user_id,
+        parsed_job_id=parsed_job_id,
+    )
+    if not authorized:
+        return
 
     await websocket.accept()
     cursor = max(0, after_seq)
     try:
-        while True:
-            if websocket.client_state != WebSocketState.CONNECTED:
-                break
-            async with SessionLocal() as session:
-                job_service = JobService(session=session)
-                events = await job_service.list_events_chunk(
-                    parsed_job_id,
-                    after_seq=cursor,
-                    limit=500,
-                    ensure_job_exists=False,
-                )
-
-            if events:
-                for event in events:
-                    await websocket.send_json(
-                        {
-                            "seq": event.seq,
-                            "ts": event.ts.isoformat(),
-                            "eventType": event.event_type,
-                            "event_type": event.event_type,
-                            "payload": event.payload,
-                        }
-                    )
-                    cursor = max(cursor, event.seq)
-
-            await asyncio.sleep(1)
+        cursor = await _stream_job_events_loop(
+            websocket=websocket,
+            parsed_job_id=parsed_job_id,
+            cursor=cursor,
+        )
     except WebSocketDisconnect:
         logger.debug("任务事件流连接断开 job_id={} after_seq={}", parsed_job_id, cursor)
         return

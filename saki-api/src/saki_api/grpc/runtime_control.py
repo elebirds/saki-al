@@ -1069,16 +1069,18 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         }
         job.artifacts = artifacts
 
-    async def _persist_job_result(self, message: pb.JobResult) -> None:
-        job_id_raw = message.job_id
-        if not job_id_raw:
-            return
-        try:
-            job_id = uuid.UUID(str(job_id_raw))
-        except Exception:
-            return
+    @staticmethod
+    def _parse_result_metrics(message: pb.JobResult) -> dict[str, float]:
+        metrics: dict[str, float] = {}
+        for key, value in message.metrics.items():
+            try:
+                metrics[str(key)] = float(value)
+            except Exception:
+                continue
+        return metrics
 
-        metrics = {str(k): float(v) for k, v in message.metrics.items()}
+    @staticmethod
+    def _parse_result_artifacts(message: pb.JobResult) -> dict[str, dict[str, object]]:
         artifacts: dict[str, dict[str, object]] = {}
         for item in message.artifacts:
             name = str(item.name or "")
@@ -1092,6 +1094,94 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 "uri": uri,
                 "meta": runtime_codec.struct_to_dict(item.meta),
             }
+        return artifacts
+
+    @staticmethod
+    def _split_candidate_reason(reason: object) -> tuple[dict[str, object], dict[str, object]]:
+        if not isinstance(reason, dict):
+            return {}, {}
+        extra = dict(reason)
+        prediction_snapshot: dict[str, object] = {}
+        snapshot = extra.get("prediction_snapshot")
+        if isinstance(snapshot, dict):
+            prediction_snapshot = snapshot
+            extra = {key: value for key, value in extra.items() if key != "prediction_snapshot"}
+        return extra, prediction_snapshot
+
+    def _parse_result_candidates(self, message: pb.JobResult) -> dict[uuid.UUID, dict[str, object]]:
+        candidates: dict[uuid.UUID, dict[str, object]] = {}
+        for item in message.candidates:
+            sample_id_raw = item.sample_id
+            if not sample_id_raw:
+                continue
+            try:
+                sample_id = uuid.UUID(str(sample_id_raw))
+                score = float(item.score or 0.0)
+            except Exception:
+                continue
+            reason = runtime_codec.struct_to_dict(item.reason)
+            extra, prediction_snapshot = self._split_candidate_reason(reason)
+            # 同一个 sample_id 在同一消息出现多次时，保留最后一个（通常是最新分数）。
+            candidates[sample_id] = {
+                "score": score,
+                "extra": extra,
+                "prediction_snapshot": prediction_snapshot,
+            }
+        return candidates
+
+    async def _upsert_job_sample_metrics(
+            self,
+            *,
+            session,
+            job_id: uuid.UUID,
+            candidate_rows: dict[uuid.UUID, dict[str, object]],
+    ) -> None:
+        if not candidate_rows:
+            return
+
+        sample_ids = list(candidate_rows.keys())
+        existing_stmt = select(JobSampleMetric).where(
+            JobSampleMetric.job_id == job_id,
+            JobSampleMetric.sample_id.in_(sample_ids),
+        )
+        existing_rows = list((await session.exec(existing_stmt)).all())
+        existing_map = {item.sample_id: item for item in existing_rows}
+
+        for sample_id, payload in candidate_rows.items():
+            score = float(payload.get("score") or 0.0)
+            extra = dict(payload.get("extra") or {})
+            prediction_snapshot = dict(payload.get("prediction_snapshot") or {})
+
+            existing = existing_map.get(sample_id)
+            if existing:
+                existing.score = score
+                existing.extra = extra
+                existing.prediction_snapshot = prediction_snapshot
+                session.add(existing)
+                continue
+
+            session.add(
+                JobSampleMetric(
+                    job_id=job_id,
+                    sample_id=sample_id,
+                    score=score,
+                    extra=extra,
+                    prediction_snapshot=prediction_snapshot,
+                )
+            )
+
+    async def _persist_job_result(self, message: pb.JobResult) -> None:
+        job_id_raw = message.job_id
+        if not job_id_raw:
+            return
+        try:
+            job_id = uuid.UUID(str(job_id_raw))
+        except Exception:
+            return
+
+        metrics = self._parse_result_metrics(message)
+        artifacts = self._parse_result_artifacts(message)
+        candidate_rows = self._parse_result_candidates(message)
 
         async with SessionLocal() as session:
             job = await session.get(Job, job_id)
@@ -1106,44 +1196,11 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             if mapped in (TrainingJobStatus.FAILED, TrainingJobStatus.PARTIAL_FAILED):
                 job.last_error = str(message.error_message or "runtime failed")
 
-            for item in message.candidates:
-                sample_id_raw = item.sample_id
-                if not sample_id_raw:
-                    continue
-                try:
-                    sample_id = uuid.UUID(str(sample_id_raw))
-                    score = float(item.score or 0.0)
-                except Exception:
-                    continue
-                reason = runtime_codec.struct_to_dict(item.reason)
-                prediction_snapshot = {}
-                extra = reason if isinstance(reason, dict) else {}
-                if isinstance(extra, dict):
-                    snap = extra.get("prediction_snapshot")
-                    if isinstance(snap, dict):
-                        prediction_snapshot = snap
-                        extra = {k: v for k, v in extra.items() if k != "prediction_snapshot"}
-
-                exists_stmt = select(JobSampleMetric).where(
-                    JobSampleMetric.job_id == job_id,
-                    JobSampleMetric.sample_id == sample_id,
-                )
-                existing = (await session.exec(exists_stmt)).first()
-                if existing:
-                    existing.score = score
-                    existing.extra = extra
-                    existing.prediction_snapshot = prediction_snapshot
-                    session.add(existing)
-                else:
-                    session.add(
-                        JobSampleMetric(
-                            job_id=job_id,
-                            sample_id=sample_id,
-                            score=score,
-                            extra=extra,
-                            prediction_snapshot=prediction_snapshot,
-                        )
-                    )
+            await self._upsert_job_sample_metrics(
+                session=session,
+                job_id=job_id,
+                candidate_rows=candidate_rows,
+            )
 
             session.add(job)
             await session.commit()

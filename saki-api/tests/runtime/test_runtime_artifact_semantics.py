@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from google.protobuf.struct_pb2 import Struct
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -15,6 +16,7 @@ from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.job_event import JobEvent
 from saki_api.models.l3.job_metric_point import JobMetricPoint
+from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.services.job import JobService
 
 
@@ -252,3 +254,75 @@ async def test_persist_job_event_metric_upsert_with_single_step(runtime_artifact
             await session.exec(select(JobEvent).where(JobEvent.job_id == job.id))
         ).all()
         assert len(event_count) == 2
+
+
+@pytest.mark.anyio
+async def test_persist_job_result_candidate_upsert_and_last_wins(runtime_artifact_env):
+    session_local = runtime_artifact_env
+    service = RuntimeControlService()
+    job = await _create_job(session_local)
+    sample_a = uuid.uuid4()
+    sample_b = uuid.uuid4()
+
+    async with session_local() as session:
+        session.add(
+            JobSampleMetric(
+                job_id=job.id,
+                sample_id=sample_a,
+                score=0.1,
+                extra={"source": "seed"},
+                prediction_snapshot={},
+            )
+        )
+        await session.commit()
+
+    reason_a = Struct()
+    reason_a.update(
+        {
+            "source": "uncertainty",
+            "prediction_snapshot": {"car": 0.7},
+        }
+    )
+    reason_b_first = Struct()
+    reason_b_first.update({"source": "diversity"})
+    reason_b_last = Struct()
+    reason_b_last.update(
+        {
+            "source": "diversity_v2",
+            "prediction_snapshot": {"truck": 0.2},
+        }
+    )
+
+    await service._persist_job_result(
+        pb.JobResult(
+            request_id="result-candidates-1",
+            job_id=str(job.id),
+            status=pb.SUCCEEDED,
+            candidates=[
+                pb.QueryCandidate(sample_id=str(sample_a), score=0.8, reason=reason_a),
+                pb.QueryCandidate(sample_id=str(sample_b), score=0.4, reason=reason_b_first),
+                pb.QueryCandidate(sample_id=str(sample_b), score=0.6, reason=reason_b_last),
+            ],
+        )
+    )
+
+    async with session_local() as session:
+        rows = list(
+            (
+                await session.exec(
+                    select(JobSampleMetric)
+                    .where(JobSampleMetric.job_id == job.id)
+                    .order_by(JobSampleMetric.sample_id.asc())
+                )
+            ).all()
+        )
+        assert len(rows) == 2
+
+        row_map = {item.sample_id: item for item in rows}
+        assert row_map[sample_a].score == 0.8
+        assert row_map[sample_a].extra == {"source": "uncertainty"}
+        assert row_map[sample_a].prediction_snapshot == {"car": 0.7}
+
+        assert row_map[sample_b].score == 0.6
+        assert row_map[sample_b].extra == {"source": "diversity_v2"}
+        assert row_map[sample_b].prediction_snapshot == {"truck": 0.2}

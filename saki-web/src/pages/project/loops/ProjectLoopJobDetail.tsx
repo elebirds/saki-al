@@ -69,6 +69,24 @@ const buildWsUrl = (jobId: string, afterSeq: number, token: string): string => {
     return `${protocol}//${window.location.host}${path}${suffix}`;
 };
 
+type RawRuntimeJobEvent = {
+    seq?: unknown;
+    ts?: unknown;
+    eventType?: unknown;
+    event_type?: unknown;
+    payload?: unknown;
+};
+
+const normalizeWsEvent = (raw: RawRuntimeJobEvent): RuntimeJobEvent | null => {
+    const seq = Number(raw.seq);
+    if (!Number.isFinite(seq)) return null;
+    const eventTypeRaw = raw.eventType ?? raw.event_type;
+    const eventType = String(eventTypeRaw || 'unknown_event');
+    const ts = typeof raw.ts === 'string' ? raw.ts : new Date().toISOString();
+    const payload = raw.payload && typeof raw.payload === 'object' ? (raw.payload as Record<string, any>) : {};
+    return {seq, ts, eventType, payload};
+};
+
 const eventToText = (event: RuntimeJobEvent): string => {
     if (event.eventType === 'log') {
         return `[${event.payload.level || 'INFO'}] ${event.payload.message || ''}`;
@@ -85,7 +103,7 @@ const eventToText = (event: RuntimeJobEvent): string => {
     if (event.eventType === 'artifact') {
         return `制品 ${event.payload.name || ''} -> ${event.payload.uri || ''}`;
     }
-    return `${event.eventType} ${JSON.stringify(event.payload || {})}`;
+    return `unknown_event ${JSON.stringify(event.payload || {})}`;
 };
 
 const isImageArtifact = (artifact: RuntimeArtifact): boolean => {
@@ -270,8 +288,9 @@ const ProjectLoopJobDetail: React.FC = () => {
         ws.onerror = () => setWsConnected(false);
         ws.onmessage = (event: MessageEvent<string>) => {
             try {
-                const payload = JSON.parse(event.data || '{}') as RuntimeJobEvent;
-                if (!payload || typeof payload.seq !== 'number') return;
+                const raw = JSON.parse(event.data || '{}') as RawRuntimeJobEvent;
+                const payload = normalizeWsEvent(raw);
+                if (!payload) return;
                 setEvents((prev) => {
                     const merged = [...prev, payload];
                     const dedup = new Map<number, RuntimeJobEvent>();

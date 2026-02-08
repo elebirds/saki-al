@@ -296,6 +296,7 @@ async def stream_job_events(
                         {
                             "seq": event.seq,
                             "ts": event.ts.isoformat(),
+                            "eventType": event.event_type,
                             "event_type": event.event_type,
                             "payload": event.payload,
                         }

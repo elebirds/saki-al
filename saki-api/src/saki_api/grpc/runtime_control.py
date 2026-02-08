@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
-import logging
+from loguru import logger
 import time
 import uuid
 from collections import OrderedDict
@@ -39,7 +39,6 @@ from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.services.loop_config import normalize_loop_global_config
 from saki_api.utils.storage import get_storage_provider
 
-logger = logging.getLogger(__name__)
 
 
 def _parse_cursor(cursor: str | None) -> int:
@@ -220,6 +219,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
     async def Stream(self, request_iterator, context):
         metadata = dict(context.invocation_metadata())
         if metadata.get("x-internal-token") != settings.INTERNAL_TOKEN:
+            logger.warning("拒绝未授权 runtime 连接 peer={}", context.peer())
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid internal token")
 
         outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
@@ -239,6 +239,12 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                     if payload_type == "register":
                         register = message.register
                         executor_id = str(register.executor_id or "")
+                        logger.info(
+                            "收到执行器注册请求 executor_id={} version={} plugin_count={}",
+                            executor_id or "<empty>",
+                            str(register.version or ""),
+                            len(register.plugins),
+                        )
                         if not executor_id:
                             await outbox.put(
                                 runtime_codec.build_error_message(
@@ -288,6 +294,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 **register_kwargs,
                             )
                         except PermissionError as exc:
+                            logger.warning("执行器注册被拒绝 executor_id={} reason={}", executor_id, exc)
                             await outbox.put(
                                 runtime_codec.build_error_message(
                                     code="FORBIDDEN",
@@ -304,6 +311,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 break
                             continue
                         except Exception as exc:
+                            logger.exception("执行器注册失败 executor_id={} error={}", executor_id, exc)
                             await outbox.put(
                                 runtime_codec.build_error_message(
                                     code="INTERNAL",
@@ -327,6 +335,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 message="registered",
                             )
                         )
+                        logger.info("执行器注册成功 executor_id={}", executor_id)
                         continue
 
                     if payload_type == "heartbeat":
@@ -346,7 +355,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         request_id = str(request.request_id or "")
                         duplicated, _ = dedup_cache.get(request_id, "job_event")
                         if duplicated:
-                            logger.info("忽略重复 job_event request_id=%s", request_id)
+                            logger.info("忽略重复 job_event request_id={}", request_id)
                             continue
 
                         await self._persist_job_event(request)
@@ -359,10 +368,16 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         request_id = str(request.request_id or "")
                         duplicated, _ = dedup_cache.get(request_id, "job_result")
                         if duplicated:
-                            logger.info("忽略重复 job_result request_id=%s", request_id)
+                            logger.info("忽略重复 job_result request_id={}", request_id)
                             continue
 
                         await self._persist_job_result(request)
+                        logger.info(
+                            "收到任务结果并完成持久化 request_id={} job_id={} status={}",
+                            request_id,
+                            request.job_id,
+                            request.status,
+                        )
                         if executor_id:
                             await runtime_dispatcher.mark_executor_idle(
                                 executor_id=executor_id,
@@ -379,7 +394,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         if duplicated:
                             if cached_response is not None:
                                 await outbox.put(cached_response)
-                            logger.info("命中 data_request 幂等缓存 request_id=%s", request_id)
+                            logger.info("命中 data_request 幂等缓存 request_id={}", request_id)
                             continue
                         try:
                             response = await self._build_data_response(request)
@@ -419,7 +434,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         if duplicated:
                             if cached_response is not None:
                                 await outbox.put(cached_response)
-                            logger.info("命中 upload_ticket_request 幂等缓存 request_id=%s", request_id)
+                            logger.info("命中 upload_ticket_request 幂等缓存 request_id={}", request_id)
                             continue
                         try:
                             response = await self._build_upload_ticket_response(request)
@@ -455,7 +470,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                         request_id = str(ack.request_id or "")
                         duplicated, _ = dedup_cache.get(request_id, "ack")
                         if duplicated:
-                            logger.info("忽略重复 ack request_id=%s ack_for=%s", request_id, ack.ack_for)
+                            logger.info("忽略重复 ack request_id={} ack_for={}", request_id, ack.ack_for)
                             continue
                         await runtime_dispatcher.handle_ack(
                             ack_for=str(ack.ack_for or ""),
@@ -469,16 +484,16 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                     if payload_type == "error":
                         err = message.error
                         logger.error(
-                            "Executor error message: code=%s message=%s details=%s",
+                            "收到执行器错误消息 code={} message={} details={}",
                             err.code,
                             err.message,
                             runtime_codec.struct_to_dict(err.details),
                         )
                         continue
 
-                    logger.warning("Unknown runtime payload type: %s", payload_type)
+                    logger.warning("未知 runtime 消息类型 payload_type={}", payload_type)
                 except Exception:
-                    logger.exception("Failed to process runtime message")
+                    logger.exception("处理 runtime 消息失败")
 
         reader_task = asyncio.create_task(_reader())
         try:
@@ -497,6 +512,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         finally:
             reader_task.cancel()
             if executor_id:
+                logger.info("runtime 流已关闭，开始注销执行器 executor_id={}", executor_id)
                 await runtime_dispatcher.unregister(executor_id)
 
     async def _persist_job_event(self, message: pb.JobEvent) -> None:
@@ -933,15 +949,15 @@ class RuntimeGrpcServer:
             try:
                 await runtime_dispatcher.dispatch_pending_jobs()
             except Exception:
-                logger.exception("Runtime watchdog loop failed")
+                logger.exception("运行时 watchdog 轮询失败")
 
     async def start(self) -> None:
         recovery = await runtime_dispatcher.recover_after_api_restart()
-        logger.info("Runtime dispatcher recovery summary: %s", recovery)
+        logger.info("运行时 dispatcher 恢复摘要 summary={}", recovery)
         self._server.add_insecure_port(settings.RUNTIME_GRPC_BIND)
         await self._server.start()
         self._watchdog_task = asyncio.create_task(self._watchdog_loop())
-        logger.info("Runtime gRPC server listening on %s", settings.RUNTIME_GRPC_BIND)
+        logger.info("运行时 gRPC 服务已启动 bind={}", settings.RUNTIME_GRPC_BIND)
 
     async def stop(self) -> None:
         if self._watchdog_task:

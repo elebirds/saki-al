@@ -5,7 +5,7 @@ Runtime dispatcher for selecting executors and sending control messages.
 from __future__ import annotations
 
 import asyncio
-import logging
+from loguru import logger
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -22,7 +22,6 @@ from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
 
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -286,7 +285,7 @@ class RuntimeDispatcher:
         async with SessionLocal() as session:
             if not await self._has_required_recovery_tables(session):
                 logger.warning(
-                    "skip runtime restart recovery: missing tables (%s), waiting for auto create_all",
+                    "跳过 runtime 重启恢复：缺少表结构 tables={}，等待 create_all",
                     ", ".join(self._required_recovery_tables()),
                 )
                 return {
@@ -347,7 +346,7 @@ class RuntimeDispatcher:
             "created_retry_jobs": created_retry_jobs,
         }
         logger.info(
-            "runtime restart recovery completed: %s",
+            "runtime 重启恢复完成 summary={}",
             summary,
         )
         return summary
@@ -394,6 +393,13 @@ class RuntimeDispatcher:
             session.add(executor)
             await session.commit()
 
+        logger.info(
+            "执行器已连接 executor_id={} version={} plugins={} resources={}",
+            executor_id,
+            version,
+            sorted(plugin_id_set),
+            resources,
+        )
         self._schedule_dispatch()
 
     async def unregister(self, executor_id: str) -> None:
@@ -435,6 +441,11 @@ class RuntimeDispatcher:
         async with self._lock:
             self._clear_pending_for_executor(executor_id, cleanup_job_ids)
 
+        logger.info(
+            "执行器已断开 executor_id={} affected_jobs_count={}",
+            executor_id,
+            len(cleanup_job_ids),
+        )
         self._schedule_dispatch()
 
     async def heartbeat(
@@ -482,6 +493,8 @@ class RuntimeDispatcher:
 
         if not stale_ids:
             return
+
+        logger.warning("检测到心跳超时执行器 stale_executor_ids={}", stale_ids)
 
         stale_job_ids: dict[str, set[str]] = {executor_id: set() for executor_id in stale_ids}
         async with SessionLocal() as session:
@@ -580,6 +593,12 @@ class RuntimeDispatcher:
                 )
             )
             target.last_seen = datetime.now(UTC)
+            logger.info(
+                "任务已派发，等待 ACK request_id={} job_id={} executor_id={}",
+                request_id,
+                job_id,
+                target.executor_id,
+            )
 
         async with SessionLocal() as session:
             row = await session.exec(select(RuntimeExecutor).where(RuntimeExecutor.executor_id == target.executor_id))
@@ -626,6 +645,7 @@ class RuntimeDispatcher:
                     )
                 )
                 self._pending_stop[request_id] = job_id
+                logger.info("已发送停止任务指令 request_id={} job_id={} reason={}", request_id, job_id, reason)
                 return request_id, True
 
         return str(uuid.uuid4()), False
@@ -662,11 +682,24 @@ class RuntimeDispatcher:
                         job.status = TrainingJobStatus.RUNNING
                         if not job.started_at:
                             job.started_at = datetime.now(UTC)
+                        logger.info(
+                            "任务已开始执行（ACK 成功） request_id={} job_id={} executor_id={}",
+                            ack_for,
+                            job_id,
+                            pending.executor_id,
+                        )
                     else:
                         job.status = TrainingJobStatus.FAILED
                         job.last_error = message or "executor reject assignment"
                         job.ended_at = datetime.now(UTC)
                         job.assigned_executor_id = None
+                        logger.warning(
+                            "任务派发被拒绝（ACK 失败） request_id={} job_id={} executor_id={} reason={}",
+                            ack_for,
+                            job_id,
+                            pending.executor_id,
+                            message or "executor reject assignment",
+                        )
                     session.add(job)
                     if release_executor_id:
                         row = await session.exec(
@@ -686,7 +719,16 @@ class RuntimeDispatcher:
                     await session.commit()
 
         if ack_for in self._pending_stop:
-            self._pending_stop.pop(ack_for, None)
+            stop_job_id = self._pending_stop.pop(ack_for, None)
+            if is_ok:
+                logger.info("停止任务请求已确认（ACK 成功） request_id={} job_id={}", ack_for, stop_job_id)
+            else:
+                logger.warning(
+                    "停止任务请求确认失败（ACK 非 OK） request_id={} job_id={} reason={}",
+                    ack_for,
+                    stop_job_id,
+                    message or "",
+                )
 
     async def reap_assign_timeouts(self) -> None:
         timeout_sec = max(1, int(settings.RUNTIME_ASSIGN_ACK_TIMEOUT_SEC))
@@ -711,6 +753,13 @@ class RuntimeDispatcher:
         pending_stop_to_remove: list[str] = []
         async with SessionLocal() as session:
             for pending in timed_out:
+                logger.warning(
+                    "任务派发等待 ACK 超时 request_id={} job_id={} executor_id={} timeout_sec={}",
+                    pending.request_id,
+                    pending.job_id,
+                    pending.executor_id,
+                    timeout_sec,
+                )
                 try:
                     job_uuid = uuid.UUID(pending.job_id)
                 except Exception:
@@ -767,6 +816,7 @@ class RuntimeDispatcher:
                 db.add(executor)
                 await db.commit()
 
+        logger.info("执行器切换为空闲状态 executor_id={} job_id={}", executor_id, job_id)
         self._schedule_dispatch()
 
     async def dispatch_pending_jobs(self) -> None:

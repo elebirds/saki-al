@@ -2,7 +2,7 @@
 Commit Service - Business logic for Commit operations.
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import List
 
@@ -17,7 +17,6 @@ from saki_api.repositories.project import ProjectRepository
 from saki_api.schemas.commit import CommitCreate, CommitHistoryItem, CommitTree, CommitDiff
 from saki_api.services.base import BaseService
 
-logger = logging.getLogger(__name__)
 
 
 class CommitService(BaseService[Commit, CommitRepository, CommitCreate, dict]):

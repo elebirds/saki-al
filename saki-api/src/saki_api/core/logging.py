@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging as pylog
 import sys
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def _resolve_colorize(mode: str, stream) -> bool:
 
 def _apply_sinks(level: str) -> None:
     logger.remove()
-
+    # Spring Boot 风格：时间、级别、PID、线程、Logger、消息分层着色。
     console_format = (
         "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> "
         "<level>{level: <8}</level> "
@@ -49,8 +50,8 @@ def _apply_sinks(level: str) -> None:
         "<level>{message}</level>"
     )
     file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} | {message}"
-    console_stream = sys.stdout
 
+    console_stream = sys.stdout
     logger.add(
         console_stream,
         level=level,
@@ -73,6 +74,8 @@ def _apply_sinks(level: str) -> None:
             enqueue=False,
             encoding="utf-8",
         )
+
+    pylog.getLogger("sqlalchemy.engine").setLevel(pylog.WARNING)
 
 
 def setup_logging(

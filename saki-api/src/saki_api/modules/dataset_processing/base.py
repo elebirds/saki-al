@@ -10,7 +10,7 @@ This module is responsible for:
 - Progress tracking and event emission
 """
 
-import logging
+from loguru import logger
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from saki_api.services.asset import AssetService
     from fastapi import UploadFile
 
-logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -151,7 +150,7 @@ class BaseDatasetProcessor(ABC):
 
     def __init__(self, session: Optional["AsyncSession"] = None):
         self._event_listeners: Dict[EventType, List[Callable]] = {}
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logger.bind(component=f"{__name__}.{self.__class__.__name__}")
         self.session = session
         self.asset_service: Optional["AssetService"] = None
 
@@ -169,7 +168,7 @@ class BaseDatasetProcessor(ABC):
                 try:
                     callback(event, data)
                 except Exception as e:
-                    self.logger.error(f"Error in event listener for {event}: {e}")
+                    self.logger.error("事件监听器执行失败 event={} error={}", event, e)
 
     def on(self, event: EventType, callback: Callable) -> None:
         """Register an event listener."""

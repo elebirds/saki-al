@@ -30,6 +30,7 @@ dependencies = [
     "pandas-stubs>=2.2.2.240807",
     "redis>=7.0.0",
     "grpcio>=1.78.0",
+    "loguru>=0.7.2",
     "protobuf>=6.31.1,<7",
 ]
 

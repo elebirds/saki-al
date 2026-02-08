@@ -5,7 +5,7 @@ Background orchestrator for active-learning loops.
 from __future__ import annotations
 
 import asyncio
-import logging
+from loguru import logger
 import uuid
 from datetime import datetime, UTC
 
@@ -37,7 +37,6 @@ from saki_api.services.loop_config import (
 )
 from saki_api.utils.storage import get_storage_provider
 
-logger = logging.getLogger(__name__)
 
 
 class LoopOrchestrator:
@@ -58,7 +57,7 @@ class LoopOrchestrator:
             return
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run(), name="loop-orchestrator")
-        logger.info("loop orchestrator started interval=%ss", self.interval_sec)
+        logger.info("主动学习编排器已启动 interval_sec={}", self.interval_sec)
 
     async def stop(self) -> None:
         self._stop_event.set()
@@ -68,7 +67,7 @@ class LoopOrchestrator:
             except asyncio.CancelledError:
                 pass
         self._task = None
-        logger.info("loop orchestrator stopped")
+        logger.info("主动学习编排器已停止")
 
     async def tick_once(self) -> None:
         await self._tick()
@@ -78,7 +77,7 @@ class LoopOrchestrator:
             try:
                 await self._tick()
             except Exception as exc:
-                logger.exception("loop orchestrator tick failed: %s", exc)
+                logger.exception("主动学习编排器轮询失败 error={}", exc)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self.interval_sec)
             except asyncio.TimeoutError:
@@ -145,9 +144,18 @@ class LoopOrchestrator:
             async with SessionLocal() as session:
                 job = await session.get(Job, dispatch_job_id)
                 if job:
+                    logger.info("开始派发轮次任务 loop_id={} job_id={} round_index={}", job.loop_id, job.id, job.round_index)
                     assigned = await runtime_dispatcher.assign_job(job)
                     if not assigned:
+                        logger.warning("轮次任务未即时派发成功，转入统一派发队列 job_id={}", job.id)
                         await runtime_dispatcher.dispatch_pending_jobs()
+                    else:
+                        logger.info(
+                            "轮次任务派发成功 request_id={} job_id={} executor_id={}",
+                            assigned.request_id,
+                            job.id,
+                            assigned.executor_id,
+                        )
 
     async def _latest_round(self, session, loop_id: uuid.UUID) -> LoopRound | None:
         rows = await session.exec(
@@ -194,7 +202,7 @@ class LoopOrchestrator:
                 presigned = self._build_presigned_download_url(warm_start_uri)
                 if warm_start_uri.startswith("s3://") and not presigned:
                     logger.warning(
-                        "skip warm-start for loop=%s round=%s due to missing presigned download url",
+                        "跳过 warm-start：缺少预签名下载地址 loop_id={} round_index={}",
                         loop.id,
                         round_index,
                     )
@@ -240,6 +248,13 @@ class LoopOrchestrator:
         loop.last_job_id = job.id
         loop.last_error = None
         session.add(loop)
+        logger.info(
+            "已创建轮次训练任务 loop_id={} round_index={} job_id={} source_commit_id={}",
+            loop.id,
+            round_index,
+            job.id,
+            source_commit_id,
+        )
         return job.id
 
     async def _handle_training_round(
@@ -331,7 +346,7 @@ class LoopOrchestrator:
         min_candidates_required = max(1, to_int(selection.get("min_candidates_required"), 1))
         if len(candidates) < min_candidates_required:
             logger.info(
-                "skip annotation batch job_id=%s candidates=%s min_candidates_required=%s",
+                "跳过标注批次创建：候选样本不足 job_id={} candidates={} min_candidates_required={}",
                 job.id,
                 len(candidates),
                 min_candidates_required,
@@ -498,12 +513,16 @@ class LoopOrchestrator:
         if not object_name:
             return ""
         if bucket and bucket != settings.MINIO_BUCKET_NAME:
-            logger.warning("skip warm-start presigned url due to bucket mismatch: %s", bucket)
+            logger.warning(
+                "跳过 warm-start 预签名地址生成：桶名不匹配 bucket={} expected={}",
+                bucket,
+                settings.MINIO_BUCKET_NAME,
+            )
             return ""
         try:
             return self.storage.get_presigned_url(object_name)
         except Exception:
-            logger.exception("build warm-start presigned url failed for uri=%s", uri)
+            logger.exception("生成 warm-start 预签名地址失败 uri={}", uri)
             return ""
 
 

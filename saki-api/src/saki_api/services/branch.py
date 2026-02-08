@@ -2,7 +2,7 @@
 Branch Service - Business logic for Branch operations.
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import List
 
@@ -17,7 +17,6 @@ from saki_api.repositories.project import ProjectRepository
 from saki_api.schemas.branch import BranchCreate, BranchUpdate
 from saki_api.services.base import BaseService
 
-logger = logging.getLogger(__name__)
 
 
 class BranchService(BaseService[Branch, BranchRepository, BranchCreate, BranchUpdate]):

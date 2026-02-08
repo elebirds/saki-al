@@ -155,7 +155,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             tmp_path.replace(target_path)
             return str(target_path)
         except Exception as e:
-            self.logger.warning(f"Failed to persist local lookup table: {e}")
+            self.logger.warning("本地查找表持久化失败 error={}", e)
             return None
 
     def _process_file_with_processor(
@@ -339,7 +339,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             )
 
         except Exception as e:
-            self.logger.error(f"Error processing FEDO file {filename}: {e}", exc_info=True)
+            self.logger.exception("处理 FEDO 文件失败 filename={} error={}", filename, e)
             self.emit(EventType.PROCESS_ERROR, {"filename": filename, "error": str(e)})
             return ProcessResult(
                 success=False,

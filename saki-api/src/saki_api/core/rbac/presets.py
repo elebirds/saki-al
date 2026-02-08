@@ -4,7 +4,7 @@ Preset Role Configurations
 Defines system preset roles that are created on system initialization.
 These roles cannot be deleted.
 """
-import logging
+from loguru import logger
 import uuid
 from typing import List, Dict, Any
 
@@ -307,7 +307,6 @@ PRESET_ROLES: List[Dict[str, Any]] = [
     },
 ]
 
-logger = logging.getLogger(__name__)
 
 
 async def init_preset_roles(session: AsyncSession) -> None:
@@ -356,4 +355,4 @@ async def init_preset_roles(session: AsyncSession) -> None:
             )
             session.add(rp)
 
-        logger.info(f"Created {preset['name']} role {preset['display_name']}")
+        logger.info("已创建预置角色 role_name={} display_name={}", preset["name"], preset["display_name"])

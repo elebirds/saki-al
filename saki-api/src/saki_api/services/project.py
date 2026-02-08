@@ -3,7 +3,7 @@ Project Service - Business logic for Project operations.
 """
 
 import json
-import logging
+from loguru import logger
 import uuid
 from typing import List
 
@@ -27,7 +27,6 @@ from saki_api.schemas.resource_member import ResourceMemberCreateRequest, Resour
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
 
-logger = logging.getLogger(__name__)
 
 class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, ProjectUpdate]):
     """

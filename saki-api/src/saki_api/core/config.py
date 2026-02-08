@@ -69,6 +69,14 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return []
 
+    @field_validator("LOG_COLOR_MODE", mode="before")
+    @classmethod
+    def parse_log_color_mode(cls, v: str | None) -> str:
+        mode = str(v or "auto").strip().lower()
+        if mode not in {"auto", "on", "off"}:
+            return "auto"
+        return mode
+
     # MinIO Object Storage Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
@@ -94,6 +102,14 @@ class Settings(BaseSettings):
     RUNTIME_EXECUTOR_ALLOWLIST: List[str] = []
     RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC: int = 600
     RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES: int = 2048
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_DIR: str = "logs"
+    LOG_FILE_NAME: str = "api.log"
+    LOG_MAX_BYTES: int = 20 * 1024 * 1024
+    LOG_BACKUP_COUNT: int = 5
+    LOG_COLOR_MODE: str = "auto"
 
     # FEDO LUT local cache
     LUT_CACHE_DIR: str = "./data/lut_cache"

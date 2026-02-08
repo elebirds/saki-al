@@ -644,6 +644,53 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
             register_kwargs["plugin_capabilities"] = plugin_capabilities
         return register_kwargs
 
+    async def _register_executor_or_reject(
+        self,
+        *,
+        state: _RuntimeStreamState,
+        register: pb.Register,
+        executor_id: str,
+    ) -> bool:
+        plugin_capabilities = self._build_plugin_capabilities(register)
+        try:
+            register_kwargs = self._build_dispatcher_register_kwargs(
+                state=state,
+                register=register,
+                executor_id=executor_id,
+                plugin_capabilities=plugin_capabilities,
+            )
+            await runtime_dispatcher.register(**register_kwargs)
+            return True
+        except PermissionError as exc:
+            logger.warning("执行器注册被拒绝 executor_id={} reason={}", executor_id, exc)
+            return await self._emit_register_reject(
+                state=state,
+                register=register,
+                code="FORBIDDEN",
+                message=str(exc),
+                reason=str(exc),
+            )
+        except Exception as exc:
+            logger.exception("执行器注册失败 executor_id={} error={}", executor_id, exc)
+            error_text = f"register failed: {exc}"
+            return await self._emit_register_reject(
+                state=state,
+                register=register,
+                code="INTERNAL",
+                message=error_text,
+                reason=error_text,
+            )
+
+    @staticmethod
+    def _build_register_ack(register: pb.Register) -> pb.RuntimeMessage:
+        return runtime_codec.build_ack_message(
+            ack_for=register.request_id,
+            status=pb.OK,
+            ack_type="register",
+            ack_reason="registered",
+            detail="registered",
+        )
+
     async def _emit_stream_error(
         self,
         *,
@@ -693,44 +740,15 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                 reason="executor_id is required",
             )
 
-        plugin_capabilities = self._build_plugin_capabilities(register)
-        try:
-            register_kwargs = self._build_dispatcher_register_kwargs(
-                state=state,
-                register=register,
-                executor_id=executor_id,
-                plugin_capabilities=plugin_capabilities,
-            )
-            await runtime_dispatcher.register(**register_kwargs)
-        except PermissionError as exc:
-            logger.warning("执行器注册被拒绝 executor_id={} reason={}", executor_id, exc)
-            return await self._emit_register_reject(
-                state=state,
-                register=register,
-                code="FORBIDDEN",
-                message=str(exc),
-                reason=str(exc),
-            )
-        except Exception as exc:
-            logger.exception("执行器注册失败 executor_id={} error={}", executor_id, exc)
-            error_text = f"register failed: {exc}"
-            return await self._emit_register_reject(
-                state=state,
-                register=register,
-                code="INTERNAL",
-                message=error_text,
-                reason=error_text,
-            )
-
-        await state.outbox.put(
-            runtime_codec.build_ack_message(
-                ack_for=register.request_id,
-                status=pb.OK,
-                ack_type="register",
-                ack_reason="registered",
-                detail="registered",
-            )
+        registered = await self._register_executor_or_reject(
+            state=state,
+            register=register,
+            executor_id=executor_id,
         )
+        if not registered:
+            return False
+
+        await state.outbox.put(self._build_register_ack(register))
         logger.info("执行器注册成功 executor_id={}", executor_id)
         return True
 

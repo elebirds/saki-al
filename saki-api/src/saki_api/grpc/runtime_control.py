@@ -219,6 +219,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
     async def Stream(self, request_iterator, context):
         metadata = dict(context.invocation_metadata())
         if metadata.get("x-internal-token") != settings.INTERNAL_TOKEN:
+            logger.warning("拒绝未授权 runtime 连接 peer={}", context.peer())
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid internal token")
 
         outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
@@ -238,6 +239,12 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                     if payload_type == "register":
                         register = message.register
                         executor_id = str(register.executor_id or "")
+                        logger.info(
+                            "收到执行器注册请求 executor_id={} version={} plugin_count={}",
+                            executor_id or "<empty>",
+                            str(register.version or ""),
+                            len(register.plugins),
+                        )
                         if not executor_id:
                             await outbox.put(
                                 runtime_codec.build_error_message(
@@ -287,6 +294,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 **register_kwargs,
                             )
                         except PermissionError as exc:
+                            logger.warning("执行器注册被拒绝 executor_id={} reason={}", executor_id, exc)
                             await outbox.put(
                                 runtime_codec.build_error_message(
                                     code="FORBIDDEN",
@@ -303,6 +311,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 break
                             continue
                         except Exception as exc:
+                            logger.exception("执行器注册失败 executor_id={} error={}", executor_id, exc)
                             await outbox.put(
                                 runtime_codec.build_error_message(
                                     code="INTERNAL",
@@ -326,6 +335,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                                 message="registered",
                             )
                         )
+                        logger.info("执行器注册成功 executor_id={}", executor_id)
                         continue
 
                     if payload_type == "heartbeat":
@@ -362,6 +372,12 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
                             continue
 
                         await self._persist_job_result(request)
+                        logger.info(
+                            "收到任务结果并完成持久化 request_id={} job_id={} status={}",
+                            request_id,
+                            request.job_id,
+                            request.status,
+                        )
                         if executor_id:
                             await runtime_dispatcher.mark_executor_idle(
                                 executor_id=executor_id,
@@ -496,6 +512,7 @@ class RuntimeControlService(pb_grpc.RuntimeControlServicer):
         finally:
             reader_task.cancel()
             if executor_id:
+                logger.info("runtime 流已关闭，开始注销执行器 executor_id={}", executor_id)
                 await runtime_dispatcher.unregister(executor_id)
 
     async def _persist_job_event(self, message: pb.JobEvent) -> None:

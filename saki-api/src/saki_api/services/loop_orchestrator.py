@@ -144,9 +144,18 @@ class LoopOrchestrator:
             async with SessionLocal() as session:
                 job = await session.get(Job, dispatch_job_id)
                 if job:
+                    logger.info("开始派发轮次任务 loop_id={} job_id={} round_index={}", job.loop_id, job.id, job.round_index)
                     assigned = await runtime_dispatcher.assign_job(job)
                     if not assigned:
+                        logger.warning("轮次任务未即时派发成功，转入统一派发队列 job_id={}", job.id)
                         await runtime_dispatcher.dispatch_pending_jobs()
+                    else:
+                        logger.info(
+                            "轮次任务派发成功 request_id={} job_id={} executor_id={}",
+                            assigned.request_id,
+                            job.id,
+                            assigned.executor_id,
+                        )
 
     async def _latest_round(self, session, loop_id: uuid.UUID) -> LoopRound | None:
         rows = await session.exec(
@@ -239,6 +248,13 @@ class LoopOrchestrator:
         loop.last_job_id = job.id
         loop.last_error = None
         session.add(loop)
+        logger.info(
+            "已创建轮次训练任务 loop_id={} round_index={} job_id={} source_commit_id={}",
+            loop.id,
+            round_index,
+            job.id,
+            source_commit_id,
+        )
         return job.id
 
     async def _handle_training_round(

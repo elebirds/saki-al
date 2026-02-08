@@ -4,8 +4,11 @@ Project Service - Business logic for Project operations.
 
 import json
 import uuid
+from dataclasses import dataclass
 from typing import Any, List, Sequence, Set
 
+from sqlalchemy import asc, desc, func, or_
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppException, BadRequestAppException
@@ -13,22 +16,37 @@ from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID
 from saki_api.db.transaction import transactional
 from saki_api.models import ResourceType
 from saki_api.models.enums import AuthorType
+from saki_api.models.l1.sample import Sample
 from saki_api.models.l2.annotation import Annotation
+from saki_api.models.l2.annotation_draft import AnnotationDraft
 from saki_api.models.l2.branch import Branch
+from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.project import Project, ProjectDataset
+from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.repositories.annotation import AnnotationRepository
 from saki_api.repositories.branch import BranchRepository
 from saki_api.repositories.dataset import DatasetRepository
 from saki_api.repositories.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
+from saki_api.repositories.query import Pagination
 from saki_api.repositories.resource_member import ResourceMemberRepository
 from saki_api.schemas.project import ProjectCreate, ProjectUpdate
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
 from saki_api.services.camap import CAMapService
+
+
+@dataclass
+class ProjectSamplePage:
+    samples: list[Sample]
+    total: int
+    offset: int
+    limit: int
+    annotation_counts: dict[uuid.UUID, int]
+    drafts_by_sample: set[uuid.UUID]
 
 
 class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, ProjectUpdate]):
@@ -260,6 +278,207 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         """
         await self.get_by_id_or_raise(project_id)
         return await self.repository.get_linked_dataset_ids(project_id)
+
+    @staticmethod
+    def _empty_project_sample_page(limit: int) -> ProjectSamplePage:
+        return ProjectSamplePage(
+            samples=[],
+            total=0,
+            offset=0,
+            limit=limit,
+            annotation_counts={},
+            drafts_by_sample=set(),
+        )
+
+    def _build_project_sample_statement(
+            self,
+            *,
+            project_id: uuid.UUID,
+            dataset_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            branch_name: str,
+            q: str | None,
+            batch_id: uuid.UUID | None,
+            status: str,
+            sort_by: str,
+            sort_order: str,
+            head_commit_id: uuid.UUID | None,
+    ):
+        statement = select(Sample).where(Sample.dataset_id == dataset_id)
+        if q:
+            pattern = f"%{q}%"
+            statement = statement.where(
+                or_(
+                    Sample.name.ilike(pattern),
+                    Sample.remark.ilike(pattern),
+                )
+            )
+
+        if batch_id:
+            batch_stmt = (
+                select(AnnotationBatchItem.sample_id)
+                .join(AnnotationBatch, AnnotationBatch.id == AnnotationBatchItem.batch_id)
+                .where(
+                    AnnotationBatchItem.batch_id == batch_id,
+                    AnnotationBatch.project_id == project_id,
+                )
+            )
+            statement = statement.where(Sample.id.in_(batch_stmt))
+
+        labeled_subq = select(CommitAnnotationMap.sample_id).where(
+            CommitAnnotationMap.commit_id == head_commit_id
+        ).distinct()
+        if status == "labeled":
+            statement = statement.where(Sample.id.in_(labeled_subq))
+        elif status == "unlabeled":
+            statement = statement.where(~Sample.id.in_(labeled_subq))
+        elif status == "draft":
+            draft_subq = select(AnnotationDraft.sample_id).where(
+                AnnotationDraft.project_id == project_id,
+                AnnotationDraft.user_id == current_user_id,
+                AnnotationDraft.branch_name == branch_name,
+            ).distinct()
+            statement = statement.where(Sample.id.in_(draft_subq))
+
+        sort_map = {
+            "name": Sample.name,
+            "createdAt": Sample.created_at,
+            "updatedAt": Sample.updated_at,
+            "created_at": Sample.created_at,
+            "updated_at": Sample.updated_at,
+        }
+        sort_column = sort_map.get(sort_by, Sample.created_at)
+        order_clause = asc(sort_column) if sort_order == "asc" else desc(sort_column)
+        return statement.order_by(order_clause)
+
+    async def _query_project_samples_page_data(
+            self,
+            *,
+            statement,
+            page: int,
+            limit: int,
+    ) -> tuple[list[Sample], int, Pagination]:
+        pagination = Pagination.from_page(page=page, limit=limit)
+        count_stmt = select(func.count()).select_from(statement.subquery())
+        total_result = await self.session.exec(count_stmt)
+        total = total_result.one() or 0
+        if isinstance(total, (list, tuple)):
+            total = total[0]
+
+        rows = await self.session.exec(
+            statement.offset(pagination.offset).limit(pagination.limit)
+        )
+        return list(rows.all()), int(total), pagination
+
+    async def _query_project_sample_annotation_counts(
+            self,
+            *,
+            sample_ids: list[uuid.UUID],
+            head_commit_id: uuid.UUID | None,
+    ) -> dict[uuid.UUID, int]:
+        annotation_counts: dict[uuid.UUID, int] = {}
+        if not sample_ids or not head_commit_id:
+            return annotation_counts
+        count_statement = (
+            select(
+                CommitAnnotationMap.sample_id,
+                func.count(CommitAnnotationMap.annotation_id),
+            )
+            .where(
+                CommitAnnotationMap.commit_id == head_commit_id,
+                CommitAnnotationMap.sample_id.in_(sample_ids),
+            )
+            .group_by(CommitAnnotationMap.sample_id)
+        )
+        count_result = await self.session.exec(count_statement)
+        for sample_id_item, count in count_result.all():
+            annotation_counts[sample_id_item] = count
+        return annotation_counts
+
+    async def _query_project_sample_drafts(
+            self,
+            *,
+            project_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            branch_name: str,
+            sample_ids: list[uuid.UUID],
+    ) -> set[uuid.UUID]:
+        if not sample_ids:
+            return set()
+        draft_statement = select(AnnotationDraft.sample_id).where(
+            AnnotationDraft.project_id == project_id,
+            AnnotationDraft.user_id == current_user_id,
+            AnnotationDraft.branch_name == branch_name,
+            AnnotationDraft.sample_id.in_(sample_ids),
+        )
+        draft_result = await self.session.exec(draft_statement)
+        return {
+            row[0] if isinstance(row, (list, tuple)) else row
+            for row in draft_result.all()
+        }
+
+    async def list_project_samples_page(
+            self,
+            *,
+            project_id: uuid.UUID,
+            dataset_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            branch_name: str,
+            q: str | None,
+            batch_id: uuid.UUID | None,
+            status: str,
+            sort_by: str,
+            sort_order: str,
+            page: int,
+            limit: int,
+    ) -> ProjectSamplePage:
+        dataset_ids = await self.get_linked_datasets(project_id)
+        if dataset_id not in dataset_ids:
+            return self._empty_project_sample_page(limit)
+
+        branch_repo = BranchRepository(self.session)
+        branch = await branch_repo.get_by_name(project_id, branch_name)
+        if not branch:
+            return self._empty_project_sample_page(limit)
+        head_commit_id = branch.head_commit_id
+
+        statement = self._build_project_sample_statement(
+            project_id=project_id,
+            dataset_id=dataset_id,
+            current_user_id=current_user_id,
+            branch_name=branch_name,
+            q=q,
+            batch_id=batch_id,
+            status=status,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            head_commit_id=head_commit_id,
+        )
+        samples, total, pagination = await self._query_project_samples_page_data(
+            statement=statement,
+            page=page,
+            limit=limit,
+        )
+        sample_ids = [sample.id for sample in samples]
+        annotation_counts = await self._query_project_sample_annotation_counts(
+            sample_ids=sample_ids,
+            head_commit_id=head_commit_id,
+        )
+        drafts_by_sample = await self._query_project_sample_drafts(
+            project_id=project_id,
+            current_user_id=current_user_id,
+            branch_name=branch_name,
+            sample_ids=sample_ids,
+        )
+
+        return ProjectSamplePage(
+            samples=samples,
+            total=total,
+            offset=pagination.offset,
+            limit=pagination.limit,
+            annotation_counts=annotation_counts,
+            drafts_by_sample=drafts_by_sample,
+        )
 
     # =========================================================================
     # Project Member Management (similar to DatasetService)

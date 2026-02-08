@@ -304,6 +304,25 @@ export interface RuntimeExecutorListResponse {
     items: RuntimeExecutorRead[];
 }
 
+export type RuntimeExecutorStatsRange = '30m' | '1h' | '6h' | '24h' | '7d';
+
+export interface RuntimeExecutorStatsPoint {
+    ts: string;
+    totalCount: number;
+    onlineCount: number;
+    busyCount: number;
+    availableCount: number;
+    availabilityRate: number;
+    pendingAssignCount: number;
+    pendingStopCount: number;
+}
+
+export interface RuntimeExecutorStatsResponse {
+    range: RuntimeExecutorStatsRange;
+    bucketSeconds: number;
+    points: RuntimeExecutorStatsPoint[];
+}
+
 export interface ModelArtifactDownload {
     modelId: string;
     artifactName: string;

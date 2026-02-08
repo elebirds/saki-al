@@ -4,7 +4,7 @@ Runtime executor observability schemas.
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -40,6 +40,26 @@ class RuntimeExecutorSummary(BaseModel):
 class RuntimeExecutorListResponse(BaseModel):
     summary: RuntimeExecutorSummary
     items: list[RuntimeExecutorRead]
+
+
+RuntimeExecutorStatsRange = Literal["30m", "1h", "6h", "24h", "7d"]
+
+
+class RuntimeExecutorStatsPoint(BaseModel):
+    ts: datetime
+    total_count: int
+    online_count: int
+    busy_count: int
+    available_count: int
+    availability_rate: float
+    pending_assign_count: int
+    pending_stop_count: int
+
+
+class RuntimeExecutorStatsResponse(BaseModel):
+    range: RuntimeExecutorStatsRange
+    bucket_seconds: int
+    points: list[RuntimeExecutorStatsPoint] = Field(default_factory=list)
 
 
 class RuntimePluginRead(BaseModel):

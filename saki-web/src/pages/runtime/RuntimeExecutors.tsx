@@ -1,25 +1,30 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Empty, Progress, Select, Spin, Tag, message } from 'antd';
 import {
-    Alert,
-    Button,
-    Card,
-    Col,
-    Descriptions,
-    Empty,
-    Progress,
-    Row,
-    Space,
-    Spin,
-    Table,
-    Tag,
-    Typography,
-    message,
-} from 'antd';
+    Area,
+    AreaChart,
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Legend,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 
-import {api} from '../../services/api';
-import {RuntimeExecutorListResponse, RuntimeExecutorPluginCapability, RuntimeExecutorRead} from '../../types';
+import { api } from '../../services/api';
+import {
+    RuntimeExecutorListResponse,
+    RuntimeExecutorPluginCapability,
+    RuntimeExecutorRead,
+    RuntimeExecutorStatsPoint,
+    RuntimeExecutorStatsRange,
+    RuntimeExecutorStatsResponse,
+    RuntimeExecutorSummary,
+} from '../../types';
 
-const {Title, Text} = Typography;
+const POLLING_INTERVAL_MS = 10_000;
 
 const STATUS_COLOR: Record<string, string> = {
     idle: 'success',
@@ -28,272 +33,499 @@ const STATUS_COLOR: Record<string, string> = {
     offline: 'default',
 };
 
+const RANGE_OPTIONS: Array<{ label: string; value: RuntimeExecutorStatsRange }> = [
+    { label: '最近 30 分钟', value: '30m' },
+    { label: '最近 1 小时', value: '1h' },
+    { label: '最近 6 小时', value: '6h' },
+    { label: '最近 24 小时', value: '24h' },
+    { label: '最近 7 天', value: '7d' },
+];
+
 const formatDateTime = (value?: string | null) => {
     if (!value) return '-';
-    try {
-        return new Date(value).toLocaleString();
-    } catch {
-        return value;
-    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
 };
+
+const formatTickTime = (value: string, range: RuntimeExecutorStatsRange) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    if (range === '7d' || range === '24h') {
+        return date.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
+const formatPercent = (ratio: number) => `${(ratio * 100).toFixed(2)}%`;
 
 const extractPlugins = (executor: RuntimeExecutorRead | null): RuntimeExecutorPluginCapability[] => {
     if (!executor) return [];
     const raw = executor.pluginIds?.plugins;
-    if (Array.isArray(raw)) {
-        return raw;
+    return Array.isArray(raw) ? raw : [];
+};
+
+const buildFallbackStats = (
+    summary: RuntimeExecutorSummary | null | undefined,
+    range: RuntimeExecutorStatsRange,
+): RuntimeExecutorStatsResponse => {
+    if (!summary) {
+        return {
+            range,
+            bucketSeconds: 10,
+            points: [],
+        };
     }
-    return [];
+    return {
+        range,
+        bucketSeconds: 10,
+        points: [
+            {
+                ts: new Date().toISOString(),
+                totalCount: summary.totalCount,
+                onlineCount: summary.onlineCount,
+                busyCount: summary.busyCount,
+                availableCount: summary.availableCount,
+                availabilityRate: summary.availabilityRate,
+                pendingAssignCount: summary.pendingAssignCount,
+                pendingStopCount: summary.pendingStopCount,
+            },
+        ],
+    };
 };
 
 const RuntimeExecutors: React.FC = () => {
     const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
     const [data, setData] = useState<RuntimeExecutorListResponse | null>(null);
+    const [stats, setStats] = useState<RuntimeExecutorStatsResponse | null>(null);
+    const [range, setRange] = useState<RuntimeExecutorStatsRange>('30m');
     const [selectedExecutorId, setSelectedExecutorId] = useState<string | null>(null);
     const [selectedExecutor, setSelectedExecutor] = useState<RuntimeExecutorRead | null>(null);
+    const [detailOpen, setDetailOpen] = useState(false);
+    const [statsApiSupported, setStatsApiSupported] = useState(true);
+    const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
-    const loadExecutors = useCallback(async (silent: boolean = false) => {
-        if (silent) {
-            setRefreshing(true);
-        } else {
+    const selectedExecutorIdRef = useRef<string | null>(null);
+    const detailOpenRef = useRef(false);
+
+    useEffect(() => {
+        selectedExecutorIdRef.current = selectedExecutorId;
+    }, [selectedExecutorId]);
+
+    useEffect(() => {
+        detailOpenRef.current = detailOpen;
+    }, [detailOpen]);
+
+    const loadExecutorDetail = useCallback(async (executorId: string, silent: boolean = false) => {
+        if (!silent) {
+            setDetailLoading(true);
+        }
+        try {
+            const detail = await api.getRuntimeExecutor(executorId);
+            setSelectedExecutor(detail);
+        } catch (error: any) {
+            if (!silent) {
+                message.error(error?.message || '加载执行器详情失败');
+            }
+        } finally {
+            if (!silent) {
+                setDetailLoading(false);
+            }
+        }
+    }, []);
+
+    const loadDashboard = useCallback(async (silent: boolean = false) => {
+        if (!silent) {
             setLoading(true);
         }
         try {
             const resp = await api.getRuntimeExecutors();
             setData(resp);
-            if (!selectedExecutorId && resp.items.length > 0) {
-                setSelectedExecutorId(resp.items[0].executorId);
-                setSelectedExecutor(resp.items[0]);
-            } else if (selectedExecutorId) {
-                const matched = resp.items.find((item) => item.executorId === selectedExecutorId) || null;
-                setSelectedExecutor(matched);
+
+            const currentSelectedId = selectedExecutorIdRef.current;
+            if (currentSelectedId) {
+                const matched = resp.items.find((item) => item.executorId === currentSelectedId) || null;
+                if (!matched) {
+                    setSelectedExecutorId(null);
+                    setSelectedExecutor(null);
+                    setDetailOpen(false);
+                } else {
+                    setSelectedExecutor((prev) => {
+                        if (!prev || prev.executorId !== matched.executorId) {
+                            return matched;
+                        }
+                        return {
+                            ...prev,
+                            ...matched,
+                        };
+                    });
+                }
             }
-        } catch (error: any) {
-            message.error(error?.message || '加载执行器状态失败');
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    }, [selectedExecutorId]);
 
-    const loadExecutorDetail = useCallback(async (executorId: string) => {
-        setDetailLoading(true);
-        try {
-            const detail = await api.getRuntimeExecutor(executorId);
-            setSelectedExecutor(detail);
+            if (statsApiSupported) {
+                try {
+                    const trend = await api.getRuntimeExecutorStats(range);
+                    setStats(trend);
+                } catch (error: any) {
+                    const statusCode = Number(error?.statusCode || error?.originalError?.response?.status || 0);
+                    if (statusCode === 400 || statusCode === 404 || statusCode === 405) {
+                        setStatsApiSupported(false);
+                    }
+                    setStats(buildFallbackStats(resp.summary, range));
+                }
+            } else {
+                setStats(buildFallbackStats(resp.summary, range));
+            }
+
+            if (detailOpenRef.current && currentSelectedId) {
+                await loadExecutorDetail(currentSelectedId, true);
+            }
+
+            setLastUpdatedAt(new Date().toISOString());
         } catch (error: any) {
-            message.error(error?.message || '加载执行器详情失败');
+            if (!silent) {
+                message.error(error?.message || '加载执行器状态失败');
+            }
         } finally {
-            setDetailLoading(false);
+            if (!silent) {
+                setLoading(false);
+            }
         }
-    }, []);
+    }, [range, statsApiSupported, loadExecutorDetail]);
 
     useEffect(() => {
-        void loadExecutors(false);
-    }, [loadExecutors]);
+        void loadDashboard(false);
+    }, [loadDashboard]);
 
     useEffect(() => {
-        if (!selectedExecutorId) return;
-        void loadExecutorDetail(selectedExecutorId);
-    }, [selectedExecutorId, loadExecutorDetail]);
+        const timer = window.setInterval(() => {
+            void loadDashboard(true);
+        }, POLLING_INTERVAL_MS);
+
+        return () => window.clearInterval(timer);
+    }, [loadDashboard]);
 
     const summary = data?.summary;
     const plugins = useMemo(() => extractPlugins(selectedExecutor), [selectedExecutor]);
+    const trendData = useMemo<RuntimeExecutorStatsPoint[]>(() => {
+        if (!stats?.points?.length) return [];
+        return [...stats.points].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    }, [stats]);
+
+    const chartData = useMemo(() => {
+        return trendData.map((item) => {
+            const total = Math.max(item.totalCount, 0);
+            const busy = Math.max(item.busyCount, 0);
+            const offline = Math.max(total - item.onlineCount, 0);
+            const idle = Math.max(total - busy - offline, 0);
+            const base = total > 0 ? total : 1;
+
+            return {
+                ...item,
+                busyCountDerived: busy,
+                idleCountDerived: idle,
+                offlineCountDerived: offline,
+                busyPercent: (busy / base) * 100,
+                idlePercent: (idle / base) * 100,
+                offlinePercent: (offline / base) * 100,
+            };
+        });
+    }, [trendData]);
+
+    const openDetail = async (executorId: string) => {
+        setSelectedExecutorId(executorId);
+        setDetailOpen(true);
+        await loadExecutorDetail(executorId, false);
+    };
+
+    const closeDetail = () => {
+        setDetailOpen(false);
+    };
 
     if (loading) {
         return (
             <div className="flex h-full items-center justify-center">
-                <Spin size="large"/>
+                <Spin size="large" />
             </div>
         );
     }
 
     return (
-        <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
-            <Card className="!border-github-border !bg-github-panel">
-                <div className="flex items-center justify-between gap-3">
-                    <div>
-                        <Title level={4} className="!mb-1">Runtime Executors</Title>
-                        <Text type="secondary">查看当前执行器在线情况、可用率与插件能力明细。</Text>
+        <>
+            <div className="h-full min-h-0 overflow-hidden">
+                <div className="rounded-md border border-github-border bg-github-panel p-4 mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 className="text-lg font-semibold text-github-text">执行器运行统计</h2>
+                            <div className="mt-2 text-xs text-github-muted">
+                                最近更新：{formatDateTime(lastUpdatedAt)}
+                                {!statsApiSupported ? '（当前使用实时快照）' : ''}
+                            </div>
+                        </div>
+                        <Select
+                            value={range}
+                            style={{ width: 160 }}
+                            options={RANGE_OPTIONS}
+                            onChange={(value) => setRange(value as RuntimeExecutorStatsRange)}
+                        />
                     </div>
-                    <Button loading={refreshing} onClick={() => loadExecutors(true)}>刷新</Button>
                 </div>
-            </Card>
+                <div className="grid h-full min-h-0 grid-cols-1 gap-4 xl:grid-cols-[4fr_6fr]">
+                    <section className="min-h-0 overflow-auto pr-1">
+                        <div className="flex flex-col gap-4">
 
-            {summary ? (
-                <Row gutter={[16, 16]}>
-                    <Col xs={12} md={6}>
-                        <Card className="!border-github-border !bg-github-panel" size="small">
-                            <div className="text-xs text-github-muted">执行器总数</div>
-                            <div className="text-2xl font-semibold text-github-text">{summary.totalCount}</div>
-                        </Card>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Card className="!border-github-border !bg-github-panel" size="small">
-                            <div className="text-xs text-github-muted">在线数</div>
-                            <div className="text-2xl font-semibold text-github-text">{summary.onlineCount}</div>
-                        </Card>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Card className="!border-github-border !bg-github-panel" size="small">
-                            <div className="text-xs text-github-muted">忙碌数</div>
-                            <div className="text-2xl font-semibold text-github-text">{summary.busyCount}</div>
-                        </Card>
-                    </Col>
-                    <Col xs={12} md={6}>
-                        <Card className="!border-github-border !bg-github-panel" size="small">
-                            <div className="text-xs text-github-muted">可用数</div>
-                            <div className="text-2xl font-semibold text-github-text">{summary.availableCount}</div>
-                        </Card>
-                    </Col>
-                </Row>
-            ) : null}
+                            {summary ? (
+                                <div className="grid grid-cols-4 gap-3">
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3">
+                                        <div className="text-xs text-github-muted">执行器总数</div>
+                                        <div className="text-2xl font-semibold text-github-text">{summary.totalCount}</div>
+                                    </div>
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3">
+                                        <div className="text-xs text-github-muted">在线数</div>
+                                        <div className="text-2xl font-semibold text-github-text">{summary.onlineCount}</div>
+                                    </div>
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3">
+                                        <div className="text-xs text-github-muted">运行中</div>
+                                        <div className="text-2xl font-semibold text-github-text">{summary.busyCount}</div>
+                                    </div>
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3">
+                                        <div className="text-xs text-github-muted">可用数</div>
+                                        <div className="text-2xl font-semibold text-github-text">{summary.availableCount}</div>
+                                    </div>
+                                </div>
+                            ) : null}
 
-            <Card className="!border-github-border !bg-github-panel" title="可用率">
-                <Space direction="vertical" className="w-full" size={4}>
-                    <Progress percent={Number(((summary?.availabilityRate || 0) * 100).toFixed(2))}/>
-                    <Text type="secondary">
-                        pending assign: {summary?.pendingAssignCount || 0} · pending stop: {summary?.pendingStopCount || 0}
-                        · latest heartbeat: {formatDateTime(summary?.latestHeartbeatAt)}
-                    </Text>
-                </Space>
-            </Card>
+                            <div className="rounded-md border border-github-border bg-github-panel p-4">
+                                <div className="mb-2 text-sm font-medium text-github-text">可用率</div>
+                                <Progress percent={Number(((summary?.availabilityRate || 0) * 100).toFixed(2))} />
+                                <div className="mt-2 text-xs text-github-muted">
+                                    当前可用率 {formatPercent(summary?.availabilityRate || 0)}，
+                                    pending assign: {summary?.pendingAssignCount || 0}，
+                                    pending stop: {summary?.pendingStopCount || 0}，
+                                    latest heartbeat: {formatDateTime(summary?.latestHeartbeatAt)}
+                                </div>
+                            </div>
 
-            <Row gutter={[16, 16]}>
-                <Col xs={24} xl={15}>
-                    <Card className="!border-github-border !bg-github-panel" title="执行器列表">
-                        {!data || data.items.length === 0 ? (
-                            <Empty description="暂无执行器注册"/>
-                        ) : (
-                            <Table
-                                size="small"
-                                rowKey={(item) => item.executorId}
-                                dataSource={data.items}
-                                pagination={{pageSize: 8}}
-                                onRow={(record) => ({
-                                    onClick: () => setSelectedExecutorId(record.executorId),
-                                })}
-                                rowClassName={(record) => (
-                                    record.executorId === selectedExecutorId ? '!bg-github-bg-subtle cursor-pointer' : 'cursor-pointer'
-                                )}
-                                columns={[
-                                    {
-                                        title: 'Executor',
-                                        dataIndex: 'executorId',
-                                        render: (v: string) => <Text code>{v}</Text>,
-                                    },
-                                    {
-                                        title: '状态',
-                                        dataIndex: 'status',
-                                        width: 120,
-                                        render: (v: string) => <Tag color={STATUS_COLOR[v] || 'default'}>{v}</Tag>,
-                                    },
-                                    {
-                                        title: '在线',
-                                        dataIndex: 'isOnline',
-                                        width: 90,
-                                        render: (v: boolean) => (v ? <Tag color="success">online</Tag> : <Tag>offline</Tag>),
-                                    },
-                                    {
-                                        title: '当前任务',
-                                        dataIndex: 'currentJobId',
-                                        width: 220,
-                                        render: (v: string | null) => (v ? <Text code>{v}</Text> : '-'),
-                                    },
-                                    {
-                                        title: '插件数',
-                                        width: 90,
-                                        render: (_v: unknown, row: RuntimeExecutorRead) => extractPlugins(row).length,
-                                    },
-                                    {
-                                        title: '可派发/待停止',
-                                        width: 140,
-                                        render: (_v: unknown, row: RuntimeExecutorRead) => `${row.pendingAssignCount}/${row.pendingStopCount}`,
-                                    },
-                                    {
-                                        title: '最后心跳',
-                                        dataIndex: 'lastSeenAt',
-                                        width: 180,
-                                        render: (v: string | null) => formatDateTime(v),
-                                    },
-                                ]}
-                            />
-                        )}
-                    </Card>
-                </Col>
-
-                <Col xs={24} xl={9}>
-                    <Card className="!border-github-border !bg-github-panel" title="执行器详情" loading={detailLoading}>
-                        {!selectedExecutor ? (
-                            <Empty description="请选择执行器查看详情"/>
-                        ) : (
-                            <Space direction="vertical" className="w-full" size={12}>
-                                <Descriptions size="small" column={1}>
-                                    <Descriptions.Item label="Executor ID">
-                                        <Text code>{selectedExecutor.executorId}</Text>
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="版本">{selectedExecutor.version}</Descriptions.Item>
-                                    <Descriptions.Item label="状态">
-                                        <Tag color={STATUS_COLOR[selectedExecutor.status] || 'default'}>{selectedExecutor.status}</Tag>
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="当前任务">
-                                        {selectedExecutor.currentJobId || '-'}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="最后心跳">
-                                        {formatDateTime(selectedExecutor.lastSeenAt)}
-                                    </Descriptions.Item>
-                                </Descriptions>
-
-                                {selectedExecutor.lastError ? (
-                                    <Alert type="error" showIcon message={selectedExecutor.lastError}/>
-                                ) : null}
-
-                                <Card
-                                    size="small"
-                                    className="!border-github-border !bg-github-panel"
-                                    title={`插件能力 (${plugins.length})`}
-                                >
-                                    {plugins.length === 0 ? (
-                                        <Empty description="未上报插件能力" image={Empty.PRESENTED_IMAGE_SIMPLE}/>
+                            <div className="rounded-md border border-github-border bg-github-panel p-4">
+                                <div className="mb-3 text-sm font-medium text-github-text">状态占比趋势（100%）</div>
+                                <div className="h-[250px]">
+                                    {chartData.length === 0 ? (
+                                        <Empty description="暂无统计趋势数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                                     ) : (
-                                        <Table
-                                            size="small"
-                                            rowKey={(item) => item.pluginId}
-                                            pagination={false}
-                                            dataSource={plugins}
-                                            columns={[
-                                                {
-                                                    title: 'Plugin',
-                                                    dataIndex: 'displayName',
-                                                    render: (v: string, row: RuntimeExecutorPluginCapability) => (
-                                                        <Space direction="vertical" size={0}>
-                                                            <Text>{v}</Text>
-                                                            <Text type="secondary">{row.pluginId}</Text>
-                                                        </Space>
-                                                    ),
-                                                },
-                                                {
-                                                    title: '策略',
-                                                    dataIndex: 'supportedStrategies',
-                                                    render: (v: string[]) => (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {(v || []).slice(0, 3).map((item) => <Tag key={item}>{item}</Tag>)}
-                                                            {(v || []).length > 3 ? <Tag>+{(v || []).length - 3}</Tag> : null}
-                                                        </div>
-                                                    ),
-                                                },
-                                            ]}
-                                        />
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={chartData}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis
+                                                    dataKey="ts"
+                                                    minTickGap={24}
+                                                    tickFormatter={(value) => formatTickTime(String(value), range)}
+                                                />
+                                                <YAxis domain={[0, 100]} unit="%" />
+                                                <Tooltip
+                                                    labelFormatter={(value) => formatDateTime(String(value))}
+                                                    formatter={(value: number) => `${Number(value).toFixed(2)}%`}
+                                                />
+                                                <Legend />
+                                                <Area type="monotone" dataKey="busyPercent" stackId="percent" name="忙碌中" stroke="#fa8c16" fill="#fa8c16" fillOpacity={0.8} isAnimationActive={false} />
+                                                <Area type="monotone" dataKey="idlePercent" stackId="percent" name="空闲中" stroke="#52c41a" fill="#52c41a" fillOpacity={0.8} isAnimationActive={false} />
+                                                <Area type="monotone" dataKey="offlinePercent" stackId="percent" name="离线" stroke="#8c8c8c" fill="#8c8c8c" fillOpacity={0.8} isAnimationActive={false} />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
                                     )}
-                                </Card>
-                            </Space>
+                                </div>
+                            </div>
+
+                            <div className="rounded-md border border-github-border bg-github-panel p-4">
+                                <div className="mb-3 text-sm font-medium text-github-text">状态计数趋势</div>
+                                <div className="h-[270px]">
+                                    {chartData.length === 0 ? (
+                                        <Empty description="暂无统计趋势数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                                    ) : (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={chartData}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis
+                                                    dataKey="ts"
+                                                    minTickGap={24}
+                                                    tickFormatter={(value) => formatTickTime(String(value), range)}
+                                                />
+                                                <YAxis allowDecimals={false} />
+                                                <Tooltip labelFormatter={(value) => formatDateTime(String(value))} />
+                                                <Legend />
+                                                <Bar dataKey="busyCountDerived" stackId="status" name="忙碌中" fill="#fa8c16" isAnimationActive={false} />
+                                                <Bar dataKey="idleCountDerived" stackId="status" name="空闲中" fill="#52c41a" isAnimationActive={false} />
+                                                <Bar dataKey="offlineCountDerived" stackId="status" name="离线" fill="#8c8c8c" isAnimationActive={false} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="min-h-0 overflow-hidden rounded-md border border-github-border bg-github-panel">
+                        <div className="border-b border-github-border px-4 py-3">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-base font-semibold text-github-text">执行器列表</h2>
+                                <span className="text-xs text-github-muted">共 {data?.items.length || 0} 台</span>
+                            </div>
+                        </div>
+
+                        {!data || data.items.length === 0 ? (
+                            <div className="flex h-full items-center justify-center">
+                                <Empty description="暂无执行器注册" />
+                            </div>
+                        ) : (
+                            <div className="min-h-0 h-[calc(100%-52px)] overflow-auto">
+                                <table className="min-w-full border-collapse text-sm">
+                                    <thead className="sticky top-0 z-10 bg-github-header">
+                                        <tr className="border-b border-github-border">
+                                            <th className="px-4 py-3 text-left font-medium text-github-muted">Executor</th>
+                                            <th className="px-4 py-3 text-left font-medium text-github-muted">状态</th>
+                                            <th className="px-4 py-3 text-left font-medium text-github-muted">在线</th>
+                                            <th className="px-4 py-3 text-left font-medium text-github-muted">当前任务</th>
+                                            <th className="px-4 py-3 text-left font-medium text-github-muted">待派发/待停止</th>
+                                            <th className="px-4 py-3 text-left font-medium text-github-muted">最后心跳</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {data.items.map((row) => {
+                                            const active = row.executorId === selectedExecutorId;
+                                            return (
+                                                <tr
+                                                    key={row.executorId}
+                                                    className={`cursor-pointer border-b border-github-border-muted transition-colors hover:bg-github-header ${active ? 'bg-github-header' : ''}`}
+                                                    onClick={() => {
+                                                        void openDetail(row.executorId);
+                                                    }}
+                                                >
+                                                    <td className="px-4 py-3 align-top">
+                                                        <code className="rounded bg-github-badge px-1 py-0.5 text-xs">{row.executorId}</code>
+                                                    </td>
+                                                    <td className="px-4 py-3 align-top">
+                                                        <Tag color={STATUS_COLOR[row.status] || 'default'}>{row.status}</Tag>
+                                                    </td>
+                                                    <td className="px-4 py-3 align-top">
+                                                        {row.isOnline ? <Tag color="success">online</Tag> : <Tag>offline</Tag>}
+                                                    </td>
+                                                    <td className="px-4 py-3 align-top">
+                                                        {row.currentJobId ? <code className="text-xs">{row.currentJobId}</code> : '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 align-top">{row.pendingAssignCount}/{row.pendingStopCount}</td>
+                                                    <td className="px-4 py-3 align-top text-xs text-github-muted">{formatDateTime(row.lastSeenAt)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         )}
-                    </Card>
-                </Col>
-            </Row>
-        </div>
+                    </section>
+                </div>
+            </div>
+
+            <div className={`fixed inset-0 z-50 ${detailOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+                <div
+                    className={`absolute inset-0 bg-black/35 transition-opacity duration-200 ${detailOpen ? 'opacity-100' : 'opacity-0'}`}
+                    onClick={closeDetail}
+                />
+                <aside
+                    role="dialog"
+                    aria-modal="true"
+                    className={`absolute right-0 top-0 h-full w-full max-w-[560px] border-l border-github-border bg-github-header shadow-2xl transition-transform duration-200 ${detailOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                    style={{ backgroundColor: 'var(--github-header)' }}
+                >
+                    <div className="flex h-full flex-col">
+                        <div className="flex items-center justify-between border-b border-github-border px-4 py-3">
+                            <h3 className="text-base font-semibold text-github-text">执行器详情</h3>
+                            <button
+                                type="button"
+                                className="rounded border border-github-border px-2 py-1 text-sm text-github-muted hover:bg-github-header"
+                                onClick={closeDetail}
+                            >
+                                关闭
+                            </button>
+                        </div>
+
+                        <div className="min-h-0 flex-1 overflow-auto bg-github-header p-4" style={{ backgroundColor: 'var(--github-header)' }}>
+                            {detailLoading ? (
+                                <div className="flex h-full items-center justify-center">
+                                    <Spin size="large" />
+                                </div>
+                            ) : !selectedExecutor ? (
+                                <Empty description="请选择执行器查看详情" />
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3 shadow-sm" style={{ backgroundColor: 'var(--github-panel)' }}>
+                                        <div className="grid grid-cols-1 gap-3 text-sm">
+                                            <div>
+                                                <div className="text-xs text-github-muted">Executor ID</div>
+                                                <code className="text-xs">{selectedExecutor.executorId}</code>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-github-muted">版本</div>
+                                                <div>{selectedExecutor.version || '-'}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-github-muted">状态</div>
+                                                <Tag color={STATUS_COLOR[selectedExecutor.status] || 'default'}>{selectedExecutor.status}</Tag>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-github-muted">当前任务</div>
+                                                <div>{selectedExecutor.currentJobId || '-'}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-github-muted">待派发 / 待停止</div>
+                                                <div>{selectedExecutor.pendingAssignCount}/{selectedExecutor.pendingStopCount}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-github-muted">最后心跳</div>
+                                                <div>{formatDateTime(selectedExecutor.lastSeenAt)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {selectedExecutor.lastError ? (
+                                        <Alert type="error" showIcon message={selectedExecutor.lastError} />
+                                    ) : null}
+
+                                    <div className="rounded-md border border-github-border bg-github-panel p-3 shadow-sm" style={{ backgroundColor: 'var(--github-panel)' }}>
+                                        <div className="mb-2 text-sm font-medium text-github-text">插件能力 ({plugins.length})</div>
+                                        {plugins.length === 0 ? (
+                                            <Empty description="未上报插件能力" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {plugins.map((plugin) => (
+                                                    <div key={plugin.pluginId} className="rounded border border-github-border-muted bg-github-header p-2" style={{ backgroundColor: 'var(--github-header)' }}>
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div>
+                                                                <div className="text-sm font-medium text-github-text">{plugin.displayName || plugin.pluginId}</div>
+                                                                <div className="text-xs text-github-muted">{plugin.pluginId}</div>
+                                                            </div>
+                                                            <div className="text-xs text-github-muted">v{plugin.version || '-'}</div>
+                                                        </div>
+                                                        <div className="mt-2 flex flex-wrap gap-1">
+                                                            {(plugin.supportedStrategies || []).length === 0 ? (
+                                                                <span className="text-xs text-github-muted">无策略声明</span>
+                                                            ) : (
+                                                                plugin.supportedStrategies.map((item) => (
+                                                                    <Tag key={item}>{item}</Tag>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </>
     );
 };
 

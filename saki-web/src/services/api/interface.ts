@@ -38,6 +38,8 @@ import {
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
+    RuntimeExecutorStatsRange,
+    RuntimeExecutorStatsResponse,
     AnnotationBatch,
     AnnotationBatchItem,
     ProjectModel,
@@ -226,6 +228,8 @@ export interface ApiService {
     getJobArtifactDownloadUrl(jobId: string, artifactName: string, expiresInHours?: number): Promise<JobArtifactDownload>;
 
     getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;
+
+    getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse>;
 
     getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
 

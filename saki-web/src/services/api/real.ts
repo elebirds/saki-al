@@ -39,6 +39,8 @@ import {
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
+    RuntimeExecutorStatsRange,
+    RuntimeExecutorStatsResponse,
     AnnotationBatch,
     AnnotationBatchItem,
     ProjectModel,
@@ -787,6 +789,13 @@ export class RealApiService implements ApiService {
 
     async getRuntimeExecutors(): Promise<RuntimeExecutorListResponse> {
         const response = await this.client.get<RuntimeExecutorListResponse>('/runtime/executors');
+        return response.data;
+    }
+
+    async getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse> {
+        const response = await this.client.get<RuntimeExecutorStatsResponse>('/runtime/executors/stats', {
+            params: {range},
+        });
         return response.data;
     }
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
-from sqlalchemy import inspect
+from sqlalchemy import delete, inspect
 from sqlmodel import select
 
 from saki_api.core.config import settings
@@ -21,6 +21,7 @@ from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
+from saki_api.models.l3.runtime_executor_stats import RuntimeExecutorStats
 
 
 
@@ -58,6 +59,12 @@ class RuntimeDispatcher:
         self._pending_stop: dict[str, str] = {}
         self._lock = asyncio.Lock()
         self._dispatch_lock = asyncio.Lock()
+        self._stats_lock = asyncio.Lock()
+        self._stats_last_persist_at: datetime | None = None
+        self._stats_last_cleanup_at: datetime | None = None
+        self._stats_persist_interval = timedelta(seconds=10)
+        self._stats_retention = timedelta(days=7)
+        self._stats_cleanup_interval = timedelta(minutes=10)
 
     async def metrics_snapshot(self) -> dict[str, Any]:
         async with self._lock:
@@ -95,6 +102,91 @@ class RuntimeDispatcher:
             "pending_assign_count": pending_assign_count,
             "pending_stop_count": pending_stop_count,
         }
+
+    @staticmethod
+    def _required_stats_tables() -> tuple[str, ...]:
+        return (
+            RuntimeExecutor.__tablename__,
+            RuntimeExecutorStats.__tablename__,
+        )
+
+    async def _has_required_stats_tables(self, session) -> bool:
+        required_tables = self._required_stats_tables()
+        connection = await session.connection()
+
+        def _check(sync_conn) -> bool:
+            table_inspector = inspect(sync_conn)
+            return all(table_inspector.has_table(table_name) for table_name in required_tables)
+
+        return await connection.run_sync(_check)
+
+    async def _persist_runtime_stats(self, force: bool = False) -> None:
+        now = datetime.now(UTC)
+        if not force and self._stats_last_persist_at and (now - self._stats_last_persist_at) < self._stats_persist_interval:
+            return
+
+        async with self._stats_lock:
+            now = datetime.now(UTC)
+            if (
+                    not force
+                    and self._stats_last_persist_at
+                    and (now - self._stats_last_persist_at) < self._stats_persist_interval
+            ):
+                return
+
+            async with self._lock:
+                pending_assign_count = len(self._pending_assign)
+                pending_stop_count = len(self._pending_stop)
+
+            async with SessionLocal() as session:
+                if not await self._has_required_stats_tables(session):
+                    return
+
+                rows = await session.exec(select(RuntimeExecutor))
+                executors = list(rows.all())
+                total_count = len(executors)
+                online_count = sum(1 for executor in executors if executor.is_online)
+                busy_count = sum(1 for executor in executors if executor.status in {"busy", "reserved"})
+                available_count = sum(
+                    1
+                    for executor in executors
+                    if executor.is_online and executor.status not in {"busy", "reserved", "offline"}
+                )
+                availability_rate = (available_count / total_count) if total_count > 0 else 0.0
+
+                session.add(
+                    RuntimeExecutorStats(
+                        ts=now,
+                        total_count=total_count,
+                        online_count=online_count,
+                        busy_count=busy_count,
+                        available_count=available_count,
+                        availability_rate=availability_rate,
+                        pending_assign_count=pending_assign_count,
+                        pending_stop_count=pending_stop_count,
+                    )
+                )
+
+                cleanup_due = (
+                    self._stats_last_cleanup_at is None
+                    or (now - self._stats_last_cleanup_at) >= self._stats_cleanup_interval
+                )
+                if cleanup_due:
+                    cutoff = now - self._stats_retention
+                    await session.exec(
+                        delete(RuntimeExecutorStats).where(RuntimeExecutorStats.ts < cutoff)
+                    )
+                    self._stats_last_cleanup_at = now
+
+                await session.commit()
+
+            self._stats_last_persist_at = now
+
+    async def _try_persist_runtime_stats(self, force: bool = False) -> None:
+        try:
+            await self._persist_runtime_stats(force=force)
+        except Exception as exc:
+            logger.warning("写入 runtime 统计快照失败 error={}", exc)
 
     def _clear_pending_for_executor(self, executor_id: str, job_ids: set[str] | None = None) -> None:
         pending_assign_ids = [
@@ -349,6 +441,7 @@ class RuntimeDispatcher:
             "runtime 重启恢复完成 summary={}",
             summary,
         )
+        await self._try_persist_runtime_stats(force=True)
         return summary
 
     async def register(
@@ -393,6 +486,7 @@ class RuntimeDispatcher:
             session.add(executor)
             await session.commit()
 
+        await self._try_persist_runtime_stats(force=True)
         logger.info(
             "执行器已连接 executor_id={} version={} plugins={} resources={}",
             executor_id,
@@ -446,6 +540,7 @@ class RuntimeDispatcher:
             executor_id,
             len(cleanup_job_ids),
         )
+        await self._try_persist_runtime_stats(force=True)
         self._schedule_dispatch()
 
     async def heartbeat(
@@ -475,6 +570,7 @@ class RuntimeDispatcher:
                 db.add(executor)
                 await db.commit()
 
+        await self._try_persist_runtime_stats()
         if not busy:
             self._schedule_dispatch()
 
@@ -532,6 +628,8 @@ class RuntimeDispatcher:
         async with self._lock:
             for executor_id in stale_ids:
                 self._clear_pending_for_executor(executor_id, stale_job_ids.get(executor_id))
+
+        await self._try_persist_runtime_stats(force=True)
 
     async def assign_job(self, job: Job, check_stale: bool = True) -> Optional[AssignmentResult]:
         if check_stale:
@@ -620,6 +718,7 @@ class RuntimeDispatcher:
                 session.add(persisted_job)
             await session.commit()
 
+        await self._try_persist_runtime_stats()
         return AssignmentResult(request_id=request_id, executor_id=target.executor_id)
 
     async def stop_job(self, job_id: str, reason: str) -> tuple[str, bool]:
@@ -730,6 +829,8 @@ class RuntimeDispatcher:
                     message or "",
                 )
 
+        await self._try_persist_runtime_stats()
+
     async def reap_assign_timeouts(self) -> None:
         timeout_sec = max(1, int(settings.RUNTIME_ASSIGN_ACK_TIMEOUT_SEC))
         now = datetime.now(UTC)
@@ -794,6 +895,7 @@ class RuntimeDispatcher:
                 for request_id in pending_stop_to_remove:
                     self._pending_stop.pop(request_id, None)
 
+        await self._try_persist_runtime_stats(force=True)
         self._schedule_dispatch()
 
     async def mark_executor_idle(self, executor_id: str, job_id: str | None = None) -> None:
@@ -816,6 +918,7 @@ class RuntimeDispatcher:
                 db.add(executor)
                 await db.commit()
 
+        await self._try_persist_runtime_stats()
         logger.info("执行器切换为空闲状态 executor_id={} job_id={}", executor_id, job_id)
         self._schedule_dispatch()
 

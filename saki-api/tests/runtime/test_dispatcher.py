@@ -15,6 +15,7 @@ from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import TrainingJobStatus
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
+from saki_api.models.l3.runtime_executor_stats import RuntimeExecutorStats
 
 
 @pytest.fixture
@@ -501,6 +502,58 @@ async def test_recover_after_api_restart_clears_stale_assignments_and_running_jo
             assert executor.is_online is False
             assert executor.status == "offline"
             assert executor.current_job_id is None
+
+
+@pytest.mark.anyio
+async def test_runtime_stats_snapshot_persist_and_cleanup(dispatcher_env):
+    dispatcher, session_local = dispatcher_env
+    queue: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
+
+    dispatcher._stats_persist_interval = timedelta(seconds=0)
+    dispatcher._stats_cleanup_interval = timedelta(seconds=0)
+
+    async with session_local() as session:
+        session.add(
+            RuntimeExecutorStats(
+                ts=datetime.now(UTC) - timedelta(days=8),
+                total_count=0,
+                online_count=0,
+                busy_count=0,
+                available_count=0,
+                availability_rate=0.0,
+                pending_assign_count=0,
+                pending_stop_count=0,
+            )
+        )
+        await session.commit()
+
+    await dispatcher.register(
+        executor_id="executor-stats-1",
+        queue=queue,
+        version="0.1.0",
+        plugin_ids={"demo_det_v1"},
+        resources={"gpu_count": 1, "memory_mb": 32000},
+    )
+    await dispatcher.heartbeat(
+        executor_id="executor-stats-1",
+        busy=True,
+        current_job_id=None,
+        resources={"gpu_count": 1, "memory_mb": 32000},
+    )
+
+    async with session_local() as session:
+        rows = await session.exec(select(RuntimeExecutorStats).order_by(RuntimeExecutorStats.ts.asc()))
+        snapshots = list(rows.all())
+        assert snapshots
+        cutoff = datetime.now(UTC) - timedelta(days=7)
+        assert all(
+            (item.ts if item.ts.tzinfo else item.ts.replace(tzinfo=UTC)) >= cutoff
+            for item in snapshots
+        )
+        latest = snapshots[-1]
+        assert latest.total_count == 1
+        assert latest.online_count == 1
+        assert latest.busy_count == 1
 
 
 @pytest.mark.anyio

@@ -8,7 +8,6 @@ from typing import List
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, Depends
 from jose import JWTError, jwt
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.websockets import WebSocketState
 
@@ -20,8 +19,6 @@ from saki_api.core.config import settings
 from saki_api.db.session import SessionLocal, get_session
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_event import JobEvent
-from saki_api.models.l3.loop_round import LoopRound
 from saki_api.schemas.l3.job import (
     JobRead,
     LoopCreateRequest,
@@ -31,6 +28,7 @@ from saki_api.schemas.l3.job import (
     LoopSummaryRead,
 )
 from saki_api.services.loop_config import extract_model_request_config
+from saki_api.services.job import JobService
 
 router = APIRouter()
 
@@ -179,13 +177,8 @@ async def list_loop_rounds(
         project_id=loop.project_id,
         required=Permissions.LOOP_READ,
     )
-    rows = await session.exec(
-        select(LoopRound)
-        .where(LoopRound.loop_id == loop_id)
-        .order_by(LoopRound.round_index.asc())
-        .limit(limit)
-    )
-    return [LoopRoundRead.model_validate(item) for item in rows.all()]
+    rounds = await job_service.list_rounds(loop_id, limit=limit, ensure_loop_exists=False)
+    return [LoopRoundRead.model_validate(item) for item in rounds]
 
 
 @router.get("/loops/{loop_id}/summary", response_model=LoopSummaryRead)
@@ -203,24 +196,15 @@ async def get_loop_summary(
         project_id=loop.project_id,
         required=Permissions.LOOP_READ,
     )
-    rows = await session.exec(
-        select(LoopRound).where(LoopRound.loop_id == loop_id).order_by(LoopRound.round_index.asc())
-    )
-    rounds = list(rows.all())
-    rounds_completed = [
-        item
-        for item in rounds
-        if item.status.value in {"completed", "completed_no_candidates"}
-    ]
-    metrics_latest = rounds_completed[-1].metrics if rounds_completed else {}
+    summary = await job_service.summarize_loop(loop_id, ensure_loop_exists=False)
     return LoopSummaryRead(
         loop_id=loop.id,
         status=loop.status,
-        rounds_total=len(rounds),
-        rounds_completed=len(rounds_completed),
-        selected_total=sum(int(item.selected_count or 0) for item in rounds),
-        labeled_total=sum(int(item.labeled_count or 0) for item in rounds),
-        metrics_latest=metrics_latest or {},
+        rounds_total=int(summary["rounds_total"]),
+        rounds_completed=int(summary["rounds_completed"]),
+        selected_total=int(summary["selected_total"]),
+        labeled_total=int(summary["labeled_total"]),
+        metrics_latest=summary["metrics_latest"],
     )
 
 
@@ -282,13 +266,13 @@ async def stream_job_events(
             if websocket.client_state != WebSocketState.CONNECTED:
                 break
             async with SessionLocal() as session:
-                rows = await session.exec(
-                    select(JobEvent)
-                    .where(JobEvent.job_id == parsed_job_id, JobEvent.seq > cursor)
-                    .order_by(JobEvent.seq.asc())
-                    .limit(500)
+                job_service = JobService(session=session)
+                events = await job_service.list_events_chunk(
+                    parsed_job_id,
+                    after_seq=cursor,
+                    limit=500,
+                    ensure_job_exists=False,
                 )
-                events = list(rows.all())
 
             if events:
                 for event in events:

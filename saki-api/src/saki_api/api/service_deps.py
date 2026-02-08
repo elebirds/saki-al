@@ -263,6 +263,7 @@ AnnotationSyncServiceDep = Annotated[AnnotationSyncService, Depends(get_annotati
 from saki_api.services.job import JobService
 from saki_api.services.model import ModelService
 from saki_api.services.annotation_batch import AnnotationBatchService
+from saki_api.services.runtime_observability import RuntimeObservabilityService
 
 
 def get_job_service(
@@ -290,3 +291,15 @@ def get_annotation_batch_service(
 
 
 AnnotationBatchServiceDep = Annotated[AnnotationBatchService, Depends(get_annotation_batch_service)]
+
+
+def get_runtime_observability_service(
+        session: AsyncSession = Depends(get_session),
+) -> RuntimeObservabilityService:
+    return RuntimeObservabilityService(session=session)
+
+
+RuntimeObservabilityServiceDep = Annotated[
+    RuntimeObservabilityService,
+    Depends(get_runtime_observability_service),
+]

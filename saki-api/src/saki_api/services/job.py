@@ -4,7 +4,7 @@ Job Service - Business logic for L3 runtime jobs.
 
 import uuid
 from datetime import timedelta
-from typing import List
+from typing import Any, List
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -17,6 +17,7 @@ from saki_api.models.l3.job import Job
 from saki_api.models.l3.job_event import JobEvent
 from saki_api.models.l3.job_metric_point import JobMetricPoint
 from saki_api.models.l3.loop import ALLoop
+from saki_api.models.l3.loop_round import LoopRound
 from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
 from saki_api.repositories.job import JobRepository
@@ -224,9 +225,77 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         result = await self.session.exec(stmt)
         return list(result.all())
 
+    async def list_rounds(
+            self,
+            loop_id: uuid.UUID,
+            *,
+            limit: int = 200,
+            ensure_loop_exists: bool = True,
+    ) -> List[LoopRound]:
+        if ensure_loop_exists:
+            await self.loop_repo.get_by_id_or_raise(loop_id)
+        safe_limit = max(1, min(int(limit), 2000))
+        stmt = (
+            select(LoopRound)
+            .where(LoopRound.loop_id == loop_id)
+            .order_by(LoopRound.round_index.asc())
+            .limit(safe_limit)
+        )
+        result = await self.session.exec(stmt)
+        return list(result.all())
+
+    async def summarize_loop(
+            self,
+            loop_id: uuid.UUID,
+            *,
+            ensure_loop_exists: bool = True,
+    ) -> dict[str, Any]:
+        if ensure_loop_exists:
+            await self.loop_repo.get_by_id_or_raise(loop_id)
+
+        stmt = select(LoopRound).where(LoopRound.loop_id == loop_id).order_by(LoopRound.round_index.asc())
+        result = await self.session.exec(stmt)
+        rounds = list(result.all())
+
+        rounds_completed = [
+            item
+            for item in rounds
+            if str(getattr(item.status, "value", item.status)) in {"completed", "completed_no_candidates"}
+        ]
+        metrics_latest = rounds_completed[-1].metrics if rounds_completed else {}
+        return {
+            "rounds_total": len(rounds),
+            "rounds_completed": len(rounds_completed),
+            "selected_total": sum(int(item.selected_count or 0) for item in rounds),
+            "labeled_total": sum(int(item.labeled_count or 0) for item in rounds),
+            "metrics_latest": metrics_latest or {},
+        }
+
+    async def list_events_chunk(
+            self,
+            job_id: uuid.UUID,
+            *,
+            after_seq: int = 0,
+            limit: int = 5000,
+            ensure_job_exists: bool = True,
+    ) -> List[JobEvent]:
+        if ensure_job_exists:
+            await self.repository.get_by_id_or_raise(job_id)
+        safe_after_seq = max(0, int(after_seq))
+        safe_limit = max(1, min(int(limit), 100000))
+        return await self.job_event_repo.list_by_job_after_seq(
+            job_id=job_id,
+            after_seq=safe_after_seq,
+            limit=safe_limit,
+        )
+
     async def list_events(self, job_id: uuid.UUID, after_seq: int = 0) -> List[JobEvent]:
-        await self.repository.get_by_id_or_raise(job_id)
-        return await self.job_event_repo.list_by_job_after_seq(job_id, after_seq)
+        return await self.list_events_chunk(
+            job_id=job_id,
+            after_seq=after_seq,
+            limit=5000,
+            ensure_job_exists=True,
+        )
 
     async def list_metric_series(self, job_id: uuid.UUID, limit: int = 5000) -> List[JobMetricPoint]:
         await self.repository.get_by_id_or_raise(job_id)

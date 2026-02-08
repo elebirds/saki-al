@@ -12,6 +12,7 @@ from loguru import logger
 from saki_executor.agent import codec as runtime_codec
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
+from saki_executor.jobs.contracts import ArtifactUploadTicket, FetchedPage, JobExecutionRequest
 from saki_executor.jobs.state import ExecutorState, JobStatus
 from saki_executor.jobs.workspace import Workspace
 from saki_executor.plugins.base import ExecutorPlugin
@@ -68,19 +69,20 @@ class JobManager:
         }
 
     async def assign_job(self, request_id: str, payload: dict[str, Any]) -> bool:
+        request = JobExecutionRequest.from_payload(payload)
         async with self._lock:
             if self.busy:
                 logger.warning("拒绝任务分配：executor busy, request_id={}", request_id)
                 return False
-            self.current_job_id = str(payload.get("job_id") or "")
+            self.current_job_id = request.job_id
             self.executor_state = ExecutorState.RESERVED
             self._stop_event.clear()
-            self._task = asyncio.create_task(self._run_job(payload))
+            self._task = asyncio.create_task(self._run_job(request))
             logger.info(
                 "接受任务分配 request_id={} job_id={} plugin_id={}",
                 request_id,
                 self.current_job_id,
-                str(payload.get("plugin_id") or ""),
+                request.plugin_id,
             )
             return True
 
@@ -106,24 +108,18 @@ class JobManager:
                 pass
         return True
 
-    async def _run_job(self, payload: dict[str, Any]) -> None:
+    async def _run_job(self, request: JobExecutionRequest) -> None:
         if self._send_message is None or self._request_message is None:
             raise RuntimeError("job manager transport is not configured")
 
-        job_id = str(payload.get("job_id") or "")
-        plugin_id = str(payload.get("plugin_id") or "")
-        params = payload.get("params") or {}
-        project_id = str(payload.get("project_id") or "")
-        source_commit_id = str(payload.get("source_commit_id") or "")
-        query_strategy = str(payload.get("query_strategy") or "uncertainty_1_minus_max_conf")
-        mode = str(payload.get("mode") or "active_learning").lower()
-        raw_iteration = payload.get("iteration")
-        try:
-            iteration = int(raw_iteration)
-        except Exception:
-            iteration = 1
-        if iteration <= 0:
-            iteration = 1
+        job_id = request.job_id
+        plugin_id = request.plugin_id
+        params = request.params
+        project_id = request.project_id
+        source_commit_id = request.source_commit_id
+        query_strategy = request.query_strategy
+        mode = request.mode
+        iteration = request.iteration
         final_status = JobStatus.FAILED
         logger.info(
             "任务开始执行 job_id={} plugin_id={} mode={} query_strategy={}",
@@ -135,7 +131,7 @@ class JobManager:
 
         workspace = Workspace(self.runs_dir, job_id)
         workspace.ensure()
-        workspace.write_config(payload)
+        workspace.write_config(request.raw_payload)
         reporter = JobReporter(job_id, workspace.events_path)
 
         async def emit(event_type: str, event_payload: dict[str, Any]) -> None:
@@ -276,12 +272,9 @@ class JobManager:
                         artifact_name=artifact.name,
                         content_type=artifact.content_type,
                     )
-                    upload_url = str(ticket.get("upload_url") or "")
-                    storage_uri = str(ticket.get("storage_uri") or "")
-                    headers = {
-                        str(key): str(value)
-                        for key, value in (ticket.get("headers") or {}).items()
-                    }
+                    upload_url = ticket.upload_url
+                    storage_uri = ticket.storage_uri
+                    headers = dict(ticket.headers)
                     size = artifact_path.stat().st_size
                     await self._upload_artifact_with_retry(
                         artifact_path=artifact_path,
@@ -393,7 +386,7 @@ class JobManager:
             job_id: str,
             artifact_name: str,
             content_type: str,
-    ) -> dict[str, Any]:
+    ) -> ArtifactUploadTicket:
         if self._request_message is None:
             raise RuntimeError("job manager request transport is not configured")
         ticket_response = await self._request_message(
@@ -410,7 +403,9 @@ class JobManager:
             raise RuntimeError(str(error_payload.get("error") or "upload ticket request failed"))
         if payload_type != "upload_ticket_response":
             raise RuntimeError(f"unexpected upload ticket response payload: {payload_type}")
-        return runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
+        return ArtifactUploadTicket.from_dict(
+            runtime_codec.parse_upload_ticket_response(ticket_response.upload_ticket_response)
+        )
 
     async def _upload_artifact_with_retry(
             self,
@@ -523,9 +518,9 @@ class JobManager:
                 cursor=cursor,
                 limit=limit,
             )
-            chunk = response.get("items") or []
+            chunk = response.items
             items.extend(chunk)
-            cursor = response.get("next_cursor")
+            cursor = response.next_cursor
             if not cursor:
                 break
             if self._stop_event.is_set():
@@ -541,7 +536,7 @@ class JobManager:
             commit_id: str,
             cursor: str | None,
             limit: int,
-    ) -> dict[str, Any]:
+    ) -> FetchedPage:
         if self._request_message is None:
             raise RuntimeError("job manager request transport is not configured")
 
@@ -562,7 +557,7 @@ class JobManager:
             raise RuntimeError(str(error_payload.get("error") or "data request failed"))
         if payload_type != "data_response":
             raise RuntimeError(f"unexpected data response payload: {payload_type}")
-        return runtime_codec.parse_data_response(response_message.data_response)
+        return FetchedPage.from_dict(runtime_codec.parse_data_response(response_message.data_response))
 
     async def _collect_topk_candidates_streaming(
             self,
@@ -595,8 +590,8 @@ class JobManager:
                 cursor=cursor,
                 limit=page_size,
             )
-            chunk = response.get("items") or []
-            if not chunk and not response.get("next_cursor"):
+            chunk = response.items
+            if not chunk and not response.next_cursor:
                 break
 
             # Download current page samples on demand, avoiding full-dataset prefetch.
@@ -648,7 +643,7 @@ class JobManager:
                     if score > smallest[0]:
                         heapq.heapreplace(heap, key)
 
-            cursor = response.get("next_cursor")
+            cursor = response.next_cursor
             if not cursor:
                 break
 

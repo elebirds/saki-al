@@ -3,14 +3,11 @@ import {
     Alert,
     Button,
     Card,
-    Col,
     Descriptions,
     Empty,
     Image,
     List,
     Progress,
-    Row,
-    Space,
     Spin,
     Table,
     Tag,
@@ -307,20 +304,20 @@ const ProjectLoopJobDetail: React.FC = () => {
     return (
         <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
             <Card className="!border-github-border !bg-github-panel">
-                <Space className="w-full !justify-between" wrap>
-                    <Space direction="vertical" size={2}>
-                        <Space>
+                <div className="flex w-full flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-col gap-1">
+                        <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回 Loop 详情</Button>
                             <Title level={4} className="!mb-0">Job #{job.roundIndex || job.iteration}</Title>
                             <Tag color={JOB_STATUS_COLOR[job.status] || 'default'}>{job.status}</Tag>
-                        </Space>
+                        </div>
                         <Text type="secondary">{job.id}</Text>
-                    </Space>
-                    <Space>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                         <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'}</Tag>
                         <Button loading={refreshing} onClick={() => loadData(true)}>刷新</Button>
-                    </Space>
-                </Space>
+                    </div>
+                </div>
             </Card>
 
             <Card className="!border-github-border !bg-github-panel" title="任务概览">
@@ -339,8 +336,8 @@ const ProjectLoopJobDetail: React.FC = () => {
                 ) : null}
             </Card>
 
-            <Row gutter={[16, 16]}>
-                <Col xs={24} lg={14}>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                <div className="min-w-0 lg:col-span-7">
                     <Card className="!border-github-border !bg-github-panel" title="训练曲线">
                         {metricChartData.length === 0 ? (
                             <Empty description="暂无指标曲线"/>
@@ -367,8 +364,8 @@ const ProjectLoopJobDetail: React.FC = () => {
                             </div>
                         )}
                     </Card>
-                </Col>
-                <Col xs={24} lg={10}>
+                </div>
+                <div className="min-w-0 lg:col-span-5">
                     <Card className="!border-github-border !bg-github-panel" title="实时日志（最新 200 条）">
                         <List
                             size="small"
@@ -389,18 +386,18 @@ const ProjectLoopJobDetail: React.FC = () => {
                             )}
                         />
                     </Card>
-                </Col>
-            </Row>
+                </div>
+            </div>
 
             <Card className="!border-github-border !bg-github-panel" title="混淆矩阵">
                 {imageArtifacts.length === 0 ? (
                     <Empty description="未检测到混淆矩阵制品"/>
                 ) : (
-                    <Row gutter={[16, 16]}>
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                         {imageArtifacts.map((artifact) => {
                             const imageUrl = artifactUrls[artifact.name];
                             return (
-                                <Col key={artifact.name} xs={24} xl={12}>
+                                <div key={artifact.name} className="min-w-0">
                                     <Card
                                         size="small"
                                         className="!border-github-border !bg-github-panel"
@@ -418,10 +415,10 @@ const ProjectLoopJobDetail: React.FC = () => {
                                             />
                                         )}
                                     </Card>
-                                </Col>
+                                </div>
                             );
                         })}
-                    </Row>
+                    </div>
                 )}
             </Card>
 
@@ -443,10 +440,10 @@ const ProjectLoopJobDetail: React.FC = () => {
                             dataIndex: 'score',
                             width: 220,
                             render: (value: number) => (
-                                <Space direction="vertical" size={2} className="w-full">
+                                <div className="flex w-full flex-col gap-0.5">
                                     <Progress percent={Math.max(0, Math.min(100, Number((value * 100).toFixed(2))))}/>
                                     <Text type="secondary">{value.toFixed(6)}</Text>
-                                </Space>
+                                </div>
                             ),
                         },
                         {

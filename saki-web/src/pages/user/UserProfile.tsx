@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Avatar, Card, Collapse, Descriptions, message, Space, Spin, Tag, Typography} from 'antd';
+import {Avatar, Card, Collapse, Descriptions, message, Spin, Tag, Typography} from 'antd';
 import {LockOutlined, SafetyOutlined, UserOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {useAuthStore} from '../../store/authStore';
@@ -165,10 +165,10 @@ const UserProfile: React.FC = () => {
                         <Card
                             className="!border-github-border !bg-github-panel"
                             title={
-                                <Space>
+                                <div className="flex items-center gap-2">
                                     <UserOutlined/>
                                     <span>{t('user.profile.basicInfo')}</span>
-                                </Space>
+                                </div>
                             }
                         >
                             <Descriptions column={1} bordered={false} size="small">
@@ -194,10 +194,10 @@ const UserProfile: React.FC = () => {
                         <Card
                             className="!border-github-border !bg-github-panel"
                             title={
-                                <Space>
+                                <div className="flex items-center gap-2">
                                     <SafetyOutlined/>
                                     <span>{t('user.profile.systemRoles')}</span>
-                                </Space>
+                                </div>
                             }
                         >
                             {systemRoles.length === 0 ? (
@@ -218,7 +218,7 @@ const UserProfile: React.FC = () => {
                     <Card
                         className="!border-github-border !bg-github-panel"
                         title={
-                            <Space>
+                            <div className="flex items-center gap-2">
                                 <LockOutlined/>
                                 <span>{t('user.profile.permissions')}</span>
                                 {systemPermissions && (
@@ -226,7 +226,7 @@ const UserProfile: React.FC = () => {
                                         ({systemPermissions.permissions.length} {t('user.profile.permissions')})
                                     </Text>
                                 )}
-                            </Space>
+                            </div>
                         }
                     >
                         {!systemPermissions || systemPermissions.permissions.length === 0 ? (

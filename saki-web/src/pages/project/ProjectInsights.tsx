@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Card, Col, Empty, Row, Select, Spin, Statistic, Table, Tag, Typography} from 'antd';
+import {Card, Empty, Select, Spin, Statistic, Table, Tag, Typography} from 'antd';
 import {useParams} from 'react-router-dom';
 import {
     CartesianGrid,
@@ -139,31 +139,31 @@ const ProjectInsights: React.FC = () => {
                 </div>
             </Card>
 
-            <Row gutter={[16, 16]}>
-                <Col xs={24} md={12} lg={6}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div>
                     <Card className="!border-github-border !bg-github-panel">
                         <Statistic title="总轮次" value={summary?.roundsTotal ?? rounds.length}/>
                     </Card>
-                </Col>
-                <Col xs={24} md={12} lg={6}>
+                </div>
+                <div>
                     <Card className="!border-github-border !bg-github-panel">
                         <Statistic title="完成轮次" value={summary?.roundsCompleted ?? rounds.filter((x) => ROUND_COMPLETED_STATUS.has(x.status)).length}/>
                     </Card>
-                </Col>
-                <Col xs={24} md={12} lg={6}>
+                </div>
+                <div>
                     <Card className="!border-github-border !bg-github-panel">
                         <Statistic title="累计选样" value={summary?.selectedTotal ?? rounds.reduce((acc, x) => acc + x.selectedCount, 0)}/>
                     </Card>
-                </Col>
-                <Col xs={24} md={12} lg={6}>
+                </div>
+                <div>
                     <Card className="!border-github-border !bg-github-panel">
                         <Statistic title="累计标注" value={summary?.labeledTotal ?? rounds.reduce((acc, x) => acc + x.labeledCount, 0)}/>
                     </Card>
-                </Col>
-            </Row>
+                </div>
+            </div>
 
-            <Row gutter={[16, 16]}>
-                <Col xs={24} lg={16}>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="min-w-0 lg:col-span-2">
                     <Card className="!border-github-border !bg-github-panel" title="Round 指标走势">
                         {chartData.length === 0 ? (
                             <Empty description="暂无轮次指标"/>
@@ -184,8 +184,8 @@ const ProjectInsights: React.FC = () => {
                             </div>
                         )}
                     </Card>
-                </Col>
-                <Col xs={24} lg={8}>
+                </div>
+                <div className="min-w-0">
                     <Card className="!border-github-border !bg-github-panel" title="模型状态">
                         <div className="flex flex-col gap-4">
                             <Statistic title="总模型数" value={models.length}/>
@@ -196,8 +196,8 @@ const ProjectInsights: React.FC = () => {
                             </Text>
                         </div>
                     </Card>
-                </Col>
-            </Row>
+                </div>
+            </div>
 
             <Card className="!border-github-border !bg-github-panel" title="Round 明细">
                 <Table

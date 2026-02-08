@@ -3,15 +3,12 @@ import {
     Alert,
     Button,
     Card,
-    Col,
     Empty,
     Form,
     Input,
     InputNumber,
     Modal,
-    Row,
     Select,
-    Space,
     Spin,
     Tag,
     Typography,
@@ -150,7 +147,7 @@ const ProjectLoopOverview: React.FC = () => {
                         <Title level={4} className="!mb-1">AL Loop 概览</Title>
                         <Text type="secondary">一个项目可包含多个 Loop，点击卡片进入单 Loop 详情。</Text>
                     </div>
-                    <Space>
+                    <div className="flex flex-wrap items-center gap-2">
                         <Button onClick={() => navigate('/runtime/executors')}>查看执行器状态</Button>
                         <Button onClick={loadData}>刷新</Button>
                         <Button
@@ -160,7 +157,7 @@ const ProjectLoopOverview: React.FC = () => {
                         >
                             新建 Loop
                         </Button>
-                    </Space>
+                    </div>
                 </div>
                 {plugins.length === 0 ? (
                     <Alert
@@ -178,12 +175,12 @@ const ProjectLoopOverview: React.FC = () => {
                     <Empty description="当前项目还没有 Loop"/>
                 </Card>
             ) : (
-                <Row gutter={[16, 16]}>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {loops.map((loop) => {
                         const summary = summaryMap[loop.id];
                         const branchName = branches.find((item) => item.id === loop.branchId)?.name || loop.branchId;
                         return (
-                            <Col key={loop.id} xs={24} md={12} xl={8}>
+                            <div key={loop.id} className="min-w-0">
                                 <Card
                                     className="!h-full !border-github-border !bg-github-panel hover:!border-github-border-muted"
                                     actions={[
@@ -196,11 +193,11 @@ const ProjectLoopOverview: React.FC = () => {
                                         </Button>,
                                     ]}
                                 >
-                                    <Space direction="vertical" size={10} className="w-full">
-                                        <Space className="w-full !justify-between">
+                                    <div className="flex w-full flex-col gap-2.5">
+                                        <div className="flex w-full items-center justify-between gap-2">
                                             <Text strong>{loop.name}</Text>
                                             <Tag color={LOOP_STATUS_COLOR[loop.status] || 'default'}>{loop.status}</Tag>
-                                        </Space>
+                                        </div>
                                         <Text type="secondary">分支：{branchName}</Text>
                                         <Text type="secondary">插件：{loop.modelArch}</Text>
                                         <Text type="secondary">策略：{loop.queryStrategy}</Text>
@@ -218,12 +215,12 @@ const ProjectLoopOverview: React.FC = () => {
                                                 <Text strong>{summary?.labeledTotal ?? 0}</Text> 标注
                                             </div>
                                         </div>
-                                    </Space>
+                                    </div>
                                 </Card>
-                            </Col>
+                            </div>
                         );
                     })}
-                </Row>
+                </div>
             )}
 
             <Modal

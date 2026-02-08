@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Button, Card, Empty, Input, Pagination, Select, Space, Spin, Tag, Typography,} from 'antd';
+import {Button, Card, Empty, Input, Pagination, Select, Spin, Tag, Typography,} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {FileTextOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
@@ -223,7 +223,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
                     <div className="flex-1"/>
 
-                    <Space>
+                    <div className="flex items-center gap-2">
                         <Button type="primary" onClick={handleStartAnnotate} disabled={!selectedDatasetId}>
                             Start Annotating
                         </Button>
@@ -233,7 +233,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                         >
                             {t('project.samples.commitDrafts')}
                         </Button>
-                    </Space>
+                    </div>
                 </div>
             </Card>
 

@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Button, Empty, message, Modal, Space, Spin, Table, Tag, Tooltip} from 'antd';
+import {Button, Empty, message, Modal, Spin, Table, Tag, Tooltip} from 'antd';
 import {DownloadOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {Sample} from '../../types';
@@ -90,10 +90,10 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
             render: (_: string, asset: AssetInfo) => {
                 const isPrimaryAsset = asset.assetId === sample?.primaryAssetId;
                 return (
-                    <Space>
+                    <div className="flex items-center gap-2">
                         <span>{asset.displayName}</span>
                         {isPrimaryAsset && <Tag color="blue">{t('dataset.sampleAssets.primary')}</Tag>}
-                    </Space>
+                    </div>
                 );
             },
         },
@@ -109,7 +109,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
             title: t('common.actions'),
             key: 'actions',
             render: (_: string, asset: AssetInfo) => (
-                <Space>
+                <div className="flex items-center gap-2">
                     <Tooltip title={t('common.download')}>
                         <Button
                             type="text"
@@ -118,7 +118,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
                             onClick={() => handleDownloadAsset(asset.assetId, asset.displayName)}
                         />
                     </Tooltip>
-                </Space>
+                </div>
             ),
         },
     ];

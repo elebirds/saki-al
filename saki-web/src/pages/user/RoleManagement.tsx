@@ -12,7 +12,6 @@ import {
     Popconfirm,
     Result,
     Select,
-    Space,
     Spin,
     Table,
     Tag,
@@ -336,14 +335,14 @@ const RoleManagement: React.FC = () => {
             dataIndex: 'displayName',
             key: 'displayName',
             render: (text: string, record: Role) => (
-                <Space>
+                <div className="flex items-center gap-2">
                     <Tag color={record.color || 'blue'}>{text}</Tag>
                     {record.isSystem && (
                         <Tooltip title={t('role.management.systemRole')}>
                             <LockOutlined className="text-gray-500"/>
                         </Tooltip>
                     )}
-                </Space>
+                </div>
             ),
         },
         {
@@ -378,7 +377,7 @@ const RoleManagement: React.FC = () => {
                 const canDeleteThisRole = canDeleteRole && !isSystemRole;
 
                 return (
-                    <Space size="middle">
+                    <div className="flex items-center gap-3">
                         {canEditThisRole ? (
                             <Button type="link" icon={<EditOutlined/>} onClick={() => handleEdit(record)}>
                                 {t('common.edit')}
@@ -411,7 +410,7 @@ const RoleManagement: React.FC = () => {
                                 </Button>
                             </Tooltip>
                         )}
-                    </Space>
+                    </div>
                 );
             },
         },
@@ -443,7 +442,7 @@ const RoleManagement: React.FC = () => {
         <div className="flex h-full flex-col overflow-hidden p-6">
             <div className="mb-4 flex flex-shrink-0 items-center justify-between">
                 <span className="m-0 font-semibold">{t('role.management.title')}</span>
-                <Space>
+                <div className="flex items-center gap-2">
                     <Select
                         value={roleTypeFilter}
                         onChange={(value) => {
@@ -467,7 +466,7 @@ const RoleManagement: React.FC = () => {
                             </Button>
                         </Tooltip>
                     )}
-                </Space>
+                </div>
             </div>
             <div ref={tableContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <PaginatedList<Role>
@@ -601,7 +600,7 @@ const RoleManagement: React.FC = () => {
                                                         <Title level={5} className="!mb-2 !text-sm">
                                                             {category.title}
                                                         </Title>
-                                                        <Space direction="vertical" className="w-full">
+                                                        <div className="flex w-full flex-col gap-2">
                                                             {category.permissions.map(perm => (
                                                                 <Checkbox key={perm.value} value={perm.value}>
                                                                     <Text>{perm.label}</Text>
@@ -610,7 +609,7 @@ const RoleManagement: React.FC = () => {
                                                                     </Text>
                                                                 </Checkbox>
                                                             ))}
-                                                        </Space>
+                                                        </div>
                                                         {index < categories.length - 1 && <Divider className="my-3"/>}
                                                     </div>
                                                 ))

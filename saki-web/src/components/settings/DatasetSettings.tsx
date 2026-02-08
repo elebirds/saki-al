@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {Button, Card, Divider, Form, Input, message, Popconfirm, Space, Tabs} from 'antd';
+import {Button, Card, Divider, Form, Input, message, Popconfirm, Tabs} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router-dom';
 import {Dataset} from '../../types';
@@ -90,11 +90,11 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
                         </Form.Item>
 
                         <Form.Item>
-                            <Space>
+                            <div className="flex items-center gap-2">
                                 <Button type="primary" icon={<SaveOutlined/>} htmlType="submit" loading={loading}>
                                     {t('dataset.settings.saveBasicInfo')}
                                 </Button>
-                            </Space>
+                            </div>
                         </Form.Item>
                     </Form>
 

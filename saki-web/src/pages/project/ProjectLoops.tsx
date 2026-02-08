@@ -3,7 +3,6 @@ import {
     Alert,
     Button,
     Card,
-    Col,
     Descriptions,
     Empty,
     Form,
@@ -11,9 +10,7 @@ import {
     InputNumber,
     List,
     Progress,
-    Row,
     Select,
-    Space,
     Spin,
     Table,
     Tag,
@@ -618,10 +615,10 @@ const ProjectLoops: React.FC = () => {
     return (
         <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
             <Card className="!border-github-border !bg-github-panel">
-                <Row gutter={[16, 16]}>
-                    <Col xs={24} lg={14}>
-                        <Space direction="vertical" size="middle" className="w-full">
-                            <Space wrap>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                    <div className="min-w-0 lg:col-span-7">
+                        <div className="flex w-full flex-col gap-4">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <Select
                                     className="min-w-[220px]"
                                     placeholder="选择 Loop"
@@ -648,7 +645,7 @@ const ProjectLoops: React.FC = () => {
                                 >
                                     停止任务
                                 </Button>
-                            </Space>
+                            </div>
 
                             {!selectedLoop ? (
                                 <Alert type="info" showIcon message="当前项目还没有 Loop，请先在右侧创建。"/>
@@ -657,12 +654,12 @@ const ProjectLoops: React.FC = () => {
                                     type="info"
                                     showIcon
                                     message={
-                                        <Space>
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <span>当前 Loop：{selectedLoop.name}</span>
                                             <Tag color={LOOP_STATUS_COLOR[selectedLoop.status] || 'default'}>
                                                 {selectedLoop.status}
                                             </Tag>
-                                        </Space>
+                                        </div>
                                     }
                                     description={
                                         <>
@@ -675,7 +672,7 @@ const ProjectLoops: React.FC = () => {
                                 />
                             )}
 
-                            <Space wrap>
+                            <div className="flex flex-wrap items-center gap-2">
                                 <Button
                                     type="primary"
                                     loading={loopControlLoading}
@@ -706,7 +703,7 @@ const ProjectLoops: React.FC = () => {
                                 >
                                     Stop Loop
                                 </Button>
-                            </Space>
+                            </div>
 
                             <Form form={createJobForm} layout="inline">
                                 <Form.Item name="pluginId" label="插件">
@@ -749,7 +746,7 @@ const ProjectLoops: React.FC = () => {
                                 </Form.Item>
                             </Form>
 
-                            <Space wrap>
+                            <div className="flex flex-wrap items-center gap-2">
                                 <Button
                                     type="primary"
                                     loading={startJobLoading}
@@ -772,11 +769,11 @@ const ProjectLoops: React.FC = () => {
                                 >
                                     从当前任务注册模型
                                 </Button>
-                            </Space>
-                        </Space>
-                    </Col>
+                            </div>
+                        </div>
+                    </div>
 
-                    <Col xs={24} lg={10}>
+                    <div className="min-w-0 lg:col-span-5">
                         <Card
                             size="small"
                             title="创建 Loop"
@@ -812,8 +809,8 @@ const ProjectLoops: React.FC = () => {
                                 </Button>
                             </Form>
                         </Card>
-                    </Col>
-                </Row>
+                    </div>
+                </div>
             </Card>
 
             {selectedLoop ? (
@@ -935,8 +932,8 @@ const ProjectLoops: React.FC = () => {
                         </Paragraph>
                     </Card>
 
-                    <Row gutter={[16, 16]}>
-                        <Col xs={24} lg={14}>
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                        <div className="min-w-0 lg:col-span-7">
                             <Card className="!border-github-border !bg-github-panel" title="训练曲线">
                                 {metricChartData.length === 0 ? (
                                     <Empty description="暂无指标曲线"/>
@@ -963,8 +960,8 @@ const ProjectLoops: React.FC = () => {
                                     </div>
                                 )}
                             </Card>
-                        </Col>
-                        <Col xs={24} lg={10}>
+                        </div>
+                        <div className="min-w-0 lg:col-span-5">
                             <Card className="!border-github-border !bg-github-panel" title="实时日志（最新 200 条）">
                                 <List
                                     size="small"
@@ -985,8 +982,8 @@ const ProjectLoops: React.FC = () => {
                                     )}
                                 />
                             </Card>
-                        </Col>
-                    </Row>
+                        </div>
+                    </div>
 
                     <Card className="!border-github-border !bg-github-panel" title="TopK 候选样本">
                         <Table
@@ -1006,10 +1003,10 @@ const ProjectLoops: React.FC = () => {
                                     dataIndex: 'score',
                                     width: 220,
                                     render: (value: number) => (
-                                        <Space direction="vertical" size={2} className="w-full">
+                                        <div className="flex w-full flex-col gap-0.5">
                                             <Progress percent={Math.max(0, Math.min(100, Number((value * 100).toFixed(2))))}/>
                                             <Text type="secondary">{value.toFixed(6)}</Text>
-                                        </Space>
+                                        </div>
                                     ),
                                 },
                                 {
@@ -1056,7 +1053,7 @@ const ProjectLoops: React.FC = () => {
                                 title: '操作',
                                 width: 240,
                                 render: (_value: unknown, row: ProjectModel) => (
-                                    <Space>
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <Button size="small" loading={modelLoading} onClick={() => handleDownloadModel(row)}>
                                             下载制品
                                         </Button>
@@ -1069,7 +1066,7 @@ const ProjectLoops: React.FC = () => {
                                         >
                                             晋升生产
                                         </Button>
-                                    </Space>
+                                    </div>
                                 ),
                             },
                         ]}

@@ -1,5 +1,5 @@
 import React, {useCallback, useMemo, useState} from 'react';
-import {Button, Card, Col, Form, Input, message, Modal, Row, Select, Tag, Tooltip, Typography} from 'antd';
+import {Button, Card, Form, Input, message, Modal, Select, Tag, Tooltip, Typography} from 'antd';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {Dataset} from '../../types';
@@ -49,9 +49,9 @@ const DatasetList: React.FC = () => {
 
     const renderDatasets = useCallback((items: Dataset[], _loading?: boolean) => (
         <>
-            <Row gutter={[16, 16]}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {items.map((dataset) => (
-                    <Col xs={24} sm={12} md={8} lg={6} key={dataset.id}>
+                    <div key={dataset.id} className="min-w-0">
                         <Card
                             hoverable
                             title={
@@ -75,9 +75,9 @@ const DatasetList: React.FC = () => {
                                 {dataset.description || t('dataset.list.noDescription')}
                             </Paragraph>
                         </Card>
-                    </Col>
+                    </div>
                 ))}
-            </Row>
+            </div>
             {showNoMore ? (
                 <div className="mt-4 text-sm text-github-muted text-center">{t('dataset.list.noMore')}</div>
             ) : null}
@@ -85,22 +85,18 @@ const DatasetList: React.FC = () => {
     ), [getDatasetTypeColor, getDatasetTypeLabel, navigate, t, showNoMore]);
 
     const emptyFallback = useMemo(() => (
-        <Row>
-            <Col span={24}>
-                <Card>
-                    <div className="p-10 text-center">
-                        <DatabaseOutlined className="mb-4 text-[48px] text-gray-300"/>
-                        <Title level={4} className="!text-gray-500">{t('dataset.list.empty')}</Title>
-                        <Paragraph className="!text-gray-500">{t('dataset.list.emptyHint')}</Paragraph>
-                        {canCreate && (
-                            <Button type="primary" icon={<PlusOutlined/>} onClick={() => setIsModalVisible(true)}>
-                                {t('dataset.list.newDataset')}
-                            </Button>
-                        )}
-                    </div>
-                </Card>
-            </Col>
-        </Row>
+        <Card>
+            <div className="p-10 text-center">
+                <DatabaseOutlined className="mb-4 text-[48px] text-gray-300"/>
+                <Title level={4} className="!text-gray-500">{t('dataset.list.empty')}</Title>
+                <Paragraph className="!text-gray-500">{t('dataset.list.emptyHint')}</Paragraph>
+                {canCreate && (
+                    <Button type="primary" icon={<PlusOutlined/>} onClick={() => setIsModalVisible(true)}>
+                        {t('dataset.list.newDataset')}
+                    </Button>
+                )}
+            </div>
+        </Card>
     ), [canCreate, t]);
 
     return (

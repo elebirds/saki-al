@@ -8,10 +8,7 @@ import {
     Form,
     Input,
     InputNumber,
-    Row,
-    Col,
     Select,
-    Space,
     Spin,
     Switch,
     Table,
@@ -235,16 +232,16 @@ const ProjectLoopDetail: React.FC = () => {
     return (
         <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
             <Card className="!border-github-border !bg-github-panel">
-                <Space className="w-full !justify-between" wrap>
-                    <Space direction="vertical" size={2}>
-                        <Space>
+                <div className="flex w-full flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-col gap-1">
+                        <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops`)}>返回概览</Button>
                             <Title level={4} className="!mb-0">{loop.name}</Title>
                             <Tag color={LOOP_STATUS_COLOR[loop.status] || 'default'}>{loop.status}</Tag>
-                        </Space>
+                        </div>
                         <Text type="secondary">Loop ID: {loop.id}</Text>
-                    </Space>
-                    <Space>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                         <Button onClick={() => navigate('/runtime/executors')}>执行器状态</Button>
                         <Button
                             type="primary"
@@ -276,8 +273,8 @@ const ProjectLoopDetail: React.FC = () => {
                         >
                             Stop
                         </Button>
-                    </Space>
-                </Space>
+                    </div>
+                </div>
             </Card>
 
             <Card className="!border-github-border !bg-github-panel" title="Loop 摘要">
@@ -295,13 +292,13 @@ const ProjectLoopDetail: React.FC = () => {
                 extra={<Button type="primary" loading={saving} onClick={handleSave}>保存配置</Button>}
             >
                 <Form form={configForm} layout="vertical">
-                    <Row gutter={16}>
-                        <Col xs={24} md={12}>
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+                        <div>
                             <Form.Item name="name" label="名称" rules={[{required: true, message: '请输入名称'}]}>
                                 <Input/>
                             </Form.Item>
-                        </Col>
-                        <Col xs={24} md={12}>
+                        </div>
+                        <div>
                             <Form.Item name="modelArch" label="插件" rules={[{required: true, message: '请选择插件'}]}>
                                 <Select
                                     options={plugins.map((item) => ({
@@ -325,10 +322,10 @@ const ProjectLoopDetail: React.FC = () => {
                                     }}
                                 />
                             </Form.Item>
-                        </Col>
-                    </Row>
-                    <Row gutter={16}>
-                        <Col xs={24} md={12}>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+                        <div>
                             <Form.Item name="queryStrategy" label="采样策略" rules={[{required: true, message: '请选择采样策略'}]}>
                                 <Select
                                     options={(selectedPlugin?.supportedStrategies || []).map((item) => ({
@@ -337,59 +334,59 @@ const ProjectLoopDetail: React.FC = () => {
                                     }))}
                                 />
                             </Form.Item>
-                        </Col>
-                        <Col xs={24} md={12}>
+                        </div>
+                        <div>
                             <Form.Item name="autoRegisterModel" label="自动注册模型" valuePropName="checked">
                                 <Switch/>
                             </Form.Item>
-                        </Col>
-                    </Row>
-                    <Row gutter={16}>
-                        <Col xs={24} md={8}>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
+                        <div>
                             <Form.Item name="maxRounds" label="最大轮次">
                                 <InputNumber min={1} max={500} className="w-full"/>
                             </Form.Item>
-                        </Col>
-                        <Col xs={24} md={8}>
+                        </div>
+                        <div>
                             <Form.Item name="queryBatchSize" label="每轮 TopK">
                                 <InputNumber min={1} max={5000} className="w-full"/>
                             </Form.Item>
-                        </Col>
-                        <Col xs={24} md={8}>
+                        </div>
+                        <div>
                             <Form.Item name="minSeedLabeled" label="最小 Seed 标注量">
                                 <InputNumber min={1} max={5000} className="w-full"/>
                             </Form.Item>
-                        </Col>
-                    </Row>
-                    <Row gutter={16}>
-                        <Col xs={24} md={8}>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
+                        <div>
                             <Form.Item name="minNewLabelsPerRound" label="每轮最小新增标注">
                                 <InputNumber min={1} max={5000} className="w-full"/>
                             </Form.Item>
-                        </Col>
-                        <Col xs={24} md={8}>
+                        </div>
+                        <div>
                             <Form.Item name="stopPatienceRounds" label="Early Stop Patience">
                                 <InputNumber min={1} max={100} className="w-full"/>
                             </Form.Item>
-                        </Col>
-                        <Col xs={24} md={8}>
+                        </div>
+                        <div>
                             <Form.Item name="stopMinGain" label="Early Stop 最小增益">
                                 <InputNumber min={0} max={1} step={0.0001} className="w-full"/>
                             </Form.Item>
-                        </Col>
-                    </Row>
+                        </div>
+                    </div>
 
                     <Card size="small" className="!border-github-border !bg-github-panel" title={selectedPlugin?.requestConfigSchema?.title || '模型请求参数'}>
                         {(selectedPlugin?.requestConfigSchema?.fields || []).length === 0 ? (
                             <Alert type="info" showIcon message="当前插件未定义动态参数 schema"/>
                         ) : (
-                            <Row gutter={16}>
+                            <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                                 {(selectedPlugin?.requestConfigSchema?.fields || []).map((field) => (
-                                    <Col key={field.key} xs={24} md={12}>
+                                    <div key={field.key}>
                                         {renderDynamicField(field)}
-                                    </Col>
+                                    </div>
                                 ))}
-                            </Row>
+                            </div>
                         )}
                     </Card>
                 </Form>

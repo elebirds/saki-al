@@ -21,7 +21,7 @@ from saki_api.schemas.l3.job import (
     AnnotationBatchItemRead,
     LoopRecoverRequest,
 )
-from saki_api.services.loop_config import extract_model_request_config
+from saki_api.services.loop_config import extract_model_request_config, extract_simulation_config
 from saki_api.services.loop_orchestrator import loop_orchestrator
 
 router = APIRouter()
@@ -56,7 +56,10 @@ async def _ensure_project_perm(
 def _build_loop_read(loop) -> LoopRead:
     row = LoopRead.model_validate(loop, from_attributes=True)
     return row.model_copy(
-        update={"model_request_config": extract_model_request_config(getattr(loop, "global_config", {}))}
+        update={
+            "model_request_config": extract_model_request_config(getattr(loop, "global_config", {})),
+            "simulation_config": extract_simulation_config(getattr(loop, "global_config", {})),
+        }
     )
 
 
@@ -87,7 +90,6 @@ async def start_loop(
         return _build_loop_read(loop)
 
     loop.status = ALLoopStatus.RUNNING
-    loop.is_active = True
     session.add(loop)
     await session.commit()
     await session.refresh(loop)
@@ -135,7 +137,6 @@ async def resume_loop(
     if loop.status in {ALLoopStatus.STOPPED, ALLoopStatus.COMPLETED}:
         raise BadRequestAppException(f"Loop in status {loop.status} cannot be resumed")
     loop.status = ALLoopStatus.RUNNING
-    loop.is_active = True
     session.add(loop)
     await session.commit()
     await session.refresh(loop)
@@ -184,7 +185,6 @@ async def stop_loop(
         required=Permissions.LOOP_MANAGE,
     )
     loop.status = ALLoopStatus.STOPPED
-    loop.is_active = False
     session.add(loop)
     await session.commit()
     await session.refresh(loop)

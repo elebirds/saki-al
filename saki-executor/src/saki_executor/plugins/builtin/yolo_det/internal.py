@@ -412,6 +412,8 @@ class YoloDetectionInternal:
         base_model = str(params.get("base_model", "yolov8n-obb.pt") or "yolov8n-obb.pt")
         conf = _to_float(params.get("predict_conf", 0.1), 0.1)
         imgsz = _to_int(params.get("imgsz", 640), 640)
+        random_seed = max(0, _to_int(params.get("random_seed", 0), 0))
+        round_index = max(1, _to_int(params.get("round_index", 1), 1))
         device, _requested_device, _resolved_backend = self._resolve_device(params)
 
         best_path = workspace.artifacts_dir / "best.pt"
@@ -425,6 +427,8 @@ class YoloDetectionInternal:
             conf=conf,
             imgsz=imgsz,
             device=device,
+            random_seed=random_seed,
+            round_index=round_index,
         )
         candidates.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
         return candidates[:topk]
@@ -522,8 +526,8 @@ class YoloDetectionInternal:
         val_ratio = _clamp(_to_float(params.get("val_split_ratio", 0.2), 0.2), 0.05, 0.5)
         if split_seed <= 0:
             loop_id = str(payload.get("loop_id") or "")
-            iteration = _to_int(payload.get("iteration"), 1)
-            digest = hashlib.sha256(f"{loop_id}:{iteration}".encode("utf-8")).hexdigest()
+            round_index = _to_int(payload.get("round_index"), 1)
+            digest = hashlib.sha256(f"{loop_id}:{round_index}".encode("utf-8")).hexdigest()
             split_seed = int(digest[:8], 16)
         return split_seed, val_ratio
 
@@ -622,6 +626,8 @@ class YoloDetectionInternal:
         conf: float,
         imgsz: int,
         device: Any,
+        random_seed: int,
+        round_index: int,
     ) -> list[dict[str, Any]]:
         return score_unlabeled_samples(
             model_path=model_path,
@@ -633,9 +639,12 @@ class YoloDetectionInternal:
             stop_flag=self._stop_flag,
             load_yolo=self._load_yolo,
             predict_with_aug=self._predict_with_aug,
+            extract_predictions=self._extract_predictions,
             build_detection_boxes=build_detection_boxes,
             score_aug_iou_disagreement=score_aug_iou_disagreement,
             score_by_strategy=score_by_strategy,
+            random_seed=random_seed,
+            round_index=round_index,
         )
 
     def _predict_with_aug(

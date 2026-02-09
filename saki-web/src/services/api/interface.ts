@@ -36,6 +36,9 @@ import {
     LoopUpdateRequest,
     LoopRound,
     LoopSummary,
+    SimulationExperimentCreateRequest,
+    SimulationExperimentCreateResponse,
+    SimulationExperimentCurves,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
@@ -210,6 +213,13 @@ export interface ApiService {
     getLoopRounds(loopId: string, limit?: number): Promise<LoopRound[]>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
+
+    createSimulationExperiment(
+        projectId: string,
+        payload: SimulationExperimentCreateRequest
+    ): Promise<SimulationExperimentCreateResponse>;
+
+    getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves>;
 
     getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
 

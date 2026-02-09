@@ -54,6 +54,7 @@ const JOB_STATUS_COLOR: Record<string, string> = {
 
 type LoopConfigForm = {
     name: string;
+    mode: 'active_learning' | 'simulation';
     modelArch: string;
     queryStrategy: string;
     maxRounds: number;
@@ -64,6 +65,15 @@ type LoopConfigForm = {
     stopMinGain: number;
     autoRegisterModel: boolean;
     modelRequestConfig: Record<string, any>;
+    simulationConfig: {
+        oracleCommitId?: string | null;
+        initialSeedCount: number;
+        queryBatchSize: number;
+        maxRounds: number;
+        splitSeed: number;
+        randomSeed: number;
+        requireFullyLabeled: boolean;
+    };
 };
 
 type LoopRecoverForm = {
@@ -91,6 +101,7 @@ const ProjectLoopDetail: React.FC = () => {
     const [recoverForm] = Form.useForm<LoopRecoverForm>();
 
     const selectedPluginId = Form.useWatch('modelArch', configForm);
+    const selectedMode = Form.useWatch('mode', configForm) || 'active_learning';
     const recoverMode = Form.useWatch('mode', recoverForm) || 'retry_same_params';
     const selectedPlugin = useMemo(
         () => plugins.find((item) => item.pluginId === selectedPluginId),
@@ -156,6 +167,7 @@ const ProjectLoopDetail: React.FC = () => {
         const plugin = pluginCatalog.items.find((item) => item.pluginId === loopRow.modelArch);
         configForm.setFieldsValue({
             name: loopRow.name,
+            mode: loopRow.mode || 'active_learning',
             modelArch: loopRow.modelArch,
             queryStrategy: loopRow.queryStrategy,
             maxRounds: loopRow.maxRounds,
@@ -168,6 +180,15 @@ const ProjectLoopDetail: React.FC = () => {
             modelRequestConfig: {
                 ...(plugin?.defaultRequestConfig || {}),
                 ...(loopRow.modelRequestConfig || {}),
+            },
+            simulationConfig: {
+                oracleCommitId: loopRow.simulationConfig?.oracleCommitId,
+                initialSeedCount: loopRow.simulationConfig?.initialSeedCount ?? 100,
+                queryBatchSize: loopRow.simulationConfig?.queryBatchSize ?? 200,
+                maxRounds: loopRow.simulationConfig?.maxRounds ?? loopRow.maxRounds,
+                splitSeed: loopRow.simulationConfig?.splitSeed ?? 0,
+                randomSeed: loopRow.simulationConfig?.randomSeed ?? 0,
+                requireFullyLabeled: loopRow.simulationConfig?.requireFullyLabeled ?? true,
             },
         });
     }, [loopId, configForm]);
@@ -194,6 +215,7 @@ const ProjectLoopDetail: React.FC = () => {
             setSaving(true);
             const payload: LoopUpdateRequest = {
                 name: values.name,
+                mode: values.mode,
                 modelArch: values.modelArch,
                 queryStrategy: values.queryStrategy,
                 maxRounds: values.maxRounds,
@@ -204,6 +226,7 @@ const ProjectLoopDetail: React.FC = () => {
                 stopMinGain: values.stopMinGain,
                 autoRegisterModel: values.autoRegisterModel,
                 modelRequestConfig: values.modelRequestConfig || {},
+                simulationConfig: values.simulationConfig,
             };
             await api.updateLoop(loopId, payload);
             message.success('Loop 配置已保存');
@@ -362,6 +385,7 @@ const ProjectLoopDetail: React.FC = () => {
 
             <Card className="!border-github-border !bg-github-panel" title="Loop 摘要">
                 <Descriptions size="small" column={4}>
+                    <Descriptions.Item label="模式">{loop.mode}</Descriptions.Item>
                     <Descriptions.Item label="总轮次">{summary?.roundsTotal ?? rounds.length}</Descriptions.Item>
                     <Descriptions.Item label="完成轮次">{summary?.roundsCompleted ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="累计选样">{summary?.selectedTotal ?? 0}</Descriptions.Item>
@@ -381,6 +405,18 @@ const ProjectLoopDetail: React.FC = () => {
                                 <Input/>
                             </Form.Item>
                         </div>
+                        <div>
+                            <Form.Item name="mode" label="运行模式" rules={[{required: true, message: '请选择运行模式'}]}>
+                                <Select
+                                    options={[
+                                        {label: '主动学习 (HITL)', value: 'active_learning'},
+                                        {label: '模拟实验 (Simulation)', value: 'simulation'},
+                                    ]}
+                                />
+                            </Form.Item>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                         <div>
                             <Form.Item name="modelArch" label="插件" rules={[{required: true, message: '请选择插件'}]}>
                                 <Select
@@ -441,6 +477,53 @@ const ProjectLoopDetail: React.FC = () => {
                             </Form.Item>
                         </div>
                     </div>
+                    {selectedMode === 'simulation' ? (
+                        <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
+                            <div>
+                                <Form.Item
+                                    name={['simulationConfig', 'oracleCommitId']}
+                                    label="Oracle Commit ID"
+                                    rules={[{required: true, message: 'simulation 需要 oracle commit'}]}
+                                >
+                                    <Input/>
+                                </Form.Item>
+                            </div>
+                            <div>
+                                <Form.Item name={['simulationConfig', 'initialSeedCount']} label="初始 Seed 数量">
+                                    <InputNumber min={1} max={50000} className="w-full"/>
+                                </Form.Item>
+                            </div>
+                            <div>
+                                <Form.Item name={['simulationConfig', 'queryBatchSize']} label="每轮模拟 TopK">
+                                    <InputNumber min={1} max={50000} className="w-full"/>
+                                </Form.Item>
+                            </div>
+                            <div>
+                                <Form.Item name={['simulationConfig', 'maxRounds']} label="模拟最大轮次">
+                                    <InputNumber min={1} max={500} className="w-full"/>
+                                </Form.Item>
+                            </div>
+                            <div>
+                                <Form.Item name={['simulationConfig', 'splitSeed']} label="数据切分种子">
+                                    <InputNumber min={0} max={2147483647} className="w-full"/>
+                                </Form.Item>
+                            </div>
+                            <div>
+                                <Form.Item name={['simulationConfig', 'randomSeed']} label="随机种子">
+                                    <InputNumber min={0} max={2147483647} className="w-full"/>
+                                </Form.Item>
+                            </div>
+                            <div>
+                                <Form.Item
+                                    name={['simulationConfig', 'requireFullyLabeled']}
+                                    label="要求 Oracle 全量标注"
+                                    valuePropName="checked"
+                                >
+                                    <Switch/>
+                                </Form.Item>
+                            </div>
+                        </div>
+                    ) : null}
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
                         <div>
                             <Form.Item name="minNewLabelsPerRound" label="每轮最小新增标注">

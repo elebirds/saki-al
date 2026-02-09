@@ -16,20 +16,22 @@ def _build_manager(tmp_path: Path) -> JobManager:
     return JobManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
 
 
-def test_job_execution_request_from_payload_normalizes_defaults():
+def test_job_execution_request_from_payload_requires_explicit_fields():
     request = JobExecutionRequest.from_payload(
         {
             "job_id": "job-1",
             "plugin_id": "demo_det_v1",
-            "iteration": "0",
+            "round_index": "2",
+            "mode": "simulation",
+            "query_strategy": "random_baseline",
             "params": {"topk": 10},
         }
     )
     assert request.job_id == "job-1"
     assert request.plugin_id == "demo_det_v1"
-    assert request.mode == "active_learning"
-    assert request.iteration == 1
-    assert request.query_strategy == "uncertainty_1_minus_max_conf"
+    assert request.mode == "simulation"
+    assert request.round_index == 2
+    assert request.query_strategy == "random_baseline"
 
 
 @pytest.mark.anyio
@@ -48,6 +50,9 @@ async def test_assign_job_passes_typed_request_to_run_job(tmp_path: Path):
             "project_id": "project-1",
             "source_commit_id": "commit-1",
             "plugin_id": "demo_det_v1",
+            "mode": "active_learning",
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "round_index": 1,
             "params": {"topk": 10},
         },
     )
@@ -114,4 +119,3 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
     )
     assert isinstance(ticket, ArtifactUploadTicket)
     assert ticket.storage_uri == "s3://bucket/test.bin"
-

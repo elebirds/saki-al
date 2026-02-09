@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from loguru import logger
+import random
 import uuid
 from datetime import datetime, UTC
 
@@ -17,12 +18,17 @@ from saki_api.db.session import SessionLocal
 from saki_api.grpc.dispatcher import runtime_dispatcher
 from saki_api.models.enums import (
     ALLoopStatus,
+    ALLoopMode,
     LoopRoundStatus,
     AnnotationBatchStatus,
     TrainingJobStatus,
+    AuthorType,
 )
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.models.l2.commit import Commit
+from saki_api.models.l2.project import ProjectDataset
+from saki_api.models.l1.sample import Sample
 from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.loop import ALLoop
@@ -31,6 +37,8 @@ from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.models.l3.model import Model
 from saki_api.services.annotation_batch_progress import refresh_batch_progress_by_commit
 from saki_api.services.loop_config import (
+    build_job_params_from_loop_config,
+    extract_simulation_config,
     normalize_loop_global_config,
     round_split_seed,
     to_bool,
@@ -89,7 +97,6 @@ class LoopOrchestrator:
         async with self._session_local() as session:
             rows = await session.exec(
                 select(ALLoop.id).where(
-                    ALLoop.is_active.is_(True),
                     ALLoop.status == ALLoopStatus.RUNNING,
                 )
             )
@@ -102,7 +109,7 @@ class LoopOrchestrator:
         dispatch_job_id: uuid.UUID | None = None
         async with self._session_local() as session:
             loop = await session.get(ALLoop, loop_id)
-            if not loop or loop.status != ALLoopStatus.RUNNING or not loop.is_active:
+            if not loop or loop.status != ALLoopStatus.RUNNING:
                 return
 
             branch = await session.get(Branch, loop.branch_id)
@@ -115,14 +122,33 @@ class LoopOrchestrator:
 
             latest_round = await self._latest_round(session, loop.id)
             if not latest_round:
-                seed_count = await self._count_labeled_samples(session, branch.head_commit_id)
-                if seed_count >= loop.min_seed_labeled:
-                    dispatch_job_id = await self._create_round_job(
-                        session=session,
-                        loop=loop,
-                        source_commit_id=branch.head_commit_id,
-                    )
-                    await session.commit()
+                if loop.mode == ALLoopMode.SIMULATION:
+                    try:
+                        seed_commit_id = await self._ensure_simulation_seed_commit(
+                            session=session,
+                            loop=loop,
+                            branch=branch,
+                        )
+                        dispatch_job_id = await self._create_round_job(
+                            session=session,
+                            loop=loop,
+                            source_commit_id=seed_commit_id,
+                        )
+                        await session.commit()
+                    except BadRequestAppException as exc:
+                        loop.status = ALLoopStatus.FAILED
+                        loop.last_error = str(exc)
+                        session.add(loop)
+                        await session.commit()
+                else:
+                    seed_count = await self._count_labeled_samples(session, branch.head_commit_id)
+                    if seed_count >= loop.min_seed_labeled:
+                        dispatch_job_id = await self._create_round_job(
+                            session=session,
+                            loop=loop,
+                            source_commit_id=branch.head_commit_id,
+                        )
+                        await session.commit()
                 return
 
             if latest_round.status == LoopRoundStatus.TRAINING:
@@ -133,7 +159,7 @@ class LoopOrchestrator:
                     branch=branch,
                 )
                 await session.commit()
-            elif latest_round.status == LoopRoundStatus.ANNOTATION:
+            elif latest_round.status == LoopRoundStatus.ANNOTATION and loop.mode == ALLoopMode.ACTIVE_LEARNING:
                 dispatch_job_id = await self._handle_annotation_round(
                     session=session,
                     loop=loop,
@@ -185,7 +211,6 @@ class LoopOrchestrator:
         elif round_obj.started_at is None:
             round_obj.started_at = datetime.now(UTC)
         loop.status = ALLoopStatus.RUNNING
-        loop.is_active = True
         loop.last_error = None
         loop.last_job_id = job_id
 
@@ -269,7 +294,6 @@ class LoopOrchestrator:
         return Job(
             project_id=failed_job.project_id,
             loop_id=failed_job.loop_id,
-            iteration=int(failed_job.iteration or latest_round.round_index),
             round_index=int(failed_job.round_index or latest_round.round_index),
             status=TrainingJobStatus.PENDING,
             source_commit_id=failed_job.source_commit_id,
@@ -412,11 +436,28 @@ class LoopOrchestrator:
         round_index = int(loop.current_iteration)
 
         loop_config = normalize_loop_global_config(loop.global_config)
-        params = dict(loop_config)
-        params.pop("job_resources_default", None)
-        params.pop("selection", None)
-        params.setdefault("topk", loop.query_batch_size)
-        params.setdefault("split_seed", round_split_seed(loop.id, round_index))
+        params = build_job_params_from_loop_config(loop_config)
+        simulation_config = extract_simulation_config(loop_config)
+        mode_value = loop.mode if isinstance(loop.mode, ALLoopMode) else ALLoopMode(
+            str(getattr(loop.mode, "value", loop.mode) or ALLoopMode.ACTIVE_LEARNING.value)
+        )
+
+        effective_query_batch_size = int(loop.query_batch_size)
+        if mode_value == ALLoopMode.SIMULATION:
+            effective_query_batch_size = max(
+                1,
+                to_int(simulation_config.get("query_batch_size"), int(loop.query_batch_size)),
+            )
+            params.setdefault("oracle_commit_id", str(simulation_config.get("oracle_commit_id") or ""))
+            params.setdefault("random_seed", max(0, to_int(simulation_config.get("random_seed"), 0)))
+            split_seed = max(0, to_int(simulation_config.get("split_seed"), 0))
+            if split_seed <= 0:
+                split_seed = round_split_seed(loop.id, round_index)
+            params.setdefault("split_seed", split_seed)
+        else:
+            params.setdefault("split_seed", round_split_seed(loop.id, round_index))
+        params.setdefault("topk", effective_query_batch_size)
+        params.setdefault("round_index", round_index)
 
         warm_start = to_bool(loop_config.get("warm_start"), True)
         params["warm_start"] = warm_start
@@ -443,13 +484,12 @@ class LoopOrchestrator:
         job = Job(
             project_id=loop.project_id,
             loop_id=loop.id,
-            iteration=round_index,
             round_index=round_index,
             status=TrainingJobStatus.PENDING,
             source_commit_id=source_commit_id,
             job_type="train_detection",
             plugin_id=loop.model_arch,
-            mode="active_learning",
+            mode=mode_value,
             query_strategy=loop.query_strategy,
             params=params,
             resources=resources,
@@ -476,12 +516,21 @@ class LoopOrchestrator:
         loop.last_job_id = job.id
         loop.last_error = None
         session.add(loop)
+        snapshot = {
+            "epochs": params.get("epochs"),
+            "batch": params.get("batch", params.get("batch_size")),
+            "imgsz": params.get("imgsz"),
+            "base_model": params.get("base_model"),
+            "split_seed": params.get("split_seed"),
+        }
         logger.info(
-            "已创建轮次训练任务 loop_id={} round_index={} job_id={} source_commit_id={}",
+            "已创建轮次训练任务 loop_id={} round_index={} job_id={} mode={} source_commit_id={} param_snapshot={}",
             loop.id,
             round_index,
             job.id,
+            mode_value.value,
             source_commit_id,
+            snapshot,
         )
         return job.id
 
@@ -521,6 +570,24 @@ class LoopOrchestrator:
             session.add(loop)
             return None
 
+        if loop.mode == ALLoopMode.SIMULATION:
+            try:
+                return await self._handle_training_round_simulation(
+                    session=session,
+                    loop=loop,
+                    round_obj=round_obj,
+                    branch=branch,
+                    job=job,
+                )
+            except BadRequestAppException as exc:
+                round_obj.status = LoopRoundStatus.FAILED
+                round_obj.ended_at = datetime.now(UTC)
+                loop.status = ALLoopStatus.FAILED
+                loop.last_error = str(exc)
+                session.add(round_obj)
+                session.add(loop)
+                return None
+
         batch = await self._create_annotation_batch(session=session, loop=loop, job=job)
         round_metrics = dict(job.metrics or {})
         parent_model_id = str((job.params or {}).get("parent_model_id") or "")
@@ -536,7 +603,6 @@ class LoopOrchestrator:
             session.add(round_obj)
 
             loop.status = ALLoopStatus.COMPLETED
-            loop.is_active = False
             loop.last_error = "no_candidates"
             session.add(loop)
             return None
@@ -585,7 +651,7 @@ class LoopOrchestrator:
             project_id=loop.project_id,
             loop_id=loop.id,
             job_id=job.id,
-            round_index=max(1, int(job.round_index or job.iteration or 1)),
+            round_index=max(1, int(job.round_index or 1)),
             status=AnnotationBatchStatus.OPEN,
             total_count=len(candidates),
             annotated_count=0,
@@ -607,6 +673,292 @@ class LoopOrchestrator:
                 )
             )
         return batch
+
+    async def _count_project_samples(self, session, project_id: uuid.UUID) -> int:
+        dataset_rows = await session.exec(
+            select(ProjectDataset.dataset_id).where(ProjectDataset.project_id == project_id)
+        )
+        dataset_ids: list[uuid.UUID] = []
+        for value in dataset_rows.all():
+            raw = value[0] if isinstance(value, (list, tuple)) else value
+            if raw:
+                dataset_ids.append(raw)
+        if not dataset_ids:
+            return 0
+        row = await session.exec(
+            select(func.count(func.distinct(Sample.id))).where(Sample.dataset_id.in_(dataset_ids))
+        )
+        return int(row.one() or 0)
+
+    @staticmethod
+    def _resolve_simulation_oracle_commit_id(simulation_config: dict[str, object]) -> uuid.UUID:
+        raw_value = str(simulation_config.get("oracle_commit_id") or "").strip()
+        if not raw_value:
+            raise BadRequestAppException("simulation.oracle_commit_id is required")
+        try:
+            return uuid.UUID(raw_value)
+        except Exception as exc:
+            raise BadRequestAppException("simulation.oracle_commit_id is invalid") from exc
+
+    @staticmethod
+    def _pick_simulation_seed_samples(
+            *,
+            sample_ids: list[uuid.UUID],
+            initial_seed_count: int,
+            random_seed: int,
+    ) -> list[uuid.UUID]:
+        ordered = sorted(sample_ids)
+        rng = random.Random(random_seed)
+        rng.shuffle(ordered)
+        target = max(1, min(len(ordered), int(initial_seed_count)))
+        return ordered[:target]
+
+    async def _load_commit_sample_ids(self, session, commit_id: uuid.UUID) -> list[uuid.UUID]:
+        rows = await session.exec(
+            select(CommitAnnotationMap.sample_id)
+            .where(CommitAnnotationMap.commit_id == commit_id)
+            .distinct()
+        )
+        sample_ids: list[uuid.UUID] = []
+        for value in rows.all():
+            raw = value[0] if isinstance(value, (list, tuple)) else value
+            if raw:
+                sample_ids.append(raw)
+        return sample_ids
+
+    async def _create_simulation_commit_from_oracle(
+            self,
+            *,
+            session,
+            loop: ALLoop,
+            branch: Branch,
+            parent_commit_id: uuid.UUID,
+            base_commit_id: uuid.UUID | None,
+            oracle_commit_id: uuid.UUID,
+            selected_sample_ids: list[uuid.UUID],
+            message: str,
+    ) -> tuple[Commit, int]:
+        commit = Commit(
+            project_id=loop.project_id,
+            parent_id=parent_commit_id,
+            message=message,
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+            extra={
+                "loop_id": str(loop.id),
+                "mode": "simulation",
+                "oracle_commit_id": str(oracle_commit_id),
+            },
+        )
+        session.add(commit)
+        await session.flush()
+        await session.refresh(commit)
+
+        per_sample_annotation_ids: dict[uuid.UUID, set[uuid.UUID]] = {}
+        if base_commit_id:
+            base_rows = await session.exec(
+                select(CommitAnnotationMap.sample_id, CommitAnnotationMap.annotation_id)
+                .where(CommitAnnotationMap.commit_id == base_commit_id)
+            )
+            for sample_id, annotation_id in base_rows.all():
+                bucket = per_sample_annotation_ids.setdefault(sample_id, set())
+                bucket.add(annotation_id)
+
+        selected_set = {item for item in selected_sample_ids if item}
+        for sample_id in selected_set:
+            per_sample_annotation_ids.pop(sample_id, None)
+
+        applied_sample_ids: set[uuid.UUID] = set()
+        if selected_set:
+            selected_values = list(selected_set)
+            oracle_rows = await session.exec(
+                select(CommitAnnotationMap.sample_id, CommitAnnotationMap.annotation_id)
+                .where(
+                    CommitAnnotationMap.commit_id == oracle_commit_id,
+                    CommitAnnotationMap.sample_id.in_(selected_values),
+                )
+            )
+            for sample_id, annotation_id in oracle_rows.all():
+                bucket = per_sample_annotation_ids.setdefault(sample_id, set())
+                bucket.add(annotation_id)
+                applied_sample_ids.add(sample_id)
+
+        annotation_count = 0
+        for sample_id, annotation_ids in per_sample_annotation_ids.items():
+            for annotation_id in sorted(annotation_ids, key=str):
+                session.add(
+                    CommitAnnotationMap(
+                        commit_id=commit.id,
+                        sample_id=sample_id,
+                        annotation_id=annotation_id,
+                        project_id=loop.project_id,
+                    )
+                )
+                annotation_count += 1
+
+        commit.stats = {
+            "sample_count": len(per_sample_annotation_ids),
+            "annotation_count": annotation_count,
+        }
+        session.add(commit)
+
+        branch.head_commit_id = commit.id
+        session.add(branch)
+        return commit, len(applied_sample_ids)
+
+    async def _ensure_simulation_seed_commit(
+            self,
+            *,
+            session,
+            loop: ALLoop,
+            branch: Branch,
+    ) -> uuid.UUID:
+        simulation_config = extract_simulation_config(loop.global_config)
+        oracle_commit_id = self._resolve_simulation_oracle_commit_id(simulation_config)
+        oracle_commit = await session.get(Commit, oracle_commit_id)
+        if oracle_commit is None:
+            raise BadRequestAppException(f"simulation oracle_commit_id not found: {oracle_commit_id}")
+        if oracle_commit.project_id != loop.project_id:
+            raise BadRequestAppException("simulation oracle_commit_id must belong to the same project")
+
+        require_fully_labeled = bool(simulation_config.get("require_fully_labeled", True))
+        if require_fully_labeled:
+            total_samples = await self._count_project_samples(session, loop.project_id)
+            labeled_samples = await self._count_labeled_samples(session, oracle_commit_id)
+            if total_samples > 0 and labeled_samples < total_samples:
+                missing = total_samples - labeled_samples
+                coverage = (float(labeled_samples) / float(total_samples)) * 100.0
+                raise BadRequestAppException(
+                    (
+                        "simulation oracle commit is not fully labeled: "
+                        f"total_samples={total_samples}, labeled_samples={labeled_samples}, "
+                        f"missing_samples={missing}, coverage={coverage:.2f}%"
+                    )
+                )
+
+        oracle_sample_ids = await self._load_commit_sample_ids(session, oracle_commit_id)
+        if not oracle_sample_ids:
+            raise BadRequestAppException("simulation oracle commit has no labeled samples")
+
+        initial_seed_count = max(
+            1,
+            to_int(simulation_config.get("initial_seed_count"), max(1, int(loop.min_seed_labeled))),
+        )
+        random_seed = max(0, to_int(simulation_config.get("random_seed"), 0))
+        selected_seed_sample_ids = self._pick_simulation_seed_samples(
+            sample_ids=oracle_sample_ids,
+            initial_seed_count=initial_seed_count,
+            random_seed=random_seed,
+        )
+        seed_commit, applied_samples = await self._create_simulation_commit_from_oracle(
+            session=session,
+            loop=loop,
+            branch=branch,
+            parent_commit_id=branch.head_commit_id,
+            base_commit_id=None,
+            oracle_commit_id=oracle_commit_id,
+            selected_sample_ids=selected_seed_sample_ids,
+            message=f"[simulation] seed commit loop={loop.id}",
+        )
+        logger.info(
+            "simulation seed commit created loop_id={} commit_id={} seed_samples={} applied_samples={}",
+            loop.id,
+            seed_commit.id,
+            len(selected_seed_sample_ids),
+            applied_samples,
+        )
+        return seed_commit.id
+
+    async def _select_round_candidate_sample_ids(
+            self,
+            *,
+            session,
+            loop: ALLoop,
+            job_id: uuid.UUID,
+            limit: int,
+    ) -> list[uuid.UUID]:
+        metric_rows = await session.exec(
+            select(JobSampleMetric)
+            .where(JobSampleMetric.job_id == job_id)
+            .order_by(JobSampleMetric.score.desc())
+            .limit(limit)
+        )
+        candidates = list(metric_rows.all())
+        loop_config = normalize_loop_global_config(loop.global_config)
+        selection = loop_config.get("selection") if isinstance(loop_config.get("selection"), dict) else {}
+        min_candidates_required = max(1, to_int(selection.get("min_candidates_required"), 1))
+        if len(candidates) < min_candidates_required:
+            return []
+        return [item.sample_id for item in candidates if item.sample_id]
+
+    async def _handle_training_round_simulation(
+            self,
+            *,
+            session,
+            loop: ALLoop,
+            round_obj: LoopRound,
+            branch: Branch,
+            job: Job,
+    ) -> uuid.UUID | None:
+        simulation_config = extract_simulation_config(loop.global_config)
+        oracle_commit_id = self._resolve_simulation_oracle_commit_id(simulation_config)
+        query_batch_size = max(1, to_int(simulation_config.get("query_batch_size"), int(loop.query_batch_size)))
+        selected_sample_ids = await self._select_round_candidate_sample_ids(
+            session=session,
+            loop=loop,
+            job_id=job.id,
+            limit=query_batch_size,
+        )
+
+        round_metrics = dict(job.metrics or {})
+        parent_model_id = str((job.params or {}).get("parent_model_id") or "")
+        if parent_model_id:
+            round_metrics.setdefault("parent_model_id", parent_model_id)
+
+        if not selected_sample_ids:
+            round_metrics.setdefault("no_candidates", 1.0)
+            round_obj.metrics = round_metrics
+            round_obj.selected_count = 0
+            round_obj.status = LoopRoundStatus.COMPLETED_NO_CANDIDATES
+            round_obj.ended_at = datetime.now(UTC)
+            session.add(round_obj)
+
+            loop.status = ALLoopStatus.COMPLETED
+            loop.last_error = "no_candidates"
+            session.add(loop)
+            return None
+
+        next_commit, applied_count = await self._create_simulation_commit_from_oracle(
+            session=session,
+            loop=loop,
+            branch=branch,
+            parent_commit_id=branch.head_commit_id,
+            base_commit_id=round_obj.source_commit_id,
+            oracle_commit_id=oracle_commit_id,
+            selected_sample_ids=selected_sample_ids,
+            message=f"[simulation] auto label loop={loop.id} round={round_obj.round_index}",
+        )
+        round_metrics.setdefault("simulation_oracle_commit_id", str(oracle_commit_id))
+        round_metrics.setdefault("simulation_auto_commit_id", str(next_commit.id))
+        round_obj.metrics = round_metrics
+        round_obj.selected_count = len(selected_sample_ids)
+        round_obj.labeled_count = int(applied_count)
+        round_obj.status = LoopRoundStatus.COMPLETED
+        round_obj.ended_at = datetime.now(UTC)
+        session.add(round_obj)
+
+        simulation_max_rounds = max(1, to_int(simulation_config.get("max_rounds"), int(loop.max_rounds)))
+        if round_obj.round_index >= simulation_max_rounds or await self._should_early_stop(session=session, loop=loop):
+            loop.status = ALLoopStatus.COMPLETED
+            session.add(loop)
+            return None
+
+        return await self._create_round_job(
+            session=session,
+            loop=loop,
+            source_commit_id=next_commit.id,
+        )
 
     async def _handle_annotation_round(
             self,
@@ -648,13 +1000,20 @@ class LoopOrchestrator:
         if not can_advance:
             return None
 
+        if batch.status == AnnotationBatchStatus.OPEN:
+            batch.status = AnnotationBatchStatus.CLOSED
+            batch.closed_at = datetime.now(UTC)
+            meta = dict(batch.meta or {})
+            meta["auto_closed_on_advance"] = True
+            batch.meta = meta
+            session.add(batch)
+
         round_obj.status = LoopRoundStatus.COMPLETED
         round_obj.ended_at = datetime.now(UTC)
         session.add(round_obj)
 
         if round_obj.round_index >= loop.max_rounds or await self._should_early_stop(session=session, loop=loop):
             loop.status = ALLoopStatus.COMPLETED
-            loop.is_active = False
             session.add(loop)
             return None
 

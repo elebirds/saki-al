@@ -298,27 +298,3 @@ class JobManager:
             protected=protected,
             topk=topk,
         )
-
-    @staticmethod
-    def _normalize_simulation_ratio_schedule(raw: Any) -> list[float]:
-        default_schedule = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0]
-        if not isinstance(raw, list):
-            return default_schedule
-
-        values: list[float] = []
-        for item in raw:
-            try:
-                ratio = float(item)
-            except Exception:
-                continue
-            values.append(max(0.0, min(1.0, ratio)))
-        return values or default_schedule
-
-    @staticmethod
-    def _resolve_simulation_ratio(*, iteration: int, schedule: list[float]) -> float:
-        if not schedule:
-            return 1.0
-        if iteration <= 1:
-            return float(schedule[0])
-        index = min(len(schedule) - 1, max(0, iteration - 1))
-        return float(schedule[index])

@@ -35,7 +35,7 @@ def test_parse_assign_job_payload():
                 query_strategy="uncertainty_1_minus_max_conf",
                 params=codec.dict_to_struct({"epochs": 5}),
                 resources=pb.ResourceSummary(gpu_count=1, gpu_device_ids=[0], cpu_workers=4, memory_mb=0),
-                iteration=3,
+                round_index=3,
             ),
         )
     )
@@ -44,7 +44,7 @@ def test_parse_assign_job_payload():
     assert payload["params"]["epochs"] == 5
     assert payload["job_type"] == "train_detection"
     assert payload["mode"] == "active_learning"
-    assert payload["iteration"] == 3
+    assert payload["round_index"] == 3
 
 
 def test_build_data_request_query_type_mapping():

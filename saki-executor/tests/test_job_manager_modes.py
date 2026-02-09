@@ -156,7 +156,7 @@ def _mock_data_items(query_type: int) -> list[pb.DataItem]:
 
 
 @pytest.mark.anyio
-async def test_simulation_mode_skips_topk_and_uses_ratio_subset(tmp_path: Path):
+async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_path: Path):
     plugin = _ModeAwarePlugin()
     manager = _build_manager(tmp_path, plugin)
     sent_messages: list[pb.RuntimeMessage] = []
@@ -186,11 +186,9 @@ async def test_simulation_mode_skips_topk_and_uses_ratio_subset(tmp_path: Path):
             "source_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "simulation",
-            "iteration": 1,
+            "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {
-                "simulation_ratio_schedule": [0.5, 1.0],
-            },
+            "params": {},
         },
     )
     assert accepted is True
@@ -201,10 +199,10 @@ async def test_simulation_mode_skips_topk_and_uses_ratio_subset(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].job_result
     assert result.status == pb.SUCCEEDED
-    assert len(result.candidates) == 0
-    assert plugin.predict_calls == 0
-    assert plugin.prepare_samples_count == 1
-    assert plugin.prepare_annotations_count == 1
+    assert len(result.candidates) == 2
+    assert plugin.predict_calls == 1
+    assert plugin.prepare_samples_count == 2
+    assert plugin.prepare_annotations_count == 2
 
 
 @pytest.mark.anyio
@@ -238,6 +236,7 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
             "source_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
+            "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "params": {"topk": 10},
         },
@@ -315,6 +314,7 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
             "source_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
+            "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "params": {"topk": 2, "unlabeled_page_size": 3},
         },
@@ -357,27 +357,23 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_job(
-        "assign-unknown-mode-1",
-        {
-            "job_id": "job-unknown-mode-1",
-            "project_id": "project-1",
-            "source_commit_id": "commit-1",
-            "plugin_id": plugin.plugin_id,
-            "mode": "unexpected_mode",
-            "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {},
-        },
-    )
-    assert accepted is True
-    assert manager._task is not None  # noqa: SLF001
-    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+    with pytest.raises(ValueError, match="unsupported mode"):
+        await manager.assign_job(
+            "assign-unknown-mode-1",
+            {
+                "job_id": "job-unknown-mode-1",
+                "project_id": "project-1",
+                "source_commit_id": "commit-1",
+                "plugin_id": plugin.plugin_id,
+                "mode": "unexpected_mode",
+                "round_index": 1,
+                "query_strategy": "uncertainty_1_minus_max_conf",
+                "params": {},
+            },
+        )
 
     result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
-    assert len(result_messages) == 1
-    result = result_messages[0].job_result
-    assert result.status == pb.FAILED
-    assert "unsupported mode" in result.error_message
+    assert len(result_messages) == 0
     assert request_calls == 0
     assert plugin.prepare_samples_count == 0
     assert plugin.predict_calls == 0

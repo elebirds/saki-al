@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from saki_executor.agent import codec as runtime_codec
-from saki_executor.jobs.contracts import JobExecutionRequest, JobFinalResult
+from saki_executor.jobs.contracts import JobExecutionRequest, JobFinalResult, SUPPORTED_JOB_MODES
 from saki_executor.jobs.orchestration.event_emitter import JobEventEmitter
 from saki_executor.jobs.orchestration.training_data_service import TrainingDataService
 from saki_executor.jobs.state import ExecutorState, JobStatus
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class JobPipelineRunner:
-    _SUPPORTED_MODES = {"active_learning", "simulation"}
+    _SUPPORTED_MODES = SUPPORTED_JOB_MODES
 
     def __init__(self, *, manager: JobManager, request: JobExecutionRequest) -> None:
         self._manager = manager
@@ -96,15 +96,24 @@ class JobPipelineRunner:
         workspace: Workspace,
         emitter: JobEventEmitter,
     ) -> tuple[Any, set[str]]:
+        params_snapshot = {
+            "epochs": self._request.params.get("epochs"),
+            "batch": self._request.params.get("batch", self._request.params.get("batch_size")),
+            "imgsz": self._request.params.get("imgsz"),
+            "base_model": self._request.params.get("base_model"),
+            "split_seed": self._request.params.get("split_seed"),
+            "random_seed": self._request.params.get("random_seed"),
+            "mode": self._request.mode,
+            "round_index": self._request.round_index,
+        }
+        await emitter.emit(
+            "log",
+            {"level": "INFO", "message": f"effective training params: {params_snapshot}"},
+        )
         data_service = TrainingDataService(
             fetch_all=self._manager._fetch_all,  # noqa: SLF001
             cache=self._manager.cache,
             stop_event=self._manager._stop_event,  # noqa: SLF001
-            normalize_simulation_ratio_schedule=self._manager._normalize_simulation_ratio_schedule,  # noqa: SLF001
-            resolve_simulation_ratio=lambda iteration, schedule: self._manager._resolve_simulation_ratio(  # noqa: SLF001
-                iteration=iteration,
-                schedule=schedule,
-            ),
         )
         data_bundle = await data_service.prepare(
             request=self._request,
@@ -128,10 +137,11 @@ class JobPipelineRunner:
         emitter: JobEventEmitter,
         protected: set[str],
     ) -> list[dict[str, Any]]:
-        if self._request.mode != "active_learning":
+        skip_sampling = bool(self._request.params.get("skip_sampling", False))
+        if skip_sampling:
             await emitter.emit(
                 "log",
-                {"level": "INFO", "message": "simulation mode skips active-learning TopK sampling"},
+                {"level": "INFO", "message": "skip_sampling=true, TopK sampling skipped"},
             )
             return []
         topk = int(self._request.params.get("topk", 200))

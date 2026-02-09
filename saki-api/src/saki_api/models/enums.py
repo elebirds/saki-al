@@ -117,6 +117,14 @@ class ALLoopStatus(str, Enum):
     FAILED = "failed"
 
 
+class ALLoopMode(str, Enum):
+    """
+    Enum for active-learning execution mode.
+    """
+    ACTIVE_LEARNING = "active_learning"
+    SIMULATION = "simulation"
+
+
 class LoopRoundStatus(str, Enum):
     """
     Enum for per-round state in an active-learning loop.

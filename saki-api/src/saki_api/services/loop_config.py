@@ -38,6 +38,9 @@ def normalize_loop_global_config(raw_config: dict[str, Any] | None) -> dict[str,
     selection["exclude_open_batches"] = to_bool(selection.get("exclude_open_batches"), True)
     selection["min_candidates_required"] = max(1, to_int(selection.get("min_candidates_required"), 1))
     config["selection"] = selection
+
+    simulation = config.get("simulation")
+    config["simulation"] = normalize_simulation_config(simulation if isinstance(simulation, dict) else None)
     return config
 
 
@@ -54,6 +57,54 @@ def merge_model_request_config(
     config = dict(raw_config or {})
     config["model_request_config"] = dict(model_request_config or {})
     return config
+
+
+def normalize_simulation_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
+    config = dict(raw_config or {})
+    oracle_commit_id_raw = str(config.get("oracle_commit_id") or "").strip()
+    if oracle_commit_id_raw:
+        try:
+            oracle_commit_id_raw = str(uuid.UUID(oracle_commit_id_raw))
+        except Exception:
+            oracle_commit_id_raw = ""
+
+    normalized = {
+        "oracle_commit_id": oracle_commit_id_raw,
+        "initial_seed_count": max(1, to_int(config.get("initial_seed_count"), 100)),
+        "query_batch_size": max(1, to_int(config.get("query_batch_size"), 200)),
+        "max_rounds": max(1, to_int(config.get("max_rounds"), 5)),
+        "split_seed": max(0, to_int(config.get("split_seed"), 0)),
+        "random_seed": max(0, to_int(config.get("random_seed"), 0)),
+        "require_fully_labeled": to_bool(config.get("require_fully_labeled"), True),
+    }
+    return normalized
+
+
+def extract_simulation_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
+    config = dict(raw_config or {})
+    payload = config.get("simulation")
+    if not isinstance(payload, dict):
+        return normalize_simulation_config({})
+    return normalize_simulation_config(payload)
+
+
+def merge_simulation_config(
+    raw_config: dict[str, Any] | None,
+    simulation_config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    config = dict(raw_config or {})
+    config["simulation"] = normalize_simulation_config(simulation_config)
+    return config
+
+
+def build_job_params_from_loop_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
+    """
+    训练作业参数（传给 executor）:
+    仅以 `model_request_config` 作为来源。
+    其余编排控制参数由 orchestrator 显式注入。
+    """
+    config = normalize_loop_global_config(raw_config)
+    return dict(extract_model_request_config(config))
 
 
 def round_split_seed(loop_id: uuid.UUID, round_index: int) -> int:

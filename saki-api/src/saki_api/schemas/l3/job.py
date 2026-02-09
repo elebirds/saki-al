@@ -11,19 +11,32 @@ from pydantic import BaseModel, Field, ConfigDict
 from saki_api.models.enums import (
     TrainingJobStatus,
     ALLoopStatus,
+    ALLoopMode,
     LoopRoundStatus,
     AnnotationBatchStatus,
 )
 
 
+class LoopSimulationConfig(BaseModel):
+    oracle_commit_id: Optional[uuid.UUID] = None
+    initial_seed_count: int = Field(default=100, ge=1)
+    query_batch_size: int = Field(default=200, ge=1)
+    max_rounds: int = Field(default=5, ge=1)
+    split_seed: int = Field(default=0, ge=0)
+    random_seed: int = Field(default=0, ge=0)
+    require_fully_labeled: bool = True
+
+
 class LoopCreateRequest(BaseModel):
     name: str
     branch_id: uuid.UUID
-    query_strategy: str = "aug_iou_disagreement_v1"
-    model_arch: str = "yolo_det_v1"
+    mode: ALLoopMode = ALLoopMode.ACTIVE_LEARNING
+    query_strategy: str
+    model_arch: str
     global_config: Dict[str, Any] = Field(default_factory=dict)
     model_request_config: Dict[str, Any] = Field(default_factory=dict)
-    is_active: bool = True
+    simulation_config: LoopSimulationConfig = Field(default_factory=LoopSimulationConfig)
+    experiment_group_id: Optional[uuid.UUID] = None
     status: ALLoopStatus = ALLoopStatus.DRAFT
     max_rounds: int = Field(default=5, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
@@ -36,10 +49,13 @@ class LoopCreateRequest(BaseModel):
 
 class LoopUpdateRequest(BaseModel):
     name: Optional[str] = None
+    mode: Optional[ALLoopMode] = None
     query_strategy: Optional[str] = None
     model_arch: Optional[str] = None
     global_config: Optional[Dict[str, Any]] = None
     model_request_config: Optional[Dict[str, Any]] = None
+    simulation_config: Optional[LoopSimulationConfig] = None
+    experiment_group_id: Optional[uuid.UUID] = None
     max_rounds: Optional[int] = Field(default=None, ge=1)
     query_batch_size: Optional[int] = Field(default=None, ge=1)
     min_seed_labeled: Optional[int] = Field(default=None, ge=1)
@@ -71,12 +87,14 @@ class LoopRead(BaseModel):
     project_id: uuid.UUID
     branch_id: uuid.UUID
     name: str
+    mode: ALLoopMode
     query_strategy: str
     model_arch: str
     global_config: Dict[str, Any]
     model_request_config: Dict[str, Any] = Field(default_factory=dict)
+    simulation_config: LoopSimulationConfig = Field(default_factory=LoopSimulationConfig)
+    experiment_group_id: Optional[uuid.UUID] = None
     current_iteration: int
-    is_active: bool
     status: ALLoopStatus
     max_rounds: int
     query_batch_size: int
@@ -97,8 +115,8 @@ class JobCreateRequest(BaseModel):
     source_commit_id: uuid.UUID
     plugin_id: str
     job_type: str = "train_detection"
-    mode: str = "active_learning"
-    query_strategy: str = "aug_iou_disagreement_v1"
+    mode: ALLoopMode = ALLoopMode.ACTIVE_LEARNING
+    query_strategy: str
     params: Dict[str, Any] = Field(default_factory=dict)
     resources: Dict[str, Any] = Field(default_factory=dict)
     strategy_params: Dict[str, Any] = Field(default_factory=dict)
@@ -110,11 +128,10 @@ class JobRead(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
     loop_id: uuid.UUID
-    iteration: int
     status: TrainingJobStatus
     job_type: str
     plugin_id: str
-    mode: str
+    mode: ALLoopMode
     query_strategy: str
     source_commit_id: uuid.UUID
     result_commit_id: Optional[uuid.UUID] = None
@@ -246,3 +263,38 @@ class LoopSummaryRead(BaseModel):
     selected_total: int
     labeled_total: int
     metrics_latest: Dict[str, Any]
+
+
+class SimulationExperimentCreateRequest(BaseModel):
+    branch_id: uuid.UUID
+    experiment_name: Optional[str] = None
+    model_arch: str
+    strategies: List[str]
+    global_config: Dict[str, Any] = Field(default_factory=dict)
+    model_request_config: Dict[str, Any] = Field(default_factory=dict)
+    simulation_config: LoopSimulationConfig
+    status: ALLoopStatus = ALLoopStatus.DRAFT
+
+
+class SimulationExperimentCreateResponse(BaseModel):
+    experiment_group_id: uuid.UUID
+    loops: List[LoopRead]
+
+
+class SimulationCurvePointRead(BaseModel):
+    round_index: int
+    labeled_count: int
+    map50: float
+    recall: float
+
+
+class SimulationLoopCurveRead(BaseModel):
+    loop_id: uuid.UUID
+    loop_name: str
+    query_strategy: str
+    points: List[SimulationCurvePointRead]
+
+
+class SimulationExperimentCurvesRead(BaseModel):
+    experiment_group_id: uuid.UUID
+    loops: List[SimulationLoopCurveRead]

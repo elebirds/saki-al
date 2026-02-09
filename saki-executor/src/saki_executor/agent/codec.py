@@ -470,13 +470,13 @@ def parse_assign_job(assign_job: pb.AssignJob) -> dict[str, Any]:
         "project_id": job.project_id,
         "loop_id": job.loop_id,
         "source_commit_id": job.source_commit_id,
-        "job_type": _JOB_TYPE_TO_TEXT.get(int(job.job_type), "train_detection"),
+        "job_type": _JOB_TYPE_TO_TEXT.get(int(job.job_type), ""),
         "plugin_id": job.plugin_id,
-        "mode": _JOB_MODE_TO_TEXT.get(int(job.mode), "active_learning"),
+        "mode": _JOB_MODE_TO_TEXT.get(int(job.mode), ""),
         "query_strategy": job.query_strategy,
         "params": struct_to_dict(job.params),
         "resources": _resource_summary_to_dict(job.resources),
-        "iteration": int(job.iteration or 0),
+        "round_index": int(job.round_index or 0),
     }
 
 

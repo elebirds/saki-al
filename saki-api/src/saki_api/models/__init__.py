@@ -13,7 +13,7 @@ Architecture:
 from saki_api.models.enums import (
     TaskType, ProjectStatus, ModelStatus, DatasetType,
     AnnotationType, AnnotationSource, TrainingJobStatus,
-    ALLoopStatus, LoopRoundStatus, AnnotationBatchStatus,
+    ALLoopStatus, ALLoopMode, LoopRoundStatus, AnnotationBatchStatus,
 )
 # Layer 1: Physical Data Layer
 from saki_api.models.l1.asset import Asset
@@ -77,7 +77,7 @@ __all__ = [
     # Enums
     "TaskType", "ProjectStatus", "ModelStatus", "DatasetType",
     "AnnotationType", "AnnotationSource", "TrainingJobStatus",
-    "ALLoopStatus", "LoopRoundStatus", "AnnotationBatchStatus",
+    "ALLoopStatus", "ALLoopMode", "LoopRoundStatus", "AnnotationBatchStatus",
 
     # User models
     "User",

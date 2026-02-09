@@ -5,6 +5,8 @@ from typing import Any
 
 from saki_executor.jobs.state import JobStatus
 
+SUPPORTED_JOB_MODES = {"active_learning", "simulation"}
+
 
 @dataclass(frozen=True)
 class JobExecutionRequest:
@@ -15,27 +17,36 @@ class JobExecutionRequest:
     source_commit_id: str
     query_strategy: str
     mode: str
-    iteration: int
+    round_index: int
     raw_payload: dict[str, Any]
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> JobExecutionRequest:
-        raw_iteration = payload.get("iteration")
+        raw_round_index = payload.get("round_index")
         try:
-            iteration = int(raw_iteration)
-        except Exception:
-            iteration = 1
-        if iteration <= 0:
-            iteration = 1
+            round_index = int(raw_round_index)
+        except Exception as exc:
+            raise ValueError("round_index is required and must be a positive integer") from exc
+        if round_index <= 0:
+            raise ValueError("round_index is required and must be a positive integer")
+
+        query_strategy = str(payload.get("query_strategy") or "").strip()
+        if not query_strategy:
+            raise ValueError("query_strategy is required")
+
+        mode = str(payload.get("mode") or "").strip().lower()
+        if mode not in SUPPORTED_JOB_MODES:
+            raise ValueError(f"unsupported mode: {mode or '<empty>'}")
+
         return cls(
             job_id=str(payload.get("job_id") or ""),
             plugin_id=str(payload.get("plugin_id") or ""),
             params=dict(payload.get("params") or {}),
             project_id=str(payload.get("project_id") or ""),
             source_commit_id=str(payload.get("source_commit_id") or ""),
-            query_strategy=str(payload.get("query_strategy") or "uncertainty_1_minus_max_conf"),
-            mode=str(payload.get("mode") or "active_learning").lower(),
-            iteration=iteration,
+            query_strategy=query_strategy,
+            mode=mode,
+            round_index=round_index,
             raw_payload=dict(payload),
         )
 
@@ -110,4 +121,3 @@ class JobFinalResult:
     artifacts: dict[str, Any]
     candidates: list[dict[str, Any]]
     error_message: str = ""
-

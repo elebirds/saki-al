@@ -124,7 +124,7 @@ message JobPayload {
   string query_strategy = 8;
   google.protobuf.Struct params = 9;
   ResourceSummary resources = 10;
-  int32 iteration = 11;
+  int32 round_index = 11;
 }
 
 message AssignJob {

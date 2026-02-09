@@ -9,7 +9,7 @@ from sqlalchemy import Column
 from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.models.base import TimestampMixin, UUIDMixin, OPT_JSON
-from saki_api.models.enums import TrainingJobStatus
+from saki_api.models.enums import TrainingJobStatus, ALLoopMode
 
 if TYPE_CHECKING:
     from saki_api.models.l3.loop import ALLoop
@@ -25,14 +25,14 @@ class JobBase(SQLModel):
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
     loop_id: uuid.UUID = Field(foreign_key="loop.id", index=True)
 
-    iteration: int = Field(index=True, description="在该 Loop 中的迭代序号")
+    round_index: int = Field(index=True, description="在该 Loop 中的轮次序号")
     status: TrainingJobStatus = Field(default=TrainingJobStatus.PENDING, index=True)
 
     # Runtime execution config
     job_type: str = Field(default="train_detection", index=True)
     plugin_id: str = Field(default="", index=True)
-    mode: str = Field(default="active_learning", description="active_learning | simulation")
-    query_strategy: str = Field(default="uncertainty_1_minus_max_conf")
+    mode: ALLoopMode = Field(default=ALLoopMode.ACTIVE_LEARNING, description="active_learning | simulation")
+    query_strategy: str
     params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     resources: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
@@ -50,7 +50,6 @@ class JobBase(SQLModel):
     # Aggregated outputs
     metrics: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON), description="权重路径等")
-    round_index: int = Field(default=0, ge=0, index=True)
     strategy_params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     model_id: Optional[uuid.UUID] = Field(default=None, foreign_key="model.id", index=True)
 

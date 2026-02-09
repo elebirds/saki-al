@@ -46,7 +46,7 @@ class AnnotationBatchService:
             project_id=job.project_id,
             loop_id=job.loop_id,
             job_id=job.id,
-            round_index=max(1, int(job.round_index or job.iteration or 1)),
+            round_index=max(1, int(job.round_index or 1)),
             status=AnnotationBatchStatus.OPEN,
             total_count=len(candidates),
             annotated_count=0,

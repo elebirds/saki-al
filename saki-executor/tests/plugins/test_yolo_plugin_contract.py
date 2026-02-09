@@ -77,7 +77,7 @@ def test_yolo_plugin_resolve_split_seed_from_workspace_config(tmp_path: Path):
     workspace.write_config(
         {
             "loop_id": "11111111-1111-1111-1111-111111111111",
-            "iteration": 3,
+            "round_index": 3,
             "params": {"split_seed": 12345, "val_split_ratio": 0.25},
         }
     )

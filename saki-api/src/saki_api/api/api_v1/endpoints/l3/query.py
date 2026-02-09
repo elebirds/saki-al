@@ -28,8 +28,11 @@ from saki_api.schemas.l3.job import (
     LoopRead,
     LoopRoundRead,
     LoopSummaryRead,
+    SimulationExperimentCreateRequest,
+    SimulationExperimentCreateResponse,
+    SimulationExperimentCurvesRead,
 )
-from saki_api.services.loop_config import extract_model_request_config
+from saki_api.services.loop_config import extract_model_request_config, extract_simulation_config
 from saki_api.services.job import JobService
 
 router = APIRouter()
@@ -64,7 +67,10 @@ async def _ensure_project_perm(
 def _build_loop_read(loop) -> LoopRead:
     row = LoopRead.model_validate(loop, from_attributes=True)
     return row.model_copy(
-        update={"model_request_config": extract_model_request_config(getattr(loop, "global_config", {}))}
+        update={
+            "model_request_config": extract_model_request_config(getattr(loop, "global_config", {})),
+            "simulation_config": extract_simulation_config(getattr(loop, "global_config", {})),
+        }
     )
 
 
@@ -169,6 +175,31 @@ async def list_project_loops(
     )
     loops = await job_service.list_loops(project_id)
     return [_build_loop_read(item) for item in loops]
+
+
+@router.post("/projects/{project_id}/simulation-experiments", response_model=SimulationExperimentCreateResponse)
+async def create_simulation_experiment(
+        *,
+        project_id: uuid.UUID,
+        payload: SimulationExperimentCreateRequest,
+        job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    group_id, loops = await job_service.create_simulation_experiment(
+        project_id=project_id,
+        payload=payload,
+    )
+    return SimulationExperimentCreateResponse(
+        experiment_group_id=group_id,
+        loops=[_build_loop_read(item) for item in loops],
+    )
 
 
 @router.post("/projects/{project_id}/loops", response_model=LoopRead)
@@ -293,6 +324,27 @@ async def get_loop_summary(
         labeled_total=int(summary["labeled_total"]),
         metrics_latest=summary["metrics_latest"],
     )
+
+
+@router.get("/simulation-experiments/{group_id}/curves", response_model=SimulationExperimentCurvesRead)
+async def get_simulation_experiment_curves(
+        *,
+        group_id: uuid.UUID,
+        job_service: JobServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    payload = await job_service.get_simulation_experiment_curves(experiment_group_id=group_id)
+    # 权限校验：任一 loop 的 project 可访问则返回（同组 loop 必属同项目）
+    loop_id = payload["loops"][0]["loop_id"]
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_READ,
+    )
+    return SimulationExperimentCurvesRead.model_validate(payload)
 
 
 @router.websocket("/jobs/{job_id}/events/ws")

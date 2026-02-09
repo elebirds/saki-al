@@ -37,6 +37,9 @@ import {
     LoopUpdateRequest,
     LoopRound,
     LoopSummary,
+    SimulationExperimentCreateRequest,
+    SimulationExperimentCreateResponse,
+    SimulationExperimentCurves,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
@@ -721,6 +724,24 @@ export class RealApiService implements ApiService {
 
     async getLoopSummary(loopId: string): Promise<LoopSummary> {
         const response = await this.client.get<LoopSummary>(`/loops/${loopId}/summary`);
+        return response.data;
+    }
+
+    async createSimulationExperiment(
+        projectId: string,
+        payload: SimulationExperimentCreateRequest
+    ): Promise<SimulationExperimentCreateResponse> {
+        const response = await this.client.post<SimulationExperimentCreateResponse>(
+            `/projects/${projectId}/simulation-experiments`,
+            payload,
+        );
+        return response.data;
+    }
+
+    async getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves> {
+        const response = await this.client.get<SimulationExperimentCurves>(
+            `/simulation-experiments/${groupId}/curves`,
+        );
         return response.data;
     }
 

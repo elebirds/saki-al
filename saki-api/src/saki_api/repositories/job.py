@@ -23,9 +23,9 @@ class JobRepository(BaseRepository[Job]):
     async def get_latest_by_loop(self, loop_id: uuid.UUID) -> Optional[Job]:
         jobs = await self.list(
             filters=[Job.loop_id == loop_id],
-            order_by=[Job.iteration.desc(), Job.created_at.desc()],
+            order_by=[Job.round_index.desc(), Job.created_at.desc()],
         )
         return jobs[0] if jobs else None
 
     async def list_by_loop(self, loop_id: uuid.UUID) -> List[Job]:
-        return await self.list(filters=[Job.loop_id == loop_id], order_by=[Job.iteration.asc()])
+        return await self.list(filters=[Job.loop_id == loop_id], order_by=[Job.round_index.asc()])

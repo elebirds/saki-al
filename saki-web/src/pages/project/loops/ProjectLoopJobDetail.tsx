@@ -331,7 +331,7 @@ const ProjectLoopJobDetail: React.FC = () => {
                     <div className="flex min-w-0 flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回 Loop 详情</Button>
-                            <Title level={4} className="!mb-0">Job #{job.roundIndex || job.iteration}</Title>
+                            <Title level={4} className="!mb-0">Job #{job.roundIndex}</Title>
                             <Tag color={JOB_STATUS_COLOR[job.status] || 'default'}>{job.status}</Tag>
                         </div>
                         <Text type="secondary">{job.id}</Text>

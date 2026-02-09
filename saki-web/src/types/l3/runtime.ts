@@ -1,16 +1,29 @@
 export type ALLoopStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed' | 'failed';
+export type ALLoopMode = 'active_learning' | 'simulation';
+
+export interface LoopSimulationConfig {
+    oracleCommitId?: string | null;
+    initialSeedCount: number;
+    queryBatchSize: number;
+    maxRounds: number;
+    splitSeed: number;
+    randomSeed: number;
+    requireFullyLabeled: boolean;
+}
 
 export interface ALLoop {
     id: string;
     projectId: string;
     branchId: string;
     name: string;
+    mode: ALLoopMode;
     queryStrategy: string;
     modelArch: string;
     globalConfig: Record<string, any>;
     modelRequestConfig: Record<string, any>;
+    simulationConfig: LoopSimulationConfig;
+    experimentGroupId?: string | null;
     currentIteration: number;
-    isActive: boolean;
     status: ALLoopStatus;
     maxRounds: number;
     queryBatchSize: number;
@@ -32,7 +45,6 @@ export interface RuntimeJob {
     id: string;
     projectId: string;
     loopId: string;
-    iteration: number;
     roundIndex: number;
     status: RuntimeJobStatus;
     jobType: string;
@@ -59,11 +71,13 @@ export interface RuntimeJob {
 export interface LoopCreateRequest {
     name: string;
     branchId: string;
-    queryStrategy?: string;
-    modelArch?: string;
+    mode?: ALLoopMode;
+    queryStrategy: string;
+    modelArch: string;
     globalConfig?: Record<string, any>;
     modelRequestConfig?: Record<string, any>;
-    isActive?: boolean;
+    simulationConfig?: LoopSimulationConfig;
+    experimentGroupId?: string;
     status?: ALLoopStatus;
     maxRounds?: number;
     queryBatchSize?: number;
@@ -76,10 +90,13 @@ export interface LoopCreateRequest {
 
 export interface LoopUpdateRequest {
     name?: string;
+    mode?: ALLoopMode;
     queryStrategy?: string;
     modelArch?: string;
     globalConfig?: Record<string, any>;
     modelRequestConfig?: Record<string, any>;
+    simulationConfig?: LoopSimulationConfig;
+    experimentGroupId?: string;
     maxRounds?: number;
     queryBatchSize?: number;
     minSeedLabeled?: number;
@@ -109,7 +126,7 @@ export interface RuntimeJobCreateRequest {
     pluginId: string;
     jobType?: string;
     mode?: string;
-    queryStrategy?: string;
+    queryStrategy: string;
     params?: Record<string, any>;
     resources?: Record<string, any>;
     strategyParams?: Record<string, any>;
@@ -180,6 +197,41 @@ export interface LoopSummary {
     selectedTotal: number;
     labeledTotal: number;
     metricsLatest: Record<string, any>;
+}
+
+export interface SimulationExperimentCreateRequest {
+    branchId: string;
+    experimentName?: string;
+    modelArch: string;
+    strategies: string[];
+    globalConfig?: Record<string, any>;
+    modelRequestConfig?: Record<string, any>;
+    simulationConfig: LoopSimulationConfig;
+    status?: ALLoopStatus;
+}
+
+export interface SimulationCurvePoint {
+    roundIndex: number;
+    labeledCount: number;
+    map50: number;
+    recall: number;
+}
+
+export interface SimulationLoopCurve {
+    loopId: string;
+    loopName: string;
+    queryStrategy: string;
+    points: SimulationCurvePoint[];
+}
+
+export interface SimulationExperimentCurves {
+    experimentGroupId: string;
+    loops: SimulationLoopCurve[];
+}
+
+export interface SimulationExperimentCreateResponse {
+    experimentGroupId: string;
+    loops: ALLoop[];
 }
 
 export interface AnnotationBatch {

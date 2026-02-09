@@ -1,10 +1,11 @@
 import uuid
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import SQLModel, Field, Column, Relationship
 
 from saki_api.models.base import UUIDMixin, TimestampMixin, OPT_JSON
-from saki_api.models.enums import ALLoopStatus
+from saki_api.models.enums import ALLoopStatus, ALLoopMode
 
 if TYPE_CHECKING:
     from saki_api.models.l2.branch import Branch
@@ -21,15 +22,20 @@ class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     代表一个独立的实验路径，如“基于不确定性采样的 YOLOv8 实验”。
     """
     __tablename__ = "loop"
+    __table_args__ = (
+        UniqueConstraint("branch_id", name="uq_loop_branch_id"),
+    )
 
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
-    branch_id: uuid.UUID = Field(foreign_key="branch.id", unique=True)
+    branch_id: uuid.UUID = Field(foreign_key="branch.id", index=True)
 
     name: str = Field(max_length=100, description="实验名称")
 
     # 实验策略配置
+    mode: ALLoopMode = Field(default=ALLoopMode.ACTIVE_LEARNING, index=True, description="执行模式")
     query_strategy: str = Field(description="采样策略 (Random, LeastConfidence, etc.)")
     model_arch: str = Field(description="模型架构 (yolov8_obb, rt_detr, etc.)")
+    experiment_group_id: uuid.UUID | None = Field(default=None, index=True, description="对比实验分组")
 
     # 全局超参数设置
     global_config: Dict[str, Any] = Field(
@@ -40,7 +46,6 @@ class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
 
     # 状态与统计
     current_iteration: int = Field(default=0, description="当前迭代轮次")
-    is_active: bool = Field(default=True)
     status: ALLoopStatus = Field(default=ALLoopStatus.DRAFT, index=True)
     max_rounds: int = Field(default=5, ge=1)
     query_batch_size: int = Field(default=200, ge=1)

@@ -12,6 +12,7 @@ import saki_api.grpc.runtime_control as runtime_control_module
 from saki_api.grpc.runtime_control import RuntimeControlService
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import (
+    ALLoopMode,
     ALLoopStatus,
     AnnotationBatchStatus,
     AnnotationSource,
@@ -115,7 +116,6 @@ async def _seed_runtime_context(session_local: async_sessionmaker[AsyncSession])
             model_arch="yolo_det_v1",
             global_config={},
             current_iteration=0,
-            is_active=True,
             status=ALLoopStatus.RUNNING,
             max_rounds=5,
             query_batch_size=10,
@@ -131,16 +131,15 @@ async def _seed_runtime_context(session_local: async_sessionmaker[AsyncSession])
         job = Job(
             project_id=project.id,
             loop_id=loop.id,
-            iteration=1,
+            round_index=1,
             status=TrainingJobStatus.PENDING,
             job_type="train_detection",
             plugin_id="yolo_det_v1",
-            mode="active_learning",
+            mode=ALLoopMode.ACTIVE_LEARNING,
             query_strategy="aug_iou_disagreement",
             params={},
             resources={"gpu_count": 1, "memory_mb": 0},
             source_commit_id=commit.id,
-            round_index=1,
         )
         session.add(job)
         await session.commit()

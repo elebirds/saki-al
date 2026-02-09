@@ -12,7 +12,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
 import saki_api.grpc.dispatcher as dispatcher_module
 from saki_api.grpc_gen import runtime_control_pb2 as pb
-from saki_api.models.enums import TrainingJobStatus
+from saki_api.models.enums import TrainingJobStatus, ALLoopMode
 from saki_api.models.l3.job import Job
 
 
@@ -66,11 +66,11 @@ async def _create_pending_job(session_local: async_sessionmaker[AsyncSession]) -
     job = Job(
         project_id=uuid.uuid4(),
         loop_id=uuid.uuid4(),
-        iteration=1,
+        round_index=1,
         status=TrainingJobStatus.PENDING,
         job_type="train_detection",
         plugin_id="demo_det_v1",
-        mode="active_learning",
+        mode=ALLoopMode.ACTIVE_LEARNING,
         query_strategy="uncertainty_1_minus_max_conf",
         params={},
         resources={"gpu_count": 1, "memory_mb": 0},

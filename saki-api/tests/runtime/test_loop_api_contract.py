@@ -10,12 +10,22 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
 from saki_api.api.api_v1.endpoints.l3 import query as loop_query_endpoint
 from saki_api.api.api_v1.endpoints.l3 import loop_control as loop_control_endpoint
+from saki_api.core.exceptions import BadRequestAppException
 from saki_api.db.session import _session_ctx
-from saki_api.models.enums import AuthorType, TaskType, ALLoopStatus
+from saki_api.models.enums import AuthorType, TaskType, ALLoopStatus, ALLoopMode, LoopRoundStatus
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.project import Project
-from saki_api.schemas.l3.job import LoopCreateRequest, LoopRead, LoopUpdateRequest, LoopRecoverRequest, LoopRecoverOverrides
+from saki_api.models.l3.loop_round import LoopRound
+from saki_api.schemas.l3.job import (
+    LoopCreateRequest,
+    LoopRead,
+    LoopUpdateRequest,
+    LoopRecoverRequest,
+    LoopRecoverOverrides,
+    LoopSimulationConfig,
+    SimulationExperimentCreateRequest,
+)
 from saki_api.services.job import JobService
 
 
@@ -85,6 +95,8 @@ async def test_loop_read_model_validate_accepts_orm_instance(loop_api_env):
                 LoopCreateRequest(
                     name="loop-a",
                     branch_id=branch.id,
+                    query_strategy="aug_iou_disagreement_v1",
+                    model_arch="yolo_det_v1",
                     model_request_config={"epochs": 12, "batch": 8},
                 ),
             )
@@ -168,6 +180,39 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
 
 
 @pytest.mark.anyio
+async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = JobService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-first",
+                    branch_id=branch.id,
+                    query_strategy="aug_iou_disagreement_v1",
+                    model_arch="yolo_det_v1",
+                ),
+            )
+            with pytest.raises(BadRequestAppException):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-second",
+                        branch_id=branch.id,
+                        query_strategy="aug_iou_disagreement_v1",
+                        model_arch="yolo_det_v1",
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_loop_control_start_failed_defaults_to_recover(loop_api_env, monkeypatch):
     session_local = loop_api_env
 
@@ -197,6 +242,8 @@ async def test_loop_control_start_failed_defaults_to_recover(loop_api_env, monke
                 LoopCreateRequest(
                     name="loop-failed",
                     branch_id=branch.id,
+                    query_strategy="aug_iou_disagreement_v1",
+                    model_arch="yolo_det_v1",
                 ),
             )
             loop.status = ALLoopStatus.FAILED
@@ -247,6 +294,8 @@ async def test_loop_control_recover_endpoint_accepts_overrides(loop_api_env, mon
                 LoopCreateRequest(
                     name="loop-recover",
                     branch_id=branch.id,
+                    query_strategy="aug_iou_disagreement_v1",
+                    model_arch="yolo_det_v1",
                 ),
             )
             loop.status = ALLoopStatus.FAILED
@@ -278,5 +327,171 @@ async def test_loop_control_recover_endpoint_accepts_overrides(loop_api_env, mon
                 "params": {"epochs": 5},
                 "resources": {"gpu_count": 0},
             }
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_experiment_create_and_curves_contract(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_query_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = JobService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            created = await loop_query_endpoint.create_simulation_experiment(
+                project_id=project.id,
+                payload=SimulationExperimentCreateRequest(
+                    branch_id=branch.id,
+                    experiment_name="sim-exp",
+                    model_arch="yolo_det_v1",
+                    strategies=["uncertainty_1_minus_max_conf", "aug_iou_disagreement_v1"],
+                    simulation_config=LoopSimulationConfig(
+                        oracle_commit_id=branch.head_commit_id,
+                        initial_seed_count=10,
+                        query_batch_size=20,
+                        max_rounds=3,
+                        split_seed=7,
+                        random_seed=11,
+                        require_fully_labeled=False,
+                    ),
+                ),
+                job_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert created.experiment_group_id is not None
+            assert len(created.loops) == 3
+            assert created.loops[0].query_strategy == "random_baseline"
+            assert all(loop.mode == ALLoopMode.SIMULATION for loop in created.loops)
+            assert all(loop.branch_id != branch.id for loop in created.loops)
+
+            first_loop = created.loops[0]
+            db_loop = await service.loop_repo.get_by_id_or_raise(first_loop.id)
+            loop_branch = await session.get(Branch, first_loop.branch_id)
+            assert loop_branch is not None
+            assert loop_branch.name.startswith("simulation/sim-exp/")
+            session.add(
+                LoopRound(
+                    loop_id=db_loop.id,
+                    round_index=1,
+                    source_commit_id=loop_branch.head_commit_id,
+                    status=LoopRoundStatus.COMPLETED,
+                    metrics={"map50": 0.4, "recall": 0.7},
+                    selected_count=20,
+                    labeled_count=20,
+                )
+            )
+            await session.commit()
+
+            curves = await loop_query_endpoint.get_simulation_experiment_curves(
+                group_id=created.experiment_group_id,
+                job_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert curves.experiment_group_id == created.experiment_group_id
+            assert len(curves.loops) == 3
+            curve = next(item for item in curves.loops if item.loop_id == first_loop.id)
+            assert len(curve.points) == 1
+            assert curve.points[0].map50 == 0.4
+            assert curve.points[0].recall == 0.7
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_experiment_rejects_demo_plugin(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_query_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = JobService(session)
+        current_user_id = uuid.uuid4()
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException):
+                await loop_query_endpoint.create_simulation_experiment(
+                    project_id=project.id,
+                    payload=SimulationExperimentCreateRequest(
+                        branch_id=branch.id,
+                        experiment_name="sim-demo",
+                        model_arch="demo_det_v1",
+                        strategies=["random_baseline"],
+                        simulation_config=LoopSimulationConfig(
+                            oracle_commit_id=branch.head_commit_id,
+                            initial_seed_count=10,
+                            query_batch_size=20,
+                            max_rounds=3,
+                            split_seed=7,
+                            random_seed=11,
+                            require_fully_labeled=False,
+                        ),
+                    ),
+                    job_service=service,
+                    session=session,
+                    current_user_id=current_user_id,
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_experiment_uses_default_name(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_query_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = JobService(session)
+        current_user_id = uuid.uuid4()
+        token = _session_ctx.set(session)
+        try:
+            created = await loop_query_endpoint.create_simulation_experiment(
+                project_id=project.id,
+                payload=SimulationExperimentCreateRequest(
+                    branch_id=branch.id,
+                    model_arch="yolo_det_v1",
+                    strategies=["random_baseline"],
+                    simulation_config=LoopSimulationConfig(
+                        oracle_commit_id=branch.head_commit_id,
+                        initial_seed_count=10,
+                        query_batch_size=20,
+                        max_rounds=3,
+                        split_seed=7,
+                        random_seed=11,
+                        require_fully_labeled=False,
+                    ),
+                ),
+                job_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert created.loops
+            first_loop = created.loops[0]
+            assert first_loop.name.startswith("simulation-exp-")
+            first_branch = await session.get(Branch, first_loop.branch_id)
+            assert first_branch is not None
+            assert first_branch.name.startswith("simulation/simulation-exp-")
         finally:
             _session_ctx.reset(token)

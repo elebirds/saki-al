@@ -431,7 +431,7 @@ class RuntimeDispatcher:
         retry_job = Job(
             project_id=failed_job.project_id,
             loop_id=failed_job.loop_id,
-            iteration=failed_job.iteration,
+            round_index=failed_job.round_index,
             status=TrainingJobStatus.PENDING,
             job_type=failed_job.job_type,
             plugin_id=failed_job.plugin_id,
@@ -808,6 +808,7 @@ class RuntimeDispatcher:
 
     @staticmethod
     def _build_assign_message(job: Job, reservation: _AssignmentReservation) -> pb.RuntimeMessage:
+        mode_value = str(getattr(job.mode, "value", job.mode) or "")
         return pb.RuntimeMessage(
             assign_job=pb.AssignJob(
                 request_id=reservation.request_id,
@@ -818,11 +819,11 @@ class RuntimeDispatcher:
                     source_commit_id=str(job.source_commit_id),
                     job_type=runtime_codec.text_to_job_type(job.job_type),
                     plugin_id=job.plugin_id or "",
-                    mode=runtime_codec.text_to_job_mode(job.mode),
+                    mode=runtime_codec.text_to_job_mode(mode_value),
                     query_strategy=job.query_strategy or "",
                     params=runtime_codec.dict_to_struct(reservation.dispatch_params),
                     resources=runtime_codec.dict_to_resource_summary(job.resources or {}),
-                    iteration=int(job.iteration or 0),
+                    round_index=int(job.round_index or 0),
                 ),
             )
         )

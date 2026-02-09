@@ -9,7 +9,15 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
 from saki_api.core.config import settings
-from saki_api.models.enums import ALLoopStatus, AuthorType, LoopRoundStatus, TaskType, TrainingJobStatus
+from saki_api.models.enums import (
+    ALLoopMode,
+    ALLoopStatus,
+    AnnotationBatchStatus,
+    AuthorType,
+    LoopRoundStatus,
+    TaskType,
+    TrainingJobStatus,
+)
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.project import Project
@@ -18,6 +26,7 @@ from saki_api.models.l3.job import Job
 from saki_api.models.l3.loop import ALLoop
 from saki_api.models.l3.loop_round import LoopRound
 from saki_api.models.l3.model import Model
+from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.services.loop_orchestrator import LoopOrchestrator
 
 
@@ -79,7 +88,6 @@ async def _seed_loop_graph(session_local: async_sessionmaker[AsyncSession]) -> t
             model_arch="yolo_det_v1",
             global_config={},
             current_iteration=0,
-            is_active=True,
             status=ALLoopStatus.RUNNING,
             max_rounds=5,
             query_batch_size=10,
@@ -110,7 +118,6 @@ async def _seed_failed_round(
         failed_job = Job(
             project_id=project.id,
             loop_id=loop.id,
-            iteration=1,
             round_index=1,
             status=TrainingJobStatus.FAILED,
             source_commit_id=branch.head_commit_id,
@@ -171,6 +178,7 @@ async def test_create_round_job_inherits_resources_and_warm_start(orchestrator_e
             },
             "warm_start": True,
             "selection": {"exclude_open_batches": True, "min_candidates_required": 1},
+            "model_request_config": {"epochs": 24, "batch": 8, "imgsz": 960},
         }
 
         parent_model = Model(
@@ -207,6 +215,10 @@ async def test_create_round_job_inherits_resources_and_warm_start(orchestrator_e
         assert job.resources["gpu_count"] == 1
         assert job.resources["labels"]["zone"] == "cn-north"
         assert job.params["warm_start"] is True
+        assert job.params["epochs"] == 24
+        assert job.params["batch"] == 8
+        assert job.params["imgsz"] == 960
+        assert "model_request_config" not in job.params
         assert job.params["parent_model_id"] == str(parent_model.id)
         assert job.params["base_model"] == f"s3://{settings.MINIO_BUCKET_NAME}/runtime/jobs/prev/best.pt"
         assert "base_model_download_url" in job.params
@@ -222,7 +234,6 @@ async def test_training_round_without_candidates_completes_loop(orchestrator_env
         job = Job(
             project_id=project.id,
             loop_id=loop.id,
-            iteration=1,
             round_index=1,
             status=TrainingJobStatus.SUCCESS,
             source_commit_id=branch.head_commit_id,
@@ -276,7 +287,6 @@ async def test_training_round_without_candidates_completes_loop(orchestrator_env
         assert db_round_obj.status == LoopRoundStatus.COMPLETED_NO_CANDIDATES
         assert db_round_obj.selected_count == 0
         assert db_loop.status == ALLoopStatus.COMPLETED
-        assert db_loop.is_active is False
         assert db_loop.last_error == "no_candidates"
 
         batch_rows = await session.exec(select(AnnotationBatch).where(AnnotationBatch.job_id == job.id))
@@ -292,7 +302,6 @@ async def test_training_round_partial_failed_is_treated_as_completed(orchestrato
         job = Job(
             project_id=project.id,
             loop_id=loop.id,
-            iteration=1,
             round_index=1,
             status=TrainingJobStatus.PARTIAL_FAILED,
             source_commit_id=branch.head_commit_id,
@@ -361,7 +370,6 @@ async def test_refresh_batch_progress_backfills_annotation_commit(orchestrator_e
         job = Job(
             project_id=project.id,
             loop_id=loop.id,
-            iteration=1,
             round_index=1,
             status=TrainingJobStatus.SUCCESS,
             source_commit_id=branch.head_commit_id,
@@ -435,6 +443,260 @@ async def test_refresh_batch_progress_backfills_annotation_commit(orchestrator_e
 
 
 @pytest.mark.anyio
+async def test_annotation_round_auto_closes_open_batch_on_advance(orchestrator_env):
+    session_local, orchestrator = orchestrator_env
+    project, branch, loop = await _seed_loop_graph(session_local)
+
+    sample_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+    annotation_ids = [uuid.uuid4(), uuid.uuid4()]
+
+    async with session_local() as session:
+        db_loop = await session.get(ALLoop, loop.id)
+        db_branch = await session.get(Branch, branch.id)
+        assert db_loop is not None
+        assert db_branch is not None
+
+        job = Job(
+            project_id=project.id,
+            loop_id=loop.id,
+            round_index=1,
+            status=TrainingJobStatus.SUCCESS,
+            source_commit_id=db_branch.head_commit_id,
+            job_type="train_detection",
+            plugin_id="yolo_det_v1",
+            mode="active_learning",
+            query_strategy="aug_iou_disagreement_v1",
+            params={},
+            resources={},
+            strategy_params={},
+            metrics={},
+            artifacts={},
+        )
+        session.add(job)
+        await session.flush()
+        await session.refresh(job)
+
+        batch = AnnotationBatch(
+            project_id=project.id,
+            loop_id=loop.id,
+            job_id=job.id,
+            round_index=1,
+            status=AnnotationBatchStatus.OPEN,
+            total_count=3,
+            annotated_count=0,
+            meta={"source": "test"},
+        )
+        session.add(batch)
+        await session.flush()
+        await session.refresh(batch)
+
+        for idx, sample_id in enumerate(sample_ids, start=1):
+            session.add(
+                AnnotationBatchItem(
+                    batch_id=batch.id,
+                    sample_id=sample_id,
+                    rank=idx,
+                    score=1.0 / idx,
+                    reason={},
+                    prediction_snapshot={},
+                    is_annotated=False,
+                    annotation_commit_id=None,
+                )
+            )
+
+        round_obj = LoopRound(
+            loop_id=loop.id,
+            round_index=1,
+            source_commit_id=db_branch.head_commit_id,
+            job_id=job.id,
+            annotation_batch_id=batch.id,
+            status=LoopRoundStatus.ANNOTATION,
+            metrics={},
+            selected_count=3,
+            labeled_count=0,
+        )
+        session.add(round_obj)
+        await session.flush()
+        await session.refresh(round_obj)
+
+        new_commit = Commit(
+            project_id=project.id,
+            parent_id=db_branch.head_commit_id,
+            message="human labeled partial",
+            author_type=AuthorType.USER,
+            author_id=uuid.uuid4(),
+            stats={},
+        )
+        session.add(new_commit)
+        await session.flush()
+        await session.refresh(new_commit)
+        db_branch.head_commit_id = new_commit.id
+        session.add(db_branch)
+
+        from saki_api.models.l2.camap import CommitAnnotationMap
+        session.add(
+            CommitAnnotationMap(
+                commit_id=new_commit.id,
+                sample_id=sample_ids[0],
+                annotation_id=annotation_ids[0],
+                project_id=project.id,
+            )
+        )
+        session.add(
+            CommitAnnotationMap(
+                commit_id=new_commit.id,
+                sample_id=sample_ids[1],
+                annotation_id=annotation_ids[1],
+                project_id=project.id,
+            )
+        )
+        await session.commit()
+
+    async with session_local() as session:
+        db_loop = await session.get(ALLoop, loop.id)
+        db_branch = await session.get(Branch, branch.id)
+        db_round = await session.exec(select(LoopRound).where(LoopRound.loop_id == loop.id))
+        round_obj = db_round.first()
+        assert db_loop is not None
+        assert db_branch is not None
+        assert round_obj is not None
+
+        dispatch_job_id = await orchestrator._handle_annotation_round(  # noqa: SLF001
+            session=session,
+            loop=db_loop,
+            round_obj=round_obj,
+            branch=db_branch,
+        )
+        await session.commit()
+
+        assert dispatch_job_id is not None
+
+        batch = await session.get(AnnotationBatch, round_obj.annotation_batch_id)
+        assert batch is not None
+        assert batch.status == AnnotationBatchStatus.CLOSED
+        assert batch.meta.get("auto_closed_on_advance") is True
+
+
+@pytest.mark.anyio
+async def test_simulation_loop_auto_creates_seed_and_next_round(orchestrator_env, monkeypatch):
+    session_local, orchestrator = orchestrator_env
+    project, branch, loop = await _seed_loop_graph(session_local)
+
+    async def fake_dispatch(job_id: uuid.UUID) -> None:
+        del job_id
+        return None
+
+    monkeypatch.setattr(orchestrator, "_dispatch_job", fake_dispatch)
+
+    oracle_commit_id = uuid.uuid4()
+    seed_sample_id = uuid.uuid4()
+    new_sample_id = uuid.uuid4()
+    seed_annotation_id = uuid.uuid4()
+    new_annotation_id = uuid.uuid4()
+
+    async with session_local() as session:
+        db_loop = await session.get(ALLoop, loop.id)
+        db_branch = await session.get(Branch, branch.id)
+        assert db_loop is not None
+        assert db_branch is not None
+
+        oracle_commit = Commit(
+            id=oracle_commit_id,
+            project_id=project.id,
+            parent_id=db_branch.head_commit_id,
+            message="oracle",
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+        )
+        session.add(oracle_commit)
+        await session.flush()
+        await session.refresh(oracle_commit)
+
+        from saki_api.models.l2.camap import CommitAnnotationMap
+        session.add(
+            CommitAnnotationMap(
+                commit_id=oracle_commit.id,
+                sample_id=seed_sample_id,
+                annotation_id=seed_annotation_id,
+                project_id=project.id,
+            )
+        )
+        session.add(
+            CommitAnnotationMap(
+                commit_id=oracle_commit.id,
+                sample_id=new_sample_id,
+                annotation_id=new_annotation_id,
+                project_id=project.id,
+            )
+        )
+
+        db_loop.mode = ALLoopMode.SIMULATION
+        db_loop.query_batch_size = 1
+        db_loop.max_rounds = 2
+        db_loop.global_config = {
+            "simulation": {
+                "oracle_commit_id": str(oracle_commit.id),
+                "initial_seed_count": 1,
+                "query_batch_size": 1,
+                "max_rounds": 2,
+                "random_seed": 42,
+                "split_seed": 7,
+                "require_fully_labeled": False,
+            },
+            "model_request_config": {"epochs": 1, "batch": 1},
+        }
+        session.add(db_loop)
+        await session.commit()
+
+    await orchestrator._process_loop(loop.id)  # noqa: SLF001
+
+    async with session_local() as session:
+        db_branch = await session.get(Branch, branch.id)
+        rows = await session.exec(select(Job).where(Job.loop_id == loop.id).order_by(Job.round_index.asc()))
+        jobs = list(rows.all())
+        assert db_branch is not None
+        assert len(jobs) == 1
+        first_job = jobs[0]
+        assert first_job.mode == "simulation"
+        assert first_job.round_index == 1
+        assert db_branch.head_commit_id == first_job.source_commit_id
+
+        first_job.status = TrainingJobStatus.SUCCESS
+        session.add(first_job)
+        session.add(
+            JobSampleMetric(
+                job_id=first_job.id,
+                sample_id=new_sample_id,
+                score=0.99,
+                extra={"s": 0.99},
+                prediction_snapshot={},
+            )
+        )
+        await session.commit()
+
+    await orchestrator._process_loop(loop.id)  # noqa: SLF001
+
+    async with session_local() as session:
+        round_rows = await session.exec(select(LoopRound).where(LoopRound.loop_id == loop.id).order_by(LoopRound.round_index.asc()))
+        rounds = list(round_rows.all())
+        job_rows = await session.exec(select(Job).where(Job.loop_id == loop.id).order_by(Job.round_index.asc()))
+        jobs = list(job_rows.all())
+        db_branch = await session.get(Branch, branch.id)
+        assert db_branch is not None
+
+        assert len(rounds) == 2
+        assert rounds[0].status == LoopRoundStatus.COMPLETED
+        assert rounds[0].selected_count == 1
+        assert rounds[0].labeled_count == 1
+        assert rounds[1].status == LoopRoundStatus.TRAINING
+        assert len(jobs) == 2
+        assert jobs[1].mode == "simulation"
+        assert jobs[1].round_index == 2
+        assert db_branch.head_commit_id == jobs[1].source_commit_id
+
+
+@pytest.mark.anyio
 async def test_recover_failed_loop_retry_same_params(orchestrator_env, monkeypatch):
     session_local, orchestrator = orchestrator_env
     _project, _branch, loop, failed_job = await _seed_failed_round(session_local)
@@ -462,7 +724,6 @@ async def test_recover_failed_loop_retry_same_params(orchestrator_env, monkeypat
         assert recovered.id == recovered_job_id
         assert recovered.status == TrainingJobStatus.PENDING
         assert recovered.round_index == failed_job.round_index
-        assert recovered.iteration == failed_job.iteration
         assert recovered.plugin_id == failed_job.plugin_id
         assert recovered.query_strategy == failed_job.query_strategy
         assert recovered.params == failed_job.params

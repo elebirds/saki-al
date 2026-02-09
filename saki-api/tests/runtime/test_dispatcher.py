@@ -13,7 +13,7 @@ import saki_api.models  # noqa: F401  # Ensure all SQLModel metadata is imported
 import saki_api.grpc.dispatcher as dispatcher_module
 from saki_api.grpc import runtime_codec
 from saki_api.grpc_gen import runtime_control_pb2 as pb
-from saki_api.models.enums import TrainingJobStatus
+from saki_api.models.enums import TrainingJobStatus, ALLoopMode
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
 from saki_api.models.l3.runtime_executor_stats import RuntimeExecutorStats
@@ -49,11 +49,11 @@ async def _create_pending_job(
     job = Job(
         project_id=uuid.uuid4(),
         loop_id=uuid.uuid4(),
-        iteration=1,
+        round_index=1,
         status=TrainingJobStatus.PENDING,
         job_type="train_detection",
         plugin_id=plugin_id,
-        mode="active_learning",
+        mode=ALLoopMode.ACTIVE_LEARNING,
         query_strategy="uncertainty_1_minus_max_conf",
         params=dict(params or {}),
         resources=resources if isinstance(resources, dict) else {"gpu_count": 1, "memory_mb": 0},
@@ -71,17 +71,17 @@ async def _create_job(
         *,
         status: TrainingJobStatus = TrainingJobStatus.PENDING,
         plugin_id: str = "demo_det_v1",
-        iteration: int = 1,
+        round_index: int = 1,
         assigned_executor_id: str | None = None,
 ) -> Job:
     job = Job(
         project_id=uuid.uuid4(),
         loop_id=uuid.uuid4(),
-        iteration=iteration,
+        round_index=round_index,
         status=status,
         job_type="train_detection",
         plugin_id=plugin_id,
-        mode="active_learning",
+        mode=ALLoopMode.ACTIVE_LEARNING,
         query_strategy="uncertainty_1_minus_max_conf",
         params={},
         resources={"gpu_count": 1, "memory_mb": 0},
@@ -115,7 +115,7 @@ async def test_assign_and_ack_success_updates_job_and_executor(dispatcher_env):
     assert message.WhichOneof("payload") == "assign_job"
     assert message.assign_job.job.job_id == str(job.id)
     assert message.assign_job.job.plugin_id == "demo_det_v1"
-    assert message.assign_job.job.iteration == 1
+    assert message.assign_job.job.round_index == 1
 
     await dispatcher.handle_ack(
         ack_for=assigned.request_id,
@@ -415,11 +415,11 @@ async def test_dispatch_pending_jobs_skips_retry_not_ready(dispatcher_env):
     delayed_job = Job(
         project_id=uuid.uuid4(),
         loop_id=uuid.uuid4(),
-        iteration=2,
+        round_index=2,
         status=TrainingJobStatus.PENDING,
         job_type="train_detection",
         plugin_id="demo_det_v1",
-        mode="active_learning",
+        mode=ALLoopMode.ACTIVE_LEARNING,
         query_strategy="uncertainty_1_minus_max_conf",
         params={"_retry_not_before_ts": future_retry_ts},
         resources={"gpu_count": 1, "memory_mb": 0},
@@ -564,13 +564,13 @@ async def test_recover_after_api_restart_clears_stale_assignments_and_running_jo
         session_local,
         status=TrainingJobStatus.PENDING,
         assigned_executor_id="executor-recover-1",
-        iteration=2,
+        round_index=2,
     )
     running_job = await _create_job(
         session_local,
         status=TrainingJobStatus.RUNNING,
         assigned_executor_id="executor-recover-2",
-        iteration=3,
+        round_index=3,
     )
 
     async with session_local() as session:

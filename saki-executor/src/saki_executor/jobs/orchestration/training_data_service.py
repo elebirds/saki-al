@@ -10,8 +10,6 @@ from saki_executor.plugins.base import ExecutorPlugin
 
 FetchAllFn = Callable[[str, str, str, str], Awaitable[list[dict[str, Any]]]]
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
-NormalizeScheduleFn = Callable[[Any], list[float]]
-ResolveRatioFn = Callable[[int, list[float]], float]
 
 
 @dataclass(frozen=True)
@@ -29,14 +27,10 @@ class TrainingDataService:
         fetch_all: FetchAllFn,
         cache: AssetCache,
         stop_event: asyncio.Event,
-        normalize_simulation_ratio_schedule: NormalizeScheduleFn,
-        resolve_simulation_ratio: ResolveRatioFn,
     ) -> None:
         self._fetch_all = fetch_all
         self._cache = cache
         self._stop_event = stop_event
-        self._normalize_schedule = normalize_simulation_ratio_schedule
-        self._resolve_ratio = resolve_simulation_ratio
 
     async def prepare(
         self,
@@ -66,7 +60,7 @@ class TrainingDataService:
 
         train_samples = samples
         train_annotations = annotations
-        if request.mode == "active_learning":
+        if request.mode in {"active_learning", "simulation"}:
             labeled_sample_ids = {
                 str(item.get("sample_id") or "")
                 for item in annotations
@@ -78,23 +72,12 @@ class TrainingDataService:
                     for item in samples
                     if str(item.get("id") or "") in labeled_sample_ids
                 ]
-
-        if request.mode == "simulation":
-            schedule = self._normalize_schedule(request.params.get("simulation_ratio_schedule"))
-            ratio = self._resolve_ratio(request.iteration, schedule)
-            train_samples, train_annotations = await plugin.select_simulation_subset(
-                samples=samples,
-                annotations=annotations,
-                ratio=ratio,
-                iteration=request.iteration,
-                params=request.params,
-            )
             await emit(
                 "log",
                 {
                     "level": "INFO",
                     "message": (
-                        f"simulation mode enabled iteration={request.iteration} ratio={ratio:.4f} "
+                        f"simulation mode enabled round_index={request.round_index} "
                         f"train_samples={len(train_samples)} train_annotations={len(train_annotations)}"
                     ),
                 },
@@ -123,4 +106,3 @@ class TrainingDataService:
             train_annotations=train_annotations,
             protected=protected,
         )
-

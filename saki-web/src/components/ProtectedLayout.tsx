@@ -191,6 +191,10 @@ const ProtectedLayout: React.FC = () => {
         const rest = location.pathname.replace(basePath, '')
         if (!rest || rest === '/') return
         const segment = rest.split('/').filter(Boolean)[0]
+        const passthroughSegments = new Set(['workspace', 'members'])
+        if (segment && passthroughSegments.has(segment)) {
+            return
+        }
         const allowed = new Set(projectTabItems.map((item) => item.path))
         if (segment && !allowed.has(segment)) {
             const first = projectTabItems[0]

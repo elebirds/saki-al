@@ -163,6 +163,7 @@ const ProtectedLayout: React.FC = () => {
             onUserMenuClick={handleUserMenuClick}
             footerText={t('app.footer')}
             showHeaderBorder={!isProjectDetail}
+            layoutMode={isWorkspace ? 'fill' : 'flow'}
             contentClassName={
                 isWorkspace
                     ? 'px-6 w-full h-full flex flex-col'

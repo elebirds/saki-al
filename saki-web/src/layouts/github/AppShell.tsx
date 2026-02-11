@@ -23,6 +23,7 @@ export type AppShellProps = {
     contentClassName?: string
     headerContainerClassName?: string
     contentCardClassName?: string
+    layoutMode?: 'flow' | 'fill'
     children: React.ReactNode
 }
 
@@ -45,9 +46,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                                                       contentClassName = 'max-w-[1280px] mx-auto px-6 py-6 min-h-full flex flex-col',
                                                       headerContainerClassName = 'w-full px-6',
                                                       contentCardClassName = 'bg-github-panel rounded-md p-6 min-h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]',
+                                                      layoutMode = 'flow',
                                                       children,
                                                   }) => {
     const {themeMode, setThemeMode} = useThemeMode()
+    const isFillMode = layoutMode === 'fill'
 
     return (
         <div className="flex h-screen flex-col bg-github-base text-github-text">
@@ -74,12 +77,12 @@ export const AppShell: React.FC<AppShellProps> = ({
             ) : null}
 
             <main className="flex-1 overflow-auto">
-                <div className="flex min-h-full flex-col">
-                    <div className={`w-full flex-1 ${contentClassName}`}>
+                <div className={isFillMode ? 'flex h-full flex-col' : 'flex min-h-full flex-col'}>
+                    <div className={isFillMode ? `w-full flex-1 ${contentClassName}` : `w-full ${contentClassName}`}>
                         <div className={contentCardClassName}>{children}</div>
                     </div>
                     {footerText ? (
-                        <div className="border-t border-github-border py-4 text-center text-xs text-github-muted">
+                        <div className={`${isFillMode ? '' : 'mt-auto '}border-t border-github-border py-4 text-center text-xs text-github-muted`}>
                             {footerText}
                         </div>
                     ) : null}

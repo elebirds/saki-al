@@ -187,7 +187,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
     const totalSamplePages = Math.max(1, Math.ceil(sampleMeta.total / (sampleMeta.limit || 1)));
 
     return (
-        <div className="flex h-full flex-col gap-4">
+        <div className="flex h-full min-w-0 flex-col gap-4 overflow-x-hidden">
             <Card className="!border-github-border !bg-github-panel">
                 <div className="flex flex-wrap items-center gap-3">
                     <Select
@@ -255,7 +255,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 </div>
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel flex-1">
+            <Card className="!border-github-border !bg-github-panel flex-1 min-w-0">
                 {loadingMeta ? (
                     <div className="flex h-full items-center justify-center">
                         <Spin/>
@@ -268,6 +268,14 @@ const ProjectSamplesAnnotations: React.FC = () => {
                         enabled={!!projectId && !!selectedDatasetId}
                         controlledPage={page}
                         controlledPageSize={pageSize}
+                        adaptivePageSize={{
+                            enabled: true,
+                            mode: 'grid',
+                            itemMinWidth: 260,
+                            itemHeight: 270,
+                            rowGap: 16,
+                            colGap: 16,
+                        }}
                         onPageChange={(nextPage, nextSize) => {
                             updateParams({
                                 page: String(nextPage),
@@ -320,7 +328,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                             )
                         }
                         renderPaginationWrapper={(node) => (
-                            <div className="mt-4 flex items-center justify-between">
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                                 <Text type="secondary">
                                     Page {Math.floor(sampleMeta.offset / (sampleMeta.limit || 1)) + 1} / {totalSamplePages} · {sampleMeta.total} items
                                 </Text>

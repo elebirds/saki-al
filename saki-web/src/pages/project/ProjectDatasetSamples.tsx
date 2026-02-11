@@ -75,11 +75,19 @@ const ProjectDatasetSamples: React.FC<ProjectDatasetSamplesProps> = ({
                 </Title>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-2.5">
+            <div className="flex-1 min-h-0 pr-2.5">
                 <PaginatedList<Sample>
                     fetchData={fetchSamples}
                     initialPageSize={8}
                     pageSizeOptions={['8', '12', '20', '32', '50']}
+                    adaptivePageSize={{
+                        enabled: true,
+                        mode: 'grid',
+                        itemMinWidth: 260,
+                        itemHeight: 250,
+                        rowGap: 16,
+                        colGap: 16,
+                    }}
                     refreshKey={datasetId}
                     resetPageOnRefresh
                     onMetaChange={(meta) => setSampleMeta(meta)}

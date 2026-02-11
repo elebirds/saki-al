@@ -125,6 +125,14 @@ const DatasetList: React.FC = () => {
                     resetPageOnRefresh
                     initialPageSize={8}
                     pageSizeOptions={['8', '12', '20', '32', '50']}
+                    adaptivePageSize={{
+                        enabled: true,
+                        mode: 'grid',
+                        itemMinWidth: 240,
+                        itemHeight: 220,
+                        rowGap: 16,
+                        colGap: 16,
+                    }}
                     paginationProps={{
                         showTotal: (tot, range) => range ? `${range[0]}-${range[1]} ${t('common.of')} ${tot} ${t('common.items')}` : `${tot} ${t('common.items')}`,
                     }}

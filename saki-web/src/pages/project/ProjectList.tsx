@@ -91,15 +91,21 @@ const ProjectList: React.FC = () => {
                 )}
             </div>
 
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0">
                 <PaginatedList<Project>
                     fetchData={fetchProjects}
                     refreshKey={refreshKey}
                     resetPageOnRefresh
                     initialPageSize={12}
                     pageSizeOptions={['8', '12', '20', '32', '50']}
+                    adaptivePageSize={{
+                        enabled: true,
+                        mode: 'list',
+                        itemHeight: 170,
+                        rowGap: 16,
+                    }}
                     renderItems={(items) => (
-                        <div className="grid gap-4">
+                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                             {items.map((project) => (
                                 <Card
                                     key={project.id}

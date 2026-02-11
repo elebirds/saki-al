@@ -168,14 +168,14 @@ const ProtectedLayout: React.FC = () => {
                     ? 'px-6 w-full h-full flex flex-col'
                     : isRuntimeExecutors
                         ? 'px-6 py-6 w-full h-full flex flex-col'
-                    : isProjectDetail
-                        ? 'max-w-[1280px] mx-auto px-6 h-full flex flex-col'
-                        : 'max-w-[1280px] mx-auto px-6 py-6 h-full flex flex-col'
+                        : isProjectDetail
+                            ? 'max-w-[1280px] mx-auto px-6 min-h-full flex flex-col'
+                        : 'max-w-[1280px] mx-auto px-6 py-6 min-h-full flex flex-col'
             }
             contentCardClassName={
                 isProjectDetail || isRuntimeExecutors
                     ? 'bg-transparent border-0 p-0 h-full flex flex-col'
-                    : 'bg-github-panel rounded-md p-6 h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]'
+                    : 'bg-github-panel rounded-md p-6 min-h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]'
             }
         >
             <Outlet/>

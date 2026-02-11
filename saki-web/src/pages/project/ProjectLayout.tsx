@@ -50,7 +50,7 @@ const ProjectLayout: React.FC = () => {
     return (
         <div className="flex h-full flex-col gap-6">
             <RepoTabs items={tabItems} activeKey={activeKey} onItemClick={handleTabClick}/>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto">
                 <Outlet/>
             </div>
         </div>

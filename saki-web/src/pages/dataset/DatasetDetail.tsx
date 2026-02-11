@@ -252,7 +252,7 @@ const DatasetDetail: React.FC = () => {
             key: 'data',
             label: t('dataset.detail.dataPool'),
             children: (
-                <div className="flex h-full flex-col">
+                <div className="flex min-h-0 flex-col">
                     <div className="mb-4 flex flex-shrink-0 items-center justify-between">
                         <Title level={5} className="!m-0">{t('dataset.detail.dataPool')} ({totalSamples})</Title>
                         <div className="flex flex-wrap items-center gap-2">
@@ -275,11 +275,19 @@ const DatasetDetail: React.FC = () => {
                             </Button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto pr-2.5">
+                    <div className="flex-1 min-h-0 pr-2.5">
                         <PaginatedList<Sample>
                             fetchData={fetchSamples}
                             initialPageSize={8}
                             pageSizeOptions={['8', '12', '20', '32', '50']}
+                            adaptivePageSize={{
+                                enabled: true,
+                                mode: 'grid',
+                                itemMinWidth: 260,
+                                itemHeight: 250,
+                                rowGap: 16,
+                                colGap: 16,
+                            }}
                             refreshKey={`${id}-${sortBy}-${sortOrder}-${sampleRefreshKey}`}
                             resetPageOnRefresh
                             onMetaChange={(meta) => setSampleMeta(meta)}
@@ -349,7 +357,7 @@ const DatasetDetail: React.FC = () => {
             key: 'settings',
             label: t('dataset.detail.settings'),
             children: (
-                <div className="h-full overflow-y-auto pr-2.5">
+                <div className="pr-2.5">
                     <DatasetSettings
                         dataset={dataset}
                         onUpdate={(updatedDataset: Dataset) => setDataset(updatedDataset)}
@@ -361,7 +369,7 @@ const DatasetDetail: React.FC = () => {
 
     return (
         <div className="flex h-full bg-transparent">
-            <aside className="w-[300px] shrink-0 overflow-y-auto border-r border-github-border p-5">
+            <aside className="w-[300px] shrink-0 border-r border-github-border p-5">
                 <Button
                     type="text"
                     icon={<ArrowLeftOutlined/>}
@@ -412,7 +420,7 @@ const DatasetDetail: React.FC = () => {
                     )}
                 </div>
             </aside>
-            <main className="h-full flex-1 overflow-hidden bg-transparent p-6">
+            <main className="h-full flex-1 min-w-0 bg-transparent p-6">
                 <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs"/>
 
                 {/* Upload Progress Modal */}

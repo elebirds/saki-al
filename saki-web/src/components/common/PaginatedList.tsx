@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Pagination, PaginationProps, Spin} from 'antd';
 import {usePagination} from '../../hooks';
 import {PaginationResponse} from '../../types/pagination';
@@ -9,6 +9,20 @@ type PaginationMeta = {
     offset: number;
     size: number;
 };
+
+export type AdaptivePageSizeMode = 'grid' | 'list' | 'table';
+
+export interface AdaptivePageSizeConfig {
+    enabled?: boolean;
+    mode: AdaptivePageSizeMode;
+    itemHeight: number;
+    itemMinWidth?: number;
+    rowGap?: number;
+    colGap?: number;
+    reservedHeight?: number;
+    minPageSize?: number;
+    maxPageSize?: number;
+}
 
 export interface PaginatedListProps<T> {
     /** Fetch data for the given page/pageSize and return a pagination response. */
@@ -43,6 +57,8 @@ export interface PaginatedListProps<T> {
     controlledPageSize?: number;
     /** Controlled pagination change callback. */
     onPageChange?: (page: number, pageSize: number) => void;
+    /** Auto-compute pageSize from container and item size. */
+    adaptivePageSize?: AdaptivePageSizeConfig;
 }
 
 /**
@@ -67,11 +83,19 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
         controlledPage,
         controlledPageSize,
         onPageChange,
+        adaptivePageSize,
     } = props;
 
     const {page, pageSize, total, setPage, setPageSize, setTotal, updateFromMeta} = usePagination(initialPageSize);
     const [items, setItems] = useState<T[]>([]);
     const [loading, setLoading] = useState(false);
+    const [manualPageSizeLocked, setManualPageSizeLocked] = useState(false);
+    const [containerSize, setContainerSize] = useState({width: 0, height: 0});
+    const [paginationHeight, setPaginationHeight] = useState(0);
+
+    const rootRef = useRef<HTMLDivElement>(null);
+    const paginationRef = useRef<HTMLDivElement>(null);
+
     const onErrorRef = useRef(onError);
     const fetchDataRef = useRef(fetchData);
     const onItemsChangeRef = useRef(onItemsChange);
@@ -80,6 +104,13 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
     const isControlled = controlledPage !== undefined && controlledPageSize !== undefined;
     const activePage = isControlled ? Math.max(1, controlledPage) : page;
     const activePageSize = isControlled ? Math.max(1, controlledPageSize) : pageSize;
+
+    const numericPageSizeOptions = useMemo(() => {
+        return (pageSizeOptions || [])
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0)
+            .sort((a, b) => a - b);
+    }, [pageSizeOptions]);
 
     useEffect(() => {
         onErrorRef.current = onError;
@@ -100,6 +131,37 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
     useEffect(() => {
         onPageChangeRef.current = onPageChange;
     }, [onPageChange]);
+
+    useEffect(() => {
+        const measure = () => {
+            const rootRect = rootRef.current?.getBoundingClientRect();
+            const pagerRect = paginationRef.current?.getBoundingClientRect();
+            const nextWidth = Math.max(0, Math.floor(rootRect?.width || 0));
+            const nextHeight = Math.max(0, Math.floor(rootRect?.height || 0));
+            const nextPaginationHeight = Math.max(0, Math.ceil(pagerRect?.height || 0));
+
+            setContainerSize((prev) => {
+                if (prev.width === nextWidth && prev.height === nextHeight) return prev;
+                return {width: nextWidth, height: nextHeight};
+            });
+            setPaginationHeight((prev) => (prev === nextPaginationHeight ? prev : nextPaginationHeight));
+        };
+
+        measure();
+
+        const rootEl = rootRef.current;
+        const pagerEl = paginationRef.current;
+        const supportsResizeObserver = typeof ResizeObserver !== 'undefined';
+        const observer = supportsResizeObserver ? new ResizeObserver(() => measure()) : null;
+        if (observer && rootEl) observer.observe(rootEl);
+        if (observer && pagerEl) observer.observe(pagerEl);
+
+        window.addEventListener('resize', measure);
+        return () => {
+            window.removeEventListener('resize', measure);
+            observer?.disconnect();
+        };
+    }, []);
 
     useEffect(() => {
         if (resetPageOnRefresh) {
@@ -157,8 +219,68 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
         };
     }, [activePage, activePageSize, updateFromMeta, refreshKey, enabled, isControlled, setTotal]);
 
+    useEffect(() => {
+        if (!adaptivePageSize?.enabled) return;
+        if (manualPageSizeLocked) return;
+
+        const rowGap = Math.max(0, Number(adaptivePageSize.rowGap ?? 16));
+        const colGap = Math.max(0, Number(adaptivePageSize.colGap ?? 16));
+        const reservedHeight = Math.max(0, Number(adaptivePageSize.reservedHeight ?? 0));
+        const availableWidth = Math.max(0, containerSize.width);
+        const availableHeight = Math.max(0, containerSize.height - paginationHeight - reservedHeight);
+
+        if (availableWidth <= 0 || availableHeight <= 0) return;
+
+        let rawSize = 0;
+        if (adaptivePageSize.mode === 'grid') {
+            const itemMinWidth = Math.max(1, Number(adaptivePageSize.itemMinWidth ?? 0));
+            if (itemMinWidth <= 0) return;
+            const cols = Math.max(1, Math.floor((availableWidth + colGap) / (itemMinWidth + colGap)));
+            const rows = Math.max(1, Math.floor((availableHeight + rowGap) / (Math.max(1, adaptivePageSize.itemHeight) + rowGap)));
+            rawSize = cols * rows;
+        } else {
+            const rows = Math.max(1, Math.floor((availableHeight + rowGap) / (Math.max(1, adaptivePageSize.itemHeight) + rowGap)));
+            rawSize = rows;
+        }
+
+        if (!Number.isFinite(rawSize) || rawSize <= 0) return;
+
+        const minPageSize = Math.max(1, Number(adaptivePageSize.minPageSize ?? 1));
+        const maxPageSize = Math.max(minPageSize, Number(adaptivePageSize.maxPageSize ?? Number.MAX_SAFE_INTEGER));
+        let normalized = Math.min(maxPageSize, Math.max(minPageSize, rawSize));
+
+        if (numericPageSizeOptions.length > 0) {
+            const lowerOrEqual = numericPageSizeOptions.filter((opt) => opt <= normalized);
+            normalized = lowerOrEqual.length > 0 ? lowerOrEqual[lowerOrEqual.length - 1] : numericPageSizeOptions[0];
+        }
+
+        if (!Number.isFinite(normalized) || normalized <= 0) return;
+        if (normalized === activePageSize) return;
+
+        if (isControlled) {
+            onPageChangeRef.current?.(1, normalized);
+            return;
+        }
+        setPageSize(normalized);
+        setPage(1);
+    }, [
+        adaptivePageSize,
+        manualPageSizeLocked,
+        containerSize.width,
+        containerSize.height,
+        paginationHeight,
+        numericPageSizeOptions,
+        activePageSize,
+        isControlled,
+        setPage,
+        setPageSize,
+    ]);
+
     const handlePageChange = (nextPage: number, nextSize?: number) => {
         const resolvedPageSize = nextSize ?? activePageSize;
+        if (nextSize && nextSize !== activePageSize) {
+            setManualPageSizeLocked(true);
+        }
         if (isControlled) {
             onPageChangeRef.current?.(nextPage, resolvedPageSize);
             return;
@@ -196,11 +318,13 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
     const hasData = items.length > 0;
 
     return (
-        <div className="flex h-full flex-col">
-            <Spin spinning={loading}>
-                {hasData ? renderItems(items, loading) : (!loading && emptyFallback ? emptyFallback : renderItems(items, loading))}
-            </Spin>
-            {wrappedPagination}
+        <div ref={rootRef} className="flex h-full min-h-0 flex-col">
+            <div className="min-h-0 flex-1">
+                <Spin spinning={loading}>
+                    {hasData ? renderItems(items, loading) : (!loading && emptyFallback ? emptyFallback : renderItems(items, loading))}
+                </Spin>
+            </div>
+            <div ref={paginationRef} className="shrink-0">{wrappedPagination}</div>
         </div>
     );
 }

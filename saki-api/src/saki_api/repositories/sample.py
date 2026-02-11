@@ -5,6 +5,7 @@ Sample Repository - Data access layer for Sample operations.
 import uuid
 from typing import List, Any
 
+from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.l1.sample import Sample
@@ -35,10 +36,14 @@ class SampleRepository(BaseRepository[Sample]):
             dataset_id: uuid.UUID,
             pagination: Pagination = Pagination(),
             order_by: List[Any] | None = None,
+            extra_filters: List[ColumnElement[bool]] | None = None,
     ) -> PaginationResponse[Sample]:
         """Get samples in a dataset with pagination."""
+        filters: List[ColumnElement[bool]] = [Sample.dataset_id == dataset_id]
+        if extra_filters:
+            filters.extend(extra_filters)
         return await self.list_paginated(
             pagination=pagination,
-            filters=[Sample.dataset_id == dataset_id],
+            filters=filters,
             order_by=order_by,
         )

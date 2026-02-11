@@ -230,6 +230,7 @@
       "backToList": "Back to List",
       "loadSamplesError": "Failed to load samples",
       "sortByName": "By Name",
+      "searchByNamePlaceholder": "Search by sample name",
       "sortByCreatedAt": "By Created At",
       "sortByUpdatedAt": "By Updated At",
       "sortAsc": "Ascending",

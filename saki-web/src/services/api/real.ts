@@ -1145,7 +1145,8 @@ export class RealApiService implements ApiService {
         page?: number,
         limit?: number,
         sortBy?: string,
-        sortOrder?: 'asc' | 'desc'
+        sortOrder?: 'asc' | 'desc',
+        q?: string
     ): Promise<PaginationResponse<Sample>> {
         const response = await this.client.get<PaginationResponse<Sample>>(
             `/samples/${datasetId}/samples`,
@@ -1155,6 +1156,7 @@ export class RealApiService implements ApiService {
                     limit: limit,
                     sort_by: sortBy,
                     sort_order: sortOrder,
+                    q,
                 }
             }
         );

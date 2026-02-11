@@ -361,7 +361,8 @@ export interface ApiService {
                page?: number,
                limit?: number,
                sortBy?: string,
-               sortOrder?: 'asc' | 'desc'
+               sortOrder?: 'asc' | 'desc',
+               q?: string
     ): Promise<PaginationResponse<Sample>>;
 
     deleteSample(datasetId: string, sampleId: string): Promise<void>;

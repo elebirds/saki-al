@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {Button, Card, List, message, Popconfirm, Select, Tabs, Tag, Tooltip, Typography} from 'antd';
+import {Button, Card, Input, List, message, Popconfirm, Select, Tabs, Tag, Tooltip, Typography} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {Dataset, Sample} from '../../types';
 import {api} from '../../services/api';
@@ -34,17 +34,21 @@ const DatasetDetail: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [sortBy, setSortBy] = useState<string>('createdAt');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchInput, setSearchInput] = useState('');
     const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
     const [assetModalOpen, setAssetModalOpen] = useState(false);
 
     // Use refs to store latest sort params
     const sortByRef = useRef(sortBy);
     const sortOrderRef = useRef(sortOrder);
+    const searchQueryRef = useRef(searchQuery);
 
     useEffect(() => {
         sortByRef.current = sortBy;
         sortOrderRef.current = sortOrder;
-    }, [sortBy, sortOrder]);
+        searchQueryRef.current = searchQuery;
+    }, [sortBy, sortOrder, searchQuery]);
 
     // Permission hook
     const {can, role, isOwner} = useResourcePermission('dataset', id);
@@ -96,6 +100,7 @@ const DatasetDetail: React.FC = () => {
                 pageSize,
                 sortByRef.current,
                 sortOrderRef.current,
+                searchQueryRef.current || undefined,
             );
         } catch (error) {
             console.error('Failed to load samples:', error);
@@ -107,6 +112,8 @@ const DatasetDetail: React.FC = () => {
     // Load dataset and samples
     useEffect(() => {
         if (id) {
+            setSearchQuery('');
+            setSearchInput('');
             loadDataset(id);
             setSampleRefreshKey((v) => v + 1);
         }
@@ -122,7 +129,11 @@ const DatasetDetail: React.FC = () => {
         if (id) {
             setSampleRefreshKey((v) => v + 1);
         }
-    }, [sortBy, sortOrder, id]);
+    }, [sortBy, sortOrder, searchQuery, id]);
+
+    const handleSearch = useCallback((value: string) => {
+        setSearchQuery(value.trim());
+    }, []);
 
     const handleUploadClick = () => {
         fileInputRef.current?.click();
@@ -253,9 +264,24 @@ const DatasetDetail: React.FC = () => {
             label: t('dataset.detail.dataPool'),
             children: (
                 <div className="flex min-h-0 flex-col">
-                    <div className="mb-4 flex flex-shrink-0 items-center justify-between">
+                    <div className="mb-4 flex flex-shrink-0 items-center justify-between gap-3">
                         <Title level={5} className="!m-0">{t('dataset.detail.dataPool')} ({totalSamples})</Title>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-nowrap items-center gap-2">
+                            <Input.Search
+                                allowClear
+                                value={searchInput}
+                                placeholder={t('dataset.detail.searchByNamePlaceholder')}
+                                onSearch={handleSearch}
+                                onChange={(e) => {
+                                    const nextValue = e.target.value;
+                                    setSearchInput(nextValue);
+                                    if (!nextValue) {
+                                        handleSearch('');
+                                    }
+                                }}
+                                className="w-[220px]"
+                                size="small"
+                            />
                             <Select
                                 value={sortBy}
                                 onChange={setSortBy}
@@ -288,7 +314,7 @@ const DatasetDetail: React.FC = () => {
                                 rowGap: 16,
                                 colGap: 16,
                             }}
-                            refreshKey={`${id}-${sortBy}-${sortOrder}-${sampleRefreshKey}`}
+                            refreshKey={`${id}-${sortBy}-${sortOrder}-${searchQuery}-${sampleRefreshKey}`}
                             resetPageOnRefresh
                             onMetaChange={(meta) => setSampleMeta(meta)}
                             renderItems={(items) => (
@@ -369,7 +395,7 @@ const DatasetDetail: React.FC = () => {
 
     return (
         <div className="flex h-full bg-transparent">
-            <aside className="w-[300px] shrink-0 border-r border-github-border p-5">
+            <aside className="w-1/5 shrink-0 border-r border-github-border p-5">
                 <Button
                     type="text"
                     icon={<ArrowLeftOutlined/>}
@@ -420,7 +446,7 @@ const DatasetDetail: React.FC = () => {
                     )}
                 </div>
             </aside>
-            <main className="h-full flex-1 min-w-0 bg-transparent p-6">
+            <main className="h-full w-4/5 min-w-0 bg-transparent p-6">
                 <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs"/>
 
                 {/* Upload Progress Modal */}

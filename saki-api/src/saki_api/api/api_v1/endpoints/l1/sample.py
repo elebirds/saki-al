@@ -7,7 +7,7 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, UploadFile, File, Query
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, or_
 from starlette.responses import StreamingResponse
 
 from saki_api.api.service_deps import DatasetServiceDep, SampleServiceDep, AssetServiceDep
@@ -131,6 +131,7 @@ async def list_samples(
         dataset_id: uuid.UUID,
         sample_service: SampleServiceDep,
         asset_service: AssetServiceDep,
+        q: str | None = Query(None, description="Search by name or remark"),
         page: int = Query(1, ge=1),
         limit: int = Query(24, ge=1, le=200),
         sort_by: str = "createdAt",
@@ -151,12 +152,23 @@ async def list_samples(
     }
     sort_column = sort_map.get(sort_by, Sample.created_at)
     order_clause = asc(sort_column) if sort_order == "asc" else desc(sort_column)
+    extra_filters = None
+    normalized_q = q.strip() if q else None
+    if normalized_q:
+        pattern = f"%{normalized_q}%"
+        extra_filters = [
+            or_(
+                Sample.name.ilike(pattern),
+                Sample.remark.ilike(pattern),
+            )
+        ]
 
     pagination = Pagination.from_page(page=page, limit=limit)
     samples = await sample_service.repository.get_by_dataset_paginated(
         dataset_id,
         pagination=pagination,
         order_by=[order_clause],
+        extra_filters=extra_filters,
     )
 
     result: List[SampleRead] = []

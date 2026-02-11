@@ -230,6 +230,7 @@
       "backToList": "返回列表",
       "loadSamplesError": "加载样本失败",
       "sortByName": "按名称",
+      "searchByNamePlaceholder": "按样本名称搜索",
       "sortByCreatedAt": "按创建时间",
       "sortByUpdatedAt": "按更新时间",
       "sortAsc": "升序",

@@ -3,9 +3,10 @@ Annotation Endpoints.
 """
 
 import uuid
+from datetime import UTC, datetime
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from saki_api.api.service_deps import (
     AnnotationServiceDep,
@@ -461,6 +462,7 @@ async def sync_working_to_draft(
         project_id: uuid.UUID,
         sample_id: uuid.UUID,
         branch_name: str = "master",
+        review_empty: bool = Query(False, description="When true, empty snapshot is promoted as reviewed-empty draft"),
         working_service: AnnotationWorkingServiceDep,
         draft_service: AnnotationDraftServiceDep,
         current_user_id: uuid.UUID = Depends(get_current_user_id),
@@ -474,7 +476,11 @@ async def sync_working_to_draft(
     if not snapshot:
         return None
 
-    if not snapshot.get("dirty"):
+    annotations = snapshot.get("annotations") or []
+    meta = dict(snapshot.get("meta") or {})
+    should_promote_empty = len(annotations) == 0 and (review_empty or bool(meta.get("reviewed_empty")))
+
+    if not snapshot.get("dirty") and not should_promote_empty:
         await working_service.delete_working(
             project_id=project_id,
             sample_id=sample_id,
@@ -483,9 +489,14 @@ async def sync_working_to_draft(
         )
         return None
 
+    if should_promote_empty:
+        meta["reviewed_empty"] = True
+        meta["reviewed_by"] = str(current_user_id)
+        meta["reviewed_at"] = datetime.now(UTC).isoformat()
+
     payload = {
-        "annotations": snapshot.get("annotations") or [],
-        "meta": snapshot.get("meta") or {},
+        "annotations": annotations,
+        "meta": meta,
     }
 
     draft = await draft_service.upsert_draft(
@@ -494,6 +505,12 @@ async def sync_working_to_draft(
         user_id=current_user_id,
         branch_name=branch_name,
         payload=payload,
+    )
+    await working_service.delete_working(
+        project_id=project_id,
+        sample_id=sample_id,
+        user_id=current_user_id,
+        branch_name=branch_name,
     )
     return AnnotationDraftRead.model_validate(draft)
 

@@ -76,6 +76,14 @@ class SampleStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class CommitSampleReviewState(str, Enum):
+    """
+    Enum for sample review state at a specific commit.
+    """
+    LABELED = "labeled"
+    EMPTY_CONFIRMED = "empty_confirmed"
+
+
 class ProjectStatus(str, Enum):
     """
     Enum for the status of a project.

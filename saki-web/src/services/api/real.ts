@@ -1114,7 +1114,8 @@ export class RealApiService implements ApiService {
     async syncWorkingToDraft(
         projectId: string,
         sampleId: string,
-        branchName?: string
+        branchName?: string,
+        reviewEmpty?: boolean
     ): Promise<AnnotationDraftRead | null> {
         const response = await this.client.post<AnnotationDraftRead | null>(
             `/annotations/projects/${projectId}/samples/${sampleId}/drafts/sync`,
@@ -1122,6 +1123,7 @@ export class RealApiService implements ApiService {
             {
                 params: {
                     branch_name: branchName,
+                    review_empty: reviewEmpty,
                 },
             }
         );

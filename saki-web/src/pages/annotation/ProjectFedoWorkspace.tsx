@@ -117,10 +117,15 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         enabled: !!projectId && !!currentSample?.id,
     });
 
-    const flushDraft = useCallback(async () => {
+    const flushDraft = useCallback(async (options?: { reviewEmpty?: boolean }) => {
         if (!projectId || !currentSample?.id) return;
         try {
-            await api.syncWorkingToDraft(projectId, currentSample.id, branchName);
+            await api.syncWorkingToDraft(
+                projectId,
+                currentSample.id,
+                branchName,
+                options?.reviewEmpty === true
+            );
         } catch (error) {
             console.warn('Failed to flush draft', error);
         }
@@ -308,9 +313,10 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     }, [currentIndex, samples, page, flushDraft, updateParams]);
 
     const handleSubmitAndNext = useCallback(async () => {
-        await flushDraft();
+        const shouldReviewEmpty = annotationState.annotations.length === 0;
+        await flushDraft({reviewEmpty: shouldReviewEmpty});
         handleNext();
-    }, [flushDraft, handleNext]);
+    }, [annotationState.annotations.length, flushDraft, handleNext]);
 
     const handleCommit = useCallback(async (messageText: string) => {
         if (!projectId) return;
@@ -342,13 +348,14 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         disabled: annotationsLoading,
     });
 
-    const backToSamples = useCallback(() => {
+    const backToSamples = useCallback(async () => {
         if (!projectId || !datasetId) return;
+        await flushDraft();
         const next = new URLSearchParams(searchParams);
         next.set('datasetId', datasetId);
         next.delete('sampleId');
         navigate(`/projects/${projectId}/samples?${next.toString()}`);
-    }, [projectId, datasetId, searchParams, navigate]);
+    }, [projectId, datasetId, searchParams, navigate, flushDraft]);
 
     useEffect(() => {
         let cancelled = false;
@@ -477,6 +484,11 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                 onPrev={handlePrev}
                 onNext={handleNext}
                 onSubmit={handleSubmitAndNext}
+                submitLabel={
+                    annotationState.annotations.length === 0
+                        ? t('annotation.workspace.submitNextEmpty')
+                        : t('annotation.workspace.submitNext')
+                }
                 onAnnotationSelect={(id) => {
                     handleAnnotationSelect(id);
                     annotationState.setCurrentTool('select');

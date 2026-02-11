@@ -303,6 +303,7 @@
       "annotations": "标注列表",
       "noAnnotations": "暂无标注",
       "submitNext": "暂存并下一个",
+      "submitNextEmpty": "标记为无目标并下一个",
       "loading": "加载中...",
       "label": "标签:",
       "noLabelSelected": "请先选择一个标签",

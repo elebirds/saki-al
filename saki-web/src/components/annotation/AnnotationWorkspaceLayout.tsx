@@ -37,6 +37,7 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     onPrev: () => void;
     onNext: () => void;
     onSubmit: () => void;
+    submitLabel?: string;
     onAnnotationSelect: (id: string) => void;
     onAnnotationDelete: (id: string) => void;
 
@@ -79,6 +80,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                                                                         onPrev,
                                                                         onNext,
                                                                         onSubmit,
+                                                                        submitLabel,
                                                                         onAnnotationSelect,
                                                                         onAnnotationDelete,
                                                                         onZoomIn,
@@ -176,6 +178,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                 onPrev={onPrev}
                 onNext={onNext}
                 onSubmit={onSubmit}
+                submitLabel={submitLabel}
                 renderAnnotationItem={renderAnnotationItem}
                 currentUserId={currentUserId}
                 canEditAnnotation={canEditAnnotation}

@@ -16,6 +16,7 @@ from saki_api.repositories.job_task import JobTaskRepository
 from saki_api.repositories.task_event import TaskEventRepository
 from saki_api.repositories.task_metric_point import TaskMetricPointRepository
 from saki_api.repositories.task_candidate_item import TaskCandidateItemRepository
+from saki_api.repositories.commit_sample_state import CommitSampleStateRepository
 
 __all__ = [
     "UserRepository",
@@ -31,6 +32,7 @@ __all__ = [
     "TaskEventRepository",
     "TaskMetricPointRepository",
     "TaskCandidateItemRepository",
+    "CommitSampleStateRepository",
     "FilterType",
     "OrderByType"
 ]

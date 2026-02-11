@@ -386,8 +386,10 @@ async def list_project_samples(
                 pass
 
         count = page_data.annotation_counts.get(sample.id, 0)
+        review_state = page_data.review_states.get(sample.id)
         sample_read.annotation_count = count
-        sample_read.is_labeled = count > 0
+        sample_read.is_labeled = review_state is not None
+        sample_read.review_state = review_state.value if review_state else "unreviewed"
         sample_read.has_draft = sample.id in page_data.drafts_by_sample
         items.append(sample_read)
 

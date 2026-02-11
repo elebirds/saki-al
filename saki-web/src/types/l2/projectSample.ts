@@ -4,4 +4,5 @@ export interface ProjectSample extends Sample {
     annotationCount: number;
     isLabeled: boolean;
     hasDraft: boolean;
+    reviewState: 'unreviewed' | 'labeled' | 'emptyConfirmed';
 }

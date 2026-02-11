@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 from uuid import UUID
 
 from saki_api.models.l1.sample import SampleBase
@@ -26,3 +26,4 @@ class ProjectSampleRead(SampleRead):
     annotation_count: int = 0
     is_labeled: bool = False
     has_draft: bool = False
+    review_state: Literal["unreviewed", "labeled", "empty_confirmed"] = "unreviewed"

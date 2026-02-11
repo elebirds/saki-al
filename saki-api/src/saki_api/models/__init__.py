@@ -14,7 +14,7 @@ from saki_api.models.enums import (
     TaskType, ProjectStatus, ModelStatus, DatasetType,
     AnnotationType, AnnotationSource, TrainingJobStatus,
     ALLoopStatus, ALLoopMode, LoopRoundStatus, AnnotationBatchStatus,
-    LoopPhase, JobStatusV2, JobTaskType, JobTaskStatus,
+    LoopPhase, JobStatusV2, JobTaskType, JobTaskStatus, CommitSampleReviewState,
 )
 # Layer 1: Physical Data Layer
 from saki_api.models.l1.asset import Asset
@@ -25,6 +25,7 @@ from saki_api.models.l2.annotation import Annotation
 from saki_api.models.l2.annotation_draft import AnnotationDraft
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.models.l2.commit_sample_state import CommitSampleState
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.label import Label
 from saki_api.models.l2.project import Project
@@ -68,7 +69,7 @@ __all__ = [
 
     # Layer 2: Logical Annotation Layer
     "Annotation", "AnnotationDraft", "Label",
-    "Commit", "CommitAnnotationMap",
+    "Commit", "CommitAnnotationMap", "CommitSampleState",
     "Branch", "Project",
 
     # Layer 3: Training Experiment Layer
@@ -81,7 +82,7 @@ __all__ = [
     "TaskType", "ProjectStatus", "ModelStatus", "DatasetType",
     "AnnotationType", "AnnotationSource", "TrainingJobStatus",
     "ALLoopStatus", "ALLoopMode", "LoopRoundStatus", "AnnotationBatchStatus",
-    "LoopPhase", "JobStatusV2", "JobTaskType", "JobTaskStatus",
+    "LoopPhase", "JobStatusV2", "JobTaskType", "JobTaskStatus", "CommitSampleReviewState",
 
     # User models
     "User",

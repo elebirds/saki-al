@@ -22,13 +22,14 @@ from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID, PROJECT_ROLE_NAME_PREFIX
 from saki_api.db.transaction import transactional
 from saki_api.models import ResourceType, Permissions
-from saki_api.models.enums import AuthorType, ProjectStatus
+from saki_api.models.enums import AuthorType, CommitSampleReviewState, ProjectStatus
 from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l1.sample import Sample
 from saki_api.models.l2.annotation import Annotation
 from saki_api.models.l2.annotation_draft import AnnotationDraft
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.models.l2.commit_sample_state import CommitSampleState
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.label import Label
 from saki_api.models.l2.project import Project, ProjectDataset
@@ -46,6 +47,7 @@ from saki_api.repositories.dataset import DatasetRepository
 from saki_api.repositories.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.query import Pagination
+from saki_api.repositories.commit_sample_state import CommitSampleStateRepository
 from saki_api.repositories.resource_member import ResourceMemberRepository
 from saki_api.repositories.role import RoleRepository
 from saki_api.schemas.project import ProjectCreate, ProjectForkCreate, ProjectUpdate
@@ -65,6 +67,7 @@ class ProjectSamplePage:
     limit: int
     annotation_counts: dict[uuid.UUID, int]
     drafts_by_sample: set[uuid.UUID]
+    review_states: dict[uuid.UUID, CommitSampleReviewState]
 
 
 class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, ProjectUpdate]):
@@ -467,6 +470,22 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
                 project_id=forked_project.id,
             ))
 
+        source_sample_state_rows = await self.session.exec(
+            select(CommitSampleState).where(CommitSampleState.project_id == source_project_id)
+        )
+        for source_sample_state in source_sample_state_rows.all():
+            mapped_commit_id = commit_id_map.get(source_sample_state.commit_id)
+            if not mapped_commit_id:
+                raise BadRequestAppException(
+                    f"Commit mapping missing for commit sample state {source_sample_state.commit_id}"
+                )
+            self.session.add(CommitSampleState(
+                commit_id=mapped_commit_id,
+                sample_id=source_sample_state.sample_id,
+                project_id=forked_project.id,
+                state=source_sample_state.state,
+            ))
+
         source_branch_rows = await self.session.exec(
             select(Branch)
             .where(Branch.project_id == source_project_id)
@@ -602,6 +621,15 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         for row in annotation_list:
             await self.session.delete(row)
 
+        commit_sample_state_rows = await self.session.exec(
+            select(CommitSampleState).where(
+                CommitSampleState.project_id == project_id,
+                CommitSampleState.sample_id.in_(sample_ids),
+            )
+        )
+        for row in commit_sample_state_rows:
+            await self.session.delete(row)
+
         # Runtime artifacts cleanup (L3 sample-scoped records).
         job_id_rows = await self.session.exec(
             select(Job.id).where(Job.project_id == project_id)
@@ -726,6 +754,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             limit=limit,
             annotation_counts={},
             drafts_by_sample=set(),
+            review_states={},
         )
 
     def _build_project_sample_statement(
@@ -763,8 +792,14 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             )
             statement = statement.where(Sample.id.in_(batch_stmt))
 
-        labeled_subq = select(CommitAnnotationMap.sample_id).where(
-            CommitAnnotationMap.commit_id == head_commit_id
+        labeled_subq = select(CommitSampleState.sample_id).where(
+            CommitSampleState.commit_id == head_commit_id,
+            CommitSampleState.state.in_(
+                (
+                    CommitSampleReviewState.LABELED,
+                    CommitSampleReviewState.EMPTY_CONFIRMED,
+                )
+            ),
         ).distinct()
         if status == "labeled":
             statement = statement.where(Sample.id.in_(labeled_subq))
@@ -855,6 +890,27 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             for row in draft_result.all()
         }
 
+    async def _query_project_sample_review_states(
+            self,
+            *,
+            sample_ids: list[uuid.UUID],
+            head_commit_id: uuid.UUID | None,
+    ) -> dict[uuid.UUID, CommitSampleReviewState]:
+        if not sample_ids or not head_commit_id:
+            return {}
+        statement = select(
+            CommitSampleState.sample_id,
+            CommitSampleState.state,
+        ).where(
+            CommitSampleState.commit_id == head_commit_id,
+            CommitSampleState.sample_id.in_(sample_ids),
+        )
+        result = await self.session.exec(statement)
+        review_states: dict[uuid.UUID, CommitSampleReviewState] = {}
+        for sample_id_item, state in result.all():
+            review_states[sample_id_item] = state
+        return review_states
+
     async def list_project_samples_page(
             self,
             *,
@@ -908,6 +964,10 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             branch_name=branch_name,
             sample_ids=sample_ids,
         )
+        review_states = await self._query_project_sample_review_states(
+            sample_ids=sample_ids,
+            head_commit_id=head_commit_id,
+        )
 
         return ProjectSamplePage(
             samples=samples,
@@ -916,6 +976,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             limit=pagination.limit,
             annotation_counts=annotation_counts,
             drafts_by_sample=drafts_by_sample,
+            review_states=review_states,
         )
 
     # =========================================================================
@@ -1272,7 +1333,46 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
 
         new_commit.stats = await camap_service.get_commit_stats(new_commit.id)
         await self.session.flush()
-        await refresh_commit_hash(self.session, new_commit)
+
+    async def _apply_sample_review_state_for_commit(
+            self,
+            *,
+            project_id: uuid.UUID,
+            current_head_id: uuid.UUID | None,
+            new_commit: Commit,
+            touched_sample_ids: Set[uuid.UUID],
+            camap_mappings: list[tuple[uuid.UUID, uuid.UUID]],
+    ) -> None:
+        state_repo = CommitSampleStateRepository(self.session)
+        if current_head_id:
+            await state_repo.copy_commit_state(
+                source_commit_id=current_head_id,
+                target_commit_id=new_commit.id,
+                project_id=project_id,
+            )
+
+        touched_with_annotations = {
+            sample_id
+            for sample_id, _annotation_id in camap_mappings
+            if sample_id in touched_sample_ids
+        }
+
+        for sample_id in touched_sample_ids:
+            await state_repo.delete_commit_sample_state(
+                commit_id=new_commit.id,
+                sample_id=sample_id,
+            )
+            state = (
+                CommitSampleReviewState.LABELED
+                if sample_id in touched_with_annotations
+                else CommitSampleReviewState.EMPTY_CONFIRMED
+            )
+            await state_repo.set_commit_sample_state(
+                commit_id=new_commit.id,
+                sample_id=sample_id,
+                project_id=project_id,
+                state=state,
+            )
 
     @transactional
     async def save_annotations(
@@ -1351,6 +1451,14 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             touched_sample_ids=touched_sample_set,
             camap_mappings=camap_mappings,
         )
+        await self._apply_sample_review_state_for_commit(
+            project_id=project_id,
+            current_head_id=current_head_id,
+            new_commit=new_commit,
+            touched_sample_ids=touched_sample_set,
+            camap_mappings=camap_mappings,
+        )
+        await refresh_commit_hash(self.session, new_commit)
         await branch_repo.update_head(branch.id, new_commit.id)
 
         await self.session.refresh(new_commit)

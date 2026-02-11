@@ -34,6 +34,7 @@ export interface AnnotationSidebarProps {
 
     // Submit
     onSubmit: () => void;
+    submitLabel?: string;
 
     // Custom render for annotation item (optional, for FEDO to show extra info)
     renderAnnotationItem?: (annotation: Annotation, index: number) => React.ReactNode;
@@ -54,6 +55,7 @@ export const AnnotationSidebar: React.FC<AnnotationSidebarProps> = ({
                                                                         onPrev,
                                                                         onNext,
                                                                         onSubmit,
+                                                                        submitLabel,
                                                                         renderAnnotationItem,
                                                                         currentUserId,
                                                                         canEditAnnotation,
@@ -169,7 +171,7 @@ export const AnnotationSidebar: React.FC<AnnotationSidebarProps> = ({
                     disabled={!hasAnyEditPermission}
                     title={!hasAnyEditPermission ? t('annotation.workspace.noEditPermission') : undefined}
                 >
-                    {t('annotation.workspace.submitNext')}
+                    {submitLabel || t('annotation.workspace.submitNext')}
                 </Button>
             </div>
         </aside>

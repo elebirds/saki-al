@@ -19,6 +19,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.l2.annotation import Annotation
 from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.models.l2.commit_sample_state import CommitSampleState
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.label import Label
 
@@ -89,7 +90,26 @@ async def build_snapshot_signature(session: AsyncSession, commit_id: uuid.UUID) 
             item["confidence"],
         )
     )
-    return _sha256_text(_canonical_json(snapshot_items))
+
+    sample_state_rows = await session.exec(
+        select(
+            CommitSampleState.sample_id,
+            CommitSampleState.state,
+        ).where(CommitSampleState.commit_id == commit_id)
+    )
+    sample_states = [
+        {
+            "sample_id": str(sample_id),
+            "state": str(state),
+        }
+        for sample_id, state in sample_state_rows.all()
+    ]
+    sample_states.sort(key=lambda item: (item["sample_id"], item["state"]))
+
+    return _sha256_text(_canonical_json({
+        "annotations": snapshot_items,
+        "sample_states": sample_states,
+    }))
 
 
 async def calculate_commit_hash(session: AsyncSession, commit: Commit) -> str:
@@ -116,4 +136,3 @@ async def refresh_commit_hash(session: AsyncSession, commit: Commit) -> str:
     session.add(commit)
     await session.flush()
     return commit_hash
-

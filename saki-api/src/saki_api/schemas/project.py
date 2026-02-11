@@ -16,7 +16,7 @@ class ProjectBase(SQLModel):
     """
     name: str
     description: str | None = None
-    task_type: TaskType = TaskType.CLASSIFICATION
+    task_type: TaskType = TaskType.DETECTION
     status: ProjectStatus = ProjectStatus.ACTIVE
     config: dict[str, Any] = {}
 
@@ -27,7 +27,7 @@ class ProjectCreate(SQLModel):
     """
     name: str
     description: str | None = None
-    task_type: TaskType = TaskType.CLASSIFICATION
+    task_type: TaskType = TaskType.DETECTION
     config: dict[str, Any] = {}
     dataset_ids: list[uuid.UUID] = []  # Datasets to link on creation
 

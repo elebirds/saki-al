@@ -164,7 +164,7 @@ const ProjectList: React.FC = () => {
                 okButtonProps={{loading: creating}}
                 cancelButtonProps={{disabled: creating}}
             >
-                <Form form={form} layout="vertical" initialValues={{taskType: 'classification'}}>
+                <Form form={form} layout="vertical" initialValues={{taskType: 'detection'}}>
                     <Form.Item
                         name="name"
                         label={t('project.settings.basic.projectName')}
@@ -181,9 +181,9 @@ const ProjectList: React.FC = () => {
                         rules={[{required: true}]}
                     >
                         <Select>
-                            <Option value="classification">{taskTypeLabel.classification}</Option>
+                            <Option value="classification" disabled>{taskTypeLabel.classification}</Option>
                             <Option value="detection">{taskTypeLabel.detection}</Option>
-                            <Option value="segmentation">{taskTypeLabel.segmentation}</Option>
+                            <Option value="segmentation" disabled>{taskTypeLabel.segmentation}</Option>
                         </Select>
                     </Form.Item>
                     <Form.Item name="datasetIds" label={t('project.form.dataPool')}>

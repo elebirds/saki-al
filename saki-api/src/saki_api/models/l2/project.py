@@ -36,7 +36,7 @@ class ProjectBase(SQLModel):
     name: str = Field(index=True, description="Name of the project.")
     description: str | None = Field(default=None, description="Description of the project.")
     # Task type - determines ML model type (classification, detection, etc.)
-    task_type: TaskType = Field(default=TaskType.CLASSIFICATION, description="Type of ML task for active learning.")
+    task_type: TaskType = Field(default=TaskType.DETECTION, description="Type of ML task for active learning.")
     status: ProjectStatus = Field(default=ProjectStatus.ACTIVE, description="Current status of the project.")
 
     # 配置字段

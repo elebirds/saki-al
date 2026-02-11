@@ -160,7 +160,7 @@ const DatasetList: React.FC = () => {
                     form={form}
                     layout="vertical"
                     onFinish={handleCreate}
-                    initialValues={{annotationSystem: 'classic'}}
+                    initialValues={{type: 'classic'}}
                 >
                     <Form.Item
                         name="name"

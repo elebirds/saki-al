@@ -24,6 +24,10 @@ from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.project import Project, ProjectDataset
 from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
+from saki_api.models.l3.job import Job
+from saki_api.models.l3.job_task import JobTask
+from saki_api.models.l3.metric import JobSampleMetric
+from saki_api.models.l3.task_candidate_item import TaskCandidateItem
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.repositories.annotation import AnnotationRepository
 from saki_api.repositories.branch import BranchRepository
@@ -246,6 +250,107 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
 
         return links
 
+    async def _cascade_cleanup_unlinked_dataset_data(self, project_id: uuid.UUID, dataset_id: uuid.UUID) -> None:
+        sample_rows = await self.session.exec(
+            select(Sample.id).where(Sample.dataset_id == dataset_id)
+        )
+        sample_ids = list(sample_rows.all())
+        if not sample_ids:
+            return
+
+        # Clean commit sample index first to avoid FK conflicts when deleting annotations.
+        camap_rows = await self.session.exec(
+            select(CommitAnnotationMap).where(
+                CommitAnnotationMap.project_id == project_id,
+                CommitAnnotationMap.sample_id.in_(sample_ids),
+            )
+        )
+        for row in camap_rows:
+            await self.session.delete(row)
+
+        draft_rows = await self.session.exec(
+            select(AnnotationDraft).where(
+                AnnotationDraft.project_id == project_id,
+                AnnotationDraft.sample_id.in_(sample_ids),
+            )
+        )
+        for row in draft_rows:
+            await self.session.delete(row)
+
+        annotation_rows = await self.session.exec(
+            select(Annotation).where(
+                Annotation.project_id == project_id,
+                Annotation.sample_id.in_(sample_ids),
+            )
+        )
+        for row in annotation_rows:
+            await self.session.delete(row)
+
+        # Runtime artifacts cleanup (L3 sample-scoped records).
+        job_id_rows = await self.session.exec(
+            select(Job.id).where(Job.project_id == project_id)
+        )
+        job_ids = list(job_id_rows.all())
+        if job_ids:
+            metric_rows = await self.session.exec(
+                select(JobSampleMetric).where(
+                    JobSampleMetric.job_id.in_(job_ids),
+                    JobSampleMetric.sample_id.in_(sample_ids),
+                )
+            )
+            for row in metric_rows:
+                await self.session.delete(row)
+
+            task_id_rows = await self.session.exec(
+                select(JobTask.id).where(JobTask.job_id.in_(job_ids))
+            )
+            task_ids = list(task_id_rows.all())
+            if task_ids:
+                candidate_rows = await self.session.exec(
+                    select(TaskCandidateItem).where(
+                        TaskCandidateItem.task_id.in_(task_ids),
+                        TaskCandidateItem.sample_id.in_(sample_ids),
+                    )
+                )
+                for row in candidate_rows:
+                    await self.session.delete(row)
+
+        batch_item_rows = await self.session.exec(
+            select(AnnotationBatchItem)
+            .join(AnnotationBatch, AnnotationBatch.id == AnnotationBatchItem.batch_id)
+            .where(
+                AnnotationBatch.project_id == project_id,
+                AnnotationBatchItem.sample_id.in_(sample_ids),
+            )
+        )
+        affected_batch_ids: set[uuid.UUID] = set()
+        for row in batch_item_rows:
+            affected_batch_ids.add(row.batch_id)
+            await self.session.delete(row)
+
+        # Recompute batch counters after item cleanup.
+        for batch_id in affected_batch_ids:
+            total_result = await self.session.exec(
+                select(func.count()).select_from(
+                    select(AnnotationBatchItem).where(AnnotationBatchItem.batch_id == batch_id).subquery()
+                )
+            )
+            total_count = total_result.one() or 0
+            annotated_result = await self.session.exec(
+                select(func.count()).select_from(
+                    select(AnnotationBatchItem).where(
+                        AnnotationBatchItem.batch_id == batch_id,
+                        AnnotationBatchItem.is_annotated == True,
+                    ).subquery()
+                )
+            )
+            annotated_count = annotated_result.one() or 0
+            batch = await self.session.get(AnnotationBatch, batch_id)
+            if batch:
+                batch.total_count = int(total_count)
+                batch.annotated_count = int(annotated_count)
+                self.session.add(batch)
+
     @transactional
     async def unlink_datasets(self, project_id: uuid.UUID, dataset_ids: List[uuid.UUID]) -> int:
         """
@@ -263,6 +368,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         count = 0
         for dataset_id in dataset_ids:
             if await self.repository.remove_dataset(project_id, dataset_id):
+                await self._cascade_cleanup_unlinked_dataset_data(project_id, dataset_id)
                 count += 1
 
         return count

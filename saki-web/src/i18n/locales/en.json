@@ -374,6 +374,7 @@
       "updateError": "Failed to update project",
       "sections": {
         "basic": "Basic Info",
+        "datasets": "Datasets",
         "labels": "Labels",
         "members": "Members"
       },
@@ -451,6 +452,33 @@
           "role": "Role",
           "roleRequired": "Please select a role",
           "rolePlaceholder": "Select role"
+        }
+      },
+      "datasets": {
+        "title": "Linked Datasets",
+        "subtitle": "Manage dataset associations for this project.",
+        "add": "Link Datasets",
+        "addTitle": "Link Datasets",
+        "empty": "No linked datasets",
+        "noPermission": "You do not have permission to manage dataset associations.",
+        "loadLinkedError": "Failed to load linked datasets",
+        "loadAllError": "Failed to load datasets",
+        "linkSuccess": "Datasets linked successfully",
+        "linkError": "Failed to link datasets",
+        "unlinkSuccess": "Dataset unlinked successfully",
+        "unlinkError": "Failed to unlink dataset",
+        "unlinkTitle": "Unlink dataset {{name}}?",
+        "unlinkCascadeWarning": "This will cascade delete annotations, drafts, and runtime sample artifacts of this dataset in the current project.",
+        "unlink": "Unlink",
+        "columns": {
+          "dataset": "Dataset",
+          "type": "Type",
+          "actions": "Actions"
+        },
+        "form": {
+          "datasets": "Datasets",
+          "datasetsRequired": "Please select at least one dataset",
+          "datasetsPlaceholder": "Select datasets"
         }
       },
       "basic": {

@@ -194,6 +194,8 @@ export interface ApiService {
     updateProject(projectId: string, payload: Partial<Project>): Promise<Project>;
 
     getProjectDatasets(projectId: string): Promise<string[]>;
+    linkProjectDatasets(projectId: string, datasetIds: string[]): Promise<string[]>;
+    unlinkProjectDatasets(projectId: string, datasetIds: string[]): Promise<number>;
 
     getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
 

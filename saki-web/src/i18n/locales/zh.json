@@ -374,6 +374,7 @@
       "updateError": "更新项目失败",
       "sections": {
         "basic": "基本信息",
+        "datasets": "数据集关联",
         "labels": "标签",
         "members": "成员"
       },
@@ -451,6 +452,33 @@
           "role": "角色",
           "roleRequired": "请选择角色",
           "rolePlaceholder": "选择角色"
+        }
+      },
+      "datasets": {
+        "title": "关联数据集",
+        "subtitle": "管理该项目关联的数据集。",
+        "add": "关联数据集",
+        "addTitle": "关联数据集",
+        "empty": "暂无关联数据集",
+        "noPermission": "无权限管理数据集关联。",
+        "loadLinkedError": "加载关联数据集失败",
+        "loadAllError": "加载数据集列表失败",
+        "linkSuccess": "数据集关联成功",
+        "linkError": "数据集关联失败",
+        "unlinkSuccess": "数据集已解除关联",
+        "unlinkError": "解除关联失败",
+        "unlinkTitle": "确认解除关联数据集 {{name}}？",
+        "unlinkCascadeWarning": "该操作会级联删除此数据集在当前项目中的标注、草稿和运行时样本产物。",
+        "unlink": "解除关联",
+        "columns": {
+          "dataset": "数据集",
+          "type": "类型",
+          "actions": "操作"
+        },
+        "form": {
+          "datasets": "数据集",
+          "datasetsRequired": "请至少选择一个数据集",
+          "datasetsPlaceholder": "选择数据集"
         }
       },
       "basic": {

@@ -31,7 +31,7 @@ import {useAuthStore} from '../../store/authStore'
 import {useParams, useSearchParams} from 'react-router-dom'
 import {api} from '../../services/api'
 import {useResourcePermission} from '../../hooks'
-import type {Project, ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate, ResourceMember, Role} from '../../types'
+import type {Dataset, Project, ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate, ResourceMember, Role} from '../../types'
 
 const {Title, Text} = Typography
 
@@ -50,6 +50,7 @@ const ProjectSettings: React.FC = () => {
 
     const sectionItems = [
         {key: 'basic', label: t('project.settings.sections.basic')},
+        {key: 'datasets', label: t('project.settings.sections.datasets')},
         {key: 'labels', label: t('project.settings.sections.labels')},
         {key: 'members', label: t('project.settings.sections.members')},
     ]
@@ -95,6 +96,13 @@ const ProjectSettings: React.FC = () => {
     const [editingMember, setEditingMember] = useState<ResourceMember | null>(null)
     const [memberEditForm] = Form.useForm()
     const currentUser = useAuthStore((state) => state.user)
+
+    const [linkedDatasetIds, setLinkedDatasetIds] = useState<string[]>([])
+    const [allDatasets, setAllDatasets] = useState<Dataset[]>([])
+    const [datasetsLoading, setDatasetsLoading] = useState(false)
+    const [datasetModalOpen, setDatasetModalOpen] = useState(false)
+    const [datasetSaving, setDatasetSaving] = useState(false)
+    const [datasetForm] = Form.useForm()
 
     useEffect(() => {
         const validKeys = new Set(sectionItems.map((item) => item.key))
@@ -165,6 +173,28 @@ const ProjectSettings: React.FC = () => {
         }
     }, [t])
 
+    const loadProjectDatasetIds = useCallback(async () => {
+        if (!projectId) return
+        setDatasetsLoading(true)
+        try {
+            const ids = await api.getProjectDatasets(projectId)
+            setLinkedDatasetIds(ids)
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.datasets.loadLinkedError'))
+        } finally {
+            setDatasetsLoading(false)
+        }
+    }, [projectId, t])
+
+    const loadAllDatasets = useCallback(async () => {
+        try {
+            const response = await api.getDatasets(1, 1000)
+            setAllDatasets(response.items || [])
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.datasets.loadAllError'))
+        }
+    }, [t])
+
     useEffect(() => {
         loadProject()
     }, [loadProject])
@@ -186,6 +216,13 @@ const ProjectSettings: React.FC = () => {
             }
         }
     }, [section, canManageMembers, loadMembers, loadRoles, loadUsers])
+
+    useEffect(() => {
+        if (section === 'datasets') {
+            loadProjectDatasetIds()
+            loadAllDatasets()
+        }
+    }, [section, loadProjectDatasetIds, loadAllDatasets])
 
     const handleSaveProject = async (values: any) => {
         if (!projectId) return
@@ -321,6 +358,39 @@ const ProjectSettings: React.FC = () => {
             message.error(error.message || t('project.settings.memberRemoveError'))
         } finally {
             setMemberActionId(null)
+        }
+    }
+
+    const handleLinkDatasets = async () => {
+        if (!projectId) return
+        try {
+            const values = await datasetForm.validateFields()
+            const datasetIds: string[] = values.datasetIds || []
+            setDatasetSaving(true)
+            await api.linkProjectDatasets(projectId, datasetIds)
+            message.success(t('project.settings.datasets.linkSuccess'))
+            setDatasetModalOpen(false)
+            datasetForm.resetFields()
+            loadProjectDatasetIds()
+        } catch (error: any) {
+            if (error?.errorFields) return
+            message.error(error.message || t('project.settings.datasets.linkError'))
+        } finally {
+            setDatasetSaving(false)
+        }
+    }
+
+    const handleUnlinkDataset = async (datasetId: string) => {
+        if (!projectId) return
+        setDatasetSaving(true)
+        try {
+            await api.unlinkProjectDatasets(projectId, [datasetId])
+            message.success(t('project.settings.datasets.unlinkSuccess'))
+            loadProjectDatasetIds()
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.datasets.unlinkError'))
+        } finally {
+            setDatasetSaving(false)
         }
     }
 
@@ -466,6 +536,16 @@ const ProjectSettings: React.FC = () => {
         const existingIds = new Set(members.map((member) => member.userId))
         return users.filter((user) => !existingIds.has(user.id))
     }, [members, users])
+
+    const linkedDatasets = useMemo(
+        () => allDatasets.filter((dataset) => linkedDatasetIds.includes(dataset.id)),
+        [allDatasets, linkedDatasetIds]
+    )
+
+    const addableDatasets = useMemo(
+        () => allDatasets.filter((dataset) => !linkedDatasetIds.includes(dataset.id)),
+        [allDatasets, linkedDatasetIds]
+    )
 
     const renderBasicInfo = () => (
         <Card className="!border-github-border !bg-github-panel">
@@ -683,6 +763,113 @@ const ProjectSettings: React.FC = () => {
         </Card>
     )
 
+    const renderDatasets = () => (
+        <Card className="!border-github-border !bg-github-panel">
+            <div className="mb-4 flex items-center justify-between">
+                <div>
+                    <Title level={4} className="!mb-0">{t('project.settings.datasets.title')}</Title>
+                    <Text type="secondary">{t('project.settings.datasets.subtitle')}</Text>
+                </div>
+                <Button
+                    type="primary"
+                    icon={<PlusOutlined/>}
+                    onClick={() => setDatasetModalOpen(true)}
+                    disabled={!canUpdateProject}
+                >
+                    {t('project.settings.datasets.add')}
+                </Button>
+            </div>
+
+            {!canUpdateProject ? (
+                <div className="rounded-md border border-dashed border-github-border p-4 text-sm text-github-muted">
+                    {t('project.settings.datasets.noPermission')}
+                </div>
+            ) : (
+                <Spin spinning={datasetsLoading}>
+                    <Table
+                        rowKey="id"
+                        dataSource={linkedDatasets}
+                        pagination={false}
+                        locale={{emptyText: t('project.settings.datasets.empty')}}
+                        columns={[
+                            {
+                                title: t('project.settings.datasets.columns.dataset'),
+                                dataIndex: 'name',
+                                key: 'name',
+                                render: (value: string, record: Dataset) => (
+                                    <div className="min-w-0">
+                                        <div className="truncate text-github-text">{value}</div>
+                                        {record.description ? (
+                                            <div className="truncate text-xs text-github-muted">{record.description}</div>
+                                        ) : null}
+                                    </div>
+                                ),
+                            },
+                            {
+                                title: t('project.settings.datasets.columns.type'),
+                                dataIndex: 'type',
+                                key: 'type',
+                                width: 140,
+                                render: (value: string) => (
+                                    <Tag className="!m-0">{value}</Tag>
+                                ),
+                            },
+                            {
+                                title: t('project.settings.datasets.columns.actions'),
+                                key: 'actions',
+                                width: 140,
+                                render: (_, record: Dataset) => (
+                                    <Popconfirm
+                                        title={t('project.settings.datasets.unlinkTitle', {name: record.name})}
+                                        description={t('project.settings.datasets.unlinkCascadeWarning')}
+                                        okText={t('project.settings.datasets.unlink')}
+                                        cancelText={t('common.cancel')}
+                                        onConfirm={() => handleUnlinkDataset(record.id)}
+                                    >
+                                        <Button
+                                            type="text"
+                                            danger
+                                            icon={<DeleteOutlined/>}
+                                            loading={datasetSaving}
+                                        />
+                                    </Popconfirm>
+                                ),
+                            },
+                        ]}
+                    />
+                </Spin>
+            )}
+
+            <Modal
+                title={t('project.settings.datasets.addTitle')}
+                open={datasetModalOpen}
+                onCancel={() => setDatasetModalOpen(false)}
+                onOk={handleLinkDatasets}
+                confirmLoading={datasetSaving}
+                okButtonProps={{disabled: !canUpdateProject}}
+            >
+                <Form form={datasetForm} layout="vertical">
+                    <Form.Item
+                        name="datasetIds"
+                        label={t('project.settings.datasets.form.datasets')}
+                        rules={[{required: true, message: t('project.settings.datasets.form.datasetsRequired')}]}
+                    >
+                        <Select
+                            mode="multiple"
+                            showSearch
+                            optionFilterProp="label"
+                            placeholder={t('project.settings.datasets.form.datasetsPlaceholder')}
+                            options={addableDatasets.map((dataset) => ({
+                                value: dataset.id,
+                                label: `${dataset.name} (${dataset.type})`,
+                            }))}
+                        />
+                    </Form.Item>
+                </Form>
+            </Modal>
+        </Card>
+    )
+
     return (
         <div className="flex h-full flex-col gap-6">
             <div className="flex flex-1 gap-6 overflow-hidden">
@@ -698,6 +885,7 @@ const ProjectSettings: React.FC = () => {
                 </div>
                 <div className="flex-1 min-w-0 overflow-y-auto pr-2">
                     {section === 'basic' && renderBasicInfo()}
+                    {section === 'datasets' && renderDatasets()}
                     {section === 'labels' && renderLabels()}
                     {section === 'members' && renderMembers()}
                 </div>

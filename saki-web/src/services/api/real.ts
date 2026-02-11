@@ -684,6 +684,20 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async linkProjectDatasets(projectId: string, datasetIds: string[]): Promise<string[]> {
+        const response = await this.client.post<string[]>(`/projects/${projectId}/datasets`, {
+            datasetIds,
+        });
+        return response.data;
+    }
+
+    async unlinkProjectDatasets(projectId: string, datasetIds: string[]): Promise<number> {
+        const response = await this.client.delete<number>(`/projects/${projectId}/datasets`, {
+            data: {datasetIds},
+        });
+        return response.data;
+    }
+
     async getProjectBranches(projectId: string): Promise<ProjectBranch[]> {
         const response = await this.client.get<ProjectBranch[]>(`/branches/projects/${projectId}/branches`);
         return response.data;

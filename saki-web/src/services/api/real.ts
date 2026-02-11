@@ -20,6 +20,7 @@ import {
     Project,
     ProjectBranch,
     ProjectCreate,
+    ProjectForkCreate,
     ProjectLabel,
     ProjectLabelCreate,
     ProjectLabelUpdate,
@@ -666,6 +667,11 @@ export class RealApiService implements ApiService {
 
     async createProject(payload: ProjectCreate): Promise<Project> {
         const response = await this.client.post<Project>('/projects', payload);
+        return response.data;
+    }
+
+    async forkProject(projectId: string, payload: ProjectForkCreate): Promise<Project> {
+        const response = await this.client.post<Project>(`/projects/${projectId}/fork`, payload);
         return response.data;
     }
 

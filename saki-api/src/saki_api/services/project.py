@@ -5,6 +5,7 @@ Project Service - Business logic for Project operations.
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, List, Sequence, Set
 
 from sqlalchemy import asc, desc, func, or_
@@ -15,13 +16,14 @@ from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppE
 from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID
 from saki_api.db.transaction import transactional
 from saki_api.models import ResourceType
-from saki_api.models.enums import AuthorType
+from saki_api.models.enums import AuthorType, ProjectStatus
 from saki_api.models.l1.sample import Sample
 from saki_api.models.l2.annotation import Annotation
 from saki_api.models.l2.annotation_draft import AnnotationDraft
 from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l2.commit import Commit
+from saki_api.models.l2.label import Label
 from saki_api.models.l2.project import Project, ProjectDataset
 from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
 from saki_api.models.l3.job import Job
@@ -36,7 +38,7 @@ from saki_api.repositories.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.query import Pagination
 from saki_api.repositories.resource_member import ResourceMemberRepository
-from saki_api.schemas.project import ProjectCreate, ProjectUpdate
+from saki_api.schemas.project import ProjectCreate, ProjectForkCreate, ProjectUpdate
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
@@ -195,6 +197,234 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             "branch_count": await self.repository.count_branches(project_id),
             "commit_count": await self.repository.count_commits(project_id),
         }
+
+    @staticmethod
+    def _deep_clone_json(value: Any) -> Any:
+        return json.loads(json.dumps(value))
+
+    async def _fork_copy_commits(
+            self,
+            *,
+            source_project_id: uuid.UUID,
+            target_project_id: uuid.UUID,
+    ) -> dict[uuid.UUID, uuid.UUID]:
+        source_commit_rows = await self.session.exec(
+            select(Commit)
+            .where(Commit.project_id == source_project_id)
+            .order_by(Commit.created_at.asc())
+        )
+        source_commits = list(source_commit_rows.all())
+        if not source_commits:
+            raise BadRequestAppException("Source project has no commit history to fork")
+
+        commit_id_map: dict[uuid.UUID, uuid.UUID] = {}
+        pending_commits = {item.id: item for item in source_commits}
+
+        while pending_commits:
+            progressed = False
+            for source_commit_id, source_commit in list(pending_commits.items()):
+                if source_commit.parent_id and source_commit.parent_id not in commit_id_map:
+                    continue
+
+                cloned_commit = Commit(
+                    project_id=target_project_id,
+                    parent_id=commit_id_map.get(source_commit.parent_id),
+                    message=source_commit.message,
+                    author_type=source_commit.author_type,
+                    author_id=source_commit.author_id,
+                    stats=self._deep_clone_json(source_commit.stats or {}),
+                    extra=self._deep_clone_json(source_commit.extra or {}),
+                    created_at=source_commit.created_at,
+                    updated_at=source_commit.updated_at,
+                )
+                self.session.add(cloned_commit)
+                commit_id_map[source_commit_id] = cloned_commit.id
+                pending_commits.pop(source_commit_id)
+                progressed = True
+
+            if not progressed:
+                raise BadRequestAppException("Source commit graph is invalid (missing parent commit)")
+
+        await self.session.flush()
+        return commit_id_map
+
+    async def _fork_copy_annotations(
+            self,
+            *,
+            source_project_id: uuid.UUID,
+            target_project_id: uuid.UUID,
+            label_id_map: dict[uuid.UUID, uuid.UUID],
+    ) -> dict[uuid.UUID, uuid.UUID]:
+        source_annotation_rows = await self.session.exec(
+            select(Annotation)
+            .where(Annotation.project_id == source_project_id)
+            .order_by(Annotation.created_at.asc())
+        )
+        source_annotations = list(source_annotation_rows.all())
+        if not source_annotations:
+            return {}
+
+        annotation_id_map: dict[uuid.UUID, uuid.UUID] = {}
+        pending_annotations = {item.id: item for item in source_annotations}
+
+        while pending_annotations:
+            progressed = False
+            for source_annotation_id, source_annotation in list(pending_annotations.items()):
+                if source_annotation.parent_id and source_annotation.parent_id not in annotation_id_map:
+                    continue
+
+                mapped_label_id = label_id_map.get(source_annotation.label_id)
+                if not mapped_label_id:
+                    raise BadRequestAppException(
+                        f"Source annotation label {source_annotation.label_id} not found during fork"
+                    )
+
+                cloned_annotation = Annotation(
+                    sample_id=source_annotation.sample_id,
+                    label_id=mapped_label_id,
+                    project_id=target_project_id,
+                    group_id=source_annotation.group_id,
+                    lineage_id=source_annotation.lineage_id,
+                    view_role=source_annotation.view_role,
+                    parent_id=annotation_id_map.get(source_annotation.parent_id),
+                    type=source_annotation.type,
+                    source=source_annotation.source,
+                    data=self._deep_clone_json(source_annotation.data or {}),
+                    extra=self._deep_clone_json(source_annotation.extra or {}),
+                    confidence=source_annotation.confidence,
+                    annotator_id=source_annotation.annotator_id,
+                    created_at=source_annotation.created_at,
+                    updated_at=source_annotation.updated_at,
+                )
+                self.session.add(cloned_annotation)
+                annotation_id_map[source_annotation_id] = cloned_annotation.id
+                pending_annotations.pop(source_annotation_id)
+                progressed = True
+
+            if not progressed:
+                raise BadRequestAppException("Source annotation graph is invalid (missing parent annotation)")
+
+        await self.session.flush()
+        return annotation_id_map
+
+    @transactional
+    async def fork_project(
+            self,
+            *,
+            source_project_id: uuid.UUID,
+            payload: ProjectForkCreate,
+            user_id: uuid.UUID,
+    ) -> Project:
+        source_project = await self.repository.get_by_id(source_project_id)
+        if not source_project:
+            raise NotFoundAppException(f"Project {source_project_id} not found")
+
+        fork_name = str(payload.name or "").strip()
+        if not fork_name:
+            raise BadRequestAppException("Fork project name cannot be empty")
+
+        cloned_config = self._deep_clone_json(source_project.config or {})
+        if payload.config:
+            cloned_config.update(self._deep_clone_json(payload.config))
+        cloned_config["fork_meta"] = {
+            "source_project_id": str(source_project_id),
+            "all_branches": True,
+            "forked_at": datetime.now(UTC).isoformat(),
+        }
+
+        forked_project = Project(
+            name=fork_name,
+            description=payload.description if payload.description is not None else source_project.description,
+            task_type=source_project.task_type,
+            status=ProjectStatus.ACTIVE,
+            config=cloned_config,
+        )
+        self.session.add(forked_project)
+        await self.session.flush()
+
+        source_dataset_ids = await self.repository.get_linked_dataset_ids(source_project_id)
+        for dataset_id in source_dataset_ids:
+            self.session.add(ProjectDataset(project_id=forked_project.id, dataset_id=dataset_id))
+
+        source_labels = await self.label_repo.get_by_project(source_project_id)
+        label_id_map: dict[uuid.UUID, uuid.UUID] = {}
+        for source_label in source_labels:
+            cloned_label = Label(
+                project_id=forked_project.id,
+                name=source_label.name,
+                color=source_label.color,
+                description=source_label.description,
+                sort_order=source_label.sort_order,
+                shortcut=source_label.shortcut,
+                created_at=source_label.created_at,
+                updated_at=source_label.updated_at,
+            )
+            self.session.add(cloned_label)
+            label_id_map[source_label.id] = cloned_label.id
+
+        await self.session.flush()
+        commit_id_map = await self._fork_copy_commits(
+            source_project_id=source_project_id,
+            target_project_id=forked_project.id,
+        )
+        annotation_id_map = await self._fork_copy_annotations(
+            source_project_id=source_project_id,
+            target_project_id=forked_project.id,
+            label_id_map=label_id_map,
+        )
+
+        source_camap_rows = await self.session.exec(
+            select(CommitAnnotationMap).where(CommitAnnotationMap.project_id == source_project_id)
+        )
+        for source_camap in source_camap_rows.all():
+            mapped_commit_id = commit_id_map.get(source_camap.commit_id)
+            mapped_annotation_id = annotation_id_map.get(source_camap.annotation_id)
+            if not mapped_commit_id:
+                raise BadRequestAppException(f"Commit mapping missing for commit {source_camap.commit_id}")
+            if not mapped_annotation_id:
+                raise BadRequestAppException(
+                    f"Annotation mapping missing for annotation {source_camap.annotation_id}"
+                )
+            self.session.add(CommitAnnotationMap(
+                commit_id=mapped_commit_id,
+                sample_id=source_camap.sample_id,
+                annotation_id=mapped_annotation_id,
+                project_id=forked_project.id,
+            ))
+
+        source_branch_rows = await self.session.exec(
+            select(Branch)
+            .where(Branch.project_id == source_project_id)
+            .order_by(Branch.created_at.asc())
+        )
+        source_branches = list(source_branch_rows.all())
+        if not source_branches:
+            raise BadRequestAppException("Source project has no branch to fork")
+
+        for source_branch in source_branches:
+            mapped_head_commit_id = commit_id_map.get(source_branch.head_commit_id)
+            if not mapped_head_commit_id:
+                raise BadRequestAppException(f"Branch head mapping missing for commit {source_branch.head_commit_id}")
+            self.session.add(Branch(
+                project_id=forked_project.id,
+                name=source_branch.name,
+                head_commit_id=mapped_head_commit_id,
+                description=source_branch.description,
+                is_protected=source_branch.is_protected,
+                created_at=source_branch.created_at,
+                updated_at=source_branch.updated_at,
+            ))
+
+        await self.resource_member_repo.assign_role(
+            resource_type=ResourceType.PROJECT,
+            resource_id=forked_project.id,
+            user_id=user_id,
+            role_id=PROJECT_OWNER_ROLE_ID,
+        )
+
+        await self.session.flush()
+        await self.session.refresh(forked_project)
+        return forked_project
 
     # =========================================================================
     # Dataset Link Management

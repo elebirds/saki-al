@@ -15,6 +15,7 @@ from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.project import (
     ProjectCreate,
     ProjectDatasetLink,
+    ProjectForkCreate,
     ProjectRead,
     ProjectReadMinimal,
     ProjectUpdate,
@@ -148,6 +149,29 @@ async def get_project(
     Get a project by ID with aggregated counts.
     """
     project_with_counts = await project_service.get_with_counts(project_id)
+    return ProjectRead.model_validate(project_with_counts)
+
+
+@router.post("/{project_id}/fork", response_model=ProjectRead, dependencies=[
+    Depends(require_permission(Permissions.PROJECT_CREATE_ALL)),
+    Depends(require_permission(Permissions.PROJECT_READ, ResourceType.PROJECT, "project_id")),
+])
+async def fork_project(
+        *,
+        project_id: uuid.UUID,
+        payload: ProjectForkCreate,
+        project_service: ProjectServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """
+    Fork a project by copying all branches, commits, labels and annotations.
+    """
+    forked = await project_service.fork_project(
+        source_project_id=project_id,
+        payload=payload,
+        user_id=current_user_id,
+    )
+    project_with_counts = await project_service.get_with_counts(forked.id)
     return ProjectRead.model_validate(project_with_counts)
 
 

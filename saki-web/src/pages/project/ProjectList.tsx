@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useState} from 'react'
 import {Button, Card, Form, Input, message, Modal, Select, Tag, Tooltip, Typography} from 'antd'
 import {useNavigate} from 'react-router-dom'
 import {useTranslation} from 'react-i18next'
-import {PlusOutlined} from '@ant-design/icons'
+import {ForkOutlined, PlusOutlined} from '@ant-design/icons'
 import {api} from '../../services/api'
 import {PaginatedList} from '../../components/common/PaginatedList'
 import {Dataset, Project, TaskType} from '../../types'
@@ -16,10 +16,14 @@ const ProjectList: React.FC = () => {
     const navigate = useNavigate()
     const [createOpen, setCreateOpen] = useState(false)
     const [creating, setCreating] = useState(false)
+    const [forkOpen, setForkOpen] = useState(false)
+    const [forking, setForking] = useState(false)
+    const [forkSource, setForkSource] = useState<Project | null>(null)
     const [refreshKey, setRefreshKey] = useState(0)
     const [datasets, setDatasets] = useState<Dataset[]>([])
     const [datasetsLoading, setDatasetsLoading] = useState(false)
     const [form] = Form.useForm()
+    const [forkForm] = Form.useForm()
     const {can} = usePermission()
     const canCreate = can('project:create')
 
@@ -74,6 +78,39 @@ const ProjectList: React.FC = () => {
         }
     }
 
+    const openForkModal = (project: Project, event: React.MouseEvent<HTMLElement>) => {
+        event.stopPropagation()
+        setForkSource(project)
+        setForkOpen(true)
+        forkForm.setFieldsValue({
+            name: `${project.name}-fork`,
+            description: project.description || undefined,
+        })
+    }
+
+    const handleForkProject = async () => {
+        if (!forkSource) return
+        try {
+            const values = await forkForm.validateFields()
+            setForking(true)
+            const created = await api.forkProject(forkSource.id, {
+                name: values.name,
+                description: values.description,
+            })
+            message.success(t('project.list.forkSuccess'))
+            setForkOpen(false)
+            setForkSource(null)
+            forkForm.resetFields()
+            setRefreshKey((v) => v + 1)
+            navigate(`/projects/${created.id}`)
+        } catch (error: any) {
+            if (error?.errorFields) return
+            message.error(error?.message || t('project.list.forkError'))
+        } finally {
+            setForking(false)
+        }
+    }
+
     return (
         <div className="flex h-full flex-col">
             <div className="mb-4 flex items-center justify-between">
@@ -123,6 +160,15 @@ const ProjectList: React.FC = () => {
                                             )}
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2">
+                                            {canCreate ? (
+                                                <Button
+                                                    size="small"
+                                                    icon={<ForkOutlined/>}
+                                                    onClick={(event) => openForkModal(project, event)}
+                                                >
+                                                    {t('project.list.forkProject')}
+                                                </Button>
+                                            ) : null}
                                             <Tag
                                                 color="blue">{taskTypeLabel[project.taskType] || project.taskType}</Tag>
                                             <Tag color={project.status === 'active' ? 'green' : 'default'}>
@@ -196,6 +242,39 @@ const ProjectList: React.FC = () => {
                                 label: dataset.name,
                             }))}
                         />
+                    </Form.Item>
+                </Form>
+            </Modal>
+
+            <Modal
+                title={t('project.list.forkTitle')}
+                open={forkOpen}
+                onCancel={() => {
+                    setForkOpen(false)
+                    setForkSource(null)
+                    forkForm.resetFields()
+                }}
+                onOk={handleForkProject}
+                okText={t('project.list.forkProject')}
+                okButtonProps={{loading: forking}}
+                cancelButtonProps={{disabled: forking}}
+            >
+                <Form form={forkForm} layout="vertical">
+                    <Form.Item label={t('project.list.forkSource')}>
+                        <Input value={forkSource?.name || ''} disabled/>
+                    </Form.Item>
+                    <Form.Item
+                        name="name"
+                        label={t('project.list.forkName')}
+                        rules={[{required: true, message: t('project.list.forkNameRequired')}]}
+                    >
+                        <Input placeholder={t('project.list.forkNamePlaceholder')} autoComplete="off"/>
+                    </Form.Item>
+                    <Form.Item
+                        name="description"
+                        label={t('project.list.forkDescription')}
+                    >
+                        <Input.TextArea rows={3} placeholder={t('project.list.forkDescriptionPlaceholder')}/>
                     </Form.Item>
                 </Form>
             </Modal>

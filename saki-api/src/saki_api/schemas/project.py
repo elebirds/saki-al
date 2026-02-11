@@ -32,6 +32,15 @@ class ProjectCreate(SQLModel):
     dataset_ids: list[uuid.UUID] = []  # Datasets to link on creation
 
 
+class ProjectForkCreate(SQLModel):
+    """
+    Schema for forking an existing project.
+    """
+    name: str
+    description: str | None = None
+    config: dict[str, Any] | None = None
+
+
 class ProjectUpdate(SQLModel):
     """
     Schema for updating a project.

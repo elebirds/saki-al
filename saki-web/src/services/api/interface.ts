@@ -19,6 +19,7 @@ import {
     Project,
     ProjectBranch,
     ProjectCreate,
+    ProjectForkCreate,
     ProjectLabel,
     ProjectLabelCreate,
     ProjectLabelUpdate,
@@ -188,6 +189,7 @@ export interface ApiService {
     getProjects(page?: number, limit?: number): Promise<PaginationResponse<Project>>;
 
     createProject(payload: ProjectCreate): Promise<Project>;
+    forkProject(projectId: string, payload: ProjectForkCreate): Promise<Project>;
 
     getProject(id: string): Promise<Project>;
 

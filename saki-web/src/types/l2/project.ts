@@ -24,6 +24,12 @@ export interface ProjectCreate {
     config?: Record<string, any>;
 }
 
+export interface ProjectForkCreate {
+    name: string;
+    description?: string;
+    config?: Record<string, any>;
+}
+
 export interface ProjectReadMinimal {
     id: string;
     name: string;

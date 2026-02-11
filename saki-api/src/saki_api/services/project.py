@@ -258,15 +258,26 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         if not sample_ids:
             return
 
-        # Clean commit sample index first to avoid FK conflicts when deleting annotations.
-        camap_rows = await self.session.exec(
-            select(CommitAnnotationMap).where(
-                CommitAnnotationMap.project_id == project_id,
-                CommitAnnotationMap.sample_id.in_(sample_ids),
+        annotation_rows = await self.session.exec(
+            select(Annotation).where(
+                Annotation.project_id == project_id,
+                Annotation.sample_id.in_(sample_ids),
             )
         )
-        for row in camap_rows:
-            await self.session.delete(row)
+        annotation_list = list(annotation_rows.all())
+        annotation_ids = [row.id for row in annotation_list]
+
+        # Clean commit annotation map by annotation_id first to avoid FK violations.
+        if annotation_ids:
+            camap_rows = await self.session.exec(
+                select(CommitAnnotationMap).where(
+                    CommitAnnotationMap.annotation_id.in_(annotation_ids),
+                )
+            )
+            for row in camap_rows:
+                await self.session.delete(row)
+            # Force delete order: CAMap must be flushed before deleting annotations.
+            await self.session.flush()
 
         draft_rows = await self.session.exec(
             select(AnnotationDraft).where(
@@ -277,13 +288,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         for row in draft_rows:
             await self.session.delete(row)
 
-        annotation_rows = await self.session.exec(
-            select(Annotation).where(
-                Annotation.project_id == project_id,
-                Annotation.sample_id.in_(sample_ids),
-            )
-        )
-        for row in annotation_rows:
+        for row in annotation_list:
             await self.session.delete(row)
 
         # Runtime artifacts cleanup (L3 sample-scoped records).

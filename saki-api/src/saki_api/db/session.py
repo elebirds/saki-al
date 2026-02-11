@@ -15,27 +15,15 @@ RUNTIME_SCHEMA_META_TABLE = "runtime_schema_meta"
 
 def get_engine_kwargs() -> dict:
     """
-    根据数据库驱动类型动态构建引擎参数。
-
-    SQLite 不支持连接池，需要特殊处理。
+    构建 PostgreSQL 异步引擎参数。
     """
-    kwargs: dict = {
+    return {
         "echo": settings.SQL_ECHO,
         "pool_pre_ping": True,
+        "pool_size": settings.POOL_SIZE,
+        "max_overflow": settings.MAX_OVERFLOW,
+        "pool_recycle": settings.POOL_RECYCLE,
     }
-
-    if "sqlite" not in settings.DATABASE_URL:
-        kwargs.update(
-            {
-                "pool_size": settings.POOL_SIZE,
-                "max_overflow": settings.MAX_OVERFLOW,
-                "pool_recycle": settings.POOL_RECYCLE,
-            }
-        )
-    else:
-        kwargs["connect_args"] = {"check_same_thread": False}
-
-    return kwargs
 
 
 engine: AsyncEngine = create_async_engine(settings.DATABASE_URL, **get_engine_kwargs())

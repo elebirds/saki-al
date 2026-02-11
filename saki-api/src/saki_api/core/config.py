@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         PROJECT_NAME: The name of the project.
         API_V1_STR: The base URL path for V1 of the API.
         BACKEND_CORS_ORIGINS: A list of origins that are allowed to make cross-origin requests.
-        DATABASE_URL: The database connection string (e.g., sqlite:///./saki.db or postgresql://user:password@localhost/dbname).
+        DATABASE_URL: The database connection string (PostgreSQL only).
     """
     PROJECT_NAME: str = "Saki Active Learning"
     API_V1_STR: str = "/api/v1"
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/saki"
     SQL_ECHO: bool = False
 
-    # Connection pool settings (only used for non-SQLite databases)
+    # Connection pool settings
     POOL_SIZE: int = 20
     MAX_OVERFLOW: int = 10
     POOL_RECYCLE: int = 1800  # 30 minutes
@@ -34,17 +34,18 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_db_connection(cls, v: str) -> str:
         """
-        自动将同步数据库 URL 转换为异步驱动 URL。
-        
-        - sqlite:/// -> sqlite+aiosqlite:///
-        - postgresql:// -> postgresql+psycopg://
+        强制使用 PostgreSQL，并统一转换为 psycopg 异步驱动 URL。
         """
         if isinstance(v, str):
-            if v.startswith("sqlite:///"):
-                return v.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
-            if v.startswith("postgresql://"):
+            raw = v.strip()
+            if raw.startswith("postgres://"):
+                return raw.replace("postgres://", "postgresql+psycopg://", 1)
+            if raw.startswith("postgresql+psycopg://"):
+                return raw
+            if raw.startswith("postgresql://"):
                 # 显式使用 psycopg 驱动 (v3)
-                return v.replace("postgresql://", "postgresql+psycopg://", 1)
+                return raw.replace("postgresql://", "postgresql+psycopg://", 1)
+            raise ValueError("DATABASE_URL 必须使用 PostgreSQL（postgresql:// 或 postgresql+psycopg://）。")
         return v
 
     @field_validator("RUNTIME_EXECUTOR_ALLOWLIST", mode="before")

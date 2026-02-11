@@ -8,7 +8,7 @@ services:
       - "8000:8000"
       - "50051:50051"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-saki}:${POSTGRES_PASSWORD:-saki_password}@postgres:5432/${POSTGRES_DB:-saki}}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-saki}}
       - SECRET_KEY=${SECRET_KEY:-YOUR_SUPER_SECRET_KEY_CHANGE_ME_IN_PRODUCTION}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173","http://localhost"]}
       - UPLOAD_DIR=/app/data/uploads
@@ -47,8 +47,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
-      minio:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -94,7 +92,7 @@ services:
     networks:
       - saki-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saki}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -102,17 +100,19 @@ services:
   minio:
     image: minio/minio:latest
     container_name: saki-minio
+    profiles:
+      - minio
     ports:
       - "9000:9000"      # API 端口
       - "9001:9001"      # 控制台端口
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
       - ./data/minio:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -159,6 +159,11 @@ services:
     container_name: saki-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
     networks:
       - saki-network

@@ -68,14 +68,25 @@ def normalize_simulation_config(raw_config: dict[str, Any] | None) -> dict[str, 
         except Exception:
             oracle_commit_id_raw = ""
 
+    seed_ratio = float(config.get("seed_ratio", 0.05) or 0.05)
+    step_ratio = float(config.get("step_ratio", 0.05) or 0.05)
+    seeds_raw = config.get("seeds") or [0, 1, 2, 3, 4]
+    seeds: list[int] = []
+    for item in seeds_raw:
+        try:
+            seeds.append(int(item))
+        except Exception:
+            continue
+    if not seeds:
+        seeds = [0, 1, 2, 3, 4]
+
     normalized = {
         "oracle_commit_id": oracle_commit_id_raw,
-        "initial_seed_count": max(1, to_int(config.get("initial_seed_count"), 100)),
-        "query_batch_size": max(1, to_int(config.get("query_batch_size"), 200)),
-        "max_rounds": max(1, to_int(config.get("max_rounds"), 5)),
-        "split_seed": max(0, to_int(config.get("split_seed"), 0)),
-        "random_seed": max(0, to_int(config.get("random_seed"), 0)),
-        "require_fully_labeled": to_bool(config.get("require_fully_labeled"), True),
+        "seed_ratio": min(1.0, max(0.0, seed_ratio)),
+        "step_ratio": min(1.0, max(0.0, step_ratio)),
+        "max_rounds": max(1, to_int(config.get("max_rounds"), 20)),
+        "random_baseline_enabled": to_bool(config.get("random_baseline_enabled"), True),
+        "seeds": seeds,
     }
     return normalized
 

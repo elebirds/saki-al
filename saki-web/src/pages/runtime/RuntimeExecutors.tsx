@@ -414,7 +414,7 @@ const RuntimeExecutors: React.FC = () => {
                                                         {row.isOnline ? <Tag color="success">online</Tag> : <Tag>offline</Tag>}
                                                     </td>
                                                     <td className="px-4 py-3 align-top">
-                                                        {row.currentJobId ? <code className="text-xs">{row.currentJobId}</code> : '-'}
+                                                        {row.currentTaskId ? <code className="text-xs">{row.currentTaskId}</code> : '-'}
                                                     </td>
                                                     <td className="px-4 py-3 align-top">{row.pendingAssignCount}/{row.pendingStopCount}</td>
                                                     <td className="px-4 py-3 align-top text-xs text-github-muted">{formatDateTime(row.lastSeenAt)}</td>
@@ -477,7 +477,7 @@ const RuntimeExecutors: React.FC = () => {
                                             </div>
                                             <div>
                                                 <div className="text-xs text-github-muted">当前任务</div>
-                                                <div>{selectedExecutor.currentJobId || '-'}</div>
+                                                <div>{selectedExecutor.currentTaskId || '-'}</div>
                                             </div>
                                             <div>
                                                 <div className="text-xs text-github-muted">待派发 / 待停止</div>

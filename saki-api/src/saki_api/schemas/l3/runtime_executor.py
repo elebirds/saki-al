@@ -17,7 +17,7 @@ class RuntimeExecutorRead(BaseModel):
     version: str
     status: str
     is_online: bool
-    current_job_id: str | None = None
+    current_task_id: str | None = None
     plugin_ids: dict[str, Any] = Field(default_factory=dict)
     resources: dict[str, Any] = Field(default_factory=dict)
     last_seen_at: datetime | None = None
@@ -66,7 +66,7 @@ class RuntimePluginRead(BaseModel):
     plugin_id: str
     display_name: str
     version: str
-    supported_job_types: list[str] = Field(default_factory=list)
+    supported_task_types: list[str] = Field(default_factory=list)
     supported_strategies: list[str] = Field(default_factory=list)
     supported_accelerators: list[str] = Field(default_factory=list)
     supports_auto_fallback: bool = True

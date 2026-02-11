@@ -1,26 +1,20 @@
-"""
-Loop control and annotation-batch endpoints.
-"""
+"""Loop control endpoints."""
+
+from __future__ import annotations
 
 import uuid
-from typing import List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.api.service_deps import JobServiceDep, AnnotationBatchServiceDep
-from saki_api.core.exceptions import ForbiddenAppException, BadRequestAppException
+from saki_api.api.service_deps import JobServiceDep
+from saki_api.core.exceptions import BadRequestAppException, ForbiddenAppException
 from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.db.session import get_session
 from saki_api.models import Permissions, ResourceType
-from saki_api.models.enums import ALLoopStatus
-from saki_api.schemas.l3.job import (
-    LoopRead,
-    AnnotationBatchRead,
-    AnnotationBatchItemRead,
-    LoopRecoverRequest,
-)
+from saki_api.models.enums import ALLoopMode, ALLoopStatus
+from saki_api.schemas.l3.job import LoopConfirmResponse, LoopRead
 from saki_api.services.loop_config import extract_model_request_config, extract_simulation_config
 from saki_api.services.loop_orchestrator import loop_orchestrator
 
@@ -28,11 +22,11 @@ router = APIRouter()
 
 
 async def _ensure_project_perm(
-        *,
-        session: AsyncSession,
-        current_user_id: uuid.UUID,
-        project_id: uuid.UUID,
-        required: str,
+    *,
+    session: AsyncSession,
+    current_user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    required: str,
 ) -> None:
     checker = PermissionChecker(session)
     allowed = await checker.check(
@@ -65,11 +59,11 @@ def _build_loop_read(loop) -> LoopRead:
 
 @router.post("/loops/{loop_id}:start", response_model=LoopRead)
 async def start_loop(
-        *,
-        loop_id: uuid.UUID,
-        job_service: JobServiceDep,
-        session: AsyncSession = Depends(get_session),
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
+    *,
+    loop_id: uuid.UUID,
+    job_service: JobServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
@@ -80,14 +74,6 @@ async def start_loop(
     )
     if loop.status == ALLoopStatus.COMPLETED:
         raise BadRequestAppException("Completed loop cannot be started")
-    if loop.status == ALLoopStatus.FAILED:
-        await loop_orchestrator.recover_failed_loop(
-            loop_id=loop.id,
-            mode="retry_same_params",
-            overrides=None,
-        )
-        await session.refresh(loop)
-        return _build_loop_read(loop)
 
     loop.status = ALLoopStatus.RUNNING
     session.add(loop)
@@ -99,11 +85,11 @@ async def start_loop(
 
 @router.post("/loops/{loop_id}:pause", response_model=LoopRead)
 async def pause_loop(
-        *,
-        loop_id: uuid.UUID,
-        job_service: JobServiceDep,
-        session: AsyncSession = Depends(get_session),
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
+    *,
+    loop_id: uuid.UUID,
+    job_service: JobServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
@@ -121,11 +107,11 @@ async def pause_loop(
 
 @router.post("/loops/{loop_id}:resume", response_model=LoopRead)
 async def resume_loop(
-        *,
-        loop_id: uuid.UUID,
-        job_service: JobServiceDep,
-        session: AsyncSession = Depends(get_session),
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
+    *,
+    loop_id: uuid.UUID,
+    job_service: JobServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
@@ -144,38 +130,13 @@ async def resume_loop(
     return _build_loop_read(loop)
 
 
-@router.post("/loops/{loop_id}:recover", response_model=LoopRead)
-async def recover_loop(
-        *,
-        loop_id: uuid.UUID,
-        payload: LoopRecoverRequest,
-        job_service: JobServiceDep,
-        session: AsyncSession = Depends(get_session),
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    await loop_orchestrator.recover_failed_loop(
-        loop_id=loop.id,
-        mode=payload.mode,
-        overrides=payload.overrides.model_dump(exclude_none=True) if payload.overrides else None,
-    )
-    await session.refresh(loop)
-    return _build_loop_read(loop)
-
-
 @router.post("/loops/{loop_id}:stop", response_model=LoopRead)
 async def stop_loop(
-        *,
-        loop_id: uuid.UUID,
-        job_service: JobServiceDep,
-        session: AsyncSession = Depends(get_session),
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
+    *,
+    loop_id: uuid.UUID,
+    job_service: JobServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
@@ -191,39 +152,24 @@ async def stop_loop(
     return _build_loop_read(loop)
 
 
-@router.get("/annotation-batches/{batch_id}", response_model=AnnotationBatchRead)
-async def get_annotation_batch(
-        *,
-        batch_id: uuid.UUID,
-        batch_service: AnnotationBatchServiceDep,
-        session: AsyncSession = Depends(get_session),
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
+@router.post("/loops/{loop_id}:confirm", response_model=LoopConfirmResponse)
+async def confirm_loop(
+    *,
+    loop_id: uuid.UUID,
+    job_service: JobServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    batch = await batch_service.refresh_progress(batch_id)
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
-        project_id=batch.project_id,
-        required=Permissions.JOB_READ,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
     )
-    return AnnotationBatchRead.model_validate(batch)
+    if loop.mode != ALLoopMode.MANUAL:
+        raise BadRequestAppException("confirm is only available for manual mode")
 
-
-@router.get("/annotation-batches/{batch_id}/items", response_model=List[AnnotationBatchItemRead])
-async def get_annotation_batch_items(
-        *,
-        batch_id: uuid.UUID,
-        limit: int = Query(default=5000, ge=1, le=50000),
-        batch_service: AnnotationBatchServiceDep,
-        session: AsyncSession = Depends(get_session),
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    batch = await batch_service.get_batch_or_raise(batch_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=batch.project_id,
-        required=Permissions.JOB_READ,
-    )
-    items = await batch_service.list_items(batch_id=batch_id, limit=limit)
-    return [AnnotationBatchItemRead.model_validate(item) for item in items]
+    loop = await job_service.confirm_loop_step(loop_id)
+    await loop_orchestrator.tick_once()
+    return LoopConfirmResponse(loop_id=loop.id, phase=loop.phase, status=loop.status)

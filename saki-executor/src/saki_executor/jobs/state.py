@@ -11,12 +11,12 @@ class ExecutorState(str, Enum):
     ERROR_RECOVERY = "error_recovery"
 
 
-class JobStatus(str, Enum):
-    CREATED = "created"
-    QUEUED = "queued"
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    DISPATCHING = "dispatching"
     RUNNING = "running"
-    STOPPING = "stopping"
-    STOPPED = "stopped"
+    RETRYING = "retrying"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
-    PARTIAL_FAILED = "partial_failed"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"

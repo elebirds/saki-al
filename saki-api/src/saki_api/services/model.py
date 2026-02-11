@@ -44,14 +44,14 @@ class ModelService:
             raise NotFoundAppException(f"Job {job_id} not found")
         if job.project_id != project_id:
             raise BadRequestAppException("Job does not belong to this project")
-        if not job.artifacts:
+        if not job.final_artifacts:
             raise BadRequestAppException("Job has no artifacts")
 
         loop = await self.session.get(ALLoop, job.loop_id)
         model_name = name or f"{loop.name if loop else 'loop'}-round-{job.round_index}"
         parent_model_id = loop.latest_model_id if loop else None
 
-        artifact_map = dict(job.artifacts or {})
+        artifact_map = dict(job.final_artifacts or {})
         weights_path = ""
         if "best.pt" in artifact_map and isinstance(artifact_map["best.pt"], dict):
             weights_path = str(artifact_map["best.pt"].get("uri") or "")
@@ -75,7 +75,7 @@ class ModelService:
             version_tag=version_tag,
             weights_path=weights_path,
             status=status or "candidate",
-            metrics=dict(job.metrics or {}),
+            metrics=dict(job.final_metrics or {}),
             artifacts=artifact_map,
             created_by=created_by,
         )

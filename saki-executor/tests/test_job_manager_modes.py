@@ -118,7 +118,7 @@ def _build_data_response_message(
         *,
         request_id: str,
         reply_to: str,
-        job_id: str,
+        task_id: str,
         query_type: int,
         items: list[pb.DataItem],
 ) -> pb.RuntimeMessage:
@@ -126,7 +126,7 @@ def _build_data_response_message(
         data_response=pb.DataResponse(
             request_id=request_id,
             reply_to=reply_to,
-            job_id=job_id,
+            task_id=task_id,
             query_type=query_type,
             items=items,
             next_cursor="",
@@ -171,16 +171,17 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            job_id=request.job_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_job(
+    accepted = await manager.assign_task(
         "assign-simulation-1",
         {
+            "task_id": "task-sim-1",
             "job_id": "job-sim-1",
             "project_id": "project-1",
             "source_commit_id": "commit-1",
@@ -195,9 +196,9 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].job_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 2
     assert plugin.predict_calls == 1
@@ -221,16 +222,17 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            job_id=request.job_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_job(
+    accepted = await manager.assign_task(
         "assign-al-1",
         {
+            "task_id": "task-al-1",
             "job_id": "job-al-1",
             "project_id": "project-1",
             "source_commit_id": "commit-1",
@@ -245,9 +247,9 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].job_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 2
     assert plugin.predict_calls == 1
@@ -289,7 +291,7 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
                 data_response=pb.DataResponse(
                     request_id=f"resp-{request.request_id}",
                     reply_to=request.request_id,
-                    job_id=request.job_id,
+                    task_id=request.task_id,
                     query_type=request.query_type,
                     items=items,
                     next_cursor=next_cursor,
@@ -299,16 +301,17 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            job_id=request.job_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_job(
+    accepted = await manager.assign_task(
         "assign-al-stream-1",
         {
+            "task_id": "task-al-stream-1",
             "job_id": "job-al-stream-1",
             "project_id": "project-1",
             "source_commit_id": "commit-1",
@@ -323,9 +326,9 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].job_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert [item.sample_id for item in result.candidates] == ["u9", "u5"]
     assert plugin.batch_calls == 2
@@ -350,7 +353,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            job_id=request.job_id,
+            task_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -358,9 +361,10 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
     manager.set_transport(fake_send, fake_request)
 
     with pytest.raises(ValueError, match="unsupported mode"):
-        await manager.assign_job(
+        await manager.assign_task(
             "assign-unknown-mode-1",
             {
+                "task_id": "task-unknown-mode-1",
                 "job_id": "job-unknown-mode-1",
                 "project_id": "project-1",
                 "source_commit_id": "commit-1",
@@ -372,7 +376,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
             },
         )
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "job_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 0
     assert request_calls == 0
     assert plugin.prepare_samples_count == 0

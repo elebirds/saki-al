@@ -29,7 +29,7 @@ class SamplingService:
         *,
         plugin: ExecutorPlugin,
         workspace: Workspace,
-        job_id: str,
+        task_id: str,
         project_id: str,
         commit_id: str,
         strategy: str,
@@ -45,10 +45,10 @@ class SamplingService:
 
         while True:
             if self._stop_event.is_set():
-                raise asyncio.CancelledError("job stop requested")
+                raise asyncio.CancelledError("task stop requested")
 
             response = await self._fetch_page(
-                job_id=job_id,
+                task_id=task_id,
                 query_type="unlabeled_samples",
                 project_id=project_id,
                 commit_id=commit_id,
@@ -68,7 +68,7 @@ class SamplingService:
                     str(asset_hash),
                     str(download_url),
                     protected=protected,
-                    pin_job_id=job_id,
+                    pin_job_id=task_id,
                 )
                 item["local_path"] = str(cached_path)
                 protected.add(str(asset_hash))
@@ -140,4 +140,3 @@ class SamplingService:
                 payload["reason"] = {**reason, "rank": rank}
             output.append(payload)
         return output
-

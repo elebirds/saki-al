@@ -8,8 +8,6 @@ import {
     Form,
     Input,
     InputNumber,
-    Modal,
-    Radio,
     Select,
     Spin,
     Switch,
@@ -23,9 +21,7 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {api} from '../../../services/api';
 import {
     ALLoop,
-    LoopRound,
     LoopSummary,
-    LoopRecoverMode,
     LoopUpdateRequest,
     RuntimeJob,
     RuntimePluginCatalogItem,
@@ -44,17 +40,17 @@ const LOOP_STATUS_COLOR: Record<string, string> = {
 };
 
 const JOB_STATUS_COLOR: Record<string, string> = {
-    pending: 'default',
-    running: 'processing',
-    success: 'success',
-    partial_failed: 'warning',
-    failed: 'error',
-    cancelled: 'warning',
+    job_pending: 'default',
+    job_running: 'processing',
+    job_succeeded: 'success',
+    job_partial_failed: 'warning',
+    job_failed: 'error',
+    job_cancelled: 'warning',
 };
 
 type LoopConfigForm = {
     name: string;
-    mode: 'active_learning' | 'simulation';
+    mode: 'active_learning' | 'simulation' | 'manual';
     modelArch: string;
     queryStrategy: string;
     maxRounds: number;
@@ -67,21 +63,12 @@ type LoopConfigForm = {
     modelRequestConfig: Record<string, any>;
     simulationConfig: {
         oracleCommitId?: string | null;
-        initialSeedCount: number;
-        queryBatchSize: number;
+        seedRatio: number;
+        stepRatio: number;
         maxRounds: number;
-        splitSeed: number;
-        randomSeed: number;
-        requireFullyLabeled: boolean;
+        randomBaselineEnabled?: boolean;
+        seeds: Array<number | string>;
     };
-};
-
-type LoopRecoverForm = {
-    mode: LoopRecoverMode;
-    pluginId?: string;
-    queryStrategy?: string;
-    paramsJson?: string;
-    resourcesJson?: string;
 };
 
 const ProjectLoopDetail: React.FC = () => {
@@ -90,26 +77,17 @@ const ProjectLoopDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [controlLoading, setControlLoading] = useState(false);
-    const [recoverOpen, setRecoverOpen] = useState(false);
-    const [recoverLoading, setRecoverLoading] = useState(false);
     const [loop, setLoop] = useState<ALLoop | null>(null);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
-    const [rounds, setRounds] = useState<LoopRound[]>([]);
     const [jobs, setJobs] = useState<RuntimeJob[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [configForm] = Form.useForm<LoopConfigForm>();
-    const [recoverForm] = Form.useForm<LoopRecoverForm>();
 
     const selectedPluginId = Form.useWatch('modelArch', configForm);
     const selectedMode = Form.useWatch('mode', configForm) || 'active_learning';
-    const recoverMode = Form.useWatch('mode', recoverForm) || 'retry_same_params';
     const selectedPlugin = useMemo(
         () => plugins.find((item) => item.pluginId === selectedPluginId),
         [plugins, selectedPluginId],
-    );
-    const latestFailedJob = useMemo(
-        () => jobs.find((item) => item.status === 'failed') || null,
-        [jobs],
     );
 
     const renderDynamicField = (field: RuntimeRequestConfigField) => {
@@ -137,9 +115,7 @@ const ProjectLoopDetail: React.FC = () => {
         if (field.type === 'select') {
             return (
                 <Form.Item key={field.key} name={keyPath} label={field.label} rules={rules}>
-                    <Select
-                        options={(field.options || []).map((item) => ({label: item.label, value: item.value}))}
-                    />
+                    <Select options={(field.options || []).map((item) => ({label: item.label, value: item.value}))}/>
                 </Form.Item>
             );
         }
@@ -152,18 +128,17 @@ const ProjectLoopDetail: React.FC = () => {
 
     const refreshLoopData = useCallback(async () => {
         if (!loopId) return;
-        const [loopRow, summaryRow, roundRows, jobRows, pluginCatalog] = await Promise.all([
+        const [loopRow, summaryRow, jobRows, pluginCatalog] = await Promise.all([
             api.getLoopById(loopId),
             api.getLoopSummary(loopId),
-            api.getLoopRounds(loopId, 500),
             api.getLoopJobs(loopId, 100),
             api.getRuntimePlugins(),
         ]);
         setLoop(loopRow);
         setSummary(summaryRow);
-        setRounds(roundRows);
         setJobs(jobRows);
         setPlugins(pluginCatalog.items || []);
+
         const plugin = pluginCatalog.items.find((item) => item.pluginId === loopRow.modelArch);
         configForm.setFieldsValue({
             name: loopRow.name,
@@ -183,12 +158,11 @@ const ProjectLoopDetail: React.FC = () => {
             },
             simulationConfig: {
                 oracleCommitId: loopRow.simulationConfig?.oracleCommitId,
-                initialSeedCount: loopRow.simulationConfig?.initialSeedCount ?? 100,
-                queryBatchSize: loopRow.simulationConfig?.queryBatchSize ?? 200,
+                seedRatio: loopRow.simulationConfig?.seedRatio ?? 0.05,
+                stepRatio: loopRow.simulationConfig?.stepRatio ?? 0.05,
                 maxRounds: loopRow.simulationConfig?.maxRounds ?? loopRow.maxRounds,
-                splitSeed: loopRow.simulationConfig?.splitSeed ?? 0,
-                randomSeed: loopRow.simulationConfig?.randomSeed ?? 0,
-                requireFullyLabeled: loopRow.simulationConfig?.requireFullyLabeled ?? true,
+                randomBaselineEnabled: loopRow.simulationConfig?.randomBaselineEnabled ?? true,
+                seeds: loopRow.simulationConfig?.seeds ?? [0, 1, 2, 3, 4],
             },
         });
     }, [loopId, configForm]);
@@ -226,7 +200,17 @@ const ProjectLoopDetail: React.FC = () => {
                 stopMinGain: values.stopMinGain,
                 autoRegisterModel: values.autoRegisterModel,
                 modelRequestConfig: values.modelRequestConfig || {},
-                simulationConfig: values.simulationConfig,
+                simulationConfig: {
+                    oracleCommitId: values.simulationConfig?.oracleCommitId,
+                    seedRatio: Number(values.simulationConfig?.seedRatio ?? 0.05),
+                    stepRatio: Number(values.simulationConfig?.stepRatio ?? 0.05),
+                    maxRounds: Number(values.simulationConfig?.maxRounds ?? values.maxRounds),
+                    randomBaselineEnabled: Boolean(values.simulationConfig?.randomBaselineEnabled ?? true),
+                    seeds: (values.simulationConfig?.seeds || [0, 1, 2, 3, 4])
+                        .map((item) => Number(item))
+                        .filter((item) => Number.isFinite(item))
+                        .map((item) => Math.trunc(item)),
+                },
             };
             await api.updateLoop(loopId, payload);
             message.success('Loop 配置已保存');
@@ -239,83 +223,21 @@ const ProjectLoopDetail: React.FC = () => {
         }
     };
 
-    const handleLoopControl = async (action: 'start' | 'pause' | 'resume' | 'stop') => {
+    const handleLoopControl = async (action: 'start' | 'pause' | 'resume' | 'stop' | 'confirm') => {
         if (!loopId) return;
-        if (action === 'start' && loop?.status === 'failed') {
-            const defaultParams = latestFailedJob?.params || selectedPlugin?.defaultRequestConfig || {};
-            const defaultResources = latestFailedJob?.resources || {};
-            recoverForm.setFieldsValue({
-                mode: 'retry_same_params',
-                pluginId: latestFailedJob?.pluginId || loop.modelArch,
-                queryStrategy: latestFailedJob?.queryStrategy || loop.queryStrategy,
-                paramsJson: JSON.stringify(defaultParams, null, 2),
-                resourcesJson: JSON.stringify(defaultResources, null, 2),
-            });
-            setRecoverOpen(true);
-            return;
-        }
         setControlLoading(true);
         try {
             if (action === 'start') await api.startLoop(loopId);
             if (action === 'pause') await api.pauseLoop(loopId);
             if (action === 'resume') await api.resumeLoop(loopId);
             if (action === 'stop') await api.stopLoop(loopId);
+            if (action === 'confirm') await api.confirmLoop(loopId);
             await refreshLoopData();
-            message.success(`Loop 已${action === 'start' ? '启动' : action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '停止'}`);
+            message.success(`Loop 已${action}`);
         } catch (error: any) {
             message.error(error?.message || 'Loop 控制失败');
         } finally {
             setControlLoading(false);
-        }
-    };
-
-    const handleRecover = async () => {
-        if (!loopId) return;
-        try {
-            const values = await recoverForm.validateFields();
-            const mode = values.mode || 'retry_same_params';
-            const payload: {
-                mode: LoopRecoverMode;
-                overrides?: {
-                    pluginId?: string;
-                    queryStrategy?: string;
-                    params?: Record<string, any>;
-                    resources?: Record<string, any>;
-                };
-            } = { mode };
-
-            if (mode === 'rerun_with_overrides') {
-                const overrides: Record<string, any> = {};
-                if (values.pluginId?.trim()) overrides.pluginId = values.pluginId.trim();
-                if (values.queryStrategy?.trim()) overrides.queryStrategy = values.queryStrategy.trim();
-
-                if (values.paramsJson?.trim()) {
-                    const parsed = JSON.parse(values.paramsJson);
-                    if (parsed && typeof parsed !== 'object') {
-                        throw new Error('params 必须是 JSON 对象');
-                    }
-                    overrides.params = parsed || {};
-                }
-                if (values.resourcesJson?.trim()) {
-                    const parsed = JSON.parse(values.resourcesJson);
-                    if (parsed && typeof parsed !== 'object') {
-                        throw new Error('resources 必须是 JSON 对象');
-                    }
-                    overrides.resources = parsed || {};
-                }
-                payload.overrides = overrides;
-            }
-
-            setRecoverLoading(true);
-            await api.recoverLoop(loopId, payload);
-            setRecoverOpen(false);
-            message.success('恢复任务已创建并开始派发');
-            await refreshLoopData();
-        } catch (error: any) {
-            if (error?.errorFields) return;
-            message.error(error?.message || '恢复 Loop 失败');
-        } finally {
-            setRecoverLoading(false);
         }
     };
 
@@ -344,6 +266,7 @@ const ProjectLoopDetail: React.FC = () => {
                             <Button onClick={() => navigate(`/projects/${projectId}/loops`)}>返回概览</Button>
                             <Title level={4} className="!mb-0">{loop.name}</Title>
                             <Tag color={LOOP_STATUS_COLOR[loop.status] || 'default'}>{loop.status}</Tag>
+                            <Tag>{loop.phase}</Tag>
                         </div>
                         <Text type="secondary">Loop ID: {loop.id}</Text>
                     </div>
@@ -371,6 +294,15 @@ const ProjectLoopDetail: React.FC = () => {
                         >
                             Resume
                         </Button>
+                        {loop.mode === 'manual' ? (
+                            <Button
+                                loading={controlLoading}
+                                onClick={() => handleLoopControl('confirm')}
+                                disabled={loop.phase !== 'manual_wait_confirm'}
+                            >
+                                Confirm
+                            </Button>
+                        ) : null}
                         <Button
                             danger
                             loading={controlLoading}
@@ -386,10 +318,11 @@ const ProjectLoopDetail: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel" title="Loop 摘要">
                 <Descriptions size="small" column={4}>
                     <Descriptions.Item label="模式">{loop.mode}</Descriptions.Item>
-                    <Descriptions.Item label="总轮次">{summary?.roundsTotal ?? rounds.length}</Descriptions.Item>
-                    <Descriptions.Item label="完成轮次">{summary?.roundsCompleted ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="累计选样">{summary?.selectedTotal ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="累计标注">{summary?.labeledTotal ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Jobs 总数">{summary?.jobsTotal ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Jobs 成功">{summary?.jobsSucceeded ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Tasks 总数">{summary?.tasksTotal ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Tasks 成功">{summary?.tasksSucceeded ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="最新 map50">{Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}</Descriptions.Item>
                 </Descriptions>
             </Card>
 
@@ -411,6 +344,7 @@ const ProjectLoopDetail: React.FC = () => {
                                     options={[
                                         {label: '主动学习 (HITL)', value: 'active_learning'},
                                         {label: '模拟实验 (Simulation)', value: 'simulation'},
+                                        {label: '手动模式 (Manual)', value: 'manual'},
                                     ]}
                                 />
                             </Form.Item>
@@ -447,10 +381,7 @@ const ProjectLoopDetail: React.FC = () => {
                         <div>
                             <Form.Item name="queryStrategy" label="采样策略" rules={[{required: true, message: '请选择采样策略'}]}>
                                 <Select
-                                    options={(selectedPlugin?.supportedStrategies || []).map((item) => ({
-                                        label: item,
-                                        value: item,
-                                    }))}
+                                    options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}
                                 />
                             </Form.Item>
                         </div>
@@ -460,6 +391,7 @@ const ProjectLoopDetail: React.FC = () => {
                             </Form.Item>
                         </div>
                     </div>
+
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
                         <div>
                             <Form.Item name="maxRounds" label="最大轮次">
@@ -477,6 +409,7 @@ const ProjectLoopDetail: React.FC = () => {
                             </Form.Item>
                         </div>
                     </div>
+
                     {selectedMode === 'simulation' ? (
                         <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
                             <div>
@@ -489,13 +422,13 @@ const ProjectLoopDetail: React.FC = () => {
                                 </Form.Item>
                             </div>
                             <div>
-                                <Form.Item name={['simulationConfig', 'initialSeedCount']} label="初始 Seed 数量">
-                                    <InputNumber min={1} max={50000} className="w-full"/>
+                                <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
+                                    <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
                                 </Form.Item>
                             </div>
                             <div>
-                                <Form.Item name={['simulationConfig', 'queryBatchSize']} label="每轮模拟 TopK">
-                                    <InputNumber min={1} max={50000} className="w-full"/>
+                                <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
+                                    <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
                                 </Form.Item>
                             </div>
                             <div>
@@ -504,26 +437,13 @@ const ProjectLoopDetail: React.FC = () => {
                                 </Form.Item>
                             </div>
                             <div>
-                                <Form.Item name={['simulationConfig', 'splitSeed']} label="数据切分种子">
-                                    <InputNumber min={0} max={2147483647} className="w-full"/>
-                                </Form.Item>
-                            </div>
-                            <div>
-                                <Form.Item name={['simulationConfig', 'randomSeed']} label="随机种子">
-                                    <InputNumber min={0} max={2147483647} className="w-full"/>
-                                </Form.Item>
-                            </div>
-                            <div>
-                                <Form.Item
-                                    name={['simulationConfig', 'requireFullyLabeled']}
-                                    label="要求 Oracle 全量标注"
-                                    valuePropName="checked"
-                                >
-                                    <Switch/>
+                                <Form.Item name={['simulationConfig', 'seeds']} label="随机种子列表">
+                                    <Select mode="tags" tokenSeparators={[',']} placeholder="例如：0,1,2,3,4"/>
                                 </Form.Item>
                             </div>
                         </div>
                     ) : null}
+
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
                         <div>
                             <Form.Item name="minNewLabelsPerRound" label="每轮最小新增标注">
@@ -548,9 +468,7 @@ const ProjectLoopDetail: React.FC = () => {
                         ) : (
                             <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                                 {(selectedPlugin?.requestConfigSchema?.fields || []).map((field) => (
-                                    <div key={field.key}>
-                                        {renderDynamicField(field)}
-                                    </div>
+                                    <div key={field.key}>{renderDynamicField(field)}</div>
                                 ))}
                             </div>
                         )}
@@ -568,21 +486,22 @@ const ProjectLoopDetail: React.FC = () => {
                         {title: 'Round', dataIndex: 'roundIndex', width: 90},
                         {
                             title: '状态',
-                            dataIndex: 'status',
-                            width: 120,
+                            dataIndex: 'summaryStatus',
+                            width: 140,
                             render: (value: string) => <Tag color={JOB_STATUS_COLOR[value] || 'default'}>{value}</Tag>,
                         },
                         {title: '插件', dataIndex: 'pluginId'},
                         {title: '策略', dataIndex: 'queryStrategy'},
-                        {title: '执行器', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
+                        {
+                            title: 'Tasks',
+                            width: 180,
+                            render: (_v: unknown, row: RuntimeJob) => JSON.stringify(row.taskCounts || {}),
+                        },
                         {
                             title: '操作',
                             width: 120,
                             render: (_v: unknown, row: RuntimeJob) => (
-                                <Button
-                                    size="small"
-                                    onClick={() => navigate(`/projects/${projectId}/loops/${loopId}/jobs/${row.id}`)}
-                                >
+                                <Button size="small" onClick={() => navigate(`/projects/${projectId}/loops/${loopId}/jobs/${row.id}`)}>
                                     查看详情
                                 </Button>
                             ),
@@ -590,47 +509,6 @@ const ProjectLoopDetail: React.FC = () => {
                     ]}
                 />
             </Card>
-
-            <Modal
-                title="失败后恢复"
-                open={recoverOpen}
-                onCancel={() => setRecoverOpen(false)}
-                onOk={handleRecover}
-                confirmLoading={recoverLoading}
-                okText="确认恢复"
-                destroyOnClose
-            >
-                <Form form={recoverForm} layout="vertical">
-                    <Form.Item name="mode" label="恢复模式" initialValue="retry_same_params">
-                        <Radio.Group>
-                            <Radio value="retry_same_params">快速重试（沿用参数）</Radio>
-                            <Radio value="rerun_with_overrides">按新参数重跑（同轮新建 job）</Radio>
-                        </Radio.Group>
-                    </Form.Item>
-                    {recoverMode === 'rerun_with_overrides' ? (
-                        <>
-                            <Form.Item name="pluginId" label="插件 ID">
-                                <Select
-                                    allowClear
-                                    options={plugins.map((item) => ({
-                                        label: `${item.displayName} (${item.pluginId})`,
-                                        value: item.pluginId,
-                                    }))}
-                                />
-                            </Form.Item>
-                            <Form.Item name="queryStrategy" label="采样策略">
-                                <Input placeholder="例如：aug_iou_disagreement" />
-                            </Form.Item>
-                            <Form.Item name="paramsJson" label="params(JSON)">
-                                <Input.TextArea rows={6} />
-                            </Form.Item>
-                            <Form.Item name="resourcesJson" label="resources(JSON)">
-                                <Input.TextArea rows={4} />
-                            </Form.Item>
-                        </>
-                    ) : null}
-                </Form>
-            </Modal>
         </div>
     );
 };

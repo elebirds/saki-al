@@ -12,8 +12,10 @@ from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.repositories.job import JobRepository
 from saki_api.repositories.loop import LoopRepository
 from saki_api.repositories.runtime_executor import RuntimeExecutorRepository
-from saki_api.repositories.job_event import JobEventRepository
-from saki_api.repositories.job_metric_point import JobMetricPointRepository
+from saki_api.repositories.job_task import JobTaskRepository
+from saki_api.repositories.task_event import TaskEventRepository
+from saki_api.repositories.task_metric_point import TaskMetricPointRepository
+from saki_api.repositories.task_candidate_item import TaskCandidateItemRepository
 
 __all__ = [
     "UserRepository",
@@ -25,8 +27,10 @@ __all__ = [
     "JobRepository",
     "LoopRepository",
     "RuntimeExecutorRepository",
-    "JobEventRepository",
-    "JobMetricPointRepository",
+    "JobTaskRepository",
+    "TaskEventRepository",
+    "TaskMetricPointRepository",
+    "TaskCandidateItemRepository",
     "FilterType",
     "OrderByType"
 ]

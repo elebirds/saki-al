@@ -19,7 +19,7 @@ class DataGateway:
     async def request_upload_ticket(
         self,
         *,
-        job_id: str,
+        task_id: str,
         artifact_name: str,
         content_type: str,
     ) -> ArtifactUploadTicket:
@@ -27,7 +27,7 @@ class DataGateway:
         ticket_response = await request_message(
             runtime_codec.build_upload_ticket_request_message(
                 request_id=str(uuid.uuid4()),
-                job_id=job_id,
+                task_id=task_id,
                 artifact_name=artifact_name,
                 content_type=content_type,
             )
@@ -45,7 +45,7 @@ class DataGateway:
     async def fetch_all(
         self,
         *,
-        job_id: str,
+        task_id: str,
         query_type: str,
         project_id: str,
         commit_id: str,
@@ -56,7 +56,7 @@ class DataGateway:
         cursor: str | None = None
         while True:
             response = await self.fetch_page(
-                job_id=job_id,
+                task_id=task_id,
                 query_type=query_type,
                 project_id=project_id,
                 commit_id=commit_id,
@@ -68,13 +68,13 @@ class DataGateway:
             if not cursor:
                 break
             if stop_event is not None and stop_event.is_set():
-                raise asyncio.CancelledError("job stop requested")
+                raise asyncio.CancelledError("task stop requested")
         return items
 
     async def fetch_page(
         self,
         *,
-        job_id: str,
+        task_id: str,
         query_type: str,
         project_id: str,
         commit_id: str,
@@ -85,7 +85,7 @@ class DataGateway:
         response_message = await request_message(
             runtime_codec.build_data_request_message(
                 request_id=str(uuid.uuid4()),
-                job_id=job_id,
+                task_id=task_id,
                 query_type=query_type,
                 project_id=project_id,
                 commit_id=commit_id,
@@ -104,6 +104,5 @@ class DataGateway:
     def _required_request_message(self) -> RequestFn:
         request_message = self._request_message_getter()
         if request_message is None:
-            raise RuntimeError("job manager request transport is not configured")
+            raise RuntimeError("task manager request transport is not configured")
         return request_message
-

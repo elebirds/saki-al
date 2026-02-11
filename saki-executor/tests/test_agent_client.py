@@ -2,7 +2,6 @@ import asyncio
 
 import pytest
 
-from saki_executor.agent import codec as runtime_codec
 from saki_executor.agent.client import AgentClient
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
@@ -48,7 +47,7 @@ async def test_disconnect_rejects_when_busy_without_force(tmp_path):
     client = _build_client(tmp_path)
     busy_task = asyncio.create_task(asyncio.sleep(60))
     client.job_manager._task = busy_task  # noqa: SLF001
-    client.job_manager.current_job_id = "job-1"
+    client.job_manager.current_task_id = "task-1"
     try:
         disconnected = await client.disconnect(force=False)
         assert disconnected is False
@@ -56,7 +55,7 @@ async def test_disconnect_rejects_when_busy_without_force(tmp_path):
     finally:
         busy_task.cancel()
         client.job_manager._task = None  # noqa: SLF001
-        client.job_manager.current_job_id = None
+        client.job_manager.current_task_id = None
 
 
 @pytest.mark.anyio
@@ -81,49 +80,50 @@ async def test_disconnect_force_waits_for_stop_before_disconnect(tmp_path, monke
 
     busy_task = asyncio.create_task(asyncio.sleep(60))
     client.job_manager._task = busy_task  # noqa: SLF001
-    client.job_manager.current_job_id = "job-force-1"
+    client.job_manager.current_task_id = "task-force-1"
     stop_called: list[str] = []
 
-    async def fake_stop(job_id: str) -> bool:
-        stop_called.append(job_id)
+    async def fake_stop(task_id: str) -> bool:
+        stop_called.append(task_id)
         client.job_manager._task = None  # noqa: SLF001
-        client.job_manager.current_job_id = None
+        client.job_manager.current_task_id = None
         busy_task.cancel()
         return True
 
-    client.job_manager.stop_job = fake_stop  # type: ignore[method-assign]
+    client.job_manager.stop_task = fake_stop  # type: ignore[method-assign]
 
     disconnected = await client.disconnect(force=True)
     assert disconnected is True
-    assert stop_called == ["job-force-1"]
+    assert stop_called == ["task-force-1"]
     assert client.transport_snapshot()["connect_enabled"] is False
 
 
 @pytest.mark.anyio
-async def test_duplicate_assign_job_returns_cached_ack_without_reassign(tmp_path):
+async def test_duplicate_assign_task_returns_cached_ack_without_reassign(tmp_path):
     client = _build_client(tmp_path)
     assign_calls: list[str] = []
     sent_messages: list[pb.RuntimeMessage] = []
 
-    async def fake_assign_job(request_id: str, payload: dict):  # noqa: ARG001
+    async def fake_assign_task(request_id: str, payload: dict):  # noqa: ARG001
         assign_calls.append(request_id)
         return True
 
     async def fake_send_message(message: pb.RuntimeMessage):
         sent_messages.append(message)
 
-    client.job_manager.assign_job = fake_assign_job  # type: ignore[method-assign]
+    client.job_manager.assign_task = fake_assign_task  # type: ignore[method-assign]
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
-        assign_job=pb.AssignJob(
+        assign_task=pb.AssignTask(
             request_id="assign-dup-1",
-            job=pb.JobPayload(
+            task=pb.TaskPayload(
+                task_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 job_id="11111111-1111-1111-1111-111111111111",
                 project_id="22222222-2222-2222-2222-222222222222",
                 loop_id="33333333-3333-3333-3333-333333333333",
                 source_commit_id="44444444-4444-4444-4444-444444444444",
-                job_type=pb.TRAIN_DETECTION,
+                task_type=pb.TRAIN,
                 plugin_id="demo_det_v1",
                 mode=pb.ACTIVE_LEARNING,
             ),
@@ -141,25 +141,25 @@ async def test_duplicate_assign_job_returns_cached_ack_without_reassign(tmp_path
 
 
 @pytest.mark.anyio
-async def test_duplicate_stop_job_returns_cached_ack_without_restop(tmp_path):
+async def test_duplicate_stop_task_returns_cached_ack_without_restop(tmp_path):
     client = _build_client(tmp_path)
     stop_calls: list[str] = []
     sent_messages: list[pb.RuntimeMessage] = []
 
-    async def fake_stop_job(job_id: str):
-        stop_calls.append(job_id)
+    async def fake_stop_task(task_id: str):
+        stop_calls.append(task_id)
         return True
 
     async def fake_send_message(message: pb.RuntimeMessage):
         sent_messages.append(message)
 
-    client.job_manager.stop_job = fake_stop_job  # type: ignore[method-assign]
+    client.job_manager.stop_task = fake_stop_task  # type: ignore[method-assign]
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
-        stop_job=pb.StopJob(
+        stop_task=pb.StopTask(
             request_id="stop-dup-1",
-            job_id="job-dup-1",
+            task_id="task-dup-1",
             reason="manual",
         )
     )
@@ -167,7 +167,7 @@ async def test_duplicate_stop_job_returns_cached_ack_without_restop(tmp_path):
     await client._handle_incoming(incoming)  # noqa: SLF001
     await client._handle_incoming(incoming)  # noqa: SLF001
 
-    assert stop_calls == ["job-dup-1"]
+    assert stop_calls == ["task-dup-1"]
     assert len(sent_messages) == 2
     assert sent_messages[0].ack.ack_for == "stop-dup-1"
     assert sent_messages[1].ack.ack_for == "stop-dup-1"

@@ -123,6 +123,71 @@ class ALLoopMode(str, Enum):
     """
     ACTIVE_LEARNING = "active_learning"
     SIMULATION = "simulation"
+    MANUAL = "manual"
+
+
+class LoopPhase(str, Enum):
+    """
+    Enum for loop phase state machine.
+    """
+    AL_BOOTSTRAP = "al_bootstrap"
+    AL_TRAIN = "al_train"
+    AL_SCORE = "al_score"
+    AL_WAIT_ANNOTATION = "al_wait_annotation"
+    AL_MERGE = "al_merge"
+    AL_EVAL = "al_eval"
+
+    SIM_BOOTSTRAP = "sim_bootstrap"
+    SIM_TRAIN = "sim_train"
+    SIM_SCORE = "sim_score"
+    SIM_AUTO_LABEL = "sim_auto_label"
+    SIM_EVAL = "sim_eval"
+
+    MANUAL_IDLE = "manual_idle"
+    MANUAL_TASK_RUNNING = "manual_task_running"
+    MANUAL_WAIT_CONFIRM = "manual_wait_confirm"
+    MANUAL_FINALIZE = "manual_finalize"
+
+
+class JobStatusV2(str, Enum):
+    """
+    Enum for aggregated Job status.
+    """
+    JOB_PENDING = "job_pending"
+    JOB_RUNNING = "job_running"
+    JOB_PARTIAL_FAILED = "job_partial_failed"
+    JOB_FAILED = "job_failed"
+    JOB_SUCCEEDED = "job_succeeded"
+    JOB_CANCELLED = "job_cancelled"
+
+
+class JobTaskType(str, Enum):
+    """
+    Enum for runtime task type in L3 runtime context.
+    """
+    TRAIN = "train"
+    SCORE = "score"
+    SELECT = "select"
+    AUTO_LABEL = "auto_label"
+    WAIT_ANNOTATION = "wait_annotation"
+    MERGE = "merge"
+    EVAL = "eval"
+    UPLOAD_ARTIFACT = "upload_artifact"
+    MANUAL_REVIEW = "manual_review"
+
+
+class JobTaskStatus(str, Enum):
+    """
+    Enum for runtime task execution status.
+    """
+    PENDING = "pending"
+    DISPATCHING = "dispatching"
+    RUNNING = "running"
+    RETRYING = "retrying"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
 
 
 class LoopRoundStatus(str, Enum):

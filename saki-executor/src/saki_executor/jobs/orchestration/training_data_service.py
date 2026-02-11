@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
-from saki_executor.jobs.contracts import JobExecutionRequest
+from saki_executor.jobs.contracts import TaskExecutionRequest
 from saki_executor.plugins.base import ExecutorPlugin
 
 FetchAllFn = Callable[[str, str, str, str], Awaitable[list[dict[str, Any]]]]
@@ -35,24 +35,24 @@ class TrainingDataService:
     async def prepare(
         self,
         *,
-        request: JobExecutionRequest,
+        request: TaskExecutionRequest,
         plugin: ExecutorPlugin,
         emit: EmitFn,
     ) -> TrainingDataBundle:
         labels = await self._fetch_all(
-            request.job_id,
+            request.task_id,
             "labels",
             request.project_id,
             request.source_commit_id,
         )
         samples = await self._fetch_all(
-            request.job_id,
+            request.task_id,
             "samples",
             request.project_id,
             request.source_commit_id,
         )
         annotations = await self._fetch_all(
-            request.job_id,
+            request.task_id,
             "annotations",
             request.project_id,
             request.source_commit_id,
@@ -86,7 +86,7 @@ class TrainingDataService:
         protected: set[str] = set()
         for item in train_samples:
             if self._stop_event.is_set():
-                raise asyncio.CancelledError("job stop requested")
+                raise asyncio.CancelledError("task stop requested")
             asset_hash = item.get("asset_hash")
             download_url = item.get("download_url")
             if not asset_hash or not download_url:
@@ -95,7 +95,7 @@ class TrainingDataService:
                 str(asset_hash),
                 str(download_url),
                 protected=protected,
-                pin_job_id=request.job_id,
+                pin_job_id=request.task_id,
             )
             item["local_path"] = str(cached_path)
             protected.add(str(asset_hash))

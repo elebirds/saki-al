@@ -11,36 +11,37 @@ from saki_api.grpc_gen import runtime_control_pb2 as pb
 
 
 _STATUS_TO_TEXT: dict[int, str] = {
-    pb.CREATED: "created",
-    pb.QUEUED: "queued",
+    pb.PENDING: "pending",
+    pb.DISPATCHING: "dispatching",
     pb.RUNNING: "running",
-    pb.STOPPING: "stopping",
-    pb.STOPPED: "stopped",
+    pb.RETRYING: "retrying",
     pb.SUCCEEDED: "succeeded",
     pb.FAILED: "failed",
-    pb.PARTIAL_FAILED: "partial_failed",
+    pb.CANCELLED: "cancelled",
+    pb.SKIPPED: "skipped",
 }
 
 _TEXT_TO_STATUS: dict[str, int] = {value: key for key, value in _STATUS_TO_TEXT.items()}
-_TEXT_TO_STATUS.update(
-    {
-        "pending": pb.QUEUED,
-        "success": pb.SUCCEEDED,
-        "cancelled": pb.STOPPED,
-        "partial_failed": pb.PARTIAL_FAILED,
-    }
-)
 
-_JOB_TYPE_TO_TEXT: dict[int, str] = {
-    pb.TRAIN_DETECTION: "train_detection",
+_TASK_TYPE_TO_TEXT: dict[int, str] = {
+    pb.TRAIN: "train",
+    pb.SCORE: "score",
+    pb.SELECT: "select",
+    pb.AUTO_LABEL: "auto_label",
+    pb.WAIT_ANNOTATION: "wait_annotation",
+    pb.MERGE: "merge",
+    pb.EVAL: "eval",
+    pb.UPLOAD_ARTIFACT: "upload_artifact",
+    pb.CUSTOM: "custom",
 }
-_TEXT_TO_JOB_TYPE: dict[str, int] = {value: key for key, value in _JOB_TYPE_TO_TEXT.items()}
+_TEXT_TO_TASK_TYPE: dict[str, int] = {value: key for key, value in _TASK_TYPE_TO_TEXT.items()}
 
-_JOB_MODE_TO_TEXT: dict[int, str] = {
+_LOOP_MODE_TO_TEXT: dict[int, str] = {
     pb.ACTIVE_LEARNING: "active_learning",
     pb.SIMULATION: "simulation",
+    pb.MANUAL: "manual",
 }
-_TEXT_TO_JOB_MODE: dict[str, int] = {value: key for key, value in _JOB_MODE_TO_TEXT.items()}
+_TEXT_TO_LOOP_MODE: dict[str, int] = {value: key for key, value in _LOOP_MODE_TO_TEXT.items()}
 
 _QUERY_TYPE_TO_TEXT: dict[int, str] = {
     pb.LABELS: "labels",
@@ -59,8 +60,8 @@ _TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCEL
 
 _ACK_TYPE_TO_TEXT: dict[int, str] = {
     pb.ACK_TYPE_REGISTER: "register",
-    pb.ACK_TYPE_ASSIGN_JOB: "assign_job",
-    pb.ACK_TYPE_STOP_JOB: "stop_job",
+    pb.ACK_TYPE_ASSIGN_TASK: "assign_task",
+    pb.ACK_TYPE_STOP_TASK: "stop_task",
     pb.ACK_TYPE_REQUEST: "request",
 }
 _TEXT_TO_ACK_TYPE: dict[str, int] = {value: key for key, value in _ACK_TYPE_TO_TEXT.items()}
@@ -70,7 +71,7 @@ _ACK_REASON_TO_TEXT: dict[int, str] = {
     pb.ACK_REASON_ACCEPTED: "accepted",
     pb.ACK_REASON_EXECUTOR_BUSY: "executor_busy",
     pb.ACK_REASON_STOPPING: "stopping",
-    pb.ACK_REASON_JOB_NOT_RUNNING: "job_not_running",
+    pb.ACK_REASON_TASK_NOT_RUNNING: "task_not_running",
     pb.ACK_REASON_REJECTED: "rejected",
 }
 _TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
@@ -92,11 +93,11 @@ def struct_to_dict(payload: Struct | None) -> dict[str, Any]:
 
 
 def status_to_text(status: int) -> str:
-    return _STATUS_TO_TEXT.get(status, "queued")
+    return _STATUS_TO_TEXT.get(status, "pending")
 
 
 def text_to_status(status: str | None) -> int:
-    return _TEXT_TO_STATUS.get((status or "").lower(), pb.QUEUED)
+    return _TEXT_TO_STATUS.get((status or "").lower(), pb.PENDING)
 
 
 def ack_status_to_text(status: int) -> str:
@@ -123,20 +124,20 @@ def text_to_ack_reason(reason: str | None) -> int:
     return _TEXT_TO_ACK_REASON.get((reason or "").strip().lower(), pb.ACK_REASON_REJECTED)
 
 
-def job_type_to_text(job_type: int) -> str:
-    return _JOB_TYPE_TO_TEXT.get(int(job_type), "train_detection")
+def task_type_to_text(task_type: int) -> str:
+    return _TASK_TYPE_TO_TEXT.get(int(task_type), "custom")
 
 
-def text_to_job_type(job_type: str | None) -> int:
-    return _TEXT_TO_JOB_TYPE.get((job_type or "").lower(), pb.TRAIN_DETECTION)
+def text_to_task_type(task_type: str | None) -> int:
+    return _TEXT_TO_TASK_TYPE.get((task_type or "").strip().lower(), pb.CUSTOM)
 
 
-def job_mode_to_text(mode: int) -> str:
-    return _JOB_MODE_TO_TEXT.get(int(mode), "active_learning")
+def loop_mode_to_text(mode: int) -> str:
+    return _LOOP_MODE_TO_TEXT.get(int(mode), "active_learning")
 
 
-def text_to_job_mode(mode: str | None) -> int:
-    return _TEXT_TO_JOB_MODE.get((mode or "").lower(), pb.ACTIVE_LEARNING)
+def text_to_loop_mode(mode: str | None) -> int:
+    return _TEXT_TO_LOOP_MODE.get((mode or "").strip().lower(), pb.ACTIVE_LEARNING)
 
 
 def query_type_to_text(query_type: int) -> str:
@@ -144,7 +145,7 @@ def query_type_to_text(query_type: int) -> str:
 
 
 def text_to_query_type(query_type: str | None) -> int:
-    return _TEXT_TO_QUERY_TYPE.get((query_type or "").lower(), pb.LABELS)
+    return _TEXT_TO_QUERY_TYPE.get((query_type or "").strip().lower(), pb.LABELS)
 
 
 def accelerator_type_to_text(accelerator: int) -> str:
@@ -169,6 +170,7 @@ def resource_summary_to_dict(resources: pb.ResourceSummary) -> dict[str, Any]:
                 "device_ids": [str(v) for v in item.device_ids],
             }
         )
+
     if not accelerators:
         gpu_count = int(resources.gpu_count)
         gpu_ids = [int(item) for item in resources.gpu_device_ids]
@@ -254,13 +256,13 @@ def dict_to_resource_summary(resources: Mapping[str, Any] | None) -> pb.Resource
 
 
 def build_ack_message(
-        *,
-        ack_for: str,
-        status: int,
-        ack_type: int | str,
-        ack_reason: int | str,
-        detail: str = "",
-        request_id: str | None = None,
+    *,
+    ack_for: str,
+    status: int,
+    ack_type: int | str,
+    ack_reason: int | str,
+    detail: str = "",
+    request_id: str | None = None,
 ) -> pb.RuntimeMessage:
     ack_type_value = ack_type if isinstance(ack_type, int) else text_to_ack_type(ack_type)
     ack_reason_value = ack_reason if isinstance(ack_reason, int) else text_to_ack_reason(ack_reason)
@@ -277,72 +279,164 @@ def build_ack_message(
 
 
 def build_error_message(
-        *,
-        code: str,
-        message: str,
-        reply_to: str = "",
-        ack_for: str = "",
-        job_id: str = "",
-        query_type: int | str | None = None,
-        reason: str = "",
-        request_id: str | None = None,
+    *,
+    code: str,
+    message: str,
+    request_id: str | None = None,
+    reply_to: str = "",
+    ack_for: str = "",
+    task_id: str = "",
+    query_type: int = pb.RUNTIME_QUERY_TYPE_UNSPECIFIED,
+    reason: str = "",
 ) -> pb.RuntimeMessage:
-    query_type_value = pb.RUNTIME_QUERY_TYPE_UNSPECIFIED
-    if isinstance(query_type, int):
-        query_type_value = query_type
-    elif isinstance(query_type, str):
-        query_type_value = text_to_query_type(query_type)
     return pb.RuntimeMessage(
         error=pb.Error(
             request_id=request_id or str(uuid.uuid4()),
-            code=code,
-            message=message,
-            reply_to=reply_to,
-            ack_for=ack_for,
-            job_id=job_id,
-            query_type=query_type_value,
-            reason=reason,
+            code=str(code),
+            message=str(message),
+            reply_to=str(reply_to),
+            ack_for=str(ack_for),
+            task_id=str(task_id),
+            query_type=int(query_type),
+            reason=str(reason),
         )
     )
 
 
-def decode_job_event(event: pb.JobEvent) -> tuple[str, dict[str, Any], int | None]:
+def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) -> pb.RuntimeMessage:
+    task_type = text_to_task_type(str(payload.get("task_type") or "custom"))
+    loop_mode = text_to_loop_mode(str(payload.get("mode") or "active_learning"))
+    return pb.RuntimeMessage(
+        assign_task=pb.AssignTask(
+            request_id=request_id,
+            task=pb.TaskPayload(
+                task_id=str(payload.get("task_id") or ""),
+                job_id=str(payload.get("job_id") or ""),
+                loop_id=str(payload.get("loop_id") or ""),
+                project_id=str(payload.get("project_id") or ""),
+                source_commit_id=str(payload.get("source_commit_id") or ""),
+                task_type=task_type,
+                plugin_id=str(payload.get("plugin_id") or ""),
+                mode=loop_mode,
+                query_strategy=str(payload.get("query_strategy") or ""),
+                params=dict_to_struct(payload.get("params") or {}),
+                resources=dict_to_resource_summary(payload.get("resources") or {}),
+                round_index=int(payload.get("round_index") or 0),
+                attempt=int(payload.get("attempt") or 1),
+                depends_on_task_ids=[str(v) for v in (payload.get("depends_on_task_ids") or [])],
+            ),
+        )
+    )
+
+
+def build_stop_task_message(*, request_id: str, task_id: str, reason: str) -> pb.RuntimeMessage:
+    return pb.RuntimeMessage(
+        stop_task=pb.StopTask(
+            request_id=request_id,
+            task_id=str(task_id),
+            reason=str(reason or ""),
+        )
+    )
+
+
+def decode_task_event(event: pb.TaskEvent) -> tuple[str, dict[str, Any], int | None]:
     payload_type = event.WhichOneof("event_payload")
     if payload_type == "status_event":
         status_value = int(event.status_event.status)
-        payload: dict[str, Any] = {"status": status_to_text(status_value)}
-        if event.status_event.reason:
-            payload["reason"] = event.status_event.reason
-        return "status", payload, status_value
-
+        return (
+            "status",
+            {
+                "status": status_to_text(status_value),
+                "reason": event.status_event.reason,
+            },
+            status_value,
+        )
     if payload_type == "log_event":
-        return "log", {"level": event.log_event.level, "message": event.log_event.message}, None
-
+        return (
+            "log",
+            {
+                "level": event.log_event.level,
+                "message": event.log_event.message,
+            },
+            None,
+        )
     if payload_type == "progress_event":
-        payload = {
-            "epoch": int(event.progress_event.epoch),
-            "step": int(event.progress_event.step),
-            "total_steps": int(event.progress_event.total_steps),
-            "eta_sec": int(event.progress_event.eta_sec),
-        }
-        return "progress", payload, None
-
+        return (
+            "progress",
+            {
+                "epoch": int(event.progress_event.epoch),
+                "step": int(event.progress_event.step),
+                "total_steps": int(event.progress_event.total_steps),
+                "eta_sec": int(event.progress_event.eta_sec),
+            },
+            None,
+        )
     if payload_type == "metric_event":
-        payload = {
-            "step": int(event.metric_event.step),
-            "epoch": int(event.metric_event.epoch),
-            "metrics": {str(k): float(v) for k, v in event.metric_event.metrics.items()},
-        }
-        return "metric", payload, None
-
+        return (
+            "metric",
+            {
+                "step": int(event.metric_event.step),
+                "epoch": int(event.metric_event.epoch),
+                "metrics": {key: float(value) for key, value in event.metric_event.metrics.items()},
+            },
+            None,
+        )
     if payload_type == "artifact_event":
-        artifact = event.artifact_event.artifact
-        payload = {
-            "kind": artifact.kind,
-            "name": artifact.name,
-            "uri": artifact.uri,
-            "meta": struct_to_dict(artifact.meta),
-        }
-        return "artifact", payload, None
+        return (
+            "artifact",
+            {
+                "kind": event.artifact_event.artifact.kind,
+                "name": event.artifact_event.artifact.name,
+                "uri": event.artifact_event.artifact.uri,
+                "meta": struct_to_dict(event.artifact_event.artifact.meta),
+            },
+            None,
+        )
 
-    return "log", {"level": "WARN", "message": "unknown event payload"}, None
+    return (
+        "log",
+        {
+            "level": "WARN",
+            "message": "unknown runtime event payload",
+        },
+        None,
+    )
+
+
+def parse_register(message: pb.Register) -> dict[str, Any]:
+    plugins: list[dict[str, Any]] = []
+    for item in message.plugins:
+        plugins.append(
+            {
+                "plugin_id": str(item.plugin_id),
+                "version": str(item.version),
+                "supported_task_types": [str(v) for v in item.supported_task_types],
+                "supported_strategies": [str(v) for v in item.supported_strategies],
+                "display_name": str(item.display_name),
+                "request_config_schema": struct_to_dict(item.request_config_schema),
+                "default_request_config": struct_to_dict(item.default_request_config),
+                "supported_accelerators": [
+                    accelerator_type_to_text(v)
+                    for v in item.supported_accelerators
+                    if accelerator_type_to_text(v)
+                ],
+                "supports_auto_fallback": bool(item.supports_auto_fallback),
+            }
+        )
+    return {
+        "request_id": str(message.request_id),
+        "executor_id": str(message.executor_id),
+        "version": str(message.version),
+        "plugins": plugins,
+        "resources": resource_summary_to_dict(message.resources),
+    }
+
+
+def parse_heartbeat(message: pb.Heartbeat) -> dict[str, Any]:
+    return {
+        "request_id": str(message.request_id),
+        "executor_id": str(message.executor_id),
+        "busy": bool(message.busy),
+        "current_task_id": str(message.current_task_id or ""),
+        "resources": resource_summary_to_dict(message.resources),
+    }

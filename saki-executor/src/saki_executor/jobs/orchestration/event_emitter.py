@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Awaitable, Callable
 
-from saki_executor.jobs.state import JobStatus
+from saki_executor.jobs.state import TaskStatus
 from saki_executor.sdk.reporter import JobReporter
 
 PushEventFn = Callable[[dict[str, Any]], Awaitable[None]]
 
 
-class JobEventEmitter:
+class TaskEventEmitter:
     def __init__(
         self,
         *,
@@ -23,11 +23,11 @@ class JobEventEmitter:
 
     async def emit(self, event_type: str, payload: dict[str, Any]) -> None:
         if self._stop_event.is_set():
-            raise asyncio.CancelledError("job stop requested")
+            raise asyncio.CancelledError("task stop requested")
         event = self._build_event(event_type, payload)
         await self._push_event(event)
 
-    async def emit_status(self, status: JobStatus, reason: str) -> None:
+    async def emit_status(self, status: TaskStatus, reason: str) -> None:
         await self.emit("status", {"status": status.value, "reason": reason})
 
     def _build_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -53,13 +53,11 @@ class JobEventEmitter:
         if event_type == "artifact":
             return self._reporter.log(
                 "WARN",
-                "plugin artifact event is ignored; "
-                + f"artifact_name={str(payload.get('name', ''))}",
+                "plugin artifact event is ignored; " + f"artifact_name={str(payload.get('name', ''))}",
             )
         if event_type == "status":
             return self._reporter.status(
-                status=str(payload.get("status", JobStatus.RUNNING.value)),
+                status=str(payload.get("status", TaskStatus.RUNNING.value)),
                 reason=payload.get("reason"),
             )
         return self._reporter.log("WARN", f"unknown event type: {event_type}")
-

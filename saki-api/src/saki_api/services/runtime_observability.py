@@ -52,7 +52,7 @@ class RuntimeObservabilityService:
             version=executor.version,
             status=executor.status,
             is_online=executor.is_online,
-            current_job_id=executor.current_job_id,
+            current_task_id=executor.current_task_id,
             plugin_ids=executor.plugin_ids or {},
             resources=executor.resources or {},
             last_seen_at=executor.last_seen_at,
@@ -110,7 +110,7 @@ class RuntimeObservabilityService:
                 *[
                     runtime_dispatcher.executor_pending_snapshot(
                         executor_id=executor.executor_id,
-                        current_job_id=executor.current_job_id,
+                        current_task_id=executor.current_task_id,
                     )
                     for executor in executors
                 ]
@@ -142,7 +142,7 @@ class RuntimeObservabilityService:
 
         pending = await runtime_dispatcher.executor_pending_snapshot(
             executor_id=executor.executor_id,
-            current_job_id=executor.current_job_id,
+            current_task_id=executor.current_task_id,
         )
         return self._to_runtime_executor_read(
             executor=executor,

@@ -1,136 +1,123 @@
+from __future__ import annotations
+
 import asyncio
 
 import pytest
 
 import saki_api.grpc.runtime_control as runtime_control_module
-from saki_api.grpc.runtime_control import (
-    RuntimeControlService,
-    _RequestDedupCache,
-    _RuntimeStreamState,
-)
+from saki_api.grpc.runtime_control import RuntimeControlService, _RuntimeStreamState
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 
 
 def _build_stream_state() -> _RuntimeStreamState:
-    return _RuntimeStreamState(
-        outbox=asyncio.Queue(),
-        dedup_cache=_RequestDedupCache(ttl_sec=60, max_entries=128),
-    )
+    return _RuntimeStreamState(outbox=asyncio.Queue())
 
 
 @pytest.mark.anyio
-async def test_handle_stream_register_missing_executor_sets_close_flag(monkeypatch):
+async def test_handle_register_missing_executor_returns_error():
     service = RuntimeControlService()
     state = _build_stream_state()
-    monkeypatch.setattr(runtime_control_module.settings, "RUNTIME_STREAM_REJECT_CLOSE", True)
 
-    handled = await service._handle_stream_register(  # noqa: SLF001
+    response = await service._handle_message(  # noqa: SLF001
+        message=pb.RuntimeMessage(register=pb.Register(request_id="r1", executor_id="", version="1.0.0")),
+        state=state,
+    )
+
+    assert response is not None
+    assert response.WhichOneof("payload") == "error"
+    assert response.error.code == "invalid_register"
+
+
+@pytest.mark.anyio
+async def test_handle_register_success_calls_dispatcher(monkeypatch):
+    service = RuntimeControlService()
+    state = _build_stream_state()
+
+    captured = {}
+
+    async def fake_register_executor(*, executor_id, version, plugin_payloads, resources):
+        captured["executor_id"] = executor_id
+        captured["version"] = version
+        captured["plugin_payloads"] = plugin_payloads
+        captured["resources"] = resources
+
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register_executor", fake_register_executor)
+
+    response = await service._handle_message(  # noqa: SLF001
         message=pb.RuntimeMessage(
             register=pb.Register(
-                request_id="register-missing-eid-1",
-                executor_id="",
+                request_id="r2",
+                executor_id="executor-1",
                 version="1.0.0",
+                plugins=[pb.PluginCapability(plugin_id="demo_det_v1", version="0.1.0")],
             )
         ),
         state=state,
     )
 
-    assert handled is False
-    assert state.close_stream_after_flush is True
-    response = await state.outbox.get()
-    assert response.WhichOneof("payload") == "error"
-    assert response.error.code == "INVALID_ARGUMENT"
-    assert response.error.reply_to == "register-missing-eid-1"
+    assert response is not None
+    assert response.WhichOneof("payload") == "ack"
+    assert response.ack.type == pb.ACK_TYPE_REGISTER
+    assert response.ack.reason == pb.ACK_REASON_REGISTERED
+    assert captured["executor_id"] == "executor-1"
+    assert state.executor_id == "executor-1"
 
 
 @pytest.mark.anyio
-async def test_handle_stream_register_permission_error_keeps_stream_when_reject_close_disabled(monkeypatch):
+async def test_handle_heartbeat_conflict_returns_error(monkeypatch):
     service = RuntimeControlService()
     state = _build_stream_state()
-    monkeypatch.setattr(runtime_control_module.settings, "RUNTIME_STREAM_REJECT_CLOSE", False)
+    state.executor_id = "executor-a"
 
-    async def fake_register(**_kwargs):
-        raise PermissionError("executor not allowed")
+    async def fake_handle_heartbeat(**_kwargs):
+        raise AssertionError("should not be called")
 
-    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "handle_heartbeat", fake_handle_heartbeat)
 
-    handled = await service._handle_stream_register(  # noqa: SLF001
+    response = await service._handle_message(  # noqa: SLF001
         message=pb.RuntimeMessage(
-            register=pb.Register(
-                request_id="register-permission-1",
-                executor_id="executor-blocked-1",
-                version="1.0.0",
+            heartbeat=pb.Heartbeat(
+                request_id="hb-1",
+                executor_id="executor-b",
+                busy=True,
+                current_task_id="task-1",
             )
         ),
         state=state,
     )
 
-    assert handled is True
-    assert state.close_stream_after_flush is False
-    response = await state.outbox.get()
+    assert response is not None
     assert response.WhichOneof("payload") == "error"
-    assert response.error.code == "FORBIDDEN"
-    assert response.error.reason == "executor not allowed"
+    assert response.error.code == "executor_id_conflict"
 
 
-def test_build_dispatcher_register_kwargs_includes_plugin_capabilities_when_supported(monkeypatch):
+@pytest.mark.anyio
+async def test_handle_heartbeat_success_updates_dispatcher(monkeypatch):
     service = RuntimeControlService()
     state = _build_stream_state()
 
-    async def fake_register(
-        *,
-        executor_id: str,
-        queue,
-        version: str,
-        plugin_ids: set[str],
-        resources: dict[str, object],
-        plugin_capabilities: list[dict[str, object]],
-    ) -> None:
-        del executor_id, queue, version, plugin_ids, resources, plugin_capabilities
+    calls = []
 
-    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
+    async def fake_handle_heartbeat(*, executor_id, busy, current_task_id, resources):
+        calls.append((executor_id, busy, current_task_id, resources))
 
-    kwargs = service._build_dispatcher_register_kwargs(  # noqa: SLF001
-        state=state,
-        register=pb.Register(
-            executor_id="executor-1",
-            version="1.0.0",
+    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "handle_heartbeat", fake_handle_heartbeat)
+
+    response = await service._handle_message(  # noqa: SLF001
+        message=pb.RuntimeMessage(
+            heartbeat=pb.Heartbeat(
+                request_id="hb-2",
+                executor_id="executor-c",
+                busy=True,
+                current_task_id="task-2",
+                resources=pb.ResourceSummary(gpu_count=1, cpu_workers=4, memory_mb=2048),
+            )
         ),
-        executor_id="executor-1",
-        plugin_capabilities=[{"plugin_id": "yolo_det_v1"}],
+        state=state,
     )
 
-    assert kwargs["executor_id"] == "executor-1"
-    assert kwargs["plugin_ids"] == {"yolo_det_v1"}
-    assert "plugin_capabilities" in kwargs
-
-
-def test_build_dispatcher_register_kwargs_omits_plugin_capabilities_when_not_supported(monkeypatch):
-    service = RuntimeControlService()
-    state = _build_stream_state()
-
-    async def fake_register(
-        *,
-        executor_id: str,
-        queue,
-        version: str,
-        plugin_ids: set[str],
-        resources: dict[str, object],
-    ) -> None:
-        del executor_id, queue, version, plugin_ids, resources
-
-    monkeypatch.setattr(runtime_control_module.runtime_dispatcher, "register", fake_register)
-
-    kwargs = service._build_dispatcher_register_kwargs(  # noqa: SLF001
-        state=state,
-        register=pb.Register(
-            executor_id="executor-2",
-            version="2.0.0",
-        ),
-        executor_id="executor-2",
-        plugin_capabilities=[{"plugin_id": "fedo_mapper_v1"}],
-    )
-
-    assert kwargs["executor_id"] == "executor-2"
-    assert kwargs["plugin_ids"] == {"fedo_mapper_v1"}
-    assert "plugin_capabilities" not in kwargs
+    assert response is not None
+    assert response.WhichOneof("payload") == "ack"
+    assert response.ack.reason == pb.ACK_REASON_ACCEPTED
+    assert calls and calls[0][0] == "executor-c"
+    assert calls[0][2] == "task-2"

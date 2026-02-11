@@ -1,14 +1,30 @@
 export type ALLoopStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed' | 'failed';
-export type ALLoopMode = 'active_learning' | 'simulation';
+export type ALLoopMode = 'active_learning' | 'simulation' | 'manual';
+
+export type LoopPhase =
+    | 'al_bootstrap'
+    | 'al_train'
+    | 'al_score'
+    | 'al_wait_annotation'
+    | 'al_merge'
+    | 'al_eval'
+    | 'sim_bootstrap'
+    | 'sim_train'
+    | 'sim_score'
+    | 'sim_auto_label'
+    | 'sim_eval'
+    | 'manual_idle'
+    | 'manual_task_running'
+    | 'manual_wait_confirm'
+    | 'manual_finalize';
 
 export interface LoopSimulationConfig {
     oracleCommitId?: string | null;
-    initialSeedCount: number;
-    queryBatchSize: number;
+    seedRatio: number;
+    stepRatio: number;
     maxRounds: number;
-    splitSeed: number;
-    randomSeed: number;
-    requireFullyLabeled: boolean;
+    randomBaselineEnabled?: boolean;
+    seeds: number[];
 }
 
 export interface ALLoop {
@@ -17,6 +33,8 @@ export interface ALLoop {
     branchId: string;
     name: string;
     mode: ALLoopMode;
+    phase: LoopPhase;
+    phaseMeta: Record<string, any>;
     queryStrategy: string;
     modelArch: string;
     globalConfig: Record<string, any>;
@@ -39,31 +57,82 @@ export interface ALLoop {
     updatedAt: string;
 }
 
-export type RuntimeJobStatus = 'pending' | 'running' | 'success' | 'partial_failed' | 'failed' | 'cancelled';
+export type RuntimeJobStatus =
+    | 'job_pending'
+    | 'job_running'
+    | 'job_partial_failed'
+    | 'job_failed'
+    | 'job_succeeded'
+    | 'job_cancelled';
 
 export interface RuntimeJob {
     id: string;
     projectId: string;
     loopId: string;
     roundIndex: number;
-    status: RuntimeJobStatus;
+    mode: ALLoopMode;
+    summaryStatus: RuntimeJobStatus;
+    taskCounts: Record<string, number>;
     jobType: string;
     pluginId: string;
-    mode: string;
     queryStrategy: string;
-    sourceCommitId: string;
+    sourceCommitId?: string | null;
     resultCommitId?: string | null;
     assignedExecutorId?: string | null;
     startedAt?: string | null;
     endedAt?: string | null;
     retryCount: number;
     lastError?: string | null;
-    metrics: Record<string, any>;
-    artifacts: Record<string, any>;
+    finalMetrics: Record<string, any>;
+    finalArtifacts: Record<string, any>;
     params: Record<string, any>;
     resources: Record<string, any>;
     strategyParams: Record<string, any>;
     modelId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export type RuntimeTaskStatus =
+    | 'pending'
+    | 'dispatching'
+    | 'running'
+    | 'retrying'
+    | 'succeeded'
+    | 'failed'
+    | 'cancelled'
+    | 'skipped';
+
+export type RuntimeTaskType =
+    | 'train'
+    | 'score'
+    | 'select'
+    | 'auto_label'
+    | 'wait_annotation'
+    | 'merge'
+    | 'eval'
+    | 'upload_artifact'
+    | 'manual_review';
+
+export interface RuntimeJobTask {
+    id: string;
+    jobId: string;
+    taskType: RuntimeTaskType;
+    status: RuntimeTaskStatus;
+    roundIndex: number;
+    taskIndex: number;
+    dependsOn: string[];
+    params: Record<string, any>;
+    metrics: Record<string, any>;
+    artifacts: Record<string, any>;
+    sourceCommitId?: string | null;
+    resultCommitId?: string | null;
+    assignedExecutorId?: string | null;
+    attempt: number;
+    maxAttempts: number;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    lastError?: string | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -106,26 +175,12 @@ export interface LoopUpdateRequest {
     autoRegisterModel?: boolean;
 }
 
-export type LoopRecoverMode = 'retry_same_params' | 'rerun_with_overrides';
-
-export interface LoopRecoverOverrides {
-    queryStrategy?: string;
-    pluginId?: string;
-    params?: Record<string, any>;
-    resources?: Record<string, any>;
-}
-
-export interface LoopRecoverRequest {
-    mode: LoopRecoverMode;
-    overrides?: LoopRecoverOverrides;
-}
-
 export interface RuntimeJobCreateRequest {
     projectId: string;
-    sourceCommitId: string;
+    sourceCommitId?: string;
     pluginId: string;
     jobType?: string;
-    mode?: string;
+    mode?: ALLoopMode;
     queryStrategy: string;
     params?: Record<string, any>;
     resources?: Record<string, any>;
@@ -138,14 +193,20 @@ export interface RuntimeJobCommandResponse {
     status: string;
 }
 
-export interface RuntimeJobEvent {
+export interface RuntimeTaskCommandResponse {
+    requestId: string;
+    taskId: string;
+    status: string;
+}
+
+export interface RuntimeTaskEvent {
     seq: number;
     ts: string;
     eventType: string;
     payload: Record<string, any>;
 }
 
-export interface RuntimeMetricPoint {
+export interface RuntimeTaskMetricPoint {
     step: number;
     epoch?: number | null;
     metricName: string;
@@ -153,49 +214,41 @@ export interface RuntimeMetricPoint {
     ts: string;
 }
 
-export interface RuntimeTopKCandidate {
+export interface RuntimeTaskCandidate {
     sampleId: string;
+    rank: number;
     score: number;
-    extra: Record<string, any>;
+    reason: Record<string, any>;
     predictionSnapshot: Record<string, any>;
 }
 
-export interface RuntimeArtifact {
+export interface RuntimeTaskArtifact {
     name: string;
     kind: string;
     uri: string;
     meta: Record<string, any>;
 }
 
-export interface RuntimeArtifactsResponse {
-    jobId: string;
-    artifacts: RuntimeArtifact[];
+export interface RuntimeTaskArtifactsResponse {
+    taskId: string;
+    artifacts: RuntimeTaskArtifact[];
 }
 
-export interface LoopRound {
-    id: string;
-    loopId: string;
-    roundIndex: number;
-    sourceCommitId: string;
-    jobId?: string | null;
-    annotationBatchId?: string | null;
-    status: 'training' | 'annotation' | 'completed' | 'completed_no_candidates' | 'failed';
-    metrics: Record<string, any>;
-    selectedCount: number;
-    labeledCount: number;
-    startedAt?: string | null;
-    endedAt?: string | null;
-    createdAt: string;
-    updatedAt: string;
+export interface TaskArtifactDownload {
+    taskId: string;
+    artifactName: string;
+    downloadUrl: string;
+    expiresInHours: number;
 }
 
 export interface LoopSummary {
     loopId: string;
     status: ALLoopStatus;
-    roundsTotal: number;
-    roundsCompleted: number;
-    selectedTotal: number;
-    labeledTotal: number;
+    phase: LoopPhase;
+    jobsTotal: number;
+    jobsSucceeded: number;
+    tasksTotal: number;
+    tasksSucceeded: number;
     metricsLatest: Record<string, any>;
 }
 
@@ -211,22 +264,28 @@ export interface SimulationExperimentCreateRequest {
 }
 
 export interface SimulationCurvePoint {
+    strategy: string;
     roundIndex: number;
-    labeledCount: number;
-    map50: number;
-    recall: number;
+    targetRatio: number;
+    meanMetric: number;
+    stdMetric: number;
 }
 
-export interface SimulationLoopCurve {
-    loopId: string;
-    loopName: string;
-    queryStrategy: string;
-    points: SimulationCurvePoint[];
+export interface SimulationStrategySummary {
+    strategy: string;
+    seeds: number[];
+    finalMean: number;
+    finalStd: number;
+    aulcMean: number;
 }
 
-export interface SimulationExperimentCurves {
+export interface SimulationComparison {
     experimentGroupId: string;
-    loops: SimulationLoopCurve[];
+    metricName: string;
+    curves: SimulationCurvePoint[];
+    strategies: SimulationStrategySummary[];
+    baselineStrategy: string;
+    deltaVsBaseline: Record<string, number>;
 }
 
 export interface SimulationExperimentCreateResponse {
@@ -234,34 +293,10 @@ export interface SimulationExperimentCreateResponse {
     loops: ALLoop[];
 }
 
-export interface AnnotationBatch {
-    id: string;
-    projectId: string;
+export interface LoopConfirmResponse {
     loopId: string;
-    jobId: string;
-    roundIndex: number;
-    status: 'open' | 'closed';
-    totalCount: number;
-    annotatedCount: number;
-    closedAt?: string | null;
-    meta: Record<string, any>;
-    createdAt: string;
-    updatedAt: string;
-}
-
-export interface AnnotationBatchItem {
-    id: string;
-    batchId: string;
-    sampleId: string;
-    rank: number;
-    score: number;
-    reason: Record<string, any>;
-    predictionSnapshot: Record<string, any>;
-    isAnnotated: boolean;
-    annotatedAt?: string | null;
-    annotationCommitId?: string | null;
-    createdAt: string;
-    updatedAt: string;
+    phase: LoopPhase;
+    status: ALLoopStatus;
 }
 
 export interface ModelArtifact {
@@ -310,7 +345,7 @@ export interface RuntimePluginCatalogItem {
     pluginId: string;
     displayName: string;
     version: string;
-    supportedJobTypes: string[];
+    supportedTaskTypes: string[];
     supportedStrategies: string[];
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;
@@ -332,7 +367,7 @@ export interface RuntimeExecutorPluginCapability {
     pluginId: string;
     displayName: string;
     version: string;
-    supportedJobTypes: string[];
+    supportedTaskTypes: string[];
     supportedStrategies: string[];
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;
@@ -353,7 +388,7 @@ export interface RuntimeExecutorRead {
     version: string;
     status: string;
     isOnline: boolean;
-    currentJobId?: string | null;
+    currentTaskId?: string | null;
     pluginIds: {
         plugins?: RuntimeExecutorPluginCapability[];
         ids?: string[];
@@ -404,13 +439,6 @@ export interface RuntimeExecutorStatsResponse {
 
 export interface ModelArtifactDownload {
     modelId: string;
-    artifactName: string;
-    downloadUrl: string;
-    expiresInHours: number;
-}
-
-export interface JobArtifactDownload {
-    jobId: string;
     artifactName: string;
     downloadUrl: string;
     expiresInHours: number;

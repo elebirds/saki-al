@@ -19,6 +19,7 @@ def _build_manager(tmp_path: Path) -> JobManager:
 def test_job_execution_request_from_payload_requires_explicit_fields():
     request = JobExecutionRequest.from_payload(
         {
+            "task_id": "task-1",
             "job_id": "job-1",
             "plugin_id": "demo_det_v1",
             "round_index": "2",
@@ -35,17 +36,18 @@ def test_job_execution_request_from_payload_requires_explicit_fields():
 
 
 @pytest.mark.anyio
-async def test_assign_job_passes_typed_request_to_run_job(tmp_path: Path):
+async def test_assign_task_passes_typed_request_to_run_task(tmp_path: Path):
     manager = _build_manager(tmp_path)
     captured: list[JobExecutionRequest] = []
 
     async def fake_run_job(request: JobExecutionRequest) -> None:
         captured.append(request)
 
-    manager._run_job = fake_run_job  # type: ignore[method-assign]  # noqa: SLF001
-    accepted = await manager.assign_job(
+    manager._run_task = fake_run_job  # type: ignore[method-assign]  # noqa: SLF001
+    accepted = await manager.assign_task(
         "req-1",
         {
+            "task_id": "task-typed-1",
             "job_id": "job-typed-1",
             "project_id": "project-1",
             "source_commit_id": "commit-1",
@@ -61,6 +63,7 @@ async def test_assign_job_passes_typed_request_to_run_job(tmp_path: Path):
     await asyncio.wait_for(manager._task, timeout=1)  # noqa: SLF001
     assert len(captured) == 1
     assert isinstance(captured[0], JobExecutionRequest)
+    assert captured[0].task_id == "task-typed-1"
     assert captured[0].job_id == "job-typed-1"
 
 
@@ -76,7 +79,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
                 data_response=pb.DataResponse(
                     request_id=f"resp-{req.request_id}",
                     reply_to=req.request_id,
-                    job_id=req.job_id,
+                    task_id=req.task_id,
                     query_type=req.query_type,
                     items=[pb.DataItem(sample_item=pb.SampleItem(id="sample-1"))],
                     next_cursor="",
@@ -88,7 +91,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
                 upload_ticket_response=pb.UploadTicketResponse(
                     request_id=f"resp-{req.request_id}",
                     reply_to=req.request_id,
-                    job_id=req.job_id,
+                    task_id=req.task_id,
                     upload_url="https://upload.local/test.bin",
                     storage_uri="s3://bucket/test.bin",
                     headers={"x-test": "1"},
@@ -102,7 +105,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
     page = await manager._fetch_page(  # noqa: SLF001
-        job_id="job-1",
+        task_id="task-1",
         query_type="samples",
         project_id="project-1",
         commit_id="commit-1",
@@ -113,7 +116,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
     assert page.items and page.items[0]["id"] == "sample-1"
 
     ticket = await manager._request_upload_ticket(  # noqa: SLF001
-        job_id="job-1",
+        task_id="task-1",
         artifact_name="test.bin",
         content_type="application/octet-stream",
     )

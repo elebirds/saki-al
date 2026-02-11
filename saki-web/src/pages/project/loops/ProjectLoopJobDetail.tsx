@@ -28,25 +28,37 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {api} from '../../../services/api';
 import {useAuthStore} from '../../../store/authStore';
 import {
-    RuntimeArtifact,
     RuntimeJob,
-    RuntimeJobEvent,
-    RuntimeMetricPoint,
-    RuntimeTopKCandidate,
+    RuntimeJobTask,
+    RuntimeTaskArtifact,
+    RuntimeTaskCandidate,
+    RuntimeTaskEvent,
+    RuntimeTaskMetricPoint,
 } from '../../../types';
 
 const {Text, Title} = Typography;
 
 const JOB_STATUS_COLOR: Record<string, string> = {
-    pending: 'default',
-    running: 'processing',
-    success: 'success',
-    partial_failed: 'warning',
-    failed: 'error',
-    cancelled: 'warning',
+    job_pending: 'default',
+    job_running: 'processing',
+    job_succeeded: 'success',
+    job_partial_failed: 'warning',
+    job_failed: 'error',
+    job_cancelled: 'warning',
 };
 
-const TERMINAL_STATUS = new Set(['success', 'partial_failed', 'failed', 'cancelled']);
+const TASK_STATUS_COLOR: Record<string, string> = {
+    pending: 'default',
+    dispatching: 'processing',
+    running: 'processing',
+    retrying: 'warning',
+    succeeded: 'success',
+    failed: 'error',
+    cancelled: 'warning',
+    skipped: 'default',
+};
+
+const TERMINAL_TASK_STATUS = new Set(['succeeded', 'failed', 'cancelled', 'skipped']);
 
 const formatDateTime = (value?: string | null) => {
     if (!value) return '-';
@@ -57,10 +69,10 @@ const formatDateTime = (value?: string | null) => {
     }
 };
 
-const buildWsUrl = (jobId: string, afterSeq: number, token: string): string => {
+const buildWsUrl = (taskId: string, afterSeq: number, token: string): string => {
     const apiBaseUrlRaw = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
     const apiBaseUrl = apiBaseUrlRaw.endsWith('/') ? apiBaseUrlRaw.slice(0, -1) : apiBaseUrlRaw;
-    const suffix = `/jobs/${jobId}/events/ws?after_seq=${afterSeq}&token=${encodeURIComponent(token)}`;
+    const suffix = `/tasks/${taskId}/events/ws?after_seq=${afterSeq}&token=${encodeURIComponent(token)}`;
     if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
         return `${apiBaseUrl.replace(/^http/, 'ws')}${suffix}`;
     }
@@ -69,7 +81,7 @@ const buildWsUrl = (jobId: string, afterSeq: number, token: string): string => {
     return `${protocol}//${window.location.host}${path}${suffix}`;
 };
 
-type RawRuntimeJobEvent = {
+type RawRuntimeTaskEvent = {
     seq?: unknown;
     ts?: unknown;
     eventType?: unknown;
@@ -77,7 +89,7 @@ type RawRuntimeJobEvent = {
     payload?: unknown;
 };
 
-const normalizeWsEvent = (raw: RawRuntimeJobEvent): RuntimeJobEvent | null => {
+const normalizeWsEvent = (raw: RawRuntimeTaskEvent): RuntimeTaskEvent | null => {
     const seq = Number(raw.seq);
     if (!Number.isFinite(seq)) return null;
     const eventTypeRaw = raw.eventType ?? raw.event_type;
@@ -87,7 +99,7 @@ const normalizeWsEvent = (raw: RawRuntimeJobEvent): RuntimeJobEvent | null => {
     return {seq, ts, eventType, payload};
 };
 
-const eventToText = (event: RuntimeJobEvent): string => {
+const eventToText = (event: RuntimeTaskEvent): string => {
     if (event.eventType === 'log') {
         return `[${event.payload.level || 'INFO'}] ${event.payload.message || ''}`;
     }
@@ -95,7 +107,7 @@ const eventToText = (event: RuntimeJobEvent): string => {
         return `状态 => ${event.payload.status || ''} ${event.payload.reason || ''}`.trim();
     }
     if (event.eventType === 'progress') {
-        return `进度 epoch=${event.payload.epoch ?? '-'} step=${event.payload.step ?? '-'} / ${event.payload.totalSteps ?? '-'}`;
+        return `进度 epoch=${event.payload.epoch ?? '-'} step=${event.payload.step ?? '-'} / ${event.payload.totalSteps ?? event.payload.total_steps ?? '-'}`;
     }
     if (event.eventType === 'metric') {
         return `指标 ${JSON.stringify(event.payload.metrics || {})}`;
@@ -103,10 +115,10 @@ const eventToText = (event: RuntimeJobEvent): string => {
     if (event.eventType === 'artifact') {
         return `制品 ${event.payload.name || ''} -> ${event.payload.uri || ''}`;
     }
-    return `unknown_event ${JSON.stringify(event.payload || {})}`;
+    return `${event.eventType} ${JSON.stringify(event.payload || {})}`;
 };
 
-const isImageArtifact = (artifact: RuntimeArtifact): boolean => {
+const isImageArtifact = (artifact: RuntimeTaskArtifact): boolean => {
     const name = (artifact.name || '').toLowerCase();
     const kind = (artifact.kind || '').toLowerCase();
     return (
@@ -119,6 +131,15 @@ const isImageArtifact = (artifact: RuntimeArtifact): boolean => {
     );
 };
 
+const pickDefaultTask = (tasks: RuntimeJobTask[]): RuntimeJobTask | null => {
+    if (tasks.length === 0) return null;
+    return (
+        tasks.find((item) => ['running', 'dispatching', 'retrying'].includes(item.status))
+        || tasks.find((item) => !TERMINAL_TASK_STATUS.has(item.status))
+        || tasks[tasks.length - 1]
+    );
+};
+
 const ProjectLoopJobDetail: React.FC = () => {
     const {projectId, loopId, jobId} = useParams<{ projectId: string; loopId: string; jobId: string }>();
     const navigate = useNavigate();
@@ -127,10 +148,13 @@ const ProjectLoopJobDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [job, setJob] = useState<RuntimeJob | null>(null);
-    const [metricPoints, setMetricPoints] = useState<RuntimeMetricPoint[]>([]);
-    const [topk, setTopk] = useState<RuntimeTopKCandidate[]>([]);
-    const [events, setEvents] = useState<RuntimeJobEvent[]>([]);
-    const [artifacts, setArtifacts] = useState<RuntimeArtifact[]>([]);
+    const [tasks, setTasks] = useState<RuntimeJobTask[]>([]);
+    const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+    const [selectedTask, setSelectedTask] = useState<RuntimeJobTask | null>(null);
+    const [metricPoints, setMetricPoints] = useState<RuntimeTaskMetricPoint[]>([]);
+    const [candidates, setCandidates] = useState<RuntimeTaskCandidate[]>([]);
+    const [events, setEvents] = useState<RuntimeTaskEvent[]>([]);
+    const [artifacts, setArtifacts] = useState<RuntimeTaskArtifact[]>([]);
     const [wsConnected, setWsConnected] = useState(false);
     const [artifactUrls, setArtifactUrls] = useState<Record<string, string>>({});
 
@@ -153,21 +177,10 @@ const ProjectLoopJobDetail: React.FC = () => {
         return Array.from(rows.values()).sort((a, b) => (a.step || 0) - (b.step || 0));
     }, [metricPoints]);
 
-    const topkDataSource = useMemo(() => {
-        return topk.map((item, idx) => ({
-            rank: idx + 1,
-            sampleId: item.sampleId,
-            score: item.score,
-            extra: item.extra || {},
-        }));
-    }, [topk]);
+    const imageArtifacts = useMemo(() => artifacts.filter((item) => isImageArtifact(item)), [artifacts]);
 
-    const imageArtifacts = useMemo(() => {
-        return artifacts.filter((item) => isImageArtifact(item));
-    }, [artifacts]);
-
-    const ensureArtifactUrls = useCallback(async (items: RuntimeArtifact[]) => {
-        if (!jobId || items.length === 0) return;
+    const ensureArtifactUrls = useCallback(async (taskId: string, items: RuntimeTaskArtifact[]) => {
+        if (!taskId || items.length === 0) return;
         const missing = items.filter((item) => !artifactUrls[item.name]);
         if (missing.length === 0) return;
 
@@ -178,39 +191,59 @@ const ProjectLoopJobDetail: React.FC = () => {
                 updates[artifact.name] = uri;
                 continue;
             }
-            if (!uri.startsWith('s3://')) {
-                continue;
-            }
+            if (!uri.startsWith('s3://')) continue;
             try {
-                const row = await api.getJobArtifactDownloadUrl(jobId, artifact.name, 2);
+                const row = await api.getTaskArtifactDownloadUrl(taskId, artifact.name, 2);
                 updates[artifact.name] = row.downloadUrl;
             } catch {
-                // Keep silent for unsupported artifact URI.
+                // ignore unavailable artifacts
             }
         }
 
         if (Object.keys(updates).length > 0) {
             setArtifactUrls((prev) => ({...prev, ...updates}));
         }
-    }, [jobId, artifactUrls]);
+    }, [artifactUrls]);
 
-    const loadJobDashboard = useCallback(async () => {
-        if (!jobId) return;
-        const [jobRow, points, candidates, artifactsResp, initialEvents] = await Promise.all([
-            api.getJob(jobId),
-            api.getJobMetricSeries(jobId, 5000),
-            api.getJobSamplingTopK(jobId, 200),
-            api.getJobArtifacts(jobId),
-            api.getJobEvents(jobId, 0),
+    const loadTaskDashboard = useCallback(async (taskId: string) => {
+        const [taskRow, points, topk, artifactsResp, initialEvents] = await Promise.all([
+            api.getTask(taskId),
+            api.getTaskMetricSeries(taskId, 5000),
+            api.getTaskCandidates(taskId, 200),
+            api.getTaskArtifacts(taskId),
+            api.getTaskEvents(taskId, 0, 5000),
         ]);
-        setJob(jobRow);
+        setSelectedTask(taskRow);
         setMetricPoints(points);
-        setTopk(candidates);
+        setCandidates(topk);
         setArtifacts(artifactsResp.artifacts || []);
         setEvents(initialEvents);
         eventCursorRef.current = initialEvents.reduce((max, item) => Math.max(max, item.seq), 0);
-        await ensureArtifactUrls(artifactsResp.artifacts || []);
-    }, [jobId, ensureArtifactUrls]);
+        await ensureArtifactUrls(taskId, artifactsResp.artifacts || []);
+    }, [ensureArtifactUrls]);
+
+    const loadJobDashboard = useCallback(async () => {
+        if (!jobId) return;
+        const [jobRow, taskRows] = await Promise.all([
+            api.getJob(jobId),
+            api.getJobTasks(jobId, 2000),
+        ]);
+        setJob(jobRow);
+        setTasks(taskRows);
+
+        const chosenTask = taskRows.find((item) => item.id === selectedTaskId) || pickDefaultTask(taskRows);
+        if (chosenTask) {
+            setSelectedTaskId(chosenTask.id);
+            await loadTaskDashboard(chosenTask.id);
+        } else {
+            setSelectedTaskId('');
+            setSelectedTask(null);
+            setMetricPoints([]);
+            setCandidates([]);
+            setArtifacts([]);
+            setEvents([]);
+        }
+    }, [jobId, selectedTaskId, loadTaskDashboard]);
 
     const loadData = useCallback(async (silent: boolean = false) => {
         if (!jobId) return;
@@ -231,69 +264,72 @@ const ProjectLoopJobDetail: React.FC = () => {
     }, [loadData]);
 
     useEffect(() => {
-        if (!jobId) return;
+        if (!selectedTaskId) return;
         const timer = window.setInterval(async () => {
             try {
-                const [newEvents, latestJob] = await Promise.all([
-                    api.getJobEvents(jobId, eventCursorRef.current),
-                    api.getJob(jobId),
+                const [latestJob, latestTasks, newEvents, latestTask] = await Promise.all([
+                    api.getJob(jobId as string),
+                    api.getJobTasks(jobId as string, 2000),
+                    api.getTaskEvents(selectedTaskId, eventCursorRef.current, 5000),
+                    api.getTask(selectedTaskId),
                 ]);
+
+                setJob(latestJob);
+                setTasks(latestTasks);
+                setSelectedTask(latestTask);
 
                 if (newEvents.length > 0) {
                     setEvents((prev) => {
                         const merged = [...prev, ...newEvents];
-                        const dedup = new Map<number, RuntimeJobEvent>();
+                        const dedup = new Map<number, RuntimeTaskEvent>();
                         merged.forEach((item) => dedup.set(item.seq, item));
                         return Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
                     });
-                    eventCursorRef.current = Math.max(
-                        eventCursorRef.current,
-                        ...newEvents.map((item) => item.seq),
-                    );
+                    eventCursorRef.current = Math.max(eventCursorRef.current, ...newEvents.map((item) => item.seq));
                 }
 
-                setJob(latestJob);
-
                 const shouldRefreshMetrics =
-                    latestJob.status === 'running' ||
+                    latestTask.status === 'running' ||
+                    latestTask.status === 'dispatching' ||
                     newEvents.some((item) => item.eventType === 'metric');
                 const shouldRefreshArtifacts =
-                    newEvents.some((item) => item.eventType === 'artifact') || TERMINAL_STATUS.has(latestJob.status);
+                    newEvents.some((item) => item.eventType === 'artifact') ||
+                    TERMINAL_TASK_STATUS.has(latestTask.status);
 
                 if (shouldRefreshMetrics) {
-                    const points = await api.getJobMetricSeries(jobId, 5000);
+                    const points = await api.getTaskMetricSeries(selectedTaskId, 5000);
                     setMetricPoints(points);
                 }
                 if (shouldRefreshArtifacts) {
-                    const artifactsResp = await api.getJobArtifacts(jobId);
+                    const artifactsResp = await api.getTaskArtifacts(selectedTaskId);
                     setArtifacts(artifactsResp.artifacts || []);
-                    await ensureArtifactUrls(artifactsResp.artifacts || []);
+                    await ensureArtifactUrls(selectedTaskId, artifactsResp.artifacts || []);
                 }
-                if (TERMINAL_STATUS.has(latestJob.status)) {
-                    const candidates = await api.getJobSamplingTopK(jobId, 200);
-                    setTopk(candidates);
+                if (TERMINAL_TASK_STATUS.has(latestTask.status)) {
+                    const topk = await api.getTaskCandidates(selectedTaskId, 200);
+                    setCandidates(topk);
                 }
             } catch {
                 // ignore polling errors
             }
         }, 3000);
         return () => window.clearInterval(timer);
-    }, [jobId, ensureArtifactUrls]);
+    }, [selectedTaskId, jobId, ensureArtifactUrls]);
 
     useEffect(() => {
-        if (!jobId || !token) return;
-        const ws = new WebSocket(buildWsUrl(jobId, eventCursorRef.current, token));
+        if (!selectedTaskId || !token) return;
+        const ws = new WebSocket(buildWsUrl(selectedTaskId, eventCursorRef.current, token));
         ws.onopen = () => setWsConnected(true);
         ws.onclose = () => setWsConnected(false);
         ws.onerror = () => setWsConnected(false);
         ws.onmessage = (event: MessageEvent<string>) => {
             try {
-                const raw = JSON.parse(event.data || '{}') as RawRuntimeJobEvent;
+                const raw = JSON.parse(event.data || '{}') as RawRuntimeTaskEvent;
                 const payload = normalizeWsEvent(raw);
                 if (!payload) return;
                 setEvents((prev) => {
                     const merged = [...prev, payload];
-                    const dedup = new Map<number, RuntimeJobEvent>();
+                    const dedup = new Map<number, RuntimeTaskEvent>();
                     merged.forEach((item) => dedup.set(item.seq, item));
                     return Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
                 });
@@ -306,7 +342,7 @@ const ProjectLoopJobDetail: React.FC = () => {
             ws.close();
             setWsConnected(false);
         };
-    }, [jobId, token]);
+    }, [selectedTaskId, token]);
 
     if (loading) {
         return (
@@ -332,7 +368,7 @@ const ProjectLoopJobDetail: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回 Loop 详情</Button>
                             <Title level={4} className="!mb-0">Job #{job.roundIndex}</Title>
-                            <Tag color={JOB_STATUS_COLOR[job.status] || 'default'}>{job.status}</Tag>
+                            <Tag color={JOB_STATUS_COLOR[job.summaryStatus] || 'default'}>{job.summaryStatus}</Tag>
                         </div>
                         <Text type="secondary">{job.id}</Text>
                     </div>
@@ -347,182 +383,213 @@ const ProjectLoopJobDetail: React.FC = () => {
                 <Descriptions size="small" column={4}>
                     <Descriptions.Item label="插件">{job.pluginId}</Descriptions.Item>
                     <Descriptions.Item label="采样策略">{job.queryStrategy}</Descriptions.Item>
-                    <Descriptions.Item label="执行器">{job.assignedExecutorId || '-'}</Descriptions.Item>
                     <Descriptions.Item label="模式">{job.mode}</Descriptions.Item>
                     <Descriptions.Item label="开始时间">{formatDateTime(job.startedAt)}</Descriptions.Item>
                     <Descriptions.Item label="结束时间">{formatDateTime(job.endedAt)}</Descriptions.Item>
-                    <Descriptions.Item label="制品数量">{artifacts.length}</Descriptions.Item>
-                    <Descriptions.Item label="TopK 数量">{topk.length}</Descriptions.Item>
+                    <Descriptions.Item label="Task 数量">{tasks.length}</Descriptions.Item>
+                    <Descriptions.Item label="Task 聚合">{JSON.stringify(job.taskCounts || {})}</Descriptions.Item>
                 </Descriptions>
                 {job.lastError ? (
-                    <Alert
-                        className="!mt-3"
-                        type={job.status === 'partial_failed' ? 'warning' : 'error'}
-                        showIcon
-                        message={job.lastError}
-                    />
+                    <Alert className="!mt-3" type="error" showIcon message={job.lastError}/>
                 ) : null}
             </Card>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                <div className="min-w-0 lg:col-span-7">
-                    <Card className="!border-github-border !bg-github-panel" title="训练曲线">
-                        {metricChartData.length === 0 ? (
-                            <Empty description="暂无指标曲线"/>
-                        ) : (
-                            <div className="h-[320px]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={metricChartData}>
-                                        <CartesianGrid strokeDasharray="3 3"/>
-                                        <XAxis dataKey="step"/>
-                                        <YAxis/>
-                                        <Tooltip/>
-                                        {metricNames.map((name, idx) => (
-                                            <Line
-                                                key={name}
-                                                type="monotone"
-                                                dataKey={name}
-                                                dot={false}
-                                                stroke={['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'][idx % 5]}
-                                                strokeWidth={2}
-                                            />
-                                        ))}
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
-                        )}
-                    </Card>
-                </div>
-                <div className="min-w-0 lg:col-span-5">
-                    <Card className="!border-github-border !bg-github-panel" title="实时日志（最新 200 条）">
-                        <List
-                            size="small"
-                            dataSource={events.slice(-200)}
-                            locale={{emptyText: '暂无日志'}}
-                            className="max-h-[320px] overflow-auto"
-                            renderItem={(item) => (
-                                <List.Item className="!items-start">
-                                    <div className="w-full">
-                                        <div className="text-xs text-github-muted">
-                                            #{item.seq} · {formatDateTime(item.ts)}
-                                        </div>
-                                        <div className="font-mono text-xs whitespace-pre-wrap break-all">
-                                            {eventToText(item)}
-                                        </div>
-                                    </div>
-                                </List.Item>
-                            )}
-                        />
-                    </Card>
-                </div>
-            </div>
-
-            <Card className="!border-github-border !bg-github-panel" title="混淆矩阵">
-                {imageArtifacts.length === 0 ? (
-                    <Empty description="未检测到混淆矩阵制品"/>
-                ) : (
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        {imageArtifacts.map((artifact) => {
-                            const imageUrl = artifactUrls[artifact.name];
-                            return (
-                                <div key={artifact.name} className="min-w-0">
-                                    <Card
-                                        size="small"
-                                        className="!border-github-border !bg-github-panel"
-                                        title={artifact.name}
-                                        extra={<Tag>{artifact.kind}</Tag>}
-                                    >
-                                        {imageUrl ? (
-                                            <Image src={imageUrl} alt={artifact.name} className="w-full"/>
-                                        ) : (
-                                            <Alert
-                                                type="info"
-                                                showIcon
-                                                message="当前环境无法直接预览该图片制品"
-                                                description={artifact.uri}
-                                            />
-                                        )}
-                                    </Card>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </Card>
-
-            <Card className="!border-github-border !bg-github-panel" title="TopK 候选样本">
+            <Card className="!border-github-border !bg-github-panel" title="Task 时间线">
                 <Table
                     size="small"
-                    pagination={{pageSize: 10, showSizeChanger: false}}
-                    dataSource={topkDataSource}
-                    rowKey={(item) => item.sampleId}
+                    rowKey={(item) => item.id}
+                    pagination={false}
+                    dataSource={tasks}
+                    rowClassName={(row) => (row.id === selectedTaskId ? 'bg-github-surface' : '')}
+                    onRow={(row) => ({
+                        onClick: () => {
+                            setSelectedTaskId(row.id);
+                            void loadTaskDashboard(row.id);
+                        },
+                    })}
                     columns={[
-                        {title: '#', dataIndex: 'rank', width: 60},
+                        {title: '#', dataIndex: 'taskIndex', width: 60},
+                        {title: 'Type', dataIndex: 'taskType', width: 180},
                         {
-                            title: 'Sample ID',
-                            dataIndex: 'sampleId',
-                            render: (value: string) => <Text code>{value}</Text>,
+                            title: 'Status',
+                            dataIndex: 'status',
+                            width: 140,
+                            render: (value: string) => <Tag color={TASK_STATUS_COLOR[value] || 'default'}>{value}</Tag>,
                         },
-                        {
-                            title: 'Score',
-                            dataIndex: 'score',
-                            width: 220,
-                            render: (value: number) => (
-                                <div className="flex w-full flex-col gap-0.5">
-                                    <Progress percent={Math.max(0, Math.min(100, Number((value * 100).toFixed(2))))}/>
-                                    <Text type="secondary">{value.toFixed(6)}</Text>
-                                </div>
-                            ),
-                        },
-                        {
-                            title: 'Detail',
-                            dataIndex: 'extra',
-                            render: (value: Record<string, any>) => (
-                                <Text type="secondary">{JSON.stringify(value || {})}</Text>
-                            ),
-                        },
+                        {title: 'Executor', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
+                        {title: 'Attempt', dataIndex: 'attempt', width: 90},
+                        {title: 'Error', dataIndex: 'lastError', render: (v: string | null) => v || '-'},
                     ]}
                 />
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel" title="模型制品">
-                {artifacts.length === 0 ? (
-                    <Empty description="暂无制品"/>
-                ) : (
-                    <Table
-                        size="small"
-                        rowKey={(item) => item.name}
-                        dataSource={artifacts}
-                        pagination={{pageSize: 8}}
-                        columns={[
-                            {title: '名称', dataIndex: 'name'},
-                            {title: '类型', dataIndex: 'kind', width: 180, render: (v: string) => <Tag>{v}</Tag>},
-                            {
-                                title: '大小',
-                                width: 120,
-                                render: (_value: unknown, row: RuntimeArtifact) => {
-                                    const size = Number(row.meta?.size || 0);
-                                    return size > 0 ? `${(size / 1024 / 1024).toFixed(2)} MB` : '-';
-                                },
-                            },
-                            {
-                                title: '操作',
-                                width: 220,
-                                render: (_value: unknown, row: RuntimeArtifact) => {
-                                    const url = artifactUrls[row.name];
-                                    return url ? (
-                                        <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
-                                            下载/预览
-                                        </Button>
-                                    ) : (
-                                        <Text type="secondary">暂不可下载</Text>
+            {!selectedTask ? (
+                <Card className="!border-github-border !bg-github-panel">
+                    <Empty description="当前 Job 没有可查看的 Task"/>
+                </Card>
+            ) : (
+                <>
+                    <Card className="!border-github-border !bg-github-panel" title={`当前 Task: ${selectedTask.taskType} (#${selectedTask.taskIndex})`}>
+                        <Descriptions size="small" column={4}>
+                            <Descriptions.Item label="状态">
+                                <Tag color={TASK_STATUS_COLOR[selectedTask.status] || 'default'}>{selectedTask.status}</Tag>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="执行器">{selectedTask.assignedExecutorId || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="开始时间">{formatDateTime(selectedTask.startedAt)}</Descriptions.Item>
+                            <Descriptions.Item label="结束时间">{formatDateTime(selectedTask.endedAt)}</Descriptions.Item>
+                        </Descriptions>
+                    </Card>
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                        <div className="min-w-0 lg:col-span-7">
+                            <Card className="!border-github-border !bg-github-panel" title="指标曲线">
+                                {metricChartData.length === 0 ? (
+                                    <Empty description="暂无指标曲线"/>
+                                ) : (
+                                    <div className="h-[320px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={metricChartData}>
+                                                <CartesianGrid strokeDasharray="3 3"/>
+                                                <XAxis dataKey="step"/>
+                                                <YAxis/>
+                                                <Tooltip/>
+                                                {metricNames.map((name, idx) => (
+                                                    <Line
+                                                        key={name}
+                                                        type="monotone"
+                                                        dataKey={name}
+                                                        dot={false}
+                                                        stroke={['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'][idx % 5]}
+                                                        strokeWidth={2}
+                                                    />
+                                                ))}
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+                            </Card>
+                        </div>
+                        <div className="min-w-0 lg:col-span-5">
+                            <Card className="!border-github-border !bg-github-panel" title="实时日志（最新 200 条）">
+                                <List
+                                    size="small"
+                                    dataSource={events.slice(-200)}
+                                    locale={{emptyText: '暂无日志'}}
+                                    className="max-h-[320px] overflow-auto"
+                                    renderItem={(item) => (
+                                        <List.Item className="!items-start">
+                                            <div className="w-full">
+                                                <div className="text-xs text-github-muted">#{item.seq} · {formatDateTime(item.ts)}</div>
+                                                <div className="font-mono text-xs whitespace-pre-wrap break-all">{eventToText(item)}</div>
+                                            </div>
+                                        </List.Item>
+                                    )}
+                                />
+                            </Card>
+                        </div>
+                    </div>
+
+                    <Card className="!border-github-border !bg-github-panel" title="混淆矩阵/图像制品">
+                        {imageArtifacts.length === 0 ? (
+                            <Empty description="未检测到图像制品"/>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                                {imageArtifacts.map((artifact) => {
+                                    const imageUrl = artifactUrls[artifact.name];
+                                    return (
+                                        <div key={artifact.name} className="min-w-0">
+                                            <Card size="small" className="!border-github-border !bg-github-panel" title={artifact.name} extra={<Tag>{artifact.kind}</Tag>}>
+                                                {imageUrl ? (
+                                                    <Image src={imageUrl} alt={artifact.name} className="w-full"/>
+                                                ) : (
+                                                    <Alert
+                                                        type="info"
+                                                        showIcon
+                                                        message="当前环境无法直接预览该图片制品"
+                                                        description={artifact.uri}
+                                                    />
+                                                )}
+                                            </Card>
+                                        </div>
                                     );
+                                })}
+                            </div>
+                        )}
+                    </Card>
+
+                    <Card className="!border-github-border !bg-github-panel" title="候选样本（Task 级）">
+                        <Table
+                            size="small"
+                            pagination={{pageSize: 10, showSizeChanger: false}}
+                            dataSource={candidates}
+                            rowKey={(item) => `${item.sampleId}-${item.rank}`}
+                            columns={[
+                                {title: '#', dataIndex: 'rank', width: 60},
+                                {
+                                    title: 'Sample ID',
+                                    dataIndex: 'sampleId',
+                                    render: (value: string) => <Text code>{value}</Text>,
                                 },
-                            },
-                        ]}
-                    />
-                )}
-            </Card>
+                                {
+                                    title: 'Score',
+                                    dataIndex: 'score',
+                                    width: 220,
+                                    render: (value: number) => (
+                                        <div className="flex w-full flex-col gap-0.5">
+                                            <Progress percent={Math.max(0, Math.min(100, Number((value * 100).toFixed(2))))}/>
+                                            <Text type="secondary">{value.toFixed(6)}</Text>
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    title: 'Reason',
+                                    dataIndex: 'reason',
+                                    render: (value: Record<string, any>) => <Text type="secondary">{JSON.stringify(value || {})}</Text>,
+                                },
+                            ]}
+                        />
+                    </Card>
+
+                    <Card className="!border-github-border !bg-github-panel" title="Task 制品">
+                        {artifacts.length === 0 ? (
+                            <Empty description="暂无制品"/>
+                        ) : (
+                            <Table
+                                size="small"
+                                rowKey={(item) => item.name}
+                                dataSource={artifacts}
+                                pagination={{pageSize: 8}}
+                                columns={[
+                                    {title: '名称', dataIndex: 'name'},
+                                    {title: '类型', dataIndex: 'kind', width: 180, render: (v: string) => <Tag>{v}</Tag>},
+                                    {
+                                        title: '大小',
+                                        width: 120,
+                                        render: (_value: unknown, row: RuntimeTaskArtifact) => {
+                                            const size = Number(row.meta?.size || 0);
+                                            return size > 0 ? `${(size / 1024 / 1024).toFixed(2)} MB` : '-';
+                                        },
+                                    },
+                                    {
+                                        title: '操作',
+                                        width: 220,
+                                        render: (_value: unknown, row: RuntimeTaskArtifact) => {
+                                            const url = artifactUrls[row.name];
+                                            return url ? (
+                                                <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
+                                                    下载/预览
+                                                </Button>
+                                            ) : (
+                                                <Text type="secondary">暂不可下载</Text>
+                                            );
+                                        },
+                                    },
+                                ]}
+                            />
+                        )}
+                    </Card>
+                </>
+            )}
         </div>
     );
 };

@@ -14,6 +14,7 @@ from saki_api.models.enums import (
     TaskType, ProjectStatus, ModelStatus, DatasetType,
     AnnotationType, AnnotationSource, TrainingJobStatus,
     ALLoopStatus, ALLoopMode, LoopRoundStatus, AnnotationBatchStatus,
+    LoopPhase, JobStatusV2, JobTaskType, JobTaskStatus,
 )
 # Layer 1: Physical Data Layer
 from saki_api.models.l1.asset import Asset
@@ -34,10 +35,10 @@ from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.models.l3.model import Model
 from saki_api.models.l3.runtime_executor import RuntimeExecutor
 from saki_api.models.l3.runtime_executor_stats import RuntimeExecutorStats
-from saki_api.models.l3.job_event import JobEvent
-from saki_api.models.l3.job_metric_point import JobMetricPoint
-from saki_api.models.l3.loop_round import LoopRound
-from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
+from saki_api.models.l3.job_task import JobTask
+from saki_api.models.l3.task_event import TaskEvent
+from saki_api.models.l3.task_metric_point import TaskMetricPoint
+from saki_api.models.l3.task_candidate_item import TaskCandidateItem
 # RBAC Models
 from saki_api.models.rbac import (
     # Enums
@@ -71,13 +72,14 @@ __all__ = [
 
     # Layer 3: Training Experiment Layer
     "Job", "ALLoop", "JobSampleMetric", "Model",
-    "RuntimeExecutor", "RuntimeExecutorStats", "JobEvent", "JobMetricPoint",
-    "LoopRound", "AnnotationBatch", "AnnotationBatchItem",
+    "RuntimeExecutor", "RuntimeExecutorStats",
+    "JobTask", "TaskEvent", "TaskMetricPoint", "TaskCandidateItem",
 
     # Enums
     "TaskType", "ProjectStatus", "ModelStatus", "DatasetType",
     "AnnotationType", "AnnotationSource", "TrainingJobStatus",
     "ALLoopStatus", "ALLoopMode", "LoopRoundStatus", "AnnotationBatchStatus",
+    "LoopPhase", "JobStatusV2", "JobTaskType", "JobTaskStatus",
 
     # User models
     "User",

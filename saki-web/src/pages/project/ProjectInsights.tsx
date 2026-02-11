@@ -12,28 +12,34 @@ import {
 } from 'recharts';
 
 import {api} from '../../services/api';
-import {ALLoop, LoopRound, LoopSummary, ProjectModel} from '../../types';
+import {ALLoop, LoopSummary, ProjectModel, RuntimeJob} from '../../types';
 
 const {Text} = Typography;
 
-const STATUS_COLOR: Record<string, string> = {
+const LOOP_STATUS_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
     stopped: 'default',
     completed: 'success',
-    completed_no_candidates: 'gold',
     failed: 'error',
 };
 
-const ROUND_COMPLETED_STATUS = new Set(['completed', 'completed_no_candidates']);
+const JOB_STATUS_COLOR: Record<string, string> = {
+    job_pending: 'default',
+    job_running: 'processing',
+    job_succeeded: 'success',
+    job_partial_failed: 'warning',
+    job_failed: 'error',
+    job_cancelled: 'warning',
+};
 
 const ProjectInsights: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>();
     const [loading, setLoading] = useState(true);
     const [loops, setLoops] = useState<ALLoop[]>([]);
     const [selectedLoopId, setSelectedLoopId] = useState<string>();
-    const [rounds, setRounds] = useState<LoopRound[]>([]);
+    const [jobs, setJobs] = useState<RuntimeJob[]>([]);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
     const [models, setModels] = useState<ProjectModel[]>([]);
 
@@ -43,11 +49,12 @@ const ProjectInsights: React.FC = () => {
     );
 
     const loadLoopDetail = useCallback(async (loopId: string) => {
-        const [roundRows, summaryRow] = await Promise.all([
-            api.getLoopRounds(loopId, 500),
+        const [jobRows, summaryRow] = await Promise.all([
+            api.getLoopJobs(loopId, 500),
             api.getLoopSummary(loopId),
         ]);
-        setRounds(roundRows);
+        const sorted = [...jobRows].sort((a, b) => a.roundIndex - b.roundIndex);
+        setJobs(sorted);
         setSummary(summaryRow);
     }, []);
 
@@ -68,7 +75,7 @@ const ProjectInsights: React.FC = () => {
             if (nextLoopId) {
                 await loadLoopDetail(nextLoopId);
             } else {
-                setRounds([]);
+                setJobs([]);
                 setSummary(null);
             }
         } finally {
@@ -81,22 +88,16 @@ const ProjectInsights: React.FC = () => {
     }, [loadAll]);
 
     const chartData = useMemo(() => {
-        return rounds.map((item) => ({
+        return jobs.map((item) => ({
             round: item.roundIndex,
-            map50: Number(item.metrics?.map50 || 0),
-            labeled: item.labeledCount,
-            selected: item.selectedCount,
+            map50: Number(item.finalMetrics?.map50 || 0),
+            recall: Number(item.finalMetrics?.recall || 0),
+            succeededTasks: Number(item.taskCounts?.succeeded || 0),
         }));
-    }, [rounds]);
+    }, [jobs]);
 
-    const productionModels = useMemo(
-        () => models.filter((item) => item.status === 'production'),
-        [models],
-    );
-    const candidateModels = useMemo(
-        () => models.filter((item) => item.status === 'candidate'),
-        [models],
-    );
+    const productionModels = useMemo(() => models.filter((item) => item.status === 'production'), [models]);
+    const candidateModels = useMemo(() => models.filter((item) => item.status === 'candidate'), [models]);
 
     if (loading) {
         return (
@@ -120,21 +121,19 @@ const ProjectInsights: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-3">
                     <Text type="secondary">Loop 维度</Text>
                     <Select
-                        className="min-w-[280px]"
+                        className="min-w-[320px]"
                         value={selectedLoopId}
                         onChange={async (value) => {
                             setSelectedLoopId(value);
                             await loadLoopDetail(value);
                         }}
                         options={loops.map((item) => ({
-                            label: `${item.name} (${item.status})`,
+                            label: `${item.name} (${item.status} / ${item.phase})`,
                             value: item.id,
                         }))}
                     />
                     {selectedLoop ? (
-                        <Tag color={STATUS_COLOR[selectedLoop.status] || 'default'}>
-                            {selectedLoop.status}
-                        </Tag>
+                        <Tag color={LOOP_STATUS_COLOR[selectedLoop.status] || 'default'}>{selectedLoop.status}</Tag>
                     ) : null}
                 </div>
             </Card>
@@ -142,43 +141,43 @@ const ProjectInsights: React.FC = () => {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="总轮次" value={summary?.roundsTotal ?? rounds.length}/>
+                        <Statistic title="Jobs 总数" value={summary?.jobsTotal ?? jobs.length}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="完成轮次" value={summary?.roundsCompleted ?? rounds.filter((x) => ROUND_COMPLETED_STATUS.has(x.status)).length}/>
+                        <Statistic title="Jobs 成功" value={summary?.jobsSucceeded ?? 0}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="累计选样" value={summary?.selectedTotal ?? rounds.reduce((acc, x) => acc + x.selectedCount, 0)}/>
+                        <Statistic title="Tasks 总数" value={summary?.tasksTotal ?? 0}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="累计标注" value={summary?.labeledTotal ?? rounds.reduce((acc, x) => acc + x.labeledCount, 0)}/>
+                        <Statistic title="Tasks 成功" value={summary?.tasksSucceeded ?? 0}/>
                     </Card>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="min-w-0 lg:col-span-2">
-                    <Card className="!border-github-border !bg-github-panel" title="Round 指标走势">
+                    <Card className="!border-github-border !bg-github-panel" title="Job 指标走势">
                         {chartData.length === 0 ? (
-                            <Empty description="暂无轮次指标"/>
+                            <Empty description="暂无 Job 指标"/>
                         ) : (
                             <div className="h-[340px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={chartData}>
                                         <CartesianGrid strokeDasharray="3 3"/>
                                         <XAxis dataKey="round"/>
-                                        <YAxis yAxisId="left"/>
+                                        <YAxis yAxisId="left" domain={[0, 1]}/>
                                         <YAxis yAxisId="right" orientation="right"/>
                                         <Tooltip/>
                                         <Line yAxisId="left" type="monotone" dataKey="map50" stroke="#1677ff" strokeWidth={2} dot={false}/>
-                                        <Line yAxisId="right" type="monotone" dataKey="labeled" stroke="#52c41a" strokeWidth={2} dot={false}/>
-                                        <Line yAxisId="right" type="monotone" dataKey="selected" stroke="#faad14" strokeWidth={2} dot={false}/>
+                                        <Line yAxisId="left" type="monotone" dataKey="recall" stroke="#13c2c2" strokeWidth={2} dot={false}/>
+                                        <Line yAxisId="right" type="monotone" dataKey="succeededTasks" stroke="#52c41a" strokeWidth={2} dot={false}/>
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -191,41 +190,30 @@ const ProjectInsights: React.FC = () => {
                             <Statistic title="总模型数" value={models.length}/>
                             <Statistic title="候选模型" value={candidateModels.length}/>
                             <Statistic title="生产模型" value={productionModels.length}/>
-                            <Text type="secondary">
-                                最新 mAP50: {Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}
-                            </Text>
+                            <Text type="secondary">最新 mAP50: {Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}</Text>
                         </div>
                     </Card>
                 </div>
             </div>
 
-            <Card className="!border-github-border !bg-github-panel" title="Round 明细">
+            <Card className="!border-github-border !bg-github-panel" title="Job 明细">
                 <Table
                     size="small"
                     rowKey={(item) => item.id}
-                    dataSource={rounds}
+                    dataSource={jobs}
                     pagination={{pageSize: 10}}
                     columns={[
                         {title: 'Round', dataIndex: 'roundIndex', width: 90},
                         {
                             title: '状态',
-                            dataIndex: 'status',
-                            width: 120,
-                            render: (value: string) => <Tag color={STATUS_COLOR[value] || 'default'}>{value}</Tag>,
+                            dataIndex: 'summaryStatus',
+                            width: 140,
+                            render: (value: string) => <Tag color={JOB_STATUS_COLOR[value] || 'default'}>{value}</Tag>,
                         },
-                        {title: 'mAP50', render: (_value: unknown, row: LoopRound) => Number(row.metrics?.map50 || 0).toFixed(4), width: 100},
-                        {title: 'selected', dataIndex: 'selectedCount', width: 100},
-                        {title: 'labeled', dataIndex: 'labeledCount', width: 100},
-                        {
-                            title: 'job',
-                            dataIndex: 'jobId',
-                            render: (value: string | null) => value ? <Text code>{String(value).slice(0, 8)}</Text> : '-',
-                        },
-                        {
-                            title: 'batch',
-                            dataIndex: 'annotationBatchId',
-                            render: (value: string | null) => value ? <Text code>{String(value).slice(0, 8)}</Text> : '-',
-                        },
+                        {title: '策略', dataIndex: 'queryStrategy', width: 180},
+                        {title: 'mAP50', render: (_: unknown, row: RuntimeJob) => Number(row.finalMetrics?.map50 || 0).toFixed(4), width: 100},
+                        {title: 'recall', render: (_: unknown, row: RuntimeJob) => Number(row.finalMetrics?.recall || 0).toFixed(4), width: 100},
+                        {title: 'taskCounts', render: (_: unknown, row: RuntimeJob) => JSON.stringify(row.taskCounts || {})},
                     ]}
                 />
             </Card>

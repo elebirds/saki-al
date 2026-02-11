@@ -8,21 +8,28 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
+import saki_api.models  # noqa: F401
 import saki_api.grpc.runtime_control as runtime_control_module
 from saki_api.grpc.runtime_control import RuntimeControlService
 from saki_api.grpc_gen import runtime_control_pb2 as pb
-from saki_api.models.enums import TrainingJobStatus, ALLoopMode
+from saki_api.models.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, JobTaskStatus, JobTaskType, LoopPhase, StorageType, TaskType
+from saki_api.models.l1.asset import Asset
+from saki_api.models.l1.dataset import Dataset
+from saki_api.models.l1.sample import Sample
+from saki_api.models.l2.branch import Branch
+from saki_api.models.l2.commit import Commit
+from saki_api.models.l2.project import Project, ProjectDataset
 from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_event import JobEvent
-from saki_api.models.l3.job_metric_point import JobMetricPoint
-from saki_api.models.l3.metric import JobSampleMetric
-from saki_api.services.job import JobService
+from saki_api.models.l3.job_task import JobTask
+from saki_api.models.l3.loop import ALLoop
+from saki_api.models.l3.task_candidate_item import TaskCandidateItem
+from saki_api.models.l3.task_event import TaskEvent
+from saki_api.models.user import User
 
 
 @pytest.fixture
-async def runtime_artifact_env(tmp_path, monkeypatch):
-    db_path = tmp_path / "runtime_artifact_semantics.sqlite3"
+async def artifact_env(tmp_path, monkeypatch):
+    db_path = tmp_path / "runtime_artifact_v2.sqlite3"
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
     session_local = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -30,299 +37,217 @@ async def runtime_artifact_env(tmp_path, monkeypatch):
         await conn.run_sync(SQLModel.metadata.create_all)
 
     monkeypatch.setattr(runtime_control_module, "SessionLocal", session_local)
+    service = RuntimeControlService()
+
+    async with session_local() as session:
+        user = User(
+            email=f"artifact-{uuid.uuid4().hex[:8]}@example.com",
+            hashed_password="hashed",
+            full_name="artifact user",
+            is_active=True,
+        )
+        session.add(user)
+        await session.flush()
+
+        dataset = Dataset(name=f"dataset-{uuid.uuid4().hex[:6]}", owner_id=user.id)
+        project = Project(name=f"project-{uuid.uuid4().hex[:6]}", task_type=TaskType.DETECTION, config={})
+        session.add(dataset)
+        session.add(project)
+        await session.flush()
+        session.add(ProjectDataset(project_id=project.id, dataset_id=dataset.id))
+
+        commit = Commit(
+            project_id=project.id,
+            parent_id=None,
+            message="init",
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+        )
+        session.add(commit)
+        await session.flush()
+
+        branch = Branch(
+            project_id=project.id,
+            name=f"main-{uuid.uuid4().hex[:6]}",
+            head_commit_id=commit.id,
+            description="main",
+            is_protected=True,
+        )
+        session.add(branch)
+        await session.flush()
+
+        loop = ALLoop(
+            project_id=project.id,
+            branch_id=branch.id,
+            name="loop-a",
+            mode=ALLoopMode.ACTIVE_LEARNING,
+            phase=LoopPhase.AL_TRAIN,
+            phase_meta={},
+            query_strategy="random_baseline",
+            model_arch="demo_det_v1",
+            global_config={},
+            current_iteration=1,
+            status=ALLoopStatus.RUNNING,
+            max_rounds=5,
+            query_batch_size=10,
+            min_seed_labeled=1,
+            min_new_labels_per_round=1,
+            stop_patience_rounds=2,
+            stop_min_gain=0.001,
+            auto_register_model=False,
+        )
+        session.add(loop)
+        await session.flush()
+
+        job = Job(
+            project_id=project.id,
+            loop_id=loop.id,
+            round_index=1,
+            mode=ALLoopMode.ACTIVE_LEARNING,
+            summary_status=JobStatusV2.JOB_PENDING,
+            task_counts={},
+            job_type="loop_round",
+            plugin_id="demo_det_v1",
+            query_strategy="random_baseline",
+            params={"epochs": 1},
+            resources={"gpu_count": 0},
+            source_commit_id=commit.id,
+            final_metrics={},
+            final_artifacts={},
+        )
+        session.add(job)
+        await session.flush()
+
+        task = JobTask(
+            job_id=job.id,
+            task_type=JobTaskType.SELECT,
+            status=JobTaskStatus.RUNNING,
+            round_index=1,
+            task_index=1,
+            depends_on=[],
+            params={},
+            metrics={},
+            artifacts={},
+            source_commit_id=commit.id,
+            attempt=1,
+            max_attempts=3,
+        )
+        session.add(task)
+        await session.flush()
+
+        asset = Asset(
+            hash=f"{uuid.uuid4().hex}{uuid.uuid4().hex}",
+            storage_type=StorageType.S3,
+            path="runtime/sample.jpg",
+            bucket="test-bucket",
+            original_filename="sample.jpg",
+            extension=".jpg",
+            mime_type="image/jpeg",
+            size=123,
+            meta_info={},
+        )
+        session.add(asset)
+        await session.flush()
+
+        sample = Sample(
+            dataset_id=dataset.id,
+            name="sample-1",
+            asset_group={"image_main": str(asset.id)},
+            primary_asset_id=asset.id,
+            meta_info={},
+        )
+        session.add(sample)
+        await session.commit()
+
     try:
-        yield session_local
+        yield service, session_local, task.id, job.id, sample.id
     finally:
         await engine.dispose()
 
 
-async def _create_job(session_local: async_sessionmaker[AsyncSession]) -> Job:
-    job = Job(
-        project_id=uuid.uuid4(),
-        loop_id=uuid.uuid4(),
-        round_index=1,
-        status=TrainingJobStatus.PENDING,
-        job_type="train_detection",
-        plugin_id="demo_det_v1",
-        mode=ALLoopMode.ACTIVE_LEARNING,
-        query_strategy="uncertainty_1_minus_max_conf",
-        params={},
-        resources={},
-        source_commit_id=uuid.uuid4(),
-        artifacts={},
-        metrics={},
-    )
-    async with session_local() as session:
-        session.add(job)
-        await session.commit()
-        await session.refresh(job)
-    return job
-
-
 @pytest.mark.anyio
-async def test_persist_job_event_artifact_only_accepts_downloadable_uri(runtime_artifact_env):
-    session_local = runtime_artifact_env
-    service = RuntimeControlService()
-    job = await _create_job(session_local)
+async def test_task_artifact_event_persists_to_task_and_event_table(artifact_env):
+    service, session_local, task_id, _job_id, _sample_id = artifact_env
 
-    await service._persist_job_event(
-        pb.JobEvent(
-            request_id="evt-1",
-            job_id=str(job.id),
-            seq=1,
-            ts=1,
-            artifact_event=pb.ArtifactEvent(
-                artifact=pb.ArtifactItem(
-                    kind="weights",
-                    name="best.pt",
-                    uri="runs/job-1/artifacts/best.pt",
-                )
-            ),
-        )
-    )
-    await service._persist_job_event(
-        pb.JobEvent(
-            request_id="evt-2",
-            job_id=str(job.id),
-            seq=2,
-            ts=2,
-            artifact_event=pb.ArtifactEvent(
-                artifact=pb.ArtifactItem(
-                    kind="weights",
-                    name="best.pt",
-                    uri="s3://bucket/runtime/jobs/job-1/best.pt",
-                )
-            ),
-        )
-    )
-
-    async with session_local() as session:
-        persisted = await session.get(Job, job.id)
-        assert persisted is not None
-        assert persisted.artifacts == {
-            "best.pt": {
-                "kind": "weights",
-                "uri": "s3://bucket/runtime/jobs/job-1/best.pt",
-                "meta": {},
-            }
-        }
-
-
-@pytest.mark.anyio
-async def test_persist_job_result_filters_undownloadable_artifacts_and_sets_partial_failed(runtime_artifact_env):
-    session_local = runtime_artifact_env
-    service = RuntimeControlService()
-    job = await _create_job(session_local)
-
-    await service._persist_job_result(
-        pb.JobResult(
-            request_id="result-1",
-            job_id=str(job.id),
-            status=pb.PARTIAL_FAILED,
-            metrics={"map50": 0.5},
-            artifacts=[
-                pb.ArtifactItem(kind="weights", name="best.pt", uri="runs/job-1/artifacts/best.pt"),
-                pb.ArtifactItem(kind="report", name="report.json", uri="s3://bucket/runtime/jobs/job-1/report.json"),
-            ],
-            error_message="optional artifact upload failed: confusion_matrix.png",
-        )
-    )
-
-    async with session_local() as session:
-        persisted = await session.get(Job, job.id)
-        assert persisted is not None
-        assert persisted.status == TrainingJobStatus.PARTIAL_FAILED
-        assert persisted.last_error == "optional artifact upload failed: confusion_matrix.png"
-        assert persisted.metrics["map50"] == 0.5
-        assert persisted.artifacts == {
-            "report.json": {
-                "kind": "report",
-                "uri": "s3://bucket/runtime/jobs/job-1/report.json",
-                "meta": {},
-            }
-        }
-
-
-@pytest.mark.anyio
-async def test_job_service_list_artifacts_filters_local_uri(runtime_artifact_env):
-    session_local = runtime_artifact_env
-    job = await _create_job(session_local)
-
-    async with session_local() as session:
-        persisted = await session.get(Job, job.id)
-        assert persisted is not None
-        persisted.artifacts = {
-            "best.pt": {
-                "kind": "weights",
-                "uri": "runs/job-1/artifacts/best.pt",
-                "meta": {},
-            },
-            "report.json": {
-                "kind": "report",
-                "uri": "s3://bucket/runtime/jobs/job-1/report.json",
-                "meta": {},
-            },
-        }
-        session.add(persisted)
-        await session.commit()
-
-    async with session_local() as session:
-        service = JobService(session)
-        artifacts = await service.list_artifacts(job.id)
-        assert artifacts == [
-            {
-                "name": "report.json",
-                "kind": "report",
-                "uri": "s3://bucket/runtime/jobs/job-1/report.json",
-                "meta": {},
-            }
-        ]
-
-
-@pytest.mark.anyio
-async def test_persist_job_event_metric_upsert_with_single_step(runtime_artifact_env):
-    session_local = runtime_artifact_env
-    service = RuntimeControlService()
-    job = await _create_job(session_local)
-
-    await service._persist_job_event(
-        pb.JobEvent(
-            request_id="metric-evt-1",
-            job_id=str(job.id),
-            seq=1,
-            ts=10,
-            metric_event=pb.MetricEvent(
-                step=5,
-                epoch=1,
-                metrics={"loss": 0.9, "map50": 0.3},
-            ),
-        )
-    )
-    await service._persist_job_event(
-        pb.JobEvent(
-            request_id="metric-evt-2",
-            job_id=str(job.id),
-            seq=2,
-            ts=11,
-            metric_event=pb.MetricEvent(
-                step=5,
-                epoch=2,
-                metrics={"loss": 0.8},
-            ),
-        )
-    )
-    # Duplicate seq should be ignored by dedup logic in persistence layer.
-    await service._persist_job_event(
-        pb.JobEvent(
-            request_id="metric-evt-2-dup",
-            job_id=str(job.id),
-            seq=2,
-            ts=12,
-            metric_event=pb.MetricEvent(
-                step=5,
-                epoch=3,
-                metrics={"loss": 0.1},
-            ),
-        )
-    )
-
-    async with session_local() as session:
-        persisted = await session.get(Job, job.id)
-        assert persisted is not None
-        assert persisted.metrics == {"loss": 0.8, "map50": 0.3}
-
-        metric_rows = list(
-            (
-                await session.exec(
-                    select(JobMetricPoint)
-                    .where(JobMetricPoint.job_id == job.id)
-                    .order_by(JobMetricPoint.metric_name.asc())
-                )
-            ).all()
-        )
-        assert len(metric_rows) == 2
-        assert metric_rows[0].metric_name == "loss"
-        assert metric_rows[0].metric_value == 0.8
-        assert metric_rows[0].epoch == 2
-        assert metric_rows[0].step == 5
-        assert metric_rows[1].metric_name == "map50"
-        assert metric_rows[1].metric_value == 0.3
-        assert metric_rows[1].epoch == 1
-        assert metric_rows[1].step == 5
-
-        event_count = (
-            await session.exec(select(JobEvent).where(JobEvent.job_id == job.id))
-        ).all()
-        assert len(event_count) == 2
-
-
-@pytest.mark.anyio
-async def test_persist_job_result_candidate_upsert_and_last_wins(runtime_artifact_env):
-    session_local = runtime_artifact_env
-    service = RuntimeControlService()
-    job = await _create_job(session_local)
-    sample_a = uuid.uuid4()
-    sample_b = uuid.uuid4()
-
-    async with session_local() as session:
-        session.add(
-            JobSampleMetric(
-                job_id=job.id,
-                sample_id=sample_a,
-                score=0.1,
-                extra={"source": "seed"},
-                prediction_snapshot={},
+    meta = Struct()
+    meta.update({"size": 12})
+    message = pb.TaskEvent(
+        request_id="evt-1",
+        task_id=str(task_id),
+        seq=1,
+        ts=1000,
+        artifact_event=pb.ArtifactEvent(
+            artifact=pb.ArtifactItem(
+                kind="weights",
+                name="best.pt",
+                uri="s3://bucket/path/best.pt",
+                meta=meta,
             )
-        )
-        await session.commit()
-
-    reason_a = Struct()
-    reason_a.update(
-        {
-            "source": "uncertainty",
-            "prediction_snapshot": {"car": 0.7},
-        }
-    )
-    reason_b_first = Struct()
-    reason_b_first.update({"source": "diversity"})
-    reason_b_last = Struct()
-    reason_b_last.update(
-        {
-            "source": "diversity_v2",
-            "prediction_snapshot": {"truck": 0.2},
-        }
+        ),
     )
 
-    await service._persist_job_result(
-        pb.JobResult(
-            request_id="result-candidates-1",
-            job_id=str(job.id),
-            status=pb.SUCCEEDED,
-            candidates=[
-                pb.QueryCandidate(sample_id=str(sample_a), score=0.8, reason=reason_a),
-                pb.QueryCandidate(sample_id=str(sample_b), score=0.4, reason=reason_b_first),
-                pb.QueryCandidate(sample_id=str(sample_b), score=0.6, reason=reason_b_last),
-            ],
-        )
-    )
+    await service._persist_task_event(message)  # noqa: SLF001
 
     async with session_local() as session:
-        rows = list(
-            (
-                await session.exec(
-                    select(JobSampleMetric)
-                    .where(JobSampleMetric.job_id == job.id)
-                    .order_by(JobSampleMetric.sample_id.asc())
-                )
-            ).all()
-        )
-        assert len(rows) == 2
+        task = await session.get(JobTask, task_id)
+        assert task is not None
+        assert "best.pt" in (task.artifacts or {})
+        assert task.artifacts["best.pt"]["uri"] == "s3://bucket/path/best.pt"
 
-        row_map = {item.sample_id: item for item in rows}
-        assert row_map[sample_a].score == 0.8
-        assert row_map[sample_a].extra == {"source": "uncertainty"}
-        assert row_map[sample_a].prediction_snapshot == {"car": 0.7}
+        events = list((await session.exec(select(TaskEvent).where(TaskEvent.task_id == task_id))).all())
+        assert len(events) == 1
+        assert events[0].event_type == "artifact"
 
-        assert row_map[sample_b].score == 0.6
-        assert row_map[sample_b].extra == {"source": "diversity_v2"}
-        assert row_map[sample_b].prediction_snapshot == {"truck": 0.2}
+
+@pytest.mark.anyio
+async def test_task_result_updates_metrics_candidates_and_job_aggregate(artifact_env):
+    service, session_local, task_id, job_id, sample_id = artifact_env
+
+    reason = Struct()
+    reason.update({"score_source": "entropy"})
+    artifact_meta = Struct()
+    artifact_meta.update({"size": 2048})
+
+    message = pb.TaskResult(
+        request_id="result-1",
+        task_id=str(task_id),
+        status=pb.SUCCEEDED,
+        metrics={"map50": 0.61, "recall": 0.73},
+        artifacts=[
+            pb.ArtifactItem(
+                kind="model",
+                name="best.pt",
+                uri="s3://bucket/path/best.pt",
+                meta=artifact_meta,
+            )
+        ],
+        candidates=[
+            pb.QueryCandidate(
+                sample_id=str(sample_id),
+                score=0.95,
+                reason=reason,
+            )
+        ],
+        error_message="",
+    )
+
+    await service._persist_task_result(message)  # noqa: SLF001
+
+    async with session_local() as session:
+        task = await session.get(JobTask, task_id)
+        job = await session.get(Job, job_id)
+        assert task is not None
+        assert job is not None
+
+        assert task.status == JobTaskStatus.SUCCEEDED
+        assert task.metrics["map50"] == pytest.approx(0.61)
+        assert "best.pt" in (task.artifacts or {})
+
+        candidates = list((await session.exec(select(TaskCandidateItem).where(TaskCandidateItem.task_id == task_id))).all())
+        assert len(candidates) == 1
+        assert candidates[0].sample_id == sample_id
+
+        assert job.summary_status == JobStatusV2.JOB_SUCCEEDED
+        assert job.final_metrics["map50"] == pytest.approx(0.61)
+        assert "best.pt" in (job.final_artifacts or {})

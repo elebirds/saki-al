@@ -10,6 +10,7 @@ import {
     Modal,
     Select,
     Spin,
+    Table,
     Tag,
     Typography,
     message,
@@ -24,8 +25,8 @@ import {
     LoopSummary,
     ProjectBranch,
     RuntimePluginCatalogItem,
+    SimulationComparison,
     SimulationExperimentCreateRequest,
-    SimulationExperimentCurves,
 } from '../../../types';
 
 const {Title, Text} = Typography;
@@ -42,6 +43,14 @@ const LOOP_STATUS_COLOR: Record<string, string> = {
 type CreateLoopFormValues = LoopCreateRequest & {
     simulationExperimentName?: string;
     simulationStrategies?: string[];
+    simulationConfig?: {
+        oracleCommitId?: string;
+        seedRatio?: number;
+        stepRatio?: number;
+        maxRounds?: number;
+        randomBaselineEnabled?: boolean;
+        seeds?: Array<number | string>;
+    };
 };
 
 const RANDOM_BASELINE_STRATEGY = 'random_baseline';
@@ -69,7 +78,7 @@ const ProjectLoopOverview: React.FC = () => {
     const [curveModalOpen, setCurveModalOpen] = useState(false);
     const [curveLoading, setCurveLoading] = useState(false);
     const [selectedGroupId, setSelectedGroupId] = useState<string>();
-    const [curves, setCurves] = useState<SimulationExperimentCurves | null>(null);
+    const [comparison, setComparison] = useState<SimulationComparison | null>(null);
     const [createForm] = Form.useForm<CreateLoopFormValues>();
     const selectedMode = Form.useWatch('mode', createForm) || 'active_learning';
 
@@ -83,10 +92,12 @@ const ProjectLoopOverview: React.FC = () => {
         () => plugins.find((item) => item.pluginId === selectedPluginId),
         [plugins, selectedPluginId],
     );
+
     const simulationStrategyOptions = useMemo(
         () => listSimulationStrategies(selectedPlugin).map((item) => ({label: item, value: item})),
         [selectedPlugin],
     );
+
     const experimentGroupOptions = useMemo(() => {
         const groupSet = new Set<string>();
         loops.forEach((item) => {
@@ -94,31 +105,31 @@ const ProjectLoopOverview: React.FC = () => {
         });
         return Array.from(groupSet).map((id) => ({label: id, value: id}));
     }, [loops]);
+
     const curveChartRows = useMemo(() => {
-        if (!curves) return [];
+        if (!comparison) return [];
         const map = new Map<number, Record<string, number>>();
-        curves.loops.forEach((loopCurve) => {
-            loopCurve.points.forEach((point) => {
-                const row = map.get(point.roundIndex) || {roundIndex: point.roundIndex};
-                row[`${loopCurve.queryStrategy}:map50`] = Number(point.map50 || 0);
-                map.set(point.roundIndex, row);
-            });
+        comparison.curves.forEach((point) => {
+            const row = map.get(point.roundIndex) || {roundIndex: point.roundIndex};
+            row[`${point.strategy}:mean`] = Number(point.meanMetric || 0);
+            map.set(point.roundIndex, row);
         });
         return Array.from(map.values()).sort((a, b) => Number(a.roundIndex) - Number(b.roundIndex));
-    }, [curves]);
+    }, [comparison]);
+
     const curveLineKeys = useMemo(
-        () => (curves?.loops || []).map((item) => `${item.queryStrategy}:map50`),
-        [curves],
+        () => (comparison?.strategies || []).map((item) => `${item.strategy}:mean`),
+        [comparison],
     );
 
-    const loadCurves = useCallback(async (groupId: string) => {
+    const loadComparison = useCallback(async (groupId: string) => {
         if (!groupId) return;
         setCurveLoading(true);
         try {
-            const payload = await api.getSimulationExperimentCurves(groupId);
-            setCurves(payload);
+            const payload = await api.getSimulationExperimentComparison(groupId, 'map50');
+            setComparison(payload);
         } catch (error: any) {
-            message.error(error?.message || '加载对比曲线失败');
+            message.error(error?.message || '加载对比数据失败');
         } finally {
             setCurveLoading(false);
         }
@@ -168,7 +179,7 @@ const ProjectLoopOverview: React.FC = () => {
             branchId: firstBranchId,
             mode: 'active_learning',
             modelArch: firstPlugin?.pluginId,
-            queryStrategy: firstPlugin?.supportedStrategies?.[0],
+            queryStrategy: firstPlugin?.supportedStrategies?.[0] || RANDOM_BASELINE_STRATEGY,
             simulationExperimentName: '',
             simulationStrategies: defaultSimulationStrategies,
             maxRounds: 5,
@@ -181,12 +192,11 @@ const ProjectLoopOverview: React.FC = () => {
             status: 'draft',
             simulationConfig: {
                 oracleCommitId: undefined,
-                initialSeedCount: 100,
-                queryBatchSize: 200,
-                maxRounds: 5,
-                splitSeed: 0,
-                randomSeed: 0,
-                requireFullyLabeled: true,
+                seedRatio: 0.05,
+                stepRatio: 0.05,
+                maxRounds: 20,
+                randomBaselineEnabled: true,
+                seeds: [0, 1, 2, 3, 4],
             },
         });
     }, [createOpen, branches, plugins, createForm]);
@@ -194,7 +204,7 @@ const ProjectLoopOverview: React.FC = () => {
     useEffect(() => {
         if (experimentGroupOptions.length === 0) {
             setSelectedGroupId(undefined);
-            setCurves(null);
+            setComparison(null);
             return;
         }
         if (selectedGroupId && experimentGroupOptions.some((item) => item.value === selectedGroupId)) {
@@ -209,12 +219,19 @@ const ProjectLoopOverview: React.FC = () => {
             const values = await createForm.validateFields();
             setCreating(true);
             const plugin = plugins.find((item) => item.pluginId === values.modelArch);
-            if (values.mode === 'simulation') {
+            const isSimulation = values.mode === 'simulation';
+
+            if (isSimulation) {
                 const strategies = (values.simulationStrategies || []).filter((item) => !!String(item || '').trim());
                 if (strategies.length === 0) {
                     message.error('请至少选择一个 simulation 策略');
                     return;
                 }
+                const seeds = (values.simulationConfig?.seeds || [0, 1, 2, 3, 4])
+                    .map((item) => Number(item))
+                    .filter((item) => Number.isFinite(item))
+                    .map((item) => Math.trunc(item));
+
                 const simulationPayload: SimulationExperimentCreateRequest = {
                     branchId: values.branchId,
                     experimentName: values.simulationExperimentName?.trim() || undefined,
@@ -222,11 +239,18 @@ const ProjectLoopOverview: React.FC = () => {
                     strategies,
                     globalConfig: values.globalConfig || {},
                     modelRequestConfig: plugin?.defaultRequestConfig || {},
-                    simulationConfig: values.simulationConfig!,
+                    simulationConfig: {
+                        oracleCommitId: values.simulationConfig?.oracleCommitId,
+                        seedRatio: Number(values.simulationConfig?.seedRatio ?? 0.05),
+                        stepRatio: Number(values.simulationConfig?.stepRatio ?? 0.05),
+                        maxRounds: Number(values.simulationConfig?.maxRounds ?? 20),
+                        randomBaselineEnabled: Boolean(values.simulationConfig?.randomBaselineEnabled ?? true),
+                        seeds: seeds.length > 0 ? seeds : [0, 1, 2, 3, 4],
+                    },
                     status: values.status || 'draft',
                 };
                 const created = await api.createSimulationExperiment(projectId, simulationPayload);
-                message.success(`Simulation 实验创建成功，共 ${created.loops.length} 条策略 Loop`);
+                message.success(`Simulation 实验创建成功，共 ${created.loops.length} 条 Loop`);
                 setCreateOpen(false);
                 await loadData();
                 if (created.loops[0]) {
@@ -269,7 +293,7 @@ const ProjectLoopOverview: React.FC = () => {
                 <div className="flex items-center justify-between gap-3">
                     <div>
                         <Title level={4} className="!mb-1">AL Loop 概览</Title>
-                        <Text type="secondary">一个项目可包含多个 Loop，点击卡片进入单 Loop 详情。</Text>
+                        <Text type="secondary">Loop/Job/Task 新模型概览页。</Text>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <Button onClick={() => navigate('/runtime/executors')}>查看执行器状态</Button>
@@ -281,11 +305,11 @@ const ProjectLoopOverview: React.FC = () => {
                                     return;
                                 }
                                 setCurveModalOpen(true);
-                                await loadCurves(groupId);
+                                await loadComparison(groupId);
                             }}
                             disabled={experimentGroupOptions.length === 0}
                         >
-                            实验组曲线
+                            实验组对比
                         </Button>
                         <Button onClick={loadData}>刷新</Button>
                         <Button
@@ -303,7 +327,7 @@ const ProjectLoopOverview: React.FC = () => {
                         type="warning"
                         showIcon
                         message="当前没有可用插件目录"
-                        description="请先启动至少一个 executor 并完成注册，再创建 Loop。"
+                        description="请先启动至少一个 executor 并完成注册。"
                     />
                 ) : null}
             </Card>
@@ -338,20 +362,21 @@ const ProjectLoopOverview: React.FC = () => {
                                         </div>
                                         <Text type="secondary">分支：{branchName}</Text>
                                         <Text type="secondary">模式：{loop.mode}</Text>
+                                        <Text type="secondary">Phase：{loop.phase}</Text>
                                         <Text type="secondary">插件：{loop.modelArch}</Text>
                                         <Text type="secondary">策略：{loop.queryStrategy}</Text>
                                         <div className="grid grid-cols-2 gap-2 text-xs text-github-muted">
                                             <div>
-                                                <Text strong>{summary?.roundsTotal ?? 0}</Text> 轮次
+                                                <Text strong>{summary?.jobsTotal ?? 0}</Text> Jobs
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.roundsCompleted ?? 0}</Text> 已完成
+                                                <Text strong>{summary?.jobsSucceeded ?? 0}</Text> Jobs 成功
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.selectedTotal ?? 0}</Text> 选样
+                                                <Text strong>{summary?.tasksTotal ?? 0}</Text> Tasks
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.labeledTotal ?? 0}</Text> 标注
+                                                <Text strong>{summary?.tasksSucceeded ?? 0}</Text> Tasks 成功
                                             </div>
                                         </div>
                                     </div>
@@ -363,7 +388,7 @@ const ProjectLoopOverview: React.FC = () => {
             )}
 
             <Modal
-                title={selectedMode === 'simulation' ? '新建 Simulation Experiment' : '新建 AL Loop'}
+                title={selectedMode === 'simulation' ? '新建 Simulation Experiment' : '新建 Loop'}
                 open={createOpen}
                 onCancel={() => setCreateOpen(false)}
                 onOk={handleCreateLoop}
@@ -371,13 +396,13 @@ const ProjectLoopOverview: React.FC = () => {
                 cancelButtonProps={{disabled: creating}}
             >
                 <Form form={createForm} layout="vertical">
-                    {selectedMode === 'active_learning' ? (
+                    {selectedMode !== 'simulation' ? (
                         <Form.Item name="name" label="名称" rules={[{required: true, message: '请输入名称'}]}>
                             <Input placeholder="例如：fedo-yolo-loop-1"/>
                         </Form.Item>
                     ) : (
                         <Form.Item name="simulationExperimentName" label="实验名称（可选）">
-                            <Input placeholder="例如：车辆检测对比实验（留空则系统自动命名）"/>
+                            <Input placeholder="例如：车辆检测对比实验（留空自动命名）"/>
                         </Form.Item>
                     )}
                     <Form.Item name="branchId" label="绑定分支" rules={[{required: true, message: '请选择分支'}]}>
@@ -395,18 +420,13 @@ const ProjectLoopOverview: React.FC = () => {
                             }}
                         />
                     </Form.Item>
-                    {selectedMode === 'active_learning' ? (
+
+                    {selectedMode !== 'simulation' ? (
                         <Form.Item name="queryStrategy" label="默认采样策略" rules={[{required: true, message: '请选择采样策略'}]}>
-                            <Select
-                                options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}
-                            />
+                            <Select options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}/>
                         </Form.Item>
                     ) : (
-                        <Form.Item
-                            name="simulationStrategies"
-                            label="对比策略"
-                            rules={[{required: true, message: '请至少选择一个策略'}]}
-                        >
+                        <Form.Item name="simulationStrategies" label="对比策略" rules={[{required: true, message: '请至少选择一个策略'}]}>
                             <Select
                                 mode="multiple"
                                 options={simulationStrategyOptions}
@@ -414,30 +434,23 @@ const ProjectLoopOverview: React.FC = () => {
                             />
                         </Form.Item>
                     )}
+
                     <Form.Item name="mode" label="运行模式" rules={[{required: true, message: '请选择运行模式'}]}>
                         <Select
                             options={[
                                 {label: '主动学习 (HITL)', value: 'active_learning'},
                                 {label: '模拟实验 (Simulation)', value: 'simulation'},
+                                {label: '手动模式 (Manual)', value: 'manual'},
                             ]}
                         />
                     </Form.Item>
-                    {selectedMode === 'active_learning' ? (
-                        <>
-                            <Form.Item name="maxRounds" label="最大轮次">
-                                <InputNumber min={1} max={500} className="w-full"/>
-                            </Form.Item>
-                            <Form.Item name="queryBatchSize" label="每轮 TopK">
-                                <InputNumber min={1} max={5000} className="w-full"/>
-                            </Form.Item>
-                        </>
-                    ) : null}
+
                     {selectedMode === 'simulation' ? (
                         <>
                             <Alert
                                 type="info"
                                 showIcon
-                                message="每个策略会自动 fork 独立分支（simulation/<实验名>/<group>/<strategy>），不会占用当前业务分支。"
+                                message="Simulation 会在独立分支上运行策略对比，并强制包含 random_baseline。"
                             />
                             <Form.Item
                                 name={['simulationConfig', 'oracleCommitId']}
@@ -446,23 +459,27 @@ const ProjectLoopOverview: React.FC = () => {
                             >
                                 <Input placeholder="全量标注 commit id"/>
                             </Form.Item>
-                            <Form.Item name={['simulationConfig', 'initialSeedCount']} label="初始 Seed 数量">
-                                <InputNumber min={1} max={50000} className="w-full"/>
+                            <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
+                                <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
                             </Form.Item>
-                            <Form.Item name={['simulationConfig', 'queryBatchSize']} label="每轮模拟选样 TopK">
-                                <InputNumber min={1} max={50000} className="w-full"/>
+                            <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
+                                <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
                             </Form.Item>
                             <Form.Item name={['simulationConfig', 'maxRounds']} label="模拟最大轮次">
                                 <InputNumber min={1} max={500} className="w-full"/>
                             </Form.Item>
-                            <Form.Item name={['simulationConfig', 'splitSeed']} label="数据切分种子">
-                                <InputNumber min={0} max={2147483647} className="w-full"/>
-                            </Form.Item>
-                            <Form.Item name={['simulationConfig', 'randomSeed']} label="随机策略种子">
-                                <InputNumber min={0} max={2147483647} className="w-full"/>
+                            <Form.Item name={['simulationConfig', 'seeds']} label="随机种子列表">
+                                <Select mode="tags" tokenSeparators={[',']} placeholder="例如：0,1,2,3,4"/>
                             </Form.Item>
                         </>
                     ) : null}
+
+                    <Form.Item name="maxRounds" label="最大轮次">
+                        <InputNumber min={1} max={500} className="w-full"/>
+                    </Form.Item>
+                    <Form.Item name="queryBatchSize" label="每轮 TopK">
+                        <InputNumber min={1} max={5000} className="w-full"/>
+                    </Form.Item>
                     <Form.Item name="minSeedLabeled" label="最小 Seed 标注量">
                         <InputNumber min={1} max={5000} className="w-full"/>
                     </Form.Item>
@@ -473,11 +490,11 @@ const ProjectLoopOverview: React.FC = () => {
             </Modal>
 
             <Modal
-                title="Simulation 策略对比曲线"
+                title="Simulation 策略对比"
                 open={curveModalOpen}
                 onCancel={() => setCurveModalOpen(false)}
                 footer={null}
-                width={900}
+                width={960}
             >
                 <div className="flex flex-col gap-3">
                     <Select
@@ -485,7 +502,7 @@ const ProjectLoopOverview: React.FC = () => {
                         options={experimentGroupOptions}
                         onChange={async (value) => {
                             setSelectedGroupId(value);
-                            await loadCurves(value);
+                            await loadComparison(value);
                         }}
                         placeholder="选择实验组"
                     />
@@ -494,28 +511,47 @@ const ProjectLoopOverview: React.FC = () => {
                             <Spin/>
                         </div>
                     ) : curveChartRows.length === 0 ? (
-                        <Empty description="暂无可绘制曲线数据"/>
+                        <Empty description="暂无可绘制对比数据"/>
                     ) : (
-                        <div className="h-[360px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={curveChartRows}>
-                                    <XAxis dataKey="roundIndex"/>
-                                    <YAxis domain={[0, 1]}/>
-                                    <Tooltip/>
-                                    {curveLineKeys.map((key, idx) => (
-                                        <Line
-                                            key={key}
-                                            type="monotone"
-                                            dataKey={key}
-                                            name={key}
-                                            stroke={['#1677ff', '#13c2c2', '#fa8c16', '#f5222d', '#722ed1'][idx % 5]}
-                                            strokeWidth={2}
-                                            dot={false}
-                                        />
-                                    ))}
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
+                        <>
+                            <div className="h-[320px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={curveChartRows}>
+                                        <XAxis dataKey="roundIndex"/>
+                                        <YAxis domain={[0, 1]}/>
+                                        <Tooltip/>
+                                        {curveLineKeys.map((key, idx) => (
+                                            <Line
+                                                key={key}
+                                                type="monotone"
+                                                dataKey={key}
+                                                name={key}
+                                                stroke={['#1677ff', '#13c2c2', '#fa8c16', '#f5222d', '#722ed1'][idx % 5]}
+                                                strokeWidth={2}
+                                                dot={false}
+                                            />
+                                        ))}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <Table
+                                size="small"
+                                rowKey={(row) => row.strategy}
+                                pagination={false}
+                                dataSource={comparison?.strategies || []}
+                                columns={[
+                                    {title: '策略', dataIndex: 'strategy'},
+                                    {title: 'Seeds', render: (_: unknown, row: any) => (row.seeds || []).join(', ')},
+                                    {title: 'Final Mean', render: (_: unknown, row: any) => Number(row.finalMean || 0).toFixed(4)},
+                                    {title: 'Final Std', render: (_: unknown, row: any) => Number(row.finalStd || 0).toFixed(4)},
+                                    {title: 'AULC', render: (_: unknown, row: any) => Number(row.aulcMean || 0).toFixed(4)},
+                                    {
+                                        title: 'Delta vs Baseline',
+                                        render: (_: unknown, row: any) => Number(comparison?.deltaVsBaseline?.[row.strategy] || 0).toFixed(4),
+                                    },
+                                ]}
+                            />
+                        </>
                     )}
                 </div>
             </Modal>

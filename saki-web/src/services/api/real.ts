@@ -24,29 +24,28 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
-    RuntimeArtifactsResponse,
-    JobArtifactDownload,
     RuntimeJob,
     RuntimeJobCommandResponse,
     RuntimeJobCreateRequest,
-    RuntimeJobEvent,
-    RuntimeMetricPoint,
-    RuntimeTopKCandidate,
+    RuntimeJobTask,
+    RuntimeTaskArtifactsResponse,
+    RuntimeTaskCandidate,
+    RuntimeTaskCommandResponse,
+    RuntimeTaskEvent,
+    RuntimeTaskMetricPoint,
+    TaskArtifactDownload,
     LoopCreateRequest,
-    LoopRecoverRequest,
+    LoopConfirmResponse,
     LoopUpdateRequest,
-    LoopRound,
     LoopSummary,
+    SimulationComparison,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
-    SimulationExperimentCurves,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
     RuntimeExecutorStatsResponse,
-    AnnotationBatch,
-    AnnotationBatchItem,
     ProjectModel,
     ModelArtifactDownload,
     ResourceMember,
@@ -697,8 +696,8 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:recover`, payload);
+    async confirmLoop(loopId: string): Promise<LoopConfirmResponse> {
+        const response = await this.client.post<LoopConfirmResponse>(`/loops/${loopId}:confirm`);
         return response.data;
     }
 
@@ -714,11 +713,6 @@ export class RealApiService implements ApiService {
 
     async stopLoop(loopId: string): Promise<ALLoop> {
         const response = await this.client.post<ALLoop>(`/loops/${loopId}:stop`);
-        return response.data;
-    }
-
-    async getLoopRounds(loopId: string, limit: number = 200): Promise<LoopRound[]> {
-        const response = await this.client.get<LoopRound[]>(`/loops/${loopId}/rounds`, {params: {limit}});
         return response.data;
     }
 
@@ -738,9 +732,13 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves> {
-        const response = await this.client.get<SimulationExperimentCurves>(
-            `/simulation-experiments/${groupId}/curves`,
+    async getSimulationExperimentComparison(
+        groupId: string,
+        metricName: string = 'map50',
+    ): Promise<SimulationComparison> {
+        const response = await this.client.get<SimulationComparison>(
+            `/simulation-experiments/${groupId}/comparison`,
+            {params: {metric_name: metricName}},
         );
         return response.data;
     }
@@ -755,20 +753,8 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async createLoopJob(
-        loopId: string,
-        payload: RuntimeJobCreateRequest,
-        autoDispatch: boolean = true
-    ): Promise<RuntimeJob> {
-        const response = await this.client.post<RuntimeJob>(
-            `/loops/${loopId}/jobs`,
-            payload,
-            {
-                params: {
-                    auto_dispatch: autoDispatch,
-                },
-            }
-        );
+    async createLoopJob(loopId: string, payload: RuntimeJobCreateRequest): Promise<RuntimeJob> {
+        const response = await this.client.post<RuntimeJob>(`/loops/${loopId}/jobs`, payload);
         return response.data;
     }
 
@@ -782,33 +768,51 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getJobEvents(jobId: string, afterSeq: number = 0): Promise<RuntimeJobEvent[]> {
-        const response = await this.client.get<RuntimeJobEvent[]>(`/jobs/${jobId}/events`, {params: {after_seq: afterSeq}});
+    async getJobTasks(jobId: string, limit: number = 2000): Promise<RuntimeJobTask[]> {
+        const response = await this.client.get<RuntimeJobTask[]>(`/jobs/${jobId}/tasks`, {params: {limit}});
         return response.data;
     }
 
-    async getJobMetricSeries(jobId: string, limit: number = 5000): Promise<RuntimeMetricPoint[]> {
-        const response = await this.client.get<RuntimeMetricPoint[]>(`/jobs/${jobId}/metrics/series`, {params: {limit}});
+    async getTask(taskId: string): Promise<RuntimeJobTask> {
+        const response = await this.client.get<RuntimeJobTask>(`/tasks/${taskId}`);
         return response.data;
     }
 
-    async getJobSamplingTopK(jobId: string, limit: number = 200): Promise<RuntimeTopKCandidate[]> {
-        const response = await this.client.get<RuntimeTopKCandidate[]>(`/jobs/${jobId}/sampling/topk`, {params: {limit}});
+    async stopTask(taskId: string, reason: string = 'user requested stop'): Promise<RuntimeTaskCommandResponse> {
+        const response = await this.client.post<RuntimeTaskCommandResponse>(`/tasks/${taskId}:stop`, null, {params: {reason}});
         return response.data;
     }
 
-    async getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse> {
-        const response = await this.client.get<RuntimeArtifactsResponse>(`/jobs/${jobId}/artifacts`);
+    async getTaskEvents(taskId: string, afterSeq: number = 0, limit: number = 5000): Promise<RuntimeTaskEvent[]> {
+        const response = await this.client.get<RuntimeTaskEvent[]>(
+            `/tasks/${taskId}/events`,
+            {params: {after_seq: afterSeq, limit}},
+        );
         return response.data;
     }
 
-    async getJobArtifactDownloadUrl(
-        jobId: string,
+    async getTaskMetricSeries(taskId: string, limit: number = 5000): Promise<RuntimeTaskMetricPoint[]> {
+        const response = await this.client.get<RuntimeTaskMetricPoint[]>(`/tasks/${taskId}/metrics/series`, {params: {limit}});
+        return response.data;
+    }
+
+    async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeTaskCandidate[]> {
+        const response = await this.client.get<RuntimeTaskCandidate[]>(`/tasks/${taskId}/candidates`, {params: {limit}});
+        return response.data;
+    }
+
+    async getTaskArtifacts(taskId: string): Promise<RuntimeTaskArtifactsResponse> {
+        const response = await this.client.get<RuntimeTaskArtifactsResponse>(`/tasks/${taskId}/artifacts`);
+        return response.data;
+    }
+
+    async getTaskArtifactDownloadUrl(
+        taskId: string,
         artifactName: string,
         expiresInHours: number = 2
-    ): Promise<JobArtifactDownload> {
-        const response = await this.client.get<JobArtifactDownload>(
-            `/jobs/${jobId}/artifacts/${artifactName}:download-url`,
+    ): Promise<TaskArtifactDownload> {
+        const response = await this.client.get<TaskArtifactDownload>(
+            `/tasks/${taskId}/artifacts/${artifactName}:download-url`,
             {params: {expires_in_hours: expiresInHours}}
         );
         return response.data;
@@ -828,24 +832,6 @@ export class RealApiService implements ApiService {
 
     async getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead> {
         const response = await this.client.get<RuntimeExecutorRead>(`/runtime/executors/${executorId}`);
-        return response.data;
-    }
-
-    async createAnnotationBatchFromJob(jobId: string, limit: number = 200): Promise<AnnotationBatch> {
-        const response = await this.client.post<AnnotationBatch>(
-            `/jobs/${jobId}/sampling/batches`,
-            {limit},
-        );
-        return response.data;
-    }
-
-    async getAnnotationBatch(batchId: string): Promise<AnnotationBatch> {
-        const response = await this.client.get<AnnotationBatch>(`/annotation-batches/${batchId}`);
-        return response.data;
-    }
-
-    async getAnnotationBatchItems(batchId: string, limit: number = 5000): Promise<AnnotationBatchItem[]> {
-        const response = await this.client.get<AnnotationBatchItem[]>(`/annotation-batches/${batchId}/items`, {params: {limit}});
         return response.data;
     }
 

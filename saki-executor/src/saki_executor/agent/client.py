@@ -88,9 +88,9 @@ class AgentClient:
             return False
 
         if self.job_manager.busy and force:
-            if self.job_manager.current_job_id:
-                logger.warning("收到强制断连请求，先尝试停止任务 job_id={}。", self.job_manager.current_job_id)
-                await self.job_manager.stop_job(self.job_manager.current_job_id)
+            if self.job_manager.current_task_id:
+                logger.warning("收到强制断连请求，先尝试停止任务 task_id={}。", self.job_manager.current_task_id)
+                await self.job_manager.stop_task(self.job_manager.current_task_id)
             wait_sec = max(0, int(settings.DISCONNECT_FORCE_WAIT_SEC))
             if wait_sec > 0:
                 deadline = time.monotonic() + wait_sec
@@ -115,10 +115,7 @@ class AgentClient:
         return True
 
     def _resource_payload(self) -> dict[str, Any]:
-        return probe_hardware(
-            cpu_workers=settings.CPU_WORKERS,
-            memory_mb=settings.MEMORY_MB,
-        )
+        return probe_hardware(cpu_workers=settings.CPU_WORKERS, memory_mb=settings.MEMORY_MB)
 
     def _register_message(self) -> pb.RuntimeMessage:
         plugins = []
@@ -128,7 +125,7 @@ class AgentClient:
                     "plugin_id": plugin.plugin_id,
                     "version": plugin.version,
                     "display_name": plugin.display_name,
-                    "supported_job_types": plugin.supported_job_types,
+                    "supported_task_types": plugin.supported_job_types,
                     "supported_strategies": plugin.supported_strategies,
                     "supported_accelerators": plugin.supported_accelerators,
                     "supports_auto_fallback": plugin.supports_auto_fallback,
@@ -149,7 +146,7 @@ class AgentClient:
             request_id=str(uuid.uuid4()),
             executor_id=settings.EXECUTOR_ID,
             busy=self.job_manager.busy,
-            current_job_id=self.job_manager.current_job_id,
+            current_task_id=self.job_manager.current_task_id,
             resources=self._resource_payload(),
         )
 
@@ -158,7 +155,7 @@ class AgentClient:
             await asyncio.sleep(settings.HEARTBEAT_INTERVAL_SEC)
             self._last_heartbeat_ts = int(time.time())
             await self.send_message(self._heartbeat_message())
-            logger.debug("已发送心跳 current_job_id={}", self.job_manager.current_job_id)
+            logger.debug("已发送心跳 current_task_id={}", self.job_manager.current_task_id)
 
     async def _request_iterator(self):
         while self._running:
@@ -247,8 +244,8 @@ class AgentClient:
                 logger.info("执行器注册成功 executor_id={}", settings.EXECUTOR_ID)
             return
 
-        if payload_type == "assign_job":
-            assign = message.assign_job
+        if payload_type == "assign_task":
+            assign = message.assign_task
             request_id = str(assign.request_id or "")
             cached_ack = self._take_cached_control_ack(request_id)
             if cached_ack is not None:
@@ -256,14 +253,14 @@ class AgentClient:
                 logger.info("重复任务派发 request_id={}，已返回缓存 ack。", request_id)
                 return
 
-            job_payload = runtime_codec.parse_assign_job(assign)
-            logger.info("收到任务派发 request_id={} job_id={}", request_id, job_payload.get("job_id"))
-            accepted = await self.job_manager.assign_job(request_id, job_payload)
+            task_payload = runtime_codec.parse_assign_task(assign)
+            logger.info("收到任务派发 request_id={} task_id={}", request_id, task_payload.get("task_id"))
+            accepted = await self.job_manager.assign_task(request_id, task_payload)
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
                 ok=accepted,
-                ack_type="assign_job",
+                ack_type="assign_task",
                 ack_reason="accepted" if accepted else "executor_busy",
                 detail="accepted" if accepted else "executor busy",
             )
@@ -271,8 +268,8 @@ class AgentClient:
             self._cache_control_ack(request_id, ack_message)
             return
 
-        if payload_type == "stop_job":
-            stop = message.stop_job
+        if payload_type == "stop_task":
+            stop = message.stop_task
             request_id = str(stop.request_id or "")
             cached_ack = self._take_cached_control_ack(request_id)
             if cached_ack is not None:
@@ -280,16 +277,16 @@ class AgentClient:
                 logger.info("重复停止请求 request_id={}，已返回缓存 ack。", request_id)
                 return
 
-            job_id = str(stop.job_id or "")
-            logger.info("收到任务停止请求 request_id={} job_id={}", request_id, job_id)
-            stopped = await self.job_manager.stop_job(job_id)
+            task_id = str(stop.task_id or "")
+            logger.info("收到任务停止请求 request_id={} task_id={}", request_id, task_id)
+            stopped = await self.job_manager.stop_task(task_id)
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
                 ok=stopped,
-                ack_type="stop_job",
-                ack_reason="stopping" if stopped else "job_not_running",
-                detail="stopping" if stopped else "job not running",
+                ack_type="stop_task",
+                ack_reason="stopping" if stopped else "task_not_running",
+                detail="stopping" if stopped else "task not running",
             )
             await self.send_message(ack_message)
             self._cache_control_ack(request_id, ack_message)

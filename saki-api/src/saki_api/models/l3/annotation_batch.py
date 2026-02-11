@@ -1,15 +1,12 @@
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
+from typing import Dict, Any, Optional, List
 
 from sqlalchemy import Column
 from sqlmodel import SQLModel, Field, Relationship
 
 from saki_api.models.base import UUIDMixin, TimestampMixin, OPT_JSON
 from saki_api.models.enums import AnnotationBatchStatus
-
-if TYPE_CHECKING:
-    from saki_api.models.l3.loop import ALLoop
 
 
 class AnnotationBatch(UUIDMixin, TimestampMixin, SQLModel, table=True):
@@ -25,7 +22,6 @@ class AnnotationBatch(UUIDMixin, TimestampMixin, SQLModel, table=True):
     closed_at: datetime | None = Field(default=None)
     meta: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
-    loop: "ALLoop" = Relationship(back_populates="annotation_batches")
     items: List["AnnotationBatchItem"] = Relationship(back_populates="batch", cascade_delete=True)
 
 

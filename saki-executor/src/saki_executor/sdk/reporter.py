@@ -7,6 +7,7 @@ from typing import Any
 
 class JobReporter:
     def __init__(self, job_id: str, events_path: Path):
+        # `job_id` here is runtime task id in V2 protocol.
         self.job_id = job_id
         self.events_path = events_path
         self._lock = threading.Lock()
@@ -32,7 +33,7 @@ class JobReporter:
         with self._lock:
             self._seq += 1
             event = {
-                "job_id": self.job_id,
+                "task_id": self.job_id,
                 "seq": self._seq,
                 "ts": int(time.time()),
                 "event_type": event_type,

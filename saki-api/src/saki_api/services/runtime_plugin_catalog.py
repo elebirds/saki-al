@@ -9,7 +9,7 @@ from saki_api.models.l3.runtime_executor import RuntimeExecutor
 PLUGIN_COMPARE_FIELDS = (
     "display_name",
     "version",
-    "supported_job_types",
+    "supported_task_types",
     "supported_strategies",
     "supported_accelerators",
     "supports_auto_fallback",
@@ -44,7 +44,7 @@ def extract_executor_plugins(raw_payload: dict[str, Any] | None) -> list[dict[st
                 "plugin_id": plugin_id,
                 "display_name": display_name,
                 "version": str(item.get("version") or ""),
-                "supported_job_types": _normalize_text_list(item.get("supported_job_types")),
+                "supported_task_types": _normalize_text_list(item.get("supported_task_types")),
                 "supported_strategies": _normalize_text_list(item.get("supported_strategies")),
                 "supported_accelerators": _normalize_text_list(item.get("supported_accelerators")),
                 "supports_auto_fallback": bool(item.get("supports_auto_fallback", True)),

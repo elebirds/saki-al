@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     RUNTIME_EXECUTOR_ALLOWLIST: List[str] = []
     RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC: int = 600
     RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES: int = 2048
+    RUNTIME_SCHEMA_VERSION: str = "runtime_v2_task"
+    RUNTIME_SCHEMA_VERSION_STRICT: bool = True
 
     # Logging
     LOG_LEVEL: str = "INFO"

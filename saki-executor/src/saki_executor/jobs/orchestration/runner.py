@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from saki_executor.agent import codec as runtime_codec
-from saki_executor.jobs.contracts import JobExecutionRequest, JobFinalResult, SUPPORTED_JOB_MODES
-from saki_executor.jobs.orchestration.event_emitter import JobEventEmitter
+from saki_executor.jobs.contracts import SUPPORTED_LOOP_MODES, TaskExecutionRequest, TaskFinalResult
+from saki_executor.jobs.orchestration.event_emitter import TaskEventEmitter
 from saki_executor.jobs.orchestration.training_data_service import TrainingDataService
-from saki_executor.jobs.state import ExecutorState, JobStatus
+from saki_executor.jobs.state import ExecutorState, TaskStatus
 from saki_executor.jobs.workspace import Workspace
 from saki_executor.sdk.reporter import JobReporter
 
@@ -19,14 +19,14 @@ if TYPE_CHECKING:
 
 
 class JobPipelineRunner:
-    _SUPPORTED_MODES = SUPPORTED_JOB_MODES
+    _SUPPORTED_MODES = SUPPORTED_LOOP_MODES
 
-    def __init__(self, *, manager: JobManager, request: JobExecutionRequest) -> None:
+    def __init__(self, *, manager: JobManager, request: TaskExecutionRequest) -> None:
         self._manager = manager
         self._request = request
-        self._job_id = request.job_id
+        self._task_id = request.task_id
 
-    async def run(self) -> JobFinalResult:
+    async def run(self) -> TaskFinalResult:
         self._validate_request()
         plugin = self._resolve_plugin()
         workspace, reporter, emitter = self._prepare_workspace()
@@ -67,34 +67,34 @@ class JobPipelineRunner:
         self._manager._active_plugin = plugin  # noqa: SLF001
         return plugin
 
-    def _prepare_workspace(self) -> tuple[Workspace, JobReporter, JobEventEmitter]:
-        workspace = Workspace(self._manager.runs_dir, self._job_id)
+    def _prepare_workspace(self) -> tuple[Workspace, JobReporter, TaskEventEmitter]:
+        workspace = Workspace(self._manager.runs_dir, self._task_id)
         workspace.ensure()
         workspace.write_config(self._request.raw_payload)
-        reporter = JobReporter(self._job_id, workspace.events_path)
+        reporter = JobReporter(self._task_id, workspace.events_path)
 
         async def _push_event(event: dict[str, Any]) -> None:
-            await self._manager._push_event(self._job_id, event)  # noqa: SLF001
+            await self._manager._push_event(self._task_id, event)  # noqa: SLF001
 
-        emitter = JobEventEmitter(
+        emitter = TaskEventEmitter(
             reporter=reporter,
             stop_event=self._manager._stop_event,  # noqa: SLF001
             push_event=_push_event,
         )
         return workspace, reporter, emitter
 
-    async def _emit_start_status(self, emitter: JobEventEmitter) -> None:
+    async def _emit_start_status(self, emitter: TaskEventEmitter) -> None:
         self._manager.executor_state = ExecutorState.RUNNING
-        await emitter.emit_status(JobStatus.CREATED, "job created")
-        await emitter.emit_status(JobStatus.QUEUED, "job queued")
-        await emitter.emit_status(JobStatus.RUNNING, "job running")
+        await emitter.emit_status(TaskStatus.PENDING, "task pending")
+        await emitter.emit_status(TaskStatus.DISPATCHING, "task dispatching")
+        await emitter.emit_status(TaskStatus.RUNNING, "task running")
 
     async def _run_training_pipeline(
         self,
         *,
         plugin: Any,
         workspace: Workspace,
-        emitter: JobEventEmitter,
+        emitter: TaskEventEmitter,
     ) -> tuple[Any, set[str]]:
         params_snapshot = {
             "epochs": self._request.params.get("epochs"),
@@ -105,11 +105,9 @@ class JobPipelineRunner:
             "random_seed": self._request.params.get("random_seed"),
             "mode": self._request.mode,
             "round_index": self._request.round_index,
+            "task_id": self._request.task_id,
         }
-        await emitter.emit(
-            "log",
-            {"level": "INFO", "message": f"effective training params: {params_snapshot}"},
-        )
+        await emitter.emit("log", {"level": "INFO", "message": f"effective training params: {params_snapshot}"})
         data_service = TrainingDataService(
             fetch_all=self._manager._fetch_all,  # noqa: SLF001
             cache=self._manager.cache,
@@ -134,15 +132,12 @@ class JobPipelineRunner:
         *,
         plugin: Any,
         workspace: Workspace,
-        emitter: JobEventEmitter,
+        emitter: TaskEventEmitter,
         protected: set[str],
     ) -> list[dict[str, Any]]:
         skip_sampling = bool(self._request.params.get("skip_sampling", False))
         if skip_sampling:
-            await emitter.emit(
-                "log",
-                {"level": "INFO", "message": "skip_sampling=true, TopK sampling skipped"},
-            )
+            await emitter.emit("log", {"level": "INFO", "message": "skip_sampling=true, TopK sampling skipped"})
             return []
         topk = int(self._request.params.get("topk", 200))
         sampling_params = dict(self._request.params)
@@ -150,7 +145,7 @@ class JobPipelineRunner:
         return await self._manager._collect_topk_candidates_streaming(  # noqa: SLF001
             plugin=plugin,
             workspace=workspace,
-            job_id=self._request.job_id,
+            task_id=self._request.task_id,
             project_id=self._request.project_id,
             commit_id=self._request.source_commit_id,
             strategy=self._request.query_strategy,
@@ -167,44 +162,38 @@ class JobPipelineRunner:
         artifacts: dict[str, Any],
         candidates: list[dict[str, Any]],
         optional_upload_failures: list[str],
-    ) -> JobFinalResult:
+    ) -> TaskFinalResult:
         self._manager.executor_state = ExecutorState.FINALIZING
         if optional_upload_failures:
             reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
-            await self._manager._push_event(  # noqa: SLF001
-                self._job_id,
-                reporter.status(JobStatus.PARTIAL_FAILED.value, reason),
-            )
+            await self._manager._push_event(self._task_id, reporter.status(TaskStatus.FAILED.value, reason))  # noqa: SLF001
             await self._send_result(
-                status=JobStatus.PARTIAL_FAILED,
+                status=TaskStatus.FAILED,
                 metrics=metrics,
                 artifacts=artifacts,
                 candidates=candidates,
                 error_message=reason,
             )
-            logger.warning("任务部分成功（非关键制品上传失败） job_id={} reason={}", self._job_id, reason)
-            return JobFinalResult(
-                job_id=self._job_id,
-                status=JobStatus.PARTIAL_FAILED,
+            logger.warning("任务部分成功（制品上传失败） task_id={} reason={}", self._task_id, reason)
+            return TaskFinalResult(
+                task_id=self._task_id,
+                status=TaskStatus.FAILED,
                 metrics=metrics,
                 artifacts=artifacts,
                 candidates=candidates,
                 error_message=reason,
             )
-        await self._manager._push_event(  # noqa: SLF001
-            self._job_id,
-            reporter.status(JobStatus.SUCCEEDED.value, "job succeeded"),
-        )
+        await self._manager._push_event(self._task_id, reporter.status(TaskStatus.SUCCEEDED.value, "task succeeded"))  # noqa: SLF001
         await self._send_result(
-            status=JobStatus.SUCCEEDED,
+            status=TaskStatus.SUCCEEDED,
             metrics=metrics,
             artifacts=artifacts,
             candidates=candidates,
         )
-        logger.info("任务执行成功 job_id={}", self._job_id)
-        return JobFinalResult(
-            job_id=self._job_id,
-            status=JobStatus.SUCCEEDED,
+        logger.info("任务执行成功 task_id={}", self._task_id)
+        return TaskFinalResult(
+            task_id=self._task_id,
+            status=TaskStatus.SUCCEEDED,
             metrics=metrics,
             artifacts=artifacts,
             candidates=candidates,
@@ -224,7 +213,7 @@ class JobPipelineRunner:
             required = bool(getattr(artifact, "required", False))
             try:
                 ticket = await self._manager._request_upload_ticket(  # noqa: SLF001
-                    job_id=self._job_id,
+                    task_id=self._task_id,
                     artifact_name=artifact.name,
                     content_type=artifact.content_type,
                 )
@@ -242,7 +231,7 @@ class JobPipelineRunner:
                 if required:
                     raise RuntimeError(f"required artifact upload failed: {message}") from exc
                 optional_upload_failures.append(message)
-                logger.warning("非关键制品上传失败，忽略并继续 job_id={} {}", self._job_id, message)
+                logger.warning("非关键制品上传失败，忽略并继续 task_id={} {}", self._task_id, message)
                 continue
 
             artifacts[artifact.name] = {
@@ -251,7 +240,7 @@ class JobPipelineRunner:
                 "meta": artifact.meta or {"size": size},
             }
             await self._manager._push_event(  # noqa: SLF001
-                self._job_id,
+                self._task_id,
                 reporter.artifact(
                     kind=artifact.kind,
                     name=artifact.name,
@@ -265,18 +254,18 @@ class JobPipelineRunner:
     async def _send_result(
         self,
         *,
-        status: JobStatus,
+        status: TaskStatus,
         metrics: dict[str, Any],
         artifacts: dict[str, Any],
         candidates: list[dict[str, Any]],
         error_message: str = "",
     ) -> None:
         if self._manager._send_message is None:  # noqa: SLF001
-            raise RuntimeError("job manager send transport is not configured")
+            raise RuntimeError("task manager send transport is not configured")
         await self._manager._send_message(  # noqa: SLF001
-            runtime_codec.build_job_result_message(
+            runtime_codec.build_task_result_message(
                 request_id=str(uuid.uuid4()),
-                job_id=self._job_id,
+                task_id=self._task_id,
                 status=status.value,
                 metrics=metrics,
                 artifacts=artifacts,

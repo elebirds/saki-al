@@ -7,7 +7,7 @@ def test_build_ack_message():
         request_id="r1",
         ack_for="r0",
         ok=True,
-        ack_type="assign_job",
+        ack_type="assign_task",
         ack_reason="accepted",
         detail="accepted",
     )
@@ -15,21 +15,22 @@ def test_build_ack_message():
     assert message.ack.request_id == "r1"
     assert message.ack.ack_for == "r0"
     assert message.ack.status == pb.OK
-    assert message.ack.type == pb.ACK_TYPE_ASSIGN_JOB
+    assert message.ack.type == pb.ACK_TYPE_ASSIGN_TASK
     assert message.ack.reason == pb.ACK_REASON_ACCEPTED
     assert message.ack.detail == "accepted"
 
 
-def test_parse_assign_job_payload():
+def test_parse_assign_task_payload():
     runtime_message = pb.RuntimeMessage(
-        assign_job=pb.AssignJob(
+        assign_task=pb.AssignTask(
             request_id="req1",
-            job=pb.JobPayload(
+            task=pb.TaskPayload(
+                task_id="task1",
                 job_id="job1",
                 project_id="project1",
                 loop_id="loop1",
                 source_commit_id="commit1",
-                job_type=pb.TRAIN_DETECTION,
+                task_type=pb.TRAIN,
                 plugin_id="demo_det_v1",
                 mode=pb.ACTIVE_LEARNING,
                 query_strategy="uncertainty_1_minus_max_conf",
@@ -39,10 +40,11 @@ def test_parse_assign_job_payload():
             ),
         )
     )
-    payload = codec.parse_assign_job(runtime_message.assign_job)
+    payload = codec.parse_assign_task(runtime_message.assign_task)
+    assert payload["task_id"] == "task1"
     assert payload["job_id"] == "job1"
     assert payload["params"]["epochs"] == 5
-    assert payload["job_type"] == "train_detection"
+    assert payload["task_type"] == "train"
     assert payload["mode"] == "active_learning"
     assert payload["round_index"] == 3
 
@@ -50,7 +52,7 @@ def test_parse_assign_job_payload():
 def test_build_data_request_query_type_mapping():
     message = codec.build_data_request_message(
         request_id="r1",
-        job_id="job1",
+        task_id="task1",
         query_type="annotations",
         project_id="project1",
         commit_id="commit1",
@@ -68,10 +70,12 @@ def test_parse_error_message_includes_reply_to_and_error():
         message="boom",
         reply_to="req-1",
         reason="boom",
+        task_id="task-1",
         query_type=pb.LABELS,
     )
     parsed = codec.parse_error(error_payload)
     assert parsed["reply_to"] == "req-1"
+    assert parsed["task_id"] == "task-1"
     assert parsed["error"] == "boom"
     assert parsed["query_type"] == "labels"
 
@@ -86,7 +90,7 @@ def test_build_register_message_with_accelerators():
                 "plugin_id": "demo_det_v1",
                 "version": "0.1.0",
                 "display_name": "Demo",
-                "supported_job_types": ["train_detection"],
+                "supported_task_types": ["train"],
                 "supported_strategies": ["random_baseline"],
                 "supported_accelerators": ["cpu", "cuda"],
                 "supports_auto_fallback": True,
@@ -109,15 +113,15 @@ def test_build_register_message_with_accelerators():
     assert len(message.register.resources.accelerators) >= 2
 
 
-def test_partial_failed_status_codec_mapping():
-    message = codec.build_job_result_message(
+def test_task_status_codec_mapping():
+    message = codec.build_task_result_message(
         request_id="result-1",
-        job_id="job-1",
-        status="partial_failed",
+        task_id="task-1",
+        status="failed",
         metrics={},
         artifacts={},
         candidates=[],
-        error_message="optional artifact upload failed",
+        error_message="task failed",
     )
-    assert message.job_result.status == pb.PARTIAL_FAILED
-    assert codec.status_enum_to_text(pb.PARTIAL_FAILED) == "partial_failed"
+    assert message.task_result.status == pb.FAILED
+    assert codec.status_enum_to_text(pb.FAILED) == "failed"

@@ -23,29 +23,28 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
-    RuntimeArtifactsResponse,
-    JobArtifactDownload,
     RuntimeJob,
     RuntimeJobCommandResponse,
     RuntimeJobCreateRequest,
-    RuntimeJobEvent,
-    RuntimeMetricPoint,
-    RuntimeTopKCandidate,
+    RuntimeJobTask,
+    RuntimeTaskArtifactsResponse,
+    RuntimeTaskCandidate,
+    RuntimeTaskCommandResponse,
+    RuntimeTaskEvent,
+    RuntimeTaskMetricPoint,
+    TaskArtifactDownload,
     LoopCreateRequest,
-    LoopRecoverRequest,
+    LoopConfirmResponse,
     LoopUpdateRequest,
-    LoopRound,
     LoopSummary,
+    SimulationComparison,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
-    SimulationExperimentCurves,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
     RuntimeExecutorStatsResponse,
-    AnnotationBatch,
-    AnnotationBatchItem,
     ProjectModel,
     ModelArtifactDownload,
     ResourceMember,
@@ -202,15 +201,13 @@ export interface ApiService {
 
     startLoop(loopId: string): Promise<ALLoop>;
 
-    recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop>;
+    confirmLoop(loopId: string): Promise<LoopConfirmResponse>;
 
     pauseLoop(loopId: string): Promise<ALLoop>;
 
     resumeLoop(loopId: string): Promise<ALLoop>;
 
     stopLoop(loopId: string): Promise<ALLoop>;
-
-    getLoopRounds(loopId: string, limit?: number): Promise<LoopRound[]>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
 
@@ -219,38 +216,39 @@ export interface ApiService {
         payload: SimulationExperimentCreateRequest
     ): Promise<SimulationExperimentCreateResponse>;
 
-    getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves>;
+    getSimulationExperimentComparison(groupId: string, metricName?: string): Promise<SimulationComparison>;
 
     getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
 
     getLoopJobs(loopId: string, limit?: number): Promise<RuntimeJob[]>;
 
-    createLoopJob(loopId: string, payload: RuntimeJobCreateRequest, autoDispatch?: boolean): Promise<RuntimeJob>;
+    createLoopJob(loopId: string, payload: RuntimeJobCreateRequest): Promise<RuntimeJob>;
 
     stopJob(jobId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
 
     getJob(jobId: string): Promise<RuntimeJob>;
 
-    getJobEvents(jobId: string, afterSeq?: number): Promise<RuntimeJobEvent[]>;
+    getJobTasks(jobId: string, limit?: number): Promise<RuntimeJobTask[]>;
 
-    getJobMetricSeries(jobId: string, limit?: number): Promise<RuntimeMetricPoint[]>;
+    getTask(taskId: string): Promise<RuntimeJobTask>;
 
-    getJobSamplingTopK(jobId: string, limit?: number): Promise<RuntimeTopKCandidate[]>;
+    stopTask(taskId: string, reason?: string): Promise<RuntimeTaskCommandResponse>;
 
-    getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse>;
-    getJobArtifactDownloadUrl(jobId: string, artifactName: string, expiresInHours?: number): Promise<JobArtifactDownload>;
+    getTaskEvents(taskId: string, afterSeq?: number, limit?: number): Promise<RuntimeTaskEvent[]>;
+
+    getTaskMetricSeries(taskId: string, limit?: number): Promise<RuntimeTaskMetricPoint[]>;
+
+    getTaskCandidates(taskId: string, limit?: number): Promise<RuntimeTaskCandidate[]>;
+
+    getTaskArtifacts(taskId: string): Promise<RuntimeTaskArtifactsResponse>;
+
+    getTaskArtifactDownloadUrl(taskId: string, artifactName: string, expiresInHours?: number): Promise<TaskArtifactDownload>;
 
     getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;
 
     getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse>;
 
     getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
-
-    createAnnotationBatchFromJob(jobId: string, limit?: number): Promise<AnnotationBatch>;
-
-    getAnnotationBatch(batchId: string): Promise<AnnotationBatch>;
-
-    getAnnotationBatchItems(batchId: string, limit?: number): Promise<AnnotationBatchItem[]>;
 
     registerModelFromJob(projectId: string, payload: {
         jobId: string;

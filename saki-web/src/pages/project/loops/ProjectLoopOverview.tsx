@@ -18,6 +18,7 @@ import {
 import {useNavigate, useParams} from 'react-router-dom';
 import {Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
 
+import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {
     ALLoop,
@@ -68,6 +69,8 @@ const listSimulationStrategies = (plugin?: RuntimePluginCatalogItem): string[] =
 const ProjectLoopOverview: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>();
     const navigate = useNavigate();
+    const {can: canProject} = useResourcePermission('project', projectId);
+    const canManageLoops = canProject('loop:manage:assigned');
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [createOpen, setCreateOpen] = useState(false);
@@ -136,7 +139,7 @@ const ProjectLoopOverview: React.FC = () => {
     }, []);
 
     const loadData = useCallback(async () => {
-        if (!projectId) return;
+        if (!projectId || !canManageLoops) return;
         setLoading(true);
         try {
             const [loopRows, branchRows, pluginCatalog] = await Promise.all([
@@ -163,11 +166,12 @@ const ProjectLoopOverview: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [projectId]);
+    }, [projectId, canManageLoops]);
 
     useEffect(() => {
+        if (!canManageLoops) return;
         void loadData();
-    }, [loadData]);
+    }, [canManageLoops, loadData]);
 
     useEffect(() => {
         if (!createOpen) return;
@@ -284,6 +288,14 @@ const ProjectLoopOverview: React.FC = () => {
             <div className="flex h-full items-center justify-center">
                 <Spin size="large"/>
             </div>
+        );
+    }
+
+    if (!canManageLoops) {
+        return (
+            <Card className="!border-github-border !bg-github-panel">
+                <Alert type="warning" showIcon message="暂无权限访问 Loop 页面"/>
+            </Card>
         );
     }
 

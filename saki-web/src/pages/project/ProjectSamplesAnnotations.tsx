@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Button, Card, Empty, Input, Select, Spin, Tag, Typography,} from 'antd';
+import {Button, Card, Empty, Input, message, Select, Spin, Tag, Tooltip, Typography,} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {FileTextOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
@@ -25,6 +25,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
     const {can: canProject} = useResourcePermission('project', projectId);
     const canCommit = canProject('commit:create:assigned');
+    const canAnnotate = canProject('annotation:create:assigned');
 
     const selectedDatasetId = searchParams.get('datasetId') || '';
     const q = searchParams.get('q') || '';
@@ -65,14 +66,10 @@ const ProjectSamplesAnnotations: React.FC = () => {
         if (!projectId) return;
         setLoadingMeta(true);
         Promise.all([
-            api.getProjectDatasets(projectId),
+            api.getProjectDatasetDetails(projectId),
             api.getProjectBranches(projectId),
         ])
-            .then(async ([datasetIds, branchList]) => {
-                const datasetResults = await Promise.all(
-                    datasetIds.map((id) => api.getDataset(id))
-                );
-                const resolved = datasetResults.filter(Boolean) as Dataset[];
+            .then(([resolved, branchList]) => {
                 setDatasets(resolved);
                 setBranches(branchList || []);
 
@@ -114,6 +111,10 @@ const ProjectSamplesAnnotations: React.FC = () => {
     }, [searchParams, setSearchParams]);
 
     const handleStartAnnotate = useCallback(async () => {
+        if (!canAnnotate) {
+            message.warning(t('common.noPermission'));
+            return;
+        }
         if (!projectId || !selectedDatasetId) return;
         const response = await api.getProjectSamples(projectId, selectedDatasetId, {
             q: q || undefined,
@@ -137,9 +138,13 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('page', '1');
         nextParams.set('pageSize', String(pageSize));
         navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [projectId, selectedDatasetId, q, batchId, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate]);
+    }, [canAnnotate, projectId, selectedDatasetId, q, batchId, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate, t]);
 
     const handleSampleClick = useCallback((sample: ProjectSample) => {
+        if (!canAnnotate) {
+            message.warning(t('common.noPermission'));
+            return;
+        }
         if (!projectId || !selectedDatasetId) return;
         const nextParams = new URLSearchParams();
         nextParams.set('sampleId', sample.id);
@@ -151,7 +156,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('page', String(page));
         nextParams.set('pageSize', String(pageSize));
         navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [projectId, selectedDatasetId, branchName, q, batchId, status, sortValue, page, pageSize, navigate]);
+    }, [canAnnotate, projectId, selectedDatasetId, branchName, q, batchId, status, sortValue, page, pageSize, navigate, t]);
 
     const handleCommit = useCallback(async (message: string) => {
         if (!projectId) return;
@@ -242,9 +247,17 @@ const ProjectSamplesAnnotations: React.FC = () => {
                     <div className="flex-1"/>
 
                     <div className="flex items-center gap-2">
-                        <Button type="primary" onClick={handleStartAnnotate} disabled={!selectedDatasetId}>
-                            Start Annotating
-                        </Button>
+                        {canAnnotate ? (
+                            <Button type="primary" onClick={handleStartAnnotate} disabled={!selectedDatasetId}>
+                                Start Annotating
+                            </Button>
+                        ) : (
+                            <Tooltip title={t('common.noPermission')}>
+                                <Button type="primary" disabled>
+                                    Start Annotating
+                                </Button>
+                            </Tooltip>
+                        )}
                         <Button
                             onClick={() => setCommitModalOpen(true)}
                             disabled={!canCommit}
@@ -296,8 +309,9 @@ const ProjectSamplesAnnotations: React.FC = () => {
                                     {items.map((sample) => (
                                         <Card
                                             key={sample.id}
-                                            hoverable
+                                            hoverable={canAnnotate}
                                             onClick={() => handleSampleClick(sample)}
+                                            className={canAnnotate ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}
                                             cover={
                                                 sample.primaryAssetUrl ? (
                                                     <img

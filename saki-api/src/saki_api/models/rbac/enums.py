@@ -153,11 +153,13 @@ class Permissions:
     DATASET_UPDATE_ALL = "dataset:update:all"  # 全局允许：修改数据集信息
     DATASET_DELETE_ALL = "dataset:delete:all"  # 全局允许：删除数据集
     DATASET_ASSIGN_ALL = "dataset:assign:all"  # 全局允许：管理数据集成员和权限
+    DATASET_LINK_PROJECT_ALL = "dataset:link_project:all"  # 全局允许：关联/解除关联项目
     # Dataset - assigned scope
     DATASET_READ = "dataset:read:assigned"  # 成员允许：读取数据集信息
     DATASET_UPDATE = "dataset:update:assigned"  # 成员允许：修改数据集信息
     DATASET_DELETE = "dataset:delete:assigned"  # 成员允许：删除数据集（应该永远不分配此权限）
     DATASET_ASSIGN = "dataset:assign:assigned"  # 成员允许：管理数据集成员和权限
+    DATASET_LINK_PROJECT = "dataset:link_project:assigned"  # 成员允许：关联/解除关联项目
 
     # ============================================================================
     # Sample Permissions
@@ -180,23 +182,30 @@ class Permissions:
     PROJECT_CREATE_ALL = "project:create:all"  # 全局允许：新建项目
     PROJECT_READ_ALL = "project:read:all"  # 全局允许：读取项目信息
     PROJECT_UPDATE_ALL = "project:update:all"  # 全局允许：修改项目信息
+    PROJECT_ARCHIVE_ALL = "project:archive:all"  # 全局允许：归档/取消归档项目
     PROJECT_DELETE_ALL = "project:delete:all"  # 全局允许：删除项目
     PROJECT_ASSIGN_ALL = "project:assign:all"  # 全局允许：管理项目成员和权限
     # Project - assigned scope
     PROJECT_READ = "project:read:assigned"  # 成员允许：读取项目信息
     PROJECT_UPDATE = "project:update:assigned"  # 成员允许：修改项目信息
+    PROJECT_ARCHIVE = "project:archive:assigned"  # 成员允许：归档/取消归档项目
     PROJECT_DELETE = "project:delete:assigned"  # 成员允许：删除项目（应该永远不分配此权限）
     PROJECT_ASSIGN = "project:assign:assigned"  # 成员允许：管理项目成员和权限
 
     # ============================================================================
     # Label Permissions (L2 Layer)
     # ============================================================================
+    LABEL_MANAGE_ALL = "label:manage:all"  # 全局允许：创建/更新/删除项目标签
+    LABEL_READ_ALL = "label:read:all"  # 全局允许：读取项目标签
     LABEL_MANAGE = "label:manage:assigned"  # 成员允许：创建/更新/删除项目标签
     LABEL_READ = "label:read:assigned"  # 成员允许：读取项目标签
 
     # ============================================================================
     # Annotation Permissions (L2 Layer)
     # ============================================================================
+    ANNOTATE_ALL = "annotation:create:all"  # 全局允许：创建/修改标注
+    ANNOTATION_READ_ALL = "annotation:read:all"  # 全局允许：读取标注
+    ANNOTATION_DELETE_ALL = "annotation:delete:all"  # 全局允许：删除标注
     ANNOTATE = "annotation:create:assigned"  # 成员允许：创建/修改标注
     ANNOTATION_READ = "annotation:read:assigned"  # 成员允许：读取标注
     ANNOTATION_DELETE = "annotation:delete:assigned"  # 成员允许：删除标注
@@ -208,6 +217,8 @@ class Permissions:
     # ============================================================================
     # Commit Permissions (L2 Layer)
     # ============================================================================
+    COMMIT_CREATE_ALL = "commit:create:all"  # 全局允许：创建 commit（保存标注）
+    COMMIT_READ_ALL = "commit:read:all"  # 全局允许：读取 commit 历史
     COMMIT_CREATE = "commit:create:assigned"  # 成员允许：创建 commit（保存标注）
     COMMIT_READ = "commit:read:assigned"  # 成员允许：读取 commit 历史
     # Commit - self scope (reserved)
@@ -217,6 +228,9 @@ class Permissions:
     # ============================================================================
     # Branch Permissions (L2 Layer)
     # ============================================================================
+    BRANCH_MANAGE_ALL = "branch:manage:all"  # 全局允许：创建/删除分支
+    BRANCH_READ_ALL = "branch:read:all"  # 全局允许：读取分支信息
+    BRANCH_SWITCH_ALL = "branch:switch:all"  # 全局允许：切换分支（移动 HEAD 指针）
     BRANCH_MANAGE = "branch:manage:assigned"  # 成员允许：创建/删除分支
     BRANCH_READ = "branch:read:assigned"  # 成员允许：读取分支信息
     BRANCH_SWITCH = "branch:switch:assigned"  # 成员允许：切换分支（移动 HEAD 指针）
@@ -226,6 +240,12 @@ class Permissions:
     # ============================================================================
     # Active Learning / Runtime Permissions (L3 Layer)
     # ============================================================================
+    LOOP_READ_ALL = "loop:read:all"  # 全局允许：读取 Loop 信息
+    LOOP_MANAGE_ALL = "loop:manage:all"  # 全局允许：创建/启动/暂停/停止 Loop
+    JOB_READ_ALL = "job:read:all"  # 全局允许：读取任务信息/事件/指标
+    JOB_MANAGE_ALL = "job:manage:all"  # 全局允许：创建/停止任务
+    MODEL_READ_ALL = "model:read:all"  # 全局允许：读取模型信息
+    MODEL_MANAGE_ALL = "model:manage:all"  # 全局允许：注册/晋升模型
     LOOP_READ = "loop:read:assigned"  # 成员允许：读取 Loop 信息
     LOOP_MANAGE = "loop:manage:assigned"  # 成员允许：创建/启动/暂停/停止 Loop
     JOB_READ = "job:read:assigned"  # 成员允许：读取任务信息/事件/指标

@@ -9,6 +9,8 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.db.transaction import transactional
+from saki_api.models import RolePermission
+from saki_api.models.rbac.permission import Permission, parse_permission
 from saki_api.models.rbac.enums import ResourceType
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.role import Role
@@ -66,6 +68,38 @@ class ResourceMemberRepository(BaseRepository[ResourceMember]):
         """Get all resource IDs where the user is a member."""
         members = await self.get_by_user(user_id, resource_type)
         return [member.resource_id for member in members]
+
+    async def get_resource_ids_by_user_with_permission(
+            self,
+            user_id: uuid.UUID,
+            resource_type: ResourceType,
+            required_permission: Permission | str,
+    ) -> List[uuid.UUID]:
+        """Get resource IDs where user's resource role satisfies required permission."""
+        required_perm = (
+            required_permission
+            if isinstance(required_permission, Permission)
+            else parse_permission(required_permission)
+        )
+
+        rows = await self.session.exec(
+            select(ResourceMember.resource_id, RolePermission.permission)
+            .join(RolePermission, RolePermission.role_id == ResourceMember.role_id)
+            .where(
+                ResourceMember.user_id == user_id,
+                ResourceMember.resource_type == resource_type,
+            )
+        )
+
+        permissions_by_resource: dict[uuid.UUID, set[str]] = {}
+        for resource_id, permission in rows.all():
+            permissions_by_resource.setdefault(resource_id, set()).add(permission)
+
+        return [
+            resource_id
+            for resource_id, permissions in permissions_by_resource.items()
+            if required_perm.is_satisfied_by(permissions)
+        ]
 
     async def get_by_user_and_resource_with_expired(
             self,

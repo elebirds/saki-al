@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import {useNavigate, useParams} from 'react-router-dom';
 
+import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {useAuthStore} from '../../../store/authStore';
 import {
@@ -144,6 +145,8 @@ const ProjectLoopJobDetail: React.FC = () => {
     const {projectId, loopId, jobId} = useParams<{ projectId: string; loopId: string; jobId: string }>();
     const navigate = useNavigate();
     const token = useAuthStore((state) => state.token);
+    const {can: canProject} = useResourcePermission('project', projectId);
+    const canManageLoops = canProject('loop:manage:assigned');
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -223,7 +226,7 @@ const ProjectLoopJobDetail: React.FC = () => {
     }, [ensureArtifactUrls]);
 
     const loadJobDashboard = useCallback(async () => {
-        if (!jobId) return;
+        if (!jobId || !canManageLoops) return;
         const [jobRow, taskRows] = await Promise.all([
             api.getJob(jobId),
             api.getJobTasks(jobId, 2000),
@@ -243,10 +246,10 @@ const ProjectLoopJobDetail: React.FC = () => {
             setArtifacts([]);
             setEvents([]);
         }
-    }, [jobId, selectedTaskId, loadTaskDashboard]);
+    }, [jobId, selectedTaskId, loadTaskDashboard, canManageLoops]);
 
     const loadData = useCallback(async (silent: boolean = false) => {
-        if (!jobId) return;
+        if (!jobId || !canManageLoops) return;
         if (!silent) setLoading(true);
         if (silent) setRefreshing(true);
         try {
@@ -257,14 +260,15 @@ const ProjectLoopJobDetail: React.FC = () => {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [jobId, loadJobDashboard]);
+    }, [jobId, loadJobDashboard, canManageLoops]);
 
     useEffect(() => {
+        if (!canManageLoops) return;
         void loadData(false);
-    }, [loadData]);
+    }, [canManageLoops, loadData]);
 
     useEffect(() => {
-        if (!selectedTaskId) return;
+        if (!canManageLoops || !selectedTaskId) return;
         const timer = window.setInterval(async () => {
             try {
                 const [latestJob, latestTasks, newEvents, latestTask] = await Promise.all([
@@ -314,10 +318,10 @@ const ProjectLoopJobDetail: React.FC = () => {
             }
         }, 3000);
         return () => window.clearInterval(timer);
-    }, [selectedTaskId, jobId, ensureArtifactUrls]);
+    }, [canManageLoops, selectedTaskId, jobId, ensureArtifactUrls]);
 
     useEffect(() => {
-        if (!selectedTaskId || !token) return;
+        if (!canManageLoops || !selectedTaskId || !token) return;
         const ws = new WebSocket(buildWsUrl(selectedTaskId, eventCursorRef.current, token));
         ws.onopen = () => setWsConnected(true);
         ws.onclose = () => setWsConnected(false);
@@ -342,13 +346,21 @@ const ProjectLoopJobDetail: React.FC = () => {
             ws.close();
             setWsConnected(false);
         };
-    }, [selectedTaskId, token]);
+    }, [canManageLoops, selectedTaskId, token]);
 
     if (loading) {
         return (
             <div className="flex h-full items-center justify-center">
                 <Spin size="large"/>
             </div>
+        );
+    }
+
+    if (!canManageLoops) {
+        return (
+            <Card className="!border-github-border !bg-github-panel">
+                <Alert type="warning" showIcon message="暂无权限访问 Loop 页面"/>
+            </Card>
         );
     }
 

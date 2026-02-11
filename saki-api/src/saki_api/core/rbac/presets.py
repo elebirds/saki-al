@@ -33,15 +33,22 @@ def _generate_preset_role_id(name: str) -> uuid.UUID:
 DATASET_OWNER_ROLE_ID = _generate_preset_role_id("dataset_owner")
 DATASET_MANAGER_ROLE_ID = _generate_preset_role_id("dataset_manager")
 DATASET_VIEWER_ROLE_ID = _generate_preset_role_id("dataset_viewer")
+DATASET_EDITOR_ROLE_ID = _generate_preset_role_id("dataset_editor")
+DATASET_UPLOADER_ROLE_ID = _generate_preset_role_id("dataset_uploader")
 PROJECT_OWNER_ROLE_ID = _generate_preset_role_id("project_owner")
 PROJECT_MANAGER_ROLE_ID = _generate_preset_role_id("project_manager")
 PROJECT_VIEWER_ROLE_ID = _generate_preset_role_id("project_viewer")
+PROJECT_ANNOTATOR_ROLE_ID = _generate_preset_role_id("project_annotator")
+PROJECT_RUNTIME_OPERATOR_ROLE_ID = _generate_preset_role_id("project_runtime_operator")
 
 # System-level role IDs
 SUPER_ADMIN_ROLE_ID = _generate_preset_role_id("super_admin")
 ADMIN_ROLE_ID = _generate_preset_role_id("admin")
 CREATOR_ROLE_ID = _generate_preset_role_id("creator")
 USER_ROLE_ID = _generate_preset_role_id("user")
+
+DATASET_ROLE_NAME_PREFIX = "dataset_"
+PROJECT_ROLE_NAME_PREFIX = "project_"
 
 # ============================================================================
 # Preset Role Definitions
@@ -103,10 +110,12 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_UPDATE_ALL,
             Permissions.DATASET_DELETE_ALL,
             Permissions.DATASET_ASSIGN_ALL,
+            Permissions.DATASET_LINK_PROJECT_ALL,
             # Project - 项目完全访问
             Permissions.PROJECT_CREATE_ALL,
             Permissions.PROJECT_READ_ALL,
             Permissions.PROJECT_UPDATE_ALL,
+            Permissions.PROJECT_ARCHIVE_ALL,
             Permissions.PROJECT_DELETE_ALL,
             Permissions.PROJECT_ASSIGN_ALL,
             # Sample - 样本完全访问
@@ -114,6 +123,23 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.SAMPLE_CREATE_ALL,
             Permissions.SAMPLE_UPDATE_ALL,
             Permissions.SAMPLE_DELETE_ALL,
+            # Label / Annotation / Branch / Commit / Runtime - 项目全局访问
+            Permissions.LABEL_MANAGE_ALL,
+            Permissions.LABEL_READ_ALL,
+            Permissions.ANNOTATE_ALL,
+            Permissions.ANNOTATION_READ_ALL,
+            Permissions.ANNOTATION_DELETE_ALL,
+            Permissions.COMMIT_CREATE_ALL,
+            Permissions.COMMIT_READ_ALL,
+            Permissions.BRANCH_MANAGE_ALL,
+            Permissions.BRANCH_READ_ALL,
+            Permissions.BRANCH_SWITCH_ALL,
+            Permissions.LOOP_READ_ALL,
+            Permissions.LOOP_MANAGE_ALL,
+            Permissions.JOB_READ_ALL,
+            Permissions.JOB_MANAGE_ALL,
+            Permissions.MODEL_READ_ALL,
+            Permissions.MODEL_MANAGE_ALL,
         ],
         "is_supremo": False,
         "color": "green"
@@ -122,7 +148,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "id": CREATOR_ROLE_ID,
         "name": "creator",
         "display_name": "创作者",
-        "description": "可创建和管理自己的数据集，可分配成员",
+        "description": "可创建和管理自己的数据集与项目，可分配成员",
         "type": RoleType.SYSTEM,
         "is_system": True,
         "is_default": False,
@@ -130,6 +156,8 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "permissions": [
             # Dataset - 创建和管理自己的数据集
             Permissions.DATASET_CREATE_ALL,
+            # Project - 创建和管理自己的项目
+            Permissions.PROJECT_CREATE_ALL,
             # User list - 用于成员选择
             Permissions.USER_LIST,
         ],
@@ -170,6 +198,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_UPDATE,
             Permissions.DATASET_DELETE,
             Permissions.DATASET_ASSIGN,
+            Permissions.DATASET_LINK_PROJECT,
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
@@ -194,6 +223,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_READ,
             Permissions.DATASET_UPDATE,
             Permissions.DATASET_ASSIGN,
+            Permissions.DATASET_LINK_PROJECT,
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
@@ -212,7 +242,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "description": "只能查看数据集和样本内容，无法进行任何修改",
         "type": RoleType.RESOURCE,
         "is_system": True,
-        "sort_order": 12,
+        "sort_order": 14,
         "permissions": [
             # Dataset - 只读
             Permissions.DATASET_READ,
@@ -221,6 +251,42 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         ],
         "is_supremo": False,
         "color": "purple"
+    },
+    {
+        "id": DATASET_EDITOR_ROLE_ID,
+        "name": "dataset_editor",
+        "display_name": "数据集编辑者",
+        "description": "可编辑数据集基础信息并管理样本，不可管理成员和删除数据集",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 12,
+        "permissions": [
+            Permissions.DATASET_READ,
+            Permissions.DATASET_UPDATE,
+            Permissions.SAMPLE_READ,
+            Permissions.SAMPLE_CREATE,
+            Permissions.SAMPLE_UPDATE,
+            Permissions.SAMPLE_DELETE,
+        ],
+        "is_supremo": False,
+        "color": "blue",
+    },
+    {
+        "id": DATASET_UPLOADER_ROLE_ID,
+        "name": "dataset_uploader",
+        "display_name": "数据集上传者",
+        "description": "可上传和查看样本，不可删除样本或修改数据集配置",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 13,
+        "permissions": [
+            Permissions.DATASET_READ,
+            Permissions.SAMPLE_READ,
+            Permissions.SAMPLE_CREATE,
+            Permissions.SAMPLE_UPDATE,
+        ],
+        "is_supremo": False,
+        "color": "cyan",
     },
     {
         "id": PROJECT_OWNER_ROLE_ID,
@@ -233,6 +299,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "permissions": [
             Permissions.PROJECT_READ,
             Permissions.PROJECT_UPDATE,
+            Permissions.PROJECT_ARCHIVE,
             Permissions.PROJECT_DELETE,
             Permissions.PROJECT_ASSIGN,
             Permissions.LABEL_MANAGE,
@@ -266,6 +333,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "permissions": [
             Permissions.PROJECT_READ,
             Permissions.PROJECT_UPDATE,
+            Permissions.PROJECT_ARCHIVE,
             Permissions.PROJECT_ASSIGN,
             Permissions.LABEL_MANAGE,
             Permissions.LABEL_READ,
@@ -293,7 +361,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "description": "仅查看项目、任务和模型信息",
         "type": RoleType.RESOURCE,
         "is_system": True,
-        "sort_order": 22,
+        "sort_order": 24,
         "permissions": [
             Permissions.PROJECT_READ,
             Permissions.LABEL_READ,
@@ -306,6 +374,48 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         ],
         "is_supremo": False,
         "color": "purple",
+    },
+    {
+        "id": PROJECT_ANNOTATOR_ROLE_ID,
+        "name": "project_annotator",
+        "display_name": "项目标注者",
+        "description": "聚焦标注与提交流程，不包含项目配置和成员管理",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 22,
+        "permissions": [
+            Permissions.PROJECT_READ,
+            Permissions.LABEL_READ,
+            Permissions.ANNOTATE,
+            Permissions.ANNOTATION_READ,
+            Permissions.COMMIT_CREATE,
+            Permissions.COMMIT_READ,
+            Permissions.BRANCH_READ,
+        ],
+        "is_supremo": False,
+        "color": "gold",
+    },
+    {
+        "id": PROJECT_RUNTIME_OPERATOR_ROLE_ID,
+        "name": "project_runtime_operator",
+        "display_name": "项目运行时操作员",
+        "description": "聚焦训练/推理任务与模型生命周期，不包含项目结构配置",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 23,
+        "permissions": [
+            Permissions.PROJECT_READ,
+            Permissions.BRANCH_READ,
+            Permissions.COMMIT_READ,
+            Permissions.LOOP_READ,
+            Permissions.LOOP_MANAGE,
+            Permissions.JOB_READ,
+            Permissions.JOB_MANAGE,
+            Permissions.MODEL_READ,
+            Permissions.MODEL_MANAGE,
+        ],
+        "is_supremo": False,
+        "color": "orange",
     },
 ]
 
@@ -328,33 +438,56 @@ async def init_preset_roles(session: AsyncSession) -> None:
         result = await session.exec(
             select(Role).where(Role.name == preset["name"])
         )
-        existing = result.first()
+        role = result.first()
 
-        if existing:
-            continue
-        # Create role
-        role = Role(
-            id=preset["id"],
-            name=preset["name"],
-            display_name=preset["display_name"],
-            description=preset.get("description"),
-            type=preset["type"],
-            is_system=preset.get("is_system", True),
-            is_default=preset.get("is_default", False),
-            is_super_admin=preset.get("is_super_admin", False),
-            is_admin=preset.get("is_admin", False),
-            is_supremo=preset.get("is_supremo", False),
-            sort_order=preset.get("sort_order", 0),
-            color=preset.get("color", None),
-        )
-        session.add(role)
-
-        # Create permissions
-        for perm in preset.get("permissions", []):
-            rp = RolePermission(
-                role_id=role.id,
-                permission=perm,
+        if role is None:
+            role = Role(
+                id=preset["id"],
+                name=preset["name"],
+                display_name=preset["display_name"],
+                description=preset.get("description"),
+                type=preset["type"],
+                is_system=preset.get("is_system", True),
+                is_default=preset.get("is_default", False),
+                is_super_admin=preset.get("is_super_admin", False),
+                is_admin=preset.get("is_admin", False),
+                is_supremo=preset.get("is_supremo", False),
+                sort_order=preset.get("sort_order", 0),
+                color=preset.get("color", None),
             )
-            session.add(rp)
+            session.add(role)
+            logger.info("已创建预置角色 role_name={} display_name={}", preset["name"], preset["display_name"])
+        else:
+            role.display_name = preset["display_name"]
+            role.description = preset.get("description")
+            role.type = preset["type"]
+            role.is_system = preset.get("is_system", True)
+            role.is_default = preset.get("is_default", False)
+            role.is_super_admin = preset.get("is_super_admin", False)
+            role.is_admin = preset.get("is_admin", False)
+            role.is_supremo = preset.get("is_supremo", False)
+            role.sort_order = preset.get("sort_order", 0)
+            role.color = preset.get("color", None)
+            session.add(role)
 
-        logger.info("已创建预置角色 role_name={} display_name={}", preset["name"], preset["display_name"])
+        await session.flush()
+
+        # Sync permissions to match preset exactly.
+        existing_perm_rows = await session.exec(
+            select(RolePermission).where(RolePermission.role_id == role.id)
+        )
+        existing_perms = list(existing_perm_rows.all())
+        existing_perm_set = {item.permission for item in existing_perms}
+        preset_perm_set = set(preset.get("permissions", []))
+
+        for item in existing_perms:
+            if item.permission not in preset_perm_set:
+                await session.delete(item)
+
+        for permission in preset_perm_set - existing_perm_set:
+            session.add(
+                RolePermission(
+                    role_id=role.id,
+                    permission=permission,
+                )
+            )

@@ -47,7 +47,6 @@ class ProjectUpdate(SQLModel):
     """
     name: str | None = None
     description: str | None = None
-    status: ProjectStatus | None = None
     config: dict[str, Any] | None = None
 
     model_config = {"extra": "forbid"}

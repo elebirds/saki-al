@@ -74,6 +74,7 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
                 {value: 'dataset:update:all', label: t('role.management.permissionLabels.datasetUpdateAll')},
                 {value: 'dataset:delete:all', label: t('role.management.permissionLabels.datasetDeleteAll')},
                 {value: 'dataset:assign:all', label: t('role.management.permissionLabels.datasetAssignAll')},
+                {value: 'dataset:link_project:all', label: t('role.management.permissionLabels.datasetLinkProjectAll')},
                 {value: 'dataset:export:all', label: t('role.management.permissionLabels.datasetExportAll')},
                 {value: 'dataset:import:all', label: t('role.management.permissionLabels.datasetImportAll')},
             ],
@@ -84,6 +85,10 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
                 {value: 'dataset:read:assigned', label: t('role.management.permissionLabels.datasetReadAssigned')},
                 {value: 'dataset:update:assigned', label: t('role.management.permissionLabels.datasetUpdateAssigned')},
                 {value: 'dataset:assign:assigned', label: t('role.management.permissionLabels.datasetAssignAssigned')},
+                {
+                    value: 'dataset:link_project:assigned',
+                    label: t('role.management.permissionLabels.datasetLinkProjectAssigned')
+                },
                 {value: 'dataset:export:assigned', label: t('role.management.permissionLabels.datasetExportAssigned')},
                 {value: 'dataset:import:assigned', label: t('role.management.permissionLabels.datasetImportAssigned')},
             ],
@@ -146,6 +151,82 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
             permissions: [
                 {value: 'annotation:read:self', label: t('role.management.permissionLabels.annotationReadSelf')},
                 {value: 'annotation:modify:self', label: t('role.management.permissionLabels.annotationModifySelf')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.projectManagementAll'),
+            permissions: [
+                {value: 'project:create:all', label: t('role.management.permissionLabels.projectCreateAll')},
+                {value: 'project:read:all', label: t('role.management.permissionLabels.projectReadAll')},
+                {value: 'project:update:all', label: t('role.management.permissionLabels.projectUpdateAll')},
+                {value: 'project:archive:all', label: t('role.management.permissionLabels.projectArchiveAll')},
+                {value: 'project:delete:all', label: t('role.management.permissionLabels.projectDeleteAll')},
+                {value: 'project:assign:all', label: t('role.management.permissionLabels.projectAssignAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.projectManagementAssigned'),
+            permissions: [
+                {value: 'project:read:assigned', label: t('role.management.permissionLabels.projectReadAssigned')},
+                {value: 'project:update:assigned', label: t('role.management.permissionLabels.projectUpdateAssigned')},
+                {
+                    value: 'project:archive:assigned',
+                    label: t('role.management.permissionLabels.projectArchiveAssigned')
+                },
+                {value: 'project:delete:assigned', label: t('role.management.permissionLabels.projectDeleteAssigned')},
+                {value: 'project:assign:assigned', label: t('role.management.permissionLabels.projectAssignAssigned')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.commitManagementAll'),
+            permissions: [
+                {value: 'commit:create:all', label: t('role.management.permissionLabels.commitCreateAll')},
+                {value: 'commit:read:all', label: t('role.management.permissionLabels.commitReadAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.commitManagementAssigned'),
+            permissions: [
+                {value: 'commit:create:assigned', label: t('role.management.permissionLabels.commitCreateAssigned')},
+                {value: 'commit:read:assigned', label: t('role.management.permissionLabels.commitReadAssigned')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.branchManagementAll'),
+            permissions: [
+                {value: 'branch:manage:all', label: t('role.management.permissionLabels.branchManageAll')},
+                {value: 'branch:read:all', label: t('role.management.permissionLabels.branchReadAll')},
+                {value: 'branch:switch:all', label: t('role.management.permissionLabels.branchSwitchAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.branchManagementAssigned'),
+            permissions: [
+                {value: 'branch:manage:assigned', label: t('role.management.permissionLabels.branchManageAssigned')},
+                {value: 'branch:read:assigned', label: t('role.management.permissionLabels.branchReadAssigned')},
+                {value: 'branch:switch:assigned', label: t('role.management.permissionLabels.branchSwitchAssigned')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.runtimeManagementAll'),
+            permissions: [
+                {value: 'loop:read:all', label: t('role.management.permissionLabels.loopReadAll')},
+                {value: 'loop:manage:all', label: t('role.management.permissionLabels.loopManageAll')},
+                {value: 'job:read:all', label: t('role.management.permissionLabels.jobReadAll')},
+                {value: 'job:manage:all', label: t('role.management.permissionLabels.jobManageAll')},
+                {value: 'model:read:all', label: t('role.management.permissionLabels.modelReadAll')},
+                {value: 'model:manage:all', label: t('role.management.permissionLabels.modelManageAll')},
+            ],
+        },
+        {
+            title: t('role.management.permissionLabels.runtimeManagementAssigned'),
+            permissions: [
+                {value: 'loop:read:assigned', label: t('role.management.permissionLabels.loopReadAssigned')},
+                {value: 'loop:manage:assigned', label: t('role.management.permissionLabels.loopManageAssigned')},
+                {value: 'job:read:assigned', label: t('role.management.permissionLabels.jobReadAssigned')},
+                {value: 'job:manage:assigned', label: t('role.management.permissionLabels.jobManageAssigned')},
+                {value: 'model:read:assigned', label: t('role.management.permissionLabels.modelReadAssigned')},
+                {value: 'model:manage:assigned', label: t('role.management.permissionLabels.modelManageAssigned')},
             ],
         },
     ];

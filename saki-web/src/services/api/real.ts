@@ -685,8 +685,23 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async archiveProject(projectId: string): Promise<Project> {
+        const response = await this.client.post<Project>(`/projects/${projectId}:archive`);
+        return response.data;
+    }
+
+    async unarchiveProject(projectId: string): Promise<Project> {
+        const response = await this.client.post<Project>(`/projects/${projectId}:unarchive`);
+        return response.data;
+    }
+
     async getProjectDatasets(projectId: string): Promise<string[]> {
         const response = await this.client.get<string[]>(`/projects/${projectId}/datasets`);
+        return response.data;
+    }
+
+    async getProjectDatasetDetails(projectId: string): Promise<Dataset[]> {
+        const response = await this.client.get<Dataset[]>(`/projects/${projectId}/datasets/detail`);
         return response.data;
     }
 
@@ -1006,6 +1021,11 @@ export class RealApiService implements ApiService {
 
     async getProjectMembers(projectId: string): Promise<ResourceMember[]> {
         const response = await this.client.get<ResourceMember[]>(`/projects/${projectId}/members`);
+        return response.data;
+    }
+
+    async getAvailableProjectRoles(projectId: string): Promise<RoleInfo[]> {
+        const response = await this.client.get<RoleInfo[]>(`/projects/${projectId}/available-roles`);
         return response.data;
     }
 

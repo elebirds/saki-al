@@ -316,14 +316,16 @@ class Permission:
         if isinstance(other, str):
             other = Permission.from_string(other)
 
-        # Check target match (with wildcard support)
+        # Check target match.
+        # Wildcard is only valid on the "have" side (self), never on required side (other).
         if self.target != other.target:
-            if self.target != "*" and other.target != "*":
+            if self.target != "*":
                 return False
 
-        # Check action match (with wildcard support)
+        # Check action match.
+        # Wildcard is only valid on the "have" side (self), never on required side (other).
         if self.action != other.action:
-            if self.action != "*" and other.action != "*":
+            if self.action != "*":
                 return False
 
         # Check scope - this permission's scope must cover the required scope

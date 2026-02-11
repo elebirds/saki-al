@@ -56,7 +56,6 @@ class DatasetRepository(BaseRepository[Dataset]):
             resource_type=ResourceType.DATASET,
             required_permission=Permissions.DATASET_READ,
             base_query=base_query,
-            get_owner_id_column=lambda: Dataset.owner_id,
             resource_model=Dataset,
         )
 
@@ -80,7 +79,6 @@ class DatasetRepository(BaseRepository[Dataset]):
             resource_type=ResourceType.DATASET,
             required_permission=Permissions.DATASET_READ,
             base_query=base_query,
-            get_owner_id_column=lambda: Dataset.owner_id,
             resource_model=Dataset,
         )
         result = await self.session.exec(filtered_stmt)

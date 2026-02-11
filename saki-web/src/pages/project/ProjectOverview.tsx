@@ -52,9 +52,9 @@ const ProjectOverview: React.FC = () => {
         if (!projectId) return
         setLoading(true)
         try {
-            const [projectData, datasetIds, branchData, commitData] = await Promise.all([
+            const [projectData, projectDatasets, branchData, commitData] = await Promise.all([
                 api.getProject(projectId),
-                api.getProjectDatasets(projectId),
+                api.getProjectDatasetDetails(projectId),
                 api.getProjectBranches(projectId),
                 api.getProjectCommits(projectId),
             ])
@@ -63,9 +63,7 @@ const ProjectOverview: React.FC = () => {
             setBranches(branchData)
             setCommits(commitData)
 
-            const datasetResults = await Promise.all(datasetIds.map((id) => api.getDataset(id)))
-            const resolvedDatasets = datasetResults.filter(Boolean) as Dataset[]
-            setDatasets(resolvedDatasets)
+            setDatasets(projectDatasets || [])
 
             try {
                 const memberList = await api.getProjectMembers(projectId)
@@ -74,8 +72,8 @@ const ProjectOverview: React.FC = () => {
                 setMembers([])
             }
 
-            if (resolvedDatasets.length === 1) {
-                setSelectedDatasetId(resolvedDatasets[0].id)
+            if ((projectDatasets || []).length === 1) {
+                setSelectedDatasetId(projectDatasets[0].id)
             }
         } catch (error) {
             console.error('Failed to load project overview', error)

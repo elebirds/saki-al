@@ -19,7 +19,7 @@ import {
 } from '@ant-design/icons'
 import {useAuthStore} from '../store/authStore'
 import {api} from '../services/api'
-import {usePermission} from '../hooks'
+import {usePermission, useResourcePermission} from '../hooks'
 import {AppShell, type NavItem} from '../layouts'
 import {RepoTabs} from '../layouts/github/RepoTabs'
 
@@ -33,9 +33,24 @@ const ProtectedLayout: React.FC = () => {
     const user = useAuthStore((state) => state.user)
 
     const {can, isSuperAdmin} = usePermission()
+    const {can: canProject} = useResourcePermission('project', projectId)
     const canManageUsers = can('user:read') || isSuperAdmin
     const canManageRoles = can('role:read') || isSuperAdmin
     const canManageSystemSettings = can('system_setting:read') || isSuperAdmin
+    const canViewRuntime = can('job:read') || can('project:read:all') || isSuperAdmin
+    const canViewProjectOverview = canProject('project:read:assigned')
+    const canViewProjectSamples = canProject('project:read:assigned')
+    const canViewProjectBranches = canProject('branch:read:assigned')
+    const canViewProjectCommits = canProject('commit:read:assigned')
+    const canViewProjectLoops = canProject('loop:manage:assigned') || can('loop:manage') || isSuperAdmin
+    const canViewProjectInsights =
+        canProject('loop:read:assigned') &&
+        canProject('job:read:assigned') &&
+        canProject('model:read:assigned')
+    const canViewProjectSettings =
+        canProject('project:update:assigned') ||
+        canProject('project:assign:assigned') ||
+        canProject('project:archive:assigned')
 
     useEffect(() => {
         let interval: number
@@ -80,12 +95,14 @@ const ProtectedLayout: React.FC = () => {
             path: '/projects',
             icon: <AppstoreOutlined/>,
         },
-        {
-            key: 'runtime',
-            label: 'Runtime',
-            path: '/runtime/executors',
-            icon: <ClusterOutlined/>,
-        },
+        ...(canViewRuntime
+            ? [{
+                key: 'runtime',
+                label: 'Runtime',
+                path: '/runtime/executors',
+                icon: <ClusterOutlined/>,
+            }]
+            : []),
         ...(canManageUsers
             ? [
                 {
@@ -141,15 +158,53 @@ const ProtectedLayout: React.FC = () => {
     const isRuntimeExecutors = /^\/runtime\/executors/.test(location.pathname)
     const showProjectTabs = Boolean(projectId && isProjectDetail)
 
-    const projectTabItems: NavItem[] = useMemo(() => ([
-        {key: 'overview', label: t('project.tabs.overview'), path: '', icon: <AppstoreOutlined/>},
-        {key: 'samples', label: t('project.tabs.samples'), path: 'samples', icon: <DatabaseOutlined/>},
-        {key: 'branches', label: t('project.tabs.branches'), path: 'branches', icon: <BranchesOutlined/>},
-        {key: 'commits', label: t('project.tabs.commits'), path: 'commits', icon: <HistoryOutlined/>},
-        {key: 'loops', label: t('project.tabs.loops'), path: 'loops', icon: <ExperimentOutlined/>},
-        {key: 'insights', label: t('project.tabs.insights'), path: 'insights', icon: <BarChartOutlined/>},
-        {key: 'settings', label: t('project.tabs.settings'), path: 'settings', icon: <SettingOutlined/>},
-    ]), [t])
+    const projectTabItems: NavItem[] = useMemo(() => {
+        const items: NavItem[] = []
+        if (canViewProjectOverview) {
+            items.push({key: 'overview', label: t('project.tabs.overview'), path: '', icon: <AppstoreOutlined/>})
+        }
+        if (canViewProjectSamples) {
+            items.push({key: 'samples', label: t('project.tabs.samples'), path: 'samples', icon: <DatabaseOutlined/>})
+        }
+        if (canViewProjectBranches) {
+            items.push({key: 'branches', label: t('project.tabs.branches'), path: 'branches', icon: <BranchesOutlined/>})
+        }
+        if (canViewProjectCommits) {
+            items.push({key: 'commits', label: t('project.tabs.commits'), path: 'commits', icon: <HistoryOutlined/>})
+        }
+        if (canViewProjectLoops) {
+            items.push({key: 'loops', label: t('project.tabs.loops'), path: 'loops', icon: <ExperimentOutlined/>})
+        }
+        if (canViewProjectInsights) {
+            items.push({key: 'insights', label: t('project.tabs.insights'), path: 'insights', icon: <BarChartOutlined/>})
+        }
+        if (canViewProjectSettings) {
+            items.push({key: 'settings', label: t('project.tabs.settings'), path: 'settings', icon: <SettingOutlined/>})
+        }
+        return items
+    }, [
+        t,
+        canViewProjectOverview,
+        canViewProjectSamples,
+        canViewProjectBranches,
+        canViewProjectCommits,
+        canViewProjectLoops,
+        canViewProjectInsights,
+        canViewProjectSettings,
+    ])
+
+    useEffect(() => {
+        if (!projectId || !isProjectDetail || projectTabItems.length === 0) return
+        const basePath = `/projects/${projectId}`
+        const rest = location.pathname.replace(basePath, '')
+        if (!rest || rest === '/') return
+        const segment = rest.split('/').filter(Boolean)[0]
+        const allowed = new Set(projectTabItems.map((item) => item.path))
+        if (segment && !allowed.has(segment)) {
+            const first = projectTabItems[0]
+            navigate(first.path ? `${basePath}/${first.path}` : basePath, {replace: true})
+        }
+    }, [projectId, isProjectDetail, projectTabItems, location.pathname, navigate])
 
     const projectTabActiveKey = useMemo(() => {
         if (!projectId) return 'overview'
@@ -210,7 +265,7 @@ const ProtectedLayout: React.FC = () => {
             footerText={t('app.footer')}
             showHeaderBorder={!isProjectDetail}
             headerSubnav={
-                showProjectTabs ? (
+                showProjectTabs && projectTabItems.length > 0 ? (
                     <RepoTabs
                         items={projectTabItems}
                         activeKey={projectTabActiveKey}

@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     LOG_MAX_BYTES: int = 20 * 1024 * 1024
     LOG_BACKUP_COUNT: int = 5
     LOG_COLOR_MODE: str = "auto"
+    RBAC_DEBUG_LOG: bool = True
 
     # FEDO LUT local cache
     LUT_CACHE_DIR: str = "./data/lut_cache"

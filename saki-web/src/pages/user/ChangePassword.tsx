@@ -32,7 +32,7 @@ const ChangePassword: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+        <div className="flex h-screen items-center justify-center bg-github-bg">
             <Card className="w-[400px]">
                 <div className="mb-6 text-center">
                     <Title level={2}>{t('auth.changePassword.title')}</Title>

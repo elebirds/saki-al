@@ -9,17 +9,18 @@ import ProjectFedoWorkspace from '../annotation/ProjectFedoWorkspace';
 
 const ProjectWorkspace: React.FC = () => {
     const {t} = useTranslation();
-    const {datasetId} = useParams<{ datasetId: string }>();
+    const {projectId, datasetId} = useParams<{ projectId: string; datasetId: string }>();
     const [dataset, setDataset] = useState<Dataset | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!datasetId) return;
+        if (!projectId || !datasetId) return;
         setLoading(true);
-        api.getDataset(datasetId)
-            .then((ds) => setDataset(ds || null))
+        api.getProjectDatasetDetails(projectId)
+            .then((items) => setDataset(items.find((item) => item.id === datasetId) || null))
+            .catch(() => setDataset(null))
             .finally(() => setLoading(false));
-    }, [datasetId]);
+    }, [projectId, datasetId]);
 
     if (loading) {
         return (

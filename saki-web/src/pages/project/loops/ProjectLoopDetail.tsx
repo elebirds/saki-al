@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import {useNavigate, useParams} from 'react-router-dom';
 
+import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {
     ALLoop,
@@ -74,6 +75,8 @@ type LoopConfigForm = {
 const ProjectLoopDetail: React.FC = () => {
     const {projectId, loopId} = useParams<{ projectId: string; loopId: string }>();
     const navigate = useNavigate();
+    const {can: canProject} = useResourcePermission('project', projectId);
+    const canManageLoops = canProject('loop:manage:assigned');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [controlLoading, setControlLoading] = useState(false);
@@ -168,6 +171,7 @@ const ProjectLoopDetail: React.FC = () => {
     }, [loopId, configForm]);
 
     const loadData = useCallback(async () => {
+        if (!canManageLoops) return;
         setLoading(true);
         try {
             await refreshLoopData();
@@ -176,11 +180,12 @@ const ProjectLoopDetail: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [refreshLoopData]);
+    }, [refreshLoopData, canManageLoops]);
 
     useEffect(() => {
+        if (!canManageLoops) return;
         void loadData();
-    }, [loadData]);
+    }, [canManageLoops, loadData]);
 
     const handleSave = async () => {
         if (!loopId) return;
@@ -246,6 +251,14 @@ const ProjectLoopDetail: React.FC = () => {
             <div className="flex h-full items-center justify-center">
                 <Spin size="large"/>
             </div>
+        );
+    }
+
+    if (!canManageLoops) {
+        return (
+            <Card className="!border-github-border !bg-github-panel">
+                <Alert type="warning" showIcon message="暂无权限访问 Loop 页面"/>
+            </Card>
         );
     }
 

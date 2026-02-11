@@ -211,10 +211,10 @@ const ProjectCommitDetail: React.FC = () => {
         setLoading(true)
         setTreeLoading(true)
         try {
-            const [commitData, diffData, datasetIds, labelData, memberData] = await Promise.all([
+            const [commitData, diffData, projectDatasets, labelData, memberData] = await Promise.all([
                 api.getCommit(commitId),
                 api.getCommitDiff(commitId),
-                api.getProjectDatasets(projectId),
+                api.getProjectDatasetDetails(projectId),
                 api.getProjectLabels(projectId).catch(() => []),
                 api.getProjectMembers(projectId).catch(() => []),
             ])
@@ -224,10 +224,7 @@ const ProjectCommitDetail: React.FC = () => {
             setLabels(labelData || [])
             setMembers(memberData || [])
 
-            const datasetResults = await Promise.all(
-                (datasetIds || []).map((id) => api.getDataset(id).catch(() => null))
-            )
-            const resolvedDatasets = datasetResults.filter(Boolean) as Dataset[]
+            const resolvedDatasets = (projectDatasets || []) as Dataset[]
             setDatasets(resolvedDatasets)
 
             const addedSamples = new Set(diffData?.addedSamples ?? [])
@@ -256,7 +253,13 @@ const ProjectCommitDetail: React.FC = () => {
                 let hasMore = true
 
                 while (hasMore && pendingSamples.size > 0) {
-                    const response = await api.getSamples(dataset.id, page, 200, 'createdAt', 'desc')
+                    const response = await api.getProjectSamples(projectId, dataset.id, {
+                        branchName,
+                        page,
+                        limit: 200,
+                        sortBy: 'createdAt',
+                        sortOrder: 'desc',
+                    })
                     const items = response.items || []
 
                     items.forEach((sample) => {
@@ -294,7 +297,7 @@ const ProjectCommitDetail: React.FC = () => {
             setLoading(false)
             setTreeLoading(false)
         }
-    }, [projectId, commitId])
+    }, [projectId, commitId, branchName])
 
     useEffect(() => {
         loadBaseData()

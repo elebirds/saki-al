@@ -48,7 +48,7 @@ const Register: React.FC = () => {
 
     if (allowSelfRegister === null) {
         return (
-            <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+            <div className="flex h-screen items-center justify-center bg-github-bg">
                 <Spin size="large"/>
             </div>
         );
@@ -56,7 +56,7 @@ const Register: React.FC = () => {
 
     if (!allowSelfRegister) {
         return (
-            <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+            <div className="flex h-screen items-center justify-center bg-github-bg">
                 <Card className="w-[420px]">
                     <Result
                         status="403"
@@ -74,7 +74,7 @@ const Register: React.FC = () => {
     }
 
     return (
-        <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+        <div className="flex h-screen items-center justify-center bg-github-bg">
             <Card className="w-[400px]">
                 <div className="mb-6 text-center">
                     <Title level={2}>{t('auth.register.title')}</Title>

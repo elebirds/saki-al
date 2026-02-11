@@ -8,9 +8,13 @@ from typing import List
 from fastapi import APIRouter, Depends
 
 from saki_api.api.service_deps import CommitServiceDep
+from saki_api.core.exceptions import ForbiddenAppException
+from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
+from saki_api.db.session import get_session
 from saki_api.models import Permissions, ResourceType
 from saki_api.schemas.commit import CommitCreate, CommitDiff, CommitHistoryItem, CommitRead, CommitTree
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter()
 
@@ -18,6 +22,26 @@ router = APIRouter()
 # =============================================================================
 # Commit CRUD Endpoints
 # =============================================================================
+
+
+async def _ensure_commit_read_permission(
+        *,
+        commit_id: uuid.UUID,
+        commit_service: CommitServiceDep,
+        session: AsyncSession = Depends(get_session),
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
+) -> None:
+    """Ensure user can read commit in its project scope."""
+    commit = await commit_service.get_by_id_or_raise(commit_id)
+    checker = PermissionChecker(session)
+    allowed = await checker.check(
+        user_id=current_user_id,
+        permission=Permissions.COMMIT_READ,
+        resource_type=ResourceType.PROJECT,
+        resource_id=str(commit.project_id),
+    )
+    if not allowed:
+        raise ForbiddenAppException(f"Permission denied: {Permissions.COMMIT_READ}")
 
 
 @router.get("/projects/{project_id}/commits", response_model=List[CommitHistoryItem], dependencies=[
@@ -62,7 +86,7 @@ async def get_commit_tree(
 
 
 @router.get("/{commit_id}", response_model=CommitRead, dependencies=[
-    Depends(require_permission(Permissions.COMMIT_READ))
+    Depends(_ensure_commit_read_permission)
 ])
 async def get_commit(
         *,
@@ -77,7 +101,7 @@ async def get_commit(
 
 
 @router.get("/{commit_id}/history", response_model=List[CommitHistoryItem], dependencies=[
-    Depends(require_permission(Permissions.COMMIT_READ))
+    Depends(_ensure_commit_read_permission)
 ])
 async def get_commit_history(
         *,
@@ -94,7 +118,7 @@ async def get_commit_history(
 
 
 @router.get("/{commit_id}/diff", response_model=CommitDiff, dependencies=[
-    Depends(require_permission(Permissions.COMMIT_READ))
+    Depends(_ensure_commit_read_permission)
 ])
 async def get_commit_diff(
         *,

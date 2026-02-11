@@ -214,7 +214,7 @@ const Setup: React.FC = () => {
             </div>
 
             <div
-                className="mx-auto mb-8 max-w-[400px] rounded-lg bg-[#f0f2f5] p-6 text-left animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.4s] [animation-fill-mode:both]"
+                className="mx-auto mb-8 max-w-[400px] rounded-lg bg-github-panel p-6 text-left animate-[fadeInUp_0.6s_ease-out] [animation-delay:0.4s] [animation-fill-mode:both]"
             >
                 <Paragraph className="mb-2">
                     <strong>{t('auth.setup.readyInfo')}</strong>
@@ -238,7 +238,7 @@ const Setup: React.FC = () => {
     );
 
     return (
-        <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+        <div className="flex h-screen items-center justify-center bg-github-bg">
             <Card className="w-[600px]">
                 <div className="p-10">
                     <div className="mb-10">

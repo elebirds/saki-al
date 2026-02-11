@@ -10,11 +10,12 @@ Provides efficient permission checking with support for:
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Set, Callable, Any, Union
+from typing import Optional, Set, Any, Union
 
-from sqlmodel import select
+from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from saki_api.core.config import settings
 from saki_api.models.rbac import (
     Role, ResourceType, Permission, parse_permission)
 from saki_api.models.rbac.enums import Permissions
@@ -220,7 +221,6 @@ class PermissionChecker:
             resource_type: ResourceType,
             required_permission: Union[str, Permission],
             base_query,
-            get_owner_id_column: Callable[[], Any],
             resource_model: Any  # The SQLModel class (e.g., Dataset)
     ):
         """
@@ -231,7 +231,6 @@ class PermissionChecker:
             resource_type: Type of resource being queried (must be ResourceType enum)
             required_permission: Permission required (Permission object or string, e.g., "dataset:read")
             base_query: The base SQLAlchemy query
-            get_owner_id_column: Function that returns the owner_id column
             resource_model: The SQLModel class for the resource (e.g., Dataset)
         
         Returns:
@@ -247,7 +246,6 @@ class PermissionChecker:
                 resource_type=ResourceType.DATASET,
                 required_permission="dataset:read",
                 base_query=query,
-                get_owner_id_column=lambda: Dataset.owner_id,
                 resource_model=Dataset
             )
             # Using Permission object
@@ -257,7 +255,6 @@ class PermissionChecker:
                 resource_type=ResourceType.DATASET,
                 required_permission=perm,
                 base_query=query,
-                get_owner_id_column=lambda: Dataset.owner_id,
                 resource_model=Dataset
             )
         """
@@ -271,46 +268,83 @@ class PermissionChecker:
             try:
                 required_perm = parse_permission(required_permission)
             except ValueError:
+                if settings.RBAC_DEBUG_LOG:
+                    logger.debug(
+                        "[RBAC_DEBUG] invalid required_permission user_id={} resource_type={} required_permission={}",
+                        user_id,
+                        resource_type,
+                        required_permission,
+                    )
                 return base_query.where(False)  # Invalid permission format
+
+        if settings.RBAC_DEBUG_LOG:
+            related_system_perms = sorted(
+                perm for perm in system_perms
+                if perm.startswith(f"{required_perm.target}:") or perm.startswith("*:")
+            )
+            logger.debug(
+                "[RBAC_DEBUG] filter_accessible_resources start user_id={} resource_type={} required={} system_perm_count={} related_system_perms={}",
+                user_id,
+                resource_type,
+                str(required_perm),
+                len(system_perms),
+                related_system_perms[:20],
+            )
 
         # Super admin or has 'all' scope - return everything
         all_permissions_perm = parse_permission(Permissions.ALL_PERMISSIONS)
         if all_permissions_perm.is_satisfied_by(system_perms):
+            if settings.RBAC_DEBUG_LOG:
+                logger.debug(
+                    "[RBAC_DEBUG] grant all-permissions user_id={} resource_type={} required={}",
+                    user_id,
+                    resource_type,
+                    str(required_perm),
+                )
             return base_query
 
         # Check if user has 'all' scope for this permission using Permission.with_scope()
         if required_perm.with_scope("all").is_satisfied_by(system_perms):
+            if settings.RBAC_DEBUG_LOG:
+                logger.debug(
+                    "[RBAC_DEBUG] grant system scope=all user_id={} resource_type={} required={} matched={}",
+                    user_id,
+                    resource_type,
+                    str(required_perm),
+                    str(required_perm.with_scope("all")),
+                )
             return base_query
 
-        # Collect accessible resource IDs (as UUIDs)
-        accessible_ids: Set[uuid.UUID] = set()
-
-        # Check for 'owned' scope using Permission.with_scope()
-        has_owned = required_perm.with_scope("owned").is_satisfied_by(system_perms)
-
-        if has_owned:
-            # Get resources owned by user using the provided owner_id column
-            # Note: This is a dynamic query that works with any resource model.
-            # Since it's model-agnostic, we keep it here rather than in a repository.
-            # The owner_id column is provided by the caller, making this flexible.
-            owner_id_col = get_owner_id_column()
-            result = await self.session.exec(
-                select(resource_model.id).where(owner_id_col == user_id)
+        # 资源级访问：仅返回用户在该资源上确实具备 required_permission 的成员资源
+        accessible_ids: Set[uuid.UUID] = set(
+            await self.resource_member_repo.get_resource_ids_by_user_with_permission(
+                user_id=user_id,
+                resource_type=resource_type,
+                required_permission=required_perm,
             )
-            owned = result.all()
-            accessible_ids.update(owned)
-
-        # Get resources where user is a member through repository
-        member_ids = await self.resource_member_repo.get_resource_ids_by_user(
-            user_id, resource_type
         )
-        accessible_ids.update(member_ids)  # member_ids is List[uuid.UUID], compatible with Set[uuid.UUID]
+
+        if settings.RBAC_DEBUG_LOG:
+            sample_ids = list(accessible_ids)[:10]
+            logger.debug(
+                "[RBAC_DEBUG] resource-scope result user_id={} resource_type={} required={} accessible_count={} sample_ids={}",
+                user_id,
+                resource_type,
+                str(required_perm),
+                len(accessible_ids),
+                sample_ids,
+            )
 
         if not accessible_ids:
-            # Return empty result
+            if settings.RBAC_DEBUG_LOG:
+                logger.debug(
+                    "[RBAC_DEBUG] deny no-accessible-resource user_id={} resource_type={} required={}",
+                    user_id,
+                    resource_type,
+                    str(required_perm),
+                )
             return base_query.where(False)
 
-        # Apply filter using the resource model's primary key
         return base_query.where(resource_model.id.in_(accessible_ids))
 
     async def get_user_role_in_resource(

@@ -9,6 +9,8 @@ from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.rbac import PermissionChecker
+from saki_api.models import ResourceType, Permissions
+from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l2.project import Project, ProjectDataset
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
@@ -129,10 +131,38 @@ class ProjectRepository(BaseRepository[Project]):
         """
         checker = PermissionChecker(self.session)
         base_query = self.list_statement()
+        filtered_stmt = await checker.filter_accessible_resources(
+            user_id=user_id,
+            resource_type=ResourceType.PROJECT,
+            required_permission=Permissions.PROJECT_READ,
+            base_query=base_query,
+            resource_model=Project,
+        )
 
-        # TODO: Add owner_id column to Project model for permission filtering
-        # For now, return all projects (will be filtered by service layer if needed)
-        return await self.list_paginated(pagination=pagination)
+        items_result = await self.session.exec(
+            filtered_stmt.offset(pagination.offset).limit(pagination.limit)
+        )
+        items = list(items_result.all())
+
+        total_result = await self.session.exec(
+            select(func.count()).select_from(filtered_stmt.subquery())
+        )
+        total = total_result.one() or 0
+
+        return PaginationResponse.from_items(items, total, pagination.offset, pagination.limit)
+
+    async def list_in_permission(self, user_id: uuid.UUID) -> List[Project]:
+        """List projects accessible to user without pagination."""
+        checker = PermissionChecker(self.session)
+        filtered_stmt = await checker.filter_accessible_resources(
+            user_id=user_id,
+            resource_type=ResourceType.PROJECT,
+            required_permission=Permissions.PROJECT_READ,
+            base_query=self.list_statement(),
+            resource_model=Project,
+        )
+        result = await self.session.exec(filtered_stmt)
+        return list(result.all())
 
     async def get_linked_dataset_ids(self, project_id: uuid.UUID) -> List[uuid.UUID]:
         """
@@ -146,6 +176,17 @@ class ProjectRepository(BaseRepository[Project]):
         """
         statement = select(ProjectDataset.dataset_id).where(
             ProjectDataset.project_id == project_id
+        )
+        result = await self.session.exec(statement)
+        return list(result.all())
+
+    async def get_linked_datasets(self, project_id: uuid.UUID) -> List[Dataset]:
+        """Get linked datasets for a project."""
+        statement = (
+            select(Dataset)
+            .join(ProjectDataset, ProjectDataset.dataset_id == Dataset.id)
+            .where(ProjectDataset.project_id == project_id)
+            .order_by(Dataset.created_at.desc())
         )
         result = await self.session.exec(statement)
         return list(result.all())

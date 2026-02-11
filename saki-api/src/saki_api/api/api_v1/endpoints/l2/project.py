@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, Query
 from saki_api.api.service_deps import ProjectServiceDep, AssetServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions, ResourceType
+from saki_api.models.enums import ProjectStatus
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.dataset import DatasetRead
 from saki_api.schemas.project import (
     ProjectCreate,
     ProjectDatasetLink,
@@ -25,6 +27,7 @@ from saki_api.schemas.resource_member import (
     ResourceMemberRead,
     ResourceMemberUpdateRequest,
 )
+from saki_api.schemas.role import RoleReadMinimal
 from saki_api.schemas.sample import ProjectSampleRead
 
 router = APIRouter()
@@ -69,11 +72,10 @@ async def create_project(
     return ProjectRead.model_validate(project_with_counts)
 
 
-@router.get("/", response_model=PaginationResponse[ProjectRead], dependencies=[
-    Depends(require_permission(Permissions.PROJECT_READ_ALL))
-])
+@router.get("/", response_model=PaginationResponse[ProjectRead])
 async def list_projects(
         *,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
         project_service: ProjectServiceDep,
         page: int = Query(1, ge=1),
         limit: int = Query(20, ge=1, le=200),
@@ -82,7 +84,10 @@ async def list_projects(
     List all projects with pagination.
     """
     pagination = Pagination.from_page(page=page, limit=limit)
-    result = await project_service.list_paginated(pagination)
+    result = await project_service.list_in_permission_paginated(
+        user_id=current_user_id,
+        pagination=pagination,
+    )
 
     # Add counts to each project
     items_with_counts = []
@@ -118,11 +123,10 @@ async def list_projects(
     return response
 
 
-@router.get("/minimal", response_model=List[ProjectReadMinimal], dependencies=[
-    Depends(require_permission(Permissions.PROJECT_READ_ALL))
-])
+@router.get("/minimal", response_model=List[ProjectReadMinimal])
 async def list_projects_minimal(
         *,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
         project_service: ProjectServiceDep,
 ):
     """
@@ -135,7 +139,7 @@ async def list_projects_minimal(
             task_type=p.task_type,
             status=p.status,
         )
-        for p in await project_service.list()
+        for p in await project_service.list_in_permission(current_user_id)
     ]
 
 
@@ -199,6 +203,38 @@ async def update_project(
     return ProjectRead.model_validate(project_with_counts)
 
 
+@router.post("/{project_id}:archive", response_model=ProjectRead, dependencies=[
+    Depends(require_permission(Permissions.PROJECT_ARCHIVE, ResourceType.PROJECT, "project_id"))
+])
+async def archive_project(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+):
+    """
+    Archive a project.
+    """
+    await project_service.set_project_status(project_id, ProjectStatus.ARCHIVED)
+    project_with_counts = await project_service.get_with_counts(project_id)
+    return ProjectRead.model_validate(project_with_counts)
+
+
+@router.post("/{project_id}:unarchive", response_model=ProjectRead, dependencies=[
+    Depends(require_permission(Permissions.PROJECT_ARCHIVE, ResourceType.PROJECT, "project_id"))
+])
+async def unarchive_project(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+):
+    """
+    Unarchive a project.
+    """
+    await project_service.set_project_status(project_id, ProjectStatus.ACTIVE)
+    project_with_counts = await project_service.get_with_counts(project_id)
+    return ProjectRead.model_validate(project_with_counts)
+
+
 @router.delete("/{project_id}", response_model=None, dependencies=[
     Depends(require_permission(Permissions.PROJECT_DELETE, ResourceType.PROJECT, "project_id"))
 ])
@@ -229,11 +265,16 @@ async def link_datasets(
         project_id: uuid.UUID,
         link: ProjectDatasetLink,
         project_service: ProjectServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """
     Link datasets to a project.
     """
-    links = await project_service.link_datasets(project_id, link.dataset_ids)
+    links = await project_service.link_datasets(
+        project_id=project_id,
+        dataset_ids=link.dataset_ids,
+        actor_user_id=current_user_id,
+    )
     return [l.dataset_id for l in links]
 
 
@@ -245,11 +286,16 @@ async def unlink_datasets(
         project_id: uuid.UUID,
         link: ProjectDatasetLink,
         project_service: ProjectServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """
     Unlink datasets from a project.
     """
-    return await project_service.unlink_datasets(project_id, link.dataset_ids)
+    return await project_service.unlink_datasets(
+        project_id=project_id,
+        dataset_ids=link.dataset_ids,
+        actor_user_id=current_user_id,
+    )
 
 
 @router.get("/{project_id}/datasets", response_model=List[uuid.UUID], dependencies=[
@@ -265,6 +311,20 @@ async def get_linked_datasets(
     """
     dataset_ids = await project_service.get_linked_datasets(project_id)
     return dataset_ids
+
+
+@router.get("/{project_id}/datasets/detail", response_model=List[DatasetRead], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_READ, ResourceType.PROJECT, "project_id"))
+])
+async def get_linked_dataset_details(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+):
+    """
+    Get linked datasets in project scope without requiring dataset-level read permission.
+    """
+    return await project_service.get_linked_dataset_details(project_id)
 
 
 # =============================================================================
@@ -357,6 +417,21 @@ async def get_project_members(
     """
     members = await project_service.get_project_members(project_id)
     return members
+
+
+@router.get("/{project_id}/available-roles", response_model=List[RoleReadMinimal], dependencies=[
+    Depends(require_permission(Permissions.PROJECT_ASSIGN, ResourceType.PROJECT, "project_id"))
+])
+async def get_available_project_roles(
+        *,
+        project_id: uuid.UUID,
+        project_service: ProjectServiceDep,
+) -> List[RoleReadMinimal]:
+    """
+    Get available roles for project members.
+    """
+    roles = await project_service.get_available_project_roles(project_id)
+    return [RoleReadMinimal.model_validate(role) for role in roles]
 
 
 @router.post("/{project_id}/members", response_model=None, dependencies=[

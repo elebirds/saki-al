@@ -194,8 +194,11 @@ export interface ApiService {
     getProject(id: string): Promise<Project>;
 
     updateProject(projectId: string, payload: Partial<Project>): Promise<Project>;
+    archiveProject(projectId: string): Promise<Project>;
+    unarchiveProject(projectId: string): Promise<Project>;
 
     getProjectDatasets(projectId: string): Promise<string[]>;
+    getProjectDatasetDetails(projectId: string): Promise<Dataset[]>;
     linkProjectDatasets(projectId: string, datasetIds: string[]): Promise<string[]>;
     unlinkProjectDatasets(projectId: string, datasetIds: string[]): Promise<number>;
 
@@ -312,6 +315,7 @@ export interface ApiService {
     getCommitDiff(commitId: string, compareWithId?: string): Promise<CommitDiff>;
 
     getProjectMembers(projectId: string): Promise<ResourceMember[]>;
+    getAvailableProjectRoles(projectId: string): Promise<RoleInfo[]>;
 
     addProjectMember(projectId: string, member: ResourceMemberCreate): Promise<void>;
 

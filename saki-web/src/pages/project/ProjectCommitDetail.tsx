@@ -449,7 +449,7 @@ const ProjectCommitDetail: React.FC = () => {
                         <h1 className="text-2xl font-normal text-github-text">
                             {t('project.commitDetail.title')}{' '}
                             <span className="text-mono bg-github-input border border-github-border px-2 py-1 rounded-md text-base">
-                                {commit.id.slice(0, 7)}
+                                {commit.commitHash.slice(0, 8)}
                             </span>
                         </h1>
                         <div className="flex flex-wrap items-center gap-3 text-sm text-github-muted">

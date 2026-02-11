@@ -184,3 +184,25 @@ class ProjectRepository(BaseRepository[Project]):
         )
         result = await self.session.exec(statement)
         return result.one() or 0
+
+    async def count_forks(self, project_id: uuid.UUID) -> int:
+        """
+        Count how many projects are forked from the given project.
+
+        Fork relation is stored in project.config.fork_meta.source_project_id.
+        """
+        result = await self.session.exec(
+            select(Project.config).where(Project.id != project_id)
+        )
+        target = str(project_id)
+        count = 0
+        for config in result.all():
+            if not isinstance(config, dict):
+                continue
+            fork_meta = config.get("fork_meta")
+            if not isinstance(fork_meta, dict):
+                continue
+            source_project_id = str(fork_meta.get("source_project_id") or "")
+            if source_project_id == target:
+                count += 1
+        return count

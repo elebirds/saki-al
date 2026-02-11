@@ -43,6 +43,7 @@ from saki_api.schemas.resource_member import ResourceMemberCreateRequest, Resour
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
 from saki_api.services.camap import CAMapService
+from saki_api.services.commit_hash import refresh_commit_hash
 from saki_api.services.user import UserService
 
 
@@ -137,10 +138,12 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             author_type=AuthorType.SYSTEM,
             author_id=None,
             stats={"annotation_count": 0, "sample_count": 0},
+            commit_hash="",
         )
         self.session.add(initial_commit)
         await self.session.flush()
         await self.session.refresh(initial_commit)
+        await refresh_commit_hash(self.session, initial_commit)
 
         # 5. Create master branch pointing to initial commit
         master_branch = Branch(
@@ -196,6 +199,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             "label_count": await self.repository.count_labels(project_id),
             "branch_count": await self.repository.count_branches(project_id),
             "commit_count": await self.repository.count_commits(project_id),
+            "fork_count": await self.repository.count_forks(project_id),
         }
 
     @staticmethod
@@ -225,6 +229,10 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             for source_commit_id, source_commit in list(pending_commits.items()):
                 if source_commit.parent_id and source_commit.parent_id not in commit_id_map:
                     continue
+                if not source_commit.commit_hash:
+                    raise BadRequestAppException(
+                        f"Source commit {source_commit.id} missing commit_hash; legacy commits are not supported"
+                    )
 
                 cloned_commit = Commit(
                     project_id=target_project_id,
@@ -234,6 +242,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
                     author_id=source_commit.author_id,
                     stats=self._deep_clone_json(source_commit.stats or {}),
                     extra=self._deep_clone_json(source_commit.extra or {}),
+                    commit_hash=source_commit.commit_hash,
                     created_at=source_commit.created_at,
                     updated_at=source_commit.updated_at,
                 )
@@ -1136,6 +1145,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             author_type=AuthorType.USER,
             author_id=author_id,
             stats={},
+            commit_hash="",
         )
         self.session.add(new_commit)
         await self.session.flush()
@@ -1174,6 +1184,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
 
         new_commit.stats = await camap_service.get_commit_stats(new_commit.id)
         await self.session.flush()
+        await refresh_commit_hash(self.session, new_commit)
 
     @transactional
     async def save_annotations(

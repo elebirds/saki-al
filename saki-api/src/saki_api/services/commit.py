@@ -16,6 +16,7 @@ from saki_api.repositories.commit import CommitRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.schemas.commit import CommitCreate, CommitHistoryItem, CommitTree, CommitDiff
 from saki_api.services.base import BaseService
+from saki_api.services.commit_hash import refresh_commit_hash
 
 
 
@@ -77,9 +78,13 @@ class CommitService(BaseService[Commit, CommitRepository, CommitCreate, dict]):
             "author_type": author_type,
             "author_id": author_id,
             "stats": stats or {},
+            "commit_hash": "",
         }
 
-        return await self.create(commit_data)
+        commit = await self.create(commit_data)
+        await refresh_commit_hash(self.session, commit)
+        await self.session.refresh(commit)
+        return commit
 
     async def get_history(self, commit_id: uuid.UUID, depth: int = 100) -> List[CommitHistoryItem]:
         """
@@ -96,6 +101,7 @@ class CommitService(BaseService[Commit, CommitRepository, CommitCreate, dict]):
         return [
             CommitHistoryItem(
                 id=c.id,
+                commit_hash=c.commit_hash,
                 message=c.message,
                 author_type=c.author_type,
                 author_id=c.author_id,

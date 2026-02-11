@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
-import {Avatar, Button, Spin, Tag} from 'antd'
+import {Avatar, Button, Form, Input, message, Modal, Spin, Tag} from 'antd'
 import {FolderOutlined, HistoryOutlined} from '@ant-design/icons'
 import {useNavigate, useParams} from 'react-router-dom'
 import {useTranslation} from 'react-i18next'
@@ -8,6 +8,7 @@ import {RepoHeader} from '../../layouts/github/RepoHeader'
 import {FileTable} from '../../layouts/github/FileTable'
 import {api} from '../../services/api'
 import {CommitHistoryItem, Dataset, Project, ProjectBranch, ResourceMember} from '../../types'
+import {usePermission} from '../../hooks'
 import ProjectSidebar from './ProjectSidebar'
 
 
@@ -24,6 +25,11 @@ const ProjectOverview: React.FC = () => {
     const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
     const [sampleStats, setSampleStats] = useState({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
     const [selectedBranchName, setSelectedBranchName] = useState('master')
+    const [forkOpen, setForkOpen] = useState(false)
+    const [forking, setForking] = useState(false)
+    const [forkForm] = Form.useForm()
+    const {can} = usePermission()
+    const canFork = can('project:create')
 
     const formatRelativeTime = useCallback((value?: string) => {
         if (!value) return t('common.placeholder')
@@ -147,6 +153,37 @@ const ProjectOverview: React.FC = () => {
         : t('project.overview.noCommits')
 
     const latestCommitAvatar = latestCommitAuthor?.userAvatarUrl
+    const latestCommitShortHash = latestCommit?.commitHash?.slice(0, 8)
+
+    const handleOpenFork = useCallback(() => {
+        if (!project) return
+        forkForm.setFieldsValue({
+            name: `${project.name}-fork`,
+            description: project.description || undefined,
+        })
+        setForkOpen(true)
+    }, [project, forkForm])
+
+    const handleForkProject = useCallback(async () => {
+        if (!projectId) return
+        try {
+            const values = await forkForm.validateFields()
+            setForking(true)
+            const created = await api.forkProject(projectId, {
+                name: values.name,
+                description: values.description,
+            })
+            message.success(t('project.list.forkSuccess'))
+            setForkOpen(false)
+            forkForm.resetFields()
+            navigate(`/projects/${created.id}`)
+        } catch (error: any) {
+            if (error?.errorFields) return
+            message.error(error?.message || t('project.list.forkError'))
+        } finally {
+            setForking(false)
+        }
+    }, [projectId, forkForm, t, navigate])
 
     if (loading) {
         return (
@@ -170,7 +207,14 @@ const ProjectOverview: React.FC = () => {
             <RepoHeader
                 title={project.name}
                 visibilityLabel={taskTypeLabel}
-                stats={[{label: t('layout.repoHeader.stats.fork'), count: 0}]}
+                stats={[{
+                    label: t('layout.repoHeader.stats.fork'),
+                    count: project.forkCount || 0,
+                    iconKey: 'fork',
+                    hideDropdown: true,
+                    onClick: canFork ? handleOpenFork : undefined,
+                    disabled: !canFork,
+                }]}
             />
 
             <div className="flex gap-6">
@@ -205,9 +249,9 @@ const ProjectOverview: React.FC = () => {
                     </span>
                                     </div>
                                     <div className="flex items-center gap-3 text-sm text-github-muted shrink-0">
-                                        {latestCommit?.id || activeBranch?.headCommitId ? (
+                                        {latestCommit?.commitHash ? (
                                             <span className="font-mono text-xs">
-                                                {(latestCommit?.id || activeBranch?.headCommitId || '').slice(0, 7)}
+                                                {latestCommitShortHash}
                                             </span>
                                         ) : null}
                                         <span>· {formatRelativeTime(latestCommit?.createdAt || activeBranch?.updatedAt)}</span>
@@ -286,6 +330,38 @@ const ProjectOverview: React.FC = () => {
                     sampleStatus={sampleStats}
                 />
             </div>
+
+            <Modal
+                title={t('project.list.forkTitle')}
+                open={forkOpen}
+                onCancel={() => {
+                    setForkOpen(false)
+                    forkForm.resetFields()
+                }}
+                onOk={handleForkProject}
+                okText={t('project.list.forkProject')}
+                okButtonProps={{loading: forking}}
+                cancelButtonProps={{disabled: forking}}
+            >
+                <Form form={forkForm} layout="vertical">
+                    <Form.Item label={t('project.list.forkSource')}>
+                        <Input value={project?.name || ''} disabled/>
+                    </Form.Item>
+                    <Form.Item
+                        name="name"
+                        label={t('project.list.forkName')}
+                        rules={[{required: true, message: t('project.list.forkNameRequired')}]}
+                    >
+                        <Input placeholder={t('project.list.forkNamePlaceholder')} autoComplete="off"/>
+                    </Form.Item>
+                    <Form.Item
+                        name="description"
+                        label={t('project.list.forkDescription')}
+                    >
+                        <Input.TextArea rows={3} placeholder={t('project.list.forkDescriptionPlaceholder')}/>
+                    </Form.Item>
+                </Form>
+            </Modal>
         </div>
     )
 }

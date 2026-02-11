@@ -10,5 +10,10 @@ export type NavItem = {
 export type RepoStat = {
     label: string
     count: number
+    icon?: ReactNode
+    iconKey?: string
+    onClick?: () => void
+    disabled?: boolean
+    hideDropdown?: boolean
     menuItems?: { key: string; label: string }[]
 }

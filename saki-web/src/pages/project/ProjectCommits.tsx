@@ -282,7 +282,7 @@ const ProjectCommits: React.FC = () => {
                                                         navigate(`/projects/${projectId}/commits/${commit.id}?branch=${activeBranchName}`)
                                                     }}
                                                 >
-                                                    {commit.id.slice(0, 7)}
+                                                    {commit.commitHash.slice(0, 8)}
                                                 </Button>
                                             </div>
                                         </div>

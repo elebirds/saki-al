@@ -14,6 +14,7 @@ export interface Project {
     labelCount: number;
     branchCount: number;
     commitCount: number;
+    forkCount: number;
 }
 
 export interface ProjectCreate {
@@ -52,6 +53,7 @@ export type AuthorType = 'user' | 'model' | 'system';
 
 export interface CommitHistoryItem {
     id: string;
+    commitHash: string;
     message: string;
     authorType: AuthorType;
     authorId?: string | null;

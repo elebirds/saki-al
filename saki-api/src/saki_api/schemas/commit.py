@@ -44,6 +44,7 @@ class CommitRead(CommitBase):
     Schema for reading a commit.
     """
     id: uuid.UUID
+    commit_hash: str
     parent_id: uuid.UUID | None
     created_at: Any
     updated_at: Any
@@ -54,6 +55,7 @@ class CommitHistoryItem(SQLModel):
     Simplified commit schema for history lists.
     """
     id: uuid.UUID
+    commit_hash: str
     message: str
     author_type: AuthorType
     author_id: uuid.UUID | None

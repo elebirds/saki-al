@@ -23,6 +23,7 @@ from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.role import Role
 from saki_api.models.user import User
 from saki_api.schemas.project import ProjectForkCreate
+from saki_api.services.commit_hash import refresh_commit_hash
 from saki_api.services.project import ProjectService
 
 PROJECT_OWNER_ROLE_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "preset-role.project_owner")
@@ -169,12 +170,14 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
                 )
             )
             await session.flush()
+            await refresh_commit_hash(session, commit2)
 
             forked_project = await service.fork_project(
                 source_project_id=source_project.id,
                 payload=ProjectForkCreate(name="forked-project"),
                 user_id=fork_user.id,
             )
+            source_with_counts = await service.get_with_counts(source_project.id)
         finally:
             _session_ctx.reset(token)
 
@@ -197,8 +200,13 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
         fork_commits = (await session.exec(select(Commit).where(Commit.project_id == forked_project.id))).all()
         assert len(source_commits) == len(fork_commits) == 2
         fork_commit_by_message = {item.message: item for item in fork_commits}
+        source_commit_by_message = {item.message: item for item in source_commits}
         assert fork_commit_by_message["Initial commit"].parent_id is None
         assert fork_commit_by_message["update-1"].parent_id == fork_commit_by_message["Initial commit"].id
+        assert source_commit_by_message["Initial commit"].commit_hash
+        assert source_commit_by_message["update-1"].commit_hash
+        assert fork_commit_by_message["Initial commit"].commit_hash == source_commit_by_message["Initial commit"].commit_hash
+        assert fork_commit_by_message["update-1"].commit_hash == source_commit_by_message["update-1"].commit_hash
 
         source_branches = (await session.exec(select(Branch).where(Branch.project_id == source_project.id))).all()
         fork_branches = (await session.exec(select(Branch).where(Branch.project_id == forked_project.id))).all()
@@ -243,3 +251,4 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
 
         assert forked_project.config["fork_meta"]["source_project_id"] == str(source_project.id)
         assert forked_project.config["fork_meta"]["all_branches"] is True
+        assert source_with_counts["fork_count"] == 1

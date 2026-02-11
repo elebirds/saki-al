@@ -35,6 +35,7 @@ async def list_commits(
     return [
         CommitHistoryItem(
             id=c.id,
+            commit_hash=c.commit_hash,
             message=c.message,
             author_type=c.author_type,
             author_id=c.author_id,

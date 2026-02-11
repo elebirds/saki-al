@@ -12,7 +12,9 @@ export type RepoHeaderProps = {
 }
 
 const iconMap: Record<string, React.ReactNode> = {
+    fork: <ForkOutlined/>,
     Fork: <ForkOutlined/>,
+    派生: <ForkOutlined/>,
 }
 
 export const RepoHeader: React.FC<RepoHeaderProps> = ({title, visibilityLabel, stats}) => {
@@ -39,12 +41,30 @@ export const RepoHeader: React.FC<RepoHeaderProps> = ({title, visibilityLabel, s
                             label: t('layout.repoHeader.viewAll', {label: stat.label.toLowerCase()}),
                         },
                     ]
+                    const statIcon = stat.icon || iconMap[stat.iconKey || stat.label]
+
+                    if (stat.hideDropdown) {
+                        return (
+                            <Button
+                                key={`${stat.label}-single`}
+                                className="!bg-github-input !border-github-border !text-github-text"
+                                icon={statIcon}
+                                onClick={stat.onClick}
+                                disabled={stat.disabled}
+                            >
+                                <span className="mr-1">{stat.label}</span>
+                                <span className="ml-1 px-1.5 py-0.5 rounded bg-github-badge text-xs text-github-text">
+                  {stat.count}
+                </span>
+                            </Button>
+                        )
+                    }
 
                     return (
                         <div key={stat.label} className="flex items-center">
                             <Button
                                 className="!bg-github-input !border-github-border !text-github-text !rounded-r-none"
-                                icon={iconMap[stat.label]}
+                                icon={statIcon}
                             >
                                 <span className="mr-1">{stat.label}</span>
                                 <span className="ml-1 px-1.5 py-0.5 rounded bg-github-badge text-xs text-github-text">

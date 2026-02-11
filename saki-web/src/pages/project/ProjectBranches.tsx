@@ -434,7 +434,7 @@ const ProjectBranches: React.FC = () => {
                                 optionFilterProp="label"
                                 options={commits.map((commit) => ({
                                     value: commit.id,
-                                    label: `${commit.message || t('project.branches.form.noMessage')} · ${commit.id.slice(0, 7)}`,
+                                    label: `${commit.message || t('project.branches.form.noMessage')} · ${commit.commitHash.slice(0, 8)}`,
                                 }))}
                             />
                         </Form.Item>

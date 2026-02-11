@@ -88,6 +88,7 @@ async def list_projects(
     items_with_counts = []
     for project in result.items:
         counts = await project_service.repository.count_datasets(project.id)
+        forks = await project_service.repository.count_forks(project.id)
         project_dict = {
             "id": project.id,
             "name": project.name,
@@ -101,6 +102,7 @@ async def list_projects(
             "label_count": 0,
             "branch_count": 0,
             "commit_count": 0,
+            "fork_count": forks,
         }
         items_with_counts.append(ProjectRead.model_validate(project_dict))
 

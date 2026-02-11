@@ -56,6 +56,14 @@ class CommitBase(SQLModel):
         description="Additional commit metadata."
     )
 
+    # Stable logical hash for commit identity across forks/clones.
+    commit_hash: str = Field(
+        default="",
+        max_length=64,
+        index=True,
+        description="Stable SHA256 commit hash derived from parent hash + metadata + snapshot content."
+    )
+
 
 class Commit(CommitBase, TimestampMixin, UUIDMixin, table=True):
     """

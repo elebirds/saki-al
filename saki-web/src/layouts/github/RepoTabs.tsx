@@ -11,7 +11,7 @@ export type RepoTabsProps = {
 export const RepoTabs: React.FC<RepoTabsProps> = ({items, activeKey, onItemClick}) => {
     return (
         <nav
-            className="bg-[var(--github-header)] border-b border-github-border w-screen relative left-1/2 right-1/2 -mx-[50vw]">
+            className="w-full border-b border-github-border bg-[var(--github-header)]">
             <div className="max-w-[1280px] mx-auto px-6 flex w-full items-center justify-center">
                 <div className="flex items-center gap-2 text-sm overflow-x-auto">
                     {items.map((item) => {

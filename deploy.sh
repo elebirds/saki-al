@@ -94,6 +94,9 @@ init_env_file() {
     db_password="$(prompt_with_default "PostgreSQL 密码" "postgres")"
     database_url="postgresql://${db_user}:${db_password}@${db_host}:${db_port}/${db_name}"
     set_env_value "DATABASE_URL" "$database_url"
+    set_env_value "SAKI_POSTGRES_DB" "$db_name"
+    set_env_value "SAKI_POSTGRES_USER" "$db_user"
+    set_env_value "SAKI_POSTGRES_PASSWORD" "$db_password"
 
     local secret_default secret_key cors_origins vite_api_base
     secret_default="$(generate_secret_key)"

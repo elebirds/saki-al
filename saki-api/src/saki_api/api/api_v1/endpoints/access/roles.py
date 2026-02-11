@@ -14,6 +14,7 @@ from saki_api.core.exceptions import NotFoundAppException
 from saki_api.core.rbac import (
     require_permission,
 )
+from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.models import RoleType, Permissions
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import (
@@ -22,6 +23,7 @@ from saki_api.schemas import (
 )
 from saki_api.schemas.permission import PermissionCatalogResponse
 from saki_api.schemas.pagination import PaginationResponse
+from saki_api.services.guards import AdminGuardDep
 
 router = APIRouter()
 
@@ -176,11 +178,15 @@ async def assign_user_role(
         user_id: uuid.UUID,
         role_in: UserSystemRoleAssign,
         user_role_service: UserRoleServiceDep,
+        guard: AdminGuardDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """Assign a system role to a user."""
     return await user_role_service.assign_user_system_role(
         user_id=user_id,
         role_in=role_in,
+        current_user_id=current_user_id,
+        guard=guard,
     )
 
 
@@ -194,9 +200,13 @@ async def revoke_user_role(
         user_id: uuid.UUID,
         role_id: uuid.UUID,
         user_role_service: UserRoleServiceDep,
+        guard: AdminGuardDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """Revoke a system role from a user."""
     return await user_role_service.revoke_user_system_role(
         user_id=user_id,
         role_id=role_id,
+        current_user_id=current_user_id,
+        guard=guard,
     )

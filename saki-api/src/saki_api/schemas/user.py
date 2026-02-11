@@ -20,8 +20,13 @@ class UserRead(InitedUserBase, UUIDMixin, TimestampMixin):
     roles: List[RoleReadMinimal] = []
 
 
-class UserUpdate(UserCreate):
-    pass
+class UserUpdate(SQLModel):
+    """Partial user update payload."""
+    email: Optional[str] = Field(default=None, max_length=255)
+    full_name: Optional[str] = Field(default=None, max_length=100)
+    is_active: Optional[bool] = None
+    avatar_url: Optional[str] = Field(default=None, max_length=500)
+    password: Optional[str] = Field(default=None, min_length=6)
 
 
 class UserReadWithPermissions(UserRead):

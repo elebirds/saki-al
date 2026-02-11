@@ -20,6 +20,7 @@ from saki_api.models import (
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import (UserCreate, UserRead, UserUpdate, UserListItem)
 from saki_api.schemas.pagination import PaginationResponse
+from saki_api.services.guards import AdminGuardDep
 
 router = APIRouter()
 
@@ -127,11 +128,18 @@ async def update_user(
         user_id: uuid.UUID,
         user_in: UserUpdate,
         service: UserServiceDep,
+        guard: AdminGuardDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> Any:
     """
     Update a user.
     """
-    user = await service.update_user(user_id, user_in)
+    user = await service.update_user(
+        user_id=user_id,
+        user_in=user_in,
+        current_user_id=current_user_id,
+        guard=guard,
+    )
     return await service.get_profile_by_id(user.id)
 
 
@@ -145,9 +153,15 @@ async def update_user(
 async def delete_user(
         *,
         user_id: uuid.UUID,
-        service: UserServiceDep
+        service: UserServiceDep,
+        guard: AdminGuardDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> Any:
     """
     Delete a user.
     """
-    return await service.delete_user(user_id)
+    return await service.delete_user(
+        user_id=user_id,
+        current_user_id=current_user_id,
+        guard=guard,
+    )

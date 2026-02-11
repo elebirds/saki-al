@@ -5,7 +5,6 @@ User Role Service - Business logic for User-Role association operations.
 import uuid
 from typing import List
 
-from fastapi.params import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import (
@@ -25,7 +24,7 @@ from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user import UserRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas.user_system_role import UserSystemRoleRead, UserSystemRoleCreate, UserSystemRoleAssign
-from saki_api.services.guards import AdminGuard, get_admin_guard
+from saki_api.services.guards import AdminGuard
 
 
 class UserRoleService:
@@ -124,7 +123,8 @@ class UserRoleService:
             self,
             user_id: uuid.UUID,
             role_in: UserSystemRoleAssign,
-            guard: AdminGuard = Depends(get_admin_guard)
+            current_user_id: uuid.UUID,
+            guard: AdminGuard,
     ) -> UserSystemRoleRead:
         """
         Assign a system role to a user with full validation and audit logging.
@@ -155,8 +155,8 @@ class UserRoleService:
         if role.is_super_admin:
             raise ForbiddenAppException("Super admin role cannot be assigned.")
 
-        # Admin can be only assigned by SuperAdmin
-        if role.is_admin and not guard.is_admin():
+        # Admin can only be assigned by super admin
+        if role.is_admin and not await guard.is_super_admin(current_user_id):
             raise ForbiddenAppException("Admin role cannot be assigned by NON-Super admin.")
 
         # Check if already assigned
@@ -190,7 +190,8 @@ class UserRoleService:
             self,
             user_id: uuid.UUID,
             role_id: uuid.UUID,
-            guard: AdminGuard = Depends(get_admin_guard)
+            current_user_id: uuid.UUID,
+            guard: AdminGuard,
     ) -> bool:
         """
         Revoke a system role with full validation and audit logging.
@@ -214,7 +215,7 @@ class UserRoleService:
         if role.is_super_admin:
             raise ForbiddenAppException("Super admin role cannot be revoked.")
 
-        if role.is_admin and not guard.is_super_admin():
+        if role.is_admin and not await guard.is_super_admin(current_user_id):
             raise ForbiddenAppException("Admin role can ONLY be revoked by Super admin")
 
         # Audit log

@@ -10,10 +10,9 @@ export type RepoTabsProps = {
 
 export const RepoTabs: React.FC<RepoTabsProps> = ({items, activeKey, onItemClick}) => {
     return (
-        <nav
-            className="w-full border-b border-github-border bg-[var(--github-header)]">
-            <div className="max-w-[1280px] mx-auto px-6 flex w-full items-center justify-center">
-                <div className="flex items-center gap-2 text-sm overflow-x-auto">
+        <nav className="w-full">
+            <div className="flex w-full justify-center">
+                <div className="flex max-w-full items-center gap-2 overflow-x-auto text-sm">
                     {items.map((item) => {
                         const isActive = item.key === activeKey
                         return (

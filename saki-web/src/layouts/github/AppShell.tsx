@@ -21,6 +21,7 @@ export type AppShellProps = {
     footerText?: string
     showHeader?: boolean
     showHeaderBorder?: boolean
+    headerSubnav?: React.ReactNode
     contentClassName?: string
     headerContainerClassName?: string
     contentCardClassName?: string
@@ -45,6 +46,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                                       footerText,
                                                       showHeader = true,
                                                       showHeaderBorder = true,
+                                                      headerSubnav,
                                                       contentClassName = 'max-w-[1280px] mx-auto px-6 py-6 min-h-full flex flex-col',
                                                       headerContainerClassName = 'w-full px-6',
                                                       contentCardClassName = 'bg-github-panel rounded-md p-6 min-h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]',
@@ -77,6 +79,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                     userMenuItems={userMenuItems}
                     onUserMenuClick={onUserMenuClick}
                 />
+            ) : null}
+            {headerSubnav ? (
+                <div className="border-b border-github-border bg-[var(--github-header)]">
+                    <div className={headerContainerClassName}>{headerSubnav}</div>
+                </div>
             ) : null}
 
             <main className="flex-1 overflow-auto">

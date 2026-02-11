@@ -1,11 +1,16 @@
-import React, {useEffect} from 'react'
-import {Navigate, Outlet, useLocation, useNavigate} from 'react-router-dom'
+import React, {useEffect, useMemo} from 'react'
+import {Navigate, Outlet, useLocation, useNavigate, useParams} from 'react-router-dom'
 import {useTranslation} from 'react-i18next'
 import type {MenuProps} from 'antd'
 import {
     AppstoreOutlined,
+    BarChartOutlined,
+    BranchesOutlined,
     ClusterOutlined,
     CodeOutlined,
+    DatabaseOutlined,
+    ExperimentOutlined,
+    HistoryOutlined,
     InfoCircleOutlined,
     LogoutOutlined,
     SettingOutlined,
@@ -16,11 +21,13 @@ import {useAuthStore} from '../store/authStore'
 import {api} from '../services/api'
 import {usePermission} from '../hooks'
 import {AppShell, type NavItem} from '../layouts'
+import {RepoTabs} from '../layouts/github/RepoTabs'
 
 const ProtectedLayout: React.FC = () => {
     const {t, i18n} = useTranslation()
     const location = useLocation()
     const navigate = useNavigate()
+    const {projectId} = useParams<{ projectId: string }>()
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
     const logout = useAuthStore((state) => state.logout)
     const user = useAuthStore((state) => state.user)
@@ -132,6 +139,31 @@ const ProtectedLayout: React.FC = () => {
     const isProjectDetail = /^\/projects\/[^/]+/.test(location.pathname)
     const isWorkspace = /^\/projects\/[^/]+\/workspace/.test(location.pathname)
     const isRuntimeExecutors = /^\/runtime\/executors/.test(location.pathname)
+    const showProjectTabs = Boolean(projectId && isProjectDetail)
+
+    const projectTabItems: NavItem[] = useMemo(() => ([
+        {key: 'overview', label: t('project.tabs.overview'), path: '', icon: <AppstoreOutlined/>},
+        {key: 'samples', label: t('project.tabs.samples'), path: 'samples', icon: <DatabaseOutlined/>},
+        {key: 'branches', label: t('project.tabs.branches'), path: 'branches', icon: <BranchesOutlined/>},
+        {key: 'commits', label: t('project.tabs.commits'), path: 'commits', icon: <HistoryOutlined/>},
+        {key: 'loops', label: t('project.tabs.loops'), path: 'loops', icon: <ExperimentOutlined/>},
+        {key: 'insights', label: t('project.tabs.insights'), path: 'insights', icon: <BarChartOutlined/>},
+        {key: 'settings', label: t('project.tabs.settings'), path: 'settings', icon: <SettingOutlined/>},
+    ]), [t])
+
+    const projectTabActiveKey = useMemo(() => {
+        if (!projectId) return 'overview'
+        const basePath = `/projects/${projectId}`
+        const rest = location.pathname.replace(basePath, '')
+        if (!rest || rest === '/') return 'overview'
+        const segment = rest.split('/').filter(Boolean)[0]
+        return projectTabItems.find((item) => item.path === segment)?.key || 'overview'
+    }, [location.pathname, projectId, projectTabItems])
+
+    const handleProjectTabClick = (path: string) => {
+        if (!projectId) return
+        navigate(path ? `/projects/${projectId}/${path}` : `/projects/${projectId}`)
+    }
 
     const handleUserMenuClick: MenuProps['onClick'] = ({key}) => {
         if (key === 'profile') {
@@ -177,14 +209,23 @@ const ProtectedLayout: React.FC = () => {
             onUserMenuClick={handleUserMenuClick}
             footerText={t('app.footer')}
             showHeaderBorder={!isProjectDetail}
+            headerSubnav={
+                showProjectTabs ? (
+                    <RepoTabs
+                        items={projectTabItems}
+                        activeKey={projectTabActiveKey}
+                        onItemClick={handleProjectTabClick}
+                    />
+                ) : undefined
+            }
             layoutMode={isWorkspace ? 'fill' : 'flow'}
             contentClassName={
                 isWorkspace
                     ? 'px-6 w-full h-full flex flex-col'
                     : isRuntimeExecutors
                         ? 'px-6 py-6 w-full h-full flex flex-col'
-                        : isProjectDetail
-                            ? 'max-w-[1280px] mx-auto px-6 min-h-full flex flex-col'
+                    : isProjectDetail
+                            ? 'max-w-[1280px] mx-auto px-6 pt-6 min-h-full flex flex-col'
                         : 'max-w-[1280px] mx-auto px-6 py-6 min-h-full flex flex-col'
             }
             contentCardClassName={

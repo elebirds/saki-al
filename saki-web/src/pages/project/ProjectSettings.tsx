@@ -188,8 +188,19 @@ const ProjectSettings: React.FC = () => {
 
     const loadAllDatasets = useCallback(async () => {
         try {
-            const response = await api.getDatasets(1, 1000)
-            setAllDatasets(response.items || [])
+            const pageSize = 200
+            let page = 1
+            const all: Dataset[] = []
+            while (true) {
+                const response = await api.getDatasets(page, pageSize)
+                const items = response.items || []
+                all.push(...items)
+                if (!response.hasMore || items.length === 0 || all.length >= response.total) {
+                    break
+                }
+                page += 1
+            }
+            setAllDatasets(all)
         } catch (error: any) {
             message.error(error.message || t('project.settings.datasets.loadAllError'))
         }

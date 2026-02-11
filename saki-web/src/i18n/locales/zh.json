@@ -256,6 +256,8 @@
       "datasetName": "数据集名称",
       "nameRequired": "请输入数据集名称",
       "description": "描述",
+      "allowDuplicateSampleNames": "允许同名样本",
+      "allowDuplicateSampleNamesHelp": "关闭后，上传时若样本名称已存在将拒绝该样本。",
       "saveBasicInfo": "保存基本信息",
       "deleteDataset": "删除数据集",
       "dangerZone": "危险操作",

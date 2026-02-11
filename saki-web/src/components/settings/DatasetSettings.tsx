@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {Button, Card, Divider, Form, Input, message, Popconfirm, Tabs} from 'antd';
+import {Button, Card, Divider, Form, Input, message, Popconfirm, Switch, Tabs} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router-dom';
 import {Dataset} from '../../types';
@@ -28,6 +28,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
         form.setFieldsValue({
             name: dataset.name,
             description: dataset.description,
+            allowDuplicateSampleNames: dataset.allowDuplicateSampleNames ?? true,
         });
     }, [dataset, form]);
 
@@ -37,6 +38,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
             const updated = await api.updateDataset(dataset.id, {
                 name: values.name,
                 description: values.description,
+                allowDuplicateSampleNames: values.allowDuplicateSampleNames,
             });
             onUpdate(updated);
             message.success(t('dataset.settings.successMessage'));
@@ -87,6 +89,15 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
                                 placeholder={t('dataset.settings.descriptionPlaceholder')}
                                 rows={4}
                             />
+                        </Form.Item>
+
+                        <Form.Item
+                            label={t('dataset.settings.allowDuplicateSampleNames')}
+                            name="allowDuplicateSampleNames"
+                            valuePropName="checked"
+                            extra={t('dataset.settings.allowDuplicateSampleNamesHelp')}
+                        >
+                            <Switch/>
                         </Form.Item>
 
                         <Form.Item>

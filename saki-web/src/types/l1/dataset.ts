@@ -10,6 +10,7 @@ export interface Dataset {
     name: string;
     description?: string;
     type: DatasetType;
+    allowDuplicateSampleNames?: boolean;
     ownerId: string;
     createdAt: string;
     updatedAt: string;
@@ -19,9 +20,11 @@ export interface DatasetCreate {
     name: string;
     description?: string;
     type: DatasetType;
+    allowDuplicateSampleNames?: boolean;
 }
 
 export interface DatasetUpdate {
     name?: string;
     description?: string;
+    allowDuplicateSampleNames?: boolean;
 }

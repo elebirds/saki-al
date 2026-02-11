@@ -32,6 +32,7 @@ class SampleBase(SQLModel):
     )
 
     name: str = Field(
+        index=True,
         description="Name of the sample, typically the primary filename."
     )
 

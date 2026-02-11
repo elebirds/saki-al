@@ -53,6 +53,7 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
             title={getTitle()}
             open={open}
             onCancel={onClose}
+            width={820}
             footer={[
                 isUploading && (
                     <Button key="cancel" danger onClick={onCancel}>
@@ -109,7 +110,7 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                                     <div className="flex items-center gap-2">
                                         {getStatusIcon(item)}
                                         <FileOutlined/>
-                                        <Text ellipsis className="max-w-[280px] flex-1">
+                                        <Text ellipsis className="max-w-[560px] flex-1">
                                             {item.filename}
                                         </Text>
                                         {item.status === 'success' && (

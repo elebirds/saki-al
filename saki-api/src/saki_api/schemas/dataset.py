@@ -17,8 +17,9 @@ class DatasetUpdate(SQLModel):
     """
     Schema for updating a dataset.
     """
-    name: str | None
-    description: str | None
+    name: str | None = None
+    description: str | None = None
+    allow_duplicate_sample_names: bool | None = None
 
 
 class DatasetRead(DatasetBase, TimestampMixin, UUIDMixin):

@@ -256,6 +256,8 @@
       "datasetName": "Dataset Name",
       "nameRequired": "Please enter dataset name",
       "description": "Description",
+      "allowDuplicateSampleNames": "Allow Duplicate Sample Names",
+      "allowDuplicateSampleNamesHelp": "When disabled, uploads with existing sample names are rejected for that sample.",
       "saveBasicInfo": "Save Basic Info",
       "deleteDataset": "Delete Dataset",
       "dangerZone": "Danger Zone",

@@ -31,6 +31,19 @@ class SampleRepository(BaseRepository[Sample]):
             order_by=order_by,
         )
 
+    async def name_exists_in_dataset(
+            self,
+            dataset_id: uuid.UUID,
+            sample_name: str,
+    ) -> bool:
+        """Check whether a sample name already exists in a dataset."""
+        return await self.exists(
+            filters=[
+                Sample.dataset_id == dataset_id,
+                Sample.name == sample_name,
+            ]
+        )
+
     async def get_by_dataset_paginated(
             self,
             dataset_id: uuid.UUID,

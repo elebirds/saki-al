@@ -37,6 +37,10 @@ class DatasetBase(SQLModel):
         default=DatasetType.CLASSIC,
         description="Type of annotation system/interface for this dataset."
     )
+    allow_duplicate_sample_names: bool = Field(
+        default=True,
+        description="Whether duplicate sample names are allowed within this dataset."
+    )
 
 
 class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):

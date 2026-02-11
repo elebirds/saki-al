@@ -109,6 +109,31 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             logger.error("文件校验失败 error={}", error_msg)
             raise BadRequestAppException(f"File validation failed: {error_msg}")
 
+    async def _validate_sample_name_policy(
+            self,
+            *,
+            dataset: Dataset,
+            filename: str | None,
+    ) -> str:
+        """
+        Validate dataset duplicate-name policy for one uploaded sample.
+
+        Returns normalized sample name when valid.
+        """
+        sample_name = (filename or "unknown").strip()
+        if not sample_name:
+            sample_name = "unknown"
+
+        if dataset.allow_duplicate_sample_names:
+            return sample_name
+
+        exists = await self.repository.name_exists_in_dataset(dataset.id, sample_name)
+        if exists:
+            raise BadRequestAppException(
+                f"Sample name already exists in dataset: {sample_name}"
+            )
+        return sample_name
+
     async def _process_single_file(
             self,
             file: UploadFile,
@@ -215,6 +240,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         for file in files:
             try:
                 logger.debug("开始处理文件 filename={}", file.filename)
+                await self._validate_sample_name_policy(dataset=dataset, filename=file.filename)
 
                 # Validate file
                 await self._validate_file(file, facade, upload_context)
@@ -226,6 +252,8 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                 created_sample = await self._create_sample_from_result(dataset.id, process_result)
                 created_samples.append(created_sample)
 
+            except BadRequestAppException as e:
+                raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
             except Exception as e:
                 logger.exception("处理文件失败 filename={} error={}", file.filename, e)
                 raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
@@ -270,6 +298,8 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         upload_context = self._build_upload_context(dataset.id)
 
         try:
+            await self._validate_sample_name_policy(dataset=dataset, filename=file.filename)
+
             # Validate file
             await self._validate_file(file, facade, upload_context)
 
@@ -286,6 +316,8 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             logger.info("单文件处理成功，样本已创建 sample_id={}", created_sample.id)
             return created_sample
 
+        except BadRequestAppException as e:
+            raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
         except Exception as e:
             logger.exception("单文件处理失败 filename={} error={}", file.filename, e)
             raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
@@ -333,6 +365,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         created_sample: SampleRead | None = None
         processing_error: Exception | None = None
         try:
+            await self._validate_sample_name_policy(dataset=dataset, filename=filename)
             await self._validate_file(file, facade, upload_context)
             process_result = await self._process_single_file(
                 file,
@@ -341,6 +374,8 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                 progress_callback=progress_callback,
             )
             created_sample = await self._create_sample_from_result(dataset.id, process_result)
+        except BadRequestAppException as exc:
+            processing_error = exc
         except Exception as exc:
             processing_error = exc
             logger.exception("文件上传失败 filename={} error={}", filename, exc)

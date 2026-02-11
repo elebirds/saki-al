@@ -19,6 +19,10 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     labels: ProjectLabel[];
     currentIndex: number;
     currentSample: Sample | undefined;
+    samplePage: number;
+    samplePageSize: number;
+    sampleTotal: number;
+    sampleOffset: number;
 
     // 标注状态
     annotationState: UseAnnotationStateReturn<T>;
@@ -29,6 +33,7 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
 
     // 回调函数
     onSampleSelect: (index: number) => void;
+    onSamplePageChange: (page: number) => void;
     onPrev: () => void;
     onNext: () => void;
     onSubmit: () => void;
@@ -62,10 +67,15 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                                                                         labels,
                                                                         currentIndex,
                                                                         currentSample,
+                                                                        samplePage,
+                                                                        samplePageSize,
+                                                                        sampleTotal,
+                                                                        sampleOffset,
                                                                         annotationState,
                                                                         isSyncing,
                                                                         isSyncReady,
                                                                         onSampleSelect,
+                                                                        onSamplePageChange,
                                                                         onPrev,
                                                                         onNext,
                                                                         onSubmit,
@@ -110,6 +120,11 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                     samples={samples}
                     currentIndex={currentIndex}
                     onSampleSelect={onSampleSelect}
+                    total={sampleTotal}
+                    offset={sampleOffset}
+                    page={samplePage}
+                    pageSize={samplePageSize}
+                    onPageChange={onSamplePageChange}
                 />
             </aside>
 
@@ -156,8 +171,8 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                 selectedId={annotationState.selectedId}
                 onAnnotationSelect={onAnnotationSelect}
                 onAnnotationDelete={onAnnotationDelete}
-                currentIndex={currentIndex}
-                totalSamples={samples.length}
+                currentIndex={Math.max(0, sampleOffset + currentIndex)}
+                totalSamples={sampleTotal}
                 onPrev={onPrev}
                 onNext={onNext}
                 onSubmit={onSubmit}

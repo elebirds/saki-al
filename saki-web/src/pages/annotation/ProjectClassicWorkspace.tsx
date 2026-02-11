@@ -348,6 +348,16 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         updateParams({sampleId: samples[index].id});
     }, [samples, flushDraft, updateParams]);
 
+    const handleSamplePageChange = useCallback(async (nextPage: number) => {
+        if (nextPage === page) return;
+        await flushDraft();
+        setPendingIndex('first');
+        updateParams({
+            page: String(nextPage),
+            sampleId: null,
+        });
+    }, [page, flushDraft, updateParams]);
+
     const handleNext = useCallback(async () => {
         if (currentIndex < 0) return;
         if (currentIndex < samples.length - 1) {
@@ -463,6 +473,10 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
                 labels={labels}
                 currentIndex={Math.max(0, currentIndex)}
                 currentSample={currentSample}
+                samplePage={page}
+                samplePageSize={meta.limit || pageSize}
+                sampleTotal={meta.total}
+                sampleOffset={meta.offset}
                 annotationState={annotationState}
                 isSyncing={false}
                 isSyncReady
@@ -478,6 +492,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
                     </button>
                 }
                 onSampleSelect={handleSampleSelect}
+                onSamplePageChange={handleSamplePageChange}
                 onPrev={handlePrev}
                 onNext={handleNext}
                 onSubmit={handleSubmitAndNext}

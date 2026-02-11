@@ -139,6 +139,12 @@ class Permissions:
     ROLE_ASSIGN_ADMIN = "role:assign_admin:all"  # 全局允许：授权管理员权限（只有超级管理员拥有）
 
     # ============================================================================
+    # System Settings Permissions
+    # ============================================================================
+    SYSTEM_SETTING_READ = "system_setting:read:all"  # 全局允许：读取系统设置
+    SYSTEM_SETTING_UPDATE = "system_setting:update:all"  # 全局允许：修改系统设置
+
+    # ============================================================================
     # Dataset Permissions
     # ============================================================================
     # Dataset - global scope

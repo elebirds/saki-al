@@ -34,7 +34,13 @@ from saki_api.repositories.loop import LoopRepository
 from saki_api.repositories.task_candidate_item import TaskCandidateItemRepository
 from saki_api.repositories.task_event import TaskEventRepository
 from saki_api.repositories.task_metric_point import TaskMetricPointRepository
-from saki_api.schemas.l3.job import JobCreateRequest, LoopCreateRequest, LoopUpdateRequest, SimulationExperimentCreateRequest
+from saki_api.schemas.l3.job import (
+    JobCreateRequest,
+    LoopCreateRequest,
+    LoopSimulationConfig,
+    LoopUpdateRequest,
+    SimulationExperimentCreateRequest,
+)
 from saki_api.services.base import BaseService
 from saki_api.services.loop_config import (
     extract_model_request_config,
@@ -42,6 +48,7 @@ from saki_api.services.loop_config import (
     normalize_loop_global_config,
 )
 from saki_api.services.runtime_plugin_catalog import extract_executor_plugins
+from saki_api.services.system_settings_reader import system_settings_reader
 from saki_api.utils.storage import get_storage_provider
 
 
@@ -129,6 +136,23 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
             return JobService._normalize_simulation_config({})
         return JobService._normalize_simulation_config(payload)
 
+    async def _get_system_simulation_defaults(self) -> dict[str, Any]:
+        return await system_settings_reader.get_simulation_defaults()
+
+    async def _resolve_simulation_config(
+        self,
+        *,
+        simulation_config: LoopSimulationConfig,
+        include_fields: set[str] | None = None,
+    ) -> dict[str, Any]:
+        defaults = await self._get_system_simulation_defaults()
+        include = include_fields if include_fields is not None else None
+        payload = simulation_config.model_dump(
+            exclude_none=True,
+            include=include,
+        )
+        return self._normalize_simulation_config({**defaults, **payload})
+
     async def _known_plugin_ids(self) -> set[str]:
         rows = await self.session.exec(select(RuntimeExecutor))
         plugin_ids: set[str] = set()
@@ -174,8 +198,11 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
 
         normalized_global_config = normalize_loop_global_config(payload.global_config)
         normalized_global_config = merge_model_request_config(normalized_global_config, payload.model_request_config)
-        normalized_global_config["simulation"] = self._normalize_simulation_config(
-            payload.simulation_config.model_dump(exclude_none=True)
+        normalized_global_config["simulation"] = await self._resolve_simulation_config(
+            simulation_config=payload.simulation_config,
+            include_fields=set(payload.simulation_config.model_fields_set)
+            if "simulation_config" in payload.model_fields_set
+            else set(),
         )
 
         if payload.mode == ALLoopMode.SIMULATION:
@@ -251,8 +278,9 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
 
         if payload.simulation_config is not None:
             loop.global_config = dict(loop.global_config or {})
-            loop.global_config["simulation"] = self._normalize_simulation_config(
-                payload.simulation_config.model_dump(exclude_none=True)
+            loop.global_config["simulation"] = await self._resolve_simulation_config(
+                simulation_config=payload.simulation_config,
+                include_fields=set(payload.simulation_config.model_fields_set),
             )
 
         if loop.mode == ALLoopMode.SIMULATION:
@@ -280,7 +308,10 @@ class JobService(BaseService[Job, JobRepository, JobCreateRequest, JobCreateRequ
         await self._validate_plugin_id(payload.model_arch)
 
         group_id = uuid.uuid4()
-        simulation_config = self._normalize_simulation_config(payload.simulation_config.model_dump(exclude_none=True))
+        simulation_config = await self._resolve_simulation_config(
+            simulation_config=payload.simulation_config,
+            include_fields=set(payload.simulation_config.model_fields_set),
+        )
 
         strategies: list[str] = []
         for raw in payload.strategies:

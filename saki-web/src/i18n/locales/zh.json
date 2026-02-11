@@ -69,6 +69,7 @@
       "loginFailed": "登录失败",
       "mustChangePassword": "您需要更改密码才能继续使用",
       "registerLink": "立即注册！",
+      "registerDisabled": "当前系统已关闭自助注册",
       "or": "或"
     },
     "logout": "退出登录",
@@ -88,6 +89,8 @@
       "registerButton": "注册",
       "registerSuccess": "注册成功！请登录。",
       "registerFailed": "注册失败",
+      "disabledTitle": "注册已关闭",
+      "disabledSubtitle": "管理员已关闭用户主动注册，请联系管理员开通或使用已有账号登录。",
       "loginLink": "登录",
       "alreadyHaveAccount": "已有账户？"
     },
@@ -722,6 +725,9 @@
         "roleAssign": "分配角色",
         "roleRevoke": "撤销角色",
         "roleAssignAdmin": "授权管理员权限",
+        "systemSettingsManagement": "系统设置",
+        "systemSettingsRead": "查看系统设置",
+        "systemSettingsUpdate": "修改系统设置",
         "datasetManagementAll": "数据集管理（全局）",
         "datasetCreateAll": "创建数据集（全局）",
         "datasetReadAll": "查看数据集（全局）",
@@ -766,6 +772,24 @@
         "annotationReadSelf": "查看标注（自己）",
         "annotationModifySelf": "修改标注（自己）"
       }
+    }
+  },
+  "systemSettings": {
+    "nav": "系统设置",
+    "title": "系统设置",
+    "subtitle": "统一管理系统级行为开关、默认参数和维护策略。",
+    "readOnlyHint": "当前账号仅有查看权限，无法保存修改。",
+    "noChanges": "未检测到变更",
+    "loadFailed": "加载系统设置失败",
+    "saveSuccess": "系统设置已保存",
+    "saveFailed": "保存系统设置失败",
+    "integerArrayPlaceholder": "请输入整数，按回车或逗号分隔",
+    "groups": {
+      "general": "通用",
+      "auth": "认证",
+      "dataset": "数据集",
+      "simulation": "Simulation",
+      "maintenance": "维护"
     }
   },
   "about": {

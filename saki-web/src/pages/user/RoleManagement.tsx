@@ -55,6 +55,13 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
                 {value: 'role:assign_admin:all', label: t('role.management.permissionLabels.roleAssignAdmin')},
             ],
         },
+        {
+            title: t('role.management.permissionLabels.systemSettingsManagement'),
+            permissions: [
+                {value: 'system_setting:read:all', label: t('role.management.permissionLabels.systemSettingsRead')},
+                {value: 'system_setting:update:all', label: t('role.management.permissionLabels.systemSettingsUpdate')},
+            ],
+        },
     ];
 
     // 资源级权限（系统角色和资源角色都可以使用，但权限范围不同）

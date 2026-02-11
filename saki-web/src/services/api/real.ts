@@ -58,6 +58,8 @@ import {
     RoleType,
     RoleUpdate,
     Sample,
+    SystemSettingsBundle,
+    SystemStatus,
     SystemPermissions,
     User,
     UserSystemRole,
@@ -74,11 +76,17 @@ import {enforceHttps, hashPassword} from '../../utils/security';
 
 /** Convert snake_case string to camelCase */
 function snakeToCamel(str: string): string {
+    if (str.includes('.')) {
+        return str;
+    }
     return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
 /** Convert camelCase string to snake_case */
 function camelToSnake(str: string): string {
+    if (str.includes('.')) {
+        return str;
+    }
     return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 }
 
@@ -468,8 +476,8 @@ export class RealApiService implements ApiService {
     // System APIs
     // ==========================================================================
 
-    async getSystemStatus(): Promise<{ initialized: boolean }> {
-        const response = await this.client.get<{ initialized: boolean }>('/system/status');
+    async getSystemStatus(): Promise<SystemStatus> {
+        const response = await this.client.get<SystemStatus>('/system/status');
         return response.data;
     }
 
@@ -482,6 +490,16 @@ export class RealApiService implements ApiService {
 
     async getAvailableTypes(): Promise<AvailableTypesResponse> {
         const response = await this.client.get<AvailableTypesResponse>('/system/types');
+        return response.data;
+    }
+
+    async getSystemSettingsBundle(): Promise<SystemSettingsBundle> {
+        const response = await this.client.get<SystemSettingsBundle>('/system/settings/bundle');
+        return response.data;
+    }
+
+    async updateSystemSettings(values: Record<string, unknown>): Promise<SystemSettingsBundle> {
+        const response = await this.client.patch<SystemSettingsBundle>('/system/settings', {values});
         return response.data;
     }
 

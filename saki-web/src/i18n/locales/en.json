@@ -69,6 +69,7 @@
       "loginFailed": "Login failed",
       "mustChangePassword": "You need to change your password to continue",
       "registerLink": "Register now!",
+      "registerDisabled": "Self-registration is disabled on this system",
       "or": "Or"
     },
     "register": {
@@ -87,6 +88,8 @@
       "registerButton": "Register",
       "registerSuccess": "Registration successful! Please log in.",
       "registerFailed": "Registration failed",
+      "disabledTitle": "Registration Disabled",
+      "disabledSubtitle": "Self-registration is disabled by administrator. Please contact admin or sign in with an existing account.",
       "loginLink": "Log in",
       "alreadyHaveAccount": "Already have an account?"
     },
@@ -722,6 +725,9 @@
         "roleAssign": "Assign Role",
         "roleRevoke": "Revoke Role",
         "roleAssignAdmin": "Assign Admin Permission",
+        "systemSettingsManagement": "System Settings",
+        "systemSettingsRead": "Read System Settings",
+        "systemSettingsUpdate": "Update System Settings",
         "datasetManagementAll": "Dataset Management (All)",
         "datasetCreateAll": "Create Dataset (All)",
         "datasetReadAll": "Read Dataset (All)",
@@ -766,6 +772,24 @@
         "annotationReadSelf": "Read Annotation (Self)",
         "annotationModifySelf": "Modify Annotation (Self)"
       }
+    }
+  },
+  "systemSettings": {
+    "nav": "System Settings",
+    "title": "System Settings",
+    "subtitle": "Manage global feature switches, default parameters, and maintenance policies.",
+    "readOnlyHint": "This account has read-only access and cannot save changes.",
+    "noChanges": "No changes detected",
+    "loadFailed": "Failed to load system settings",
+    "saveSuccess": "System settings saved",
+    "saveFailed": "Failed to save system settings",
+    "integerArrayPlaceholder": "Input integers, then press Enter or comma",
+    "groups": {
+      "general": "General",
+      "auth": "Authentication",
+      "dataset": "Dataset",
+      "simulation": "Simulation",
+      "maintenance": "Maintenance"
     }
   },
   "about": {

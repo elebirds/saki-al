@@ -224,6 +224,8 @@ export type PermissionIndex = Map<string, Map<string, Set<Scope>>>;
 export const Permissions = {
     // System
     SYSTEM_MANAGE: 'system:manage:all',
+    SYSTEM_SETTING_READ: 'system_setting:read:all',
+    SYSTEM_SETTING_UPDATE: 'system_setting:update:all',
 
     // User management
     USER_CREATE: 'user:create:all',

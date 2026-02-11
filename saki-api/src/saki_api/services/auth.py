@@ -18,13 +18,16 @@ from saki_api.core.exceptions import (
     AuthIncorrectPasswordAppException,
     AuthInvalidTokenAppException,
     DataInvalidFormatAppException,
+    ForbiddenAppException,
 )
 from saki_api.db.transaction import transactional
 from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
 from saki_api.schemas.auth import LoginResponse
+from saki_api.services.system_setting_keys import SystemSettingKeys
 from saki_api.services.token_service import TokenService
+from saki_api.services.system_settings_reader import system_settings_reader
 from saki_api.services.user import UserService
 
 
@@ -87,6 +90,13 @@ class AuthService:
         Note:
             New users are automatically assigned the default system role.
         """
+        allow_self_register = await system_settings_reader.get_bool(
+            SystemSettingKeys.AUTH_ALLOW_SELF_REGISTER,
+            default=False,
+        )
+        if not allow_self_register:
+            raise ForbiddenAppException("Self registration is disabled by system setting")
+
         user = await self.user_service.create(user_in, must_change_password=False)
 
         # Assign default role to new user

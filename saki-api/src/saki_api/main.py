@@ -13,10 +13,12 @@ from saki_api.core.exceptions import (
     general_exception_handler
 )
 from saki_api.core.logging import setup_logging
-from saki_api.db.session import init_db, dispose_engine
+from saki_api.db.session import init_db, dispose_engine, SessionLocal
 from saki_api.grpc.runtime_control import runtime_grpc_server
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
+from saki_api.services.asset_gc_scheduler import asset_gc_scheduler
 from saki_api.services.loop_orchestrator import loop_orchestrator
+from saki_api.services.system_settings import SystemSettingsService
 
 
 @asynccontextmanager
@@ -37,13 +39,17 @@ async def lifespan(app: FastAPI):
         color_mode=settings.LOG_COLOR_MODE,
     )
     await init_db()
+    async with SessionLocal() as session:
+        await SystemSettingsService(session).bootstrap_defaults()
     AnnotationSystemFactory.discover_all()  # 初始化annotation handlers
     await runtime_grpc_server.start()
     await loop_orchestrator.start()
+    await asset_gc_scheduler.start()
 
     yield
 
     # Shutdown: 优雅关闭连接池
+    await asset_gc_scheduler.stop()
     await loop_orchestrator.stop()
     await runtime_grpc_server.stop()
     await dispose_engine()

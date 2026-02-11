@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {Button, Card, Form, Input, message, Typography} from 'antd';
 import {LockOutlined, UserOutlined} from '@ant-design/icons';
 import {Link, useNavigate} from 'react-router-dom';
@@ -13,6 +13,27 @@ const Login: React.FC = () => {
     const navigate = useNavigate();
     const setUser = useAuthStore((state) => state.setUser);
     const [loading, setLoading] = useState(false);
+    const [allowSelfRegister, setAllowSelfRegister] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        const loadSystemStatus = async () => {
+            try {
+                const status = await api.getSystemStatus();
+                if (active) {
+                    setAllowSelfRegister(Boolean(status.allowSelfRegister));
+                }
+            } catch {
+                if (active) {
+                    setAllowSelfRegister(false);
+                }
+            }
+        };
+        loadSystemStatus();
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const onFinish = async (values: any) => {
         setLoading(true);
@@ -75,9 +96,11 @@ const Login: React.FC = () => {
                         </Button>
                     </Form.Item>
 
-                    <div className="text-center">
-                        {t('auth.login.or')} <Link to="/register">{t('auth.login.registerLink')}</Link>
-                    </div>
+                    {allowSelfRegister ? (
+                        <div className="text-center">
+                            {t('auth.login.or')} <Link to="/register">{t('auth.login.registerLink')}</Link>
+                        </div>
+                    ) : null}
                 </Form>
             </Card>
         </div>

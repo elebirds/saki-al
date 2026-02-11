@@ -18,6 +18,7 @@ from saki_api.services.auth import AuthService
 from saki_api.services.permission_query import PermissionQueryService
 from saki_api.services.role import RoleService
 from saki_api.services.system import SystemService
+from saki_api.services.system_settings import SystemSettingsService
 from saki_api.services.user import UserService
 from saki_api.services.user_system_role import UserRoleService
 
@@ -100,6 +101,15 @@ def get_system_service(
 
 # Type alias for cleaner route signatures
 SystemServiceDep = Annotated[SystemService, Depends(get_system_service)]
+
+
+def get_system_settings_service(
+        session: AsyncSession = Depends(get_session),
+) -> SystemSettingsService:
+    return SystemSettingsService(session=session)
+
+
+SystemSettingsServiceDep = Annotated[SystemSettingsService, Depends(get_system_settings_service)]
 
 
 # ============================================================================

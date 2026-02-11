@@ -8,6 +8,7 @@ import {
     CodeOutlined,
     InfoCircleOutlined,
     LogoutOutlined,
+    SettingOutlined,
     TeamOutlined,
     UserOutlined
 } from '@ant-design/icons'
@@ -27,6 +28,7 @@ const ProtectedLayout: React.FC = () => {
     const {can, isSuperAdmin} = usePermission()
     const canManageUsers = can('user:read') || isSuperAdmin
     const canManageRoles = can('role:read') || isSuperAdmin
+    const canManageSystemSettings = can('system_setting:read') || isSuperAdmin
 
     useEffect(() => {
         let interval: number
@@ -97,6 +99,16 @@ const ProtectedLayout: React.FC = () => {
                 },
             ]
             : []),
+        ...(canManageSystemSettings
+            ? [
+                {
+                    key: 'system-settings',
+                    label: t('systemSettings.nav'),
+                    path: '/system/settings',
+                    icon: <SettingOutlined/>,
+                },
+            ]
+            : []),
         {
             key: 'about',
             label: t('app.about'),
@@ -109,6 +121,7 @@ const ProtectedLayout: React.FC = () => {
         const pathname = location.pathname
         if (pathname.startsWith('/users')) return 'users'
         if (pathname.startsWith('/roles')) return 'roles'
+        if (pathname.startsWith('/system/settings')) return 'system-settings'
         if (pathname.startsWith('/about')) return 'about'
         if (pathname.startsWith('/runtime')) return 'runtime'
         if (pathname.startsWith('/projects')) return 'projects'

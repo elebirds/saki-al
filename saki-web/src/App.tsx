@@ -18,6 +18,7 @@ import ProjectLoopJobDetail from './pages/project/loops/ProjectLoopJobDetail';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
 import UserProfile from './pages/user/UserProfile';
+import SystemSettings from './pages/system/SystemSettings';
 import About from './pages/about/About';
 import Login from './pages/user/Login';
 import Register from './pages/user/Register';
@@ -81,6 +82,7 @@ const App: React.FC = () => {
 
                                 <Route path="/users" element={<UserManagement/>}/>
                                 <Route path="/roles" element={<RoleManagement/>}/>
+                                <Route path="/system/settings" element={<SystemSettings/>}/>
                                 <Route path="/profile" element={<UserProfile/>}/>
                                 <Route path="/about" element={<About/>}/>
                             </Route>

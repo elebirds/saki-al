@@ -39,6 +39,7 @@ from saki_api.models.l3.job_task import JobTask
 from saki_api.models.l3.task_event import TaskEvent
 from saki_api.models.l3.task_metric_point import TaskMetricPoint
 from saki_api.models.l3.task_candidate_item import TaskCandidateItem
+from saki_api.models.system_setting import SystemSetting
 # RBAC Models
 from saki_api.models.rbac import (
     # Enums
@@ -74,6 +75,7 @@ __all__ = [
     "Job", "ALLoop", "JobSampleMetric", "Model",
     "RuntimeExecutor", "RuntimeExecutorStats",
     "JobTask", "TaskEvent", "TaskMetricPoint", "TaskCandidateItem",
+    "SystemSetting",
 
     # Enums
     "TaskType", "ProjectStatus", "ModelStatus", "DatasetType",

@@ -1,5 +1,5 @@
-import React, {useState} from 'react';
-import {Button, Card, Form, Input, message, Typography} from 'antd';
+import React, {useEffect, useState} from 'react';
+import {Button, Card, Form, Input, message, Result, Spin, Typography} from 'antd';
 import {LockOutlined, MailOutlined, UserOutlined} from '@ant-design/icons';
 import {Link, useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
@@ -11,6 +11,27 @@ const Register: React.FC = () => {
     const {t} = useTranslation();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [allowSelfRegister, setAllowSelfRegister] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        const loadSystemStatus = async () => {
+            try {
+                const status = await api.getSystemStatus();
+                if (active) {
+                    setAllowSelfRegister(Boolean(status.allowSelfRegister));
+                }
+            } catch {
+                if (active) {
+                    setAllowSelfRegister(false);
+                }
+            }
+        };
+        loadSystemStatus();
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const onFinish = async (values: any) => {
         setLoading(true);
@@ -24,6 +45,33 @@ const Register: React.FC = () => {
             setLoading(false);
         }
     };
+
+    if (allowSelfRegister === null) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+                <Spin size="large"/>
+            </div>
+        );
+    }
+
+    if (!allowSelfRegister) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">
+                <Card className="w-[420px]">
+                    <Result
+                        status="403"
+                        title={t('auth.register.disabledTitle')}
+                        subTitle={t('auth.register.disabledSubtitle')}
+                        extra={
+                            <Button type="primary" onClick={() => navigate('/login')}>
+                                {t('auth.register.loginLink')}
+                            </Button>
+                        }
+                    />
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-screen items-center justify-center bg-[#f0f2f5]">

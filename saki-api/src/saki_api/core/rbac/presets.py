@@ -95,6 +95,8 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.ROLE_DELETE,
             Permissions.ROLE_ASSIGN,
             Permissions.ROLE_REVOKE,
+            Permissions.SYSTEM_SETTING_READ,
+            Permissions.SYSTEM_SETTING_UPDATE,
             # Dataset - 数据集完全访问
             Permissions.DATASET_CREATE_ALL,
             Permissions.DATASET_READ_ALL,

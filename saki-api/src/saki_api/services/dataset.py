@@ -26,6 +26,9 @@ from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
+from saki_api.services.field_overrides import get_or_override
+from saki_api.services.system_setting_keys import SystemSettingKeys
+from saki_api.services.system_settings_reader import system_settings_reader
 
 
 
@@ -49,6 +52,15 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
         Owner role is a system preset and doesn't need to be queried.
         """
         dataset_data = schema.model_dump()
+        dataset_data["allow_duplicate_sample_names"] = await get_or_override(
+            schema=schema,
+            field_name="allow_duplicate_sample_names",
+            fallback=lambda: system_settings_reader.get_bool(
+                SystemSettingKeys.DATASET_ALLOW_DUPLICATE_SAMPLE_NAMES_DEFAULT,
+                default=True,
+            ),
+            transform=bool,
+        )
         dataset_data["owner_id"] = owner_id
         created_dataset = await self.repository.create(dataset_data)
 

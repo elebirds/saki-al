@@ -57,6 +57,8 @@ import {
     RoleType,
     RoleUpdate,
     Sample,
+    SystemSettingsBundle,
+    SystemStatus,
     SystemPermissions,
     User,
     UserSystemRole,
@@ -82,11 +84,15 @@ export interface ApiService {
     // ============================================================================
     // System
     // ============================================================================
-    getSystemStatus(): Promise<{ initialized: boolean }>;
+    getSystemStatus(): Promise<SystemStatus>;
 
     setupSystem(email: string, password: string, fullName?: string): Promise<User>;
 
     getAvailableTypes(): Promise<AvailableTypesResponse>;
+
+    getSystemSettingsBundle(): Promise<SystemSettingsBundle>;
+
+    updateSystemSettings(values: Record<string, unknown>): Promise<SystemSettingsBundle>;
 
     // ============================================================================
     // User Management

@@ -8,7 +8,8 @@ Provides specialized queries for asset management including:
 - Garbage collection queries
 """
 
-from typing import Optional, List
+from datetime import datetime
+from typing import Optional, List, Set
 
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -150,8 +151,10 @@ class AssetRepository(BaseRepository[Asset]):
         sample_result = await self.session.exec(sample_stmt)
         all_samples = sample_result.all()
 
-        referenced_asset_ids = set()
+        referenced_asset_ids: Set[str] = set()
         for sample in all_samples:
+            if sample.primary_asset_id:
+                referenced_asset_ids.add(str(sample.primary_asset_id))
             if sample.asset_group:
                 for asset_id_str in sample.asset_group.values():
                     referenced_asset_ids.add(asset_id_str)
@@ -163,6 +166,46 @@ class AssetRepository(BaseRepository[Asset]):
         ]
 
         return orphaned
+
+    async def get_orphaned_assets_older_than(
+            self,
+            *,
+            older_than: datetime,
+            limit: int = 1000,
+    ) -> List[Asset]:
+        """
+        Get orphaned assets created before the given timestamp.
+
+        References include both sample.primary_asset_id and sample.asset_group values.
+        """
+        limit = max(1, min(limit, 100000))
+
+        asset_stmt = (
+            select(Asset)
+            .where(Asset.created_at <= older_than)
+            .order_by(Asset.created_at.asc())
+            .limit(limit)
+        )
+        asset_rows = await self.session.exec(asset_stmt)
+        candidate_assets = list(asset_rows.all())
+        if not candidate_assets:
+            return []
+
+        sample_stmt = select(Sample.primary_asset_id, Sample.asset_group)
+        sample_rows = await self.session.exec(sample_stmt)
+        referenced_asset_ids: Set[str] = set()
+        for primary_asset_id, asset_group in sample_rows.all():
+            if primary_asset_id:
+                referenced_asset_ids.add(str(primary_asset_id))
+            if isinstance(asset_group, dict):
+                for asset_id_str in asset_group.values():
+                    if asset_id_str:
+                        referenced_asset_ids.add(str(asset_id_str))
+
+        return [
+            asset for asset in candidate_assets
+            if str(asset.id) not in referenced_asset_ids
+        ]
 
     async def delete_orphaned_assets(self) -> int:
         """

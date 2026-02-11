@@ -1,16 +1,18 @@
 """
-System endpoints for initialization and configuration.
-
-Includes system setup, status check, and available types.
+System endpoints for initialization and runtime settings.
 """
 
+import uuid
 from typing import Any, List
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
-from saki_api.api.service_deps import SystemServiceDep
+from saki_api.api.service_deps import SystemServiceDep, SystemSettingsServiceDep
+from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
+from saki_api.models import Permissions
 from saki_api.schemas import UserCreate, UserRead
+from saki_api.services.system_setting_keys import SystemSettingKeys
 from saki_api.services.system import SystemService
 
 router = APIRouter()
@@ -34,18 +36,61 @@ class AvailableTypesResponse(BaseModel):
     dataset_types: List[TypeInfo]
 
 
+class SystemStatusResponse(BaseModel):
+    initialized: bool
+    allow_self_register: bool
+
+
+class SystemSettingOption(BaseModel):
+    value: str
+    label: str
+
+
+class SystemSettingField(BaseModel):
+    key: str
+    group: str
+    title: str
+    description: str
+    type: str
+    default: Any
+    editable: bool = True
+    order: int = 0
+    group_order: int = 0
+    options: List[SystemSettingOption] = Field(default_factory=list)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    ui: dict[str, Any] = Field(default_factory=dict)
+
+
+class SystemSettingsBundleResponse(BaseModel):
+    fields: List[SystemSettingField]
+    values: dict[str, Any]
+
+
+class SystemSettingsUpdateRequest(BaseModel):
+    values: dict[str, Any]
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
 
 @router.get("/status")
 async def get_system_status(
-        service: SystemServiceDep
-) -> Any:
+        service: SystemServiceDep,
+        settings_service: SystemSettingsServiceDep,
+) -> SystemStatusResponse:
     """
     Check if the system is initialized (has at least one user).
     """
-    return await service.get_status()
+    status = await service.get_status()
+    allow_self_register = await settings_service.get_bool(
+        SystemSettingKeys.AUTH_ALLOW_SELF_REGISTER,
+        default=False,
+    )
+    return SystemStatusResponse(
+        initialized=bool(status.get("initialized")),
+        allow_self_register=allow_self_register,
+    )
 
 
 @router.get("/types", response_model=AvailableTypesResponse)
@@ -75,3 +120,30 @@ async def setup_system(
     3. Assigns super_admin role to the first user
     """
     return await service.setup_system(user_in)
+
+
+@router.get(
+    "/settings/bundle",
+    response_model=SystemSettingsBundleResponse,
+    dependencies=[Depends(require_permission(Permissions.SYSTEM_SETTING_READ))],
+)
+async def get_system_settings_bundle(
+        settings_service: SystemSettingsServiceDep,
+) -> SystemSettingsBundleResponse:
+    payload = await settings_service.get_bundle()
+    return SystemSettingsBundleResponse.model_validate(payload)
+
+
+@router.patch(
+    "/settings",
+    response_model=SystemSettingsBundleResponse,
+    dependencies=[Depends(require_permission(Permissions.SYSTEM_SETTING_UPDATE))],
+)
+async def patch_system_settings(
+        request: SystemSettingsUpdateRequest,
+        settings_service: SystemSettingsServiceDep,
+        user_id: uuid.UUID = Depends(get_current_user_id),
+) -> SystemSettingsBundleResponse:
+    await settings_service.update_values(request.values, updated_by=user_id)
+    payload = await settings_service.get_bundle()
+    return SystemSettingsBundleResponse.model_validate(payload)

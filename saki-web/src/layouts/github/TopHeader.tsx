@@ -30,6 +30,7 @@ export type TopHeaderProps = {
     languageOptions: { value: string; label: string }[]
     onLanguageChange: (lng: string) => void
     userName?: string
+    userAvatarUrl?: string
     userMenuItems: MenuProps['items']
     onUserMenuClick: MenuProps['onClick']
 }
@@ -50,6 +51,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                                         languageOptions,
                                                         onLanguageChange,
                                                         userName,
+                                                        userAvatarUrl,
                                                         userMenuItems,
                                                         onUserMenuClick,
                                                     }) => {
@@ -62,6 +64,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         {key: 'new-project', label: t('layout.header.newProject')},
         {key: 'new-dataset', label: t('layout.header.newDataset')},
     ]
+    const userInitial = userName ? userName.charAt(0).toUpperCase() : undefined
 
     return (
         <header className={`bg-[var(--github-header)] ${showBorder ? 'border-b border-github-border' : ''}`}>
@@ -135,9 +138,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                 <div className="flex items-center gap-2">
                                     <Avatar
                                         size={28}
+                                        src={userAvatarUrl}
                                         icon={<UserOutlined/>}
                                         className="bg-gradient-to-br from-orange-400 to-pink-500"
-                                    />
+                                    >
+                                        {userInitial}
+                                    </Avatar>
                                     <span className="hidden lg:inline text-github-text">{userName || t('layout.header.user')}</span>
                                     <DownOutlined className="text-github-muted"/>
                                 </div>

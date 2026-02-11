@@ -37,6 +37,7 @@ from saki_api.schemas.resource_member import ResourceMemberCreateRequest, Resour
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
 from saki_api.services.camap import CAMapService
+from saki_api.services.user import UserService
 
 
 @dataclass
@@ -504,7 +505,11 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             joinedloads=[ResourceMember.user, ResourceMember.role]
         )
 
-        return [ResourceMemberRead.model_validate(i) for i in result]
+        members = [ResourceMemberRead.model_validate(i) for i in result]
+        user_service = UserService(self.session)
+        for member in members:
+            member.user_avatar_url = await user_service.resolve_avatar_url(member.user_avatar_url)
+        return members
 
     @transactional
     async def add_project_member(

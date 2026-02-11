@@ -7,7 +7,7 @@ Uses the new RBAC system for permission checking.
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 
 from saki_api.api.service_deps import UserServiceDep
 from saki_api.core.rbac import (
@@ -38,6 +38,20 @@ async def read_user_me(
     Get current user.
     """
     return await service.get_profile_by_id(user_id)
+
+
+@router.post(
+    "/me/avatar",
+    response_model=UserRead,
+    summary="Upload current user avatar",
+    description="Upload and update current user avatar image."
+)
+async def upload_user_avatar(
+        service: UserServiceDep,
+        file: UploadFile = File(..., description="Avatar image (PNG/JPEG/WebP)"),
+        user_id: uuid.UUID = Depends(get_current_user_id),
+) -> UserRead:
+    return await service.upload_current_user_avatar(user_id=user_id, file=file)
 
 
 @router.get(

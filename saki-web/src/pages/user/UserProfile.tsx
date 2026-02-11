@@ -1,20 +1,27 @@
-import React, {useEffect, useState} from 'react';
-import {Avatar, Card, Collapse, Descriptions, message, Spin, Tag, Typography} from 'antd';
-import {LockOutlined, SafetyOutlined, UserOutlined} from '@ant-design/icons';
+import React, {useEffect, useRef, useState} from 'react';
+import {Avatar, Button, Card, Collapse, Descriptions, message, Spin, Tag, Typography} from 'antd';
+import {CameraOutlined, LockOutlined, SafetyOutlined, UserOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {useAuthStore} from '../../store/authStore';
 import {usePermissionStore} from '../../store/permissionStore';
 import {api} from '../../services/api';
 import {User} from '../../types';
+import {AvatarCropModal} from '../../components/user/AvatarCropModal';
 
 const {Title, Text} = Typography;
+const MAX_AVATAR_SIZE_BYTES = 10 * 1024 * 1024;
 
 const UserProfile: React.FC = () => {
     const {t} = useTranslation();
     const currentUser = useAuthStore((state) => state.user);
+    const setAuthUser = useAuthStore((state) => state.setUser);
     const permissionStore = usePermissionStore();
     const [userInfo, setUserInfo] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+    const [avatarSourceFile, setAvatarSourceFile] = useState<File | null>(null);
+    const [avatarUploading, setAvatarUploading] = useState(false);
+    const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
     // Get permissions from store
     const systemPermissions = permissionStore.systemPermissions;
@@ -100,6 +107,56 @@ const UserProfile: React.FC = () => {
         return permission;
     };
 
+    const handleAvatarSelectClick = () => {
+        avatarInputRef.current?.click();
+    };
+
+    const handleAvatarSourceChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) {
+            return;
+        }
+        if (!file.type.startsWith('image/')) {
+            message.error(t('user.profile.avatarFileTypeError'));
+            return;
+        }
+        if (file.size > MAX_AVATAR_SIZE_BYTES) {
+            message.error(t('user.profile.avatarFileSizeError'));
+            return;
+        }
+        setAvatarSourceFile(file);
+        setAvatarModalOpen(true);
+    };
+
+    const handleAvatarModalCancel = () => {
+        if (avatarUploading) {
+            return;
+        }
+        setAvatarModalOpen(false);
+        setAvatarSourceFile(null);
+    };
+
+    const handleAvatarConfirm = async (croppedFile: File) => {
+        try {
+            setAvatarUploading(true);
+            const updatedUser = await api.uploadUserAvatar(croppedFile);
+            setUserInfo(updatedUser);
+            if (currentUser) {
+                setAuthUser({...currentUser, ...updatedUser});
+            } else {
+                setAuthUser(updatedUser);
+            }
+            setAvatarModalOpen(false);
+            setAvatarSourceFile(null);
+            message.success(t('user.profile.avatarUploadSuccess'));
+        } catch (error: any) {
+            message.error(error.message || t('user.profile.avatarUploadError'));
+        } finally {
+            setAvatarUploading(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="p-6 text-center">
@@ -126,6 +183,13 @@ const UserProfile: React.FC = () => {
 
     return (
         <div className="flex h-full flex-col gap-6 overflow-hidden p-6">
+            <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleAvatarSourceChange}
+            />
             <div className="flex-shrink-0">
                 <Title level={2} className="!mb-0">
                     {t('user.profile.title')}
@@ -136,8 +200,12 @@ const UserProfile: React.FC = () => {
                 <div
                     className="rounded-2xl border border-github-border bg-gradient-to-r from-[var(--github-panel)] via-[var(--github-base)] to-[var(--github-panel)] p-6">
                     <div className="flex flex-wrap items-center gap-4">
-                        <Avatar size={64} icon={<UserOutlined/>}
-                                className="bg-gradient-to-br from-orange-400 to-pink-500">
+                        <Avatar
+                            size={64}
+                            src={displayUser.avatarUrl}
+                            icon={<UserOutlined/>}
+                            className="bg-gradient-to-br from-orange-400 to-pink-500"
+                        >
                             {displayInitial}
                         </Avatar>
                         <div>
@@ -145,6 +213,13 @@ const UserProfile: React.FC = () => {
                             <div className="text-sm text-github-muted">{displayUser.email}</div>
                         </div>
                         <div className="ml-auto flex flex-wrap items-center gap-2">
+                            <Button
+                                icon={<CameraOutlined/>}
+                                onClick={handleAvatarSelectClick}
+                                loading={avatarUploading}
+                            >
+                                {t('user.profile.uploadAvatar')}
+                            </Button>
                             <Tag color={displayUser.isActive ? 'green' : 'red'}>
                                 {displayUser.isActive ? t('common.active') : t('common.inactive')}
                             </Tag>
@@ -258,6 +333,13 @@ const UserProfile: React.FC = () => {
                     </Card>
                 </div>
             </div>
+            <AvatarCropModal
+                open={avatarModalOpen}
+                sourceFile={avatarSourceFile}
+                uploading={avatarUploading}
+                onCancel={handleAvatarModalCancel}
+                onConfirm={handleAvatarConfirm}
+            />
         </div>
     );
 };

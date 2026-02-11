@@ -172,6 +172,7 @@ const ProtectedLayout: React.FC = () => {
             ]}
             onLanguageChange={changeLanguage}
             userName={user?.fullName || user?.email}
+            userAvatarUrl={user?.avatarUrl}
             userMenuItems={userMenuItems}
             onUserMenuClick={handleUserMenuClick}
             footerText={t('app.footer')}

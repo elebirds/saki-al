@@ -15,6 +15,7 @@ export type AppShellProps = {
     languageOptions: { value: string; label: string }[]
     onLanguageChange: (lng: string) => void
     userName?: string
+    userAvatarUrl?: string
     userMenuItems: MenuProps['items']
     onUserMenuClick: MenuProps['onClick']
     footerText?: string
@@ -38,6 +39,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                                       languageOptions,
                                                       onLanguageChange,
                                                       userName,
+                                                      userAvatarUrl,
                                                       userMenuItems,
                                                       onUserMenuClick,
                                                       footerText,
@@ -71,6 +73,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     languageOptions={languageOptions}
                     onLanguageChange={onLanguageChange}
                     userName={userName}
+                    userAvatarUrl={userAvatarUrl}
                     userMenuItems={userMenuItems}
                     onUserMenuClick={onUserMenuClick}
                 />

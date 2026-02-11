@@ -29,6 +29,7 @@ from saki_api.services.base import BaseService
 from saki_api.services.field_overrides import get_or_override
 from saki_api.services.system_setting_keys import SystemSettingKeys
 from saki_api.services.system_settings_reader import system_settings_reader
+from saki_api.services.user import UserService
 
 
 
@@ -103,7 +104,11 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
             joinedloads=[ResourceMember.user, ResourceMember.role]
         )
 
-        return [ResourceMemberRead.model_validate(i) for i in result]
+        members = [ResourceMemberRead.model_validate(i) for i in result]
+        user_service = UserService(self.session)
+        for member in members:
+            member.user_avatar_url = await user_service.resolve_avatar_url(member.user_avatar_url)
+        return members
 
     @transactional
     async def add_dataset_member(

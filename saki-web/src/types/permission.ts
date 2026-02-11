@@ -195,6 +195,12 @@ export interface ResourcePermissions {
     isOwner: boolean;
 }
 
+export interface RolePermissionCatalog {
+    allPermissions: string[];
+    systemPermissions: string[];
+    resourcePermissions: string[];
+}
+
 // ============================================================================
 // Permission Store Types
 // ============================================================================

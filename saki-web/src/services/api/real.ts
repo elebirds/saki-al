@@ -55,6 +55,7 @@ import {
     ResourcePermissions,
     Role,
     RoleCreate,
+    RolePermissionCatalog,
     RoleInfo,
     RoleType,
     RoleUpdate,
@@ -523,6 +524,11 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async getPermissionCatalog(): Promise<RolePermissionCatalog> {
+        const response = await this.client.get<RolePermissionCatalog>('/roles/permission-catalog');
+        return response.data;
+    }
+
     async getRoles(type?: RoleType, page: number = 1, limit: number = 50): Promise<PaginationResponse<Role>> {
         const params: Record<string, any> = {page, limit};
         if (type) params.type = type;
@@ -570,8 +576,8 @@ export class RealApiService implements ApiService {
     // Dataset APIs
     // ==========================================================================
 
-    async getDatasets(page: number = 1, limit: number = 20): Promise<PaginationResponse<Dataset>> {
-        const response = await this.client.get<PaginationResponse<Dataset>>('/datasets', {params: {page, limit}});
+    async getDatasets(page: number = 1, limit: number = 20, q?: string): Promise<PaginationResponse<Dataset>> {
+        const response = await this.client.get<PaginationResponse<Dataset>>('/datasets', {params: {page, limit, q}});
         return response.data;
     }
 
@@ -591,38 +597,6 @@ export class RealApiService implements ApiService {
 
     async deleteDataset(id: string): Promise<void> {
         await this.client.delete(`/datasets/${id}`);
-    }
-
-    async getDatasetStats(id: string): Promise<{
-        datasetId: string;
-        totalSamples: number;
-        labeledSamples: number;
-        unlabeledSamples: number;
-        skippedSamples: number;
-        completionRate: number;
-        linkedProjects: number;
-        memberCount: number;
-    }> {
-        // TODO: Implement when backend endpoint is available
-        // For now, return mock data
-        return {
-            datasetId: id,
-            totalSamples: 0,
-            labeledSamples: 0,
-            unlabeledSamples: 0,
-            skippedSamples: 0,
-            completionRate: 0,
-            linkedProjects: 0,
-            memberCount: 1,
-        };
-    }
-
-    async exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any> {
-        // TODO: Implement when backend endpoint is available
-        const response = await this.client.get(`/datasets/${id}/export`, {
-            params: {format, include_unlabeled: includeUnlabeled}
-        });
-        return response.data;
     }
 
     // ==========================================================================
@@ -1292,11 +1266,11 @@ export class RealApiService implements ApiService {
     }
 
     async getUsers(page: number = 1, limit: number = 100): Promise<PaginationResponse<User>> {
-        const response = await this.client.get<PaginationResponse<User>>('/users/', {params: {page, limit}});
+        const response = await this.client.get<PaginationResponse<User>>('/users', {params: {page, limit}});
         return response.data;
     }
 
-    async getUserList(page: number = 1, limit: number = 100): Promise<PaginationResponse<{
+    async getUserList(page: number = 1, limit: number = 100, q?: string): Promise<PaginationResponse<{
         id: string;
         email: string;
         fullName?: string
@@ -1305,13 +1279,13 @@ export class RealApiService implements ApiService {
             id: string;
             email: string;
             fullName?: string
-        }>>('/users/list', {params: {page, limit}});
+        }>>('/users/list', {params: {page, limit, q}});
         return response.data;
     }
 
     async createUser(user: Partial<User> & { password: string }): Promise<User> {
         return withOptionalPasswordHashing(async (userData) => {
-            const response = await this.client.post<User>('/users/', userData);
+            const response = await this.client.post<User>('/users', userData);
             return response.data;
         }, user);
     }

@@ -32,3 +32,10 @@ class ResourcePermissionsResponse(BaseModel):
     resource_role: Optional[RoleReadMinimal] = None
     permissions: List[str]  # Permission strings in format "target:action:scope"
     is_owner: bool
+
+
+class PermissionCatalogResponse(BaseModel):
+    """Permission catalog for role editor."""
+    all_permissions: List[str]
+    system_permissions: List[str]
+    resource_permissions: List[str]

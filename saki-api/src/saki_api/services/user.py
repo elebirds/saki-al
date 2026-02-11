@@ -90,9 +90,13 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
         """Get user by email."""
         return await self.repository.get_by_email(email)
 
-    async def list_active_paginated(self, pagination: Pagination) -> PaginationResponse[User]:
+    async def list_active_paginated(
+            self,
+            pagination: Pagination,
+            q: str | None = None,
+    ) -> PaginationResponse[User]:
         """List active users for member selection."""
-        return await self.repository.list_active_paginated(pagination)
+        return await self.repository.list_active_paginated(pagination, q=q)
 
     async def get_profile_by_id(self, user_id: uuid.UUID) -> UserRead:
         user = await self.repository.get_with_roles_by_id(user_id)

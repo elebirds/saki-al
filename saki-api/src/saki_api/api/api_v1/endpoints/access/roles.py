@@ -20,6 +20,7 @@ from saki_api.schemas import (
     RoleCreate, RoleRead, RoleUpdate,
     UserSystemRoleAssign, UserSystemRoleRead,
 )
+from saki_api.schemas.permission import PermissionCatalogResponse
 from saki_api.schemas.pagination import PaginationResponse
 
 router = APIRouter()
@@ -28,6 +29,19 @@ router = APIRouter()
 # ============================================================================
 # Role CRUD
 # ============================================================================
+
+
+@router.get(
+    "/permission-catalog",
+    response_model=PermissionCatalogResponse,
+    dependencies=[Depends(require_permission(Permissions.ROLE_READ))],
+    summary="Get permission catalog for role editor",
+    description="Return all valid permission strings and role-type specific subsets."
+)
+async def get_permission_catalog(
+        service: RoleServiceDep,
+) -> PermissionCatalogResponse:
+    return PermissionCatalogResponse.model_validate(await service.get_permission_catalog())
 
 @router.get(
     "",

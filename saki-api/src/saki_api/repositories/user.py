@@ -4,6 +4,7 @@ User Repository - Data access layer for User operations.
 import uuid
 from typing import Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -27,9 +28,22 @@ class UserRepository(BaseRepository[User]):
     async def get_by_email_or_raise(self, email: str) -> User:
         return await self.get_one_or_raise([User.email == email])
 
-    async def list_active_paginated(self, pagination: Pagination = Pagination()) -> PaginationResponse[User]:
+    async def list_active_paginated(
+            self,
+            pagination: Pagination = Pagination(),
+            q: str | None = None,
+    ) -> PaginationResponse[User]:
         """List active users with pagination."""
-        return await self.list_paginated(pagination=pagination, filters=[User.is_active == True])
+        filters = [User.is_active == True]
+        if q:
+            pattern = f"%{q.strip()}%"
+            filters.append(
+                or_(
+                    User.email.ilike(pattern),
+                    User.full_name.ilike(pattern),
+                )
+            )
+        return await self.list_paginated(pagination=pagination, filters=filters)
 
     async def get_with_roles_by_id(self, user_id: uuid.UUID) -> Optional[UserRead]:
         statement = (

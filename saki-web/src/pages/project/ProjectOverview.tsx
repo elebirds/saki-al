@@ -96,34 +96,8 @@ const ProjectOverview: React.FC = () => {
     }, [datasets, selectedDatasetId])
 
     useEffect(() => {
-        if (datasets.length === 0) {
-            setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
-            return
-        }
-
-        const loadStats = async () => {
-            const stats = await Promise.all(
-                datasets.map((dataset) =>
-                    api.getDatasetStats(dataset.id).catch(() => null)
-                )
-            )
-
-            const totals = stats.reduce(
-                (acc, stat) => {
-                    if (!stat) return acc
-                    acc.labeled += stat.labeledSamples || 0
-                    acc.unlabeled += stat.unlabeledSamples || 0
-                    acc.skipped += stat.skippedSamples || 0
-                    acc.total += stat.totalSamples || 0
-                    return acc
-                },
-                {labeled: 0, unlabeled: 0, skipped: 0, total: 0}
-            )
-
-            setSampleStats(totals)
-        }
-
-        loadStats()
+        // Sample stats endpoint is not wired in current frontend; keep overview summary empty.
+        setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
     }, [datasets])
 
     useEffect(() => {

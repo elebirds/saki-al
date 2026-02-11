@@ -348,7 +348,5 @@ async def get_storage_stats_by_extension(
     
     Returns count and total size for each file type.
     """
-    # Get all extensions (this requires a repository query)
-    # TODO: Implement get_all_extensions in repository
-
-    return []
+    stats = await service.repository.list_storage_stats_by_extension()
+    return [AssetStorageStats.model_validate(item) for item in stats]

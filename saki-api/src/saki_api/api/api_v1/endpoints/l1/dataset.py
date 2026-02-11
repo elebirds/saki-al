@@ -20,7 +20,7 @@ from saki_api.schemas.role import RoleReadMinimal
 router = APIRouter()
 
 
-@router.post("/", dependencies=[
+@router.post("", dependencies=[
     Depends(require_permission(Permissions.DATASET_CREATE_ALL))
 ])
 async def create_dataset(
@@ -35,19 +35,20 @@ async def create_dataset(
     await dataset_service.create_dataset(dataset_in, current_user_id)
 
 
-@router.get("/", response_model=PaginationResponse[DatasetRead])
+@router.get("", response_model=PaginationResponse[DatasetRead])
 async def list_datasets(
         *,
         current_user_id: uuid.UUID = Depends(get_current_user_id),
         dataset_service: DatasetServiceDep,
         page: int = Query(1, ge=1),
         limit: int = Query(20, ge=1, le=200),
+        q: str | None = Query(default=None),
 ) -> PaginationResponse[DatasetRead]:
     """
     List datasets available to the current user.
     """
     pagination = Pagination.from_page(page=page, limit=limit)
-    datasets = await dataset_service.list_datasets(current_user_id, pagination)
+    datasets = await dataset_service.list_datasets(current_user_id, pagination, q=q)
     return datasets.map(DatasetRead.model_validate)
 
 

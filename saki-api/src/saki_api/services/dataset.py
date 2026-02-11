@@ -85,9 +85,10 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
             self,
             user_id: uuid.UUID,
             pagination: Pagination,
+            q: str | None = None,
     ) -> PaginationResponse[Dataset]:
         """List datasets available to a user with pagination."""
-        return await self.repository.list_in_permission_paginated(user_id, pagination)
+        return await self.repository.list_in_permission_paginated(user_id, pagination, q=q)
 
     # =========================================================================
     # Dataset Member Management

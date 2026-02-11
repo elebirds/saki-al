@@ -19,6 +19,7 @@ const ProjectList: React.FC = () => {
     const [refreshKey, setRefreshKey] = useState(0)
     const [datasets, setDatasets] = useState<Dataset[]>([])
     const [datasetsLoading, setDatasetsLoading] = useState(false)
+    const [datasetQuery, setDatasetQuery] = useState('')
     const [form] = Form.useForm()
     const {can} = usePermission()
     const canCreate = can('project:create')
@@ -39,18 +40,22 @@ const ProjectList: React.FC = () => {
         []
     )
 
+    const loadDatasets = useCallback(async (query?: string) => {
+        setDatasetsLoading(true)
+        try {
+            const res = await api.getDatasets(1, 50, query)
+            setDatasets(res.items || [])
+        } catch {
+            message.error(t('dataset.list.loadError'))
+        } finally {
+            setDatasetsLoading(false)
+        }
+    }, [t])
+
     useEffect(() => {
         if (!createOpen) return
-        setDatasetsLoading(true)
-        api.getDatasets(1, 200)
-            .then((res) => {
-                setDatasets(res.items || [])
-            })
-            .catch(() => {
-                message.error(t('dataset.list.loadError'))
-            })
-            .finally(() => setDatasetsLoading(false))
-    }, [createOpen, t])
+        void loadDatasets(datasetQuery)
+    }, [createOpen, datasetQuery, loadDatasets])
 
     const handleCreateProject = async () => {
         try {
@@ -65,6 +70,7 @@ const ProjectList: React.FC = () => {
             message.success(t('project.list.createSuccess'))
             setCreateOpen(false)
             form.resetFields()
+            setDatasetQuery('')
             setRefreshKey((v) => v + 1)
         } catch (error: any) {
             if (error?.errorFields) return
@@ -159,7 +165,10 @@ const ProjectList: React.FC = () => {
             <Modal
                 title={t('project.list.newProject')}
                 open={createOpen}
-                onCancel={() => setCreateOpen(false)}
+                onCancel={() => {
+                    setCreateOpen(false)
+                    setDatasetQuery('')
+                }}
                 onOk={handleCreateProject}
                 okButtonProps={{loading: creating}}
                 cancelButtonProps={{disabled: creating}}
@@ -189,11 +198,14 @@ const ProjectList: React.FC = () => {
                     <Form.Item name="datasetIds" label={t('project.form.dataPool')}>
                         <Select
                             mode="multiple"
+                            showSearch
+                            filterOption={false}
+                            onSearch={(value) => setDatasetQuery(value)}
                             placeholder={t('dataset.list.newDataset')}
                             loading={datasetsLoading}
                             options={datasets.map((dataset) => ({
                                 value: dataset.id,
-                                label: dataset.name,
+                                label: `${dataset.name} (${dataset.type})`,
                             }))}
                         />
                     </Form.Item>

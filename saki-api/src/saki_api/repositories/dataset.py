@@ -1,12 +1,11 @@
-"""
-Dataset Repository - Data access layer for Dataset operations.
-"""
+"""Dataset Repository - Data access layer for Dataset operations."""
 
 import uuid
 from typing import List
 
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy import or_
 
 from saki_api.core.rbac import PermissionChecker
 from saki_api.models import ResourceType, Permissions
@@ -46,11 +45,23 @@ class DatasetRepository(BaseRepository[Dataset]):
             return False
         return dataset.owner_id == user_id
 
-    async def list_in_permission_paginated(self, user_id: uuid.UUID, pagination: Pagination) -> PaginationResponse[
-        Dataset]:
+    async def list_in_permission_paginated(
+            self,
+            user_id: uuid.UUID,
+            pagination: Pagination,
+            q: str | None = None,
+    ) -> PaginationResponse[Dataset]:
         checker = PermissionChecker(self.session)
 
         base_query = self.list_statement()
+        if q:
+            pattern = f"%{q.strip()}%"
+            base_query = base_query.where(
+                or_(
+                    Dataset.name.ilike(pattern),
+                    Dataset.description.ilike(pattern),
+                )
+            )
         filtered_stmt = await checker.filter_accessible_resources(
             user_id=user_id,
             resource_type=ResourceType.DATASET,

@@ -119,6 +119,30 @@ class AssetRepository(BaseRepository[Asset]):
         result = await self.session.exec(stmt)
         return result.first() or 0
 
+    async def list_storage_stats_by_extension(self) -> List[dict]:
+        """Get aggregated storage stats grouped by extension."""
+        stmt = (
+            select(
+                Asset.extension,
+                func.count(Asset.id),
+                func.coalesce(func.sum(Asset.size), 0),
+                func.coalesce(func.avg(Asset.size), 0.0),
+            )
+            .group_by(Asset.extension)
+            .order_by(func.count(Asset.id).desc(), Asset.extension.asc())
+        )
+        result = await self.session.exec(stmt)
+        rows = result.all()
+        return [
+            {
+                "extension": extension or "",
+                "count": int(count or 0),
+                "total_size": int(total_size or 0),
+                "avg_size": float(avg_size or 0.0),
+            }
+            for extension, count, total_size, avg_size in rows
+        ]
+
     # ========== Garbage Collection ==========
 
     async def get_orphaned_assets(

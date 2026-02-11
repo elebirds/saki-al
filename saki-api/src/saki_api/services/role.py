@@ -6,10 +6,12 @@ from loguru import logger
 import uuid
 from typing import Optional
 
+from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing_extensions import override
 
 from saki_api.core.exceptions import (
+    BadRequestAppException,
     ForbiddenAppException,
     DataAlreadyExistsAppException,
 )
@@ -19,7 +21,11 @@ from saki_api.core.rbac.audit import (
     log_role_delete,
 )
 from saki_api.db.transaction import transactional
+from saki_api.models.rbac.enums import Permissions
+from saki_api.models.rbac.permission import parse_permission
+from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.role import Role, RoleType
+from saki_api.models.rbac.user_system_role import UserSystemRole
 from saki_api.repositories.permission import PermissionRepository
 from saki_api.repositories.query import Pagination
 from saki_api.repositories.role import RoleRepository
@@ -35,6 +41,67 @@ class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):
     def __init__(self, session: AsyncSession):
         super().__init__(Role, RoleRepository, session)
         self.permission_repo = PermissionRepository(session)
+
+    @staticmethod
+    def _allowed_permission_values() -> set[str]:
+        values: set[str] = set()
+        for key, value in vars(Permissions).items():
+            if key.startswith("_") or not isinstance(value, str) or ":" not in value:
+                continue
+            try:
+                parse_permission(value)
+            except ValueError:
+                continue
+            values.add(value)
+        return values
+
+    @classmethod
+    def _split_role_type_permissions(cls) -> tuple[list[str], list[str], list[str]]:
+        all_permissions = sorted(cls._allowed_permission_values())
+        system_permissions = [p for p in all_permissions if p.endswith(":all")]
+        resource_permissions = [
+            p for p in all_permissions if p.endswith(":assigned") or p.endswith(":self")
+        ]
+        return all_permissions, system_permissions, resource_permissions
+
+    @classmethod
+    def _validate_permission_list(
+            cls,
+            permissions: list[str],
+            *,
+            role_type: RoleType,
+    ) -> None:
+        allowed = cls._allowed_permission_values()
+        invalid = sorted({item for item in permissions if item not in allowed})
+        if invalid:
+            raise BadRequestAppException(
+                "unknown permission(s): " + ", ".join(invalid)
+            )
+
+        if role_type == RoleType.SYSTEM:
+            disallowed = [item for item in permissions if not item.endswith(":all")]
+            if disallowed:
+                raise BadRequestAppException(
+                    "system role only accepts ':all' permissions"
+                )
+        if role_type == RoleType.RESOURCE:
+            disallowed = [
+                item
+                for item in permissions
+                if not (item.endswith(":assigned") or item.endswith(":self"))
+            ]
+            if disallowed:
+                raise BadRequestAppException(
+                    "resource role only accepts ':assigned' or ':self' permissions"
+                )
+
+    async def get_permission_catalog(self) -> dict[str, list[str]]:
+        all_permissions, system_permissions, resource_permissions = self._split_role_type_permissions()
+        return {
+            "all_permissions": all_permissions,
+            "system_permissions": system_permissions,
+            "resource_permissions": resource_permissions,
+        }
 
     async def get_default(self) -> Role:
         """Get the default role for new users."""
@@ -77,6 +144,9 @@ class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):
         existing = await self.repository.get_by_name(role_in.name)
         if existing:
             raise DataAlreadyExistsAppException("Role name already exists")
+
+        permission_values = [p.permission for p in role_in.permissions]
+        self._validate_permission_list(permission_values, role_type=role_in.type)
 
         # Create role - use model_dump to convert schema to dict, excluding permissions
         role = await self.repository.create(role_in.model_dump(exclude={"permissions"}))
@@ -131,6 +201,8 @@ class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):
 
         # Update permissions (only for non-system roles)
         if role_in.permissions is not None:
+            permission_values = [p.permission for p in role_in.permissions]
+            self._validate_permission_list(permission_values, role_type=role.type)
             await self.permission_repo.delete_by_role(role_id)
             for perm_in in role_in.permissions:
                 await self.permission_repo.add(role.id, perm_in.permission)
@@ -169,7 +241,20 @@ class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):
         # Prevent deletion of default role
         if role.is_default: raise ForbiddenAppException("Default role cannot be deleted")
 
-        # TODO: 如果有用户有这个角色？
+        user_assignment_count = (
+            await self.session.exec(
+                select(func.count()).select_from(UserSystemRole).where(UserSystemRole.role_id == role_id)
+            )
+        ).one() or 0
+        resource_assignment_count = (
+            await self.session.exec(
+                select(func.count()).select_from(ResourceMember).where(ResourceMember.role_id == role_id)
+            )
+        ).one() or 0
+        if user_assignment_count or resource_assignment_count:
+            raise BadRequestAppException(
+                "Role is still in use and cannot be deleted"
+            )
 
         # Audit log
         await log_role_delete(

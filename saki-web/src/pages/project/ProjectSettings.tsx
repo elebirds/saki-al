@@ -93,6 +93,7 @@ const ProjectSettings: React.FC = () => {
     const [membersLoading, setMembersLoading] = useState(false)
     const [roles, setRoles] = useState<RoleInfo[]>([])
     const [users, setUsers] = useState<Array<{ id: string; email: string; fullName?: string }>>([])
+    const [userQuery, setUserQuery] = useState('')
     const [memberModalOpen, setMemberModalOpen] = useState(false)
     const [memberSaving, setMemberSaving] = useState(false)
     const [memberForm] = Form.useForm()
@@ -103,7 +104,9 @@ const ProjectSettings: React.FC = () => {
     const currentUser = useAuthStore((state) => state.user)
 
     const [linkedDatasetIds, setLinkedDatasetIds] = useState<string[]>([])
-    const [allDatasets, setAllDatasets] = useState<Dataset[]>([])
+    const [linkedDatasets, setLinkedDatasets] = useState<Dataset[]>([])
+    const [datasetCandidates, setDatasetCandidates] = useState<Dataset[]>([])
+    const [datasetQuery, setDatasetQuery] = useState('')
     const [datasetsLoading, setDatasetsLoading] = useState(false)
     const [datasetModalOpen, setDatasetModalOpen] = useState(false)
     const [datasetSaving, setDatasetSaving] = useState(false)
@@ -169,21 +172,25 @@ const ProjectSettings: React.FC = () => {
         }
     }, [projectId, t])
 
-    const loadUsers = useCallback(async () => {
+    const loadUsers = useCallback(async (query?: string) => {
         try {
-            const response = await api.getUserList(1, 200)
+            const response = await api.getUserList(1, 50, query)
             setUsers(response.items)
         } catch (error: any) {
             message.error(error.message || t('project.settings.loadUsersError'))
         }
     }, [t])
 
-    const loadProjectDatasetIds = useCallback(async () => {
+    const loadLinkedDatasets = useCallback(async () => {
         if (!projectId) return
         setDatasetsLoading(true)
         try {
-            const ids = await api.getProjectDatasets(projectId)
+            const [ids, details] = await Promise.all([
+                api.getProjectDatasets(projectId),
+                api.getProjectDatasetDetails(projectId),
+            ])
             setLinkedDatasetIds(ids)
+            setLinkedDatasets(details)
         } catch (error: any) {
             message.error(error.message || t('project.settings.datasets.loadLinkedError'))
         } finally {
@@ -191,21 +198,10 @@ const ProjectSettings: React.FC = () => {
         }
     }, [projectId, t])
 
-    const loadAllDatasets = useCallback(async () => {
+    const loadDatasetCandidates = useCallback(async (query?: string) => {
         try {
-            const pageSize = 200
-            let page = 1
-            const all: Dataset[] = []
-            while (true) {
-                const response = await api.getDatasets(page, pageSize)
-                const items = response.items || []
-                all.push(...items)
-                if (!response.hasMore || items.length === 0 || all.length >= response.total) {
-                    break
-                }
-                page += 1
-            }
-            setAllDatasets(all)
+            const response = await api.getDatasets(1, 50, query)
+            setDatasetCandidates(response.items || [])
         } catch (error: any) {
             message.error(error.message || t('project.settings.datasets.loadAllError'))
         }
@@ -226,19 +222,29 @@ const ProjectSettings: React.FC = () => {
             if (canManageMembers) {
                 loadMembers()
                 loadRoles()
-                loadUsers()
             } else {
                 setMembers([])
             }
         }
-    }, [section, canManageMembers, loadMembers, loadRoles, loadUsers])
+    }, [section, canManageMembers, loadMembers, loadRoles])
+
+    useEffect(() => {
+        if (section === 'members' && canManageMembers) {
+            loadUsers(userQuery)
+        }
+    }, [section, canManageMembers, loadUsers, userQuery])
 
     useEffect(() => {
         if (section === 'datasets') {
-            loadProjectDatasetIds()
-            loadAllDatasets()
+            loadLinkedDatasets()
         }
-    }, [section, loadProjectDatasetIds, loadAllDatasets])
+    }, [section, loadLinkedDatasets])
+
+    useEffect(() => {
+        if (section === 'datasets') {
+            loadDatasetCandidates(datasetQuery)
+        }
+    }, [section, loadDatasetCandidates, datasetQuery])
 
     const handleSaveProject = async (values: any) => {
         if (!projectId) return
@@ -409,7 +415,11 @@ const ProjectSettings: React.FC = () => {
             message.success(t('project.settings.datasets.linkSuccess'))
             setDatasetModalOpen(false)
             datasetForm.resetFields()
-            loadProjectDatasetIds()
+            setDatasetQuery('')
+            await Promise.all([
+                loadLinkedDatasets(),
+                loadDatasetCandidates(''),
+            ])
         } catch (error: any) {
             if (error?.errorFields) return
             message.error(error.message || t('project.settings.datasets.linkError'))
@@ -424,7 +434,10 @@ const ProjectSettings: React.FC = () => {
         try {
             await api.unlinkProjectDatasets(projectId, [datasetId])
             message.success(t('project.settings.datasets.unlinkSuccess'))
-            loadProjectDatasetIds()
+            await Promise.all([
+                loadLinkedDatasets(),
+                loadDatasetCandidates(datasetQuery),
+            ])
         } catch (error: any) {
             message.error(error.message || t('project.settings.datasets.unlinkError'))
         } finally {
@@ -575,14 +588,9 @@ const ProjectSettings: React.FC = () => {
         return users.filter((user) => !existingIds.has(user.id))
     }, [members, users])
 
-    const linkedDatasets = useMemo(
-        () => allDatasets.filter((dataset) => linkedDatasetIds.includes(dataset.id)),
-        [allDatasets, linkedDatasetIds]
-    )
-
     const addableDatasets = useMemo(
-        () => allDatasets.filter((dataset) => !linkedDatasetIds.includes(dataset.id)),
-        [allDatasets, linkedDatasetIds]
+        () => datasetCandidates.filter((dataset) => !linkedDatasetIds.includes(dataset.id)),
+        [datasetCandidates, linkedDatasetIds]
     )
 
     const renderBasicInfo = () => (
@@ -735,7 +743,10 @@ const ProjectSettings: React.FC = () => {
                 <Button
                     type="primary"
                     icon={<PlusOutlined/>}
-                    onClick={() => setMemberModalOpen(true)}
+                    onClick={() => {
+                        setUserQuery('')
+                        setMemberModalOpen(true)
+                    }}
                     disabled={!canManageMembers}
                 >
                     {t('project.settings.members.add')}
@@ -760,7 +771,10 @@ const ProjectSettings: React.FC = () => {
             <Modal
                 title={t('project.settings.members.addTitle')}
                 open={memberModalOpen}
-                onCancel={() => setMemberModalOpen(false)}
+                onCancel={() => {
+                    setMemberModalOpen(false)
+                    setUserQuery('')
+                }}
                 onOk={handleAddMember}
                 confirmLoading={memberSaving}
                 okButtonProps={{disabled: !canManageMembers}}
@@ -773,8 +787,9 @@ const ProjectSettings: React.FC = () => {
                     >
                         <Select
                             showSearch
+                            filterOption={false}
+                            onSearch={(value) => setUserQuery(value)}
                             placeholder={t('project.settings.members.form.userPlaceholder')}
-                            optionFilterProp="label"
                             options={availableUsers.map((user) => ({
                                 value: user.id,
                                 label: `${user.fullName || user.email} (${user.email})`,
@@ -841,7 +856,10 @@ const ProjectSettings: React.FC = () => {
                 <Button
                     type="primary"
                     icon={<PlusOutlined/>}
-                    onClick={() => setDatasetModalOpen(true)}
+                    onClick={() => {
+                        setDatasetQuery('')
+                        setDatasetModalOpen(true)
+                    }}
                     disabled={!canUpdateProject}
                 >
                     {t('project.settings.datasets.add')}
@@ -911,7 +929,10 @@ const ProjectSettings: React.FC = () => {
             <Modal
                 title={t('project.settings.datasets.addTitle')}
                 open={datasetModalOpen}
-                onCancel={() => setDatasetModalOpen(false)}
+                onCancel={() => {
+                    setDatasetModalOpen(false)
+                    setDatasetQuery('')
+                }}
                 onOk={handleLinkDatasets}
                 confirmLoading={datasetSaving}
                 okButtonProps={{disabled: !canUpdateProject}}
@@ -925,7 +946,8 @@ const ProjectSettings: React.FC = () => {
                         <Select
                             mode="multiple"
                             showSearch
-                            optionFilterProp="label"
+                            filterOption={false}
+                            onSearch={(value) => setDatasetQuery(value)}
                             placeholder={t('project.settings.datasets.form.datasetsPlaceholder')}
                             options={addableDatasets.map((dataset) => ({
                                 value: dataset.id,

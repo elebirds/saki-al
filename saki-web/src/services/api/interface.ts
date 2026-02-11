@@ -54,6 +54,7 @@ import {
     ResourcePermissions,
     Role,
     RoleCreate,
+    RolePermissionCatalog,
     RoleInfo,
     RoleType,
     RoleUpdate,
@@ -100,7 +101,7 @@ export interface ApiService {
     // ============================================================================
     getUsers(page?: number, limit?: number): Promise<PaginationResponse<User>>;
 
-    getUserList(page?: number, limit?: number): Promise<PaginationResponse<{
+    getUserList(page?: number, limit?: number, q?: string): Promise<PaginationResponse<{
         id: string;
         email: string;
         fullName?: string
@@ -127,6 +128,8 @@ export interface ApiService {
     getResourcePermissions(resourceType: string, resourceId: string): Promise<ResourcePermissions>;
 
     // Role management
+    getPermissionCatalog(): Promise<RolePermissionCatalog>;
+
     getRoles(type?: RoleType, page?: number, limit?: number): Promise<PaginationResponse<Role>>;
 
     getRole(roleId: string): Promise<Role>;
@@ -147,7 +150,7 @@ export interface ApiService {
     // ============================================================================
     // Dataset APIs
     // ============================================================================
-    getDatasets(page?: number, limit?: number): Promise<PaginationResponse<Dataset>>;
+    getDatasets(page?: number, limit?: number, q?: string): Promise<PaginationResponse<Dataset>>;
 
     getDataset(id: string): Promise<Dataset | undefined>;
 
@@ -156,19 +159,6 @@ export interface ApiService {
     updateDataset(id: string, dataset: Partial<DatasetUpdate>): Promise<Dataset>;
 
     deleteDataset(id: string): Promise<void>;
-
-    getDatasetStats(id: string): Promise<{
-        datasetId: string;
-        totalSamples: number;
-        labeledSamples: number;
-        unlabeledSamples: number;
-        skippedSamples: number;
-        completionRate: number;
-        linkedProjects: number;
-        memberCount: number;
-    }>;
-
-    exportDataset(id: string, format?: string, includeUnlabeled?: boolean): Promise<any>;
 
     // ============================================================================
     // Dataset Members APIs

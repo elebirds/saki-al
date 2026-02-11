@@ -19,7 +19,7 @@ import {
     Typography
 } from 'antd';
 import {DeleteOutlined, EditOutlined, LockOutlined, PlusOutlined} from '@ant-design/icons';
-import {Role, RoleCreate, RolePermissionCreate, RoleType, RoleUpdate} from '../../types';
+import {Role, RoleCreate, RolePermissionCatalog, RolePermissionCreate, RoleType, RoleUpdate} from '../../types';
 import {api} from '../../services/api';
 import {useTranslation} from 'react-i18next';
 import {usePermission} from '../../hooks';
@@ -29,8 +29,35 @@ import {createEmptyPaginationResponse} from '../../types/pagination';
 const {TextArea} = Input;
 const {Text, Title} = Typography;
 
+type PermissionOption = {
+    value: string;
+    label: string;
+}
+
+type PermissionCategory = {
+    title: string;
+    permissions: PermissionOption[];
+}
+
+const filterPermissionCategories = (
+    categories: PermissionCategory[],
+    allowedPermissions?: Set<string>,
+) => {
+    if (!allowedPermissions) return categories
+    return categories
+        .map((category) => ({
+            ...category,
+            permissions: category.permissions.filter((perm) => allowedPermissions.has(perm.value)),
+        }))
+        .filter((category) => category.permissions.length > 0)
+}
+
 // 获取权限分类列表（根据国际化和角色类型过滤）
-const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType) => {
+const getPermissionCategories = (
+    t: (key: string) => string,
+    roleType?: RoleType,
+    allowedPermissions?: Set<string>,
+) => {
     // 系统级权限（只有系统角色可以使用）
     const systemCategories = [
         {
@@ -235,20 +262,20 @@ const getPermissionCategories = (t: (key: string) => string, roleType?: RoleType
     if (roleType === 'system') {
         // 系统角色：返回系统级权限（:all）和资源级权限（:all）
         const allCategories = [...systemCategories, ...resourceCategories];
-        return allCategories.map(category => ({
+        return filterPermissionCategories(allCategories.map(category => ({
             ...category,
             permissions: category.permissions.filter(p => p.value.endsWith(':all')),
-        })).filter(category => category.permissions.length > 0);
+        })).filter(category => category.permissions.length > 0), allowedPermissions);
     } else if (roleType === 'resource') {
         // 资源角色：只返回资源级权限（:assigned 和 :self），不包含系统级权限
-        return resourceCategories.map(category => ({
+        return filterPermissionCategories(resourceCategories.map(category => ({
             ...category,
             permissions: category.permissions.filter(p => p.value.endsWith(':assigned') || p.value.endsWith(':self')),
-        })).filter(category => category.permissions.length > 0);
+        })).filter(category => category.permissions.length > 0), allowedPermissions);
     }
 
     // 没有指定类型，返回所有权限
-    return [...systemCategories, ...resourceCategories];
+    return filterPermissionCategories([...systemCategories, ...resourceCategories], allowedPermissions);
 };
 
 const RoleManagement: React.FC = () => {
@@ -256,6 +283,8 @@ const RoleManagement: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRole, setEditingRole] = useState<Role | null>(null);
     const [roleTypeFilter, setRoleTypeFilter] = useState<RoleType | 'all'>('all');
+    const [permissionCatalog, setPermissionCatalog] = useState<RolePermissionCatalog | null>(null);
+    const [catalogLoading, setCatalogLoading] = useState(false);
     const [form] = Form.useForm();
     const [refreshKey, setRefreshKey] = useState(0);
 
@@ -285,6 +314,32 @@ const RoleManagement: React.FC = () => {
         }
     }, [permissionLoading, canReadRoles, roleTypeFilter]);
 
+    const loadPermissionCatalog = useCallback(async () => {
+        if (!canReadRoles) return
+        setCatalogLoading(true)
+        try {
+            const catalog = await api.getPermissionCatalog()
+            setPermissionCatalog(catalog)
+        } catch (error: any) {
+            message.error(error.message || t('role.management.fetchError'))
+        } finally {
+            setCatalogLoading(false)
+        }
+    }, [canReadRoles, t])
+
+    useEffect(() => {
+        if (!permissionLoading && canReadRoles) {
+            void loadPermissionCatalog()
+        }
+    }, [permissionLoading, canReadRoles, loadPermissionCatalog])
+
+    const getAllowedPermissionSet = useCallback((roleType?: RoleType): Set<string> => {
+        if (!permissionCatalog) return new Set()
+        if (roleType === 'system') return new Set(permissionCatalog.systemPermissions || [])
+        if (roleType === 'resource') return new Set(permissionCatalog.resourcePermissions || [])
+        return new Set(permissionCatalog.allPermissions || [])
+    }, [permissionCatalog])
+
     const handleAdd = () => {
         setEditingRole(null);
         form.resetFields();
@@ -295,17 +350,8 @@ const RoleManagement: React.FC = () => {
     // 处理角色类型变更
     const handleRoleTypeChange = (type: RoleType) => {
         const currentPermissions = form.getFieldValue('permissions') || [];
-
-        // 根据新类型过滤权限
-        let validPermissions: string[] = [];
-        if (type === 'system') {
-            // 系统角色：只保留 :all 权限
-            validPermissions = currentPermissions.filter((p: string) => p.endsWith(':all'));
-        } else if (type === 'resource') {
-            // 资源角色：只保留 :assigned 和 :self 权限
-            validPermissions = currentPermissions.filter((p: string) => p.endsWith(':assigned') || p.endsWith(':self'));
-        }
-
+        const allowed = getAllowedPermissionSet(type)
+        const validPermissions = currentPermissions.filter((p: string) => allowed.has(p))
         form.setFieldsValue({permissions: validPermissions});
     };
 
@@ -337,18 +383,17 @@ const RoleManagement: React.FC = () => {
             const values = await form.validateFields();
             const roleType = values.type as RoleType;
             let permissions = values.permissions || [];
+            const allowedPermissions = getAllowedPermissionSet(roleType)
 
             // 验证权限与角色类型匹配
             if (roleType === 'system') {
-                // 系统角色只能有 :all 权限
-                const invalidPerms = permissions.filter((p: string) => !p.endsWith(':all'));
+                const invalidPerms = permissions.filter((p: string) => !allowedPermissions.has(p));
                 if (invalidPerms.length > 0) {
                     message.error(t('role.management.invalidPermissionsForSystemRole'));
                     return;
                 }
             } else if (roleType === 'resource') {
-                // 资源角色只能有 :assigned 和 :self 权限
-                const invalidPerms = permissions.filter((p: string) => !p.endsWith(':assigned') && !p.endsWith(':self'));
+                const invalidPerms = permissions.filter((p: string) => !allowedPermissions.has(p));
                 if (invalidPerms.length > 0) {
                     message.error(t('role.management.invalidPermissionsForResourceRole'));
                     return;
@@ -647,7 +692,7 @@ const RoleManagement: React.FC = () => {
                     >
                         {({getFieldValue}) => {
                             const roleType = getFieldValue('type') as RoleType | undefined;
-                            const categories = getPermissionCategories(t, roleType);
+                            const categories = getPermissionCategories(t, roleType, getAllowedPermissionSet(roleType));
 
                             return (
                                 <Form.Item
@@ -656,7 +701,11 @@ const RoleManagement: React.FC = () => {
                                 >
                                     <Checkbox.Group className="w-full">
                                         <Card size="small" className="max-h-[400px] overflow-y-auto">
-                                            {!roleType ? (
+                                            {catalogLoading ? (
+                                                <div className="flex min-h-[120px] items-center justify-center">
+                                                    <Spin size="small"/>
+                                                </div>
+                                            ) : !roleType ? (
                                                 <div className="p-5 text-center text-gray-500">
                                                     {t('role.management.selectRoleTypeFirst')}
                                                 </div>

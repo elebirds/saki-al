@@ -65,18 +65,19 @@ async def list_users_simple(
         service: UserServiceDep,
         page: int = Query(1, ge=1),
         limit: int = Query(20, ge=1, le=200),
+        q: str | None = Query(default=None, description="Fuzzy search by email/full name"),
 ) -> PaginationResponse[UserListItem]:
     """
     List users with basic info only (for member selection).
     
     Requires user:list permission (not full user:read).
     """
-    users = await service.list_active_paginated(Pagination.from_page(page=page, limit=limit))
+    users = await service.list_active_paginated(Pagination.from_page(page=page, limit=limit), q=q)
     return users.map(UserListItem.model_validate)
 
 
 @router.get(
-    "/",
+    "",
     response_model=PaginationResponse[UserRead],
     dependencies=[Depends(require_permission(Permissions.USER_READ))],
     summary="List users with full details",
@@ -96,7 +97,7 @@ async def read_users(
 
 
 @router.post(
-    "/",
+    "",
     response_model=UserRead,
     dependencies=[Depends(require_permission(Permissions.USER_CREATE))],
     summary="Create new user",

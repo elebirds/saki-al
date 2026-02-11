@@ -38,7 +38,7 @@ router = APIRouter()
 # =============================================================================
 
 
-@router.post("/", response_model=ProjectRead, dependencies=[
+@router.post("", response_model=ProjectRead, dependencies=[
     Depends(require_permission(Permissions.PROJECT_CREATE_ALL))
 ])
 async def create_project(
@@ -72,7 +72,7 @@ async def create_project(
     return ProjectRead.model_validate(project_with_counts)
 
 
-@router.get("/", response_model=PaginationResponse[ProjectRead])
+@router.get("", response_model=PaginationResponse[ProjectRead])
 async def list_projects(
         *,
         current_user_id: uuid.UUID = Depends(get_current_user_id),

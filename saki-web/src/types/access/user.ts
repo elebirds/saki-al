@@ -10,6 +10,7 @@ export interface User {
     email: string;
     fullName?: string;
     isActive: boolean;
+    mustChangePassword?: boolean;
     avatarUrl?: string;
     createdAt: string;
     updatedAt: string;

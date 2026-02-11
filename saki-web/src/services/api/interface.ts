@@ -5,6 +5,7 @@ import {
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
+    ALLoop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -22,6 +23,31 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
+    RuntimeArtifactsResponse,
+    JobArtifactDownload,
+    RuntimeJob,
+    RuntimeJobCommandResponse,
+    RuntimeJobCreateRequest,
+    RuntimeJobEvent,
+    RuntimeMetricPoint,
+    RuntimeTopKCandidate,
+    LoopCreateRequest,
+    LoopRecoverRequest,
+    LoopUpdateRequest,
+    LoopRound,
+    LoopSummary,
+    SimulationExperimentCreateRequest,
+    SimulationExperimentCreateResponse,
+    SimulationExperimentCurves,
+    RuntimePluginCatalogResponse,
+    RuntimeExecutorListResponse,
+    RuntimeExecutorRead,
+    RuntimeExecutorStatsRange,
+    RuntimeExecutorStatsResponse,
+    AnnotationBatch,
+    AnnotationBatchItem,
+    ProjectModel,
+    ModelArtifactDownload,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
@@ -36,6 +62,7 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
+    UploadProgressEvent,
 } from '../../types';
 
 
@@ -165,6 +192,89 @@ export interface ApiService {
 
     getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
 
+    getProjectLoops(projectId: string): Promise<ALLoop[]>;
+
+    createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop>;
+
+    getLoopById(loopId: string): Promise<ALLoop>;
+
+    updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop>;
+
+    startLoop(loopId: string): Promise<ALLoop>;
+
+    recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop>;
+
+    pauseLoop(loopId: string): Promise<ALLoop>;
+
+    resumeLoop(loopId: string): Promise<ALLoop>;
+
+    stopLoop(loopId: string): Promise<ALLoop>;
+
+    getLoopRounds(loopId: string, limit?: number): Promise<LoopRound[]>;
+
+    getLoopSummary(loopId: string): Promise<LoopSummary>;
+
+    createSimulationExperiment(
+        projectId: string,
+        payload: SimulationExperimentCreateRequest
+    ): Promise<SimulationExperimentCreateResponse>;
+
+    getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves>;
+
+    getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
+
+    getLoopJobs(loopId: string, limit?: number): Promise<RuntimeJob[]>;
+
+    createLoopJob(loopId: string, payload: RuntimeJobCreateRequest, autoDispatch?: boolean): Promise<RuntimeJob>;
+
+    stopJob(jobId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
+
+    getJob(jobId: string): Promise<RuntimeJob>;
+
+    getJobEvents(jobId: string, afterSeq?: number): Promise<RuntimeJobEvent[]>;
+
+    getJobMetricSeries(jobId: string, limit?: number): Promise<RuntimeMetricPoint[]>;
+
+    getJobSamplingTopK(jobId: string, limit?: number): Promise<RuntimeTopKCandidate[]>;
+
+    getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse>;
+    getJobArtifactDownloadUrl(jobId: string, artifactName: string, expiresInHours?: number): Promise<JobArtifactDownload>;
+
+    getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;
+
+    getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse>;
+
+    getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
+
+    createAnnotationBatchFromJob(jobId: string, limit?: number): Promise<AnnotationBatch>;
+
+    getAnnotationBatch(batchId: string): Promise<AnnotationBatch>;
+
+    getAnnotationBatchItems(batchId: string, limit?: number): Promise<AnnotationBatchItem[]>;
+
+    registerModelFromJob(projectId: string, payload: {
+        jobId: string;
+        name?: string;
+        versionTag?: string;
+        status?: string;
+    }): Promise<ProjectModel>;
+
+    getProjectModels(projectId: string, limit?: number): Promise<ProjectModel[]>;
+
+    promoteModel(modelId: string, status?: string): Promise<ProjectModel>;
+
+    getModelArtifactDownloadUrl(modelId: string, artifactName: string, expiresInHours?: number): Promise<ModelArtifactDownload>;
+
+    getAssetDownloadUrl(
+        assetId: string,
+        expiresInHours?: number
+    ): Promise<{
+        assetId: string;
+        downloadUrl: string;
+        expiresIn: number;
+        filename?: string;
+    }>;
+
     createProjectBranch(
         projectId: string,
         payload: {
@@ -214,6 +324,7 @@ export interface ApiService {
         datasetId: string,
         params: {
             q?: string;
+            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;
@@ -260,7 +371,7 @@ export interface ApiService {
     uploadSamplesWithProgress(
         datasetId: string,
         files: File[],
-        onProgress: (event: any) => void,
+        onProgress: (event: UploadProgressEvent) => void,
         signal?: AbortSignal
     ): Promise<void>;
 }

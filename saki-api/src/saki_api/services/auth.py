@@ -5,7 +5,7 @@ This service orchestrates authentication operations by coordinating between:
 - UserService: User data operations
 - TokenService: Token creation and validation
 """
-import logging
+from loguru import logger
 import uuid
 
 from fastapi.security import OAuth2PasswordRequestForm
@@ -27,7 +27,6 @@ from saki_api.schemas.auth import LoginResponse
 from saki_api.services.token_service import TokenService
 from saki_api.services.user import UserService
 
-logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -112,7 +111,7 @@ class AuthService:
         default_role = await self.role_repo.get_default()
         if not default_role:
             # If no default role exists, skip assignment (should not happen in normal flow)
-            logger.error(f"Default role not found for user {user_id}")
+            logger.error("未找到默认角色，跳过用户默认角色分配 user_id={}", user_id)
             return
 
         role_in = UserSystemRoleCreate(

@@ -5,7 +5,7 @@ Provides a unified interface for annotation operations by combining
 dataset processing and annotation sync functionality.
 """
 
-import logging
+from loguru import logger
 from typing import Any, Dict, Optional
 
 from fastapi import UploadFile
@@ -23,7 +23,6 @@ from saki_api.modules.dataset_processing.base import (
     ProgressCallback,
 )
 
-logger = logging.getLogger(__name__)
 
 
 class AnnotationSystemFacade:
@@ -58,7 +57,7 @@ class AnnotationSystemFacade:
         """
         self.dataset_processor = dataset_processor
         self.sync_handler = sync_handler
-        self.logger = logging.getLogger(f"{__name__}.{dataset_processor.__class__.__name__}")
+        self.logger = logger.bind(component=f"{__name__}.{dataset_processor.__class__.__name__}")
 
     # ==================== Dataset Processing Methods ====================
 

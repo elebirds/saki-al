@@ -2,7 +2,7 @@
 Role Service - Business logic for Role operations.
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import Optional
 
@@ -27,7 +27,6 @@ from saki_api.schemas import RoleCreate, RoleUpdate, RoleRead, RolePermissionRea
 from saki_api.schemas.pagination import PaginationResponse
 from saki_api.services.base import BaseService
 
-logger = logging.getLogger(__name__)
 
 
 class RoleService(BaseService[Role, RoleRepository, RoleCreate, RoleUpdate]):

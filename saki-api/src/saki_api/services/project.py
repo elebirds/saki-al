@@ -3,34 +3,50 @@ Project Service - Business logic for Project operations.
 """
 
 import json
-import logging
 import uuid
-from typing import List
+from dataclasses import dataclass
+from typing import Any, List, Sequence, Set
 
+from sqlalchemy import asc, desc, func, or_
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppException, BadRequestAppException
-from saki_api.core.rbac.presets import DATASET_OWNER_ROLE_ID
+from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID
 from saki_api.db.transaction import transactional
 from saki_api.models import ResourceType
 from saki_api.models.enums import AuthorType
+from saki_api.models.l1.sample import Sample
+from saki_api.models.l2.annotation import Annotation
+from saki_api.models.l2.annotation_draft import AnnotationDraft
 from saki_api.models.l2.branch import Branch
+from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.project import Project, ProjectDataset
+from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
 from saki_api.models.rbac.resource_member import ResourceMember
+from saki_api.repositories.annotation import AnnotationRepository
+from saki_api.repositories.branch import BranchRepository
 from saki_api.repositories.dataset import DatasetRepository
 from saki_api.repositories.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
+from saki_api.repositories.query import Pagination
 from saki_api.repositories.resource_member import ResourceMemberRepository
 from saki_api.schemas.project import ProjectCreate, ProjectUpdate
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
+from saki_api.services.camap import CAMapService
 
-logger = logging.getLogger(__name__)
 
-# TODO: Define PROJECT_OWNER_ROLE_ID in presets
-PROJECT_OWNER_ROLE_ID = DATASET_OWNER_ROLE_ID  # Use same for now
+@dataclass
+class ProjectSamplePage:
+    samples: list[Sample]
+    total: int
+    offset: int
+    limit: int
+    annotation_counts: dict[uuid.UUID, int]
+    drafts_by_sample: set[uuid.UUID]
 
 
 class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, ProjectUpdate]):
@@ -263,6 +279,207 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         await self.get_by_id_or_raise(project_id)
         return await self.repository.get_linked_dataset_ids(project_id)
 
+    @staticmethod
+    def _empty_project_sample_page(limit: int) -> ProjectSamplePage:
+        return ProjectSamplePage(
+            samples=[],
+            total=0,
+            offset=0,
+            limit=limit,
+            annotation_counts={},
+            drafts_by_sample=set(),
+        )
+
+    def _build_project_sample_statement(
+            self,
+            *,
+            project_id: uuid.UUID,
+            dataset_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            branch_name: str,
+            q: str | None,
+            batch_id: uuid.UUID | None,
+            status: str,
+            sort_by: str,
+            sort_order: str,
+            head_commit_id: uuid.UUID | None,
+    ):
+        statement = select(Sample).where(Sample.dataset_id == dataset_id)
+        if q:
+            pattern = f"%{q}%"
+            statement = statement.where(
+                or_(
+                    Sample.name.ilike(pattern),
+                    Sample.remark.ilike(pattern),
+                )
+            )
+
+        if batch_id:
+            batch_stmt = (
+                select(AnnotationBatchItem.sample_id)
+                .join(AnnotationBatch, AnnotationBatch.id == AnnotationBatchItem.batch_id)
+                .where(
+                    AnnotationBatchItem.batch_id == batch_id,
+                    AnnotationBatch.project_id == project_id,
+                )
+            )
+            statement = statement.where(Sample.id.in_(batch_stmt))
+
+        labeled_subq = select(CommitAnnotationMap.sample_id).where(
+            CommitAnnotationMap.commit_id == head_commit_id
+        ).distinct()
+        if status == "labeled":
+            statement = statement.where(Sample.id.in_(labeled_subq))
+        elif status == "unlabeled":
+            statement = statement.where(~Sample.id.in_(labeled_subq))
+        elif status == "draft":
+            draft_subq = select(AnnotationDraft.sample_id).where(
+                AnnotationDraft.project_id == project_id,
+                AnnotationDraft.user_id == current_user_id,
+                AnnotationDraft.branch_name == branch_name,
+            ).distinct()
+            statement = statement.where(Sample.id.in_(draft_subq))
+
+        sort_map = {
+            "name": Sample.name,
+            "createdAt": Sample.created_at,
+            "updatedAt": Sample.updated_at,
+            "created_at": Sample.created_at,
+            "updated_at": Sample.updated_at,
+        }
+        sort_column = sort_map.get(sort_by, Sample.created_at)
+        order_clause = asc(sort_column) if sort_order == "asc" else desc(sort_column)
+        return statement.order_by(order_clause)
+
+    async def _query_project_samples_page_data(
+            self,
+            *,
+            statement,
+            page: int,
+            limit: int,
+    ) -> tuple[list[Sample], int, Pagination]:
+        pagination = Pagination.from_page(page=page, limit=limit)
+        count_stmt = select(func.count()).select_from(statement.subquery())
+        total_result = await self.session.exec(count_stmt)
+        total = total_result.one() or 0
+        if isinstance(total, (list, tuple)):
+            total = total[0]
+
+        rows = await self.session.exec(
+            statement.offset(pagination.offset).limit(pagination.limit)
+        )
+        return list(rows.all()), int(total), pagination
+
+    async def _query_project_sample_annotation_counts(
+            self,
+            *,
+            sample_ids: list[uuid.UUID],
+            head_commit_id: uuid.UUID | None,
+    ) -> dict[uuid.UUID, int]:
+        annotation_counts: dict[uuid.UUID, int] = {}
+        if not sample_ids or not head_commit_id:
+            return annotation_counts
+        count_statement = (
+            select(
+                CommitAnnotationMap.sample_id,
+                func.count(CommitAnnotationMap.annotation_id),
+            )
+            .where(
+                CommitAnnotationMap.commit_id == head_commit_id,
+                CommitAnnotationMap.sample_id.in_(sample_ids),
+            )
+            .group_by(CommitAnnotationMap.sample_id)
+        )
+        count_result = await self.session.exec(count_statement)
+        for sample_id_item, count in count_result.all():
+            annotation_counts[sample_id_item] = count
+        return annotation_counts
+
+    async def _query_project_sample_drafts(
+            self,
+            *,
+            project_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            branch_name: str,
+            sample_ids: list[uuid.UUID],
+    ) -> set[uuid.UUID]:
+        if not sample_ids:
+            return set()
+        draft_statement = select(AnnotationDraft.sample_id).where(
+            AnnotationDraft.project_id == project_id,
+            AnnotationDraft.user_id == current_user_id,
+            AnnotationDraft.branch_name == branch_name,
+            AnnotationDraft.sample_id.in_(sample_ids),
+        )
+        draft_result = await self.session.exec(draft_statement)
+        return {
+            row[0] if isinstance(row, (list, tuple)) else row
+            for row in draft_result.all()
+        }
+
+    async def list_project_samples_page(
+            self,
+            *,
+            project_id: uuid.UUID,
+            dataset_id: uuid.UUID,
+            current_user_id: uuid.UUID,
+            branch_name: str,
+            q: str | None,
+            batch_id: uuid.UUID | None,
+            status: str,
+            sort_by: str,
+            sort_order: str,
+            page: int,
+            limit: int,
+    ) -> ProjectSamplePage:
+        dataset_ids = await self.get_linked_datasets(project_id)
+        if dataset_id not in dataset_ids:
+            return self._empty_project_sample_page(limit)
+
+        branch_repo = BranchRepository(self.session)
+        branch = await branch_repo.get_by_name(project_id, branch_name)
+        if not branch:
+            return self._empty_project_sample_page(limit)
+        head_commit_id = branch.head_commit_id
+
+        statement = self._build_project_sample_statement(
+            project_id=project_id,
+            dataset_id=dataset_id,
+            current_user_id=current_user_id,
+            branch_name=branch_name,
+            q=q,
+            batch_id=batch_id,
+            status=status,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            head_commit_id=head_commit_id,
+        )
+        samples, total, pagination = await self._query_project_samples_page_data(
+            statement=statement,
+            page=page,
+            limit=limit,
+        )
+        sample_ids = [sample.id for sample in samples]
+        annotation_counts = await self._query_project_sample_annotation_counts(
+            sample_ids=sample_ids,
+            head_commit_id=head_commit_id,
+        )
+        drafts_by_sample = await self._query_project_sample_drafts(
+            project_id=project_id,
+            current_user_id=current_user_id,
+            branch_name=branch_name,
+            sample_ids=sample_ids,
+        )
+
+        return ProjectSamplePage(
+            samples=samples,
+            total=total,
+            offset=pagination.offset,
+            limit=pagination.limit,
+            annotation_counts=annotation_counts,
+            drafts_by_sample=drafts_by_sample,
+        )
+
     # =========================================================================
     # Project Member Management (similar to DatasetService)
     # =========================================================================
@@ -417,6 +634,201 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
     # Annotation Save Workflow (L2 Core Transaction)
     # =========================================================================
 
+    @staticmethod
+    def _normalize_annotation_scalar(value: object) -> str | None:
+        if value is None:
+            return None
+        return str(value)
+
+    @classmethod
+    def _normalize_annotation_item(cls, item: dict) -> dict:
+        ann_type = item.get("type")
+        ann_source = item.get("source")
+        return {
+            "group_id": cls._normalize_annotation_scalar(item.get("group_id") or item.get("groupId")),
+            "lineage_id": cls._normalize_annotation_scalar(item.get("lineage_id") or item.get("lineageId")),
+            "label_id": cls._normalize_annotation_scalar(item.get("label_id")),
+            "view_role": item.get("view_role") or item.get("viewRole") or "main",
+            "type": ann_type.value if hasattr(ann_type, "value") else str(ann_type),
+            "source": ann_source.value if hasattr(ann_source, "value") else str(ann_source or "manual"),
+            "data": item.get("data") or {},
+            "extra": item.get("extra") or {},
+            "confidence": float(item.get("confidence") or 1.0),
+            "annotator_id": cls._normalize_annotation_scalar(item.get("annotator_id") or item.get("annotatorId")),
+        }
+
+    @classmethod
+    def _is_same_annotation_item(cls, change_item: dict, existing: Annotation) -> bool:
+        change_norm = cls._normalize_annotation_item(change_item)
+        existing_norm = cls._normalize_annotation_item({
+            "group_id": existing.group_id,
+            "lineage_id": existing.lineage_id,
+            "label_id": existing.label_id,
+            "view_role": existing.view_role,
+            "type": existing.type,
+            "source": existing.source,
+            "data": existing.data,
+            "extra": existing.extra,
+            "confidence": existing.confidence,
+            "annotator_id": existing.annotator_id,
+        })
+        return json.dumps(change_norm, sort_keys=True) == json.dumps(existing_norm, sort_keys=True)
+
+    def _group_annotation_changes(
+            self,
+            *,
+            annotation_changes: Sequence[dict],
+            project_id: uuid.UUID,
+            author_id: uuid.UUID,
+    ) -> dict[uuid.UUID, list[dict]]:
+        draft_by_sample: dict[uuid.UUID, list[dict]] = {}
+        for change in annotation_changes:
+            normalized = dict(change)
+            sample_id_value = normalized.get("sample_id") or normalized.get("sampleId")
+            if not sample_id_value:
+                raise BadRequestAppException("annotation sample_id is required")
+            sample_id = uuid.UUID(str(sample_id_value))
+            normalized["sample_id"] = sample_id
+            normalized["project_id"] = uuid.UUID(str(normalized.get("project_id") or project_id))
+            normalized["annotator_id"] = uuid.UUID(str(normalized.get("annotator_id") or author_id))
+            normalized["view_role"] = normalized.get("view_role") or normalized.get("viewRole") or "main"
+            normalized["source"] = normalized.get("source") or "manual"
+            normalized["id"] = normalized.get("id") or normalized.get("annotation_id")
+            normalized["group_id"] = normalized.get("group_id") or normalized.get("groupId")
+            normalized["lineage_id"] = normalized.get("lineage_id") or normalized.get("lineageId")
+            if not normalized["group_id"]:
+                raise BadRequestAppException("annotation group_id is required")
+            if not normalized["lineage_id"]:
+                raise BadRequestAppException("annotation lineage_id is required")
+            draft_by_sample.setdefault(sample_id, []).append(normalized)
+        return draft_by_sample
+
+    async def _load_existing_annotations_by_sample(
+            self,
+            *,
+            annotation_repo: AnnotationRepository,
+            current_head_id: uuid.UUID | None,
+            touched_sample_ids: Set[uuid.UUID],
+    ) -> dict[uuid.UUID, list[Annotation]]:
+        existing_by_sample: dict[uuid.UUID, list[Annotation]] = {}
+        if not current_head_id:
+            return existing_by_sample
+        for sample_id in touched_sample_ids:
+            existing = await annotation_repo.get_by_commit_and_sample(current_head_id, sample_id)
+            existing_by_sample[sample_id] = list(existing)
+        return existing_by_sample
+
+    def _build_annotations_for_samples(
+            self,
+            *,
+            project_id: uuid.UUID,
+            author_id: uuid.UUID,
+            draft_by_sample: dict[uuid.UUID, list[dict]],
+            existing_by_sample: dict[uuid.UUID, list[Annotation]],
+            touched_sample_ids: Set[uuid.UUID],
+    ) -> tuple[list[Annotation], list[tuple[uuid.UUID, uuid.UUID]]]:
+        new_annotations: list[Annotation] = []
+        camap_mappings: list[tuple[uuid.UUID, uuid.UUID]] = []
+
+        for sample_id in touched_sample_ids:
+            draft_items = draft_by_sample.get(sample_id, [])
+            existing_list = existing_by_sample.get(sample_id, [])
+            existing_by_lineage: dict[str, Annotation] = {
+                str(ann.lineage_id): ann for ann in existing_list
+            }
+
+            for item in draft_items:
+                lineage_id = str(item.get("lineage_id"))
+                existing_ann = existing_by_lineage.get(lineage_id)
+                if existing_ann and self._is_same_annotation_item(item, existing_ann):
+                    camap_mappings.append((sample_id, existing_ann.id))
+                    continue
+
+                annotation = Annotation(
+                    project_id=item.get("project_id") or project_id,
+                    sample_id=sample_id,
+                    label_id=item.get("label_id"),
+                    group_id=item.get("group_id"),
+                    lineage_id=item.get("lineage_id"),
+                    parent_id=existing_ann.id if existing_ann else None,
+                    view_role=item.get("view_role") or "main",
+                    type=item.get("type"),
+                    source=item.get("source") or "manual",
+                    data=item.get("data") or {},
+                    extra=item.get("extra") or {},
+                    confidence=float(item.get("confidence") or 1.0),
+                    annotator_id=item.get("annotator_id") or author_id,
+                )
+                self.session.add(annotation)
+                new_annotations.append(annotation)
+
+        return new_annotations, camap_mappings
+
+    async def _append_new_annotation_mappings(
+            self,
+            *,
+            new_annotations: list[Annotation],
+            camap_mappings: list[tuple[uuid.UUID, uuid.UUID]],
+    ) -> None:
+        await self.session.flush()
+        for ann in new_annotations:
+            await self.session.refresh(ann)
+            camap_mappings.append((ann.sample_id, ann.id))
+
+    async def _create_user_commit(
+            self,
+            *,
+            project_id: uuid.UUID,
+            parent_id: uuid.UUID | None,
+            commit_message: str,
+            author_id: uuid.UUID,
+    ) -> Commit:
+        new_commit = Commit(
+            project_id=project_id,
+            parent_id=parent_id,
+            message=commit_message,
+            author_type=AuthorType.USER,
+            author_id=author_id,
+            stats={},
+        )
+        self.session.add(new_commit)
+        await self.session.flush()
+        await self.session.refresh(new_commit)
+        return new_commit
+
+    async def _apply_camap_for_commit(
+            self,
+            *,
+            camap_service: CAMapService,
+            project_id: uuid.UUID,
+            current_head_id: uuid.UUID | None,
+            new_commit: Commit,
+            touched_sample_ids: Set[uuid.UUID],
+            camap_mappings: list[tuple[uuid.UUID, uuid.UUID]],
+    ) -> None:
+        if current_head_id:
+            await camap_service.copy_commit_state(
+                source_commit_id=current_head_id,
+                target_commit_id=new_commit.id,
+                project_id=project_id,
+            )
+
+        for sample_id in touched_sample_ids:
+            await camap_service.camap_repo.delete_commit_sample_state(
+                commit_id=new_commit.id,
+                sample_id=sample_id,
+            )
+
+        if camap_mappings:
+            await camap_service.camap_repo.set_commit_state(
+                commit_id=new_commit.id,
+                mappings=camap_mappings,
+                project_id=project_id,
+            )
+
+        new_commit.stats = await camap_service.get_commit_stats(new_commit.id)
+        await self.session.flush()
+
     @transactional
     async def save_annotations(
             self,
@@ -448,178 +860,52 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         Returns:
             Created Commit
         """
-        from saki_api.repositories.annotation import AnnotationRepository
-        from saki_api.repositories.branch import BranchRepository
-        from saki_api.repositories.commit import CommitRepository
-        from saki_api.services.camap import CAMapService
-        from saki_api.models.l2.annotation import Annotation
-        from saki_api.models.l2.commit import Commit
-
-        # 1. Get current branch
         branch_repo = BranchRepository(self.session)
         branch = await branch_repo.get_by_name(project_id, branch_name)
         if not branch:
             raise NotFoundAppException(f"Branch '{branch_name}' not found in project")
 
-        # 2. Get current HEAD commit
-        commit_repo = CommitRepository(self.session)
         current_head_id = branch.head_commit_id
-
         annotation_repo = AnnotationRepository(self.session)
         camap_service = CAMapService(self.session)
+        draft_by_sample = self._group_annotation_changes(
+            annotation_changes=annotation_changes,
+            project_id=project_id,
+            author_id=author_id,
+        )
+        touched_sample_set = set(touched_sample_ids or draft_by_sample.keys())
 
-        def normalize_value(value: object) -> str | None:
-            if value is None:
-                return None
-            return str(value)
+        existing_by_sample = await self._load_existing_annotations_by_sample(
+            annotation_repo=annotation_repo,
+            current_head_id=current_head_id,
+            touched_sample_ids=touched_sample_set,
+        )
+        new_annotations, camap_mappings = self._build_annotations_for_samples(
+            project_id=project_id,
+            author_id=author_id,
+            draft_by_sample=draft_by_sample,
+            existing_by_sample=existing_by_sample,
+            touched_sample_ids=touched_sample_set,
+        )
+        await self._append_new_annotation_mappings(
+            new_annotations=new_annotations,
+            camap_mappings=camap_mappings,
+        )
 
-        def normalize_item(item: dict) -> dict:
-            ann_type = item.get("type")
-            ann_source = item.get("source")
-            return {
-                "group_id": normalize_value(item.get("group_id") or item.get("groupId")),
-                "lineage_id": normalize_value(item.get("lineage_id") or item.get("lineageId")),
-                "label_id": normalize_value(item.get("label_id")),
-                "view_role": item.get("view_role") or item.get("viewRole") or "main",
-                "type": ann_type.value if hasattr(ann_type, "value") else str(ann_type),
-                "source": ann_source.value if hasattr(ann_source, "value") else str(ann_source or "manual"),
-                "data": item.get("data") or {},
-                "extra": item.get("extra") or {},
-                "confidence": float(item.get("confidence") or 1.0),
-                "annotator_id": normalize_value(item.get("annotator_id") or item.get("annotatorId")),
-            }
-
-        def is_same(change_item: dict, existing: Annotation) -> bool:
-            change_norm = normalize_item(change_item)
-            existing_norm = normalize_item({
-                "group_id": existing.group_id,
-                "lineage_id": existing.lineage_id,
-                "label_id": existing.label_id,
-                "view_role": existing.view_role,
-                "type": existing.type,
-                "source": existing.source,
-                "data": existing.data,
-                "extra": existing.extra,
-                "confidence": existing.confidence,
-                "annotator_id": existing.annotator_id,
-            })
-            return json.dumps(change_norm, sort_keys=True) == json.dumps(existing_norm, sort_keys=True)
-
-        # Group draft items by sample_id
-        draft_by_sample: dict[uuid.UUID, List[dict]] = {}
-        for change in annotation_changes:
-            sample_id_value = change.get("sample_id") or change.get("sampleId")
-            if not sample_id_value:
-                raise BadRequestAppException("annotation sample_id is required")
-            sample_id = uuid.UUID(str(sample_id_value))
-            change["sample_id"] = sample_id
-            change["project_id"] = uuid.UUID(str(change.get("project_id") or project_id))
-            change["annotator_id"] = uuid.UUID(str(change.get("annotator_id") or author_id))
-            change["view_role"] = change.get("view_role") or change.get("viewRole") or "main"
-            change["source"] = change.get("source") or "manual"
-            change["id"] = change.get("id") or change.get("annotation_id")
-            change["group_id"] = change.get("group_id") or change.get("groupId")
-            change["lineage_id"] = change.get("lineage_id") or change.get("lineageId")
-            if not change["group_id"]:
-                raise BadRequestAppException("annotation group_id is required")
-            if not change["lineage_id"]:
-                raise BadRequestAppException("annotation lineage_id is required")
-            draft_by_sample.setdefault(sample_id, []).append(change)
-
-        touched_sample_ids = set(touched_sample_ids or draft_by_sample.keys())
-
-        # Build existing list for touched samples
-        existing_by_sample: dict[uuid.UUID, list[Annotation]] = {}
-        if current_head_id:
-            for sample_id in touched_sample_ids:
-                existing = await annotation_repo.get_by_commit_and_sample(current_head_id, sample_id)
-                existing_by_sample[sample_id] = list(existing)
-
-        new_annotations: List[Annotation] = []
-        camap_mappings: List[tuple[uuid.UUID, uuid.UUID]] = []
-
-        for sample_id in touched_sample_ids:
-            draft_items = draft_by_sample.get(sample_id, [])
-            existing_list = existing_by_sample.get(sample_id, [])
-            existing_by_lineage: dict[str, Annotation] = {
-                str(ann.lineage_id): ann for ann in existing_list
-            }
-
-            for item in draft_items:
-                lineage_id = str(item.get("lineage_id"))
-                existing_ann = existing_by_lineage.get(lineage_id)
-
-                if existing_ann and is_same(item, existing_ann):
-                    camap_mappings.append((sample_id, existing_ann.id))
-                    continue
-
-                parent_id = existing_ann.id if existing_ann else None
-                item_payload = {
-                    "project_id": item.get("project_id") or project_id,
-                    "sample_id": sample_id,
-                    "label_id": item.get("label_id"),
-                    "group_id": item.get("group_id"),
-                    "lineage_id": item.get("lineage_id"),
-                    "parent_id": parent_id,
-                    "view_role": item.get("view_role") or "main",
-                    "type": item.get("type"),
-                    "source": item.get("source") or "manual",
-                    "data": item.get("data") or {},
-                    "extra": item.get("extra") or {},
-                    "confidence": float(item.get("confidence") or 1.0),
-                    "annotator_id": item.get("annotator_id") or author_id,
-                }
-
-                annotation = Annotation(**item_payload)
-                self.session.add(annotation)
-                new_annotations.append(annotation)
-
-            # Items present in existing but not in draft are treated as deletions
-
-        await self.session.flush()
-
-        for ann in new_annotations:
-            await self.session.refresh(ann)
-            camap_mappings.append((ann.sample_id, ann.id))
-
-        # 4. Create new Commit
-        new_commit = Commit(
+        new_commit = await self._create_user_commit(
             project_id=project_id,
             parent_id=current_head_id,
-            message=commit_message,
-            author_type=AuthorType.USER,
+            commit_message=commit_message,
             author_id=author_id,
-            stats={},
         )
-        self.session.add(new_commit)
-        await self.session.flush()
-        await self.session.refresh(new_commit)
-
-        # 5. Create CAMap entries
-        if current_head_id:
-            await camap_service.copy_commit_state(
-                source_commit_id=current_head_id,
-                target_commit_id=new_commit.id,
-                project_id=project_id,
-            )
-
-        for sample_id in touched_sample_ids:
-            await camap_service.camap_repo.delete_commit_sample_state(
-                commit_id=new_commit.id,
-                sample_id=sample_id,
-            )
-
-        if camap_mappings:
-            await camap_service.camap_repo.set_commit_state(
-                commit_id=new_commit.id,
-                mappings=camap_mappings,
-                project_id=project_id,
-            )
-
-        new_commit.stats = await camap_service.get_commit_stats(new_commit.id)
-        await self.session.flush()
-
-        # 6. Update branch HEAD
+        await self._apply_camap_for_commit(
+            camap_service=camap_service,
+            project_id=project_id,
+            current_head_id=current_head_id,
+            new_commit=new_commit,
+            touched_sample_ids=touched_sample_set,
+            camap_mappings=camap_mappings,
+        )
         await branch_repo.update_head(branch.id, new_commit.id)
 
         await self.session.refresh(new_commit)

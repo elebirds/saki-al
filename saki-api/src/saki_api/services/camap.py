@@ -2,7 +2,7 @@
 CAMap Service - Business logic for CommitAnnotationMap operations.
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import List, Dict
 
@@ -13,7 +13,6 @@ from saki_api.repositories.annotation import AnnotationRepository
 from saki_api.repositories.camap import CAMapRepository
 from saki_api.repositories.commit import CommitRepository
 
-logger = logging.getLogger(__name__)
 
 
 class CAMapService:

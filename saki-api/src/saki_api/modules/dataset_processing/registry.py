@@ -4,14 +4,13 @@ Processor registry for dataset processors.
 Provides automatic registration and retrieval of processors.
 """
 
-import logging
+from loguru import logger
 from typing import Dict, Optional, Type
 
 from saki_api.models.enums import DatasetType
 from saki_api.modules.dataset_processing.base import BaseDatasetProcessor
 from saki_api.modules.registry_base import HandlerRegistryMixin
 
-logger = logging.getLogger(__name__)
 
 
 class ProcessorRegistry(HandlerRegistryMixin):
@@ -76,6 +75,6 @@ def discover_processors() -> None:
     for module_name in processor_modules:
         try:
             importlib.import_module(module_name)
-            logger.info(f"Loaded processor: {module_name}")
+            logger.info("已加载数据处理器模块 module={}", module_name)
         except ImportError as e:
-            logger.warning(f"Could not load processor {module_name}: {e}")
+            logger.warning("加载数据处理器模块失败 module={} error={}", module_name, e)

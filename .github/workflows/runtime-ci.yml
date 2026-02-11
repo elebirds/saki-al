@@ -1,0 +1,46 @@
+name: Runtime CI
+
+on:
+  push:
+    branches:
+      - main
+      - refactor/runtime
+      - "codex/**"
+  pull_request:
+
+jobs:
+  saki-api-runtime-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Run runtime tests (saki-api)
+        working-directory: saki-api
+        run: uv run --with pytest pytest tests/runtime -q
+
+  saki-executor-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Run tests (saki-executor)
+        working-directory: saki-executor
+        run: uv run --with pytest pytest tests -q

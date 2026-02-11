@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Button, Form, message, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Typography} from 'antd';
+import {Button, Form, message, Modal, Popconfirm, Select, Spin, Table, Tag, Typography} from 'antd';
 import {DeleteOutlined, EditOutlined, UserAddOutlined} from '@ant-design/icons';
 import {ResourceMember, RoleInfo} from '../../types';
 import {api} from '../../services/api';
@@ -155,7 +155,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
             render: (_: any, record: ResourceMember) => {
                 const isOwnerMember = isDatasetOwner(record.userId);
                 return (
-                    <Space size="middle">
+                    <div className="flex items-center gap-3">
                         <Button
                             type="link"
                             icon={<EditOutlined/>}
@@ -180,7 +180,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId, ownerId}) => 
                                 {t('common.delete')}
                             </Button>
                         </Popconfirm>
-                    </Space>
+                    </div>
                 );
             },
         },

@@ -108,6 +108,24 @@ class BaseStorageProvider(ABC):
         pass
 
     @abstractmethod
+    def get_presigned_put_url(
+            self,
+            object_name: str,
+            expires_delta: timedelta = timedelta(hours=1),
+    ) -> str:
+        """
+        生成用于上传的预签名 URL。
+
+        Args:
+            object_name: 目标对象名称
+            expires_delta: URL 过期时间
+
+        Returns:
+            预签名 PUT URL
+        """
+        pass
+
+    @abstractmethod
     def download_file(
             self,
             object_name: str,
@@ -342,6 +360,24 @@ class MinioStorageProvider(BaseStorageProvider):
 
         except S3Error as e:
             raise StorageError(f"Failed to generate presigned URL: {e}") from e
+
+    def get_presigned_put_url(
+            self,
+            object_name: str,
+            expires_delta: timedelta = timedelta(hours=1),
+    ) -> str:
+        """
+        生成 MinIO 预签名 PUT URL。
+        """
+        try:
+            return self.client.get_presigned_url(
+                method="PUT",
+                bucket_name=self.bucket_name,
+                object_name=object_name,
+                expires=expires_delta,
+            )
+        except S3Error as e:
+            raise StorageError(f"Failed to generate presigned PUT URL: {e}") from e
 
     def download_file(
             self,

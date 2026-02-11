@@ -119,6 +119,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                             trigger={['hover']}
                             menu={{
                                 items: languageMenuItems,
+                                selectable: true,
+                                selectedKeys: [language],
                                 onClick: (info) => onLanguageChange(String(info.key)),
                             }}
                         >

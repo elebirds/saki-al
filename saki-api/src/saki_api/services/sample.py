@@ -8,9 +8,9 @@ Manages sample creation workflow including:
 - Metadata extraction
 """
 
-import logging
+from loguru import logger
 import uuid
-from typing import List, Optional
+from typing import Any, AsyncIterator, List, Optional
 
 from fastapi import UploadFile
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -20,12 +20,11 @@ from saki_api.models.enums import DatasetType
 from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l1.sample import Sample
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
-from saki_api.modules.dataset_processing.base import UploadContext, ProgressCallback
+from saki_api.modules.dataset_processing.base import UploadContext, ProgressCallback, EventType, ProgressInfo
 from saki_api.repositories.sample import SampleRepository
 from saki_api.schemas.sample import SampleRead
 from saki_api.services.base import BaseService
 
-logger = logging.getLogger(__name__)
 
 
 class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead]):
@@ -107,7 +106,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             upload_context
         )
         if not is_valid:
-            logger.error(f"File validation failed: {error_msg}")
+            logger.error("文件校验失败 error={}", error_msg)
             raise BadRequestAppException(f"File validation failed: {error_msg}")
 
     async def _process_single_file(
@@ -172,7 +171,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             sample.meta_info.update(process_result.sample_fields["meta_info"])
 
         created_sample = await self.repository.create(sample.model_dump())
-        logger.debug(f"Created sample: {created_sample.id}")
+        logger.debug("已创建样本 sample_id={}", created_sample.id)
 
         return SampleRead.model_validate(created_sample)
 
@@ -201,7 +200,12 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             BadRequestAppException: If upload fails
         """
         created_samples = []
-        logger.info(f"Processing {len(files)} files for dataset {dataset.id} (type={dataset.type})")
+        logger.info(
+            "开始批量处理数据集文件 dataset_id={} dataset_type={} file_count={}",
+            dataset.id,
+            dataset.type,
+            len(files),
+        )
 
         # Initialize facade and upload context
         facade = self._initialize_handler(dataset.type)
@@ -210,7 +214,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         # Process each file
         for file in files:
             try:
-                logger.debug(f"Processing file: {file.filename}")
+                logger.debug("开始处理文件 filename={}", file.filename)
 
                 # Validate file
                 await self._validate_file(file, facade, upload_context)
@@ -223,10 +227,10 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
                 created_samples.append(created_sample)
 
             except Exception as e:
-                logger.error(f"Failed to process file {file.filename}: {str(e)}", exc_info=True)
+                logger.exception("处理文件失败 filename={} error={}", file.filename, e)
                 raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
 
-        logger.info(f"Successfully created {len(created_samples)} samples")
+        logger.info("批量处理完成，成功创建样本数量={}", len(created_samples))
         return created_samples
 
     async def process_single_file_with_progress(
@@ -254,7 +258,12 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         Raises:
             BadRequestAppException: If upload fails
         """
-        logger.info(f"Processing file {file.filename} for dataset {dataset.id} (type={dataset.type})")
+        logger.info(
+            "开始处理单文件 dataset_id={} dataset_type={} filename={}",
+            dataset.id,
+            dataset.type,
+            file.filename,
+        )
 
         # Initialize facade and upload context
         facade = self._initialize_handler(dataset.type)
@@ -274,12 +283,168 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
 
             # Create sample record
             created_sample = await self._create_sample_from_result(dataset.id, process_result)
-            logger.info(f"Successfully created sample: {created_sample.id}")
+            logger.info("单文件处理成功，样本已创建 sample_id={}", created_sample.id)
             return created_sample
 
         except Exception as e:
-            logger.error(f"Failed to process file {file.filename}: {str(e)}", exc_info=True)
+            logger.exception("单文件处理失败 filename={} error={}", file.filename, e)
             raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
+
+    @staticmethod
+    def _build_progress_event(
+            *,
+            index: int,
+            filename: str,
+            progress: ProgressInfo,
+    ) -> dict[str, Any]:
+        return {
+            "event": "progress",
+            "file_index": index,
+            "filename": filename,
+            "stage": progress.stage,
+            "message": progress.message,
+            "percentage": progress.percentage,
+            "current": progress.current,
+            "total": progress.total,
+        }
+
+    async def _process_single_file_with_collected_progress(
+            self,
+            *,
+            dataset: Dataset,
+            file: UploadFile,
+            index: int,
+            facade,
+            upload_context: UploadContext,
+    ) -> tuple[SampleRead | None, Exception | None, list[dict[str, Any]]]:
+        filename = file.filename or ""
+        progress_events: list[dict[str, Any]] = []
+
+        def progress_callback(event_type: EventType, progress: ProgressInfo):
+            del event_type
+            progress_events.append(
+                self._build_progress_event(
+                    index=index,
+                    filename=filename,
+                    progress=progress,
+                )
+            )
+
+        created_sample: SampleRead | None = None
+        processing_error: Exception | None = None
+        try:
+            await self._validate_file(file, facade, upload_context)
+            process_result = await self._process_single_file(
+                file,
+                facade,
+                upload_context,
+                progress_callback=progress_callback,
+            )
+            created_sample = await self._create_sample_from_result(dataset.id, process_result)
+        except Exception as exc:
+            processing_error = exc
+            logger.exception("文件上传失败 filename={} error={}", filename, exc)
+
+        return created_sample, processing_error, progress_events
+
+    @staticmethod
+    def _build_file_complete_event(
+            *,
+            index: int,
+            filename: str,
+            sample_id: str,
+    ) -> dict[str, Any]:
+        return {
+            "event": "file_complete",
+            "index": index,
+            "filename": filename,
+            "success": True,
+            "sample_id": sample_id,
+        }
+
+    @staticmethod
+    def _build_file_error_event(
+            *,
+            index: int,
+            filename: str,
+            error: str,
+    ) -> dict[str, Any]:
+        return {
+            "event": "file_error",
+            "index": index,
+            "filename": filename,
+            "error": error,
+        }
+
+    @staticmethod
+    def _build_complete_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+        success_count = sum(1 for item in results if item.get("status") == "success")
+        error_count = len(results) - success_count
+        return {
+            "event": "complete",
+            "uploaded": success_count,
+            "errors": error_count,
+            "results": results,
+        }
+
+    async def iter_upload_progress_events(
+            self,
+            *,
+            dataset: Dataset,
+            files: List[UploadFile],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        Stream upload progress events for a batch of files.
+        """
+        results: list[dict[str, Any]] = []
+        yield {"event": "start", "total": len(files)}
+
+        facade = self._initialize_handler(dataset.type)
+        upload_context = self._build_upload_context(dataset.id)
+
+        for index, file in enumerate(files):
+            filename = file.filename or ""
+            yield {"event": "file_start", "index": index, "filename": filename}
+            created_sample, processing_error, progress_events = await self._process_single_file_with_collected_progress(
+                dataset=dataset,
+                file=file,
+                index=index,
+                facade=facade,
+                upload_context=upload_context,
+            )
+
+            for event in progress_events:
+                yield event
+
+            if processing_error is None and created_sample is not None:
+                results.append(
+                    {
+                        "id": str(created_sample.id),
+                        "filename": filename,
+                        "status": "success",
+                    }
+                )
+                yield self._build_file_complete_event(
+                    index=index,
+                    filename=filename,
+                    sample_id=str(created_sample.id),
+                )
+            else:
+                error_text = str(processing_error) if processing_error is not None else "unknown error"
+                results.append(
+                    {
+                        "filename": filename,
+                        "status": "error",
+                        "error": error_text,
+                    }
+                )
+                yield self._build_file_error_event(
+                    index=index,
+                    filename=filename,
+                    error=error_text,
+                )
+
+        yield self._build_complete_summary(results)
 
     async def get_asset_for_sample(
             self,
@@ -307,7 +472,12 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
         try:
             return uuid.UUID(sample.asset_group[asset_key])
         except (ValueError, TypeError):
-            logger.error(f"Invalid asset ID in sample {sample_id}: {sample.asset_group.get(asset_key)}")
+            logger.error(
+                "样本中的资产 ID 无效 sample_id={} asset_key={} asset_id={}",
+                sample_id,
+                asset_key,
+                sample.asset_group.get(asset_key),
+            )
             return None
 
     async def get_all_assets_for_sample(
@@ -333,7 +503,7 @@ class SampleService(BaseService[Sample, SampleRepository, SampleRead, SampleRead
             try:
                 asset_ids.append(uuid.UUID(asset_id_str))
             except (ValueError, TypeError):
-                logger.warning(f"Invalid asset ID in sample {sample_id}: {asset_id_str}")
+                logger.warning("样本中的资产 ID 无效 sample_id={} asset_id={}", sample_id, asset_id_str)
 
         return asset_ids
 

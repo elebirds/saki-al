@@ -1,8 +1,9 @@
 import React, {useEffect, useState} from 'react';
-import {Button, Empty, message, Modal, Space, Spin, Table, Tag, Tooltip} from 'antd';
+import {Button, Empty, message, Modal, Spin, Table, Tag, Tooltip} from 'antd';
 import {DownloadOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {Sample} from '../../types';
+import {api} from '../../services/api';
 
 interface SampleAssetModalProps {
     open: boolean;
@@ -61,16 +62,8 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
 
     const handleDownloadAsset = async (assetId: string, displayName: string) => {
         try {
-            const response = await fetch(`/api/v1/assets/${assetId}/download-url`, {
-                method: 'GET',
-            });
-
-            if (!response.ok) {
-                throw new Error('Download failed');
-            }
-
-            const data = await response.json();
-            const downloadUrl = data.download_url as string | undefined;
+            const data = await api.getAssetDownloadUrl(assetId);
+            const downloadUrl = data.downloadUrl as string | undefined;
             const filename = (data.filename as string | undefined) ?? `${sample?.name}_${displayName}`;
 
             if (!downloadUrl) {
@@ -97,10 +90,10 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
             render: (_: string, asset: AssetInfo) => {
                 const isPrimaryAsset = asset.assetId === sample?.primaryAssetId;
                 return (
-                    <Space>
+                    <div className="flex items-center gap-2">
                         <span>{asset.displayName}</span>
                         {isPrimaryAsset && <Tag color="blue">{t('dataset.sampleAssets.primary')}</Tag>}
-                    </Space>
+                    </div>
                 );
             },
         },
@@ -116,7 +109,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
             title: t('common.actions'),
             key: 'actions',
             render: (_: string, asset: AssetInfo) => (
-                <Space>
+                <div className="flex items-center gap-2">
                     <Tooltip title={t('common.download')}>
                         <Button
                             type="text"
@@ -125,7 +118,7 @@ const SampleAssetModal: React.FC<SampleAssetModalProps> = ({open, sample, onClos
                             onClick={() => handleDownloadAsset(asset.assetId, asset.displayName)}
                         />
                     </Tooltip>
-                </Space>
+                </div>
             ),
         },
     ];

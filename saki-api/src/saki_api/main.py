@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,19 +12,11 @@ from saki_api.core.exceptions import (
     http_exception_handler,
     general_exception_handler
 )
+from saki_api.core.logging import setup_logging
 from saki_api.db.session import init_db, dispose_engine
+from saki_api.grpc.runtime_control import runtime_grpc_server
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
-
-
-def setup_logging():
-    """配置应用日志系统"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    # 设置 SQLAlchemy 日志级别为 WARNING，避免过多的 SQL 日志
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+from saki_api.services.loop_orchestrator import loop_orchestrator
 
 
 @asynccontextmanager
@@ -37,13 +28,24 @@ async def lifespan(app: FastAPI):
     Shutdown: 优雅关闭数据库连接池
     """
     # Startup
-    setup_logging()
+    setup_logging(
+        level=settings.LOG_LEVEL,
+        log_dir=settings.LOG_DIR,
+        log_file_name=settings.LOG_FILE_NAME,
+        max_bytes=settings.LOG_MAX_BYTES,
+        backup_count=settings.LOG_BACKUP_COUNT,
+        color_mode=settings.LOG_COLOR_MODE,
+    )
     await init_db()
     AnnotationSystemFactory.discover_all()  # 初始化annotation handlers
+    await runtime_grpc_server.start()
+    await loop_orchestrator.start()
 
     yield
 
     # Shutdown: 优雅关闭连接池
+    await loop_orchestrator.stop()
+    await runtime_grpc_server.stop()
     await dispose_engine()
 
 

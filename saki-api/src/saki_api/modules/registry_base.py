@@ -8,13 +8,12 @@ Each registry class should implement its own singleton pattern (__new__, get_ins
 and inherit these methods for common functionality.
 """
 
-import logging
+from loguru import logger
 from typing import Dict, Type
 
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.models.enums import DatasetType
 
-logger = logging.getLogger(__name__)
 
 
 class HandlerRegistryMixin:
@@ -63,7 +62,7 @@ class HandlerRegistryMixin:
         if not hasattr(self, '_handlers'):
             self._handlers = {}
         self._handlers[system_type] = handler_class
-        logger.info(f"Registered handler: {handler_class.__name__} for {system_type.value}")
+        logger.info("已注册处理器 handler={} system_type={}", handler_class.__name__, system_type.value)
         return handler_class
 
     def get(self, system_type: DatasetType, cached: bool = True) -> object:

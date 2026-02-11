@@ -4,14 +4,13 @@ Sync handler registry for annotation sync handlers.
 Provides automatic registration and retrieval of sync handlers.
 """
 
-import logging
+from loguru import logger
 from typing import Dict, Optional, Type
 
 from saki_api.models.enums import DatasetType
 from saki_api.modules.annotation_sync.base import BaseAnnotationSyncHandler
 from saki_api.modules.registry_base import HandlerRegistryMixin
 
-logger = logging.getLogger(__name__)
 
 
 class SyncHandlerRegistry(HandlerRegistryMixin):
@@ -76,6 +75,6 @@ def discover_sync_handlers() -> None:
     for module_name in handler_modules:
         try:
             importlib.import_module(module_name)
-            logger.info(f"Loaded sync handler: {module_name}")
+            logger.info("已加载标注同步处理器模块 module={}", module_name)
         except ImportError as e:
-            logger.warning(f"Could not load sync handler {module_name}: {e}")
+            logger.warning("加载标注同步处理器模块失败 module={} error={}", module_name, e)

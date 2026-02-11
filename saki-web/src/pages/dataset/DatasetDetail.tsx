@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {Button, Card, List, message, Popconfirm, Select, Space, Tabs, Tag, Tooltip, Typography} from 'antd';
+import {Button, Card, List, message, Popconfirm, Select, Tabs, Tag, Tooltip, Typography} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {Dataset, Sample} from '../../types';
 import {api} from '../../services/api';
@@ -255,7 +255,7 @@ const DatasetDetail: React.FC = () => {
                 <div className="flex h-full flex-col">
                     <div className="mb-4 flex flex-shrink-0 items-center justify-between">
                         <Title level={5} className="!m-0">{t('dataset.detail.dataPool')} ({totalSamples})</Title>
-                        <Space>
+                        <div className="flex flex-wrap items-center gap-2">
                             <Select
                                 value={sortBy}
                                 onChange={setSortBy}
@@ -273,7 +273,7 @@ const DatasetDetail: React.FC = () => {
                             >
                                 {sortOrder === 'asc' ? t('dataset.detail.sortAsc') : t('dataset.detail.sortDesc')}
                             </Button>
-                        </Space>
+                        </div>
                     </div>
                     <div className="flex-1 overflow-y-auto pr-2.5">
                         <PaginatedList<Sample>
@@ -372,18 +372,18 @@ const DatasetDetail: React.FC = () => {
                 </Button>
 
                 <Title level={4}>{dataset.name}</Title>
-                <Space className="mb-2">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
                     <Tag color={getDatasetTypeColor(dataset.type)}>
                         {getDatasetTypeLabel(dataset.type)}
                     </Tag>
                     {isOwner && <Tag color="gold">{t('common.owner')}</Tag>}
                     {role && !isOwner && <Tag>{role.displayName}</Tag>}
-                </Space>
+                </div>
                 {dataset.description && (
                     <div className="mb-4 text-xs text-gray-600">{dataset.description}</div>
                 )}
 
-                <Space direction="vertical" className="w-full" size="large">
+                <div className="flex w-full flex-col gap-6">
                     {canUpload ? (
                         <Button block icon={<UploadOutlined/>} onClick={handleUploadClick}>
                             {t('dataset.detail.uploadData')}
@@ -410,7 +410,7 @@ const DatasetDetail: React.FC = () => {
                             {t('dataset.detail.settings')}
                         </Button>
                     )}
-                </Space>
+                </div>
             </aside>
             <main className="h-full flex-1 overflow-hidden bg-transparent p-6">
                 <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs"/>

@@ -2,7 +2,7 @@
 Label Service - Business logic for Label operations.
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import List
 
@@ -16,7 +16,6 @@ from saki_api.repositories.project import ProjectRepository
 from saki_api.schemas.label import LabelCreate, LabelUpdate
 from saki_api.services.base import BaseService
 
-logger = logging.getLogger(__name__)
 
 
 class LabelService(BaseService[Label, LabelRepository, LabelCreate, LabelUpdate]):

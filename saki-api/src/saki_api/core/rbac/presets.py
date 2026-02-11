@@ -4,7 +4,7 @@ Preset Role Configurations
 Defines system preset roles that are created on system initialization.
 These roles cannot be deleted.
 """
-import logging
+from loguru import logger
 import uuid
 from typing import List, Dict, Any
 
@@ -33,6 +33,9 @@ def _generate_preset_role_id(name: str) -> uuid.UUID:
 DATASET_OWNER_ROLE_ID = _generate_preset_role_id("dataset_owner")
 DATASET_MANAGER_ROLE_ID = _generate_preset_role_id("dataset_manager")
 DATASET_VIEWER_ROLE_ID = _generate_preset_role_id("dataset_viewer")
+PROJECT_OWNER_ROLE_ID = _generate_preset_role_id("project_owner")
+PROJECT_MANAGER_ROLE_ID = _generate_preset_role_id("project_manager")
+PROJECT_VIEWER_ROLE_ID = _generate_preset_role_id("project_viewer")
 
 # System-level role IDs
 SUPER_ADMIN_ROLE_ID = _generate_preset_role_id("super_admin")
@@ -98,6 +101,12 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_UPDATE_ALL,
             Permissions.DATASET_DELETE_ALL,
             Permissions.DATASET_ASSIGN_ALL,
+            # Project - 项目完全访问
+            Permissions.PROJECT_CREATE_ALL,
+            Permissions.PROJECT_READ_ALL,
+            Permissions.PROJECT_UPDATE_ALL,
+            Permissions.PROJECT_DELETE_ALL,
+            Permissions.PROJECT_ASSIGN_ALL,
             # Sample - 样本完全访问
             Permissions.SAMPLE_READ_ALL,
             Permissions.SAMPLE_CREATE_ALL,
@@ -211,9 +220,93 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "is_supremo": False,
         "color": "purple"
     },
+    {
+        "id": PROJECT_OWNER_ROLE_ID,
+        "name": "project_owner",
+        "display_name": "项目所有者",
+        "description": "项目创建者，具备项目与主动学习闭环完整权限",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 20,
+        "permissions": [
+            Permissions.PROJECT_READ,
+            Permissions.PROJECT_UPDATE,
+            Permissions.PROJECT_DELETE,
+            Permissions.PROJECT_ASSIGN,
+            Permissions.LABEL_MANAGE,
+            Permissions.LABEL_READ,
+            Permissions.ANNOTATE,
+            Permissions.ANNOTATION_READ,
+            Permissions.ANNOTATION_DELETE,
+            Permissions.COMMIT_CREATE,
+            Permissions.COMMIT_READ,
+            Permissions.BRANCH_MANAGE,
+            Permissions.BRANCH_READ,
+            Permissions.BRANCH_SWITCH,
+            Permissions.LOOP_READ,
+            Permissions.LOOP_MANAGE,
+            Permissions.JOB_READ,
+            Permissions.JOB_MANAGE,
+            Permissions.MODEL_READ,
+            Permissions.MODEL_MANAGE,
+        ],
+        "is_supremo": True,
+        "color": "red",
+    },
+    {
+        "id": PROJECT_MANAGER_ROLE_ID,
+        "name": "project_manager",
+        "display_name": "项目管理员",
+        "description": "可管理项目与主动学习任务（不含删除项目）",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 21,
+        "permissions": [
+            Permissions.PROJECT_READ,
+            Permissions.PROJECT_UPDATE,
+            Permissions.PROJECT_ASSIGN,
+            Permissions.LABEL_MANAGE,
+            Permissions.LABEL_READ,
+            Permissions.ANNOTATE,
+            Permissions.ANNOTATION_READ,
+            Permissions.COMMIT_CREATE,
+            Permissions.COMMIT_READ,
+            Permissions.BRANCH_MANAGE,
+            Permissions.BRANCH_READ,
+            Permissions.BRANCH_SWITCH,
+            Permissions.LOOP_READ,
+            Permissions.LOOP_MANAGE,
+            Permissions.JOB_READ,
+            Permissions.JOB_MANAGE,
+            Permissions.MODEL_READ,
+            Permissions.MODEL_MANAGE,
+        ],
+        "is_supremo": False,
+        "color": "green",
+    },
+    {
+        "id": PROJECT_VIEWER_ROLE_ID,
+        "name": "project_viewer",
+        "display_name": "项目查看者",
+        "description": "仅查看项目、任务和模型信息",
+        "type": RoleType.RESOURCE,
+        "is_system": True,
+        "sort_order": 22,
+        "permissions": [
+            Permissions.PROJECT_READ,
+            Permissions.LABEL_READ,
+            Permissions.ANNOTATION_READ,
+            Permissions.COMMIT_READ,
+            Permissions.BRANCH_READ,
+            Permissions.LOOP_READ,
+            Permissions.JOB_READ,
+            Permissions.MODEL_READ,
+        ],
+        "is_supremo": False,
+        "color": "purple",
+    },
 ]
 
-logger = logging.getLogger(__name__)
 
 
 async def init_preset_roles(session: AsyncSession) -> None:
@@ -262,4 +355,4 @@ async def init_preset_roles(session: AsyncSession) -> None:
             )
             session.add(rp)
 
-        logger.info(f"Created {preset['name']} role {preset['display_name']}")
+        logger.info("已创建预置角色 role_name={} display_name={}", preset["name"], preset["display_name"])

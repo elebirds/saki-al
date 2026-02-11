@@ -5,7 +5,7 @@
  */
 
 import React, {ReactNode} from 'react';
-import {Button, Divider, Radio, Select, Space, Spin, Tag, Tooltip} from 'antd';
+import {Button, Divider, Radio, Select, Spin, Tag, Tooltip} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {
     ArrowLeftOutlined,
@@ -81,7 +81,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
     const {t} = useTranslation();
 
     return (
-        <div className="flex items-center gap-2.5 border-b border-[#f0f0f0] bg-white p-2.5">
+        <div className="flex items-center gap-2.5 border-b border-github-border bg-github-panel p-2.5 text-github-text">
             {/* Back Button */}
             {onBack ? (
                 <>
@@ -95,7 +95,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             ) : null}
 
             {/* Label Selection */}
-            <Space>
+            <div className="flex items-center gap-2">
                 <span className="font-semibold">{t('annotation.workspace.label')}</span>
                 <Select
                     value={selectedLabel?.id}
@@ -111,12 +111,12 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
                         </Select.Option>
                     ))}
                 </Select>
-            </Space>
+            </div>
 
             <Divider type="vertical"/>
 
             {/* Undo/Redo */}
-            <Space>
+            <div className="flex items-center gap-2">
                 <Tooltip title={t('annotation.toolbar.undoShortcut')}>
                     <Button
                         icon={<UndoOutlined/>}
@@ -131,7 +131,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
                         disabled={historyIndex === historyLength - 1}
                     />
                 </Tooltip>
-            </Space>
+            </div>
 
             <Divider type="vertical"/>
 
@@ -162,7 +162,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
 
             {/* Zoom Controls */}
             {onZoomIn && onZoomOut && onResetView && (
-                <Space>
+                <div className="flex items-center gap-2">
                     <Tooltip title={t('annotation.workspace.tools.zoomIn')}>
                         <Button icon={<ZoomInOutlined/>} onClick={onZoomIn}/>
                     </Tooltip>
@@ -172,14 +172,14 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
                     <Tooltip title={t('annotation.workspace.tools.resetView')}>
                         <Button icon={<ExpandOutlined/>} onClick={onResetView}/>
                     </Tooltip>
-                </Space>
+                </div>
             )}
 
             {/* Sync Status (for FEDO) */}
             {syncStatus && (
                 <>
                     <Divider type="vertical"/>
-                    <Space>
+                    <div className="flex items-center gap-2">
                         {syncStatus.isSyncing && <Spin size="small"/>}
                         <Tag
                             color={syncStatus.isSyncReady ? 'green' : 'orange'}
@@ -191,7 +191,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
                                     ? t('annotation.workspace.sync.ready')
                                     : t('annotation.workspace.sync.initializing')}
                         </Tag>
-                    </Space>
+                    </div>
                 </>
             )}
 

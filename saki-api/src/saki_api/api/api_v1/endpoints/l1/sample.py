@@ -2,7 +2,7 @@
 Sample Endpoints.
 """
 import json
-import logging
+from loguru import logger
 import uuid
 from typing import List
 
@@ -15,14 +15,11 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.rbac.dependencies import require_permission
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.l1.sample import Sample
-from saki_api.modules.dataset_processing.base import EventType, ProgressInfo
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.sample import SampleRead
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -102,71 +99,8 @@ async def upload_samples_with_progress(
     dataset = await dataset_service.get_by_id_or_raise(dataset_id)
 
     async def generate_progress():
-        """Generator for SSE progress events."""
-        results = []
-
-        # Send initial event
-        yield f"data: {json.dumps({'event': 'start', 'total': len(files)})}\n\n"
-
-        for index, file in enumerate(files):
-            # Send file start event
-            yield f"data: {json.dumps({'event': 'file_start', 'index': index, 'filename': file.filename})}\n\n"
-
-            try:
-                # Define progress callback for this file
-                def progress_callback(event_type: EventType, progress: ProgressInfo):
-                    """Called by handler to report progress."""
-                    nonlocal results
-                    # Don't yield here - we'll collect events and yield them in the async context
-                    # Store progress event for async yielding
-                    progress_events.append({
-                        'event': 'progress',
-                        'file_index': index,
-                        'filename': file.filename,
-                        'stage': progress.stage,
-                        'message': progress.message,
-                        'percentage': progress.percentage,
-                        'current': progress.current,
-                        'total': progress.total,
-                    })
-
-                # Track progress events
-                progress_events = []
-
-                # Process single file with progress callback
-                sample = await sample_service.process_single_file_with_progress(
-                    dataset=dataset,
-                    file=file,
-                    progress_callback=progress_callback
-                )
-
-                # Yield all collected progress events
-                for event in progress_events:
-                    yield f"data: {json.dumps(event)}\n\n"
-
-                # Success
-                results.append({
-                    "id": str(sample.id),
-                    "filename": file.filename,
-                    "status": "success"
-                })
-
-                yield f"data: {json.dumps({'event': 'file_complete', 'index': index, 'filename': file.filename, 'success': True, 'sample_id': str(sample.id)})}\n\n"
-
-            except Exception as e:
-                logger.error(f"Error uploading file {file.filename}: {e}", exc_info=True)
-                results.append({
-                    "filename": file.filename,
-                    "status": "error",
-                    "error": str(e)
-                })
-                yield f"data: {json.dumps({'event': 'file_error', 'index': index, 'filename': file.filename, 'error': str(e)})}\n\n"
-
-        # Send completion event
-        success_count = sum(1 for r in results if r.get('status') == 'success')
-        error_count = len(results) - success_count
-
-        yield f"data: {json.dumps({'event': 'complete', 'uploaded': success_count, 'errors': error_count, 'results': results})}\n\n"
+        async for event in sample_service.iter_upload_progress_events(dataset=dataset, files=files):
+            yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
         generate_progress(),
@@ -236,7 +170,11 @@ async def list_samples(
                 primary_asset_url = await asset_service.get_presigned_download_url(sample.primary_asset_id)
                 sample_read.primary_asset_url = primary_asset_url
             except Exception as e:
-                logger.warning(f"Failed to get presigned URL for asset {sample.primary_asset_id}: {str(e)}")
+                logger.warning(
+                    "获取资产预签名下载地址失败 asset_id={} error={}",
+                    sample.primary_asset_id,
+                    e,
+                )
 
         result.append(sample_read)
 

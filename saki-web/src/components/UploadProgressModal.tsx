@@ -1,5 +1,5 @@
 import React from 'react';
-import {Button, List, Modal, Progress, Space, Tag, Typography} from 'antd';
+import {Button, List, Modal, Progress, Tag, Typography} from 'antd';
 import {CheckCircleOutlined, CloseCircleOutlined, FileOutlined, LoadingOutlined} from '@ant-design/icons';
 import {UploadFileResult, UploadProgress} from '../types';
 import {useTranslation} from 'react-i18next';
@@ -68,7 +68,7 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
             closable={!isUploading}
             maskClosable={!isUploading}
         >
-            <Space direction="vertical" className="w-full" size="large">
+            <div className="flex w-full flex-col gap-6">
                 {/* Overall progress */}
                 <div>
                     <div className="mb-2 flex justify-between">
@@ -137,7 +137,7 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                 {/* Summary when complete */}
                 {isComplete && (
                     <div className="pt-2 text-center">
-                        <Space size="large">
+                        <div className="flex flex-wrap items-center justify-center gap-6">
                             <Text>
                                 <CheckCircleOutlined className="mr-1 text-green-500"/>
                                 {t('upload.successCount', {count: successCount})}
@@ -148,10 +148,10 @@ const UploadProgressModal: React.FC<UploadProgressModalProps> = ({
                                     {t('upload.errorCount', {count: errorCount})}
                                 </Text>
                             )}
-                        </Space>
+                        </div>
                     </div>
                 )}
-            </Space>
+            </div>
         </Modal>
     );
 };

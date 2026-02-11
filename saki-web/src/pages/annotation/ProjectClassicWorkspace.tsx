@@ -47,6 +47,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
 
     const branchName = searchParams.get('branch') || 'master';
     const q = searchParams.get('q') || '';
+    const batchId = searchParams.get('batchId') || '';
     const status = (searchParams.get('status') || 'all') as 'all' | 'labeled' | 'unlabeled' | 'draft';
     const sortValue = searchParams.get('sort') || 'createdAt:desc';
     const page = Number(searchParams.get('page') || 1);
@@ -71,6 +72,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         datasetId,
         filters: {
             q: q || undefined,
+            batchId: batchId || undefined,
             status,
             branchName,
             sortBy,

@@ -18,6 +18,133 @@ import numpy as np
 from matplotlib.path import Path
 
 
+def _validate_mapper_inputs(
+        *,
+        src_obb_vertices: np.ndarray,
+        lut_src: np.ndarray,
+        lut_dst: np.ndarray,
+) -> None:
+    if src_obb_vertices.shape != (4, 2):
+        raise ValueError(f"src_obb_vertices 形状必须为 (4, 2)，实际为 {src_obb_vertices.shape}")
+    if len(lut_src.shape) != 3 or lut_src.shape[2] != 2:
+        raise ValueError(f"lut_src 形状必须为 (N, M, 2)，实际为 {lut_src.shape}")
+    if lut_src.shape != lut_dst.shape:
+        raise ValueError(f"lut_src 和 lut_dst 形状必须相同，实际为 {lut_src.shape} vs {lut_dst.shape}")
+
+
+def _aabb_candidate_indices(
+        *,
+        src_obb_vertices: np.ndarray,
+        lut_src: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    min_x = np.min(src_obb_vertices[:, 0])
+    max_x = np.max(src_obb_vertices[:, 0])
+    min_y = np.min(src_obb_vertices[:, 1])
+    max_y = np.max(src_obb_vertices[:, 1])
+
+    src_pixels = lut_src.reshape(-1, 2)
+    in_aabb_mask = (
+            (src_pixels[:, 0] >= min_x) & (src_pixels[:, 0] <= max_x) &
+            (src_pixels[:, 1] >= min_y) & (src_pixels[:, 1] <= max_y)
+    )
+    candidate_1d_indices = np.where(in_aabb_mask)[0]
+    return src_pixels, candidate_1d_indices, int(lut_src.shape[1])
+
+
+def _polygon_filter_candidates(
+        *,
+        src_obb_vertices: np.ndarray,
+        src_pixels: np.ndarray,
+        candidate_1d_indices: np.ndarray,
+        width: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    candidate_rows = candidate_1d_indices // width
+    candidate_cols = candidate_1d_indices % width
+    candidate_pixels = src_pixels[candidate_1d_indices]
+
+    polygon_path = Path(src_obb_vertices)
+    in_polygon_mask = polygon_path.contains_points(candidate_pixels)
+
+    rows = candidate_rows[in_polygon_mask]
+    cols = candidate_cols[in_polygon_mask]
+    src_selected_pixels = candidate_pixels[in_polygon_mask]
+    return rows, cols, src_selected_pixels
+
+
+def _split_clusters_by_time_gap(
+        *,
+        rows: np.ndarray,
+        cols: np.ndarray,
+        time_gap_threshold: int,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    unique_rows = np.unique(rows)
+    if len(unique_rows) <= 1:
+        return [(rows, cols)]
+
+    row_diffs = np.diff(unique_rows)
+    jump_indices = np.where(row_diffs > time_gap_threshold)[0]
+    if len(jump_indices) == 0:
+        return [(rows, cols)]
+
+    sort_indices = np.argsort(rows)
+    sorted_rows = rows[sort_indices]
+    sorted_cols = cols[sort_indices]
+
+    split_rows_after_jump = unique_rows[jump_indices + 1]
+    split_positions = np.searchsorted(sorted_rows, split_rows_after_jump, side='left')
+    split_positions = np.concatenate([[0], split_positions, [len(sorted_rows)]])
+
+    clusters: list[tuple[np.ndarray, np.ndarray]] = []
+    for i in range(len(split_positions) - 1):
+        start_idx = split_positions[i]
+        end_idx = split_positions[i + 1]
+        if end_idx <= start_idx:
+            continue
+        clusters.append((sorted_rows[start_idx:end_idx], sorted_cols[start_idx:end_idx]))
+    return clusters
+
+
+def _fit_target_obbs(
+        *,
+        lut_dst: np.ndarray,
+        clusters: list[tuple[np.ndarray, np.ndarray]],
+        min_points_threshold: int = 5,
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    result_obbs: list[np.ndarray] = []
+    all_target_pixels_list: list[np.ndarray] = []
+
+    for cluster_rows, cluster_cols in clusters:
+        if len(cluster_rows) < min_points_threshold:
+            continue
+        target_pixels = lut_dst[cluster_rows, cluster_cols]
+        all_target_pixels_list.append(target_pixels)
+
+        points_for_cv = target_pixels.reshape(-1, 1, 2).astype(np.float32)
+        rect = cv2.minAreaRect(points_for_cv)
+        box_points = cv2.boxPoints(rect)
+        result_obbs.append(box_points)
+    return result_obbs, all_target_pixels_list
+
+
+def _generate_mapper_debug_images(
+        *,
+        debug_output_dir: Optional[str],
+        src_selected_pixels: np.ndarray,
+        all_target_pixels_list: list[np.ndarray],
+        lut_src: np.ndarray,
+        lut_dst: np.ndarray,
+) -> None:
+    if debug_output_dir is None:
+        return
+    _generate_debug_images(
+        src_selected_pixels=src_selected_pixels,
+        all_target_pixels_list=all_target_pixels_list,
+        lut_src=lut_src,
+        lut_dst=lut_dst,
+        output_dir=debug_output_dir,
+    )
+
+
 def map_obb_annotations(
         src_obb_vertices: np.ndarray,
         lut_src: np.ndarray,
@@ -62,177 +189,50 @@ def map_obb_annotations(
         - 所有操作必须使用 NumPy 矢量化或 OpenCV 函数
         - 目标处理时间：50-100ms for 37 万个点
     """
-    # 输入验证
-    if src_obb_vertices.shape != (4, 2):
-        raise ValueError(f"src_obb_vertices 形状必须为 (4, 2)，实际为 {src_obb_vertices.shape}")
-
-    if len(lut_src.shape) != 3 or lut_src.shape[2] != 2:
-        raise ValueError(f"lut_src 形状必须为 (N, M, 2)，实际为 {lut_src.shape}")
-
-    if lut_src.shape != lut_dst.shape:
-        raise ValueError(f"lut_src 和 lut_dst 形状必须相同，实际为 {lut_src.shape} vs {lut_dst.shape}")
-
-    N, M = lut_src.shape[:2]
-
-    # ============================================
-    # 步骤 1: 双级掩码筛选
-    # ============================================
-
-    # 步骤 1.1: 粗筛 - 计算 AABB（轴对齐边界框）
-    min_x = np.min(src_obb_vertices[:, 0])
-    max_x = np.max(src_obb_vertices[:, 0])
-    min_y = np.min(src_obb_vertices[:, 1])
-    max_y = np.max(src_obb_vertices[:, 1])
-
-    # 提取源图 LUT 的像素坐标
-    src_pixels = lut_src.reshape(-1, 2)  # (N*M, 2)
-
-    # 使用布尔掩码快速筛选可能在 AABB 内的点
-    in_aabb_mask = (
-            (src_pixels[:, 0] >= min_x) & (src_pixels[:, 0] <= max_x) &
-            (src_pixels[:, 1] >= min_y) & (src_pixels[:, 1] <= max_y)
+    _validate_mapper_inputs(src_obb_vertices=src_obb_vertices, lut_src=lut_src, lut_dst=lut_dst)
+    src_pixels, candidate_1d_indices, width = _aabb_candidate_indices(
+        src_obb_vertices=src_obb_vertices,
+        lut_src=lut_src,
     )
-
-    # 获取粗筛后的点索引（一维索引）
-    candidate_1d_indices = np.where(in_aabb_mask)[0]
-
     if len(candidate_1d_indices) == 0:
-        # 如果没有候选点，但仍然生成调试图片（如果启用）
-        if debug_output_dir is not None:
-            _generate_debug_images(
-                src_selected_pixels=np.array([], dtype=np.float32).reshape(0, 2),
-                all_target_pixels_list=[],
-                lut_src=lut_src,
-                lut_dst=lut_dst,
-                output_dir=debug_output_dir,
-            )
-        return []
-
-    # 转换回二维索引 (rows, cols)
-    candidate_rows = candidate_1d_indices // M  # (K,)
-    candidate_cols = candidate_1d_indices % M  # (K,)
-
-    # 步骤 1.2: 精筛 - Point-in-Polygon 判断
-    # 提取候选点的像素坐标
-    candidate_pixels = src_pixels[candidate_1d_indices]  # (K, 2)
-
-    # 使用 matplotlib.path.Path.contains_points 进行矢量化点内判断
-    polygon_path = Path(src_obb_vertices)
-    in_polygon_mask = polygon_path.contains_points(candidate_pixels)  # (K,)
-
-    # 更新 rows 和 cols，只保留真正在 OBB 内的点
-    rows = candidate_rows[in_polygon_mask]  # (K',)
-    cols = candidate_cols[in_polygon_mask]  # (K',)
-
-    # 保存筛选出的源图点集坐标（用于调试图片生成）
-    src_selected_pixels = candidate_pixels[in_polygon_mask]  # (K', 2)
-
-    if len(rows) == 0:
-        # 如果没有有效点，但仍然生成调试图片（如果启用）
-        if debug_output_dir is not None:
-            _generate_debug_images(
-                src_selected_pixels=np.array([], dtype=np.float32).reshape(0, 2),
-                all_target_pixels_list=[],
-                lut_src=lut_src,
-                lut_dst=lut_dst,
-                output_dir=debug_output_dir,
-            )
-        return []
-
-    # ============================================
-    # 步骤 2: 时间轴跳变分段
-    # ============================================
-
-    # 对行索引进行去重并排序
-    unique_rows = np.unique(rows)
-
-    if len(unique_rows) <= 1:
-        # 只有一个或零个唯一行，不需要分段
-        clusters = [(rows, cols)]
-    else:
-        # 计算相邻行索引的差值
-        row_diffs = np.diff(unique_rows)  # (L-1,)
-
-        # 找出跳变点（差值大于阈值的位置）
-        jump_indices = np.where(row_diffs > time_gap_threshold)[0]  # 跳变点的位置（在 unique_rows 中的索引）
-
-        if len(jump_indices) == 0:
-            # 没有跳变，所有点属于一个组
-            clusters = [(rows, cols)]
-        else:
-            # 根据跳变点将点云分段
-            # 将 rows 和 cols 按行索引排序，便于分段
-            sort_indices = np.argsort(rows)
-            sorted_rows = rows[sort_indices]
-            sorted_cols = cols[sort_indices]
-
-            # 计算每个跳变点在 sorted_rows 中的分割位置
-            # jump_indices[i] 表示在 unique_rows[jump_indices[i]] 和 unique_rows[jump_indices[i]+1] 之间有跳变
-            # 分割点：跳变后的第一个行值在 sorted_rows 中的位置
-            split_rows_after_jump = unique_rows[jump_indices + 1]  # 跳变后的第一个行值
-            split_positions = np.searchsorted(sorted_rows, split_rows_after_jump, side='left')
-
-            # 添加起始和结束位置，使用 np.split 进行分割
-            split_positions = np.concatenate([[0], split_positions, [len(sorted_rows)]])
-
-            # 使用 np.split 分割数组
-            clusters = []
-            for i in range(len(split_positions) - 1):
-                start_idx = split_positions[i]
-                end_idx = split_positions[i + 1]
-                if end_idx > start_idx:
-                    clusters.append((
-                        sorted_rows[start_idx:end_idx],
-                        sorted_cols[start_idx:end_idx]
-                    ))
-
-    # ============================================
-    # 步骤 3: 目标 OBB 拟合
-    # ============================================
-
-    # 收集所有目标图的点集（用于调试图片生成）
-    all_target_pixels_list = []
-
-    result_obbs = []
-    min_points_threshold = 5  # 最少点数阈值
-
-    for cluster_rows, cluster_cols in clusters:
-        # 检查点数
-        if len(cluster_rows) < min_points_threshold:
-            continue
-
-        # 从 lut_dst 中查找目标图对应的像素坐标
-        # 注意：cluster_rows 和 cluster_cols 可能包含重复的 (row, col) 对
-        # 但我们需要保持一一对应关系
-        target_pixels = lut_dst[cluster_rows, cluster_cols]  # (K, 2)
-
-        # 收集目标图点集（用于调试）
-        all_target_pixels_list.append(target_pixels)
-
-        # 使用 cv2.minAreaRect 拟合最小面积矩形
-        # cv2.minAreaRect 需要输入 shape 为 (N, 1, 2) 的数组
-        points_for_cv = target_pixels.reshape(-1, 1, 2).astype(np.float32)
-
-        # 调用 cv2.minAreaRect
-        rect = cv2.minAreaRect(points_for_cv)
-
-        # 获取旋转矩形的四个顶点
-        box_points = cv2.boxPoints(rect)  # (4, 2)
-
-        # 添加到结果列表
-        result_obbs.append(box_points)
-
-    # ============================================
-    # 步骤 4: 生成调试图片（如果启用）
-    # ============================================
-    if debug_output_dir is not None:
-        _generate_debug_images(
-            src_selected_pixels=src_selected_pixels,
-            all_target_pixels_list=all_target_pixels_list,
+        _generate_mapper_debug_images(
+            debug_output_dir=debug_output_dir,
+            src_selected_pixels=np.array([], dtype=np.float32).reshape(0, 2),
+            all_target_pixels_list=[],
             lut_src=lut_src,
             lut_dst=lut_dst,
-            output_dir=debug_output_dir,
         )
+        return []
+
+    rows, cols, src_selected_pixels = _polygon_filter_candidates(
+        src_obb_vertices=src_obb_vertices,
+        src_pixels=src_pixels,
+        candidate_1d_indices=candidate_1d_indices,
+        width=width,
+    )
+    if len(rows) == 0:
+        _generate_mapper_debug_images(
+            debug_output_dir=debug_output_dir,
+            src_selected_pixels=np.array([], dtype=np.float32).reshape(0, 2),
+            all_target_pixels_list=[],
+            lut_src=lut_src,
+            lut_dst=lut_dst,
+        )
+        return []
+
+    clusters = _split_clusters_by_time_gap(
+        rows=rows,
+        cols=cols,
+        time_gap_threshold=time_gap_threshold,
+    )
+    result_obbs, all_target_pixels_list = _fit_target_obbs(lut_dst=lut_dst, clusters=clusters)
+    _generate_mapper_debug_images(
+        debug_output_dir=debug_output_dir,
+        src_selected_pixels=src_selected_pixels,
+        all_target_pixels_list=all_target_pixels_list,
+        lut_src=lut_src,
+        lut_dst=lut_dst,
+    )
 
     return result_obbs
 

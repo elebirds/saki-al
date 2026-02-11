@@ -101,4 +101,44 @@ class TrainingJobStatus(str, Enum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+    PARTIAL_FAILED = "partial_failed"
     CANCELLED = "cancelled"
+
+
+class ALLoopStatus(str, Enum):
+    """
+    Enum for active-learning loop lifecycle.
+    """
+    DRAFT = "draft"
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ALLoopMode(str, Enum):
+    """
+    Enum for active-learning execution mode.
+    """
+    ACTIVE_LEARNING = "active_learning"
+    SIMULATION = "simulation"
+
+
+class LoopRoundStatus(str, Enum):
+    """
+    Enum for per-round state in an active-learning loop.
+    """
+    TRAINING = "training"
+    ANNOTATION = "annotation"
+    COMPLETED = "completed"
+    COMPLETED_NO_CANDIDATES = "completed_no_candidates"
+    FAILED = "failed"
+
+
+class AnnotationBatchStatus(str, Enum):
+    """
+    Enum for annotation-batch lifecycle.
+    """
+    OPEN = "open"
+    CLOSED = "closed"

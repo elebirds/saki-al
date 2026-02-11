@@ -9,10 +9,12 @@ import ProjectBranches from './pages/project/ProjectBranches';
 import ProjectCommits from './pages/project/ProjectCommits';
 import ProjectCommitDetail from './pages/project/ProjectCommitDetail';
 import ProjectSamplesAnnotations from './pages/project/ProjectSamplesAnnotations';
-import ProjectLoops from './pages/project/ProjectLoops';
 import ProjectInsights from './pages/project/ProjectInsights';
 import ProjectSettings from './pages/project/ProjectSettings';
 import ProjectWorkspace from './pages/project/ProjectWorkspace';
+import ProjectLoopOverview from './pages/project/loops/ProjectLoopOverview';
+import ProjectLoopDetail from './pages/project/loops/ProjectLoopDetail';
+import ProjectLoopJobDetail from './pages/project/loops/ProjectLoopJobDetail';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
 import UserProfile from './pages/user/UserProfile';
@@ -22,6 +24,7 @@ import Register from './pages/user/Register';
 import ChangePassword from './pages/user/ChangePassword';
 import Setup from './pages/base/Setup';
 import NetworkError from './pages/base/NetworkError';
+import RuntimeExecutors from './pages/runtime/RuntimeExecutors';
 import SystemCheck from './components/SystemCheck';
 import ProtectedLayout from './components/ProtectedLayout';
 import {useInitPermissions, useInitSystemCapabilities} from './hooks';
@@ -62,12 +65,15 @@ const App: React.FC = () => {
                                     <Route path="commits" element={<ProjectCommits/>}/>
                                     <Route path="commits/:commitId" element={<ProjectCommitDetail/>}/>
                                     <Route path="samples" element={<ProjectSamplesAnnotations/>}/>
-                                    <Route path="loops" element={<ProjectLoops/>}/>
+                                    <Route path="loops" element={<ProjectLoopOverview/>}/>
+                                    <Route path="loops/:loopId" element={<ProjectLoopDetail/>}/>
+                                    <Route path="loops/:loopId/jobs/:jobId" element={<ProjectLoopJobDetail/>}/>
                                     <Route path="insights" element={<ProjectInsights/>}/>
                                     <Route path="settings" element={<ProjectSettings/>}/>
                                     <Route path="workspace" element={<ProjectWorkspace/>}/>
                                     <Route path="workspace/:datasetId" element={<ProjectWorkspace/>}/>
                                 </Route>
+                                <Route path="/runtime/executors" element={<RuntimeExecutors/>}/>
                                 <Route
                                     path="/projects/:projectId/members"
                                     element={<Navigate to="../settings?section=members" replace/>}

@@ -4,6 +4,7 @@ import {useTranslation} from 'react-i18next'
 import type {MenuProps} from 'antd'
 import {
     AppstoreOutlined,
+    ClusterOutlined,
     CodeOutlined,
     InfoCircleOutlined,
     LogoutOutlined,
@@ -70,6 +71,12 @@ const ProtectedLayout: React.FC = () => {
             path: '/projects',
             icon: <AppstoreOutlined/>,
         },
+        {
+            key: 'runtime',
+            label: 'Runtime',
+            path: '/runtime/executors',
+            icon: <ClusterOutlined/>,
+        },
         ...(canManageUsers
             ? [
                 {
@@ -103,6 +110,7 @@ const ProtectedLayout: React.FC = () => {
         if (pathname.startsWith('/users')) return 'users'
         if (pathname.startsWith('/roles')) return 'roles'
         if (pathname.startsWith('/about')) return 'about'
+        if (pathname.startsWith('/runtime')) return 'runtime'
         if (pathname.startsWith('/projects')) return 'projects'
         if (pathname === '/' || pathname.startsWith('/datasets')) return 'datasets'
         return 'datasets'
@@ -110,6 +118,7 @@ const ProtectedLayout: React.FC = () => {
 
     const isProjectDetail = /^\/projects\/[^/]+/.test(location.pathname)
     const isWorkspace = /^\/projects\/[^/]+\/workspace/.test(location.pathname)
+    const isRuntimeExecutors = /^\/runtime\/executors/.test(location.pathname)
 
     const handleUserMenuClick: MenuProps['onClick'] = ({key}) => {
         if (key === 'profile') {
@@ -157,12 +166,14 @@ const ProtectedLayout: React.FC = () => {
             contentClassName={
                 isWorkspace
                     ? 'px-6 w-full h-full flex flex-col'
+                    : isRuntimeExecutors
+                        ? 'px-6 py-6 w-full h-full flex flex-col'
                     : isProjectDetail
                         ? 'max-w-[1280px] mx-auto px-6 h-full flex flex-col'
                         : 'max-w-[1280px] mx-auto px-6 py-6 h-full flex flex-col'
             }
             contentCardClassName={
-                isProjectDetail
+                isProjectDetail || isRuntimeExecutors
                     ? 'bg-transparent border-0 p-0 h-full flex flex-col'
                     : 'bg-github-panel rounded-md p-6 h-full flex flex-col shadow-[0_2px_8px_rgba(27,31,36,0.12)]'
             }

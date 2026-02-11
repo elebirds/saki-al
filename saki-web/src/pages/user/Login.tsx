@@ -11,7 +11,6 @@ const {Title} = Typography;
 const Login: React.FC = () => {
     const {t} = useTranslation();
     const navigate = useNavigate();
-    const setToken = useAuthStore((state) => state.setToken);
     const setUser = useAuthStore((state) => state.setUser);
     const [loading, setLoading] = useState(false);
 

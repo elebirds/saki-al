@@ -6,6 +6,7 @@ services:
     container_name: saki-api
     ports:
       - "8000:8000"
+      - "50051:50051"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-saki}:${POSTGRES_PASSWORD:-saki_password}@postgres:5432/${POSTGRES_DB:-saki}}
       - SECRET_KEY=${SECRET_KEY:-YOUR_SUPER_SECRET_KEY_CHANGE_ME_IN_PRODUCTION}
@@ -15,14 +16,40 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - REDIS_KEY_PREFIX=${REDIS_KEY_PREFIX:-saki}
       - REDIS_WORKING_TTL_SECONDS=${REDIS_WORKING_TTL_SECONDS:-86400}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-secret}
+      - RUNTIME_GRPC_BIND=${RUNTIME_GRPC_BIND:-0.0.0.0:50051}
+      - RUNTIME_HEARTBEAT_TIMEOUT_SEC=${RUNTIME_HEARTBEAT_TIMEOUT_SEC:-30}
+      - RUNTIME_DISPATCH_INTERVAL_SEC=${RUNTIME_DISPATCH_INTERVAL_SEC:-3}
+      - RUNTIME_UPLOAD_URL_EXPIRE_HOURS=${RUNTIME_UPLOAD_URL_EXPIRE_HOURS:-2}
+      - RUNTIME_MAX_RETRY_COUNT=${RUNTIME_MAX_RETRY_COUNT:-2}
+      - RUNTIME_RETRY_BASE_DELAY_SEC=${RUNTIME_RETRY_BASE_DELAY_SEC:-10}
+      - RUNTIME_ASSIGN_ACK_TIMEOUT_SEC=${RUNTIME_ASSIGN_ACK_TIMEOUT_SEC:-30}
+      - RUNTIME_STREAM_REJECT_CLOSE=${RUNTIME_STREAM_REJECT_CLOSE:-true}
+      - RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC=${RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC:-600}
+      - RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES=${RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES:-2048}
+      - RUNTIME_EXECUTOR_ALLOWLIST=${RUNTIME_EXECUTOR_ALLOWLIST:-[]}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_DIR=/app/logs
+      - LOG_FILE_NAME=${LOG_FILE_NAME:-api.log}
+      - LOG_MAX_BYTES=${LOG_MAX_BYTES:-20971520}
+      - LOG_BACKUP_COUNT=${LOG_BACKUP_COUNT:-5}
+      - LOG_COLOR_MODE=${LOG_COLOR_MODE:-auto}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-saki-data}
     volumes:
       # 持久化数据库和上传文件
       - ./saki-api/data:/app/data
+      - ./saki-api/logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+      minio:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - saki-network
@@ -89,6 +116,44 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - saki-network
+
+  saki-executor:
+    build:
+      context: ./saki-executor
+      dockerfile: Dockerfile
+    container_name: saki-executor
+    environment:
+      - EXECUTOR_ID=${EXECUTOR_ID:-executor-1}
+      - EXECUTOR_VERSION=${EXECUTOR_VERSION:-0.1.0}
+      - API_GRPC_TARGET=${API_GRPC_TARGET:-saki-api:50051}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-dev-secret}
+      - HEARTBEAT_INTERVAL_SEC=${HEARTBEAT_INTERVAL_SEC:-10}
+      - RUNS_DIR=/app/runs
+      - CACHE_DIR=/app/cache
+      - CACHE_MAX_BYTES=${CACHE_MAX_BYTES:-536870912000}
+      - DEFAULT_GPU_IDS=${DEFAULT_GPU_IDS:-0}
+      - CPU_WORKERS=${CPU_WORKERS:-4}
+      - MEMORY_MB=${MEMORY_MB:-0}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_DIR=/app/logs
+      - LOG_FILE_NAME=${LOG_FILE_NAME:-executor.log}
+      - LOG_MAX_BYTES=${LOG_MAX_BYTES:-20971520}
+      - LOG_BACKUP_COUNT=${LOG_BACKUP_COUNT:-5}
+      - LOG_COLOR_MODE=${LOG_COLOR_MODE:-auto}
+      - ENABLE_COMMAND_STDIN=${ENABLE_COMMAND_STDIN:-true}
+      - DISCONNECT_FORCE_WAIT_SEC=${DISCONNECT_FORCE_WAIT_SEC:-20}
+    volumes:
+      - ./saki-executor/runs:/app/runs
+      - ./saki-executor/cache:/app/cache
+      - ./saki-executor/logs:/app/logs
+    depends_on:
+      saki-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - saki-network
   redis:
     image: redis:7-alpine
     container_name: saki-redis

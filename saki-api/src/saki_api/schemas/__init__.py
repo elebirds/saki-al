@@ -39,6 +39,11 @@ from saki_api.schemas.user_system_role import (
     UserSystemRoleRead,
     UserSystemRoleAssign
 )
+from saki_api.schemas.l3.job import (
+    JobCreateRequest,
+    JobRead,
+    JobCommandResponse,
+)
 
 __all__ = [
     # RBAC Schemas
@@ -54,6 +59,11 @@ __all__ = [
     "UserSystemRoleAssign",
     "ResourceMemberCreate",
     "ResourceMemberRead",
+
+    # L3 Job Schemas
+    "JobCreateRequest",
+    "JobRead",
+    "JobCommandResponse",
 
     # User Schemas
     "UserCreate",

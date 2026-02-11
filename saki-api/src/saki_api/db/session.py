@@ -1,5 +1,6 @@
 from typing import AsyncGenerator
 
+from loguru import logger
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncEngine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -96,9 +97,9 @@ async def dispose_engine():
 
 async def init_db():
     """
-    初始化数据库表。
-    注意：在生产环境中通常推荐使用 Alembic 做迁移，而不是 create_all。
+    初始化数据库。
+    快速开发模式：启动时总是执行 SQLModel.create_all。
+    若需要重建结构，直接删库/删表后重启服务。
     """
     async with engine.begin() as conn:
-        # run_sync 是在异步环境中调用同步建表函数的标准做法
         await conn.run_sync(SQLModel.metadata.create_all)

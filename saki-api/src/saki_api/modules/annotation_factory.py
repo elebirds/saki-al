@@ -4,7 +4,7 @@ Annotation System Factory
 Factory for creating AnnotationSystemFacade instances for different dataset types.
 """
 
-import logging
+from loguru import logger
 from typing import Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -13,7 +13,6 @@ from saki_api.core.exceptions import NotFoundAppException
 from saki_api.models.enums import DatasetType
 from saki_api.modules.annotation_system import AnnotationSystemFacade
 
-logger = logging.getLogger(__name__)
 
 
 class AnnotationSystemFactory:
@@ -67,7 +66,7 @@ class AnnotationSystemFactory:
                 processor_class = processor.__class__
                 processor = processor_class(session)
         except NotFoundAppException as e:
-            logger.error(f"No processor found for dataset type: {dataset_type.value}")
+            logger.error("未找到数据处理器 dataset_type={}", dataset_type.value)
             raise NotFoundAppException(
                 f"No dataset processor found for type: {dataset_type.value}"
             ) from e
@@ -81,8 +80,8 @@ class AnnotationSystemFactory:
         except NotFoundAppException:
             # If no sync handler is registered, use a default pass-through
             logger.warning(
-                f"No sync handler found for dataset type: {dataset_type.value}, "
-                f"using default pass-through behavior"
+                "未找到同步处理器，使用默认透传处理 dataset_type={}",
+                dataset_type.value,
             )
             from saki_api.modules.annotation_sync.handlers.no_op import NoOpSyncHandler
             sync_handler = NoOpSyncHandler(session)
@@ -105,7 +104,7 @@ class AnnotationSystemFactory:
         discover_processors()
         discover_sync_handlers()
 
-        logger.info("Discovered all annotation system processors and handlers")
+        logger.info("已完成注释系统处理器与同步处理器发现")
 
     @staticmethod
     def list_available() -> dict:

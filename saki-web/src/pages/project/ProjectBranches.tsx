@@ -16,6 +16,46 @@ type CreateBranchFormValues = {
     commitId?: string
 }
 
+type BranchPathMeta = {
+    parts: string[]
+    parentPath: string
+    leafName: string
+    depth: number
+}
+
+const parseBranchPath = (name: string): BranchPathMeta => {
+    const parts = name.split('/').filter(Boolean)
+    if (parts.length === 0) {
+        return {
+            parts: [name],
+            parentPath: '',
+            leafName: name,
+            depth: 0,
+        }
+    }
+    return {
+        parts,
+        parentPath: parts.slice(0, -1).join('/'),
+        leafName: parts[parts.length - 1],
+        depth: Math.max(0, parts.length - 1),
+    }
+}
+
+const compareBranchByPath = (left: ProjectBranch, right: ProjectBranch): number => {
+    const leftParts = parseBranchPath(left.name).parts
+    const rightParts = parseBranchPath(right.name).parts
+    const maxDepth = Math.max(leftParts.length, rightParts.length)
+    for (let idx = 0; idx < maxDepth; idx += 1) {
+        const leftPart = leftParts[idx]
+        const rightPart = rightParts[idx]
+        if (leftPart === undefined) return -1
+        if (rightPart === undefined) return 1
+        const diff = leftPart.localeCompare(rightPart, undefined, {numeric: true, sensitivity: 'base'})
+        if (diff !== 0) return diff
+    }
+    return left.name.localeCompare(right.name, undefined, {numeric: true, sensitivity: 'base'})
+}
+
 const ProjectBranches: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>()
     const {t} = useTranslation()
@@ -107,6 +147,14 @@ const ProjectBranches: React.FC = () => {
         return branches.filter((branch) => branch.name.toLowerCase().includes(keyword))
     }, [branches, search])
 
+    const orderedBranches = useMemo(() => {
+        return [...filteredBranches].sort(compareBranchByPath)
+    }, [filteredBranches])
+
+    const orderedAllBranches = useMemo(() => {
+        return [...branches].sort(compareBranchByPath)
+    }, [branches])
+
     const activeBranch = useMemo(() => {
         return branches.find((branch) => branch.name === selectedBranchName) || branches[0]
     }, [branches, selectedBranchName])
@@ -190,14 +238,22 @@ const ProjectBranches: React.FC = () => {
             title: t('project.branches.columns.branch'),
             dataIndex: 'name',
             key: 'name',
-            render: (_, record) => (
-                <div className="flex flex-col min-w-0">
-                    <span className="font-semibold text-github-text truncate">{record.name}</span>
-                    {record.description ? (
-                        <span className="text-xs text-github-muted truncate">{record.description}</span>
-                    ) : null}
-                </div>
-            ),
+            render: (_, record) => {
+                const pathMeta = parseBranchPath(record.name)
+                return (
+                    <div className="flex flex-col min-w-0" style={{paddingLeft: `${Math.min(pathMeta.depth, 6) * 12}px`}}>
+                        {pathMeta.parentPath ? (
+                            <span className="text-[11px] text-github-muted font-mono truncate">
+                                {pathMeta.parentPath}/
+                            </span>
+                        ) : null}
+                        <span className="font-semibold text-github-text truncate">{pathMeta.leafName}</span>
+                        {record.description ? (
+                            <span className="text-xs text-github-muted truncate">{record.description}</span>
+                        ) : null}
+                    </div>
+                )
+            },
         },
         {
             title: t('project.branches.columns.head'),
@@ -320,7 +376,7 @@ const ProjectBranches: React.FC = () => {
                         <Table
                             rowKey="id"
                             columns={columns}
-                            dataSource={filteredBranches}
+                            dataSource={orderedBranches}
                             pagination={false}
                             size="small"
                         />
@@ -355,7 +411,7 @@ const ProjectBranches: React.FC = () => {
                                initialValue={activeBranch?.name || 'master'}>
                         <Select
                             placeholder={t('project.branches.form.baseBranchPlaceholder')}
-                            options={branches.map((branch) => ({
+                            options={orderedAllBranches.map((branch) => ({
                                 label: branch.name,
                                 value: branch.name,
                             }))}

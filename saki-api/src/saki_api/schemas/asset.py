@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from saki_api.models.enums import StorageType
 from saki_api.models.l1.asset import AssetBase
@@ -55,8 +55,7 @@ class AssetRead(AssetBase):
     created_at: datetime = Field(description="Creation timestamp")
     updated_at: datetime = Field(description="Last update timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AssetUploadResponse(BaseModel):
@@ -74,8 +73,7 @@ class AssetUploadResponse(BaseModel):
         description="Whether this was a duplicate (asset already existed)"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AssetDownloadResponse(BaseModel):
@@ -92,8 +90,7 @@ class AssetDownloadResponse(BaseModel):
     )
     filename: str = Field(description="Original filename for download")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AssetMetadataResponse(BaseModel):
@@ -113,8 +110,7 @@ class AssetMetadataResponse(BaseModel):
     )
     created_at: datetime = Field(description="Upload timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ========== List Response Schemas ==========
@@ -133,8 +129,7 @@ class AssetListItem(BaseModel):
     created_at: datetime
     storage_type: StorageType
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AssetListResponse(BaseModel):
@@ -146,8 +141,7 @@ class AssetListResponse(BaseModel):
     offset: int = Field(description="Query offset")
     limit: int = Field(description="Query limit")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ========== Statistics Schemas ==========
@@ -161,5 +155,4 @@ class AssetStorageStats(BaseModel):
     total_size: int = Field(description="Total size in bytes")
     avg_size: float = Field(description="Average size per file")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

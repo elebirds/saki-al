@@ -2,7 +2,7 @@
 全局异常处理。
 """
 
-import logging
+from loguru import logger
 from typing import Optional
 
 from fastapi import Request, status
@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from saki_api.core.enums import ErrorCode
 from saki_api.core.response import ApiResponse
 
-logger = logging.getLogger(__name__)
 
 
 class AppException(Exception):
@@ -212,7 +211,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     处理未捕获的异常，转换为统一的响应格式。
     """
     # 记录异常日志
-    logger.exception(f"Unhandled exception at {request.url.path}: {exc}", exc_info=True)
+    logger.exception("未捕获异常 path={} error={}", request.url.path, exc)
 
     response = ApiResponse.error_response(
         message="Internal server error",

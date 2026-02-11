@@ -1,0 +1,417 @@
+export type ALLoopStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed' | 'failed';
+export type ALLoopMode = 'active_learning' | 'simulation';
+
+export interface LoopSimulationConfig {
+    oracleCommitId?: string | null;
+    initialSeedCount: number;
+    queryBatchSize: number;
+    maxRounds: number;
+    splitSeed: number;
+    randomSeed: number;
+    requireFullyLabeled: boolean;
+}
+
+export interface ALLoop {
+    id: string;
+    projectId: string;
+    branchId: string;
+    name: string;
+    mode: ALLoopMode;
+    queryStrategy: string;
+    modelArch: string;
+    globalConfig: Record<string, any>;
+    modelRequestConfig: Record<string, any>;
+    simulationConfig: LoopSimulationConfig;
+    experimentGroupId?: string | null;
+    currentIteration: number;
+    status: ALLoopStatus;
+    maxRounds: number;
+    queryBatchSize: number;
+    minSeedLabeled: number;
+    minNewLabelsPerRound: number;
+    stopPatienceRounds: number;
+    stopMinGain: number;
+    autoRegisterModel: boolean;
+    lastJobId?: string | null;
+    latestModelId?: string | null;
+    lastError?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export type RuntimeJobStatus = 'pending' | 'running' | 'success' | 'partial_failed' | 'failed' | 'cancelled';
+
+export interface RuntimeJob {
+    id: string;
+    projectId: string;
+    loopId: string;
+    roundIndex: number;
+    status: RuntimeJobStatus;
+    jobType: string;
+    pluginId: string;
+    mode: string;
+    queryStrategy: string;
+    sourceCommitId: string;
+    resultCommitId?: string | null;
+    assignedExecutorId?: string | null;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    retryCount: number;
+    lastError?: string | null;
+    metrics: Record<string, any>;
+    artifacts: Record<string, any>;
+    params: Record<string, any>;
+    resources: Record<string, any>;
+    strategyParams: Record<string, any>;
+    modelId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface LoopCreateRequest {
+    name: string;
+    branchId: string;
+    mode?: ALLoopMode;
+    queryStrategy: string;
+    modelArch: string;
+    globalConfig?: Record<string, any>;
+    modelRequestConfig?: Record<string, any>;
+    simulationConfig?: LoopSimulationConfig;
+    experimentGroupId?: string;
+    status?: ALLoopStatus;
+    maxRounds?: number;
+    queryBatchSize?: number;
+    minSeedLabeled?: number;
+    minNewLabelsPerRound?: number;
+    stopPatienceRounds?: number;
+    stopMinGain?: number;
+    autoRegisterModel?: boolean;
+}
+
+export interface LoopUpdateRequest {
+    name?: string;
+    mode?: ALLoopMode;
+    queryStrategy?: string;
+    modelArch?: string;
+    globalConfig?: Record<string, any>;
+    modelRequestConfig?: Record<string, any>;
+    simulationConfig?: LoopSimulationConfig;
+    experimentGroupId?: string;
+    maxRounds?: number;
+    queryBatchSize?: number;
+    minSeedLabeled?: number;
+    minNewLabelsPerRound?: number;
+    stopPatienceRounds?: number;
+    stopMinGain?: number;
+    autoRegisterModel?: boolean;
+}
+
+export type LoopRecoverMode = 'retry_same_params' | 'rerun_with_overrides';
+
+export interface LoopRecoverOverrides {
+    queryStrategy?: string;
+    pluginId?: string;
+    params?: Record<string, any>;
+    resources?: Record<string, any>;
+}
+
+export interface LoopRecoverRequest {
+    mode: LoopRecoverMode;
+    overrides?: LoopRecoverOverrides;
+}
+
+export interface RuntimeJobCreateRequest {
+    projectId: string;
+    sourceCommitId: string;
+    pluginId: string;
+    jobType?: string;
+    mode?: string;
+    queryStrategy: string;
+    params?: Record<string, any>;
+    resources?: Record<string, any>;
+    strategyParams?: Record<string, any>;
+}
+
+export interface RuntimeJobCommandResponse {
+    requestId: string;
+    jobId: string;
+    status: string;
+}
+
+export interface RuntimeJobEvent {
+    seq: number;
+    ts: string;
+    eventType: string;
+    payload: Record<string, any>;
+}
+
+export interface RuntimeMetricPoint {
+    step: number;
+    epoch?: number | null;
+    metricName: string;
+    metricValue: number;
+    ts: string;
+}
+
+export interface RuntimeTopKCandidate {
+    sampleId: string;
+    score: number;
+    extra: Record<string, any>;
+    predictionSnapshot: Record<string, any>;
+}
+
+export interface RuntimeArtifact {
+    name: string;
+    kind: string;
+    uri: string;
+    meta: Record<string, any>;
+}
+
+export interface RuntimeArtifactsResponse {
+    jobId: string;
+    artifacts: RuntimeArtifact[];
+}
+
+export interface LoopRound {
+    id: string;
+    loopId: string;
+    roundIndex: number;
+    sourceCommitId: string;
+    jobId?: string | null;
+    annotationBatchId?: string | null;
+    status: 'training' | 'annotation' | 'completed' | 'completed_no_candidates' | 'failed';
+    metrics: Record<string, any>;
+    selectedCount: number;
+    labeledCount: number;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface LoopSummary {
+    loopId: string;
+    status: ALLoopStatus;
+    roundsTotal: number;
+    roundsCompleted: number;
+    selectedTotal: number;
+    labeledTotal: number;
+    metricsLatest: Record<string, any>;
+}
+
+export interface SimulationExperimentCreateRequest {
+    branchId: string;
+    experimentName?: string;
+    modelArch: string;
+    strategies: string[];
+    globalConfig?: Record<string, any>;
+    modelRequestConfig?: Record<string, any>;
+    simulationConfig: LoopSimulationConfig;
+    status?: ALLoopStatus;
+}
+
+export interface SimulationCurvePoint {
+    roundIndex: number;
+    labeledCount: number;
+    map50: number;
+    recall: number;
+}
+
+export interface SimulationLoopCurve {
+    loopId: string;
+    loopName: string;
+    queryStrategy: string;
+    points: SimulationCurvePoint[];
+}
+
+export interface SimulationExperimentCurves {
+    experimentGroupId: string;
+    loops: SimulationLoopCurve[];
+}
+
+export interface SimulationExperimentCreateResponse {
+    experimentGroupId: string;
+    loops: ALLoop[];
+}
+
+export interface AnnotationBatch {
+    id: string;
+    projectId: string;
+    loopId: string;
+    jobId: string;
+    roundIndex: number;
+    status: 'open' | 'closed';
+    totalCount: number;
+    annotatedCount: number;
+    closedAt?: string | null;
+    meta: Record<string, any>;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface AnnotationBatchItem {
+    id: string;
+    batchId: string;
+    sampleId: string;
+    rank: number;
+    score: number;
+    reason: Record<string, any>;
+    predictionSnapshot: Record<string, any>;
+    isAnnotated: boolean;
+    annotatedAt?: string | null;
+    annotationCommitId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface ModelArtifact {
+    name: string;
+    kind: string;
+    uri: string;
+    meta: Record<string, any>;
+}
+
+export interface ProjectModel {
+    id: string;
+    projectId: string;
+    jobId?: string | null;
+    sourceCommitId?: string | null;
+    parentModelId?: string | null;
+    pluginId: string;
+    modelArch: string;
+    name: string;
+    versionTag: string;
+    weightsPath: string;
+    status: string;
+    metrics: Record<string, any>;
+    artifacts: Record<string, any>;
+    promotedAt?: string | null;
+    createdBy?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface RuntimeRequestConfigField {
+    key: string;
+    label: string;
+    type: 'integer' | 'number' | 'string' | 'boolean' | 'select';
+    required?: boolean;
+    min?: number;
+    max?: number;
+    options?: Array<{ label: string; value: string | number | boolean }>;
+}
+
+export interface RuntimeRequestConfigSchema {
+    title?: string;
+    fields?: RuntimeRequestConfigField[];
+}
+
+export interface RuntimePluginCatalogItem {
+    pluginId: string;
+    displayName: string;
+    version: string;
+    supportedJobTypes: string[];
+    supportedStrategies: string[];
+    supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
+    supportsAutoFallback: boolean;
+    requestConfigSchema: RuntimeRequestConfigSchema;
+    defaultRequestConfig: Record<string, any>;
+    executorsTotal: number;
+    executorsOnline: number;
+    executorsAvailable: number;
+    availabilityRate: number;
+    hasConflict: boolean;
+    conflictFields: string[];
+}
+
+export interface RuntimePluginCatalogResponse {
+    items: RuntimePluginCatalogItem[];
+}
+
+export interface RuntimeExecutorPluginCapability {
+    pluginId: string;
+    displayName: string;
+    version: string;
+    supportedJobTypes: string[];
+    supportedStrategies: string[];
+    supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
+    supportsAutoFallback: boolean;
+    requestConfigSchema: RuntimeRequestConfigSchema;
+    defaultRequestConfig: Record<string, any>;
+}
+
+export interface RuntimeAcceleratorCapability {
+    type: 'cpu' | 'cuda' | 'mps';
+    available: boolean;
+    deviceCount: number;
+    deviceIds: string[];
+}
+
+export interface RuntimeExecutorRead {
+    id: string;
+    executorId: string;
+    version: string;
+    status: string;
+    isOnline: boolean;
+    currentJobId?: string | null;
+    pluginIds: {
+        plugins?: RuntimeExecutorPluginCapability[];
+        ids?: string[];
+    } & Record<string, any>;
+    resources: {
+        accelerators?: RuntimeAcceleratorCapability[];
+    } & Record<string, any>;
+    lastSeenAt?: string | null;
+    lastError?: string | null;
+    pendingAssignCount: number;
+    pendingStopCount: number;
+}
+
+export interface RuntimeExecutorSummary {
+    totalCount: number;
+    onlineCount: number;
+    busyCount: number;
+    availableCount: number;
+    availabilityRate: number;
+    pendingAssignCount: number;
+    pendingStopCount: number;
+    latestHeartbeatAt?: string | null;
+}
+
+export interface RuntimeExecutorListResponse {
+    summary: RuntimeExecutorSummary;
+    items: RuntimeExecutorRead[];
+}
+
+export type RuntimeExecutorStatsRange = '30m' | '1h' | '6h' | '24h' | '7d';
+
+export interface RuntimeExecutorStatsPoint {
+    ts: string;
+    totalCount: number;
+    onlineCount: number;
+    busyCount: number;
+    availableCount: number;
+    availabilityRate: number;
+    pendingAssignCount: number;
+    pendingStopCount: number;
+}
+
+export interface RuntimeExecutorStatsResponse {
+    range: RuntimeExecutorStatsRange;
+    bucketSeconds: number;
+    points: RuntimeExecutorStatsPoint[];
+}
+
+export interface ModelArtifactDownload {
+    modelId: string;
+    artifactName: string;
+    downloadUrl: string;
+    expiresInHours: number;
+}
+
+export interface JobArtifactDownload {
+    jobId: string;
+    artifactName: string;
+    downloadUrl: string;
+    expiresInHours: number;
+}

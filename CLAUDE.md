@@ -16,11 +16,12 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 - **Auth**: JWT (python-jose, argon2-cffi)
 - **Data/ML**: NumPy, Pandas, Scikit-learn, OpenCV, Pillow
 
-### Runtime (saki-runtime)
-- **Core**: FastAPI (HTTP Control Plane) + WebSocket (Event Stream)
-- **Execution**: Subprocess for isolation (Training/Inference jobs)
-- **Communication**: HTTPX (Fetching data from Saki API)
-- **Locking**: Portalocker (Resource management)
+### Runtime (saki-executor)
+- **Core**: AsyncIO + gRPC 双向流 (`RuntimeControl.Stream`)
+- **Protocol**: protobuf 强类型 `RuntimeMessage.oneof payload`
+- **Execution**: 单任务串行执行器 + 插件机制（训练/推理/选样）
+- **Communication**: 仅与 `saki-api` gRPC 与对象存储预签名 URL 通信
+- **Logging**: Loguru（控制台 + 滚动文件）
 
 ### Frontend (saki-web)
 - **Framework**: React 18 + Vite + TypeScript
@@ -36,9 +37,9 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 #### saki-api
 - **L1 (Physical)**: ✅ 完成 (Asset去重, MinIO上传, Sample逻辑封装)
 - **L2 (Logic)**: ✅ 基本完成 (三层架构、标注流水线协议、项目概览与设置界面 已基本就绪)
-- **L3 (Experiment)**: ⏳ 计划中 (模型已定义，但可能需要修改以适配 Runtime 的需求，主动学习相关逻辑尚未开发)
-#### saki-runtime
-基本可以视为 0 进度。
+- **L3 (Experiment)**: ✅ 已落地主链路（Loop/Job/Round/Batch/Model + Runtime gRPC + Executor），当前持续收敛在“稳定性、可复现性、指标可信度”。
+#### saki-executor
+已完成基础闭环（注册/心跳/派发/事件/结果/停止/数据请求/上传票据），当前处于“强类型与可靠性收敛”阶段。
 
 考虑到 GPU 服务器可能被 NAT 阻拦，无法被外网直接访问，设计上采用 Runtime 主动向 saki-api 建立长连接，并保持心跳的方式进行通信。
 
@@ -58,9 +59,9 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 数据导入 → 样本标注 → 版本快照 → 模型训练 (Runtime) → 主动学习选样 → 迭代优化
 
 ### 设计契约 (Model Runtime)
-- **单一职责**: `saki-api` 是数据与其关系的 "Source of Truth"；`saki-runtime` 是无状态执行器。
-- **数据流向**: Runtime **不直接写** 业务数据库，只通过 API 拉取数据，并将制品/日志持久化在本地 `runs/{job_id}` 目录。
-- **接口风格**: HTTP (控制) + WebSocket (实时日志/事件)。
+- **单一职责**: `saki-api` 是数据与其关系的 "Source of Truth"；`saki-executor` 是执行器。
+- **数据流向**: Executor **不直接写** 业务数据库，只通过 API 拉取数据，并将制品/日志持久化在本地 `runs/{job_id}` 目录。
+- **接口风格**: gRPC 双向流（控制 + 事件）+ 对象存储预签名 URL（制品/样本）。
 
 
 ### Saki-API 三层架构协议 (Architecture Protocol)
@@ -119,10 +120,12 @@ saki/
 │   │   ├── db/         # 数据库连接
 │   │   ├── models/     # SQLModel 模型 (分层设计: L1/L2/L3/RBAC)
 │   │   └── services/   # 业务逻辑
-├── saki-runtime/       # 模型运行与特征计算服务
-│   ├── src/saki_runtime/
-│   │   ├── jobs/       # 训练/推理任务逻辑
-│   │   └── plugins/    # 模型插件
+├── saki-executor/      # GPU 执行器（训练/推理/选样）
+│   ├── src/saki_executor/
+│   │   ├── agent/      # gRPC 客户端与连接生命周期
+│   │   ├── jobs/       # 任务执行与状态机
+│   │   ├── plugins/    # 模型插件
+│   │   └── strategies/ # 内置选样策略
 ├── saki-web/           # 交互式前端 (React)
 │   ├── src/
 │   │   ├── components/ # 通用组件
@@ -148,9 +151,10 @@ saki/
 - **启动 API**: `make run`
 - **运行测试**: `uv run pytest`
 
-### Runtime (saki-runtime)
-在 `saki-runtime` 目录下:
-- **启动服务**: `uv run fastapi dev src/saki_runtime/main.py`
+### Runtime (saki-executor)
+在 `saki-executor` 目录下:
+- **安装依赖**: `uv sync`
+- **启动执行器**: `uv run python -m saki_executor.main`
 
 ### 前端 (saki-web)
 在 `saki-web` 目录下:

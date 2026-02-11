@@ -2,7 +2,7 @@
 Annotation Service - Business logic for Annotation operations.
 """
 
-import logging
+from loguru import logger
 import uuid
 from typing import List
 
@@ -21,7 +21,6 @@ from saki_api.schemas.annotation import AnnotationCreate
 from saki_api.services.base import BaseService
 from saki_api.utils.coordinate_converter import convert_annotation_data_to_backend, convert_annotation_data_to_frontend
 
-logger = logging.getLogger(__name__)
 
 
 class AnnotationService(BaseService[Annotation, AnnotationRepository, AnnotationCreate, dict]):

@@ -5,21 +5,18 @@
  */
 
 import {ReactNode} from 'react';
-import {Layout} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {EmptyState, LoadingState} from '../common';
 import {AnnotationSidebar, AnnotationToolbar, SampleList} from './index';
-import {Annotation, Label, Sample} from '../../types';
+import {Annotation, ProjectLabel, Sample} from '../../types';
 import {AccessScope, AnnotationLike, UseAnnotationStateReturn} from '../../hooks';
-
-const {Content, Sider} = Layout;
 
 export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     // 数据状态
     loading: boolean;
     dataset: any | null;
     samples: Sample[];
-    labels: Label[];
+    labels: ProjectLabel[];
     currentIndex: number;
     currentSample: Sample | undefined;
 
@@ -53,6 +50,9 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     modifyScope?: AccessScope;
     canEditAnnotation?: (annotation: Annotation) => boolean;
     hasAnyEditPermission?: boolean;
+    onBack?: () => void;
+    backLabel?: string;
+    toolbarExtraActions?: ReactNode;
 }
 
 export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
@@ -81,6 +81,9 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                                                                         currentUserId,
                                                                         canEditAnnotation,
                                                                         hasAnyEditPermission = true,
+                                                                        onBack,
+                                                                        backLabel,
+                                                                        toolbarExtraActions,
                                                                     }: AnnotationWorkspaceLayoutProps<T>) {
     const {t} = useTranslation();
 
@@ -100,17 +103,17 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
     }
 
     return (
-        <Layout style={{height: '100%'}}>
+        <div className="flex h-full bg-github-base text-github-text">
             {/* Left Sidebar - Sample List */}
-            <Sider width={250} theme="light" style={{borderRight: '1px solid #f0f0f0'}}>
+            <aside className="w-[250px] shrink-0">
                 <SampleList
                     samples={samples}
                     currentIndex={currentIndex}
                     onSampleSelect={onSampleSelect}
                 />
-            </Sider>
+            </aside>
 
-            <Content style={{display: 'flex', flexDirection: 'column', height: '100%'}}>
+            <main className="flex h-full min-w-0 flex-1 flex-col">
                 {/* Toolbar */}
                 <AnnotationToolbar
                     labels={labels}
@@ -129,23 +132,23 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                         isSyncing,
                         isSyncReady,
                     }}
+                    onBack={onBack}
+                    backLabel={backLabel}
+                    extraActions={toolbarExtraActions}
                     hasAnyEditPermission={hasAnyEditPermission}
                 />
 
                 {/* Canvas Area */}
                 <div
+                    className="relative flex-1 overflow-hidden bg-[#333]"
                     style={{
-                        flex: 1,
-                        position: 'relative',
-                        overflow: 'hidden',
-                        background: '#333',
                         pointerEvents: isSyncing ? 'none' : 'auto',
                         opacity: isSyncing ? 0.6 : 1,
                     }}
                 >
                     {canvasArea}
                 </div>
-            </Content>
+            </main>
 
             {/* Right Sidebar */}
             <AnnotationSidebar
@@ -164,7 +167,6 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                 hasAnyEditPermission={hasAnyEditPermission}
             />
             {sidebarExtra}
-        </Layout>
+        </div>
     );
 }
-

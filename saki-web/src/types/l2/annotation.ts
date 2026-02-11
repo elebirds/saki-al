@@ -39,7 +39,7 @@ export interface MappedRegion {
 // ============================================================================
 
 export type AnnotationType = 'rect' | 'obb' | 'polygon' | 'polyline' | 'point' | 'keypoints';
-export type AnnotationSource = 'manual' | 'auto' | 'model' | 'system' | 'imported';
+export type AnnotationSource = 'manual' | 'auto' | 'model' | 'system' | 'imported' | 'fedo_mapping';
 
 // ============================================================================
 // Annotation - Core annotation model

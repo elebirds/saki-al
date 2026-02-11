@@ -10,7 +10,7 @@ This module is responsible for:
 - Generating linked annotations (e.g., FEDO dual-view mapping)
 """
 
-import logging
+from loguru import logger
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -21,7 +21,6 @@ from saki_api.models.enums import DatasetType, AnnotationType
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
-logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -79,7 +78,7 @@ class BaseAnnotationSyncHandler(ABC):
     system_type: DatasetType
 
     def __init__(self, session: Optional["AsyncSession"] = None):
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = logger.bind(component=f"{__name__}.{self.__class__.__name__}")
         self.session = session
 
         # Initialize services if session is provided

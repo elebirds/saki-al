@@ -1,0 +1,308 @@
+syntax = "proto3";
+
+package saki.runtime.v1;
+
+import "google/protobuf/struct.proto";
+
+service RuntimeControl {
+  rpc Stream(stream RuntimeMessage) returns (stream RuntimeMessage);
+}
+
+enum RuntimeJobStatus {
+  RUNTIME_JOB_STATUS_UNSPECIFIED = 0;
+  CREATED = 1;
+  QUEUED = 2;
+  RUNNING = 3;
+  STOPPING = 4;
+  STOPPED = 5;
+  SUCCEEDED = 6;
+  FAILED = 7;
+  PARTIAL_FAILED = 8;
+}
+
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  OK = 1;
+  ERROR = 2;
+}
+
+enum AckType {
+  ACK_TYPE_UNSPECIFIED = 0;
+  ACK_TYPE_REGISTER = 1;
+  ACK_TYPE_ASSIGN_JOB = 2;
+  ACK_TYPE_STOP_JOB = 3;
+  ACK_TYPE_REQUEST = 4;
+}
+
+enum AckReason {
+  ACK_REASON_UNSPECIFIED = 0;
+  ACK_REASON_REGISTERED = 1;
+  ACK_REASON_ACCEPTED = 2;
+  ACK_REASON_EXECUTOR_BUSY = 3;
+  ACK_REASON_STOPPING = 4;
+  ACK_REASON_JOB_NOT_RUNNING = 5;
+  ACK_REASON_REJECTED = 6;
+}
+
+enum RuntimeJobType {
+  RUNTIME_JOB_TYPE_UNSPECIFIED = 0;
+  TRAIN_DETECTION = 1;
+}
+
+enum RuntimeJobMode {
+  RUNTIME_JOB_MODE_UNSPECIFIED = 0;
+  ACTIVE_LEARNING = 1;
+  SIMULATION = 2;
+}
+
+enum RuntimeQueryType {
+  RUNTIME_QUERY_TYPE_UNSPECIFIED = 0;
+  LABELS = 1;
+  SAMPLES = 2;
+  ANNOTATIONS = 3;
+  UNLABELED_SAMPLES = 4;
+}
+
+enum AcceleratorType {
+  ACCELERATOR_TYPE_UNSPECIFIED = 0;
+  CPU = 1;
+  CUDA = 2;
+  MPS = 3;
+}
+
+message AcceleratorCapability {
+  AcceleratorType type = 1;
+  bool available = 2;
+  int32 device_count = 3;
+  repeated string device_ids = 4;
+}
+
+message PluginCapability {
+  string plugin_id = 1;
+  string version = 2;
+  repeated string supported_job_types = 3;
+  repeated string supported_strategies = 4;
+  string display_name = 5;
+  google.protobuf.Struct request_config_schema = 6;
+  google.protobuf.Struct default_request_config = 7;
+  repeated AcceleratorType supported_accelerators = 8;
+  bool supports_auto_fallback = 9;
+}
+
+message ResourceSummary {
+  int32 gpu_count = 1;
+  repeated int32 gpu_device_ids = 2;
+  int32 cpu_workers = 3;
+  int32 memory_mb = 4;
+  repeated AcceleratorCapability accelerators = 5;
+}
+
+message Register {
+  string request_id = 1;
+  string executor_id = 2;
+  string version = 3;
+  repeated PluginCapability plugins = 4;
+  ResourceSummary resources = 5;
+}
+
+message Heartbeat {
+  string request_id = 1;
+  string executor_id = 2;
+  bool busy = 3;
+  string current_job_id = 4;
+  ResourceSummary resources = 5;
+}
+
+message JobPayload {
+  string job_id = 1;
+  string project_id = 2;
+  string loop_id = 3;
+  string source_commit_id = 4;
+  RuntimeJobType job_type = 5;
+  string plugin_id = 6;
+  RuntimeJobMode mode = 7;
+  string query_strategy = 8;
+  google.protobuf.Struct params = 9;
+  ResourceSummary resources = 10;
+  int32 round_index = 11;
+}
+
+message AssignJob {
+  string request_id = 1;
+  JobPayload job = 2;
+}
+
+message StopJob {
+  string request_id = 1;
+  string job_id = 2;
+  string reason = 3;
+}
+
+message StatusEvent {
+  RuntimeJobStatus status = 1;
+  string reason = 2;
+}
+
+message LogEvent {
+  string level = 1;
+  string message = 2;
+}
+
+message ProgressEvent {
+  int32 epoch = 1;
+  int32 step = 2;
+  int32 total_steps = 3;
+  int32 eta_sec = 4;
+}
+
+message MetricEvent {
+  int32 step = 1;
+  int32 epoch = 2;
+  map<string, double> metrics = 3;
+}
+
+message ArtifactItem {
+  string kind = 1;
+  string name = 2;
+  string uri = 3;
+  google.protobuf.Struct meta = 4;
+}
+
+message ArtifactEvent {
+  ArtifactItem artifact = 1;
+}
+
+message JobEvent {
+  string request_id = 1;
+  string job_id = 2;
+  int64 seq = 3;
+  int64 ts = 4;
+  oneof event_payload {
+    StatusEvent status_event = 5;
+    LogEvent log_event = 6;
+    ProgressEvent progress_event = 7;
+    MetricEvent metric_event = 8;
+    ArtifactEvent artifact_event = 9;
+  }
+}
+
+message QueryCandidate {
+  string sample_id = 1;
+  double score = 2;
+  google.protobuf.Struct reason = 3;
+}
+
+message JobResult {
+  string request_id = 1;
+  string job_id = 2;
+  RuntimeJobStatus status = 3;
+  map<string, double> metrics = 4;
+  repeated ArtifactItem artifacts = 5;
+  repeated QueryCandidate candidates = 6;
+  string error_message = 7;
+}
+
+message DataRequest {
+  string request_id = 1;
+  string job_id = 2;
+  RuntimeQueryType query_type = 3;
+  string project_id = 4;
+  string commit_id = 5;
+  string cursor = 6;
+  int32 limit = 7;
+}
+
+message LabelItem {
+  string id = 1;
+  string name = 2;
+  string color = 3;
+}
+
+message SampleItem {
+  string id = 1;
+  string asset_hash = 2;
+  string download_url = 3;
+  int32 width = 4;
+  int32 height = 5;
+  google.protobuf.Struct meta = 6;
+}
+
+message AnnotationItem {
+  string id = 1;
+  string sample_id = 2;
+  string category_id = 3;
+  repeated double bbox_xywh = 4;
+  google.protobuf.Struct obb = 5;
+  string source = 6;
+  double confidence = 7;
+}
+
+message DataItem {
+  oneof item {
+    LabelItem label_item = 1;
+    SampleItem sample_item = 2;
+    AnnotationItem annotation_item = 3;
+  }
+}
+
+message DataResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string job_id = 3;
+  RuntimeQueryType query_type = 4;
+  repeated DataItem items = 5;
+  string next_cursor = 6;
+}
+
+message UploadTicketRequest {
+  string request_id = 1;
+  string job_id = 2;
+  string artifact_name = 3;
+  string content_type = 4;
+}
+
+message UploadTicketResponse {
+  string request_id = 1;
+  string reply_to = 2;
+  string job_id = 3;
+  string upload_url = 4;
+  string storage_uri = 5;
+  map<string, string> headers = 6;
+}
+
+message Ack {
+  string request_id = 1;
+  string ack_for = 2;
+  AckStatus status = 3;
+  AckType type = 4;
+  AckReason reason = 5;
+  string detail = 6;
+}
+
+message Error {
+  string request_id = 1;
+  string code = 2;
+  string message = 3;
+  string reply_to = 4;
+  string ack_for = 5;
+  string job_id = 6;
+  RuntimeQueryType query_type = 7;
+  string reason = 8;
+}
+
+message RuntimeMessage {
+  oneof payload {
+    Register register = 1;
+    Heartbeat heartbeat = 2;
+    AssignJob assign_job = 3;
+    StopJob stop_job = 4;
+    JobEvent job_event = 5;
+    JobResult job_result = 6;
+    DataRequest data_request = 7;
+    DataResponse data_response = 8;
+    UploadTicketRequest upload_ticket_request = 9;
+    UploadTicketResponse upload_ticket_response = 10;
+    Ack ack = 11;
+    Error error = 12;
+  }
+}

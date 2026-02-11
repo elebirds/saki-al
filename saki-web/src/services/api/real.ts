@@ -6,6 +6,7 @@ import {
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
+    ALLoop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -23,6 +24,31 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
+    RuntimeArtifactsResponse,
+    JobArtifactDownload,
+    RuntimeJob,
+    RuntimeJobCommandResponse,
+    RuntimeJobCreateRequest,
+    RuntimeJobEvent,
+    RuntimeMetricPoint,
+    RuntimeTopKCandidate,
+    LoopCreateRequest,
+    LoopRecoverRequest,
+    LoopUpdateRequest,
+    LoopRound,
+    LoopSummary,
+    SimulationExperimentCreateRequest,
+    SimulationExperimentCreateResponse,
+    SimulationExperimentCurves,
+    RuntimePluginCatalogResponse,
+    RuntimeExecutorListResponse,
+    RuntimeExecutorRead,
+    RuntimeExecutorStatsRange,
+    RuntimeExecutorStatsResponse,
+    AnnotationBatch,
+    AnnotationBatchItem,
+    ProjectModel,
+    ModelArtifactDownload,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
@@ -37,6 +63,7 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
+    UploadProgressEvent,
 } from '../../types';
 import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
@@ -645,6 +672,239 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async getProjectLoops(projectId: string): Promise<ALLoop[]> {
+        const response = await this.client.get<ALLoop[]>(`/projects/${projectId}/loops`);
+        return response.data;
+    }
+
+    async createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/projects/${projectId}/loops`, payload);
+        return response.data;
+    }
+
+    async getLoopById(loopId: string): Promise<ALLoop> {
+        const response = await this.client.get<ALLoop>(`/loops/${loopId}`);
+        return response.data;
+    }
+
+    async updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop> {
+        const response = await this.client.patch<ALLoop>(`/loops/${loopId}`, payload);
+        return response.data;
+    }
+
+    async startLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:start`);
+        return response.data;
+    }
+
+    async recoverLoop(loopId: string, payload: LoopRecoverRequest): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:recover`, payload);
+        return response.data;
+    }
+
+    async pauseLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:pause`);
+        return response.data;
+    }
+
+    async resumeLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:resume`);
+        return response.data;
+    }
+
+    async stopLoop(loopId: string): Promise<ALLoop> {
+        const response = await this.client.post<ALLoop>(`/loops/${loopId}:stop`);
+        return response.data;
+    }
+
+    async getLoopRounds(loopId: string, limit: number = 200): Promise<LoopRound[]> {
+        const response = await this.client.get<LoopRound[]>(`/loops/${loopId}/rounds`, {params: {limit}});
+        return response.data;
+    }
+
+    async getLoopSummary(loopId: string): Promise<LoopSummary> {
+        const response = await this.client.get<LoopSummary>(`/loops/${loopId}/summary`);
+        return response.data;
+    }
+
+    async createSimulationExperiment(
+        projectId: string,
+        payload: SimulationExperimentCreateRequest
+    ): Promise<SimulationExperimentCreateResponse> {
+        const response = await this.client.post<SimulationExperimentCreateResponse>(
+            `/projects/${projectId}/simulation-experiments`,
+            payload,
+        );
+        return response.data;
+    }
+
+    async getSimulationExperimentCurves(groupId: string): Promise<SimulationExperimentCurves> {
+        const response = await this.client.get<SimulationExperimentCurves>(
+            `/simulation-experiments/${groupId}/curves`,
+        );
+        return response.data;
+    }
+
+    async getRuntimePlugins(): Promise<RuntimePluginCatalogResponse> {
+        const response = await this.client.get<RuntimePluginCatalogResponse>('/runtime/plugins');
+        return response.data;
+    }
+
+    async getLoopJobs(loopId: string, limit: number = 50): Promise<RuntimeJob[]> {
+        const response = await this.client.get<RuntimeJob[]>(`/loops/${loopId}/jobs`, {params: {limit}});
+        return response.data;
+    }
+
+    async createLoopJob(
+        loopId: string,
+        payload: RuntimeJobCreateRequest,
+        autoDispatch: boolean = true
+    ): Promise<RuntimeJob> {
+        const response = await this.client.post<RuntimeJob>(
+            `/loops/${loopId}/jobs`,
+            payload,
+            {
+                params: {
+                    auto_dispatch: autoDispatch,
+                },
+            }
+        );
+        return response.data;
+    }
+
+    async stopJob(jobId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
+        const response = await this.client.post<RuntimeJobCommandResponse>(`/jobs/${jobId}:stop`, null, {params: {reason}});
+        return response.data;
+    }
+
+    async getJob(jobId: string): Promise<RuntimeJob> {
+        const response = await this.client.get<RuntimeJob>(`/jobs/${jobId}`);
+        return response.data;
+    }
+
+    async getJobEvents(jobId: string, afterSeq: number = 0): Promise<RuntimeJobEvent[]> {
+        const response = await this.client.get<RuntimeJobEvent[]>(`/jobs/${jobId}/events`, {params: {after_seq: afterSeq}});
+        return response.data;
+    }
+
+    async getJobMetricSeries(jobId: string, limit: number = 5000): Promise<RuntimeMetricPoint[]> {
+        const response = await this.client.get<RuntimeMetricPoint[]>(`/jobs/${jobId}/metrics/series`, {params: {limit}});
+        return response.data;
+    }
+
+    async getJobSamplingTopK(jobId: string, limit: number = 200): Promise<RuntimeTopKCandidate[]> {
+        const response = await this.client.get<RuntimeTopKCandidate[]>(`/jobs/${jobId}/sampling/topk`, {params: {limit}});
+        return response.data;
+    }
+
+    async getJobArtifacts(jobId: string): Promise<RuntimeArtifactsResponse> {
+        const response = await this.client.get<RuntimeArtifactsResponse>(`/jobs/${jobId}/artifacts`);
+        return response.data;
+    }
+
+    async getJobArtifactDownloadUrl(
+        jobId: string,
+        artifactName: string,
+        expiresInHours: number = 2
+    ): Promise<JobArtifactDownload> {
+        const response = await this.client.get<JobArtifactDownload>(
+            `/jobs/${jobId}/artifacts/${artifactName}:download-url`,
+            {params: {expires_in_hours: expiresInHours}}
+        );
+        return response.data;
+    }
+
+    async getRuntimeExecutors(): Promise<RuntimeExecutorListResponse> {
+        const response = await this.client.get<RuntimeExecutorListResponse>('/runtime/executors');
+        return response.data;
+    }
+
+    async getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse> {
+        const response = await this.client.get<RuntimeExecutorStatsResponse>('/runtime/executors/stats', {
+            params: {range},
+        });
+        return response.data;
+    }
+
+    async getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead> {
+        const response = await this.client.get<RuntimeExecutorRead>(`/runtime/executors/${executorId}`);
+        return response.data;
+    }
+
+    async createAnnotationBatchFromJob(jobId: string, limit: number = 200): Promise<AnnotationBatch> {
+        const response = await this.client.post<AnnotationBatch>(
+            `/jobs/${jobId}/sampling/batches`,
+            {limit},
+        );
+        return response.data;
+    }
+
+    async getAnnotationBatch(batchId: string): Promise<AnnotationBatch> {
+        const response = await this.client.get<AnnotationBatch>(`/annotation-batches/${batchId}`);
+        return response.data;
+    }
+
+    async getAnnotationBatchItems(batchId: string, limit: number = 5000): Promise<AnnotationBatchItem[]> {
+        const response = await this.client.get<AnnotationBatchItem[]>(`/annotation-batches/${batchId}/items`, {params: {limit}});
+        return response.data;
+    }
+
+    async registerModelFromJob(
+        projectId: string,
+        payload: {
+            jobId: string;
+            name?: string;
+            versionTag?: string;
+            status?: string;
+        }
+    ): Promise<ProjectModel> {
+        const response = await this.client.post<ProjectModel>(
+            `/projects/${projectId}/models:register-from-job`,
+            payload,
+        );
+        return response.data;
+    }
+
+    async getProjectModels(projectId: string, limit: number = 100): Promise<ProjectModel[]> {
+        const response = await this.client.get<ProjectModel[]>(`/projects/${projectId}/models`, {params: {limit}});
+        return response.data;
+    }
+
+    async promoteModel(modelId: string, status: string = 'production'): Promise<ProjectModel> {
+        const response = await this.client.post<ProjectModel>(`/models/${modelId}:promote`, {status});
+        return response.data;
+    }
+
+    async getModelArtifactDownloadUrl(
+        modelId: string,
+        artifactName: string,
+        expiresInHours: number = 2
+    ): Promise<ModelArtifactDownload> {
+        const response = await this.client.get<ModelArtifactDownload>(
+            `/models/${modelId}/artifacts/${artifactName}:download-url`,
+            {params: {expires_in_hours: expiresInHours}}
+        );
+        return response.data;
+    }
+
+    async getAssetDownloadUrl(
+        assetId: string,
+        expiresInHours: number = 1
+    ): Promise<{
+        assetId: string;
+        downloadUrl: string;
+        expiresIn: number;
+        filename?: string;
+    }> {
+        const response = await this.client.get<{
+            assetId: string;
+            downloadUrl: string;
+            expiresIn: number;
+            filename?: string;
+        }>(`/assets/${assetId}/download-url`, {params: {expires_in_hours: expiresInHours}});
+        return response.data;
+    }
+
     async createProjectBranch(
         projectId: string,
         payload: {
@@ -767,6 +1027,7 @@ export class RealApiService implements ApiService {
         datasetId: string,
         params: {
             q?: string;
+            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;
@@ -780,6 +1041,7 @@ export class RealApiService implements ApiService {
             {
                 params: {
                     q: params.q,
+                    batch_id: params.batchId,
                     status: params.status,
                     branch_name: params.branchName,
                     sort_by: params.sortBy,
@@ -920,7 +1182,7 @@ export class RealApiService implements ApiService {
     async uploadSamplesWithProgress(
         datasetId: string,
         files: File[],
-        onProgress: (event: any) => void,
+        onProgress: (event: UploadProgressEvent) => void,
         signal?: AbortSignal
     ): Promise<void> {
         const formData = new FormData();

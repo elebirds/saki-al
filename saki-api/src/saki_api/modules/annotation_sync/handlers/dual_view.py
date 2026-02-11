@@ -85,7 +85,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
             self._view_mappers[lookup_key] = mapper
             return mapper
         except Exception as e:
-            self.logger.error(f"Error loading lookup table: {e}")
+            self.logger.error("加载查找表失败 error={}", e)
             return None
 
     def _load_lookup_table(self, context: AnnotationContext):
@@ -102,14 +102,14 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
 
             if lookup_bytes is None:
                 if not lookup_object_path:
-                    self.logger.warning(f"No lookup path in sample_meta for {context.sample_id}")
+                    self.logger.warning("样本缺少查找表路径 sample_id={}", context.sample_id)
                     return None
                 if not self.asset_service:
                     raise RuntimeError("AssetService not initialized")
                 lookup_bytes = self.asset_service.storage.get_object_bytes(lookup_object_path)
             return load_lookup_table_from_bytes(lookup_bytes)
         except Exception as e:
-            self.logger.error(f"Error loading lookup table: {e}")
+            self.logger.error("加载查找表失败 error={}", e)
             return None
 
     @staticmethod
@@ -238,7 +238,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         # Load lookup table
         lookup = self._load_lookup_table(context)
         if not lookup:
-            self.logger.warning(f"Cannot load lookup table for {context.sample_id}")
+            self.logger.warning("无法加载查找表 sample_id={}", context.sample_id)
             raise ValueError("Cannot load lookup table")
 
         # Get source OBB vertices
@@ -252,7 +252,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
             lut_src = lookup.lut_lw  # (N, M, 2)
             lut_dst = lookup.lut_te  # (N, M, 2)
         else:
-            self.logger.error(f"Invalid source_view: {source_view}")
+            self.logger.error("无效的 source_view source_view={}", source_view)
             raise ValueError("Invalid source_view")
 
         # Call high-performance OBB mapping function
@@ -342,8 +342,11 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
             )
 
             self.logger.info(
-                f"FEDO annotation created: {annotation_id} in {view}, "
-                f"generated {len(generated)} mapped annotations in {target_view}"
+                "FEDO 标注创建完成 annotation_id={} source_view={} target_view={} generated_count={}",
+                annotation_id,
+                view,
+                target_view,
+                len(generated),
             )
 
             return SyncResult(
@@ -353,7 +356,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
                 generated=generated,
             )
         except Exception as e:
-            self.logger.error(f"Error generating mapped annotations: {e}")
+            self.logger.error("生成映射标注失败 error={}", e)
             return SyncResult(
                 success=False,
                 annotation_id=annotation_id,
@@ -396,8 +399,8 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
         # For update, we need label_id and ann_type to regenerate annotations
         if not label_id or not ann_type:
             self.logger.warning(
-                f"FEDO annotation update: {annotation_id} missing label_id or ann_type, "
-                f"cannot regenerate mapped annotations"
+                "FEDO 标注更新缺少 label_id 或 ann_type，无法重建映射标注 annotation_id={}",
+                annotation_id,
             )
             return SyncResult(
                 success=True,
@@ -419,8 +422,11 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
             )
 
             self.logger.info(
-                f"FEDO annotation updated: {annotation_id} in {view}, "
-                f"regenerated {len(generated)} mapped annotations in {target_view}"
+                "FEDO 标注更新完成 annotation_id={} source_view={} target_view={} regenerated_count={}",
+                annotation_id,
+                view,
+                target_view,
+                len(generated),
             )
 
             return SyncResult(
@@ -430,7 +436,7 @@ class DualViewSyncHandler(BaseAnnotationSyncHandler):
                 generated=generated,
             )
         except Exception as e:
-            self.logger.error(f"Error regenerating mapped annotations: {e}")
+            self.logger.error("重建映射标注失败 error={}", e)
             return SyncResult(
                 success=False,
                 annotation_id=annotation_id,

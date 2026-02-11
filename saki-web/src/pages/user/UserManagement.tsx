@@ -10,7 +10,6 @@ import {
     Popconfirm,
     Result,
     Select,
-    Space,
     Spin,
     Table,
     Tag,
@@ -236,13 +235,13 @@ const UserManagement: React.FC = () => {
             title: t('common.role'),
             key: 'systemRoles',
             render: (_: any, record: User) => (
-                <Space wrap>
+                <div className="flex flex-wrap gap-1">
                     {record.roles?.map(role => (
                         <Tag key={role.id} color={getRoleColor(role.name)}>
                             {role.displayName}
                         </Tag>
                     )) || <Tag>-</Tag>}
-                </Space>
+                </div>
             ),
         },
         {
@@ -254,7 +253,7 @@ const UserManagement: React.FC = () => {
                 const canDeleteThisUser = canDeleteUser && (!isSuperAdminUser || isSuperAdmin) && record.id !== currentUser?.id;
 
                 return (
-                    <Space size="middle">
+                    <div className="flex items-center gap-3">
                         {canEditThisUser ? (
                             <Button type="link" icon={<EditOutlined/>} onClick={() => handleEdit(record)}>
                                 {t('common.edit')}
@@ -292,7 +291,7 @@ const UserManagement: React.FC = () => {
                                 </Button>
                             </Tooltip>
                         )}
-                    </Space>
+                    </div>
                 );
             },
         },
@@ -425,7 +424,7 @@ const UserManagement: React.FC = () => {
                             {userRoles.length === 0 ? (
                                 <p className="text-gray-500">{t('user.management.noRoles')}</p>
                             ) : (
-                                <Space direction="vertical" className="w-full" size="middle">
+                                <div className="flex w-full flex-col gap-3">
                                     {userRoles.map(ur => {
                                         const role = roles.find(r => r.id === ur.roleId);
                                         const canRevoke = canRevokeRoles && (isSuperAdmin || (role?.name !== 'super_admin'));
@@ -465,7 +464,7 @@ const UserManagement: React.FC = () => {
                                             </div>
                                         );
                                     })}
-                                </Space>
+                                </div>
                             )}
                         </div>
 

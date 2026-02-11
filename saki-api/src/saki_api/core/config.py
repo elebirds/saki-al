@@ -1,7 +1,7 @@
 from typing import List
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -47,6 +47,36 @@ class Settings(BaseSettings):
                 return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
 
+    @field_validator("RUNTIME_EXECUTOR_ALLOWLIST", mode="before")
+    @classmethod
+    def parse_runtime_allowlist(cls, v: str | list[str] | None) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [item.strip() for item in v if item and item.strip()]
+        if isinstance(v, str):
+            stripped = v.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("[") and stripped.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except Exception:
+                    pass
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return []
+
+    @field_validator("LOG_COLOR_MODE", mode="before")
+    @classmethod
+    def parse_log_color_mode(cls, v: str | None) -> str:
+        mode = str(v or "auto").strip().lower()
+        if mode not in {"auto", "on", "off"}:
+            return "auto"
+        return mode
+
     # MinIO Object Storage Configuration
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
@@ -59,6 +89,28 @@ class Settings(BaseSettings):
     REDIS_KEY_PREFIX: str = "saki"
     REDIS_WORKING_TTL_SECONDS: int = 86400  # 24 hours
 
+    # Runtime control plane
+    INTERNAL_TOKEN: str = "dev-secret"
+    RUNTIME_GRPC_BIND: str = "0.0.0.0:50051"
+    RUNTIME_HEARTBEAT_TIMEOUT_SEC: int = 30
+    RUNTIME_DISPATCH_INTERVAL_SEC: int = 3
+    RUNTIME_UPLOAD_URL_EXPIRE_HOURS: int = 2
+    RUNTIME_MAX_RETRY_COUNT: int = 2
+    RUNTIME_RETRY_BASE_DELAY_SEC: int = 10
+    RUNTIME_ASSIGN_ACK_TIMEOUT_SEC: int = 30
+    RUNTIME_STREAM_REJECT_CLOSE: bool = True
+    RUNTIME_EXECUTOR_ALLOWLIST: List[str] = []
+    RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC: int = 600
+    RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES: int = 2048
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_DIR: str = "logs"
+    LOG_FILE_NAME: str = "api.log"
+    LOG_MAX_BYTES: int = 20 * 1024 * 1024
+    LOG_BACKUP_COUNT: int = 5
+    LOG_COLOR_MODE: str = "auto"
+
     # FEDO LUT local cache
     LUT_CACHE_DIR: str = "./data/lut_cache"
 
@@ -67,9 +119,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    class Config:
-        case_sensitive = True
-        env_file = ".env"  # 允许从根目录的 .env 文件读取变量
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 
 
 settings = Settings()

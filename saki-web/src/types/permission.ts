@@ -160,6 +160,7 @@ export interface ResourceMember {
     roleName?: string;
     roleDisplayName?: string;
     roleColor?: string;
+    roleIsSupremo?: boolean;
 }
 
 export interface ResourceMemberCreate {

@@ -12,7 +12,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppException, BadRequestAppException
 from saki_api.core.rbac.dependencies import get_current_user_id
-from saki_api.core.rbac.presets import DATASET_OWNER_ROLE_ID
+from saki_api.core.rbac.presets import DATASET_OWNER_ROLE_ID, DATASET_ROLE_NAME_PREFIX
 from saki_api.db.transaction import transactional
 from saki_api.models.l1.dataset import Dataset
 from saki_api.models.rbac import ResourceType, Role, RoleType
@@ -43,6 +43,12 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
         self.session = session
         self.resource_member_repo = ResourceMemberRepository(session)
         self.role_repo = RoleRepository(session)
+
+    async def _is_supremo_role(self, role_id: uuid.UUID) -> bool:
+        role = await self.role_repo.get_by_id(role_id)
+        if role is None:
+            raise NotFoundAppException(f"Role {role_id} not found")
+        return bool(role.is_supremo)
 
     @transactional
     async def create_dataset(self, schema: DatasetCreate, owner_id: uuid.UUID) -> Dataset:
@@ -133,9 +139,11 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
         # Verify dataset exists
         await self.get_by_id_or_raise(dataset_id)
 
-        # Prevent assigning owner role to new members
-        if member_data.role_id == DATASET_OWNER_ROLE_ID:
-            raise BadRequestAppException("Cannot assign owner role to members. Owner is determined by dataset creator.")
+        # Prevent assigning supremo role to new members
+        if await self._is_supremo_role(member_data.role_id):
+            raise BadRequestAppException(
+                "Cannot assign supremo role to members. Supremo is determined by dataset creator."
+            )
 
         # Check if member already exists
         existing = await self.resource_member_repo.get_by_user_and_resource(
@@ -184,15 +192,13 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
             BadRequestAppException: If trying to update owner or assign owner role
         """
         # Verify dataset exists
-        dataset = await self.get_by_id_or_raise(dataset_id)
+        await self.get_by_id_or_raise(dataset_id)
 
-        # Prevent updating the dataset owner's membership
-        if user_id == dataset.owner_id:
-            raise BadRequestAppException("Cannot modify the dataset owner's membership")
-
-        # Prevent assigning owner role
-        if member_data.role_id == DATASET_OWNER_ROLE_ID:
-            raise BadRequestAppException("Cannot assign owner role to members. Owner is determined by dataset creator.")
+        # Prevent assigning supremo role
+        if await self._is_supremo_role(member_data.role_id):
+            raise BadRequestAppException(
+                "Cannot assign supremo role to members. Supremo is determined by dataset creator."
+            )
 
         # Get existing member
         existing = await self.resource_member_repo.get_by_user_and_resource(
@@ -202,6 +208,8 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
         )
         if not existing:
             raise NotFoundAppException("Member not found")
+        if await self._is_supremo_role(existing.role_id):
+            raise BadRequestAppException("Cannot modify dataset supremo membership")
 
         # Update member
         updated = await self.resource_member_repo.update(
@@ -233,11 +241,7 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
             BadRequestAppException: If trying to remove the dataset owner
         """
         # Verify dataset exists
-        dataset = await self.get_by_id_or_raise(dataset_id)
-
-        # Prevent removing the dataset owner
-        if user_id == dataset.owner_id:
-            raise BadRequestAppException("Cannot remove the dataset owner")
+        await self.get_by_id_or_raise(dataset_id)
 
         if current_user_id == user_id:
             raise BadRequestAppException("Cannot remove yourself")
@@ -250,6 +254,8 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
         )
         if not existing:
             raise NotFoundAppException("Member not found")
+        if await self._is_supremo_role(existing.role_id):
+            raise BadRequestAppException("Cannot remove dataset supremo membership")
 
         # Delete member
         await self.resource_member_repo.delete(existing.id)
@@ -272,10 +278,13 @@ class DatasetService(BaseService[Dataset, DatasetRepository, DatasetCreate, Data
         # Verify dataset exists
         await self.get_by_id_or_raise(dataset_id)
 
-        # Get all resource roles
+        # Get dataset-specific resource roles only
         roles = await self.session.exec(
             select(Role)
-            .where(Role.type == RoleType.RESOURCE)
+            .where(
+                Role.type == RoleType.RESOURCE,
+                Role.name.like(f"{DATASET_ROLE_NAME_PREFIX}%"),
+            )
             .order_by(Role.name)
         )
 

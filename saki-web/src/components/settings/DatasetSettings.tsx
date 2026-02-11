@@ -133,7 +133,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
             key: 'members',
             label: t('dataset.members.title'),
             children: (
-                <DatasetMembers datasetId={dataset.id} ownerId={dataset.ownerId}/>
+                <DatasetMembers datasetId={dataset.id}/>
             ),
         }] : []),
     ];

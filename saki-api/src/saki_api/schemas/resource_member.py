@@ -40,5 +40,6 @@ class ResourceMemberRead(ResourceMemberBase, UUIDMixin):
     role_name: Optional[str] = Field(None, validation_alias=AliasPath("role", "name"))
     role_display_name: Optional[str] = Field(None, validation_alias=AliasPath("role", "display_name"))
     role_color: Optional[str] = Field(None, validation_alias=AliasPath("role", "color"))
+    role_is_supremo: Optional[bool] = Field(None, validation_alias=AliasPath("role", "is_supremo"))
 
     model_config = {"from_attributes": True}

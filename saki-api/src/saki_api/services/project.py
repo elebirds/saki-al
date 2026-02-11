@@ -12,11 +12,18 @@ from sqlalchemy import asc, desc, func, or_
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppException, BadRequestAppException
-from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID
+from saki_api.core.exceptions import (
+    DataAlreadyExistsAppException,
+    NotFoundAppException,
+    BadRequestAppException,
+    ForbiddenAppException,
+)
+from saki_api.core.rbac.checker import PermissionChecker
+from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID, PROJECT_ROLE_NAME_PREFIX
 from saki_api.db.transaction import transactional
-from saki_api.models import ResourceType
+from saki_api.models import ResourceType, Permissions
 from saki_api.models.enums import AuthorType, ProjectStatus
+from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l1.sample import Sample
 from saki_api.models.l2.annotation import Annotation
 from saki_api.models.l2.annotation_draft import AnnotationDraft
@@ -30,7 +37,9 @@ from saki_api.models.l3.job import Job
 from saki_api.models.l3.job_task import JobTask
 from saki_api.models.l3.metric import JobSampleMetric
 from saki_api.models.l3.task_candidate_item import TaskCandidateItem
+from saki_api.models.rbac.enums import RoleType
 from saki_api.models.rbac.resource_member import ResourceMember
+from saki_api.models.rbac.role import Role
 from saki_api.repositories.annotation import AnnotationRepository
 from saki_api.repositories.branch import BranchRepository
 from saki_api.repositories.dataset import DatasetRepository
@@ -38,6 +47,7 @@ from saki_api.repositories.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.query import Pagination
 from saki_api.repositories.resource_member import ResourceMemberRepository
+from saki_api.repositories.role import RoleRepository
 from saki_api.schemas.project import ProjectCreate, ProjectForkCreate, ProjectUpdate
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
@@ -68,6 +78,31 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         self.resource_member_repo = ResourceMemberRepository(session)
         self.dataset_repo = DatasetRepository(session)
         self.label_repo = LabelRepository(session)
+        self.role_repo = RoleRepository(session)
+
+    async def _is_supremo_role(self, role_id: uuid.UUID) -> bool:
+        role = await self.role_repo.get_by_id(role_id)
+        if role is None:
+            raise NotFoundAppException(f"Role {role_id} not found")
+        return bool(role.is_supremo)
+
+    async def _ensure_dataset_link_permission(
+            self,
+            *,
+            actor_user_id: uuid.UUID,
+            dataset_id: uuid.UUID,
+    ) -> None:
+        checker = PermissionChecker(self.session)
+        allowed = await checker.check(
+            user_id=actor_user_id,
+            permission=Permissions.DATASET_LINK_PROJECT,
+            resource_type=ResourceType.DATASET,
+            resource_id=str(dataset_id),
+        )
+        if not allowed:
+            raise ForbiddenAppException(
+                f"Permission denied: dataset {dataset_id} cannot be linked/unlinked for this user"
+            )
 
     @transactional
     async def initialize_project(
@@ -106,6 +141,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             dataset = await self.dataset_repo.get_by_id(dataset_id)
             if not dataset:
                 raise NotFoundAppException(f"Dataset {dataset_id} not found")
+            await self._ensure_dataset_link_permission(actor_user_id=user_id, dataset_id=dataset_id)
             if dataset_type is None:
                 dataset_type = dataset.type
             elif dataset.type != dataset_type:
@@ -201,6 +237,36 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             "commit_count": await self.repository.count_commits(project_id),
             "fork_count": await self.repository.count_forks(project_id),
         }
+
+    async def list_in_permission_paginated(
+            self,
+            user_id: uuid.UUID,
+            pagination: Pagination,
+    ):
+        return await self.repository.list_in_permission_paginated(user_id=user_id, pagination=pagination)
+
+    async def list_in_permission(self, user_id: uuid.UUID) -> list[Project]:
+        return await self.repository.list_in_permission(user_id=user_id)
+
+    async def get_available_project_roles(self, project_id: uuid.UUID) -> list[Role]:
+        await self.get_by_id_or_raise(project_id)
+        roles = await self.session.exec(
+            select(Role)
+            .where(
+                Role.type == RoleType.RESOURCE,
+                Role.name.like(f"{PROJECT_ROLE_NAME_PREFIX}%"),
+            )
+            .order_by(Role.name)
+        )
+        return list(roles.all())
+
+    @transactional
+    async def set_project_status(self, project_id: uuid.UUID, status: ProjectStatus) -> Project:
+        await self.get_by_id_or_raise(project_id)
+        project = await self.repository.update(project_id, {"status": status})
+        if not project:
+            raise NotFoundAppException(f"Project {project_id} not found")
+        return project
 
     @staticmethod
     def _deep_clone_json(value: Any) -> Any:
@@ -440,7 +506,12 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
     # =========================================================================
 
     @transactional
-    async def link_datasets(self, project_id: uuid.UUID, dataset_ids: List[uuid.UUID]) -> List[ProjectDataset]:
+    async def link_datasets(
+            self,
+            project_id: uuid.UUID,
+            dataset_ids: List[uuid.UUID],
+            actor_user_id: uuid.UUID,
+    ) -> List[ProjectDataset]:
         """
         Link datasets to a project.
 
@@ -460,6 +531,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             dataset = await self.dataset_repo.get_by_id(dataset_id)
             if not dataset:
                 raise NotFoundAppException(f"Dataset {dataset_id} not found")
+            await self._ensure_dataset_link_permission(actor_user_id=actor_user_id, dataset_id=dataset_id)
             if new_dataset_type is None:
                 new_dataset_type = dataset.type
             elif dataset.type != new_dataset_type:
@@ -596,7 +668,12 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
                 self.session.add(batch)
 
     @transactional
-    async def unlink_datasets(self, project_id: uuid.UUID, dataset_ids: List[uuid.UUID]) -> int:
+    async def unlink_datasets(
+            self,
+            project_id: uuid.UUID,
+            dataset_ids: List[uuid.UUID],
+            actor_user_id: uuid.UUID,
+    ) -> int:
         """
         Unlink datasets from a project.
 
@@ -608,6 +685,11 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             Number of datasets unlinked
         """
         await self.get_by_id_or_raise(project_id)
+
+        linked_dataset_ids = set(await self.repository.get_linked_dataset_ids(project_id))
+        for dataset_id in dataset_ids:
+            if dataset_id in linked_dataset_ids:
+                await self._ensure_dataset_link_permission(actor_user_id=actor_user_id, dataset_id=dataset_id)
 
         count = 0
         for dataset_id in dataset_ids:
@@ -629,6 +711,11 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         """
         await self.get_by_id_or_raise(project_id)
         return await self.repository.get_linked_dataset_ids(project_id)
+
+    async def get_linked_dataset_details(self, project_id: uuid.UUID) -> List[Dataset]:
+        """Get linked dataset details for a project in project scope."""
+        await self.get_by_id_or_raise(project_id)
+        return await self.repository.get_linked_datasets(project_id)
 
     @staticmethod
     def _empty_project_sample_page(limit: int) -> ProjectSamplePage:
@@ -879,11 +966,11 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         """
         await self.get_by_id_or_raise(project_id)
 
-        # Prevent assigning owner role to new members
-        if member_data.role_id == PROJECT_OWNER_ROLE_ID:
+        # Prevent assigning supremo role to new members
+        if await self._is_supremo_role(member_data.role_id):
             raise BadRequestAppException(
-                "Cannot assign owner role to members. "
-                "Owner is determined by project creator."
+                "Cannot assign supremo role to members. "
+                "Supremo is determined by project creator."
             )
 
         # Check if member already exists
@@ -925,14 +1012,11 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         Returns:
             Updated ResourceMember
         """
-        # TODO: Add owner_id field to Project model
-        # For now, skip owner check
-
-        # Prevent assigning owner role
-        if member_data.role_id == PROJECT_OWNER_ROLE_ID:
+        # Prevent assigning supremo role
+        if await self._is_supremo_role(member_data.role_id):
             raise BadRequestAppException(
-                "Cannot assign owner role to members. "
-                "Owner is determined by project creator."
+                "Cannot assign supremo role to members. "
+                "Supremo is determined by project creator."
             )
 
         # Get existing member
@@ -943,6 +1027,8 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         )
         if not existing:
             raise NotFoundAppException("Member not found")
+        if await self._is_supremo_role(existing.role_id):
+            raise BadRequestAppException("Cannot modify project supremo membership")
 
         # Update member
         updated = await self.resource_member_repo.update(
@@ -981,6 +1067,8 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
         )
         if not existing:
             raise NotFoundAppException("Member not found")
+        if await self._is_supremo_role(existing.role_id):
+            raise BadRequestAppException("Cannot remove project supremo membership")
 
         # Delete member
         await self.resource_member_repo.delete(existing.id)

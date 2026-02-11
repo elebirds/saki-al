@@ -31,7 +31,15 @@ import {useAuthStore} from '../../store/authStore'
 import {useParams, useSearchParams} from 'react-router-dom'
 import {api} from '../../services/api'
 import {useResourcePermission} from '../../hooks'
-import type {Dataset, Project, ProjectLabel, ProjectLabelCreate, ProjectLabelUpdate, ResourceMember, Role} from '../../types'
+import type {
+    Dataset,
+    Project,
+    ProjectLabel,
+    ProjectLabelCreate,
+    ProjectLabelUpdate,
+    ResourceMember,
+    RoleInfo
+} from '../../types'
 
 const {Title, Text} = Typography
 
@@ -61,13 +69,9 @@ const ProjectSettings: React.FC = () => {
         {value: 'segmentation', label: t('project.settings.taskType.segmentation')},
     ]
 
-    const statusOptions = [
-        {value: 'active', label: t('project.settings.status.active')},
-        {value: 'archived', label: t('project.settings.status.archived')},
-    ]
-
     const {can} = useResourcePermission('project', projectId)
     const canUpdateProject = can('project:update')
+    const canArchiveProject = can('project:archive')
     const canManageLabels = can('label:manage')
     const canReadLabels = can('label:read') || canManageLabels
     const canManageMembers = can('project:assign')
@@ -75,6 +79,7 @@ const ProjectSettings: React.FC = () => {
     const [project, setProject] = useState<Project | null>(null)
     const [projectLoading, setProjectLoading] = useState(true)
     const [projectSaving, setProjectSaving] = useState(false)
+    const [projectArchiving, setProjectArchiving] = useState(false)
     const [projectForm] = Form.useForm()
 
     const [labels, setLabels] = useState<ProjectLabel[]>([])
@@ -86,7 +91,7 @@ const ProjectSettings: React.FC = () => {
 
     const [members, setMembers] = useState<ResourceMember[]>([])
     const [membersLoading, setMembersLoading] = useState(false)
-    const [roles, setRoles] = useState<Role[]>([])
+    const [roles, setRoles] = useState<RoleInfo[]>([])
     const [users, setUsers] = useState<Array<{ id: string; email: string; fullName?: string }>>([])
     const [memberModalOpen, setMemberModalOpen] = useState(false)
     const [memberSaving, setMemberSaving] = useState(false)
@@ -120,7 +125,6 @@ const ProjectSettings: React.FC = () => {
             projectForm.setFieldsValue({
                 name: data.name,
                 description: data.description,
-                status: data.status,
             })
         } catch (error: any) {
             message.error(error.message || t('project.settings.loadProjectError'))
@@ -156,13 +160,14 @@ const ProjectSettings: React.FC = () => {
     }, [projectId, t])
 
     const loadRoles = useCallback(async () => {
+        if (!projectId) return
         try {
-            const response = await api.getRoles('resource', 1, 100)
-            setRoles(response.items)
+            const data = await api.getAvailableProjectRoles(projectId)
+            setRoles(data)
         } catch (error: any) {
             message.error(error.message || t('project.settings.loadRolesError'))
         }
-    }, [t])
+    }, [projectId, t])
 
     const loadUsers = useCallback(async () => {
         try {
@@ -242,7 +247,6 @@ const ProjectSettings: React.FC = () => {
             const payload: Partial<Project> = {
                 name: values.name,
                 description: values.description,
-                status: values.status,
             }
             const updated = await api.updateProject(projectId, payload)
             setProject(updated)
@@ -251,6 +255,30 @@ const ProjectSettings: React.FC = () => {
             message.error(error.message || t('project.settings.updateError'))
         } finally {
             setProjectSaving(false)
+        }
+    }
+
+    const handleToggleArchive = async () => {
+        if (!projectId || !project) return
+        setProjectArchiving(true)
+        try {
+            const updated = project.status === 'archived'
+                ? await api.unarchiveProject(projectId)
+                : await api.archiveProject(projectId)
+            setProject(updated)
+            projectForm.setFieldsValue({
+                name: updated.name,
+                description: updated.description,
+            })
+            message.success(
+                updated.status === 'archived'
+                    ? t('project.settings.basic.archiveSuccess')
+                    : t('project.settings.basic.unarchiveSuccess')
+            )
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.basic.archiveError'))
+        } finally {
+            setProjectArchiving(false)
         }
     }
 
@@ -353,8 +381,7 @@ const ProjectSettings: React.FC = () => {
         }
     }
 
-    const isOwnerMember = (member: ResourceMember) =>
-        member.roleName === 'dataset_owner' || member.roleDisplayName === '数据集所有者'
+    const isSupremoMember = (member: ResourceMember) => Boolean(member.roleIsSupremo)
 
     const isSelfMember = (member: ResourceMember) => member.userId === currentUser?.id
 
@@ -491,7 +518,7 @@ const ProjectSettings: React.FC = () => {
                         <Tag color={record.roleColor || 'default'} className="!m-0">
                             {roleLabel}
                         </Tag>
-                        {isOwnerMember(record) ? (
+                        {isSupremoMember(record) ? (
                             <Tooltip title={t('project.settings.members.ownerCannotRemove')}>
                                 <LockOutlined className="text-github-muted"/>
                             </Tooltip>
@@ -505,8 +532,8 @@ const ProjectSettings: React.FC = () => {
             key: 'actions',
             render: (_, record) => {
                 const displayName = record.userFullName || record.userEmail || t('common.user')
-                const disableRemove = !canManageMembers || isSelfMember(record) || isOwnerMember(record)
-                const disableEdit = !canManageMembers || isOwnerMember(record)
+                const disableRemove = !canManageMembers || isSelfMember(record) || isSupremoMember(record)
+                const disableEdit = !canManageMembers || isSupremoMember(record)
                 return (
                     <div className="flex items-center gap-2">
                         <Button
@@ -520,7 +547,7 @@ const ProjectSettings: React.FC = () => {
                             title={
                                 isSelfMember(record)
                                     ? t('project.settings.members.removeSelf', {name: displayName})
-                                    : isOwnerMember(record)
+                                    : isSupremoMember(record)
                                         ? t('project.settings.members.removeOwner', {name: displayName})
                                         : t('project.settings.members.removeConfirm', {name: displayName})
                             }
@@ -604,15 +631,41 @@ const ProjectSettings: React.FC = () => {
                     <Form.Item name="description" label={t('project.settings.basic.description')}>
                         <Input.TextArea rows={4} placeholder={t('project.settings.basic.descriptionPlaceholder')}/>
                     </Form.Item>
-                    <Form.Item name="status" label={t('project.settings.basic.status')}>
-                        <Select options={statusOptions}/>
-                    </Form.Item>
                     <div className="flex justify-end">
                         <Button type="primary" htmlType="submit" loading={projectSaving} disabled={!canUpdateProject}>
                             {t('common.saveChanges')}
                         </Button>
                     </div>
                 </Form>
+                <div className="mt-6 border-t border-github-border pt-4">
+                    <div className="mb-2 text-sm font-medium text-github-text">
+                        {t('project.settings.basic.archiveSectionTitle')}
+                    </div>
+                    <div className="text-xs text-github-muted mb-3">
+                        {t('project.settings.basic.archiveSectionHint')}
+                    </div>
+                    <Popconfirm
+                        title={project?.status === 'archived'
+                            ? t('project.settings.basic.unarchiveConfirm')
+                            : t('project.settings.basic.archiveConfirm')}
+                        okText={project?.status === 'archived'
+                            ? t('project.settings.basic.unarchiveAction')
+                            : t('project.settings.basic.archiveAction')}
+                        cancelText={t('common.cancel')}
+                        onConfirm={handleToggleArchive}
+                        disabled={!canArchiveProject}
+                    >
+                        <Button
+                            danger={project?.status !== 'archived'}
+                            disabled={!canArchiveProject}
+                            loading={projectArchiving}
+                        >
+                            {project?.status === 'archived'
+                                ? t('project.settings.basic.unarchiveAction')
+                                : t('project.settings.basic.archiveAction')}
+                        </Button>
+                    </Popconfirm>
+                </div>
             </Spin>
         </Card>
     )
@@ -735,10 +788,12 @@ const ProjectSettings: React.FC = () => {
                     >
                         <Select
                             placeholder={t('project.settings.members.form.rolePlaceholder')}
-                            options={roles.map((role) => ({
-                                value: role.id,
-                                label: role.displayName || role.name,
-                            }))}
+                            options={roles
+                                .filter((role) => !role.isSupremo)
+                                .map((role) => ({
+                                    value: role.id,
+                                    label: role.displayName || role.name,
+                                }))}
                         />
                     </Form.Item>
                 </Form>
@@ -763,10 +818,12 @@ const ProjectSettings: React.FC = () => {
                     >
                         <Select
                             placeholder={t('project.settings.members.form.rolePlaceholder')}
-                            options={roles.map((role) => ({
-                                value: role.id,
-                                label: role.displayName || role.name,
-                            }))}
+                            options={roles
+                                .filter((role) => !role.isSupremo)
+                                .map((role) => ({
+                                    value: role.id,
+                                    label: role.displayName || role.name,
+                                }))}
                         />
                     </Form.Item>
                 </Form>

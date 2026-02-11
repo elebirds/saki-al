@@ -2,6 +2,8 @@
 Runtime executor observability endpoints.
 """
 
+import uuid
+
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -10,7 +12,7 @@ from saki_api.core.exceptions import ForbiddenAppException
 from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.db.session import get_session
-from saki_api.models import Permissions
+from saki_api.models import Permissions, ResourceType
 from saki_api.schemas.l3.runtime_executor import (
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
@@ -23,13 +25,23 @@ from saki_api.services.runtime_observability import RuntimeObservabilityService
 router = APIRouter()
 
 
-async def _ensure_runtime_read_permission(session: AsyncSession, current_user_id: str) -> None:
+async def _ensure_runtime_read_permission(session: AsyncSession, current_user_id: uuid.UUID) -> None:
     checker = PermissionChecker(session)
-    allowed = await checker.check(user_id=current_user_id, permission=Permissions.JOB_READ)
-    if not allowed:
-        allowed = await checker.check(user_id=current_user_id, permission=Permissions.PROJECT_READ_ALL)
-    if not allowed:
-        raise ForbiddenAppException("Permission denied: runtime:read")
+    if await checker.check(user_id=current_user_id, permission=Permissions.JOB_READ):
+        return
+    if await checker.check(user_id=current_user_id, permission=Permissions.PROJECT_READ_ALL):
+        return
+
+    # 允许具备任一项目 JOB_READ 资源级权限的用户访问运行时统计入口
+    accessible_project_ids = await checker.resource_member_repo.get_resource_ids_by_user_with_permission(
+        user_id=current_user_id,
+        resource_type=ResourceType.PROJECT,
+        required_permission=Permissions.JOB_READ,
+    )
+    if accessible_project_ids:
+        return
+
+    raise ForbiddenAppException("Permission denied: runtime:read")
 
 
 def _resolve_runtime_observability_service(

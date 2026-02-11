@@ -37,6 +37,12 @@ export interface PaginatedListProps<T> {
     onMetaChange?: (meta: PaginationMeta) => void;
     /** Whether to run the fetch effect (useful to wait for permission checks). Defaults to true. */
     enabled?: boolean;
+    /** Controlled pagination current page (1-based). */
+    controlledPage?: number;
+    /** Controlled pagination page size. */
+    controlledPageSize?: number;
+    /** Controlled pagination change callback. */
+    onPageChange?: (page: number, pageSize: number) => void;
 }
 
 /**
@@ -58,13 +64,19 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
         onItemsChange,
         onMetaChange,
         enabled = true,
+        controlledPage,
+        controlledPageSize,
+        onPageChange,
     } = props;
 
-    const {page, pageSize, total, setPage, setPageSize, updateFromMeta} = usePagination(initialPageSize);
+    const {page, pageSize, total, setPage, setPageSize, setTotal, updateFromMeta} = usePagination(initialPageSize);
     const [items, setItems] = useState<T[]>([]);
     const [loading, setLoading] = useState(false);
     const onErrorRef = useRef(onError);
     const fetchDataRef = useRef(fetchData);
+    const isControlled = controlledPage !== undefined && controlledPageSize !== undefined;
+    const activePage = isControlled ? Math.max(1, controlledPage) : page;
+    const activePageSize = isControlled ? Math.max(1, controlledPageSize) : pageSize;
 
     useEffect(() => {
         onErrorRef.current = onError;
@@ -76,9 +88,13 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
 
     useEffect(() => {
         if (resetPageOnRefresh) {
-            setPage(1);
+            if (isControlled) {
+                onPageChange?.(1, activePageSize);
+            } else {
+                setPage(1);
+            }
         }
-    }, [refreshKey, resetPageOnRefresh, setPage]);
+    }, [refreshKey, resetPageOnRefresh, setPage, isControlled, onPageChange, activePageSize]);
 
     useEffect(() => {
         let cancelled = false;
@@ -86,16 +102,19 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
         const load = async () => {
             setLoading(true);
             try {
-                const data = await fetchDataRef.current(page, pageSize);
+                const data = await fetchDataRef.current(activePage, activePageSize);
                 if (cancelled) return;
                 setItems(data.items);
                 onItemsChange?.(data.items);
-                updateFromMeta({
-                    total: data.total,
-                    limit: data.limit,
-                    offset: data.offset,
-                    size: data.size,
-                });
+                setTotal(data.total);
+                if (!isControlled) {
+                    updateFromMeta({
+                        total: data.total,
+                        limit: data.limit,
+                        offset: data.offset,
+                        size: data.size,
+                    });
+                }
                 onMetaChange?.({
                     total: data.total,
                     limit: data.limit,
@@ -120,9 +139,14 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
         return () => {
             cancelled = true;
         };
-    }, [page, pageSize, updateFromMeta, refreshKey, enabled]);
+    }, [activePage, activePageSize, updateFromMeta, refreshKey, enabled, isControlled, setTotal, onMetaChange, onItemsChange]);
 
     const handlePageChange = (nextPage: number, nextSize?: number) => {
+        const resolvedPageSize = nextSize ?? activePageSize;
+        if (isControlled) {
+            onPageChange?.(nextPage, resolvedPageSize);
+            return;
+        }
         const sizeChanged = nextSize && nextSize !== pageSize;
         if (sizeChanged) {
             setPageSize(nextSize);
@@ -135,8 +159,8 @@ export function PaginatedList<T>(props: PaginatedListProps<T>) {
     const paginationNode = (
         <Pagination
             size="small"
-            current={page}
-            pageSize={pageSize}
+            current={activePage}
+            pageSize={activePageSize}
             total={total}
             showSizeChanger
             showQuickJumper

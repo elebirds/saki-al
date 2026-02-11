@@ -24,6 +24,7 @@ import {api} from '../../services/api';
 import {useTranslation} from 'react-i18next';
 import {usePermission} from '../../hooks';
 import {PaginatedList} from '../../components/common/PaginatedList';
+import {createEmptyPaginationResponse} from '../../types/pagination';
 
 const {TextArea} = Input;
 const {Text, Title} = Typography;
@@ -182,7 +183,7 @@ const RoleManagement: React.FC = () => {
 
     const fetchRoles = useCallback(async (page: number, pageSize: number) => {
         if (!canReadRoles) {
-            return {items: [], total: 0, limit: pageSize, offset: 0, size: 0} as any;
+            return createEmptyPaginationResponse<Role>(pageSize, page);
         }
         try {
             const type = roleTypeFilter === 'all' ? undefined : roleTypeFilter;

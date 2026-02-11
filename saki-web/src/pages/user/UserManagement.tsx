@@ -23,6 +23,7 @@ import {useTranslation} from 'react-i18next';
 import {useAuthStore} from '../../store/authStore';
 import {usePermission} from '../../hooks';
 import {PaginatedList} from '../../components/common/PaginatedList';
+import {createEmptyPaginationResponse} from '../../types/pagination';
 
 const UserManagement: React.FC = () => {
     const {t} = useTranslation();
@@ -53,7 +54,7 @@ const UserManagement: React.FC = () => {
 
     const fetchUsers = useCallback(async (page: number, pageSize: number) => {
         if (!canReadUsers) {
-            return {items: [], total: 0, limit: pageSize, offset: 0, size: 0} as any;
+            return createEmptyPaginationResponse<User>(pageSize, page);
         }
         try {
             return await api.getUsers(page, pageSize);

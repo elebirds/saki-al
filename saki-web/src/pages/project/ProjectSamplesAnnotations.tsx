@@ -1,13 +1,14 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Button, Card, Empty, Input, Pagination, Select, Spin, Tag, Typography,} from 'antd';
+import {Button, Card, Empty, Input, Select, Spin, Tag, Typography,} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {FileTextOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {api} from '../../services/api';
 import {Dataset, ProjectBranch, ProjectSample} from '../../types';
-import {useProjectSampleList} from '../../hooks/project/useProjectSampleList';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import CommitModal from '../../components/project/CommitModal';
+import {PaginatedList} from '../../components/common/PaginatedList';
+import {createEmptyPaginationResponse} from '../../types/pagination';
 
 const {Title, Text} = Typography;
 
@@ -36,6 +37,13 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
     const [sortBy, sortOrder] = sortValue.split(':');
     const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId);
+    const [samplesRefreshToken, setSamplesRefreshToken] = useState(0);
+    const [sampleMeta, setSampleMeta] = useState({
+        total: 0,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        size: 0,
+    });
 
     const statusOptions = [
         {label: t('project.samples.filters.all'), value: 'all'},
@@ -52,22 +60,6 @@ const ProjectSamplesAnnotations: React.FC = () => {
         {label: t('project.samples.sort.nameAZ'), value: 'name:asc'},
         {label: t('project.samples.sort.nameZA'), value: 'name:desc'},
     ];
-
-    const {samples, meta, loading, reload} = useProjectSampleList({
-        projectId,
-        datasetId: selectedDatasetId || undefined,
-        filters: {
-            q: q || undefined,
-            batchId: batchId || undefined,
-            status,
-            branchName,
-            sortBy,
-            sortOrder: sortOrder as 'asc' | 'desc',
-            page,
-            limit: pageSize,
-        },
-        enabled: !!projectId && !!selectedDatasetId,
-    });
 
     useEffect(() => {
         if (!projectId) return;
@@ -100,6 +92,14 @@ const ProjectSamplesAnnotations: React.FC = () => {
             })
             .finally(() => setLoadingMeta(false));
     }, [projectId]);
+
+    useEffect(() => {
+        setSampleMeta((prev) => ({
+            ...prev,
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+        }));
+    }, [page, pageSize]);
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);
@@ -162,11 +162,29 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 commitMessage: message,
             });
             setCommitModalOpen(false);
-            reload();
+            setSamplesRefreshToken((value) => value + 1);
         } finally {
             setCommitLoading(false);
         }
-    }, [projectId, branchName, reload]);
+    }, [projectId, branchName]);
+
+    const fetchSamples = useCallback(async (nextPage: number, nextPageSize: number) => {
+        if (!projectId || !selectedDatasetId) {
+            return createEmptyPaginationResponse<ProjectSample>(nextPageSize, nextPage);
+        }
+        return await api.getProjectSamples(projectId, selectedDatasetId, {
+            q: q || undefined,
+            batchId: batchId || undefined,
+            status,
+            branchName,
+            sortBy,
+            sortOrder: sortOrder as 'asc' | 'desc',
+            page: nextPage,
+            limit: nextPageSize,
+        });
+    }, [projectId, selectedDatasetId, q, batchId, status, branchName, sortBy, sortOrder]);
+
+    const totalSamplePages = Math.max(1, Math.ceil(sampleMeta.total / (sampleMeta.limit || 1)));
 
     return (
         <div className="flex h-full flex-col gap-4">
@@ -244,69 +262,78 @@ const ProjectSamplesAnnotations: React.FC = () => {
                     </div>
                 ) : !selectedDataset ? (
                     <Empty description={t('project.samples.emptySelectDataset')}/>
-                ) : loading ? (
-                    <div className="flex h-full items-center justify-center">
-                        <Spin/>
-                    </div>
-                ) : samples.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center gap-2 py-12">
-                        <FileTextOutlined className="text-4xl text-gray-300"/>
-                        <Title level={5} className="!m-0">{t('project.samples.emptyTitle')}</Title>
-                        <Text type="secondary">{t('project.samples.emptyHint')}</Text>
-                    </div>
                 ) : (
-                    <div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                            {samples.map((sample) => (
-                                <Card
-                                    key={sample.id}
-                                    hoverable
-                                    onClick={() => handleSampleClick(sample)}
-                                    cover={
-                                        sample.primaryAssetUrl ? (
-                                            <img
-                                                alt={sample.name}
-                                                src={sample.primaryAssetUrl}
-                                                className="h-[150px] w-full object-cover"
-                                                onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                }}
+                    <PaginatedList<ProjectSample>
+                        fetchData={fetchSamples}
+                        enabled={!!projectId && !!selectedDatasetId}
+                        controlledPage={page}
+                        controlledPageSize={pageSize}
+                        onPageChange={(nextPage, nextSize) => {
+                            updateParams({
+                                page: String(nextPage),
+                                pageSize: String(nextSize),
+                            });
+                        }}
+                        refreshKey={`${projectId || ''}:${selectedDatasetId}:${q}:${batchId}:${status}:${branchName}:${sortValue}:${samplesRefreshToken}`}
+                        onMetaChange={(nextMeta) => setSampleMeta(nextMeta)}
+                        renderItems={(items) =>
+                            items.length === 0 ? (
+                                <div className="flex h-full flex-col items-center justify-center gap-2 py-12">
+                                    <FileTextOutlined className="text-4xl text-gray-300"/>
+                                    <Title level={5} className="!m-0">{t('project.samples.emptyTitle')}</Title>
+                                    <Text type="secondary">{t('project.samples.emptyHint')}</Text>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                    {items.map((sample) => (
+                                        <Card
+                                            key={sample.id}
+                                            hoverable
+                                            onClick={() => handleSampleClick(sample)}
+                                            cover={
+                                                sample.primaryAssetUrl ? (
+                                                    <img
+                                                        alt={sample.name}
+                                                        src={sample.primaryAssetUrl}
+                                                        className="h-[150px] w-full object-cover"
+                                                        onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                                                            e.currentTarget.style.display = 'none';
+                                                        }}
+                                                    />
+                                                ) : null
+                                            }
+                                        >
+                                            <Card.Meta
+                                                title={<span className="block truncate">{sample.name}</span>}
+                                                description={sample.remark || 'No remark'}
                                             />
-                                        ) : null
-                                    }
-                                >
-                                    <Card.Meta
-                                        title={<span className="block truncate">{sample.name}</span>}
-                                        description={sample.remark || 'No remark'}
-                                    />
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        {sample.hasDraft ? <Tag color="orange">{t('project.samples.filters.draft')}</Tag> : null}
-                                        {sample.isLabeled
-                                            ? <Tag color="green">{t('project.samples.filters.labeled')}</Tag>
-                                            : <Tag>{t('project.samples.filters.unlabeled')}</Tag>}
-                                        <Tag>{sample.annotationCount} anns</Tag>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                        <div className="mt-4 flex items-center justify-between">
-                            <Text type="secondary">
-                                Page {Math.floor(meta.offset / (meta.limit || 1)) + 1} / {Math.max(1, Math.ceil(meta.total / (meta.limit || 1)))} · {meta.total} items
-                            </Text>
-                            <Pagination
-                                current={page}
-                                total={meta.total}
-                                pageSize={pageSize}
-                                showSizeChanger
-                                onChange={(nextPage, nextSize) => {
-                                    updateParams({
-                                        page: String(nextPage),
-                                        pageSize: String(nextSize),
-                                    });
-                                }}
-                            />
-                        </div>
-                    </div>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {sample.hasDraft ? <Tag color="orange">{t('project.samples.filters.draft')}</Tag> : null}
+                                                {sample.isLabeled
+                                                    ? <Tag color="green">{t('project.samples.filters.labeled')}</Tag>
+                                                    : <Tag>{t('project.samples.filters.unlabeled')}</Tag>}
+                                                <Tag>{sample.annotationCount} anns</Tag>
+                                            </div>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )
+                        }
+                        renderPaginationWrapper={(node) => (
+                            <div className="mt-4 flex items-center justify-between">
+                                <Text type="secondary">
+                                    Page {Math.floor(sampleMeta.offset / (sampleMeta.limit || 1)) + 1} / {totalSamplePages} · {sampleMeta.total} items
+                                </Text>
+                                {node}
+                            </div>
+                        )}
+                        paginationProps={{
+                            showTotal: (tot, range) =>
+                                range
+                                    ? t('common.pagination.range', {start: range[0], end: range[1], total: tot})
+                                    : t('common.pagination.total', {total: tot}),
+                        }}
+                    />
                 )}
             </Card>
 

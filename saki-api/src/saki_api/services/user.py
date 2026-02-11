@@ -26,6 +26,7 @@ from saki_api.schemas.user import UserUpdate, UserCreate
 from saki_api.services.asset import AssetService
 from saki_api.services.base import BaseService
 from saki_api.services.guards import AdminGuardDep
+from saki_api.utils.storage import StorageError
 
 
 class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
@@ -83,6 +84,29 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
         user.avatar_url = await self.resolve_avatar_url(user.avatar_url)
         return user
 
+    async def _cleanup_avatar_asset_if_orphaned(self, asset_id: uuid.UUID) -> None:
+        try:
+            if await self.asset_service.repository.is_referenced(asset_id):
+                return
+            old_asset = await self.asset_service.repository.get_by_id(asset_id)
+            if old_asset is None:
+                return
+            try:
+                self.asset_service.storage.delete_object(old_asset.path)
+            except StorageError as exc:
+                logger.warning(
+                    "旧头像对象删除失败，等待后续 GC 回收 asset_id={} path={} error={}",
+                    old_asset.id,
+                    old_asset.path,
+                    exc,
+                )
+                return
+
+            await self.asset_service.repository.delete(asset_id)
+            logger.info("旧头像资源已回收 asset_id={}", asset_id)
+        except Exception as exc:
+            logger.warning("旧头像回收失败 asset_id={} error={}", asset_id, exc)
+
     async def has_any_user(self):
         return await self.repository.exists()
 
@@ -121,12 +145,20 @@ class UserService(BaseService[User, UserRepository, UserCreate, UserUpdate]):
                 f"Avatar file exceeds {self.AVATAR_MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB limit."
             )
 
+        current_user = await self.repository.get_by_id_or_raise(user_id)
+        previous_asset_id = self.parse_avatar_asset_id(current_user.avatar_url)
+
         file.file.seek(0)
         asset = await self.asset_service.upload_file(file)
         await self.repository.update_or_raise(
             user_id,
             {"avatar_url": self.build_avatar_asset_uri(asset.id)},
         )
+        await self.session.flush()
+
+        if previous_asset_id and previous_asset_id != asset.id:
+            await self._cleanup_avatar_asset_if_orphaned(previous_asset_id)
+
         profile = await self.get_profile_by_id(user_id)
         if profile is None:
             raise BadRequestAppException("User not found after avatar upload.")

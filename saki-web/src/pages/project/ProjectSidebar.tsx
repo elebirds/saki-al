@@ -1,5 +1,5 @@
 import React from 'react'
-import {Avatar, Button, Tag} from 'antd'
+import {Avatar, Button, Tag, Tooltip} from 'antd'
 import {DatabaseOutlined, ForkOutlined, NodeIndexOutlined} from '@ant-design/icons'
 import {ResourceMember} from '../../types'
 import {useTranslation} from 'react-i18next'
@@ -96,13 +96,22 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 {members && members.length > 0 ? (
                     <div className="mt-4 flex flex-wrap gap-2">
                         {members.slice(0, 5).map((member) => (
-                            <Avatar
+                            <Tooltip
                                 key={member.id}
-                                size={28}
-                                src={member.userAvatarUrl}
+                                title={
+                                    member.userFullName && member.userEmail
+                                        ? `${member.userFullName}(${member.userEmail})`
+                                        : member.userFullName || member.userEmail || t('common.user')
+                                }
                             >
-                                {(member.userFullName || member.userEmail || 'U').charAt(0).toUpperCase()}
-                            </Avatar>
+                                <Avatar
+                                    size={28}
+                                    src={member.userAvatarUrl || undefined}
+                                    className={member.userAvatarUrl ? undefined : '!bg-gradient-to-br !from-green-400 !to-blue-500'}
+                                >
+                                    {(member.userFullName || member.userEmail || 'U').charAt(0).toUpperCase()}
+                                </Avatar>
+                            </Tooltip>
                         ))}
                         {members.length > 5 ? (
                             <span className="text-xs text-github-muted">+{members.length - 5}</span>

@@ -9,6 +9,7 @@ Provides specialized queries for asset management including:
 """
 
 from datetime import datetime
+import uuid
 from typing import Optional, List, Set
 
 from sqlmodel import select, func
@@ -17,6 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.models.enums import StorageType
 from saki_api.models.l1.asset import Asset
 from saki_api.models.l1.sample import Sample
+from saki_api.models.user import User
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.pagination import PaginationResponse
@@ -25,8 +27,60 @@ from saki_api.schemas.pagination import PaginationResponse
 class AssetRepository(BaseRepository[Asset]):
     """Repository for Asset data access with specialized queries."""
 
+    AVATAR_ASSET_URI_PREFIX = "asset://"
+
     def __init__(self, session: AsyncSession):
         super().__init__(Asset, session)
+
+    @classmethod
+    def _parse_avatar_asset_id(cls, avatar_url: str | None) -> str | None:
+        if not avatar_url or not avatar_url.startswith(cls.AVATAR_ASSET_URI_PREFIX):
+            return None
+        raw = avatar_url[len(cls.AVATAR_ASSET_URI_PREFIX):].strip()
+        if not raw:
+            return None
+        try:
+            return str(uuid.UUID(raw))
+        except ValueError:
+            return None
+
+    async def _collect_referenced_asset_ids(
+            self,
+            *,
+            include_user_avatar_refs: bool = True,
+    ) -> Set[str]:
+        referenced_asset_ids: Set[str] = set()
+
+        sample_stmt = select(Sample.primary_asset_id, Sample.asset_group)
+        sample_rows = await self.session.exec(sample_stmt)
+        for primary_asset_id, asset_group in sample_rows.all():
+            if primary_asset_id:
+                referenced_asset_ids.add(str(primary_asset_id))
+            if isinstance(asset_group, dict):
+                for asset_id_str in asset_group.values():
+                    if asset_id_str:
+                        referenced_asset_ids.add(str(asset_id_str))
+
+        if include_user_avatar_refs:
+            user_avatar_stmt = select(User.avatar_url).where(User.avatar_url.is_not(None))
+            user_avatar_rows = await self.session.exec(user_avatar_stmt)
+            for avatar_url in user_avatar_rows.all():
+                parsed = self._parse_avatar_asset_id(avatar_url)
+                if parsed:
+                    referenced_asset_ids.add(parsed)
+
+        return referenced_asset_ids
+
+    async def is_referenced(
+            self,
+            asset_id: uuid.UUID,
+            *,
+            include_user_avatar_refs: bool = True,
+    ) -> bool:
+        referenced_asset_ids = await self._collect_referenced_asset_ids(
+            include_user_avatar_refs=include_user_avatar_refs
+        )
+        return str(asset_id) in referenced_asset_ids
 
     # ========== Content-Based Lookup ==========
 
@@ -150,10 +204,12 @@ class AssetRepository(BaseRepository[Asset]):
             pagination: Pagination = Pagination()
     ) -> List[Asset]:
         """
-        Get assets not referenced by any Sample.
+        Get assets not referenced by Sample records or user avatars.
         
         An orphaned asset is one where:
-        - The asset ID is not present in any Sample's asset_group JSON
+        - The asset ID is not present in Sample.primary_asset_id
+        - The asset ID is not present in any Sample.asset_group JSON value
+        - The asset ID is not referenced by User.avatar_url (asset://<uuid>)
         
         This query is complex due to JSON containment checks.
         Current implementation requires iterating and checking.
@@ -170,18 +226,7 @@ class AssetRepository(BaseRepository[Asset]):
         result = await self.session.exec(stmt)
         all_assets = result.all()
 
-        # Get all asset IDs referenced in samples
-        sample_stmt = select(Sample)
-        sample_result = await self.session.exec(sample_stmt)
-        all_samples = sample_result.all()
-
-        referenced_asset_ids: Set[str] = set()
-        for sample in all_samples:
-            if sample.primary_asset_id:
-                referenced_asset_ids.add(str(sample.primary_asset_id))
-            if sample.asset_group:
-                for asset_id_str in sample.asset_group.values():
-                    referenced_asset_ids.add(asset_id_str)
+        referenced_asset_ids = await self._collect_referenced_asset_ids()
 
         # Filter orphaned assets
         orphaned = [
@@ -200,7 +245,7 @@ class AssetRepository(BaseRepository[Asset]):
         """
         Get orphaned assets created before the given timestamp.
 
-        References include both sample.primary_asset_id and sample.asset_group values.
+        References include Sample primary/group assets and User.avatar_url asset refs.
         """
         limit = max(1, min(limit, 100000))
 
@@ -215,16 +260,7 @@ class AssetRepository(BaseRepository[Asset]):
         if not candidate_assets:
             return []
 
-        sample_stmt = select(Sample.primary_asset_id, Sample.asset_group)
-        sample_rows = await self.session.exec(sample_stmt)
-        referenced_asset_ids: Set[str] = set()
-        for primary_asset_id, asset_group in sample_rows.all():
-            if primary_asset_id:
-                referenced_asset_ids.add(str(primary_asset_id))
-            if isinstance(asset_group, dict):
-                for asset_id_str in asset_group.values():
-                    if asset_id_str:
-                        referenced_asset_ids.add(str(asset_id_str))
+        referenced_asset_ids = await self._collect_referenced_asset_ids()
 
         return [
             asset for asset in candidate_assets

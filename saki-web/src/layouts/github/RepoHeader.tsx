@@ -1,12 +1,13 @@
 import React from 'react'
 import type {MenuProps} from 'antd'
-import {Button, Dropdown, Tag} from 'antd'
+import {Avatar, Button, Dropdown, Tag} from 'antd'
 import {DownOutlined, ForkOutlined} from '@ant-design/icons'
 import type {RepoStat} from './types'
 import {useTranslation} from 'react-i18next'
 
 export type RepoHeaderProps = {
     title: string
+    avatarUrl?: string | null
     visibilityLabel?: string
     stats?: RepoStat[]
 }
@@ -17,16 +18,22 @@ const iconMap: Record<string, React.ReactNode> = {
     派生: <ForkOutlined/>,
 }
 
-export const RepoHeader: React.FC<RepoHeaderProps> = ({title, visibilityLabel, stats}) => {
+export const RepoHeader: React.FC<RepoHeaderProps> = ({title, avatarUrl, visibilityLabel, stats}) => {
     const {t} = useTranslation()
     const resolvedStats = stats || [{label: t('layout.repoHeader.stats.fork'), count: 0}]
     const resolvedVisibilityLabel = visibilityLabel || t('layout.repoHeader.private')
+    const avatarFallback = (title || '?').trim().charAt(0).toUpperCase() || '?'
 
     return (
         <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-                {/* TODO: replace with real project avatar */}
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500"/>
+                <Avatar
+                    size={32}
+                    src={avatarUrl || undefined}
+                    className={avatarUrl ? undefined : '!bg-gradient-to-br !from-green-400 !to-blue-500'}
+                >
+                    {avatarFallback}
+                </Avatar>
                 <h1 className="text-xl font-semibold text-github-text">{title}</h1>
                 <Tag className="!bg-transparent !text-github-muted !border-github-border !rounded-full">
                     {resolvedVisibilityLabel}

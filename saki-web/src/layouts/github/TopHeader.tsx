@@ -9,7 +9,6 @@ import {
     MoonOutlined,
     PlusOutlined,
     SunOutlined,
-    UserOutlined,
 } from '@ant-design/icons'
 import type {NavItem} from './types'
 import {useTranslation} from 'react-i18next'
@@ -64,7 +63,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         {key: 'new-project', label: t('layout.header.newProject')},
         {key: 'new-dataset', label: t('layout.header.newDataset')},
     ]
-    const userInitial = userName ? userName.charAt(0).toUpperCase() : undefined
+    const resolvedUserName = userName || t('layout.header.user')
+    const userInitial = resolvedUserName.trim().charAt(0).toUpperCase() || '?'
 
     return (
         <header className={`bg-[var(--github-header)] ${showBorder ? 'border-b border-github-border' : ''}`}>
@@ -138,13 +138,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                 <div className="flex items-center gap-2">
                                     <Avatar
                                         size={28}
-                                        src={userAvatarUrl}
-                                        icon={<UserOutlined/>}
-                                        className="bg-gradient-to-br from-orange-400 to-pink-500"
+                                        src={userAvatarUrl || undefined}
+                                        className={userAvatarUrl ? undefined : '!bg-gradient-to-br !from-green-400 !to-blue-500'}
                                     >
                                         {userInitial}
                                     </Avatar>
-                                    <span className="hidden lg:inline text-github-text">{userName || t('layout.header.user')}</span>
+                                    <span className="hidden lg:inline text-github-text">{resolvedUserName}</span>
                                     <DownOutlined className="text-github-muted"/>
                                 </div>
                             </Button>

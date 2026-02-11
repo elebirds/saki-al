@@ -70,14 +70,6 @@ const ProtectedLayout: React.FC = () => {
         }
     }, [isAuthenticated])
 
-    if (!isAuthenticated) {
-        return <Navigate to="/login" replace/>
-    }
-
-    if (user?.mustChangePassword && location.pathname !== '/change-password') {
-        return <Navigate to="/change-password" replace/>
-    }
-
     const changeLanguage = (lng: string) => {
         i18n.changeLanguage(lng)
     }
@@ -243,6 +235,14 @@ const ProtectedLayout: React.FC = () => {
             label: t('auth.logout'),
         },
     ]
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace/>
+    }
+
+    if (user?.mustChangePassword && location.pathname !== '/change-password') {
+        return <Navigate to="/change-password" replace/>
+    }
 
     return (
         <AppShell

@@ -207,11 +207,3 @@ class LoopRoundStatus(str, Enum):
     COMPLETED = "completed"
     COMPLETED_NO_CANDIDATES = "completed_no_candidates"
     FAILED = "failed"
-
-
-class AnnotationBatchStatus(str, Enum):
-    """
-    Enum for annotation-batch lifecycle.
-    """
-    OPEN = "open"
-    CLOSED = "closed"

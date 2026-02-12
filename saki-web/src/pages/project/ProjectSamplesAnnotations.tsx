@@ -29,7 +29,6 @@ const ProjectSamplesAnnotations: React.FC = () => {
 
     const selectedDatasetId = searchParams.get('datasetId') || '';
     const q = searchParams.get('q') || '';
-    const batchId = searchParams.get('batchId') || '';
     const status = (searchParams.get('status') || 'all') as 'all' | 'labeled' | 'unlabeled' | 'draft';
     const sortValue = searchParams.get('sort') || 'createdAt:desc';
     const branchName = searchParams.get('branch') || 'master';
@@ -118,7 +117,6 @@ const ProjectSamplesAnnotations: React.FC = () => {
         if (!projectId || !selectedDatasetId) return;
         const response = await api.getProjectSamples(projectId, selectedDatasetId, {
             q: q || undefined,
-            batchId: batchId || undefined,
             status,
             branchName,
             sortBy,
@@ -132,13 +130,12 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('sampleId', firstSample.id);
         nextParams.set('branch', branchName);
         nextParams.set('q', q);
-        if (batchId) nextParams.set('batchId', batchId);
         nextParams.set('status', status);
         nextParams.set('sort', sortValue);
         nextParams.set('page', '1');
         nextParams.set('pageSize', String(pageSize));
         navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [canAnnotate, projectId, selectedDatasetId, q, batchId, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate, t]);
+    }, [canAnnotate, projectId, selectedDatasetId, q, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate, t]);
 
     const handleSampleClick = useCallback((sample: ProjectSample) => {
         if (!canAnnotate) {
@@ -150,13 +147,12 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('sampleId', sample.id);
         nextParams.set('branch', branchName);
         nextParams.set('q', q);
-        if (batchId) nextParams.set('batchId', batchId);
         nextParams.set('status', status);
         nextParams.set('sort', sortValue);
         nextParams.set('page', String(page));
         nextParams.set('pageSize', String(pageSize));
         navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [canAnnotate, projectId, selectedDatasetId, branchName, q, batchId, status, sortValue, page, pageSize, navigate, t]);
+    }, [canAnnotate, projectId, selectedDatasetId, branchName, q, status, sortValue, page, pageSize, navigate, t]);
 
     const handleCommit = useCallback(async (message: string) => {
         if (!projectId) return;
@@ -179,7 +175,6 @@ const ProjectSamplesAnnotations: React.FC = () => {
         }
         return await api.getProjectSamples(projectId, selectedDatasetId, {
             q: q || undefined,
-            batchId: batchId || undefined,
             status,
             branchName,
             sortBy,
@@ -187,7 +182,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
             page: nextPage,
             limit: nextPageSize,
         });
-    }, [projectId, selectedDatasetId, q, batchId, status, branchName, sortBy, sortOrder]);
+    }, [projectId, selectedDatasetId, q, status, branchName, sortBy, sortOrder]);
 
     const totalSamplePages = Math.max(1, Math.ceil(sampleMeta.total / (sampleMeta.limit || 1)));
 
@@ -295,7 +290,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                                 pageSize: String(nextSize),
                             });
                         }}
-                        refreshKey={`${projectId || ''}:${selectedDatasetId}:${q}:${batchId}:${status}:${branchName}:${sortValue}:${samplesRefreshToken}`}
+                        refreshKey={`${projectId || ''}:${selectedDatasetId}:${q}:${status}:${branchName}:${sortValue}:${samplesRefreshToken}`}
                         onMetaChange={(nextMeta) => setSampleMeta(nextMeta)}
                         renderItems={(items) =>
                             items.length === 0 ? (

@@ -326,7 +326,6 @@ export interface ApiService {
         datasetId: string,
         params: {
             q?: string;
-            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;

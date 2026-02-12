@@ -1045,7 +1045,6 @@ export class RealApiService implements ApiService {
         datasetId: string,
         params: {
             q?: string;
-            batchId?: string;
             status?: 'all' | 'labeled' | 'unlabeled' | 'draft';
             branchName?: string;
             sortBy?: string;
@@ -1059,7 +1058,6 @@ export class RealApiService implements ApiService {
             {
                 params: {
                     q: params.q,
-                    batch_id: params.batchId,
                     status: params.status,
                     branch_name: params.branchName,
                     sort_by: params.sortBy,

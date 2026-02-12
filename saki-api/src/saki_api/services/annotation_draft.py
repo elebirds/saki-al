@@ -6,18 +6,14 @@ from loguru import logger
 import uuid
 from typing import Any, Dict, List, Optional
 
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.db.transaction import transactional
-from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.annotation_draft import AnnotationDraft
-from saki_api.models.l3.loop import ALLoop
 from saki_api.repositories.annotation_draft import AnnotationDraftRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.sample import SampleRepository
-from saki_api.services.annotation_batch_progress import backfill_open_batch_items_by_samples
 from saki_api.services.base import BaseService
 from saki_api.services.project import ProjectService
 
@@ -34,41 +30,6 @@ class AnnotationDraftService(BaseService[AnnotationDraft, AnnotationDraftReposit
         self.project_repo = ProjectRepository(session)
         self.sample_repo = SampleRepository(session)
         self.project_service = ProjectService(session)
-
-    async def _backfill_annotation_batch_items(
-            self,
-            *,
-            project_id: uuid.UUID,
-            branch_name: str,
-            sample_ids: list[uuid.UUID],
-            commit_id: uuid.UUID,
-    ) -> None:
-        if not sample_ids:
-            return
-
-        branch_row = await self.session.exec(
-            select(Branch).where(
-                Branch.project_id == project_id,
-                Branch.name == branch_name,
-            )
-        )
-        branch = branch_row.first()
-        if not branch:
-            return
-
-        loop_row = await self.session.exec(
-            select(ALLoop).where(ALLoop.branch_id == branch.id)
-        )
-        loop = loop_row.first()
-        if not loop:
-            return
-
-        await backfill_open_batch_items_by_samples(
-            session=self.session,
-            loop_id=loop.id,
-            sample_ids=sample_ids,
-            commit_id=commit_id,
-        )
 
     async def _ensure_project_sample(
             self,
@@ -237,13 +198,6 @@ class AnnotationDraftService(BaseService[AnnotationDraft, AnnotationDraftReposit
         )
 
         used_sample_ids = [d.sample_id for d in drafts]
-        await self._backfill_annotation_batch_items(
-            project_id=project_id,
-            branch_name=branch_name,
-            sample_ids=used_sample_ids,
-            commit_id=commit.id,
-        )
-
         await self.repository.delete_by_user_project(
             user_id=user_id,
             project_id=project_id,

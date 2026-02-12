@@ -33,7 +33,6 @@ from saki_api.models.l2.commit_sample_state import CommitSampleState
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.label import Label
 from saki_api.models.l2.project import Project, ProjectDataset
-from saki_api.models.l3.annotation_batch import AnnotationBatch, AnnotationBatchItem
 from saki_api.models.l3.job import Job
 from saki_api.models.l3.job_task import JobTask
 from saki_api.models.l3.metric import JobSampleMetric
@@ -659,42 +658,6 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
                 for row in candidate_rows:
                     await self.session.delete(row)
 
-        batch_item_rows = await self.session.exec(
-            select(AnnotationBatchItem)
-            .join(AnnotationBatch, AnnotationBatch.id == AnnotationBatchItem.batch_id)
-            .where(
-                AnnotationBatch.project_id == project_id,
-                AnnotationBatchItem.sample_id.in_(sample_ids),
-            )
-        )
-        affected_batch_ids: set[uuid.UUID] = set()
-        for row in batch_item_rows:
-            affected_batch_ids.add(row.batch_id)
-            await self.session.delete(row)
-
-        # Recompute batch counters after item cleanup.
-        for batch_id in affected_batch_ids:
-            total_result = await self.session.exec(
-                select(func.count()).select_from(
-                    select(AnnotationBatchItem).where(AnnotationBatchItem.batch_id == batch_id).subquery()
-                )
-            )
-            total_count = total_result.one() or 0
-            annotated_result = await self.session.exec(
-                select(func.count()).select_from(
-                    select(AnnotationBatchItem).where(
-                        AnnotationBatchItem.batch_id == batch_id,
-                        AnnotationBatchItem.is_annotated == True,
-                    ).subquery()
-                )
-            )
-            annotated_count = annotated_result.one() or 0
-            batch = await self.session.get(AnnotationBatch, batch_id)
-            if batch:
-                batch.total_count = int(total_count)
-                batch.annotated_count = int(annotated_count)
-                self.session.add(batch)
-
     @transactional
     async def unlink_datasets(
             self,
@@ -765,7 +728,6 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             current_user_id: uuid.UUID,
             branch_name: str,
             q: str | None,
-            batch_id: uuid.UUID | None,
             status: str,
             sort_by: str,
             sort_order: str,
@@ -780,17 +742,6 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
                     Sample.remark.ilike(pattern),
                 )
             )
-
-        if batch_id:
-            batch_stmt = (
-                select(AnnotationBatchItem.sample_id)
-                .join(AnnotationBatch, AnnotationBatch.id == AnnotationBatchItem.batch_id)
-                .where(
-                    AnnotationBatchItem.batch_id == batch_id,
-                    AnnotationBatch.project_id == project_id,
-                )
-            )
-            statement = statement.where(Sample.id.in_(batch_stmt))
 
         labeled_subq = select(CommitSampleState.sample_id).where(
             CommitSampleState.commit_id == head_commit_id,
@@ -919,7 +870,6 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             current_user_id: uuid.UUID,
             branch_name: str,
             q: str | None,
-            batch_id: uuid.UUID | None,
             status: str,
             sort_by: str,
             sort_order: str,
@@ -942,7 +892,6 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             current_user_id=current_user_id,
             branch_name=branch_name,
             q=q,
-            batch_id=batch_id,
             status=status,
             sort_by=sort_by,
             sort_order=sort_order,

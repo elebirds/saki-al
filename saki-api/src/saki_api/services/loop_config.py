@@ -35,7 +35,6 @@ def normalize_loop_global_config(raw_config: dict[str, Any] | None) -> dict[str,
 
     selection_raw = config.get("selection")
     selection = dict(selection_raw) if isinstance(selection_raw, dict) else {}
-    selection["exclude_open_batches"] = to_bool(selection.get("exclude_open_batches"), True)
     selection["min_candidates_required"] = max(1, to_int(selection.get("min_candidates_required"), 1))
     config["selection"] = selection
 

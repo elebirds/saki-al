@@ -21,7 +21,7 @@ from saki_api.models.l1.sample import Sample
 from saki_api.models.user import User
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 
 
 class AssetRepository(BaseRepository[Asset]):

@@ -13,10 +13,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac.enums import ResourceType
 from saki_api.repositories import ResourceMemberRepository
-from saki_api.repositories.role import RoleRepository
-from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.repositories.access.role import RoleRepository
+from saki_api.repositories.access.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import RoleReadMinimal
-from saki_api.schemas.permission import (
+from saki_api.schemas.access.permission import (
     SystemPermissionsResponse,
     ResourcePermissionsResponse,
 )

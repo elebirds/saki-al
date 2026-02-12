@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.rbac.presets import init_preset_roles
 from saki_api.db.transaction import transactional
-from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.repositories.access.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
 from saki_api.services.access.role import RoleService
 from saki_api.services.access.user import UserService
@@ -61,7 +61,7 @@ class SystemService:
         if not super_admin_role:
             raise BadRequestAppException("super_admin role not found after initialization")
 
-        from saki_api.schemas.user_system_role import UserSystemRoleCreate
+        from saki_api.schemas.access.user_system_role import UserSystemRoleCreate
 
         role_in = UserSystemRoleCreate(
             user_id=user.id,

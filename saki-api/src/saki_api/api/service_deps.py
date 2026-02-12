@@ -10,9 +10,9 @@ from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.db.session import get_session
-from saki_api.repositories.role import RoleRepository
-from saki_api.repositories.user import UserRepository
-from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.repositories.access.role import RoleRepository
+from saki_api.repositories.access.user import UserRepository
+from saki_api.repositories.access.user_system_role import UserSystemRoleRepository
 from saki_api.services.storage.asset import AssetService
 from saki_api.services.access.auth import AuthService
 from saki_api.services.access.permission_query import PermissionQueryService

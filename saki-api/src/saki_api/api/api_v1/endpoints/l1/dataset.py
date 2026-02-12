@@ -11,11 +11,11 @@ from saki_api.api.service_deps import DatasetServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions, ResourceType, Dataset
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.dataset import DatasetCreate, DatasetRead, DatasetUpdate
-from saki_api.schemas.pagination import PaginationResponse
-from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
+from saki_api.schemas.project.dataset import DatasetCreate, DatasetRead, DatasetUpdate
+from saki_api.schemas.common.pagination import PaginationResponse
+from saki_api.schemas.access.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
-from saki_api.schemas.role import RoleReadMinimal
+from saki_api.schemas.access.role import RoleReadMinimal
 
 router = APIRouter()
 

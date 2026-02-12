@@ -12,7 +12,7 @@ from saki_api.models import ResourceType, Permissions
 from saki_api.models.l1.dataset import Dataset
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 
 
 class DatasetRepository(BaseRepository[Dataset]):

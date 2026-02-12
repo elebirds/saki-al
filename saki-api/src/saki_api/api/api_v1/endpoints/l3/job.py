@@ -16,7 +16,7 @@ from saki_api.db.session import get_session
 from saki_api.grpc.dispatcher import runtime_dispatcher
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.enums import JobStatusV2, JobTaskStatus
-from saki_api.schemas.l3.job import (
+from saki_api.schemas.runtime.job import (
     JobCommandResponse,
     JobCreateRequest,
     JobRead,

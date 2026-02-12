@@ -11,10 +11,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import NotFoundAppException, DataAlreadyExistsAppException, BadRequestAppException
 from saki_api.db.transaction import transactional
 from saki_api.models.l2.branch import Branch
-from saki_api.repositories.branch import BranchRepository
-from saki_api.repositories.commit import CommitRepository
+from saki_api.repositories.project.branch import BranchRepository
+from saki_api.repositories.project.commit import CommitRepository
 from saki_api.repositories.project import ProjectRepository
-from saki_api.schemas.branch import BranchCreate, BranchUpdate
+from saki_api.schemas.project.branch import BranchCreate, BranchUpdate
 from saki_api.services.base import BaseService
 
 

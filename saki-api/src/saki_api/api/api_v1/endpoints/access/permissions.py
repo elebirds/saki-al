@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 
 from saki_api.api.service_deps import PermissionQueryServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id
-from saki_api.schemas.permission import (
+from saki_api.schemas.access.permission import (
     SystemPermissionsResponse,
     ResourcePermissionsResponse,
 )

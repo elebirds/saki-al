@@ -22,14 +22,14 @@ from saki_api.core.rbac.dependencies import get_current_user_id, require_permiss
 from saki_api.models import Permissions, ResourceType
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
 from saki_api.modules.annotation_sync.base import AnnotationContext
-from saki_api.schemas.annotation import AnnotationCreate, AnnotationHistoryItem, AnnotationRead
-from saki_api.schemas.annotation_draft import (
+from saki_api.schemas.annotation.annotation import AnnotationCreate, AnnotationHistoryItem, AnnotationRead
+from saki_api.schemas.annotation.draft import (
     AnnotationDraftCommitRequest,
     AnnotationDraftRead,
     AnnotationDraftUpsert,
     AnnotationWorkingUpsert,
 )
-from saki_api.schemas.annotation_sync import AnnotationSyncRequest, AnnotationSyncResponse
+from saki_api.schemas.annotation.sync import AnnotationSyncRequest, AnnotationSyncResponse
 from saki_api.utils.coordinate_converter import convert_annotation_item_to_frontend, convert_annotation_data_to_frontend
 
 router = APIRouter()

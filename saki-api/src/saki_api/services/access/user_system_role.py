@@ -20,10 +20,10 @@ from saki_api.core.rbac.audit import (
 from saki_api.db.transaction import transactional
 from saki_api.models import RoleType
 from saki_api.models.rbac.user_system_role import UserSystemRole
-from saki_api.repositories.role import RoleRepository
-from saki_api.repositories.user import UserRepository
-from saki_api.repositories.user_system_role import UserSystemRoleRepository
-from saki_api.schemas.user_system_role import UserSystemRoleRead, UserSystemRoleCreate, UserSystemRoleAssign
+from saki_api.repositories.access.role import RoleRepository
+from saki_api.repositories.access.user import UserRepository
+from saki_api.repositories.access.user_system_role import UserSystemRoleRepository
+from saki_api.schemas.access.user_system_role import UserSystemRoleRead, UserSystemRoleCreate, UserSystemRoleAssign
 from saki_api.services.guards import AdminGuard
 
 

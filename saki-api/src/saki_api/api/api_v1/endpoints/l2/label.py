@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from saki_api.api.service_deps import LabelServiceDep
 from saki_api.core.rbac.dependencies import require_permission
 from saki_api.models import Permissions, ResourceType
-from saki_api.schemas.label import LabelCreate, LabelRead, LabelUpdate
+from saki_api.schemas.project.label import LabelCreate, LabelRead, LabelUpdate
 
 router = APIRouter()
 

@@ -21,7 +21,7 @@ from saki_api.models import Permissions
 from saki_api.models.enums import StorageType
 from saki_api.models.l1.asset import Asset
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.asset import (
+from saki_api.schemas.storage.asset import (
     AssetRead,
     AssetUploadResponse,
     AssetDownloadResponse,
@@ -31,7 +31,7 @@ from saki_api.schemas.asset import (
 )
 
 
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 
 router = APIRouter()
 

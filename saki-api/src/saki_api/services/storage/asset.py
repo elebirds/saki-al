@@ -19,10 +19,10 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.db.transaction import transactional
 from saki_api.models.enums import StorageType
 from saki_api.models.l1.asset import Asset
-from saki_api.repositories.asset import AssetRepository
+from saki_api.repositories.storage.asset import AssetRepository
 from saki_api.repositories.query import Pagination, OrderByType
-from saki_api.schemas.asset import AssetRead, AssetCreate, AssetUpdate
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.storage.asset import AssetRead, AssetCreate, AssetUpdate
+from saki_api.schemas.common.pagination import PaginationResponse
 from saki_api.services.base import BaseService
 from saki_api.utils.storage import get_storage_provider, StorageError
 

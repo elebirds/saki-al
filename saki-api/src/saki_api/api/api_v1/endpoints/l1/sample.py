@@ -16,8 +16,8 @@ from saki_api.core.rbac.dependencies import require_permission
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.l1.sample import Sample
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.pagination import PaginationResponse
-from saki_api.schemas.sample import SampleRead
+from saki_api.schemas.common.pagination import PaginationResponse
+from saki_api.schemas.project.sample import SampleRead
 
 router = APIRouter()
 

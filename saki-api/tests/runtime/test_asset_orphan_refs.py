@@ -13,7 +13,7 @@ from saki_api.models.l1.asset import Asset
 from saki_api.models.l1.dataset import Dataset
 from saki_api.models.l1.sample import Sample
 from saki_api.models.user import User
-from saki_api.repositories.asset import AssetRepository
+from saki_api.repositories.storage.asset import AssetRepository
 
 
 @pytest.fixture

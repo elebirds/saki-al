@@ -4,7 +4,7 @@ from sqlmodel import Field, SQLModel
 
 from saki_api.models.base import UUIDMixin
 from saki_api.models.rbac.role import RoleBase, RoleMetadata
-from saki_api.schemas.role_permission import RolePermissionCreate, RolePermissionRead
+from saki_api.schemas.access.role_permission import RolePermissionCreate, RolePermissionRead
 
 
 # ============================================================================

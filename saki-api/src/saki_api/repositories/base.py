@@ -15,7 +15,7 @@ from sqlmodel.sql._expression_select_cls import SelectOfScalar
 
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.repositories.query import Pagination, FilterType, OrderByType
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 
 ModelType = TypeVar("ModelType", bound=SQLModel)
 

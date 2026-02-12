@@ -26,11 +26,11 @@ from saki_api.models.rbac.permission import parse_permission
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.role import Role, RoleType
 from saki_api.models.rbac.user_system_role import UserSystemRole
-from saki_api.repositories.permission import PermissionRepository
+from saki_api.repositories.access.permission import PermissionRepository
 from saki_api.repositories.query import Pagination
-from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.access.role import RoleRepository
 from saki_api.schemas import RoleCreate, RoleUpdate, RoleRead, RolePermissionRead
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 from saki_api.services.base import BaseService
 
 

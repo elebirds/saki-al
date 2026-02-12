@@ -18,7 +18,7 @@ from saki_api.core.context import set_current_user_id, reset_current_user_id
 from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.db.session import get_session
 from saki_api.models.user import User
-from saki_api.repositories.user import UserRepository
+from saki_api.repositories.access.user import UserRepository
 
 # HTTPBearer 用于从请求头中提取 token，并集成到 Swagger UI
 security = HTTPBearer()

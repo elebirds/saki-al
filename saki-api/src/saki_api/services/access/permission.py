@@ -7,7 +7,7 @@ from typing import Set
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.repositories.permission import PermissionRepository
+from saki_api.repositories.access.permission import PermissionRepository
 
 
 class PermissionService:

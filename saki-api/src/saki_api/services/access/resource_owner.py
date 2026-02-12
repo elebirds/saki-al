@@ -11,7 +11,7 @@ from typing import Protocol
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.rbac.enums import ResourceType
-from saki_api.repositories.dataset import DatasetRepository
+from saki_api.repositories.project.dataset import DatasetRepository
 
 
 class ResourceOwnerChecker(Protocol):

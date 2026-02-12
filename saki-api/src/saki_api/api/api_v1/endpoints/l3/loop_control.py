@@ -14,7 +14,7 @@ from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.db.session import get_session
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.enums import ALLoopMode, ALLoopStatus
-from saki_api.schemas.l3.job import LoopConfirmResponse, LoopRead
+from saki_api.schemas.runtime.job import LoopConfirmResponse, LoopRead
 from saki_api.services.runtime.loop_config import extract_model_request_config, extract_simulation_config
 from saki_api.services.runtime.loop_orchestrator import loop_orchestrator
 

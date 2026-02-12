@@ -14,7 +14,7 @@ from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.db.session import get_session
 from saki_api.models import Permissions, ResourceType
-from saki_api.schemas.l3.model import (
+from saki_api.schemas.runtime.model import (
     ModelRegisterFromJobRequest,
     ModelRead,
     ModelPromoteRequest,

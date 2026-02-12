@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from saki_api.schemas.role import RoleReadMinimal
+from saki_api.schemas.access.role import RoleReadMinimal
 
 
 class SystemPermissionsResponse(BaseModel):

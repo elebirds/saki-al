@@ -12,8 +12,8 @@ from saki_api.core.rbac.dependencies import get_current_user_id, require_permiss
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.enums import ProjectStatus
 from saki_api.repositories.query import Pagination
-from saki_api.schemas.pagination import PaginationResponse
-from saki_api.schemas.dataset import DatasetRead
+from saki_api.schemas.common.pagination import PaginationResponse
+from saki_api.schemas.project.dataset import DatasetRead
 from saki_api.schemas.project import (
     ProjectCreate,
     ProjectDatasetLink,
@@ -22,13 +22,13 @@ from saki_api.schemas.project import (
     ProjectReadMinimal,
     ProjectUpdate,
 )
-from saki_api.schemas.resource_member import (
+from saki_api.schemas.access.resource_member import (
     ResourceMemberCreateRequest,
     ResourceMemberRead,
     ResourceMemberUpdateRequest,
 )
-from saki_api.schemas.role import RoleReadMinimal
-from saki_api.schemas.sample import ProjectSampleRead
+from saki_api.schemas.access.role import RoleReadMinimal
+from saki_api.schemas.project.sample import ProjectSampleRead
 
 router = APIRouter()
 

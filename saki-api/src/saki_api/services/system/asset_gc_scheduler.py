@@ -13,7 +13,7 @@ from loguru import logger
 from saki_api.core.config import settings
 from saki_api.db.session import SessionLocal
 from saki_api.core.redis import get_redis_client
-from saki_api.repositories.asset import AssetRepository
+from saki_api.repositories.storage.asset import AssetRepository
 from saki_api.services.system.system_setting_keys import SystemSettingKeys
 from saki_api.services.system.system_settings_reader import system_settings_reader
 from saki_api.utils.storage import StorageError, get_storage_provider

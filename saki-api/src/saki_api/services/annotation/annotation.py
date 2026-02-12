@@ -11,13 +11,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import NotFoundAppException, BadRequestAppException
 from saki_api.db.transaction import transactional
 from saki_api.models.l2.annotation import Annotation
-from saki_api.repositories.annotation import AnnotationRepository
-from saki_api.repositories.branch import BranchRepository
-from saki_api.repositories.commit import CommitRepository
-from saki_api.repositories.label import LabelRepository
+from saki_api.repositories.annotation.annotation import AnnotationRepository
+from saki_api.repositories.project.branch import BranchRepository
+from saki_api.repositories.project.commit import CommitRepository
+from saki_api.repositories.project.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
-from saki_api.repositories.sample import SampleRepository
-from saki_api.schemas.annotation import AnnotationCreate
+from saki_api.repositories.project.sample import SampleRepository
+from saki_api.schemas.annotation.annotation import AnnotationCreate
 from saki_api.services.base import BaseService
 from saki_api.utils.coordinate_converter import convert_annotation_data_to_backend, convert_annotation_data_to_frontend
 
@@ -145,7 +145,7 @@ class AnnotationService(BaseService[Annotation, AnnotationRepository, Annotation
         Returns:
             List of annotation history items
         """
-        from saki_api.schemas.annotation import AnnotationHistoryItem
+        from saki_api.schemas.annotation.annotation import AnnotationHistoryItem
 
         annotations = await self.repository.get_history(annotation_id, depth)
         return [

@@ -19,10 +19,10 @@ from saki_api.core.config import settings
 from saki_api.models.rbac import (
     Role, ResourceType, Permission, parse_permission)
 from saki_api.models.rbac.enums import Permissions
-from saki_api.repositories.permission import PermissionRepository
-from saki_api.repositories.resource_member import ResourceMemberRepository
-from saki_api.repositories.role import RoleRepository
-from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.repositories.access.permission import PermissionRepository
+from saki_api.repositories.access.resource_member import ResourceMemberRepository
+from saki_api.repositories.access.role import RoleRepository
+from saki_api.repositories.access.user_system_role import UserSystemRoleRepository
 
 
 @dataclass

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from sqlmodel import Field, SQLModel
 
-from saki_api.schemas.annotation_draft import AnnotationDraftItem, AnnotationDraftPayload
+from saki_api.schemas.annotation.draft import AnnotationDraftItem, AnnotationDraftPayload
 
 
 class AnnotationSyncAction(SQLModel):

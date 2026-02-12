@@ -19,7 +19,7 @@ from saki_api.models import (
 )
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import (UserCreate, UserRead, UserUpdate, UserListItem)
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 from saki_api.services.guards import AdminGuardDep
 
 router = APIRouter()

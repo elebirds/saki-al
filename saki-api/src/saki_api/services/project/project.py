@@ -40,17 +40,17 @@ from saki_api.models.l3.task_candidate_item import TaskCandidateItem
 from saki_api.models.rbac.enums import RoleType
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.role import Role
-from saki_api.repositories.annotation import AnnotationRepository
-from saki_api.repositories.branch import BranchRepository
-from saki_api.repositories.dataset import DatasetRepository
-from saki_api.repositories.label import LabelRepository
+from saki_api.repositories.annotation.annotation import AnnotationRepository
+from saki_api.repositories.project.branch import BranchRepository
+from saki_api.repositories.project.dataset import DatasetRepository
+from saki_api.repositories.project.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.query import Pagination
-from saki_api.repositories.commit_sample_state import CommitSampleStateRepository
-from saki_api.repositories.resource_member import ResourceMemberRepository
-from saki_api.repositories.role import RoleRepository
+from saki_api.repositories.project.commit_sample_state import CommitSampleStateRepository
+from saki_api.repositories.access.resource_member import ResourceMemberRepository
+from saki_api.repositories.access.role import RoleRepository
 from saki_api.schemas.project import ProjectCreate, ProjectForkCreate, ProjectUpdate
-from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
+from saki_api.schemas.access.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
 from saki_api.services.annotation.camap import CAMapService
@@ -984,7 +984,7 @@ class ProjectService(BaseService[Project, ProjectRepository, ProjectCreate, Proj
             )
 
         # Check if member already exists
-        from saki_api.repositories.resource_member import ResourceMemberRepository
+        from saki_api.repositories.access.resource_member import ResourceMemberRepository
         repo = ResourceMemberRepository(self.session)
         existing = await repo.get_by_user_and_resource(
             member_data.user_id,

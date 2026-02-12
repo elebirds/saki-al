@@ -23,7 +23,7 @@ from saki_api.db.session import SessionLocal, get_session
 from saki_api.models import Permissions, ResourceType
 from saki_api.models.l3.job_task import JobTask
 from saki_api.models.l3.loop import ALLoop
-from saki_api.schemas.l3.job import (
+from saki_api.schemas.runtime.job import (
     JobRead,
     LoopCreateRequest,
     LoopRead,

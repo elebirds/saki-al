@@ -15,7 +15,7 @@ from saki_api.core.exceptions import NotFoundAppException
 from saki_api.db.transaction import transactional
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import FilterType, Pagination, OrderByType
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 
 ModelType = TypeVar("ModelType", bound=SQLModel)
 RepoType = TypeVar("RepoType", bound=BaseRepository)

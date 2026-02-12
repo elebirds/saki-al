@@ -17,13 +17,13 @@ from saki_api.db.transaction import transactional
 from saki_api.models.l1.dataset import Dataset
 from saki_api.models.rbac import ResourceType, Role, RoleType
 from saki_api.models.rbac.resource_member import ResourceMember
-from saki_api.repositories.dataset import DatasetRepository
+from saki_api.repositories.project.dataset import DatasetRepository
 from saki_api.repositories.query import Pagination
-from saki_api.repositories.resource_member import ResourceMemberRepository
-from saki_api.repositories.role import RoleRepository
-from saki_api.schemas.dataset import DatasetCreate, DatasetUpdate
-from saki_api.schemas.pagination import PaginationResponse
-from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
+from saki_api.repositories.access.resource_member import ResourceMemberRepository
+from saki_api.repositories.access.role import RoleRepository
+from saki_api.schemas.project.dataset import DatasetCreate, DatasetUpdate
+from saki_api.schemas.common.pagination import PaginationResponse
+from saki_api.schemas.access.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
 from saki_api.services.project.field_overrides import get_or_override

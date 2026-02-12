@@ -21,8 +21,8 @@ from saki_api.schemas import (
     RoleCreate, RoleRead, RoleUpdate,
     UserSystemRoleAssign, UserSystemRoleRead,
 )
-from saki_api.schemas.permission import PermissionCatalogResponse
-from saki_api.schemas.pagination import PaginationResponse
+from saki_api.schemas.access.permission import PermissionCatalogResponse
+from saki_api.schemas.common.pagination import PaginationResponse
 from saki_api.services.guards import AdminGuardDep
 
 router = APIRouter()

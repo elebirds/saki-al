@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from saki_api.api.service_deps import AuthServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.schemas import UserRead, UserCreate
-from saki_api.schemas.auth import LoginResponse
+from saki_api.schemas.access.auth import LoginResponse
 
 router = APIRouter()
 

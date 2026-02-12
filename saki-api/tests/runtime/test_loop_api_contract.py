@@ -17,7 +17,7 @@ from saki_api.models.l2.branch import Branch
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.project import Project
 from saki_api.models.l3.job import Job
-from saki_api.schemas.l3.job import (
+from saki_api.schemas.runtime.job import (
     LoopCreateRequest,
     LoopRead,
     LoopSimulationConfig,

@@ -9,9 +9,9 @@ from typing import List, Dict
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.db.transaction import transactional
-from saki_api.repositories.annotation import AnnotationRepository
-from saki_api.repositories.camap import CAMapRepository
-from saki_api.repositories.commit import CommitRepository
+from saki_api.repositories.annotation.annotation import AnnotationRepository
+from saki_api.repositories.annotation.camap import CAMapRepository
+from saki_api.repositories.project.commit import CommitRepository
 
 
 

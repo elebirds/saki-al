@@ -21,10 +21,10 @@ from saki_api.core.exceptions import (
     ForbiddenAppException,
 )
 from saki_api.db.transaction import transactional
-from saki_api.repositories.role import RoleRepository
-from saki_api.repositories.user_system_role import UserSystemRoleRepository
+from saki_api.repositories.access.role import RoleRepository
+from saki_api.repositories.access.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
-from saki_api.schemas.auth import LoginResponse
+from saki_api.schemas.access.auth import LoginResponse
 from saki_api.services.system.system_setting_keys import SystemSettingKeys
 from saki_api.services.access.token_service import TokenService
 from saki_api.services.system.system_settings_reader import system_settings_reader
@@ -116,7 +116,7 @@ class AuthService:
         Args:
             user_id: ID of the user to assign the role to
         """
-        from saki_api.schemas.user_system_role import UserSystemRoleCreate
+        from saki_api.schemas.access.user_system_role import UserSystemRoleCreate
 
         default_role = await self.role_repo.get_default()
         if not default_role:

@@ -8,20 +8,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401
-import saki_api.grpc.runtime_control as runtime_control_module
-from saki_api.grpc.runtime_control import RuntimeControlService
+import saki_api.modules.shared.modeling  # noqa: F401
+import saki_api.infra.grpc.runtime_control as runtime_control_module
+from saki_api.infra.grpc.runtime_control import RuntimeControlService
 from saki_api.grpc_gen import runtime_control_pb2 as pb
-from saki_api.models.enums import AnnotationSource, AnnotationType, AuthorType, StorageType, TaskType
-from saki_api.models.storage.asset import Asset
-from saki_api.models.storage.dataset import Dataset
-from saki_api.models.storage.sample import Sample
-from saki_api.models.annotation.annotation import Annotation
-from saki_api.models.annotation.camap import CommitAnnotationMap
-from saki_api.models.project.commit import Commit
-from saki_api.models.project.label import Label
-from saki_api.models.project.project import Project, ProjectDataset
-from saki_api.models.access.user import User
+from saki_api.modules.shared.modeling.enums import AnnotationSource, AnnotationType, AuthorType, StorageType, TaskType
+from saki_api.modules.storage.domain.asset import Asset
+from saki_api.modules.storage.domain.dataset import Dataset
+from saki_api.modules.storage.domain.sample import Sample
+from saki_api.modules.annotation.domain.annotation import Annotation
+from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
+from saki_api.modules.project.domain.commit import Commit
+from saki_api.modules.project.domain.label import Label
+from saki_api.modules.project.domain.project import Project, ProjectDataset
+from saki_api.modules.access.domain.access import User
 
 
 class _DummyStorage:
@@ -159,7 +159,7 @@ async def test_data_request_labels_returns_label_items(data_response_env):
     service, session_local = data_response_env
     ctx = await _seed_context(session_local)
 
-    response = await service._handle_data_request(  # noqa: SLF001
+    response = await service._ingress.handle_data_request(  # noqa: SLF001
         pb.DataRequest(
             request_id="req-labels",
             task_id=str(ctx["task_id"]),
@@ -181,7 +181,7 @@ async def test_data_request_unlabeled_samples_excludes_labeled(data_response_env
     service, session_local = data_response_env
     ctx = await _seed_context(session_local)
 
-    response = await service._handle_data_request(  # noqa: SLF001
+    response = await service._ingress.handle_data_request(  # noqa: SLF001
         pb.DataRequest(
             request_id="req-unlabeled",
             task_id=str(ctx["task_id"]),
@@ -204,7 +204,7 @@ async def test_data_request_annotations_returns_bbox(data_response_env):
     service, session_local = data_response_env
     ctx = await _seed_context(session_local)
 
-    response = await service._handle_data_request(  # noqa: SLF001
+    response = await service._ingress.handle_data_request(  # noqa: SLF001
         pb.DataRequest(
             request_id="req-ann",
             task_id=str(ctx["task_id"]),
@@ -226,7 +226,7 @@ async def test_data_request_missing_task_id_returns_error(data_response_env):
     service, session_local = data_response_env
     ctx = await _seed_context(session_local)
 
-    response = await service._handle_data_request(  # noqa: SLF001
+    response = await service._ingress.handle_data_request(  # noqa: SLF001
         pb.DataRequest(
             request_id="req-bad",
             task_id="",

@@ -7,7 +7,7 @@ This is the backend service for the Saki Active Learning Framework.
 Run the server:
 
 ```bash
-uv run uvicorn main:app --reload
+uv run uvicorn saki_api.main:app --reload
 ```
 
 ## Database

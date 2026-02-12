@@ -7,25 +7,25 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401
-from saki_api.db.session import _session_ctx
-from saki_api.models.enums import AnnotationSource, AnnotationType, AuthorType, TaskType
-from saki_api.models.storage.dataset import Dataset
-from saki_api.models.storage.sample import Sample
-from saki_api.models.annotation.annotation import Annotation
-from saki_api.models.project.branch import Branch
-from saki_api.models.annotation.camap import CommitAnnotationMap
-from saki_api.models.project.commit import Commit
-from saki_api.models.project.label import Label
-from saki_api.models.project.project import ProjectDataset
-from saki_api.models.rbac.enums import ResourceType, RoleType, Permissions
-from saki_api.models.rbac.resource_member import ResourceMember
-from saki_api.models.rbac.role import Role
-from saki_api.models.rbac.role_permission import RolePermission
-from saki_api.models.access.user import User
-from saki_api.schemas.project import ProjectForkCreate
-from saki_api.services.project.commit_hash import refresh_commit_hash
-from saki_api.services.project.project import ProjectService
+import saki_api.modules.shared.modeling  # noqa: F401
+from saki_api.infra.db.session import _session_ctx
+from saki_api.modules.shared.modeling.enums import AnnotationSource, AnnotationType, AuthorType, TaskType
+from saki_api.modules.storage.domain.dataset import Dataset
+from saki_api.modules.storage.domain.sample import Sample
+from saki_api.modules.annotation.domain.annotation import Annotation
+from saki_api.modules.project.domain.branch import Branch
+from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
+from saki_api.modules.project.domain.commit import Commit
+from saki_api.modules.project.domain.label import Label
+from saki_api.modules.project.domain.project import ProjectDataset
+from saki_api.modules.access.domain.rbac.enums import ResourceType, RoleType, Permissions
+from saki_api.modules.access.domain.rbac.resource_member import ResourceMember
+from saki_api.modules.access.domain.rbac.role import Role
+from saki_api.modules.access.domain.rbac.role_permission import RolePermission
+from saki_api.modules.access.domain.access import User
+from saki_api.modules.project.api.project import ProjectForkCreate
+from saki_api.modules.project.service.commit_hash import refresh_commit_hash
+from saki_api.modules.project.service.project import ProjectService
 
 PROJECT_OWNER_ROLE_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "preset-role.project_owner")
 

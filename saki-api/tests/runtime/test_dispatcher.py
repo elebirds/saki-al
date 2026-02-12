@@ -8,16 +8,16 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401
-import saki_api.grpc.dispatcher as dispatcher_module
+import saki_api.modules.shared.modeling  # noqa: F401
+import saki_api.infra.grpc.dispatcher as dispatcher_module
 from saki_api.grpc_gen import runtime_control_pb2 as pb
-from saki_api.models.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, JobTaskStatus, JobTaskType, LoopPhase, TaskType
-from saki_api.models.project.branch import Branch
-from saki_api.models.project.commit import Commit
-from saki_api.models.project.project import Project
-from saki_api.models.runtime.job import Job
-from saki_api.models.runtime.job_task import JobTask
-from saki_api.models.runtime.loop import ALLoop
+from saki_api.modules.shared.modeling.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, JobTaskStatus, JobTaskType, LoopPhase, TaskType
+from saki_api.modules.project.domain.branch import Branch
+from saki_api.modules.project.domain.commit import Commit
+from saki_api.modules.project.domain.project import Project
+from saki_api.modules.runtime.domain.job import Job
+from saki_api.modules.runtime.domain.job_task import JobTask
+from saki_api.modules.runtime.domain.loop import ALLoop
 
 
 @pytest.fixture

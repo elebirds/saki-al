@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-import saki_api.grpc.runtime_control as runtime_control_module
-from saki_api.grpc.runtime_control import RuntimeControlService, _RuntimeStreamState
+import saki_api.infra.grpc.runtime_control as runtime_control_module
+from saki_api.infra.grpc.runtime_control import RuntimeControlService, _RuntimeStreamState
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 
 

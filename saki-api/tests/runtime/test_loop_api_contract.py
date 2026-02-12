@@ -7,24 +7,24 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401
-from saki_api.api.api_v1.endpoints.l3 import loop_control as loop_control_endpoint
-from saki_api.api.api_v1.endpoints.l3 import query as loop_query_endpoint
+import saki_api.modules.shared.modeling  # noqa: F401
+from saki_api.modules.runtime.api.http import loop_control as loop_control_endpoint
+from saki_api.modules.runtime.api.http import query as loop_query_endpoint
 from saki_api.core.exceptions import BadRequestAppException
-from saki_api.db.session import _session_ctx
-from saki_api.models.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, LoopPhase, TaskType
-from saki_api.models.project.branch import Branch
-from saki_api.models.project.commit import Commit
-from saki_api.models.project.project import Project
-from saki_api.models.runtime.job import Job
-from saki_api.schemas.runtime.job import (
+from saki_api.infra.db.session import _session_ctx
+from saki_api.modules.shared.modeling.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, LoopPhase, TaskType
+from saki_api.modules.project.domain.branch import Branch
+from saki_api.modules.project.domain.commit import Commit
+from saki_api.modules.project.domain.project import Project
+from saki_api.modules.runtime.domain.job import Job
+from saki_api.modules.runtime.api.job import (
     LoopCreateRequest,
     LoopRead,
     LoopSimulationConfig,
     LoopUpdateRequest,
     SimulationExperimentCreateRequest,
 )
-from saki_api.services.runtime.job import JobService
+from saki_api.modules.runtime.service.job import JobService
 
 
 @pytest.fixture

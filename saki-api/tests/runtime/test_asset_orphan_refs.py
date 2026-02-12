@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
-from saki_api.models.enums import StorageType
-from saki_api.models.storage.asset import Asset
-from saki_api.models.storage.dataset import Dataset
-from saki_api.models.storage.sample import Sample
-from saki_api.models.access.user import User
-from saki_api.repositories.storage.asset import AssetRepository
+import saki_api.modules.shared.modeling  # noqa: F401  # Ensure SQLModel metadata registration.
+from saki_api.modules.shared.modeling.enums import StorageType
+from saki_api.modules.storage.domain.asset import Asset
+from saki_api.modules.storage.domain.dataset import Dataset
+from saki_api.modules.storage.domain.sample import Sample
+from saki_api.modules.access.domain.access import User
+from saki_api.modules.storage.repo.asset import AssetRepository
 
 
 @pytest.fixture

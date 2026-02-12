@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from google.protobuf.struct_pb2 import Struct
 
-from saki_api.grpc import runtime_codec
+from saki_api.infra.grpc import runtime_codec
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 
 

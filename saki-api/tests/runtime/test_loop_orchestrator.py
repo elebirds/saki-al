@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401
-import saki_api.services.runtime.loop_orchestrator as orchestrator_module
-from saki_api.models.enums import (
+import saki_api.modules.shared.modeling  # noqa: F401
+import saki_api.modules.runtime.service.orchestration.loop_orchestrator_service as orchestrator_module
+from saki_api.modules.shared.modeling.enums import (
     ALLoopMode,
     ALLoopStatus,
     AnnotationSource,
@@ -21,19 +21,19 @@ from saki_api.models.enums import (
     LoopPhase,
     TaskType,
 )
-from saki_api.models.storage.dataset import Dataset
-from saki_api.models.storage.sample import Sample
-from saki_api.models.annotation.annotation import Annotation
-from saki_api.models.project.branch import Branch
-from saki_api.models.annotation.camap import CommitAnnotationMap
-from saki_api.models.project.commit import Commit
-from saki_api.models.project.label import Label
-from saki_api.models.project.project import Project, ProjectDataset
-from saki_api.models.runtime.job import Job
-from saki_api.models.runtime.job_task import JobTask
-from saki_api.models.runtime.loop import ALLoop
-from saki_api.models.access.user import User
-from saki_api.services.runtime.loop_orchestrator import LoopOrchestrator
+from saki_api.modules.storage.domain.dataset import Dataset
+from saki_api.modules.storage.domain.sample import Sample
+from saki_api.modules.annotation.domain.annotation import Annotation
+from saki_api.modules.project.domain.branch import Branch
+from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
+from saki_api.modules.project.domain.commit import Commit
+from saki_api.modules.project.domain.label import Label
+from saki_api.modules.project.domain.project import Project, ProjectDataset
+from saki_api.modules.runtime.domain.job import Job
+from saki_api.modules.runtime.domain.job_task import JobTask
+from saki_api.modules.runtime.domain.loop import ALLoop
+from saki_api.modules.access.domain.access import User
+from saki_api.modules.runtime.service.orchestration.loop_orchestrator_service import LoopOrchestrator
 
 
 @pytest.fixture

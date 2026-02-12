@@ -1,1 +1,0 @@
-"""Shared/common API schemas."""

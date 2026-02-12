@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
-from saki_api.api.api_v1.endpoints.l3 import runtime as runtime_endpoint
-from saki_api.models.runtime.runtime_executor_stats import RuntimeExecutorStats
+import saki_api.modules.shared.modeling  # noqa: F401  # Ensure SQLModel metadata registration.
+from saki_api.modules.runtime.api.http import runtime as runtime_endpoint
+from saki_api.modules.runtime.domain.runtime_executor_stats import RuntimeExecutorStats
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-from saki_api.models.rbac.permission import parse_permission
+from saki_api.modules.access.domain.rbac.permission import parse_permission
 
 
 def test_specific_permission_does_not_cover_all_permissions_wildcard() -> None:

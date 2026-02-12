@@ -24,7 +24,7 @@ from saki_api.schemas.l3.runtime_executor import (
     RuntimePluginCatalogResponse,
     RuntimePluginRead,
 )
-from saki_api.services.runtime_plugin_catalog import aggregate_runtime_plugins
+from saki_api.services.runtime.runtime_plugin_catalog import aggregate_runtime_plugins
 
 _STATS_RANGE_CONFIG: dict[RuntimeExecutorStatsRange, tuple[timedelta, int]] = {
     "30m": (timedelta(minutes=30), 10),

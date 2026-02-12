@@ -18,13 +18,14 @@ from saki_api.models.l2.camap import CommitAnnotationMap
 from saki_api.models.l2.commit import Commit
 from saki_api.models.l2.label import Label
 from saki_api.models.l2.project import ProjectDataset
-from saki_api.models.rbac.enums import ResourceType, RoleType
+from saki_api.models.rbac.enums import ResourceType, RoleType, Permissions
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.role import Role
+from saki_api.models.rbac.role_permission import RolePermission
 from saki_api.models.user import User
 from saki_api.schemas.project import ProjectForkCreate
-from saki_api.services.commit_hash import refresh_commit_hash
-from saki_api.services.project import ProjectService
+from saki_api.services.project.commit_hash import refresh_commit_hash
+from saki_api.services.project.project import ProjectService
 
 PROJECT_OWNER_ROLE_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "preset-role.project_owner")
 
@@ -64,6 +65,12 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
         session.add(source_user)
         session.add(fork_user)
         session.add(owner_role)
+        session.add(
+            RolePermission(
+                role_id=owner_role.id,
+                permission=Permissions.DATASET_LINK_PROJECT,
+            )
+        )
         await session.flush()
 
         dataset = Dataset(
@@ -72,6 +79,23 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
             owner_id=source_user.id,
         )
         session.add(dataset)
+        await session.flush()
+        session.add(
+            ResourceMember(
+                resource_type=ResourceType.DATASET,
+                resource_id=dataset.id,
+                user_id=source_user.id,
+                role_id=owner_role.id,
+            )
+        )
+        session.add(
+            ResourceMember(
+                resource_type=ResourceType.DATASET,
+                resource_id=dataset.id,
+                user_id=fork_user.id,
+                role_id=owner_role.id,
+            )
+        )
         await session.flush()
 
         service = ProjectService(session)

@@ -25,10 +25,10 @@ from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
 from saki_api.schemas.auth import LoginResponse
-from saki_api.services.system_setting_keys import SystemSettingKeys
-from saki_api.services.token_service import TokenService
-from saki_api.services.system_settings_reader import system_settings_reader
-from saki_api.services.user import UserService
+from saki_api.services.system.system_setting_keys import SystemSettingKeys
+from saki_api.services.access.token_service import TokenService
+from saki_api.services.system.system_settings_reader import system_settings_reader
+from saki_api.services.access.user import UserService
 
 
 

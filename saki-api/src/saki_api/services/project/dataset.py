@@ -26,10 +26,10 @@ from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
-from saki_api.services.field_overrides import get_or_override
-from saki_api.services.system_setting_keys import SystemSettingKeys
-from saki_api.services.system_settings_reader import system_settings_reader
-from saki_api.services.user import UserService
+from saki_api.services.project.field_overrides import get_or_override
+from saki_api.services.system.system_setting_keys import SystemSettingKeys
+from saki_api.services.system.system_settings_reader import system_settings_reader
+from saki_api.services.access.user import UserService
 
 
 

@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from saki_api.core.config import settings
-from saki_api.services.system_setting_keys import SystemSettingKeys
+from saki_api.services.system.system_setting_keys import SystemSettingKeys
 
 
 @dataclass(frozen=True)

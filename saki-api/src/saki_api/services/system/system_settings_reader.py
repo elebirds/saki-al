@@ -7,8 +7,8 @@ from __future__ import annotations
 from typing import Any
 
 from saki_api.db.session import SessionLocal
-from saki_api.services.system_setting_keys import SystemSettingKeys
-from saki_api.services.system_settings import SystemSettingsService
+from saki_api.services.system.system_setting_keys import SystemSettingKeys
+from saki_api.services.system.system_settings import SystemSettingsService
 
 
 class SystemSettingsReader:

@@ -13,14 +13,14 @@ from saki_api.db.session import get_session
 from saki_api.repositories.role import RoleRepository
 from saki_api.repositories.user import UserRepository
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
-from saki_api.services.asset import AssetService
-from saki_api.services.auth import AuthService
-from saki_api.services.permission_query import PermissionQueryService
-from saki_api.services.role import RoleService
-from saki_api.services.system import SystemService
-from saki_api.services.system_settings import SystemSettingsService
-from saki_api.services.user import UserService
-from saki_api.services.user_system_role import UserRoleService
+from saki_api.services.storage.asset import AssetService
+from saki_api.services.access.auth import AuthService
+from saki_api.services.access.permission_query import PermissionQueryService
+from saki_api.services.access.role import RoleService
+from saki_api.services.system.system import SystemService
+from saki_api.services.system.system_settings import SystemSettingsService
+from saki_api.services.access.user import UserService
+from saki_api.services.access.user_system_role import UserRoleService
 
 
 # ============================================================================
@@ -143,8 +143,8 @@ PermissionQueryServiceDep = Annotated[PermissionQueryService, Depends(get_permis
 # Dataset & Sample Service Dependencies
 # ============================================================================
 
-from saki_api.services.dataset import DatasetService
-from saki_api.services.sample import SampleService
+from saki_api.services.project.dataset import DatasetService
+from saki_api.services.project.sample import SampleService
 
 
 def get_dataset_service(
@@ -177,8 +177,8 @@ AssetServiceDep = Annotated[AssetService, Depends(get_asset_service)]
 # Project & Label Service Dependencies (L2 Layer)
 # ============================================================================
 
-from saki_api.services.project import ProjectService
-from saki_api.services.label import LabelService
+from saki_api.services.project.project import ProjectService
+from saki_api.services.project.label import LabelService
 
 
 def get_project_service(
@@ -202,8 +202,8 @@ LabelServiceDep = Annotated[LabelService, Depends(get_label_service)]
 # Commit & Branch Service Dependencies (L2 Layer)
 # ============================================================================
 
-from saki_api.services.commit import CommitService
-from saki_api.services.branch import BranchService
+from saki_api.services.project.commit import CommitService
+from saki_api.services.project.branch import BranchService
 
 
 def get_commit_service(
@@ -227,10 +227,10 @@ BranchServiceDep = Annotated[BranchService, Depends(get_branch_service)]
 # Annotation Service Dependencies (L2 Layer)
 # ============================================================================
 
-from saki_api.services.annotation import AnnotationService
-from saki_api.services.annotation_draft import AnnotationDraftService
-from saki_api.services.annotation_working import AnnotationWorkingService
-from saki_api.services.annotation_sync import AnnotationSyncService
+from saki_api.services.annotation.annotation import AnnotationService
+from saki_api.services.annotation.draft import AnnotationDraftService
+from saki_api.services.annotation.working import AnnotationWorkingService
+from saki_api.services.annotation.sync import AnnotationSyncService
 
 
 def get_annotation_service(
@@ -270,9 +270,9 @@ AnnotationSyncServiceDep = Annotated[AnnotationSyncService, Depends(get_annotati
 # Job Service Dependencies (L3 Layer)
 # ============================================================================
 
-from saki_api.services.job import JobService
-from saki_api.services.model import ModelService
-from saki_api.services.runtime_observability import RuntimeObservabilityService
+from saki_api.services.runtime.job import JobService
+from saki_api.services.runtime.model import ModelService
+from saki_api.services.runtime.runtime_observability import RuntimeObservabilityService
 
 
 def get_job_service(

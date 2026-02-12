@@ -22,7 +22,7 @@ from saki_api.models.enums import DatasetType
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
-    from saki_api.services.asset import AssetService
+    from saki_api.services.storage.asset import AssetService
     from fastapi import UploadFile
 
 
@@ -156,7 +156,7 @@ class BaseDatasetProcessor(ABC):
 
         # Initialize asset service if session is provided
         if session:
-            from saki_api.services.asset import AssetService
+            from saki_api.services.storage.asset import AssetService
             self.asset_service = AssetService(session)
 
     # ==================== Event System ====================

@@ -83,7 +83,7 @@ class BaseAnnotationSyncHandler(ABC):
 
         # Initialize services if session is provided
         if session:
-            from saki_api.services.asset import AssetService
+            from saki_api.services.storage.asset import AssetService
             self.asset_service = AssetService(session)
 
     # ==================== Annotation Sync (Real-time) ====================

@@ -16,7 +16,7 @@ from saki_api.repositories.commit import CommitRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.schemas.commit import CommitCreate, CommitHistoryItem, CommitTree, CommitDiff
 from saki_api.services.base import BaseService
-from saki_api.services.commit_hash import refresh_commit_hash
+from saki_api.services.project.commit_hash import refresh_commit_hash
 
 
 
@@ -180,7 +180,7 @@ class CommitService(BaseService[Commit, CommitRepository, CommitCreate, dict]):
         Returns:
             CommitDiff with added/removed samples and modified annotations
         """
-        from saki_api.services.camap import CAMapService
+        from saki_api.services.annotation.camap import CAMapService
 
         camap_service = CAMapService(self.session)
 

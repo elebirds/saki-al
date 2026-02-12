@@ -8,7 +8,7 @@ from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.models  # noqa: F401
-import saki_api.services.loop_orchestrator as orchestrator_module
+import saki_api.services.runtime.loop_orchestrator as orchestrator_module
 from saki_api.models.enums import (
     ALLoopMode,
     ALLoopStatus,
@@ -33,7 +33,7 @@ from saki_api.models.l3.job import Job
 from saki_api.models.l3.job_task import JobTask
 from saki_api.models.l3.loop import ALLoop
 from saki_api.models.user import User
-from saki_api.services.loop_orchestrator import LoopOrchestrator
+from saki_api.services.runtime.loop_orchestrator import LoopOrchestrator
 
 
 @pytest.fixture

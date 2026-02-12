@@ -53,9 +53,9 @@ from saki_api.schemas.project import ProjectCreate, ProjectForkCreate, ProjectUp
 from saki_api.schemas.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.services.base import BaseService
-from saki_api.services.camap import CAMapService
-from saki_api.services.commit_hash import refresh_commit_hash
-from saki_api.services.user import UserService
+from saki_api.services.annotation.camap import CAMapService
+from saki_api.services.project.commit_hash import refresh_commit_hash
+from saki_api.services.access.user import UserService
 
 
 @dataclass

@@ -15,7 +15,7 @@ from saki_api.models.enums import AnnotationType, AnnotationSource
 from saki_api.repositories.annotation import AnnotationRepository
 from saki_api.repositories.annotation_draft import AnnotationDraftRepository
 from saki_api.repositories.branch import BranchRepository
-from saki_api.services.annotation_working import AnnotationWorkingService
+from saki_api.services.annotation.working import AnnotationWorkingService
 from saki_api.utils.coordinate_converter import convert_annotation_data_to_backend
 
 

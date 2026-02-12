@@ -20,8 +20,8 @@ from saki_api.schemas.permission import (
     SystemPermissionsResponse,
     ResourcePermissionsResponse,
 )
-from saki_api.services.permission import PermissionService
-from saki_api.services.resource_owner import ResourceOwnerService
+from saki_api.services.access.permission import PermissionService
+from saki_api.services.access.resource_owner import ResourceOwnerService
 
 
 class PermissionQueryService:

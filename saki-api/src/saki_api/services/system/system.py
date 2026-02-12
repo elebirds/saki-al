@@ -11,7 +11,8 @@ from saki_api.core.rbac.presets import init_preset_roles
 from saki_api.db.transaction import transactional
 from saki_api.repositories.user_system_role import UserSystemRoleRepository
 from saki_api.schemas import UserCreate, UserRead
-from saki_api.services import UserService, RoleService
+from saki_api.services.access.role import RoleService
+from saki_api.services.access.user import UserService
 
 
 class SystemService:

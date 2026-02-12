@@ -20,9 +20,9 @@ from saki_api.models.l2.project import Project, ProjectDataset
 from saki_api.models.rbac.enums import RoleType
 from saki_api.models.rbac.role import Role
 from saki_api.models.user import User
-from saki_api.services.annotation_draft import AnnotationDraftService
-from saki_api.services.annotation_working import AnnotationWorkingService
-from saki_api.services.project import ProjectService
+from saki_api.services.annotation.draft import AnnotationDraftService
+from saki_api.services.annotation.working import AnnotationWorkingService
+from saki_api.services.project.project import ProjectService
 
 PROJECT_OWNER_ROLE_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "preset-role.project_owner")
 

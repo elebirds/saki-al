@@ -24,7 +24,7 @@ from saki_api.schemas.l3.job import (
     LoopUpdateRequest,
     SimulationExperimentCreateRequest,
 )
-from saki_api.services.job import JobService
+from saki_api.services.runtime.job import JobService
 
 
 @pytest.fixture

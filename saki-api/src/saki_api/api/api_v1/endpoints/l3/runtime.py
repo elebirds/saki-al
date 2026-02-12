@@ -20,7 +20,7 @@ from saki_api.schemas.l3.runtime_executor import (
     RuntimeExecutorStatsResponse,
     RuntimePluginCatalogResponse,
 )
-from saki_api.services.runtime_observability import RuntimeObservabilityService
+from saki_api.services.runtime.runtime_observability import RuntimeObservabilityService
 
 router = APIRouter()
 

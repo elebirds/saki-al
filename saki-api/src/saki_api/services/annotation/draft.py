@@ -15,7 +15,7 @@ from saki_api.repositories.annotation_draft import AnnotationDraftRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.sample import SampleRepository
 from saki_api.services.base import BaseService
-from saki_api.services.project import ProjectService
+from saki_api.services.project.project import ProjectService
 
 
 

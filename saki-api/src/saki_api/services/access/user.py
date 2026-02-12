@@ -23,7 +23,7 @@ from saki_api.repositories.user import UserRepository
 from saki_api.schemas import UserRead
 from saki_api.schemas.pagination import PaginationResponse
 from saki_api.schemas.user import UserUpdate, UserCreate
-from saki_api.services.asset import AssetService
+from saki_api.services.storage.asset import AssetService
 from saki_api.services.base import BaseService
 from saki_api.services.guards import AdminGuardDep
 from saki_api.utils.storage import StorageError

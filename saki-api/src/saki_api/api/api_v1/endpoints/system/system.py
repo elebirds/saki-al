@@ -12,8 +12,8 @@ from saki_api.api.service_deps import SystemServiceDep, SystemSettingsServiceDep
 from saki_api.core.rbac.dependencies import get_current_user_id, require_permission
 from saki_api.models import Permissions
 from saki_api.schemas import UserCreate, UserRead
-from saki_api.services.system_setting_keys import SystemSettingKeys
-from saki_api.services.system import SystemService
+from saki_api.services.system.system_setting_keys import SystemSettingKeys
+from saki_api.services.system.system import SystemService
 
 router = APIRouter()
 

@@ -16,9 +16,9 @@ from saki_api.core.logging import setup_logging
 from saki_api.db.session import init_db, dispose_engine, SessionLocal
 from saki_api.grpc.runtime_control import runtime_grpc_server
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
-from saki_api.services.asset_gc_scheduler import asset_gc_scheduler
-from saki_api.services.loop_orchestrator import loop_orchestrator
-from saki_api.services.system_settings import SystemSettingsService
+from saki_api.services.system.asset_gc_scheduler import asset_gc_scheduler
+from saki_api.services.runtime.loop_orchestrator import loop_orchestrator
+from saki_api.services.system.system_settings import SystemSettingsService
 
 
 @asynccontextmanager

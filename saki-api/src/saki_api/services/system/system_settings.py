@@ -22,8 +22,8 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.config import settings
 from saki_api.core.redis import get_redis_client
 from saki_api.models.system_setting import SystemSetting
-from saki_api.services.system_setting_keys import SystemSettingKeys
-from saki_api.services.system_settings_registry import (
+from saki_api.services.system.system_setting_keys import SystemSettingKeys
+from saki_api.services.system.system_settings_registry import (
     SYSTEM_SETTINGS_REGISTRY,
     SystemSettingDef,
     list_setting_defs,

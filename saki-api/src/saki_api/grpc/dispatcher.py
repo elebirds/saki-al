@@ -16,9 +16,9 @@ from saki_api.db.session import SessionLocal
 from saki_api.grpc import runtime_codec
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import JobStatusV2, JobTaskStatus
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_task import JobTask
-from saki_api.models.l3.runtime_executor import RuntimeExecutor
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.job_task import JobTask
+from saki_api.models.runtime.runtime_executor import RuntimeExecutor
 
 
 @dataclass

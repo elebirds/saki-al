@@ -22,10 +22,10 @@ from saki_api.models.enums import (
     JobTaskType,
     LoopPhase,
 )
-from saki_api.models.l2.branch import Branch
-from saki_api.models.l2.camap import CommitAnnotationMap
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_task import JobTask
+from saki_api.models.project.branch import Branch
+from saki_api.models.annotation.camap import CommitAnnotationMap
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.job_task import JobTask
 
 
 TERMINAL_JOB_STATUS = {
@@ -78,7 +78,7 @@ class LoopOrchestrator:
 
     async def _tick(self) -> None:
         async with self._session_local() as session:
-            from saki_api.models.l3.loop import ALLoop
+            from saki_api.models.runtime.loop import ALLoop
 
             rows = await session.exec(select(ALLoop.id).where(ALLoop.status == ALLoopStatus.RUNNING))
             loop_ids = list(rows.all())
@@ -91,7 +91,7 @@ class LoopOrchestrator:
     async def _process_loop(self, loop_id: uuid.UUID) -> None:
         dispatch_task_ids: list[uuid.UUID] = []
         async with self._session_local() as session:
-            from saki_api.models.l3.loop import ALLoop
+            from saki_api.models.runtime.loop import ALLoop
 
             loop = await session.get(ALLoop, loop_id)
             if not loop or loop.status != ALLoopStatus.RUNNING:
@@ -287,7 +287,7 @@ class LoopOrchestrator:
         return int(value or 0)
 
     async def _create_next_job(self, *, session, loop, branch: Branch) -> Job:
-        from saki_api.models.l3.loop import ALLoop
+        from saki_api.models.runtime.loop import ALLoop
 
         loop = loop if isinstance(loop, ALLoop) else await session.get(ALLoop, loop.id)
         if loop is None:

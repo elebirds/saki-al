@@ -10,8 +10,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.rbac import PermissionChecker
 from saki_api.models import ResourceType, Permissions
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l2.project import Project, ProjectDataset
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.project.project import Project, ProjectDataset
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.common.pagination import PaginationResponse
@@ -201,7 +201,7 @@ class ProjectRepository(BaseRepository[Project]):
 
     async def count_labels(self, project_id: uuid.UUID) -> int:
         """Count labels in a project."""
-        from saki_api.models.l2.label import Label
+        from saki_api.models.project.label import Label
         statement = select(func.count()).select_from(
             select(Label).where(Label.project_id == project_id).subquery()
         )
@@ -210,7 +210,7 @@ class ProjectRepository(BaseRepository[Project]):
 
     async def count_branches(self, project_id: uuid.UUID) -> int:
         """Count branches in a project."""
-        from saki_api.models.l2.branch import Branch
+        from saki_api.models.project.branch import Branch
         statement = select(func.count()).select_from(
             select(Branch).where(Branch.project_id == project_id).subquery()
         )
@@ -219,7 +219,7 @@ class ProjectRepository(BaseRepository[Project]):
 
     async def count_commits(self, project_id: uuid.UUID) -> int:
         """Count commits in a project."""
-        from saki_api.models.l2.commit import Commit
+        from saki_api.models.project.commit import Commit
         statement = select(func.count()).select_from(
             select(Commit).where(Commit.project_id == project_id).subquery()
         )

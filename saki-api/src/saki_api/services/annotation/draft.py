@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.db.transaction import transactional
-from saki_api.models.l2.annotation_draft import AnnotationDraft
+from saki_api.models.annotation.draft import AnnotationDraft
 from saki_api.repositories.annotation.draft import AnnotationDraftRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.repositories.project.sample import SampleRepository

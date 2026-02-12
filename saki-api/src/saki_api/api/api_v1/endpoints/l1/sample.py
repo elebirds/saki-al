@@ -14,7 +14,7 @@ from saki_api.api.service_deps import DatasetServiceDep, SampleServiceDep, Asset
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.rbac.dependencies import require_permission
 from saki_api.models import Permissions, ResourceType
-from saki_api.models.l1.sample import Sample
+from saki_api.models.storage.sample import Sample
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.common.pagination import PaginationResponse
 from saki_api.schemas.project.sample import SampleRead

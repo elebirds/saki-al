@@ -17,8 +17,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.models.enums import DatasetType
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l1.sample import Sample
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.storage.sample import Sample
 from saki_api.modules.annotation_factory import AnnotationSystemFactory
 from saki_api.modules.dataset_processing.base import UploadContext, ProgressCallback, EventType, ProgressInfo
 from saki_api.repositories.project.sample import SampleRepository

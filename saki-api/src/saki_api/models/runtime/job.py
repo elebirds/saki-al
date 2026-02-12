@@ -11,10 +11,10 @@ from saki_api.models.base import OPT_JSON, TimestampMixin, UUIDMixin
 from saki_api.models.enums import ALLoopMode, JobStatusV2
 
 if TYPE_CHECKING:
-    from saki_api.models.l2.project import Project
-    from saki_api.models.l3.job_task import JobTask
-    from saki_api.models.l3.loop import ALLoop
-    from saki_api.models.l3.model import Model
+    from saki_api.models.project.project import Project
+    from saki_api.models.runtime.job_task import JobTask
+    from saki_api.models.runtime.loop import ALLoop
+    from saki_api.models.runtime.model import Model
 
 
 class JobBase(SQLModel):

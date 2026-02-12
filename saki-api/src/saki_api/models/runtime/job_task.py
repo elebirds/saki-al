@@ -11,10 +11,10 @@ from saki_api.models.base import OPT_JSON, TimestampMixin, UUIDMixin
 from saki_api.models.enums import JobTaskStatus, JobTaskType
 
 if TYPE_CHECKING:
-    from saki_api.models.l3.job import Job
-    from saki_api.models.l3.task_candidate_item import TaskCandidateItem
-    from saki_api.models.l3.task_event import TaskEvent
-    from saki_api.models.l3.task_metric_point import TaskMetricPoint
+    from saki_api.models.runtime.job import Job
+    from saki_api.models.runtime.task_candidate_item import TaskCandidateItem
+    from saki_api.models.runtime.task_event import TaskEvent
+    from saki_api.models.runtime.task_metric_point import TaskMetricPoint
 
 
 class JobTask(UUIDMixin, TimestampMixin, SQLModel, table=True):

@@ -8,12 +8,12 @@ from saki_api.models.base import TimestampMixin, UUIDMixin, OPT_JSON
 from saki_api.models.enums import TaskType, ProjectStatus
 
 if TYPE_CHECKING:
-    from saki_api.models.l1.dataset import Dataset
-    from saki_api.models.l3.job import Job
-    from saki_api.models.l3.loop import ALLoop
-    from saki_api.models.l2.branch import Branch
-    from saki_api.models.l2.commit import Commit
-    from saki_api.models.l2.label import Label
+    from saki_api.models.storage.dataset import Dataset
+    from saki_api.models.runtime.job import Job
+    from saki_api.models.runtime.loop import ALLoop
+    from saki_api.models.project.branch import Branch
+    from saki_api.models.project.commit import Commit
+    from saki_api.models.project.label import Label
 
 
 class ProjectDataset(SQLModel, table=True):

@@ -13,10 +13,10 @@ from saki_api.api.api_v1.endpoints.l3 import query as loop_query_endpoint
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.db.session import _session_ctx
 from saki_api.models.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, LoopPhase, TaskType
-from saki_api.models.l2.branch import Branch
-from saki_api.models.l2.commit import Commit
-from saki_api.models.l2.project import Project
-from saki_api.models.l3.job import Job
+from saki_api.models.project.branch import Branch
+from saki_api.models.project.commit import Commit
+from saki_api.models.project.project import Project
+from saki_api.models.runtime.job import Job
 from saki_api.schemas.runtime.job import (
     LoopCreateRequest,
     LoopRead,

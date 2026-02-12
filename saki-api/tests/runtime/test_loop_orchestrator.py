@@ -21,18 +21,18 @@ from saki_api.models.enums import (
     LoopPhase,
     TaskType,
 )
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.l2.annotation import Annotation
-from saki_api.models.l2.branch import Branch
-from saki_api.models.l2.camap import CommitAnnotationMap
-from saki_api.models.l2.commit import Commit
-from saki_api.models.l2.label import Label
-from saki_api.models.l2.project import Project, ProjectDataset
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_task import JobTask
-from saki_api.models.l3.loop import ALLoop
-from saki_api.models.user import User
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.annotation.annotation import Annotation
+from saki_api.models.project.branch import Branch
+from saki_api.models.annotation.camap import CommitAnnotationMap
+from saki_api.models.project.commit import Commit
+from saki_api.models.project.label import Label
+from saki_api.models.project.project import Project, ProjectDataset
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.job_task import JobTask
+from saki_api.models.runtime.loop import ALLoop
+from saki_api.models.access.user import User
 from saki_api.services.runtime.loop_orchestrator import LoopOrchestrator
 
 

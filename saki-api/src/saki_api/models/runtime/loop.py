@@ -8,10 +8,10 @@ from saki_api.models.base import OPT_JSON, TimestampMixin, UUIDMixin
 from saki_api.models.enums import ALLoopMode, ALLoopStatus, LoopPhase
 
 if TYPE_CHECKING:
-    from saki_api.models.l2.branch import Branch
-    from saki_api.models.l2.project import Project
-    from saki_api.models.l3.job import Job
-    from saki_api.models.l3.model import Model
+    from saki_api.models.project.branch import Branch
+    from saki_api.models.project.project import Project
+    from saki_api.models.runtime.job import Job
+    from saki_api.models.runtime.model import Model
 
 
 class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):

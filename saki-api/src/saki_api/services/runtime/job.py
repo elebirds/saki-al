@@ -22,12 +22,12 @@ from saki_api.models.enums import (
     JobTaskType,
     LoopPhase,
 )
-from saki_api.models.l2.branch import Branch
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_task import JobTask
-from saki_api.models.l3.loop import ALLoop
-from saki_api.models.l3.runtime_executor import RuntimeExecutor
-from saki_api.models.l3.task_candidate_item import TaskCandidateItem
+from saki_api.models.project.branch import Branch
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.job_task import JobTask
+from saki_api.models.runtime.loop import ALLoop
+from saki_api.models.runtime.runtime_executor import RuntimeExecutor
+from saki_api.models.runtime.task_candidate_item import TaskCandidateItem
 from saki_api.repositories.runtime.job import JobRepository
 from saki_api.repositories.runtime.job_task import JobTaskRepository
 from saki_api.repositories.runtime.loop import LoopRepository

@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
 from saki_api.api.api_v1.endpoints.l3 import runtime as runtime_endpoint
-from saki_api.models.l3.runtime_executor_stats import RuntimeExecutorStats
+from saki_api.models.runtime.runtime_executor_stats import RuntimeExecutorStats
 
 
 @pytest.fixture

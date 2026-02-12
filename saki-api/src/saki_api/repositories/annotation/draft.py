@@ -8,7 +8,7 @@ from typing import List, Optional
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l2.annotation_draft import AnnotationDraft
+from saki_api.models.annotation.draft import AnnotationDraft
 from saki_api.repositories.base import BaseRepository
 
 

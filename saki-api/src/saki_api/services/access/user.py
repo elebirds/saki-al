@@ -17,7 +17,7 @@ from saki_api.core.exceptions import (
     DataAlreadyExistsAppException,
 )
 from saki_api.db.transaction import transactional
-from saki_api.models.user import User
+from saki_api.models.access.user import User
 from saki_api.repositories.query import Pagination
 from saki_api.repositories.access.user import UserRepository
 from saki_api.schemas import UserRead

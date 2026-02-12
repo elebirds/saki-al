@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.user import User
+from saki_api.models.access.user import User
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas import UserRead

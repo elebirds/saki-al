@@ -17,7 +17,7 @@ from saki_api.models.base import TimestampMixin, UUIDMixin, OPT_JSON
 from saki_api.models.enums import AnnotationType, AnnotationSource
 
 if TYPE_CHECKING:
-    from saki_api.models.l2.label import Label
+    from saki_api.models.project.label import Label
 
 
 class AnnotationBase(SQLModel):

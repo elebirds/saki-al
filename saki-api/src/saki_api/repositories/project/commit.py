@@ -8,7 +8,7 @@ from typing import List, Optional
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l2.commit import Commit
+from saki_api.models.project.commit import Commit
 from saki_api.repositories.base import BaseRepository
 
 
@@ -68,7 +68,7 @@ class CommitRepository(BaseRepository[Commit]):
         Returns:
             Commit if found, None otherwise
         """
-        from saki_api.models.l2.branch import Branch
+        from saki_api.models.project.branch import Branch
 
         statement = (
             select(Commit)

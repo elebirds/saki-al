@@ -16,9 +16,9 @@ from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.enums import StorageType
-from saki_api.models.l1.asset import Asset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.user import User
+from saki_api.models.storage.asset import Asset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.access.user import User
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.common.pagination import PaginationResponse

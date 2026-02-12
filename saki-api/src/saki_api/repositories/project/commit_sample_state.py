@@ -8,7 +8,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.enums import CommitSampleReviewState
-from saki_api.models.l2.commit_sample_state import CommitSampleState
+from saki_api.models.project.commit_sample_state import CommitSampleState
 
 
 class CommitSampleStateRepository:

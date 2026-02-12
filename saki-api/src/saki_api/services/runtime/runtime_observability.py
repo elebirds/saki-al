@@ -12,8 +12,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.grpc.dispatcher import runtime_dispatcher
-from saki_api.models.l3.runtime_executor import RuntimeExecutor
-from saki_api.models.l3.runtime_executor_stats import RuntimeExecutorStats
+from saki_api.models.runtime.runtime_executor import RuntimeExecutor
+from saki_api.models.runtime.runtime_executor_stats import RuntimeExecutorStats
 from saki_api.schemas.runtime.runtime_executor import (
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,

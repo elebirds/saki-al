@@ -19,7 +19,7 @@ from saki_api.api.service_deps import AssetServiceDep
 from saki_api.core.rbac.dependencies import require_permission
 from saki_api.models import Permissions
 from saki_api.models.enums import StorageType
-from saki_api.models.l1.asset import Asset
+from saki_api.models.storage.asset import Asset
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.storage.asset import (
     AssetRead,

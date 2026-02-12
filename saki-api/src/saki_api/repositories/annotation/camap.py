@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.models.annotation.camap import CommitAnnotationMap
 
 
 class CAMapRepository:

@@ -17,7 +17,7 @@ from sqlmodel import Field, SQLModel, Relationship
 from saki_api.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from saki_api.models.l1.dataset import Dataset
+    from saki_api.models.storage.dataset import Dataset
 
 
 class SampleBase(SQLModel):

@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import NotFoundAppException, BadRequestAppException
 from saki_api.db.transaction import transactional
-from saki_api.models.l2.commit import Commit
+from saki_api.models.project.commit import Commit
 from saki_api.repositories.project.branch import BranchRepository
 from saki_api.repositories.project.commit import CommitRepository
 from saki_api.repositories.project import ProjectRepository

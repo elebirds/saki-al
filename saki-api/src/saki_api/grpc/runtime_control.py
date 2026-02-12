@@ -20,17 +20,17 @@ from saki_api.grpc.dispatcher import runtime_dispatcher
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.grpc_gen import runtime_control_pb2_grpc as pb_grpc
 from saki_api.models.enums import JobStatusV2, JobTaskStatus
-from saki_api.models.l1.asset import Asset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.l2.annotation import Annotation
-from saki_api.models.l2.camap import CommitAnnotationMap
-from saki_api.models.l2.label import Label
-from saki_api.models.l2.project import ProjectDataset
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_task import JobTask
-from saki_api.models.l3.task_candidate_item import TaskCandidateItem
-from saki_api.models.l3.task_event import TaskEvent
-from saki_api.models.l3.task_metric_point import TaskMetricPoint
+from saki_api.models.storage.asset import Asset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.annotation.annotation import Annotation
+from saki_api.models.annotation.camap import CommitAnnotationMap
+from saki_api.models.project.label import Label
+from saki_api.models.project.project import ProjectDataset
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.job_task import JobTask
+from saki_api.models.runtime.task_candidate_item import TaskCandidateItem
+from saki_api.models.runtime.task_event import TaskEvent
+from saki_api.models.runtime.task_metric_point import TaskMetricPoint
 from saki_api.utils.storage import get_storage_provider
 
 

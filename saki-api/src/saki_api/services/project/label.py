@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppException
 from saki_api.db.transaction import transactional
-from saki_api.models.l2.label import Label
+from saki_api.models.project.label import Label
 from saki_api.repositories.project.label import LabelRepository
 from saki_api.repositories.project import ProjectRepository
 from saki_api.schemas.project.label import LabelCreate, LabelUpdate

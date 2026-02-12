@@ -7,7 +7,7 @@ from typing import Optional, List
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l3.job import Job
+from saki_api.models.runtime.job import Job
 from saki_api.repositories.base import BaseRepository
 
 

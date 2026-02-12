@@ -12,9 +12,9 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.loop import ALLoop
-from saki_api.models.l3.model import Model
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.loop import ALLoop
+from saki_api.models.runtime.model import Model
 from saki_api.utils.storage import get_storage_provider
 
 

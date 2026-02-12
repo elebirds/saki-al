@@ -8,7 +8,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from saki_api.models.base import UUIDMixin, TimestampMixin, OPT_JSON
 
 if TYPE_CHECKING:
-    from saki_api.models.l3.job import Job
+    from saki_api.models.runtime.job import Job
 
 
 class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):

@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlmodel import SQLModel
 
 from saki_api.models.base import TimestampMixin, UUIDMixin
-from saki_api.models.l1.dataset import DatasetBase
+from saki_api.models.storage.dataset import DatasetBase
 
 
 class DatasetCreate(DatasetBase):

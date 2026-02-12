@@ -14,9 +14,9 @@ from sqlmodel import SQLModel, Field, Relationship
 from saki_api.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from saki_api.models.l2.commit import Commit
-    from saki_api.models.l2.project import Project
-    from saki_api.models.l3.loop import ALLoop
+    from saki_api.models.project.commit import Commit
+    from saki_api.models.project.project import Project
+    from saki_api.models.runtime.loop import ALLoop
 
 
 class BranchBase(SQLModel):

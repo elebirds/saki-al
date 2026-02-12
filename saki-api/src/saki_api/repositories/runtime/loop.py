@@ -8,7 +8,7 @@ from typing import Optional, List
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.models.enums import ALLoopStatus
-from saki_api.models.l3.loop import ALLoop
+from saki_api.models.runtime.loop import ALLoop
 from saki_api.repositories.base import BaseRepository
 
 

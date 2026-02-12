@@ -8,7 +8,7 @@ from typing import List, Any
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l1.sample import Sample
+from saki_api.models.storage.sample import Sample
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.common.pagination import PaginationResponse

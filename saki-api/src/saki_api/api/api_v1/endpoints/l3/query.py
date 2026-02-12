@@ -21,8 +21,8 @@ from saki_api.core.rbac.checker import PermissionChecker
 from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.db.session import SessionLocal, get_session
 from saki_api.models import Permissions, ResourceType
-from saki_api.models.l3.job_task import JobTask
-from saki_api.models.l3.loop import ALLoop
+from saki_api.models.runtime.job_task import JobTask
+from saki_api.models.runtime.loop import ALLoop
 from saki_api.schemas.runtime.job import (
     JobRead,
     LoopCreateRequest,

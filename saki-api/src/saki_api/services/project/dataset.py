@@ -14,7 +14,7 @@ from saki_api.core.exceptions import DataAlreadyExistsAppException, NotFoundAppE
 from saki_api.core.rbac.dependencies import get_current_user_id
 from saki_api.core.rbac.presets import DATASET_OWNER_ROLE_ID, DATASET_ROLE_NAME_PREFIX
 from saki_api.db.transaction import transactional
-from saki_api.models.l1.dataset import Dataset
+from saki_api.models.storage.dataset import Dataset
 from saki_api.models.rbac import ResourceType, Role, RoleType
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.repositories.project.dataset import DatasetRepository

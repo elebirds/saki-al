@@ -13,18 +13,18 @@ import saki_api.grpc.runtime_control as runtime_control_module
 from saki_api.grpc.runtime_control import RuntimeControlService
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, JobTaskStatus, JobTaskType, LoopPhase, StorageType, TaskType
-from saki_api.models.l1.asset import Asset
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.l2.branch import Branch
-from saki_api.models.l2.commit import Commit
-from saki_api.models.l2.project import Project, ProjectDataset
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_task import JobTask
-from saki_api.models.l3.loop import ALLoop
-from saki_api.models.l3.task_candidate_item import TaskCandidateItem
-from saki_api.models.l3.task_event import TaskEvent
-from saki_api.models.user import User
+from saki_api.models.storage.asset import Asset
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.project.branch import Branch
+from saki_api.models.project.commit import Commit
+from saki_api.models.project.project import Project, ProjectDataset
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.job_task import JobTask
+from saki_api.models.runtime.loop import ALLoop
+from saki_api.models.runtime.task_candidate_item import TaskCandidateItem
+from saki_api.models.runtime.task_event import TaskEvent
+from saki_api.models.access.user import User
 
 
 @pytest.fixture

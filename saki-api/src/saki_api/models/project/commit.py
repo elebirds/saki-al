@@ -20,7 +20,7 @@ from saki_api.models.base import TimestampMixin, UUIDMixin, OPT_JSON
 from saki_api.models.enums import AuthorType
 
 if TYPE_CHECKING:
-    from saki_api.models.l2.project import Project
+    from saki_api.models.project.project import Project
 
 
 class CommitBase(SQLModel):

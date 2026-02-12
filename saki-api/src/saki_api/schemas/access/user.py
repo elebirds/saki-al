@@ -4,7 +4,7 @@ from typing import Optional, List
 from sqlmodel import SQLModel, Field
 
 from saki_api.models.base import UUIDMixin, TimestampMixin
-from saki_api.models.user import UserBase, InitedUserBase
+from saki_api.models.access.user import UserBase, InitedUserBase
 from saki_api.schemas import RoleReadMinimal
 
 

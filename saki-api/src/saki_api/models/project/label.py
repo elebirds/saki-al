@@ -11,8 +11,8 @@ from sqlmodel import Field, SQLModel, Relationship
 from saki_api.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from saki_api.models.l2.project import Project
-    from saki_api.models.l2.annotation import Annotation
+    from saki_api.models.project.project import Project
+    from saki_api.models.annotation.annotation import Annotation
 
 
 class LabelBase(SQLModel):

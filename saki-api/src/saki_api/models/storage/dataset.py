@@ -13,11 +13,11 @@ from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.models.base import TimestampMixin, UUIDMixin
 from saki_api.models.enums import DatasetType
-from saki_api.models.user import User
+from saki_api.models.access.user import User
 
 if TYPE_CHECKING:
-    from saki_api.models.l1.sample import Sample
-    from saki_api.models.l2.project import ProjectDataset
+    from saki_api.models.storage.sample import Sample
+    from saki_api.models.project.project import ProjectDataset
 
 
 class DatasetBase(SQLModel):

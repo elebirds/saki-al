@@ -16,7 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
 from saki_api.models.enums import StorageType
-from saki_api.models.l1.asset import AssetBase
+from saki_api.models.storage.asset import AssetBase
 
 
 # ========== Request/Input Schemas ==========

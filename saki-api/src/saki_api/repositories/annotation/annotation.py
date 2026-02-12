@@ -8,8 +8,8 @@ from typing import List
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l2.annotation import Annotation
-from saki_api.models.l2.camap import CommitAnnotationMap
+from saki_api.models.annotation.annotation import Annotation
+from saki_api.models.annotation.camap import CommitAnnotationMap
 from saki_api.repositories.base import BaseRepository
 
 

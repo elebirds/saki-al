@@ -13,15 +13,15 @@ import saki_api.grpc.runtime_control as runtime_control_module
 from saki_api.grpc.runtime_control import RuntimeControlService
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.models.enums import AnnotationSource, AnnotationType, AuthorType, StorageType, TaskType
-from saki_api.models.l1.asset import Asset
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.l2.annotation import Annotation
-from saki_api.models.l2.camap import CommitAnnotationMap
-from saki_api.models.l2.commit import Commit
-from saki_api.models.l2.label import Label
-from saki_api.models.l2.project import Project, ProjectDataset
-from saki_api.models.user import User
+from saki_api.models.storage.asset import Asset
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.annotation.annotation import Annotation
+from saki_api.models.annotation.camap import CommitAnnotationMap
+from saki_api.models.project.commit import Commit
+from saki_api.models.project.label import Label
+from saki_api.models.project.project import Project, ProjectDataset
+from saki_api.models.access.user import User
 
 
 class _DummyStorage:

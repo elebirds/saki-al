@@ -9,10 +9,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.models  # noqa: F401  # Ensure SQLModel metadata registration.
 from saki_api.models.enums import StorageType
-from saki_api.models.l1.asset import Asset
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.user import User
+from saki_api.models.storage.asset import Asset
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.access.user import User
 from saki_api.repositories.storage.asset import AssetRepository
 
 

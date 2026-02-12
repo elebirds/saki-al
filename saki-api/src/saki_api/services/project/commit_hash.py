@@ -17,11 +17,11 @@ from typing import Any
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l2.annotation import Annotation
-from saki_api.models.l2.camap import CommitAnnotationMap
-from saki_api.models.l2.commit_sample_state import CommitSampleState
-from saki_api.models.l2.commit import Commit
-from saki_api.models.l2.label import Label
+from saki_api.models.annotation.annotation import Annotation
+from saki_api.models.annotation.camap import CommitAnnotationMap
+from saki_api.models.project.commit_sample_state import CommitSampleState
+from saki_api.models.project.commit import Commit
+from saki_api.models.project.label import Label
 
 
 def _canonical_json(value: Any) -> str:

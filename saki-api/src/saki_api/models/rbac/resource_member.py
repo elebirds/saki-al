@@ -15,7 +15,7 @@ from saki_api.models.base import UUIDMixin, TimestampMixin, AuditMixin
 from saki_api.models.rbac.enums import ResourceType
 
 if TYPE_CHECKING:
-    from saki_api.models.user import User
+    from saki_api.models.access.user import User
     from saki_api.models.rbac.role import Role
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from saki_api.models.l3.runtime_executor import RuntimeExecutor
+from saki_api.models.runtime.runtime_executor import RuntimeExecutor
 
 
 PLUGIN_COMPARE_FIELDS = (

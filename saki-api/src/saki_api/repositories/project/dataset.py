@@ -9,7 +9,7 @@ from sqlalchemy import or_
 
 from saki_api.core.rbac import PermissionChecker
 from saki_api.models import ResourceType, Permissions
-from saki_api.models.l1.dataset import Dataset
+from saki_api.models.storage.dataset import Dataset
 from saki_api.repositories.base import BaseRepository
 from saki_api.repositories.query import Pagination
 from saki_api.schemas.common.pagination import PaginationResponse

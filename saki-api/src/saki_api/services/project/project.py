@@ -23,20 +23,20 @@ from saki_api.core.rbac.presets import PROJECT_OWNER_ROLE_ID, PROJECT_ROLE_NAME_
 from saki_api.db.transaction import transactional
 from saki_api.models import ResourceType, Permissions
 from saki_api.models.enums import AuthorType, CommitSampleReviewState, ProjectStatus
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.l2.annotation import Annotation
-from saki_api.models.l2.annotation_draft import AnnotationDraft
-from saki_api.models.l2.branch import Branch
-from saki_api.models.l2.camap import CommitAnnotationMap
-from saki_api.models.l2.commit_sample_state import CommitSampleState
-from saki_api.models.l2.commit import Commit
-from saki_api.models.l2.label import Label
-from saki_api.models.l2.project import Project, ProjectDataset
-from saki_api.models.l3.job import Job
-from saki_api.models.l3.job_task import JobTask
-from saki_api.models.l3.metric import JobSampleMetric
-from saki_api.models.l3.task_candidate_item import TaskCandidateItem
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.annotation.annotation import Annotation
+from saki_api.models.annotation.draft import AnnotationDraft
+from saki_api.models.project.branch import Branch
+from saki_api.models.annotation.camap import CommitAnnotationMap
+from saki_api.models.project.commit_sample_state import CommitSampleState
+from saki_api.models.project.commit import Commit
+from saki_api.models.project.label import Label
+from saki_api.models.project.project import Project, ProjectDataset
+from saki_api.models.runtime.job import Job
+from saki_api.models.runtime.job_task import JobTask
+from saki_api.models.runtime.metric import JobSampleMetric
+from saki_api.models.runtime.task_candidate_item import TaskCandidateItem
 from saki_api.models.rbac.enums import RoleType
 from saki_api.models.rbac.resource_member import ResourceMember
 from saki_api.models.rbac.role import Role

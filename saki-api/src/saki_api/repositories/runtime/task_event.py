@@ -6,7 +6,7 @@ from typing import List
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l3.task_event import TaskEvent
+from saki_api.models.runtime.task_event import TaskEvent
 from saki_api.repositories.base import BaseRepository
 
 

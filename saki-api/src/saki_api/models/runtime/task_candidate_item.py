@@ -9,7 +9,7 @@ from sqlmodel import Field, Relationship, SQLModel
 from saki_api.models.base import OPT_JSON, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from saki_api.models.l3.job_task import JobTask
+    from saki_api.models.runtime.job_task import JobTask
 
 
 class TaskCandidateItem(UUIDMixin, TimestampMixin, SQLModel, table=True):

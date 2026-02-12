@@ -6,7 +6,7 @@ from typing import Optional, List
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.models.l3.runtime_executor import RuntimeExecutor
+from saki_api.models.runtime.runtime_executor import RuntimeExecutor
 from saki_api.repositories.base import BaseRepository
 
 

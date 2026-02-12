@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, Literal
 from uuid import UUID
 
-from saki_api.models.l1.sample import SampleBase
+from saki_api.models.storage.sample import SampleBase
 
 
 class SampleRead(SampleBase):

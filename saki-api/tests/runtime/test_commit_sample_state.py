@@ -11,15 +11,15 @@ import saki_api.models  # noqa: F401
 from saki_api.api.api_v1.endpoints.l2.annotation import sync_working_to_draft
 from saki_api.db.session import _session_ctx
 from saki_api.models.enums import AuthorType, CommitSampleReviewState, TaskType
-from saki_api.models.l1.dataset import Dataset
-from saki_api.models.l1.sample import Sample
-from saki_api.models.l2.branch import Branch
-from saki_api.models.l2.commit import Commit
-from saki_api.models.l2.commit_sample_state import CommitSampleState
-from saki_api.models.l2.project import Project, ProjectDataset
+from saki_api.models.storage.dataset import Dataset
+from saki_api.models.storage.sample import Sample
+from saki_api.models.project.branch import Branch
+from saki_api.models.project.commit import Commit
+from saki_api.models.project.commit_sample_state import CommitSampleState
+from saki_api.models.project.project import Project, ProjectDataset
 from saki_api.models.rbac.enums import RoleType
 from saki_api.models.rbac.role import Role
-from saki_api.models.user import User
+from saki_api.models.access.user import User
 from saki_api.services.annotation.draft import AnnotationDraftService
 from saki_api.services.annotation.working import AnnotationWorkingService
 from saki_api.services.project.project import ProjectService

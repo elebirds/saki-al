@@ -5,18 +5,16 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends
+from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.app.deps import JobServiceDep
-from saki_api.core.exceptions import BadRequestAppException
+from saki_api.app.deps import DispatcherAdminClientDep, JobServiceDep
+from saki_api.core.exceptions import BadRequestAppException, InternalServerErrorAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.job import LoopConfirmResponse, LoopRead
-from saki_api.modules.runtime.service.orchestration.loop_orchestrator_service import (
-    loop_orchestrator,
-)
 from saki_api.modules.shared.modeling import Permissions
 from saki_api.modules.shared.modeling.enums import ALLoopMode
 
@@ -44,11 +42,44 @@ def _build_loop_read(loop) -> LoopRead:
     return build_loop_read(loop)
 
 
+async def _dispatch_loop_command(
+        *,
+        command: str,
+        loop_id: uuid.UUID,
+        force: bool = False,
+        dispatcher_admin_client: DispatcherAdminClientDep,
+) -> None:
+    if not dispatcher_admin_client.enabled:
+        raise InternalServerErrorAppException("dispatcher_admin is not configured")
+
+    loop_id_text = str(loop_id)
+    try:
+        if command == "start":
+            await dispatcher_admin_client.start_loop(loop_id_text)
+            return
+        if command == "pause":
+            await dispatcher_admin_client.pause_loop(loop_id_text)
+            return
+        if command == "resume":
+            await dispatcher_admin_client.resume_loop(loop_id_text)
+            return
+        if command == "stop":
+            await dispatcher_admin_client.stop_loop(loop_id_text)
+            return
+        if command == "confirm":
+            await dispatcher_admin_client.confirm_loop(loop_id_text, force=force)
+            return
+    except Exception as exc:
+        logger.warning("dispatcher loop command failed command={} loop_id={} error={}", command, loop_id, exc)
+        raise InternalServerErrorAppException("dispatcher loop command failed") from exc
+
+
 @router.post("/loops/{loop_id}:start", response_model=LoopRead)
 async def start_loop(
     *,
     loop_id: uuid.UUID,
     job_service: JobServiceDep,
+    dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -59,8 +90,12 @@ async def start_loop(
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    loop = await job_service.start_loop(loop_id)
-    await loop_orchestrator.tick_once()
+    await _dispatch_loop_command(
+        command="start",
+        loop_id=loop_id,
+        dispatcher_admin_client=dispatcher_admin_client,
+    )
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -69,6 +104,7 @@ async def pause_loop(
     *,
     loop_id: uuid.UUID,
     job_service: JobServiceDep,
+    dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -79,7 +115,12 @@ async def pause_loop(
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    loop = await job_service.pause_loop(loop_id)
+    await _dispatch_loop_command(
+        command="pause",
+        loop_id=loop_id,
+        dispatcher_admin_client=dispatcher_admin_client,
+    )
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -88,6 +129,7 @@ async def resume_loop(
     *,
     loop_id: uuid.UUID,
     job_service: JobServiceDep,
+    dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -98,8 +140,12 @@ async def resume_loop(
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    loop = await job_service.resume_loop(loop_id)
-    await loop_orchestrator.tick_once()
+    await _dispatch_loop_command(
+        command="resume",
+        loop_id=loop_id,
+        dispatcher_admin_client=dispatcher_admin_client,
+    )
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -108,6 +154,7 @@ async def stop_loop(
     *,
     loop_id: uuid.UUID,
     job_service: JobServiceDep,
+    dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -118,7 +165,12 @@ async def stop_loop(
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    loop = await job_service.stop_loop(loop_id)
+    await _dispatch_loop_command(
+        command="stop",
+        loop_id=loop_id,
+        dispatcher_admin_client=dispatcher_admin_client,
+    )
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -127,6 +179,7 @@ async def confirm_loop(
     *,
     loop_id: uuid.UUID,
     job_service: JobServiceDep,
+    dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -140,6 +193,10 @@ async def confirm_loop(
     if loop.mode != ALLoopMode.MANUAL:
         raise BadRequestAppException("confirm is only available for manual mode")
 
-    loop = await job_service.confirm_loop_step(loop_id)
-    await loop_orchestrator.tick_once()
+    await _dispatch_loop_command(
+        command="confirm",
+        loop_id=loop_id,
+        dispatcher_admin_client=dispatcher_admin_client,
+    )
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     return LoopConfirmResponse(loop_id=loop.id, phase=loop.phase, status=loop.status)

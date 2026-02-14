@@ -48,6 +48,7 @@ class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
 
     last_job_id: Optional[uuid.UUID] = Field(default=None, foreign_key="job.id", index=True)
     latest_model_id: Optional[uuid.UUID] = Field(default=None, foreign_key="model.id", index=True)
+    last_confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
     last_error: str | None = Field(default=None, max_length=4000)
 
     project: "Project" = Relationship(back_populates="loops")

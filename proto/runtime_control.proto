@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package saki.runtime.v1;
+option go_package = "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1;runtimecontrolv1";
 
 import "google/protobuf/struct.proto";
 

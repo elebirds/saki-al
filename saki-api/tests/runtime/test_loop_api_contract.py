@@ -210,11 +210,17 @@ async def test_loop_control_confirm_for_manual_mode(loop_api_env, monkeypatch):
         del args, kwargs
         return None
 
-    async def _noop_tick_once() -> None:
-        return None
-
     monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
-    monkeypatch.setattr(loop_control_endpoint.loop_orchestrator, "tick_once", _noop_tick_once)
+
+    class _DispatcherAdminStub:
+        def __init__(self) -> None:
+            self.enabled = True
+            self.confirm_calls: list[tuple[str, bool]] = []
+
+        async def confirm_loop(self, loop_id: str, force: bool = False):
+            self.confirm_calls.append((loop_id, force))
+
+    dispatcher_admin_stub = _DispatcherAdminStub()
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
@@ -242,11 +248,13 @@ async def test_loop_control_confirm_for_manual_mode(loop_api_env, monkeypatch):
             resp = await loop_control_endpoint.confirm_loop(
                 loop_id=loop.id,
                 job_service=service,
+                dispatcher_admin_client=dispatcher_admin_stub,
                 session=session,
                 current_user_id=current_user_id,
             )
             assert resp.loop_id == loop.id
-            assert resp.phase == LoopPhase.MANUAL_FINALIZE
+            assert resp.phase == LoopPhase.MANUAL_WAIT_CONFIRM
+            assert dispatcher_admin_stub.confirm_calls == [(str(loop.id), False)]
         finally:
             _session_ctx.reset(token)
 

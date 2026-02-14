@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Column
+from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
@@ -50,6 +50,7 @@ class JobBase(SQLModel):
 
 class Job(JobBase, TimestampMixin, UUIDMixin, table=True):
     __tablename__ = "job"
+    __table_args__ = (UniqueConstraint("loop_id", "round_index", name="uq_job_loop_round"),)
 
     project: "Project" = Relationship(back_populates="jobs")
     loop: "ALLoop" = Relationship(

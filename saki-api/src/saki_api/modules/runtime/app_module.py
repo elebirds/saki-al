@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter
 
+from saki_api.core.config import settings
 from saki_api.infra.grpc.runtime_control import runtime_grpc_server
 from saki_api.modules.runtime.api.http import (
     job as l3_job,
@@ -11,9 +12,6 @@ from saki_api.modules.runtime.api.http import (
     model as l3_model,
     query as l3_query,
     runtime as l3_runtime,
-)
-from saki_api.modules.runtime.service.orchestration.loop_orchestrator_service import (
-    loop_orchestrator,
 )
 
 
@@ -29,12 +27,12 @@ class RuntimeAppModule:
         api_router.include_router(l3_model.router, prefix="", tags=["models"])
 
     async def startup(self) -> None:
-        await runtime_grpc_server.start()
-        await loop_orchestrator.start()
+        if settings.RUNTIME_DOMAIN_GRPC_SERVER_ENABLED:
+            await runtime_grpc_server.start()
 
     async def shutdown(self) -> None:
-        await loop_orchestrator.stop()
-        await runtime_grpc_server.stop()
+        if settings.RUNTIME_DOMAIN_GRPC_SERVER_ENABLED:
+            await runtime_grpc_server.stop()
 
 
 runtime_app_module = RuntimeAppModule()

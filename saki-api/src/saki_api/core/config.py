@@ -48,28 +48,6 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL 必须使用 PostgreSQL（postgresql:// 或 postgresql+psycopg://）。")
         return v
 
-    @field_validator("RUNTIME_EXECUTOR_ALLOWLIST", mode="before")
-    @classmethod
-    def parse_runtime_allowlist(cls, v: str | list[str] | None) -> list[str]:
-        if v is None:
-            return []
-        if isinstance(v, list):
-            return [item.strip() for item in v if item and item.strip()]
-        if isinstance(v, str):
-            stripped = v.strip()
-            if not stripped:
-                return []
-            if stripped.startswith("[") and stripped.endswith("]"):
-                import json
-                try:
-                    parsed = json.loads(stripped)
-                    if isinstance(parsed, list):
-                        return [str(item).strip() for item in parsed if str(item).strip()]
-                except Exception:
-                    pass
-            return [item.strip() for item in stripped.split(",") if item.strip()]
-        return []
-
     @field_validator("LOG_COLOR_MODE", mode="before")
     @classmethod
     def parse_log_color_mode(cls, v: str | None) -> str:
@@ -92,21 +70,14 @@ class Settings(BaseSettings):
 
     # Runtime control plane
     INTERNAL_TOKEN: str = "dev-secret"
-    RUNTIME_GRPC_BIND: str = "0.0.0.0:50051"
-    RUNTIME_HEARTBEAT_TIMEOUT_SEC: int = 30
-    RUNTIME_DISPATCH_INTERVAL_SEC: int = 3
+    RUNTIME_DOMAIN_GRPC_BIND: str = "0.0.0.0:50053"
     RUNTIME_UPLOAD_URL_EXPIRE_HOURS: int = 2
     RUNTIME_MAX_RETRY_COUNT: int = 2
-    RUNTIME_RETRY_BASE_DELAY_SEC: int = 10
-    RUNTIME_ASSIGN_ACK_TIMEOUT_SEC: int = 30
-    RUNTIME_STREAM_REJECT_CLOSE: bool = True
-    RUNTIME_EXECUTOR_ALLOWLIST: List[str] = []
-    RUNTIME_ORCHESTRATOR_LOCK_KEY: int = 8042001
-    RUNTIME_DISPATCH_LOCK_KEY: int = 8042002
-    RUNTIME_REQUEST_IDEMPOTENCY_TTL_SEC: int = 600
-    RUNTIME_REQUEST_IDEMPOTENCY_MAX_ENTRIES: int = 2048
-    RUNTIME_SCHEMA_VERSION: str = "runtime_v2_task"
-    RUNTIME_SCHEMA_VERSION_STRICT: bool = True
+    RUNTIME_DOMAIN_GRPC_SERVER_ENABLED: bool = True
+
+    # External dispatcher control-plane bridge
+    DISPATCHER_ADMIN_TARGET: str = ""
+    DISPATCHER_ADMIN_TIMEOUT_SEC: int = 5
 
     # Logging
     LOG_LEVEL: str = "INFO"

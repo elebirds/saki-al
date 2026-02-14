@@ -4,12 +4,14 @@ Service dependencies for FastAPI dependency injection.
 Provides factory functions to create service instances with dependencies.
 """
 
-from typing import Annotated
+from typing import Annotated, AsyncIterator
 
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.session import get_session
+from saki_api.core.config import settings
+from saki_api.infra.dispatcher_admin.client import DispatcherAdminClient
 from saki_api.modules.access.service.auth import AuthService
 from saki_api.modules.access.service.permission_query import PermissionQueryService
 from saki_api.modules.access.service.role import RoleService
@@ -267,10 +269,26 @@ def get_model_service(
 ModelServiceDep = Annotated[ModelService, Depends(get_model_service)]
 
 
+async def get_dispatcher_admin_client() -> AsyncIterator[DispatcherAdminClient]:
+    client = DispatcherAdminClient(
+        target=settings.DISPATCHER_ADMIN_TARGET,
+        internal_token=settings.INTERNAL_TOKEN,
+        timeout_sec=settings.DISPATCHER_ADMIN_TIMEOUT_SEC,
+    )
+    try:
+        yield client
+    finally:
+        await client.close()
+
+
+DispatcherAdminClientDep = Annotated[DispatcherAdminClient, Depends(get_dispatcher_admin_client)]
+
+
 def get_runtime_observability_service(
         session: AsyncSession = Depends(get_session),
+        dispatcher_admin_client: DispatcherAdminClient = Depends(get_dispatcher_admin_client),
 ) -> RuntimeObservabilityService:
-    return RuntimeObservabilityService(session=session)
+    return RuntimeObservabilityService(session=session, dispatcher_admin_client=dispatcher_admin_client)
 
 
 RuntimeObservabilityServiceDep = Annotated[

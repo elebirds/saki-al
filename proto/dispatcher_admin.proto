@@ -26,9 +26,22 @@ message TaskCommandRequest {
   string reason = 3;
 }
 
+message RoundCommandRequest {
+  string command_id = 1;
+  string round_id = 2;
+  string reason = 3;
+}
+
+message StepCommandRequest {
+  string command_id = 1;
+  string step_id = 2;
+  string reason = 3;
+}
+
 message TriggerDispatchRequest {
   string command_id = 1;
-  string task_id = 2;
+  string step_id = 2;
+  string task_id = 3; // deprecated alias
 }
 
 message CommandResponse {
@@ -81,6 +94,8 @@ service DispatcherAdmin {
   rpc ResumeLoop(LoopCommandRequest) returns (CommandResponse);
   rpc StopLoop(LoopCommandRequest) returns (CommandResponse);
   rpc ConfirmLoop(ConfirmLoopRequest) returns (CommandResponse);
+  rpc StopRound(RoundCommandRequest) returns (CommandResponse);
+  rpc StopStep(StepCommandRequest) returns (CommandResponse);
   rpc StopJob(JobCommandRequest) returns (CommandResponse);
   rpc StopTask(TaskCommandRequest) returns (CommandResponse);
   rpc TriggerDispatch(TriggerDispatchRequest) returns (CommandResponse);

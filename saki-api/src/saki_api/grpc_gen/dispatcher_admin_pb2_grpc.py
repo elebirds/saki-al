@@ -59,6 +59,16 @@ class DispatcherAdminStub(object):
                 request_serializer=dispatcher__admin__pb2.ConfirmLoopRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
                 _registered_method=True)
+        self.StopRound = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/StopRound',
+                request_serializer=dispatcher__admin__pb2.RoundCommandRequest.SerializeToString,
+                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
+                _registered_method=True)
+        self.StopStep = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep',
+                request_serializer=dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
+                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
+                _registered_method=True)
         self.StopJob = channel.unary_unary(
                 '/saki.dispatcher.admin.v1.DispatcherAdmin/StopJob',
                 request_serializer=dispatcher__admin__pb2.JobCommandRequest.SerializeToString,
@@ -119,6 +129,18 @@ class DispatcherAdminServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def ConfirmLoop(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopRound(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopStep(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -186,6 +208,16 @@ def add_DispatcherAdminServicer_to_server(servicer, server):
             'ConfirmLoop': grpc.unary_unary_rpc_method_handler(
                     servicer.ConfirmLoop,
                     request_deserializer=dispatcher__admin__pb2.ConfirmLoopRequest.FromString,
+                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
+            ),
+            'StopRound': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopRound,
+                    request_deserializer=dispatcher__admin__pb2.RoundCommandRequest.FromString,
+                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
+            ),
+            'StopStep': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopStep,
+                    request_deserializer=dispatcher__admin__pb2.StepCommandRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
             'StopJob': grpc.unary_unary_rpc_method_handler(
@@ -353,6 +385,60 @@ class DispatcherAdmin(object):
             target,
             '/saki.dispatcher.admin.v1.DispatcherAdmin/ConfirmLoop',
             dispatcher__admin__pb2.ConfirmLoopRequest.SerializeToString,
+            dispatcher__admin__pb2.CommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopRound(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/StopRound',
+            dispatcher__admin__pb2.RoundCommandRequest.SerializeToString,
+            dispatcher__admin__pb2.CommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopStep(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep',
+            dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
             dispatcher__admin__pb2.CommandResponse.FromString,
             options,
             channel_credentials,

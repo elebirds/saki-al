@@ -24,6 +24,8 @@ const (
 	DispatcherAdmin_ResumeLoop_FullMethodName        = "/saki.dispatcher.admin.v1.DispatcherAdmin/ResumeLoop"
 	DispatcherAdmin_StopLoop_FullMethodName          = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopLoop"
 	DispatcherAdmin_ConfirmLoop_FullMethodName       = "/saki.dispatcher.admin.v1.DispatcherAdmin/ConfirmLoop"
+	DispatcherAdmin_StopRound_FullMethodName         = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopRound"
+	DispatcherAdmin_StopStep_FullMethodName          = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep"
 	DispatcherAdmin_StopJob_FullMethodName           = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopJob"
 	DispatcherAdmin_StopTask_FullMethodName          = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopTask"
 	DispatcherAdmin_TriggerDispatch_FullMethodName   = "/saki.dispatcher.admin.v1.DispatcherAdmin/TriggerDispatch"
@@ -41,6 +43,8 @@ type DispatcherAdminClient interface {
 	ResumeLoop(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	StopLoop(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	ConfirmLoop(ctx context.Context, in *ConfirmLoopRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	StopRound(ctx context.Context, in *RoundCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	StopStep(ctx context.Context, in *StepCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	StopJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	StopTask(ctx context.Context, in *TaskCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	TriggerDispatch(ctx context.Context, in *TriggerDispatchRequest, opts ...grpc.CallOption) (*CommandResponse, error)
@@ -101,6 +105,26 @@ func (c *dispatcherAdminClient) ConfirmLoop(ctx context.Context, in *ConfirmLoop
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CommandResponse)
 	err := c.cc.Invoke(ctx, DispatcherAdmin_ConfirmLoop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dispatcherAdminClient) StopRound(ctx context.Context, in *RoundCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DispatcherAdmin_StopRound_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dispatcherAdminClient) StopStep(ctx context.Context, in *StepCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DispatcherAdmin_StopStep_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -176,6 +200,8 @@ type DispatcherAdminServer interface {
 	ResumeLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error)
 	StopLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error)
 	ConfirmLoop(context.Context, *ConfirmLoopRequest) (*CommandResponse, error)
+	StopRound(context.Context, *RoundCommandRequest) (*CommandResponse, error)
+	StopStep(context.Context, *StepCommandRequest) (*CommandResponse, error)
 	StopJob(context.Context, *JobCommandRequest) (*CommandResponse, error)
 	StopTask(context.Context, *TaskCommandRequest) (*CommandResponse, error)
 	TriggerDispatch(context.Context, *TriggerDispatchRequest) (*CommandResponse, error)
@@ -206,6 +232,12 @@ func (UnimplementedDispatcherAdminServer) StopLoop(context.Context, *LoopCommand
 }
 func (UnimplementedDispatcherAdminServer) ConfirmLoop(context.Context, *ConfirmLoopRequest) (*CommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfirmLoop not implemented")
+}
+func (UnimplementedDispatcherAdminServer) StopRound(context.Context, *RoundCommandRequest) (*CommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopRound not implemented")
+}
+func (UnimplementedDispatcherAdminServer) StopStep(context.Context, *StepCommandRequest) (*CommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopStep not implemented")
 }
 func (UnimplementedDispatcherAdminServer) StopJob(context.Context, *JobCommandRequest) (*CommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopJob not implemented")
@@ -332,6 +364,42 @@ func _DispatcherAdmin_ConfirmLoop_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DispatcherAdminServer).ConfirmLoop(ctx, req.(*ConfirmLoopRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DispatcherAdmin_StopRound_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RoundCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherAdminServer).StopRound(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DispatcherAdmin_StopRound_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherAdminServer).StopRound(ctx, req.(*RoundCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DispatcherAdmin_StopStep_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StepCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherAdminServer).StopStep(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DispatcherAdmin_StopStep_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherAdminServer).StopStep(ctx, req.(*StepCommandRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -470,6 +538,14 @@ var DispatcherAdmin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ConfirmLoop",
 			Handler:    _DispatcherAdmin_ConfirmLoop_Handler,
+		},
+		{
+			MethodName: "StopRound",
+			Handler:    _DispatcherAdmin_StopRound_Handler,
+		},
+		{
+			MethodName: "StopStep",
+			Handler:    _DispatcherAdmin_StopStep_Handler,
 		},
 		{
 			MethodName: "StopJob",

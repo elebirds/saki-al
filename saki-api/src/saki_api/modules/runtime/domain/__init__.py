@@ -12,6 +12,7 @@ from saki_api.modules.runtime.domain.loop_mode import (
 )
 from saki_api.modules.runtime.domain.metric import JobSampleMetric
 from saki_api.modules.runtime.domain.model import Model
+from saki_api.modules.runtime.domain.runtime_command_log import RuntimeCommandLog
 from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 from saki_api.modules.runtime.domain.runtime_executor_stats import RuntimeExecutorStats
 from saki_api.modules.runtime.domain.state_machine import (
@@ -32,6 +33,7 @@ __all__ = [
     "JobTask",
     "JobSampleMetric",
     "Model",
+    "RuntimeCommandLog",
     "RuntimeExecutor",
     "RuntimeExecutorStats",
     "TaskCandidateItem",

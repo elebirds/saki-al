@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from sqlalchemy import Column
+from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 class JobTask(UUIDMixin, TimestampMixin, SQLModel, table=True):
     __tablename__ = "job_task"
+    __table_args__ = (UniqueConstraint("job_id", "task_index", name="uq_job_task_order"),)
 
     job_id: uuid.UUID = Field(foreign_key="job.id", index=True)
     task_type: JobTaskType = Field(index=True)
@@ -36,6 +37,8 @@ class JobTask(UUIDMixin, TimestampMixin, SQLModel, table=True):
     result_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
 
     assigned_executor_id: Optional[str] = Field(default=None, index=True)
+    dispatch_request_id: Optional[str] = Field(default=None, max_length=128, index=True)
+    state_version: int = Field(default=0, ge=0)
     attempt: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=2, ge=1)
     started_at: Optional[datetime] = Field(default=None)

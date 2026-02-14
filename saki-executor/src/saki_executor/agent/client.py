@@ -80,7 +80,7 @@ class AgentClient:
             logger.info("连接已是启用状态。")
             return
         self._connect_enabled = True
-        logger.info("已启用连接，executor 将自动尝试连接 saki-api。")
+        logger.info("已启用连接，executor 将自动尝试连接 dispatcher。")
 
     async def disconnect(self, *, force: bool = False) -> bool:
         if self.job_manager.busy and not force:
@@ -241,7 +241,11 @@ class AgentClient:
             ):
                 self.job_manager.executor_state = ExecutorState.IDLE
                 self._connected = True
-                logger.info("执行器注册成功 executor_id={}", settings.EXECUTOR_ID)
+                logger.info(
+                    "已与 dispatcher 建立连接并注册成功 executor_id={} target={}",
+                    settings.EXECUTOR_ID,
+                    settings.API_GRPC_TARGET,
+                )
             return
 
         if payload_type == "assign_task":
@@ -321,10 +325,11 @@ class AgentClient:
             self._handled_control_acks.clear()
             self.job_manager.executor_state = ExecutorState.CONNECTING
             self._running = True
+            disconnect_reason = "stream closed by dispatcher"
             heartbeat_task = None
             try:
                 logger.info(
-                    "开始连接 saki-api gRPC target={} executor_id={}",
+                    "开始连接 dispatcher gRPC target={} executor_id={}",
                     settings.API_GRPC_TARGET,
                     settings.EXECUTOR_ID,
                 )
@@ -339,7 +344,11 @@ class AgentClient:
                     heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
                     async for runtime_message in call:
-                        if stop_event.is_set() or not self._connect_enabled:
+                        if stop_event.is_set():
+                            disconnect_reason = "shutdown requested"
+                            break
+                        if not self._connect_enabled:
+                            disconnect_reason = "connection disabled"
                             break
                         await self._handle_incoming(runtime_message)
 
@@ -347,6 +356,7 @@ class AgentClient:
             except grpc.aio.AioRpcError as exc:
                 self.job_manager.executor_state = ExecutorState.ERROR_RECOVERY
                 reason = self._format_rpc_error(exc)
+                disconnect_reason = reason
                 if not self._connect_enabled or stop_event.is_set():
                     logger.info("连接已断开：{}", reason)
                 else:
@@ -357,6 +367,7 @@ class AgentClient:
             except Exception as exc:
                 self.job_manager.executor_state = ExecutorState.ERROR_RECOVERY
                 reason = str(exc) or exc.__class__.__name__
+                disconnect_reason = reason
                 if not self._connect_enabled or stop_event.is_set():
                     logger.info("连接已断开：{}", reason)
                 else:
@@ -375,7 +386,9 @@ class AgentClient:
                 if not self.job_manager.busy:
                     self.job_manager.executor_state = ExecutorState.OFFLINE
                 logger.info(
-                    "gRPC 会话已结束，executor_state={} connect_enabled={}",
+                    "已断开与 dispatcher 的 gRPC 连接 target={} reason={} executor_state={} connect_enabled={}",
+                    settings.API_GRPC_TARGET,
+                    disconnect_reason,
                     self.job_manager.executor_state.value,
                     self._connect_enabled,
                 )

@@ -21,6 +21,7 @@ from saki_api.modules.runtime.domain import (
     JobSampleMetric,
     JobTask,
     Model,
+    RuntimeCommandLog,
     RuntimeExecutor,
     RuntimeExecutorStats,
     TaskCandidateItem,
@@ -58,6 +59,7 @@ __all__ = [
 
     # Runtime
     "Job", "ALLoop", "JobSampleMetric", "Model",
+    "RuntimeCommandLog",
     "RuntimeExecutor", "RuntimeExecutorStats",
     "JobTask", "TaskEvent", "TaskMetricPoint", "TaskCandidateItem",
     "SystemSetting",

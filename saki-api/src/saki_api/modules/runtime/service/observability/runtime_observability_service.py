@@ -4,14 +4,14 @@ Runtime observability read service.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import NotFoundAppException
-from saki_api.infra.grpc.dispatcher import runtime_dispatcher
+from saki_api.infra.dispatcher_admin.client import DispatcherAdminClient
 from saki_api.modules.runtime.api.runtime_executor import (
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
@@ -40,10 +40,87 @@ _STATS_RANGE_CONFIG: dict[RuntimeExecutorStatsRange, tuple[timedelta, int]] = {
 
 
 class RuntimeObservabilityService:
-    def __init__(self, session: AsyncSession):
+    def __init__(
+            self,
+            session: AsyncSession,
+            dispatcher_admin_client: DispatcherAdminClient | None = None,
+    ):
         self.session = session
         self.runtime_executor_repo = RuntimeExecutorRepository(session)
         self.runtime_executor_stats_repo = RuntimeExecutorStatsRepository(session)
+        self.dispatcher_admin_client = dispatcher_admin_client
+
+    @property
+    def _dispatcher_admin_enabled(self) -> bool:
+        return bool(self.dispatcher_admin_client and self.dispatcher_admin_client.enabled)
+
+    @staticmethod
+    def _parse_optional_datetime(raw: Any) -> datetime | None:
+        value = str(raw or "").strip()
+        if not value:
+            return None
+        try:
+            if value.endswith("Z"):
+                value = value[:-1] + "+00:00"
+            return datetime.fromisoformat(value)
+        except Exception:
+            return None
+
+    async def _get_dispatcher_summary_snapshot(self) -> dict[str, Any]:
+        if not self._dispatcher_admin_enabled:
+            return {
+                "online_count": 0,
+                "busy_count": 0,
+                "pending_assign_count": 0,
+                "pending_stop_count": 0,
+                "latest_heartbeat_at": None,
+            }
+
+        try:
+            summary = await self.dispatcher_admin_client.get_runtime_summary()  # type: ignore[union-attr]
+            return {
+                "online_count": int(summary.online_executors),
+                "busy_count": int(summary.busy_executors),
+                "pending_assign_count": int(summary.pending_assign_count),
+                "pending_stop_count": int(summary.pending_stop_count),
+                "latest_heartbeat_at": self._parse_optional_datetime(summary.latest_heartbeat_at),
+            }
+        except Exception:
+            pass
+
+        return {
+            "online_count": 0,
+            "busy_count": 0,
+            "pending_assign_count": 0,
+            "pending_stop_count": 0,
+            "latest_heartbeat_at": None,
+        }
+
+    async def _get_executor_pending_snapshot_map(self, executors: list[RuntimeExecutor]) -> dict[str, dict[str, int]]:
+        if not executors:
+            return {}
+
+        if self._dispatcher_admin_enabled:
+            try:
+                rows = await self.dispatcher_admin_client.list_executors()  # type: ignore[union-attr]
+                return {
+                    str(item.executor_id): {
+                        "pending_assign_count": int(item.pending_assign_count),
+                        "pending_stop_count": int(item.pending_stop_count),
+                    }
+                    for item in rows.items
+                    if str(item.executor_id or "").strip()
+                }
+            except Exception:
+                pass
+
+        return {
+            executor.executor_id: {
+                "pending_assign_count": 0,
+                "pending_stop_count": 0,
+            }
+            for executor in executors
+        }
 
     @staticmethod
     def _to_runtime_executor_read(
@@ -74,22 +151,22 @@ class RuntimeObservabilityService:
     def _build_executor_summary(
             *,
             executors: list[RuntimeExecutor],
-            dispatcher_snapshot: dict,
+            dispatcher_snapshot: dict[str, Any],
     ) -> RuntimeExecutorSummary:
         latest_heartbeat_at: datetime | None = None
-        online_count = 0
-        busy_count = 0
+        online_count = int(dispatcher_snapshot.get("online_count", 0))
+        busy_count = int(dispatcher_snapshot.get("busy_count", 0))
         available_count = 0
 
         for executor in executors:
-            if executor.is_online:
-                online_count += 1
-                if executor.last_seen_at and (latest_heartbeat_at is None or executor.last_seen_at > latest_heartbeat_at):
-                    latest_heartbeat_at = executor.last_seen_at
-            if executor.status in {"busy", "reserved"}:
-                busy_count += 1
             if executor.is_online and executor.status not in {"busy", "reserved", "offline"}:
                 available_count += 1
+            if executor.last_seen_at and (latest_heartbeat_at is None or executor.last_seen_at > latest_heartbeat_at):
+                latest_heartbeat_at = executor.last_seen_at
+
+        dispatcher_latest_heartbeat_at = dispatcher_snapshot.get("latest_heartbeat_at")
+        if isinstance(dispatcher_latest_heartbeat_at, datetime):
+            latest_heartbeat_at = dispatcher_latest_heartbeat_at
 
         total_count = len(executors)
         return RuntimeExecutorSummary(
@@ -98,34 +175,24 @@ class RuntimeObservabilityService:
             busy_count=busy_count,
             available_count=available_count,
             availability_rate=(available_count / total_count) if total_count > 0 else 0.0,
-            pending_assign_count=int(dispatcher_snapshot["pending_assign_count"]),
-            pending_stop_count=int(dispatcher_snapshot["pending_stop_count"]),
+            pending_assign_count=int(dispatcher_snapshot.get("pending_assign_count", 0)),
+            pending_stop_count=int(dispatcher_snapshot.get("pending_stop_count", 0)),
             latest_heartbeat_at=latest_heartbeat_at,
         )
 
     async def list_executors(self) -> RuntimeExecutorListResponse:
         executors = await self._list_executors_ordered()
-        dispatcher_snapshot = await runtime_dispatcher.metrics_snapshot()
-
-        pending_snapshots = []
-        if executors:
-            pending_snapshots = await asyncio.gather(
-                *[
-                    runtime_dispatcher.executor_pending_snapshot(
-                        executor_id=executor.executor_id,
-                        current_task_id=executor.current_task_id,
-                    )
-                    for executor in executors
-                ]
-            )
+        dispatcher_snapshot = await self._get_dispatcher_summary_snapshot()
+        pending_snapshot_map = await self._get_executor_pending_snapshot_map(executors)
 
         items: list[RuntimeExecutorRead] = []
-        for executor, pending in zip(executors, pending_snapshots):
+        for executor in executors:
+            pending = pending_snapshot_map.get(executor.executor_id, {})
             items.append(
                 self._to_runtime_executor_read(
                     executor=executor,
-                    pending_assign_count=int(pending["pending_assign_count"]),
-                    pending_stop_count=int(pending["pending_stop_count"]),
+                    pending_assign_count=int(pending.get("pending_assign_count", 0)),
+                    pending_stop_count=int(pending.get("pending_stop_count", 0)),
                 )
             )
 
@@ -142,14 +209,25 @@ class RuntimeObservabilityService:
         if not executor:
             raise NotFoundAppException(f"RuntimeExecutor {executor_id} not found")
 
-        pending = await runtime_dispatcher.executor_pending_snapshot(
-            executor_id=executor.executor_id,
-            current_task_id=executor.current_task_id,
-        )
+        pending: dict[str, int] = {
+            "pending_assign_count": 0,
+            "pending_stop_count": 0,
+        }
+        if self._dispatcher_admin_enabled:
+            try:
+                response = await self.dispatcher_admin_client.get_executor(executor_id)  # type: ignore[union-attr]
+                if response.item and str(response.item.executor_id or "").strip():
+                    pending = {
+                        "pending_assign_count": int(response.item.pending_assign_count),
+                        "pending_stop_count": int(response.item.pending_stop_count),
+                    }
+            except Exception:
+                pass
+
         return self._to_runtime_executor_read(
             executor=executor,
-            pending_assign_count=int(pending["pending_assign_count"]),
-            pending_stop_count=int(pending["pending_stop_count"]),
+            pending_assign_count=int(pending.get("pending_assign_count", 0)),
+            pending_stop_count=int(pending.get("pending_stop_count", 0)),
         )
 
     async def get_executor_stats(self, stats_range: RuntimeExecutorStatsRange) -> RuntimeExecutorStatsResponse:

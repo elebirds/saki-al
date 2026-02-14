@@ -463,7 +463,10 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 	if heartbeat.GetBusy() {
 		status = "busy"
 	}
-	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
+	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentStepId())
+	if currentTaskID == "" {
+		currentTaskID = strings.TrimSpace(heartbeat.GetCurrentTaskId())
+	}
 	resourcesJSON, err := marshalJSON(resourceSummaryToMap(heartbeat.GetResources()))
 	if err != nil {
 		return err
@@ -522,7 +525,10 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	if !s.repo.Enabled() || event == nil {
 		return nil
 	}
-	taskID := strings.TrimSpace(event.GetTaskId())
+	taskID := strings.TrimSpace(event.GetStepId())
+	if taskID == "" {
+		taskID = strings.TrimSpace(event.GetTaskId())
+	}
 	if taskID == "" {
 		return nil
 	}
@@ -623,7 +629,10 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	if !s.repo.Enabled() || result == nil {
 		return nil
 	}
-	taskID := strings.TrimSpace(result.GetTaskId())
+	taskID := strings.TrimSpace(result.GetStepId())
+	if taskID == "" {
+		taskID = strings.TrimSpace(result.GetTaskId())
+	}
 	if taskID == "" {
 		return nil
 	}
@@ -1051,8 +1060,8 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID string) (bool, er
 	}
 
 	message := &runtimecontrolv1.TaskPayload{
-		TaskId:           task.TaskID,
-		JobId:            task.JobID,
+		StepId:           task.TaskID,
+		RoundId:          task.JobID,
 		LoopId:           task.LoopID,
 		ProjectId:        task.ProjectID,
 		SourceCommitId:   task.SourceCommitID,
@@ -1064,6 +1073,9 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID string) (bool, er
 		Resources:        task.Resources,
 		RoundIndex:       int32(task.RoundIndex),
 		Attempt:          int32(task.Attempt),
+		DependsOnStepIds: task.DependsOnTaskIDs,
+		TaskId:           task.TaskID,
+		JobId:            task.JobID,
 		DependsOnTaskIds: task.DependsOnTaskIDs,
 	}
 	if !s.dispatcher.DispatchTask(executorID, requestID, message) {

@@ -160,6 +160,7 @@ func convertExecutor(item dispatch.ExecutorSnapshot) *dispatcheradminv1.Executor
 		Version:            item.Version,
 		Status:             item.Status,
 		IsOnline:           item.IsOnline,
+		CurrentStepId:      item.CurrentTaskID,
 		CurrentTaskId:      item.CurrentTaskID,
 		LastError:          item.LastError,
 		PendingAssignCount: item.PendingAssign,

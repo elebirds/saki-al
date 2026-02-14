@@ -88,6 +88,13 @@ _ACK_REASON_TO_TEXT: dict[int, str] = {
 _TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
 
 
+def _resolve_step_id(step_id: str | None, task_id: str | None) -> str:
+    value = str(step_id or "").strip()
+    if value:
+        return value
+    return str(task_id or "").strip()
+
+
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
     struct = Struct()
     if payload:
@@ -287,12 +294,14 @@ def build_heartbeat_message(
     current_task_id: str | None,
     resources: Mapping[str, Any],
 ) -> pb.RuntimeMessage:
+    step_id = str(current_task_id or "")
     return pb.RuntimeMessage(
         heartbeat=pb.Heartbeat(
             request_id=request_id,
             executor_id=executor_id,
             busy=busy,
-            current_task_id=str(current_task_id or ""),
+            current_step_id=step_id,
+            current_task_id=step_id,
             resources=_dict_to_resource_summary(resources),
         )
     )
@@ -329,10 +338,12 @@ def build_data_request_message(
     cursor: str | None,
     limit: int,
 ) -> pb.RuntimeMessage:
+    step_id = str(task_id)
     return pb.RuntimeMessage(
         data_request=pb.DataRequest(
             request_id=request_id,
-            task_id=task_id,
+            step_id=step_id,
+            task_id=step_id,
             query_type=text_to_query_type(query_type),
             project_id=project_id,
             commit_id=commit_id,
@@ -349,10 +360,12 @@ def build_upload_ticket_request_message(
     artifact_name: str,
     content_type: str,
 ) -> pb.RuntimeMessage:
+    step_id = str(task_id)
     return pb.RuntimeMessage(
         upload_ticket_request=pb.UploadTicketRequest(
             request_id=request_id,
-            task_id=task_id,
+            step_id=step_id,
+            task_id=step_id,
             artifact_name=artifact_name,
             content_type=content_type,
         )
@@ -368,9 +381,11 @@ def build_task_event_message(
     event_type: str,
     payload: Mapping[str, Any],
 ) -> pb.RuntimeMessage:
+    step_id = str(task_id)
     task_event = pb.TaskEvent(
         request_id=request_id,
-        task_id=task_id,
+        step_id=step_id,
+        task_id=step_id,
         seq=int(seq),
         ts=int(ts),
     )
@@ -418,9 +433,11 @@ def build_task_result_message(
     candidates: list[dict[str, Any]],
     error_message: str = "",
 ) -> pb.RuntimeMessage:
+    step_id = str(task_id)
     task_result = pb.TaskResult(
         request_id=request_id,
-        task_id=task_id,
+        step_id=step_id,
+        task_id=step_id,
         status=task_status_to_enum(status),
         error_message=str(error_message or ""),
     )
@@ -473,9 +490,14 @@ def set_message_request_id(message: pb.RuntimeMessage, request_id: str) -> None:
 
 def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
     task = assign_task.task
+    step_id = _resolve_step_id(task.step_id, task.task_id)
+    round_id = str(task.round_id or task.job_id or "")
+    depends_on_step_ids = list(task.depends_on_step_ids or task.depends_on_task_ids or [])
     return {
-        "task_id": task.task_id,
-        "job_id": task.job_id,
+        "step_id": step_id,
+        "round_id": round_id,
+        "task_id": step_id,
+        "job_id": round_id,
         "loop_id": task.loop_id,
         "project_id": task.project_id,
         "source_commit_id": task.source_commit_id,
@@ -487,11 +509,13 @@ def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
         "resources": _resource_summary_to_dict(task.resources),
         "round_index": int(task.round_index or 0),
         "attempt": int(task.attempt or 1),
-        "depends_on_task_ids": [str(v) for v in task.depends_on_task_ids],
+        "depends_on_step_ids": [str(v) for v in depends_on_step_ids],
+        "depends_on_task_ids": [str(v) for v in depends_on_step_ids],
     }
 
 
 def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
+    step_id = _resolve_step_id(data_response.step_id, data_response.task_id)
     items: list[dict[str, Any]] = []
     for item in data_response.items:
         item_type = item.WhichOneof("item")
@@ -527,7 +551,8 @@ def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
     return {
         "request_id": data_response.request_id,
         "reply_to": data_response.reply_to,
-        "task_id": data_response.task_id,
+        "step_id": step_id,
+        "task_id": step_id,
         "query_type": query_type_to_text(data_response.query_type),
         "items": items,
         "next_cursor": data_response.next_cursor or None,
@@ -535,10 +560,12 @@ def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
 
 
 def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict[str, Any]:
+    step_id = _resolve_step_id(upload_ticket.step_id, upload_ticket.task_id)
     return {
         "request_id": upload_ticket.request_id,
         "reply_to": upload_ticket.reply_to,
-        "task_id": upload_ticket.task_id,
+        "step_id": step_id,
+        "task_id": step_id,
         "upload_url": upload_ticket.upload_url,
         "storage_uri": upload_ticket.storage_uri,
         "headers": dict(upload_ticket.headers),
@@ -546,6 +573,7 @@ def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict
 
 
 def parse_error(error_payload: pb.Error) -> dict[str, Any]:
+    step_id = _resolve_step_id(error_payload.step_id, error_payload.task_id)
     query_type = ""
     if int(error_payload.query_type) != pb.RUNTIME_QUERY_TYPE_UNSPECIFIED:
         query_type = query_type_to_text(error_payload.query_type)
@@ -555,7 +583,8 @@ def parse_error(error_payload: pb.Error) -> dict[str, Any]:
         "message": error_payload.message,
         "reply_to": error_payload.reply_to,
         "ack_for": error_payload.ack_for,
-        "task_id": error_payload.task_id,
+        "step_id": step_id,
+        "task_id": step_id,
         "query_type": query_type,
         "reason": error_payload.reason,
         "error": error_payload.reason or error_payload.message or error_payload.code or "runtime error",

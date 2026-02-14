@@ -151,7 +151,11 @@ func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) erro
 		return fmt.Errorf("executor not registered: %s", executorID)
 	}
 	session.Busy = heartbeat.GetBusy()
-	session.CurrentTaskID = heartbeat.GetCurrentTaskId()
+	currentStepID := strings.TrimSpace(heartbeat.GetCurrentStepId())
+	if currentStepID == "" {
+		currentStepID = strings.TrimSpace(heartbeat.GetCurrentTaskId())
+	}
+	session.CurrentTaskID = currentStepID
 	session.Status = "idle"
 	if session.Busy {
 		session.Status = "busy"
@@ -275,6 +279,13 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	if executorID == "" || requestID == "" || task == nil {
 		return false
 	}
+	stepID := strings.TrimSpace(task.GetStepId())
+	if stepID == "" {
+		stepID = strings.TrimSpace(task.GetTaskId())
+	}
+	if stepID == "" {
+		return false
+	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -296,12 +307,12 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	case session.Queue <- message:
 		d.pendingAssign[requestID] = PendingAssign{
 			RequestID:  requestID,
-			TaskID:     task.GetTaskId(),
+			TaskID:     stepID,
 			ExecutorID: executorID,
 			CreatedAt:  time.Now().UTC(),
 		}
 		session.Busy = true
-		session.CurrentTaskID = task.GetTaskId()
+		session.CurrentTaskID = stepID
 		session.Status = "busy"
 		return true
 	default:
@@ -341,8 +352,9 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 		Payload: &runtimecontrolv1.RuntimeMessage_StopTask{
 			StopTask: &runtimecontrolv1.StopTask{
 				RequestId: requestID,
-				TaskId:    taskID,
+				StepId:    taskID,
 				Reason:    reason,
+				TaskId:    taskID,
 			},
 		},
 	}

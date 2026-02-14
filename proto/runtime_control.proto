@@ -119,13 +119,14 @@ message Heartbeat {
   string request_id = 1;
   string executor_id = 2;
   bool busy = 3;
-  string current_task_id = 4;
+  string current_step_id = 4;
   ResourceSummary resources = 5;
+  string current_task_id = 101 [deprecated = true];
 }
 
 message TaskPayload {
-  string task_id = 1;
-  string job_id = 2;
+  string step_id = 1;
+  string round_id = 2;
   string loop_id = 3;
   string project_id = 4;
   string source_commit_id = 5;
@@ -137,7 +138,10 @@ message TaskPayload {
   ResourceSummary resources = 11;
   int32 round_index = 12;
   int32 attempt = 13;
-  repeated string depends_on_task_ids = 14;
+  repeated string depends_on_step_ids = 14;
+  string task_id = 101 [deprecated = true];
+  string job_id = 102 [deprecated = true];
+  repeated string depends_on_task_ids = 103 [deprecated = true];
 }
 
 message AssignTask {
@@ -147,8 +151,9 @@ message AssignTask {
 
 message StopTask {
   string request_id = 1;
-  string task_id = 2;
+  string step_id = 2;
   string reason = 3;
+  string task_id = 101 [deprecated = true];
 }
 
 message StatusEvent {
@@ -187,7 +192,7 @@ message ArtifactEvent {
 
 message TaskEvent {
   string request_id = 1;
-  string task_id = 2;
+  string step_id = 2;
   int64 seq = 3;
   int64 ts = 4;
   oneof event_payload {
@@ -197,6 +202,7 @@ message TaskEvent {
     MetricEvent metric_event = 8;
     ArtifactEvent artifact_event = 9;
   }
+  string task_id = 101 [deprecated = true];
 }
 
 message QueryCandidate {
@@ -207,22 +213,24 @@ message QueryCandidate {
 
 message TaskResult {
   string request_id = 1;
-  string task_id = 2;
+  string step_id = 2;
   RuntimeTaskStatus status = 3;
   map<string, double> metrics = 4;
   repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;
   string error_message = 7;
+  string task_id = 101 [deprecated = true];
 }
 
 message DataRequest {
   string request_id = 1;
-  string task_id = 2;
+  string step_id = 2;
   RuntimeQueryType query_type = 3;
   string project_id = 4;
   string commit_id = 5;
   string cursor = 6;
   int32 limit = 7;
+  string task_id = 101 [deprecated = true];
 }
 
 message LabelItem {
@@ -261,26 +269,29 @@ message DataItem {
 message DataResponse {
   string request_id = 1;
   string reply_to = 2;
-  string task_id = 3;
+  string step_id = 3;
   RuntimeQueryType query_type = 4;
   repeated DataItem items = 5;
   string next_cursor = 6;
+  string task_id = 101 [deprecated = true];
 }
 
 message UploadTicketRequest {
   string request_id = 1;
-  string task_id = 2;
+  string step_id = 2;
   string artifact_name = 3;
   string content_type = 4;
+  string task_id = 101 [deprecated = true];
 }
 
 message UploadTicketResponse {
   string request_id = 1;
   string reply_to = 2;
-  string task_id = 3;
+  string step_id = 3;
   string upload_url = 4;
   string storage_uri = 5;
   map<string, string> headers = 6;
+  string task_id = 101 [deprecated = true];
 }
 
 message Ack {
@@ -298,9 +309,10 @@ message Error {
   string message = 3;
   string reply_to = 4;
   string ack_for = 5;
-  string task_id = 6;
+  string step_id = 6;
   RuntimeQueryType query_type = 7;
   string reason = 8;
+  string task_id = 101 [deprecated = true];
 }
 
 message RuntimeMessage {

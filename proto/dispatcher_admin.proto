@@ -73,11 +73,12 @@ message ExecutorRead {
   string version = 2;
   string status = 3;
   bool is_online = 4;
-  string current_task_id = 5;
+  string current_step_id = 5;
   string last_seen_at = 6;
   string last_error = 7;
   int64 pending_assign_count = 8;
   int64 pending_stop_count = 9;
+  string current_task_id = 101 [deprecated = true];
 }
 
 message ExecutorReadResponse {

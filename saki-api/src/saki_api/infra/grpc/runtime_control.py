@@ -27,6 +27,13 @@ def _parse_uuid(raw: str) -> uuid.UUID | None:
     value = str(raw or "").strip()
     if not value:
         return None
+
+
+def _resolve_step_id(step_id: str, task_id: str) -> str:
+    value = str(step_id or "").strip()
+    if value:
+        return value
+    return str(task_id or "").strip()
     try:
         return uuid.UUID(value)
     except Exception:
@@ -62,10 +69,12 @@ def _to_domain_data_item(item: pb.DataItem) -> domain_pb.DataItem:
 
 
 def _to_domain_data_response(response: pb.DataResponse) -> domain_pb.DataResponse:
+    step_id = _resolve_step_id(response.step_id, response.task_id)
     return domain_pb.DataResponse(
         request_id=str(response.request_id or ""),
         reply_to=str(response.reply_to or ""),
-        task_id=str(response.task_id or ""),
+        step_id=step_id,
+        task_id=step_id,
         query_type=int(response.query_type),
         items=[_to_domain_data_item(item) for item in response.items],
         next_cursor=str(response.next_cursor or ""),
@@ -248,10 +257,12 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
 
     async def QueryData(self, request, context):  # noqa: N802
+        step_id = _resolve_step_id(request.step_id, request.task_id)
         response_message = await self._runtime_ingress.handle_data_request(
             pb.DataRequest(
                 request_id=str(request.request_id or ""),
-                task_id=str(request.task_id or ""),
+                step_id=step_id,
+                task_id=step_id,
                 query_type=int(request.query_type),
                 project_id=str(request.project_id or ""),
                 commit_id=str(request.commit_id or ""),
@@ -267,7 +278,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.DataResponse(
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
-                task_id=str(request.task_id or ""),
+                step_id=step_id,
+                task_id=step_id,
                 query_type=int(request.query_type),
                 items=[],
                 next_cursor="",
@@ -278,7 +290,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.DataResponse(
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
-                task_id=str(request.task_id or ""),
+                step_id=step_id,
+                task_id=step_id,
                 query_type=int(request.query_type),
                 items=[],
                 next_cursor="",
@@ -286,10 +299,12 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
         return _to_domain_data_response(response_message.data_response)
 
     async def CreateUploadTicket(self, request, context):  # noqa: N802
+        step_id = _resolve_step_id(request.step_id, request.task_id)
         response_message = await self._runtime_ingress.handle_upload_ticket_request(
             pb.UploadTicketRequest(
                 request_id=str(request.request_id or ""),
-                task_id=str(request.task_id or ""),
+                step_id=step_id,
+                task_id=step_id,
                 artifact_name=str(request.artifact_name or ""),
                 content_type=str(request.content_type or "application/octet-stream"),
             )
@@ -302,7 +317,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.UploadTicketResponse(
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
-                task_id=str(request.task_id or ""),
+                step_id=step_id,
+                task_id=step_id,
                 upload_url="",
                 storage_uri="",
                 headers={},
@@ -313,16 +329,19 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.UploadTicketResponse(
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
-                task_id=str(request.task_id or ""),
+                step_id=step_id,
+                task_id=step_id,
                 upload_url="",
                 storage_uri="",
                 headers={},
             )
         upload_ticket = response_message.upload_ticket_response
+        upload_step_id = _resolve_step_id(upload_ticket.step_id, upload_ticket.task_id)
         return domain_pb.UploadTicketResponse(
             request_id=str(upload_ticket.request_id or ""),
             reply_to=str(upload_ticket.reply_to or ""),
-            task_id=str(upload_ticket.task_id or ""),
+            step_id=upload_step_id,
+            task_id=upload_step_id,
             upload_url=str(upload_ticket.upload_url or ""),
             storage_uri=str(upload_ticket.storage_uri or ""),
             headers=dict(upload_ticket.headers),

@@ -281,8 +281,8 @@ class AgentClient:
                 logger.info("重复停止请求 request_id={}，已返回缓存 ack。", request_id)
                 return
 
-            task_id = str(stop.task_id or "")
-            logger.info("收到任务停止请求 request_id={} task_id={}", request_id, task_id)
+            task_id = str(stop.step_id or stop.task_id or "")
+            logger.info("收到任务停止请求 request_id={} step_id={}", request_id, task_id)
             stopped = await self.job_manager.stop_task(task_id)
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),

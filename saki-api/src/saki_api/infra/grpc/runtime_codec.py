@@ -296,6 +296,7 @@ def build_error_message(
     query_type: int = pb.RUNTIME_QUERY_TYPE_UNSPECIFIED,
     reason: str = "",
 ) -> pb.RuntimeMessage:
+    step_id_value = str(task_id)
     return pb.RuntimeMessage(
         error=pb.Error(
             request_id=request_id or str(uuid.uuid4()),
@@ -303,6 +304,7 @@ def build_error_message(
             message=str(message),
             reply_to=str(reply_to),
             ack_for=str(ack_for),
+            step_id=step_id_value,
             task_id=str(task_id),
             query_type=int(query_type),
             reason=str(reason),
@@ -313,12 +315,15 @@ def build_error_message(
 def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) -> pb.RuntimeMessage:
     task_type = text_to_task_type(str(payload.get("task_type") or "custom"))
     loop_mode = text_to_loop_mode(str(payload.get("mode") or "active_learning"))
+    step_id = str(payload.get("step_id") or payload.get("task_id") or "")
+    round_id = str(payload.get("round_id") or payload.get("job_id") or "")
+    depends_on_step_ids = [str(v) for v in (payload.get("depends_on_step_ids") or payload.get("depends_on_task_ids") or [])]
     return pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id=request_id,
             task=pb.TaskPayload(
-                task_id=str(payload.get("task_id") or ""),
-                job_id=str(payload.get("job_id") or ""),
+                step_id=step_id,
+                round_id=round_id,
                 loop_id=str(payload.get("loop_id") or ""),
                 project_id=str(payload.get("project_id") or ""),
                 source_commit_id=str(payload.get("source_commit_id") or ""),
@@ -330,17 +335,22 @@ def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) ->
                 resources=dict_to_resource_summary(payload.get("resources") or {}),
                 round_index=int(payload.get("round_index") or 0),
                 attempt=int(payload.get("attempt") or 1),
-                depends_on_task_ids=[str(v) for v in (payload.get("depends_on_task_ids") or [])],
+                depends_on_step_ids=depends_on_step_ids,
+                task_id=step_id,
+                job_id=round_id,
+                depends_on_task_ids=depends_on_step_ids,
             ),
         )
     )
 
 
 def build_stop_task_message(*, request_id: str, task_id: str, reason: str) -> pb.RuntimeMessage:
+    step_id = str(task_id)
     return pb.RuntimeMessage(
         stop_task=pb.StopTask(
             request_id=request_id,
-            task_id=str(task_id),
+            step_id=step_id,
+            task_id=step_id,
             reason=str(reason or ""),
         )
     )
@@ -440,10 +450,13 @@ def parse_register(message: pb.Register) -> RuntimeRegisterDTO:
 
 
 def parse_heartbeat(message: pb.Heartbeat) -> RuntimeHeartbeatDTO:
+    current_step_id = str(message.current_step_id or "")
+    if not current_step_id:
+        current_step_id = str(message.current_task_id or "")
     return RuntimeHeartbeatDTO(
         request_id=str(message.request_id),
         executor_id=str(message.executor_id),
         busy=bool(message.busy),
-        current_task_id=str(message.current_task_id or ""),
+        current_task_id=current_step_id,
         resources=resource_summary_to_dict(message.resources),
     )

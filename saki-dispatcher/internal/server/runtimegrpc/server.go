@@ -186,9 +186,10 @@ func (s *Server) handleIncoming(
 
 	case *runtimecontrolv1.RuntimeMessage_TaskEvent:
 		event := payload.TaskEvent
+		stepID := resolveStepID(event.GetStepId(), event.GetTaskId())
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnTaskEvent(context.Background(), event); err != nil {
-				s.logger.Warn().Err(err).Str("task_id", event.GetTaskId()).Msg("persist task_event failed")
+				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_event failed")
 			}
 		}
 		return buildAck(
@@ -196,14 +197,15 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"task_event accepted",
+			"step_event accepted",
 		), currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_TaskResult:
 		result := payload.TaskResult
+		stepID := resolveStepID(result.GetStepId(), result.GetTaskId())
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnTaskResult(context.Background(), result); err != nil {
-				s.logger.Warn().Err(err).Str("task_id", result.GetTaskId()).Msg("persist task_result failed")
+				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_result failed")
 			}
 		}
 		return buildAck(
@@ -211,23 +213,25 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"task_result accepted",
+			"step_result accepted",
 		), currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_DataRequest:
 		request := payload.DataRequest
+		stepID := resolveStepID(request.GetStepId(), request.GetTaskId())
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return buildError(
 				"not_implemented",
 				"runtime_domain QueryData is not configured",
 				request.GetRequestId(),
-				request.GetTaskId(),
+				stepID,
 				request.GetQueryType(),
 			), currentExecutorID, nil
 		}
 		response, err := s.domainClient.QueryData(context.Background(), &runtimedomainv1.DataRequest{
 			RequestId: request.GetRequestId(),
-			TaskId:    request.GetTaskId(),
+			StepId:    stepID,
+			TaskId:    stepID,
 			QueryType: toDomainQueryType(request.GetQueryType()),
 			ProjectId: request.GetProjectId(),
 			CommitId:  request.GetCommitId(),
@@ -237,14 +241,14 @@ func (s *Server) handleIncoming(
 		if err != nil {
 			s.logger.Warn().
 				Err(err).
-				Str("task_id", request.GetTaskId()).
+				Str("step_id", stepID).
 				Str("request_id", request.GetRequestId()).
 				Msg("runtime domain QueryData failed")
 			return buildError(
 				"data_query_failed",
 				"data query failed",
 				request.GetRequestId(),
-				request.GetTaskId(),
+				stepID,
 				request.GetQueryType(),
 			), currentExecutorID, nil
 		}
@@ -256,41 +260,45 @@ func (s *Server) handleIncoming(
 
 	case *runtimecontrolv1.RuntimeMessage_UploadTicketRequest:
 		request := payload.UploadTicketRequest
+		stepID := resolveStepID(request.GetStepId(), request.GetTaskId())
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return buildError(
 				"not_implemented",
 				"runtime_domain CreateUploadTicket is not configured",
 				request.GetRequestId(),
-				request.GetTaskId(),
+				stepID,
 				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
 			), currentExecutorID, nil
 		}
 		response, err := s.domainClient.CreateUploadTicket(context.Background(), &runtimedomainv1.UploadTicketRequest{
 			RequestId:    request.GetRequestId(),
-			TaskId:       request.GetTaskId(),
+			StepId:       stepID,
+			TaskId:       stepID,
 			ArtifactName: request.GetArtifactName(),
 			ContentType:  request.GetContentType(),
 		})
 		if err != nil {
 			s.logger.Warn().
 				Err(err).
-				Str("task_id", request.GetTaskId()).
+				Str("step_id", stepID).
 				Str("request_id", request.GetRequestId()).
 				Msg("runtime domain CreateUploadTicket failed")
 			return buildError(
 				"upload_ticket_failed",
 				"upload ticket failed",
 				request.GetRequestId(),
-				request.GetTaskId(),
+				stepID,
 				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
 			), currentExecutorID, nil
 		}
+		respStepID := resolveStepID(response.GetStepId(), response.GetTaskId())
 		return &runtimecontrolv1.RuntimeMessage{
 			Payload: &runtimecontrolv1.RuntimeMessage_UploadTicketResponse{
 				UploadTicketResponse: &runtimecontrolv1.UploadTicketResponse{
 					RequestId:  response.GetRequestId(),
 					ReplyTo:    response.GetReplyTo(),
-					TaskId:     response.GetTaskId(),
+					StepId:     respStepID,
+					TaskId:     respStepID,
 					UploadUrl:  response.GetUploadUrl(),
 					StorageUri: response.GetStorageUri(),
 					Headers:    response.GetHeaders(),
@@ -343,7 +351,7 @@ func buildError(
 	code string,
 	message string,
 	replyTo string,
-	taskID string,
+	stepID string,
 	queryType runtimecontrolv1.RuntimeQueryType,
 ) *runtimecontrolv1.RuntimeMessage {
 	return &runtimecontrolv1.RuntimeMessage{
@@ -353,7 +361,8 @@ func buildError(
 				Code:      code,
 				Message:   message,
 				ReplyTo:   replyTo,
-				TaskId:    taskID,
+				StepId:    stepID,
+				TaskId:    stepID,
 				QueryType: queryType,
 			},
 		},
@@ -401,11 +410,19 @@ func toRuntimeDataResponse(response *runtimedomainv1.DataResponse) *runtimecontr
 	return &runtimecontrolv1.DataResponse{
 		RequestId:  response.GetRequestId(),
 		ReplyTo:    response.GetReplyTo(),
-		TaskId:     response.GetTaskId(),
+		StepId:     resolveStepID(response.GetStepId(), response.GetTaskId()),
+		TaskId:     resolveStepID(response.GetStepId(), response.GetTaskId()),
 		QueryType:  toRuntimeQueryType(response.GetQueryType()),
 		Items:      items,
 		NextCursor: response.GetNextCursor(),
 	}
+}
+
+func resolveStepID(stepID string, legacyTaskID string) string {
+	if strings.TrimSpace(stepID) != "" {
+		return strings.TrimSpace(stepID)
+	}
+	return strings.TrimSpace(legacyTaskID)
 }
 
 func toRuntimeDataItem(item *runtimedomainv1.DataItem) *runtimecontrolv1.DataItem {

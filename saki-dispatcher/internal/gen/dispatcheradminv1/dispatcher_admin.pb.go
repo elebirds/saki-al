@@ -707,13 +707,15 @@ type ExecutorRead struct {
 	Version            string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	Status             string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
 	IsOnline           bool                   `protobuf:"varint,4,opt,name=is_online,json=isOnline,proto3" json:"is_online,omitempty"`
-	CurrentTaskId      string                 `protobuf:"bytes,5,opt,name=current_task_id,json=currentTaskId,proto3" json:"current_task_id,omitempty"`
+	CurrentStepId      string                 `protobuf:"bytes,5,opt,name=current_step_id,json=currentStepId,proto3" json:"current_step_id,omitempty"`
 	LastSeenAt         string                 `protobuf:"bytes,6,opt,name=last_seen_at,json=lastSeenAt,proto3" json:"last_seen_at,omitempty"`
 	LastError          string                 `protobuf:"bytes,7,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
 	PendingAssignCount int64                  `protobuf:"varint,8,opt,name=pending_assign_count,json=pendingAssignCount,proto3" json:"pending_assign_count,omitempty"`
 	PendingStopCount   int64                  `protobuf:"varint,9,opt,name=pending_stop_count,json=pendingStopCount,proto3" json:"pending_stop_count,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Deprecated: Marked as deprecated in dispatcher_admin.proto.
+	CurrentTaskId string `protobuf:"bytes,101,opt,name=current_task_id,json=currentTaskId,proto3" json:"current_task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecutorRead) Reset() {
@@ -774,9 +776,9 @@ func (x *ExecutorRead) GetIsOnline() bool {
 	return false
 }
 
-func (x *ExecutorRead) GetCurrentTaskId() string {
+func (x *ExecutorRead) GetCurrentStepId() string {
 	if x != nil {
-		return x.CurrentTaskId
+		return x.CurrentStepId
 	}
 	return ""
 }
@@ -807,6 +809,14 @@ func (x *ExecutorRead) GetPendingStopCount() int64 {
 		return x.PendingStopCount
 	}
 	return 0
+}
+
+// Deprecated: Marked as deprecated in dispatcher_admin.proto.
+func (x *ExecutorRead) GetCurrentTaskId() string {
+	if x != nil {
+		return x.CurrentTaskId
+	}
+	return ""
 }
 
 type ExecutorReadResponse struct {
@@ -954,20 +964,21 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\x13ExecutorReadRequest\x12\x1f\n" +
 	"\vexecutor_id\x18\x01 \x01(\tR\n" +
 	"executorId\"\x15\n" +
-	"\x13ExecutorListRequest\"\xc7\x02\n" +
+	"\x13ExecutorListRequest\"\xf3\x02\n" +
 	"\fExecutorRead\x12\x1f\n" +
 	"\vexecutor_id\x18\x01 \x01(\tR\n" +
 	"executorId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1b\n" +
 	"\tis_online\x18\x04 \x01(\bR\bisOnline\x12&\n" +
-	"\x0fcurrent_task_id\x18\x05 \x01(\tR\rcurrentTaskId\x12 \n" +
+	"\x0fcurrent_step_id\x18\x05 \x01(\tR\rcurrentStepId\x12 \n" +
 	"\flast_seen_at\x18\x06 \x01(\tR\n" +
 	"lastSeenAt\x12\x1d\n" +
 	"\n" +
 	"last_error\x18\a \x01(\tR\tlastError\x120\n" +
 	"\x14pending_assign_count\x18\b \x01(\x03R\x12pendingAssignCount\x12,\n" +
-	"\x12pending_stop_count\x18\t \x01(\x03R\x10pendingStopCount\"R\n" +
+	"\x12pending_stop_count\x18\t \x01(\x03R\x10pendingStopCount\x12*\n" +
+	"\x0fcurrent_task_id\x18e \x01(\tB\x02\x18\x01R\rcurrentTaskId\"R\n" +
 	"\x14ExecutorReadResponse\x12:\n" +
 	"\x04item\x18\x01 \x01(\v2&.saki.dispatcher.admin.v1.ExecutorReadR\x04item\"T\n" +
 	"\x14ExecutorListResponse\x12<\n" +

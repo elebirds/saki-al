@@ -14,6 +14,8 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeRegisterDTO,
 )
 
+_ACTIVATE_SAMPLES_ENUM = getattr(pb, "ACTIVATE_SAMPLES", getattr(pb, "AUTO_LABEL", pb.CUSTOM))
+
 _STATUS_TO_TEXT: dict[int, str] = {
     pb.PENDING: "pending",
     pb.DISPATCHING: "dispatching",
@@ -31,7 +33,7 @@ _TASK_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN: "train",
     pb.SCORE: "score",
     pb.SELECT: "select",
-    pb.AUTO_LABEL: "auto_label",
+    _ACTIVATE_SAMPLES_ENUM: "activate_samples",
     pb.WAIT_ANNOTATION: "wait_annotation",
     pb.MERGE: "merge",
     pb.EVAL: "eval",
@@ -39,6 +41,7 @@ _TASK_TYPE_TO_TEXT: dict[int, str] = {
     pb.CUSTOM: "custom",
 }
 _TEXT_TO_TASK_TYPE: dict[str, int] = {value: key for key, value in _TASK_TYPE_TO_TEXT.items()}
+_TEXT_TO_TASK_TYPE["auto_label"] = _ACTIVATE_SAMPLES_ENUM
 
 _LOOP_MODE_TO_TEXT: dict[int, str] = {
     pb.ACTIVE_LEARNING: "active_learning",

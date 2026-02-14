@@ -1,7 +1,16 @@
+from pathlib import Path
 from typing import List
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_API_ROOT = Path(__file__).resolve().parents[3]
+_WORKSPACE_ROOT = _API_ROOT.parent
+_ENV_FILES = (
+    str(_API_ROOT / ".env"),
+    str(_WORKSPACE_ROOT / ".env"),
+)
 
 
 class Settings(BaseSettings):
@@ -96,7 +105,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=_ENV_FILES)
 
 
 settings = Settings()

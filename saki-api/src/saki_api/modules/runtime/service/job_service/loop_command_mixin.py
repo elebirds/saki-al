@@ -52,6 +52,10 @@ class LoopCommandMixin:
         if payload.mode == ALLoopMode.SIMULATION and normalized_simulation.oracle_commit_id is None:
             raise BadRequestAppException("simulation mode requires oracle_commit_id")
 
+        resolved_max_rounds = payload.max_rounds
+        if payload.mode == ALLoopMode.MANUAL:
+            resolved_max_rounds = 1
+
         create_data = LoopCreateData(
             project_id=project_id,
             branch_id=payload.branch_id,
@@ -65,7 +69,7 @@ class LoopCommandMixin:
             global_config=normalized_global_config,
             current_iteration=0,
             status=payload.status,
-            max_rounds=payload.max_rounds,
+            max_rounds=resolved_max_rounds,
             query_batch_size=payload.query_batch_size,
             min_seed_labeled=payload.min_seed_labeled,
             min_new_labels_per_round=payload.min_new_labels_per_round,
@@ -138,6 +142,8 @@ class LoopCommandMixin:
             simulation_config = self._extract_simulation_config(resolved_global_config or {})
             if simulation_config.oracle_commit_id is None:
                 raise BadRequestAppException("simulation mode requires oracle_commit_id")
+        if next_mode == ALLoopMode.MANUAL:
+            patch.max_rounds = 1
 
         patch_payload = patch.model_dump(exclude_none=True)
         if not patch_payload:

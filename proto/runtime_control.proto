@@ -50,7 +50,7 @@ enum RuntimeTaskType {
   TRAIN = 1;
   SCORE = 2;
   SELECT = 3;
-  AUTO_LABEL = 4;
+  ACTIVATE_SAMPLES = 4;
   WAIT_ANNOTATION = 5;
   MERGE = 6;
   EVAL = 7;

@@ -190,8 +190,10 @@ async def confirm_loop(
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    if loop.mode != ALLoopMode.MANUAL:
-        raise BadRequestAppException("confirm is only available for manual mode")
+    if loop.mode == ALLoopMode.MANUAL:
+        raise BadRequestAppException("manual mode is single-run and does not require confirm")
+    if loop.mode == ALLoopMode.SIMULATION:
+        raise BadRequestAppException("simulation mode does not require confirm")
 
     await _dispatch_loop_command(
         command="confirm",

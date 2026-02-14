@@ -3,7 +3,7 @@
 import uuid
 from typing import List
 
-from sqlmodel import select
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
@@ -34,3 +34,13 @@ class TaskEventRepository(BaseRepository[TaskEvent]):
         )
         rows = await self.session.exec(stmt)
         return list(rows.all())
+
+    async def delete_by_task_and_types(self, *, task_id: uuid.UUID, event_types: List[str]) -> int:
+        if not event_types:
+            return 0
+        stmt = delete(TaskEvent).where(
+            TaskEvent.task_id == task_id,
+            TaskEvent.event_type.in_(event_types),
+        )
+        result = await self.session.exec(stmt)
+        return int(result.rowcount or 0)

@@ -34,6 +34,7 @@ import {
     RuntimeTaskEvent,
     RuntimeTaskMetricPoint,
     TaskArtifactDownload,
+    RoundPredictionCleanupResponse,
     LoopCreateRequest,
     LoopConfirmResponse,
     LoopUpdateRequest,
@@ -211,6 +212,7 @@ export interface ApiService {
     resumeLoop(loopId: string): Promise<ALLoop>;
 
     stopLoop(loopId: string): Promise<ALLoop>;
+    cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
 

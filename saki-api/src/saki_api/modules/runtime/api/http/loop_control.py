@@ -14,7 +14,7 @@ from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
-from saki_api.modules.runtime.api.job import LoopConfirmResponse, LoopRead
+from saki_api.modules.runtime.api.job import LoopConfirmResponse, LoopRead, RoundPredictionCleanupResponse
 from saki_api.modules.shared.modeling import Permissions
 from saki_api.modules.shared.modeling.enums import ALLoopMode
 
@@ -202,3 +202,30 @@ async def confirm_loop(
     )
     loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
     return LoopConfirmResponse(loop_id=loop.id, phase=loop.phase, status=loop.status)
+
+
+@router.post("/loops/{loop_id}/rounds/{round_index}:cleanup-predictions", response_model=RoundPredictionCleanupResponse)
+async def cleanup_round_predictions(
+    *,
+    loop_id: uuid.UUID,
+    round_index: int,
+    job_service: JobServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    stats = await job_service.cleanup_round_predictions(loop_id=loop_id, round_index=round_index)
+    return RoundPredictionCleanupResponse(
+        loop_id=loop_id,
+        round_index=round_index,
+        score_steps=int(stats.get("score_steps", 0)),
+        candidate_rows_deleted=int(stats.get("candidate_rows_deleted", 0)),
+        event_rows_deleted=int(stats.get("event_rows_deleted", 0)),
+        metric_rows_deleted=int(stats.get("metric_rows_deleted", 0)),
+    )

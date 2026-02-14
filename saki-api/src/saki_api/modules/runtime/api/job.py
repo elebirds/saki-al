@@ -388,3 +388,12 @@ class LoopConfirmResponse(BaseModel):
     loop_id: uuid.UUID
     phase: LoopPhase
     status: ALLoopStatus
+
+
+class RoundPredictionCleanupResponse(BaseModel):
+    loop_id: uuid.UUID
+    round_index: int
+    score_steps: int
+    candidate_rows_deleted: int
+    event_rows_deleted: int
+    metric_rows_deleted: int

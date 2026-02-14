@@ -3,7 +3,7 @@
 import uuid
 from typing import List
 
-from sqlmodel import select
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
@@ -23,10 +23,10 @@ class TaskCandidateItemRepository(BaseRepository[TaskCandidateItem]):
         rows = await self.session.exec(stmt)
         return list(rows.all())
 
-    async def delete_by_task(self, task_id: uuid.UUID) -> None:
-        rows = await self.list_by_task(task_id)
-        for item in rows:
-            await self.session.delete(item)
+    async def delete_by_task(self, task_id: uuid.UUID) -> int:
+        stmt = delete(TaskCandidateItem).where(TaskCandidateItem.task_id == task_id)
+        result = await self.session.exec(stmt)
+        return int(result.rowcount or 0)
 
     async def list_topk_by_task(self, task_id: uuid.UUID, limit: int = 200) -> List[TaskCandidateItem]:
         stmt = (

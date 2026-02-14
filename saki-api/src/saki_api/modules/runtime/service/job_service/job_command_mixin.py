@@ -14,7 +14,7 @@ from saki_api.modules.runtime.domain import task_specs_for_mode
 from saki_api.modules.runtime.domain.job import Job
 from saki_api.modules.runtime.domain.job_task import JobTask
 from saki_api.modules.runtime.domain.loop import ALLoop
-from saki_api.modules.shared.modeling.enums import JobStatusV2, JobTaskStatus
+from saki_api.modules.shared.modeling.enums import JobStatusV2, JobTaskStatus, JobTaskType
 
 
 class JobCommandMixin:
@@ -161,3 +161,35 @@ class JobCommandMixin:
             task_id,
             JobTaskUpdate(status=JobTaskStatus.CANCELLED, last_error=reason).model_dump(exclude_none=True),
         )
+
+    @transactional
+    async def cleanup_round_predictions(self, *, loop_id: uuid.UUID, round_index: int) -> dict[str, int]:
+        loop = await self.loop_repo.get_by_id(loop_id)
+        if not loop:
+            raise NotFoundAppException(f"Loop {loop_id} not found")
+        if round_index <= 0:
+            raise BadRequestAppException("round_index must be >= 1")
+
+        jobs = await self.repository.list_by_loop(loop_id)
+        target_job = next((item for item in jobs if int(item.round_index) == int(round_index)), None)
+        if target_job is None:
+            raise NotFoundAppException(f"Round {round_index} not found in loop {loop_id}")
+
+        tasks = await self.job_task_repo.list_by_job(target_job.id)
+        score_tasks = [task for task in tasks if task.task_type == JobTaskType.SCORE]
+
+        event_types = ["metric", "progress", "log"]
+        deleted_candidates = 0
+        deleted_events = 0
+        deleted_metrics = 0
+        for task in score_tasks:
+            deleted_candidates += await self.task_candidate_repo.delete_by_task(task.id)
+            deleted_events += await self.task_event_repo.delete_by_task_and_types(task_id=task.id, event_types=event_types)
+            deleted_metrics += await self.task_metric_repo.delete_by_task(task.id)
+
+        return {
+            "score_steps": len(score_tasks),
+            "candidate_rows_deleted": deleted_candidates,
+            "event_rows_deleted": deleted_events,
+            "metric_rows_deleted": deleted_metrics,
+        }

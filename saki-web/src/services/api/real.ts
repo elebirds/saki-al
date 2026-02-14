@@ -37,6 +37,7 @@ import {
     TaskArtifactDownload,
     LoopCreateRequest,
     LoopConfirmResponse,
+    RoundPredictionCleanupResponse,
     LoopUpdateRequest,
     LoopSummary,
     SimulationComparison,
@@ -740,6 +741,13 @@ export class RealApiService implements ApiService {
 
     async stopLoop(loopId: string): Promise<ALLoop> {
         const response = await this.client.post<ALLoop>(`/loops/${loopId}:stop`);
+        return response.data;
+    }
+
+    async cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse> {
+        const response = await this.client.post<RoundPredictionCleanupResponse>(
+            `/loops/${loopId}/rounds/${roundIndex}:cleanup-predictions`,
+        );
         return response.data;
     }
 

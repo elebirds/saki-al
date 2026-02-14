@@ -304,6 +304,15 @@ export interface LoopConfirmResponse {
     status: ALLoopStatus;
 }
 
+export interface RoundPredictionCleanupResponse {
+    loopId: string;
+    roundIndex: number;
+    scoreSteps: number;
+    candidateRowsDeleted: number;
+    eventRowsDeleted: number;
+    metricRowsDeleted: number;
+}
+
 export interface ModelArtifact {
     name: string;
     kind: string;

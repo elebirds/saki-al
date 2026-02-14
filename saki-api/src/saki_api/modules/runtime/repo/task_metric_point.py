@@ -3,7 +3,7 @@
 import uuid
 from typing import List
 
-from sqlmodel import select
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
@@ -27,3 +27,8 @@ class TaskMetricPointRepository(BaseRepository[TaskMetricPoint]):
         )
         rows = await self.session.exec(stmt)
         return list(rows.all())
+
+    async def delete_by_task(self, task_id: uuid.UUID) -> int:
+        stmt = delete(TaskMetricPoint).where(TaskMetricPoint.task_id == task_id)
+        result = await self.session.exec(stmt)
+        return int(result.rowcount or 0)

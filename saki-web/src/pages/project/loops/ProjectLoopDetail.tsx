@@ -8,6 +8,7 @@ import {
     Form,
     Input,
     InputNumber,
+    Popconfirm,
     Select,
     Spin,
     Switch,
@@ -81,6 +82,7 @@ const ProjectLoopDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [controlLoading, setControlLoading] = useState(false);
+    const [cleaningRound, setCleaningRound] = useState<number | null>(null);
     const [loop, setLoop] = useState<ALLoop | null>(null);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
     const [jobs, setJobs] = useState<RuntimeJob[]>([]);
@@ -244,6 +246,22 @@ const ProjectLoopDetail: React.FC = () => {
             message.error(error?.message || 'Loop 控制失败');
         } finally {
             setControlLoading(false);
+        }
+    };
+
+    const handleCleanupRoundPredictions = async (roundIndex: number) => {
+        if (!loopId) return;
+        setCleaningRound(roundIndex);
+        try {
+            const response = await api.cleanupRoundPredictions(loopId, roundIndex);
+            message.success(
+                `已清理 Round ${roundIndex}：score-steps=${response.scoreSteps}，候选=${response.candidateRowsDeleted}，事件=${response.eventRowsDeleted}，指标=${response.metricRowsDeleted}`
+            );
+            await refreshLoopData();
+        } catch (error: any) {
+            message.error(error?.message || '清理 Round 预测数据失败');
+        } finally {
+            setCleaningRound(null);
         }
     };
 
@@ -513,11 +531,29 @@ const ProjectLoopDetail: React.FC = () => {
                         },
                         {
                             title: '操作',
-                            width: 120,
+                            width: 280,
                             render: (_v: unknown, row: RuntimeJob) => (
-                                <Button size="small" onClick={() => navigate(`/projects/${projectId}/loops/${loopId}/jobs/${row.id}`)}>
-                                    查看详情
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button size="small" onClick={() => navigate(`/projects/${projectId}/loops/${loopId}/jobs/${row.id}`)}>
+                                        查看详情
+                                    </Button>
+                                    <Popconfirm
+                                        title={`清理 Round ${row.roundIndex} 的中间预测数据？`}
+                                        description="仅清理 SCORE 中间候选/事件/指标，不影响已选 TopK 与最终制品。"
+                                        okText="确认清理"
+                                        cancelText="取消"
+                                        onConfirm={() => handleCleanupRoundPredictions(row.roundIndex)}
+                                    >
+                                        <Button
+                                            size="small"
+                                            danger
+                                            loading={cleaningRound === row.roundIndex}
+                                            disabled={cleaningRound !== null && cleaningRound !== row.roundIndex}
+                                        >
+                                            清理预测
+                                        </Button>
+                                    </Popconfirm>
+                                </div>
                             ),
                         },
                     ]}

@@ -403,6 +403,121 @@ func (s *Service) Tick(ctx context.Context) error {
 	return err
 }
 
+func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontrolv1.Register) error {
+	if !s.repo.Enabled() || register == nil {
+		return nil
+	}
+	executorID := strings.TrimSpace(register.GetExecutorId())
+	if executorID == "" {
+		return nil
+	}
+	version := strings.TrimSpace(register.GetVersion())
+
+	pluginPayloadJSON, err := marshalJSON(map[string]any{
+		"plugins": pluginCapabilitiesToMaps(register.GetPlugins()),
+	})
+	if err != nil {
+		return err
+	}
+	resourcesJSON, err := marshalJSON(resourceSummaryToMap(register.GetResources()))
+	if err != nil {
+		return err
+	}
+
+	_, err = s.repo.Pool().Exec(
+		ctx,
+		`INSERT INTO runtime_executor(
+		     id,executor_id,version,status,is_online,current_task_id,plugin_ids,resources,last_seen_at,last_error,created_at,updated_at
+		   ) VALUES(
+		     $1::uuid,$2,$3,'idle',TRUE,NULL,$4::jsonb,$5::jsonb,now(),NULL,now(),now()
+		   )
+		   ON CONFLICT (executor_id) DO UPDATE SET
+		     version=EXCLUDED.version,
+		     status='idle',
+		     is_online=TRUE,
+		     current_task_id=NULL,
+		     plugin_ids=EXCLUDED.plugin_ids,
+		     resources=EXCLUDED.resources,
+		     last_seen_at=EXCLUDED.last_seen_at,
+		     last_error=NULL,
+		     updated_at=now()`,
+		uuid.NewString(),
+		executorID,
+		version,
+		pluginPayloadJSON,
+		resourcesJSON,
+	)
+	return err
+}
+
+func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecontrolv1.Heartbeat) error {
+	if !s.repo.Enabled() || heartbeat == nil {
+		return nil
+	}
+	executorID := strings.TrimSpace(heartbeat.GetExecutorId())
+	if executorID == "" {
+		return nil
+	}
+
+	status := "idle"
+	if heartbeat.GetBusy() {
+		status = "busy"
+	}
+	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
+	resourcesJSON, err := marshalJSON(resourceSummaryToMap(heartbeat.GetResources()))
+	if err != nil {
+		return err
+	}
+
+	_, err = s.repo.Pool().Exec(
+		ctx,
+		`INSERT INTO runtime_executor(
+		     id,executor_id,version,status,is_online,current_task_id,plugin_ids,resources,last_seen_at,last_error,created_at,updated_at
+		   ) VALUES(
+		     $1::uuid,$2,'',$3,TRUE,NULLIF($4,''),'{}'::jsonb,$5::jsonb,now(),NULL,now(),now()
+		   )
+		   ON CONFLICT (executor_id) DO UPDATE SET
+		     status=EXCLUDED.status,
+		     is_online=TRUE,
+		     current_task_id=EXCLUDED.current_task_id,
+		     resources=EXCLUDED.resources,
+		     last_seen_at=EXCLUDED.last_seen_at,
+		     last_error=NULL,
+		     updated_at=now()`,
+		uuid.NewString(),
+		executorID,
+		status,
+		currentTaskID,
+		resourcesJSON,
+	)
+	return err
+}
+
+func (s *Service) OnExecutorDisconnected(ctx context.Context, executorID string, reason string) error {
+	if !s.repo.Enabled() {
+		return nil
+	}
+	executorID = strings.TrimSpace(executorID)
+	if executorID == "" {
+		return nil
+	}
+
+	_, err := s.repo.Pool().Exec(
+		ctx,
+		`UPDATE runtime_executor
+		 SET status='offline',
+		     is_online=FALSE,
+		     current_task_id=NULL,
+		     last_error=NULLIF($2,''),
+		     last_seen_at=now(),
+		     updated_at=now()
+		 WHERE executor_id=$1`,
+		executorID,
+		strings.TrimSpace(reason),
+	)
+	return err
+}
+
 func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskEvent) error {
 	if !s.repo.Enabled() || event == nil {
 		return nil
@@ -1885,6 +2000,84 @@ func taskSpecsByMode(mode string) []string {
 	default:
 		return []string{"TRAIN", "SCORE", "SELECT", "UPLOAD_ARTIFACT"}
 	}
+}
+
+func pluginCapabilitiesToMaps(plugins []*runtimecontrolv1.PluginCapability) []map[string]any {
+	items := make([]map[string]any, 0, len(plugins))
+	for _, item := range plugins {
+		if item == nil {
+			continue
+		}
+		pluginID := strings.TrimSpace(item.GetPluginId())
+		if pluginID == "" {
+			continue
+		}
+		supportedAccelerators := make([]string, 0, len(item.GetSupportedAccelerators()))
+		for _, accelerator := range item.GetSupportedAccelerators() {
+			text := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(accelerator.String(), "ACCELERATOR_TYPE_")))
+			if text == "" || text == "unspecified" {
+				continue
+			}
+			supportedAccelerators = append(supportedAccelerators, text)
+		}
+		items = append(items, map[string]any{
+			"plugin_id":              pluginID,
+			"display_name":           strings.TrimSpace(item.GetDisplayName()),
+			"version":                strings.TrimSpace(item.GetVersion()),
+			"supported_task_types":   normalizeStringSlice(item.GetSupportedTaskTypes()),
+			"supported_strategies":   normalizeStringSlice(item.GetSupportedStrategies()),
+			"supported_accelerators": supportedAccelerators,
+			"supports_auto_fallback": item.GetSupportsAutoFallback(),
+			"request_config_schema":  structToMap(item.GetRequestConfigSchema()),
+			"default_request_config": structToMap(item.GetDefaultRequestConfig()),
+		})
+	}
+	return items
+}
+
+func resourceSummaryToMap(summary *runtimecontrolv1.ResourceSummary) map[string]any {
+	if summary == nil {
+		return map[string]any{}
+	}
+	accelerators := make([]map[string]any, 0, len(summary.GetAccelerators()))
+	for _, item := range summary.GetAccelerators() {
+		if item == nil {
+			continue
+		}
+		acceleratorType := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(item.GetType().String(), "ACCELERATOR_TYPE_")))
+		if acceleratorType == "" {
+			acceleratorType = "unspecified"
+		}
+		accelerators = append(accelerators, map[string]any{
+			"type":         acceleratorType,
+			"available":    item.GetAvailable(),
+			"device_count": item.GetDeviceCount(),
+			"device_ids":   normalizeStringSlice(item.GetDeviceIds()),
+		})
+	}
+	gpuDeviceIDs := make([]int32, 0, len(summary.GetGpuDeviceIds()))
+	for _, item := range summary.GetGpuDeviceIds() {
+		gpuDeviceIDs = append(gpuDeviceIDs, item)
+	}
+	return map[string]any{
+		"gpu_count":      summary.GetGpuCount(),
+		"gpu_device_ids": gpuDeviceIDs,
+		"cpu_workers":    summary.GetCpuWorkers(),
+		"memory_mb":      summary.GetMemoryMb(),
+		"accelerators":   accelerators,
+	}
+}
+
+func normalizeStringSlice(raw []string) []string {
+	items := make([]string, 0, len(raw))
+	for _, item := range raw {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		items = append(items, value)
+	}
+	return items
 }
 
 func toRuntimeTaskType(raw string) runtimecontrolv1.RuntimeTaskType {

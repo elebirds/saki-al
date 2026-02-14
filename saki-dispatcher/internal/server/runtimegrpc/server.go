@@ -50,6 +50,15 @@ func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (re
 	defer func() {
 		if executorID != "" {
 			s.dispatcher.UnregisterExecutor(executorID)
+			disconnectReason := ""
+			if retErr != nil && retErr != io.EOF {
+				disconnectReason = retErr.Error()
+			}
+			if s.controlPlane != nil {
+				if err := s.controlPlane.OnExecutorDisconnected(context.Background(), executorID, disconnectReason); err != nil {
+					s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("persist executor disconnect failed")
+				}
+			}
 		}
 		event := s.logger.Info().Str("peer", peerAddr)
 		if executorID != "" {
@@ -132,6 +141,11 @@ func (s *Server) handleIncoming(
 		if err != nil {
 			return buildError("invalid_register", err.Error(), register.GetRequestId(), "", runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED), "", nil
 		}
+		if s.controlPlane != nil {
+			if err := s.controlPlane.OnExecutorRegister(context.Background(), register); err != nil {
+				s.logger.Warn().Err(err).Str("executor_id", session.ExecutorID).Msg("persist executor register failed")
+			}
+		}
 		s.logger.Info().Str("executor_id", session.ExecutorID).Msg("runtime executor registered")
 		return buildAck(
 			register.GetRequestId(),
@@ -152,6 +166,11 @@ func (s *Server) handleIncoming(
 		}
 		if err := s.dispatcher.HandleHeartbeat(heartbeat); err != nil {
 			return buildError("invalid_heartbeat", err.Error(), heartbeat.GetRequestId(), "", runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED), "", nil
+		}
+		if s.controlPlane != nil {
+			if err := s.controlPlane.OnExecutorHeartbeat(context.Background(), heartbeat); err != nil {
+				s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("persist executor heartbeat failed")
+			}
 		}
 		return buildAck(
 			heartbeat.GetRequestId(),

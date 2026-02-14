@@ -6,7 +6,7 @@ import {
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
-    ALLoop,
+    Loop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -25,16 +25,16 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
-    RuntimeJob,
-    RuntimeJobCommandResponse,
-    RuntimeJobCreateRequest,
-    RuntimeJobTask,
-    RuntimeTaskArtifactsResponse,
-    RuntimeTaskCandidate,
-    RuntimeTaskCommandResponse,
-    RuntimeTaskEvent,
-    RuntimeTaskMetricPoint,
-    TaskArtifactDownload,
+    RuntimeRound,
+    RuntimeRoundCommandResponse,
+    RuntimeRoundCreateRequest,
+    RuntimeStep,
+    RuntimeStepArtifactsResponse,
+    RuntimeStepCandidate,
+    RuntimeStepCommandResponse,
+    RuntimeStepEvent,
+    RuntimeStepMetricPoint,
+    StepArtifactDownload,
     LoopCreateRequest,
     LoopConfirmResponse,
     RoundPredictionCleanupResponse,
@@ -246,6 +246,123 @@ async function withOptionalPasswordHashing<T>(
         processedData.password = await hashPassword(processedData.password);
     }
     return fn(processedData);
+}
+
+function normalizeLoop(loop: Loop): Loop {
+    return {
+        ...loop,
+        state: (loop as any).state ?? (loop as any).status,
+        lastRoundId: (loop as any).lastRoundId ?? (loop as any).lastJobId ?? null,
+    };
+}
+
+function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
+    return {
+        ...summary,
+        state: (summary as any).state ?? (summary as any).status,
+        roundsTotal: (summary as any).roundsTotal ?? (summary as any).jobsTotal ?? 0,
+        roundsSucceeded: (summary as any).roundsSucceeded ?? (summary as any).jobsSucceeded ?? 0,
+        stepsTotal: (summary as any).stepsTotal ?? (summary as any).tasksTotal ?? 0,
+        stepsSucceeded: (summary as any).stepsSucceeded ?? (summary as any).tasksSucceeded ?? 0,
+    };
+}
+
+function normalizeRound(round: RuntimeRound): RuntimeRound {
+    return {
+        ...round,
+        state: (round as any).state ?? (round as any).summaryStatus,
+        stepCounts: (round as any).stepCounts ?? (round as any).taskCounts ?? {},
+        roundType: (round as any).roundType ?? (round as any).jobType ?? 'loop_round',
+        inputCommitId: (round as any).inputCommitId ?? (round as any).sourceCommitId ?? null,
+        outputCommitId: (round as any).outputCommitId ?? (round as any).resultCommitId ?? null,
+        resolvedParams: (round as any).resolvedParams ?? (round as any).params ?? {},
+    };
+}
+
+function normalizeStep(step: RuntimeStep): RuntimeStep {
+    return {
+        ...step,
+        roundId: (step as any).roundId ?? (step as any).jobId,
+        stepType: (step as any).stepType ?? (step as any).taskType,
+        state: (step as any).state ?? (step as any).status,
+        stepIndex: (step as any).stepIndex ?? (step as any).taskIndex,
+        dependsOnStepIds: (step as any).dependsOnStepIds ?? (step as any).dependsOn ?? [],
+        resolvedParams: (step as any).resolvedParams ?? (step as any).params ?? {},
+        dispatchKind: (step as any).dispatchKind ?? 'dispatchable',
+        inputCommitId: (step as any).inputCommitId ?? (step as any).sourceCommitId ?? null,
+        outputCommitId: (step as any).outputCommitId ?? (step as any).resultCommitId ?? null,
+    };
+}
+
+function normalizeRoundCommandResponse(response: RuntimeRoundCommandResponse): RuntimeRoundCommandResponse {
+    return {
+        ...response,
+        roundId: (response as any).roundId ?? (response as any).jobId,
+    };
+}
+
+function normalizeStepCommandResponse(response: RuntimeStepCommandResponse): RuntimeStepCommandResponse {
+    return {
+        ...response,
+        stepId: (response as any).stepId ?? (response as any).taskId,
+    };
+}
+
+function normalizeStepArtifactsResponse(response: RuntimeStepArtifactsResponse): RuntimeStepArtifactsResponse {
+    return {
+        ...response,
+        stepId: (response as any).stepId ?? (response as any).taskId,
+    };
+}
+
+function normalizeStepArtifactDownload(response: StepArtifactDownload): StepArtifactDownload {
+    return {
+        ...response,
+        stepId: (response as any).stepId ?? (response as any).taskId,
+    };
+}
+
+function normalizeRuntimePluginCatalog(response: RuntimePluginCatalogResponse): RuntimePluginCatalogResponse {
+    return {
+        ...response,
+        items: (response.items || []).map((item: any) => ({
+            ...item,
+            supportedStepTypes: item.supportedStepTypes ?? item.supportedTaskTypes ?? [],
+        })),
+    };
+}
+
+function normalizeRuntimeExecutor(executor: RuntimeExecutorRead): RuntimeExecutorRead {
+    const pluginIds = (executor.pluginIds || {}) as Record<string, any>;
+    const plugins = Array.isArray(pluginIds.plugins)
+        ? pluginIds.plugins.map((plugin: any) => ({
+            ...plugin,
+            supportedStepTypes: plugin.supportedStepTypes ?? plugin.supportedTaskTypes ?? [],
+        }))
+        : pluginIds.plugins;
+    return {
+        ...executor,
+        currentStepId: (executor as any).currentStepId ?? (executor as any).currentTaskId ?? null,
+        pluginIds: {
+            ...pluginIds,
+            plugins,
+        },
+    };
+}
+
+function normalizeRuntimeExecutorList(response: RuntimeExecutorListResponse): RuntimeExecutorListResponse {
+    return {
+        ...response,
+        items: (response.items || []).map((item) => normalizeRuntimeExecutor(item)),
+    };
+}
+
+function normalizeProjectModel(model: ProjectModel): ProjectModel {
+    return {
+        ...model,
+        roundId: (model as any).roundId ?? (model as any).jobId ?? null,
+        inputCommitId: (model as any).inputCommitId ?? (model as any).sourceCommitId ?? null,
+    };
 }
 
 // ============================================================================
@@ -699,49 +816,52 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getProjectLoops(projectId: string): Promise<ALLoop[]> {
-        const response = await this.client.get<ALLoop[]>(`/projects/${projectId}/loops`);
-        return response.data;
+    async getProjectLoops(projectId: string): Promise<Loop[]> {
+        const response = await this.client.get<Loop[]>(`/projects/${projectId}/loops`);
+        return response.data.map((item) => normalizeLoop(item));
     }
 
-    async createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/projects/${projectId}/loops`, payload);
-        return response.data;
+    async createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<Loop> {
+        const response = await this.client.post<Loop>(`/projects/${projectId}/loops`, payload);
+        return normalizeLoop(response.data);
     }
 
-    async getLoopById(loopId: string): Promise<ALLoop> {
-        const response = await this.client.get<ALLoop>(`/loops/${loopId}`);
-        return response.data;
+    async getLoopById(loopId: string): Promise<Loop> {
+        const response = await this.client.get<Loop>(`/loops/${loopId}`);
+        return normalizeLoop(response.data);
     }
 
-    async updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop> {
-        const response = await this.client.patch<ALLoop>(`/loops/${loopId}`, payload);
-        return response.data;
+    async updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<Loop> {
+        const response = await this.client.patch<Loop>(`/loops/${loopId}`, payload);
+        return normalizeLoop(response.data);
     }
 
-    async startLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:start`);
-        return response.data;
+    async startLoop(loopId: string): Promise<Loop> {
+        const response = await this.client.post<Loop>(`/loops/${loopId}:start`);
+        return normalizeLoop(response.data);
     }
 
     async confirmLoop(loopId: string): Promise<LoopConfirmResponse> {
         const response = await this.client.post<LoopConfirmResponse>(`/loops/${loopId}:confirm`);
-        return response.data;
+        return {
+            ...response.data,
+            state: (response.data as any).state ?? (response.data as any).status,
+        };
     }
 
-    async pauseLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:pause`);
-        return response.data;
+    async pauseLoop(loopId: string): Promise<Loop> {
+        const response = await this.client.post<Loop>(`/loops/${loopId}:pause`);
+        return normalizeLoop(response.data);
     }
 
-    async resumeLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:resume`);
-        return response.data;
+    async resumeLoop(loopId: string): Promise<Loop> {
+        const response = await this.client.post<Loop>(`/loops/${loopId}:resume`);
+        return normalizeLoop(response.data);
     }
 
-    async stopLoop(loopId: string): Promise<ALLoop> {
-        const response = await this.client.post<ALLoop>(`/loops/${loopId}:stop`);
-        return response.data;
+    async stopLoop(loopId: string): Promise<Loop> {
+        const response = await this.client.post<Loop>(`/loops/${loopId}:stop`);
+        return normalizeLoop(response.data);
     }
 
     async cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse> {
@@ -753,7 +873,7 @@ export class RealApiService implements ApiService {
 
     async getLoopSummary(loopId: string): Promise<LoopSummary> {
         const response = await this.client.get<LoopSummary>(`/loops/${loopId}/summary`);
-        return response.data;
+        return normalizeLoopSummary(response.data);
     }
 
     async createSimulationExperiment(
@@ -780,90 +900,82 @@ export class RealApiService implements ApiService {
 
     async getRuntimePlugins(): Promise<RuntimePluginCatalogResponse> {
         const response = await this.client.get<RuntimePluginCatalogResponse>('/runtime/plugins');
-        return response.data;
+        return normalizeRuntimePluginCatalog(response.data);
     }
 
-    async getLoopJobs(loopId: string, limit: number = 50): Promise<RuntimeJob[]> {
-        const response = await this.client.get<RuntimeJob[]>(`/loops/${loopId}/rounds`, {params: {limit}});
-        return response.data;
+    async getLoopRounds(loopId: string, limit: number = 50): Promise<RuntimeRound[]> {
+        const response = await this.client.get<RuntimeRound[]>(`/loops/${loopId}/rounds`, {params: {limit}});
+        return response.data.map((item) => normalizeRound(item));
     }
 
-    async createLoopJob(loopId: string, payload: RuntimeJobCreateRequest): Promise<RuntimeJob> {
-        const response = await this.client.post<RuntimeJob>(`/loops/${loopId}/rounds`, payload);
-        return response.data;
+    async createLoopRound(loopId: string, payload: RuntimeRoundCreateRequest): Promise<RuntimeRound> {
+        const response = await this.client.post<RuntimeRound>(`/loops/${loopId}/rounds`, payload);
+        return normalizeRound(response.data);
     }
 
-    async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
-        const response = await this.client.post<RuntimeJobCommandResponse>(`/rounds/${roundId}:stop`, null, {params: {reason}});
-        return response.data;
+    async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeRoundCommandResponse> {
+        const response = await this.client.post<RuntimeRoundCommandResponse>(`/rounds/${roundId}:stop`, null, {params: {reason}});
+        return normalizeRoundCommandResponse(response.data);
     }
 
-    async stopJob(jobId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
-        return await this.stopRound(jobId, reason);
+    async getRound(roundId: string): Promise<RuntimeRound> {
+        const response = await this.client.get<RuntimeRound>(`/rounds/${roundId}`);
+        return normalizeRound(response.data);
     }
 
-    async getJob(jobId: string): Promise<RuntimeJob> {
-        const response = await this.client.get<RuntimeJob>(`/rounds/${jobId}`);
-        return response.data;
+    async getRoundSteps(roundId: string, limit: number = 2000): Promise<RuntimeStep[]> {
+        const response = await this.client.get<RuntimeStep[]>(`/rounds/${roundId}/steps`, {params: {limit}});
+        return response.data.map((item) => normalizeStep(item));
     }
 
-    async getJobTasks(jobId: string, limit: number = 2000): Promise<RuntimeJobTask[]> {
-        const response = await this.client.get<RuntimeJobTask[]>(`/rounds/${jobId}/steps`, {params: {limit}});
-        return response.data;
+    async getStep(stepId: string): Promise<RuntimeStep> {
+        const response = await this.client.get<RuntimeStep>(`/steps/${stepId}`);
+        return normalizeStep(response.data);
     }
 
-    async getTask(taskId: string): Promise<RuntimeJobTask> {
-        const response = await this.client.get<RuntimeJobTask>(`/steps/${taskId}`);
-        return response.data;
+    async stopStep(stepId: string, reason: string = 'user requested stop'): Promise<RuntimeStepCommandResponse> {
+        const response = await this.client.post<RuntimeStepCommandResponse>(`/steps/${stepId}:stop`, null, {params: {reason}});
+        return normalizeStepCommandResponse(response.data);
     }
 
-    async stopStep(stepId: string, reason: string = 'user requested stop'): Promise<RuntimeTaskCommandResponse> {
-        const response = await this.client.post<RuntimeTaskCommandResponse>(`/steps/${stepId}:stop`, null, {params: {reason}});
-        return response.data;
-    }
-
-    async stopTask(taskId: string, reason: string = 'user requested stop'): Promise<RuntimeTaskCommandResponse> {
-        return await this.stopStep(taskId, reason);
-    }
-
-    async getTaskEvents(taskId: string, afterSeq: number = 0, limit: number = 5000): Promise<RuntimeTaskEvent[]> {
-        const response = await this.client.get<RuntimeTaskEvent[]>(
-            `/steps/${taskId}/events`,
+    async getStepEvents(stepId: string, afterSeq: number = 0, limit: number = 5000): Promise<RuntimeStepEvent[]> {
+        const response = await this.client.get<RuntimeStepEvent[]>(
+            `/steps/${stepId}/events`,
             {params: {after_seq: afterSeq, limit}},
         );
         return response.data;
     }
 
-    async getTaskMetricSeries(taskId: string, limit: number = 5000): Promise<RuntimeTaskMetricPoint[]> {
-        const response = await this.client.get<RuntimeTaskMetricPoint[]>(`/steps/${taskId}/metrics/series`, {params: {limit}});
+    async getStepMetricSeries(stepId: string, limit: number = 5000): Promise<RuntimeStepMetricPoint[]> {
+        const response = await this.client.get<RuntimeStepMetricPoint[]>(`/steps/${stepId}/metrics/series`, {params: {limit}});
         return response.data;
     }
 
-    async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeTaskCandidate[]> {
-        const response = await this.client.get<RuntimeTaskCandidate[]>(`/steps/${taskId}/candidates`, {params: {limit}});
+    async getStepCandidates(stepId: string, limit: number = 200): Promise<RuntimeStepCandidate[]> {
+        const response = await this.client.get<RuntimeStepCandidate[]>(`/steps/${stepId}/candidates`, {params: {limit}});
         return response.data;
     }
 
-    async getTaskArtifacts(taskId: string): Promise<RuntimeTaskArtifactsResponse> {
-        const response = await this.client.get<RuntimeTaskArtifactsResponse>(`/steps/${taskId}/artifacts`);
-        return response.data;
+    async getStepArtifacts(stepId: string): Promise<RuntimeStepArtifactsResponse> {
+        const response = await this.client.get<RuntimeStepArtifactsResponse>(`/steps/${stepId}/artifacts`);
+        return normalizeStepArtifactsResponse(response.data);
     }
 
-    async getTaskArtifactDownloadUrl(
-        taskId: string,
+    async getStepArtifactDownloadUrl(
+        stepId: string,
         artifactName: string,
         expiresInHours: number = 2
-    ): Promise<TaskArtifactDownload> {
-        const response = await this.client.get<TaskArtifactDownload>(
-            `/steps/${taskId}/artifacts/${artifactName}:download-url`,
+    ): Promise<StepArtifactDownload> {
+        const response = await this.client.get<StepArtifactDownload>(
+            `/steps/${stepId}/artifacts/${artifactName}:download-url`,
             {params: {expires_in_hours: expiresInHours}}
         );
-        return response.data;
+        return normalizeStepArtifactDownload(response.data);
     }
 
     async getRuntimeExecutors(): Promise<RuntimeExecutorListResponse> {
         const response = await this.client.get<RuntimeExecutorListResponse>('/runtime/executors');
-        return response.data;
+        return normalizeRuntimeExecutorList(response.data);
     }
 
     async getRuntimeExecutorStats(range: RuntimeExecutorStatsRange): Promise<RuntimeExecutorStatsResponse> {
@@ -875,13 +987,13 @@ export class RealApiService implements ApiService {
 
     async getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead> {
         const response = await this.client.get<RuntimeExecutorRead>(`/runtime/executors/${executorId}`);
-        return response.data;
+        return normalizeRuntimeExecutor(response.data);
     }
 
-    async registerModelFromJob(
+    async registerModelFromRound(
         projectId: string,
         payload: {
-            jobId: string;
+            roundId: string;
             name?: string;
             versionTag?: string;
             status?: string;
@@ -889,19 +1001,22 @@ export class RealApiService implements ApiService {
     ): Promise<ProjectModel> {
         const response = await this.client.post<ProjectModel>(
             `/projects/${projectId}/models:register-from-job`,
-            payload,
+            {
+                ...payload,
+                jobId: payload.roundId,
+            },
         );
-        return response.data;
+        return normalizeProjectModel(response.data);
     }
 
     async getProjectModels(projectId: string, limit: number = 100): Promise<ProjectModel[]> {
         const response = await this.client.get<ProjectModel[]>(`/projects/${projectId}/models`, {params: {limit}});
-        return response.data;
+        return response.data.map((item) => normalizeProjectModel(item));
     }
 
     async promoteModel(modelId: string, status: string = 'production'): Promise<ProjectModel> {
         const response = await this.client.post<ProjectModel>(`/models/${modelId}:promote`, {status});
-        return response.data;
+        return normalizeProjectModel(response.data);
     }
 
     async getModelArtifactDownloadUrl(

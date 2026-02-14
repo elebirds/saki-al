@@ -5,7 +5,7 @@ import {
     AnnotationRead,
     AnnotationSyncRequest,
     AnnotationSyncResponse,
-    ALLoop,
+    Loop,
     AvailableTypesResponse,
     CommitDiff,
     CommitHistoryItem,
@@ -24,16 +24,16 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
-    RuntimeJob,
-    RuntimeJobCommandResponse,
-    RuntimeJobCreateRequest,
-    RuntimeJobTask,
-    RuntimeTaskArtifactsResponse,
-    RuntimeTaskCandidate,
-    RuntimeTaskCommandResponse,
-    RuntimeTaskEvent,
-    RuntimeTaskMetricPoint,
-    TaskArtifactDownload,
+    RuntimeRound,
+    RuntimeRoundCommandResponse,
+    RuntimeRoundCreateRequest,
+    RuntimeStep,
+    RuntimeStepArtifactsResponse,
+    RuntimeStepCandidate,
+    RuntimeStepCommandResponse,
+    RuntimeStepEvent,
+    RuntimeStepMetricPoint,
+    StepArtifactDownload,
     RoundPredictionCleanupResponse,
     LoopCreateRequest,
     LoopConfirmResponse,
@@ -195,23 +195,23 @@ export interface ApiService {
 
     getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
 
-    getProjectLoops(projectId: string): Promise<ALLoop[]>;
+    getProjectLoops(projectId: string): Promise<Loop[]>;
 
-    createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<ALLoop>;
+    createProjectLoop(projectId: string, payload: LoopCreateRequest): Promise<Loop>;
 
-    getLoopById(loopId: string): Promise<ALLoop>;
+    getLoopById(loopId: string): Promise<Loop>;
 
-    updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<ALLoop>;
+    updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<Loop>;
 
-    startLoop(loopId: string): Promise<ALLoop>;
+    startLoop(loopId: string): Promise<Loop>;
 
     confirmLoop(loopId: string): Promise<LoopConfirmResponse>;
 
-    pauseLoop(loopId: string): Promise<ALLoop>;
+    pauseLoop(loopId: string): Promise<Loop>;
 
-    resumeLoop(loopId: string): Promise<ALLoop>;
+    resumeLoop(loopId: string): Promise<Loop>;
 
-    stopLoop(loopId: string): Promise<ALLoop>;
+    stopLoop(loopId: string): Promise<Loop>;
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
@@ -225,33 +225,29 @@ export interface ApiService {
 
     getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
 
-    getLoopJobs(loopId: string, limit?: number): Promise<RuntimeJob[]>;
+    getLoopRounds(loopId: string, limit?: number): Promise<RuntimeRound[]>;
 
-    createLoopJob(loopId: string, payload: RuntimeJobCreateRequest): Promise<RuntimeJob>;
+    createLoopRound(loopId: string, payload: RuntimeRoundCreateRequest): Promise<RuntimeRound>;
 
-    stopRound(roundId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
+    stopRound(roundId: string, reason?: string): Promise<RuntimeRoundCommandResponse>;
 
-    stopJob(jobId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
+    getRound(roundId: string): Promise<RuntimeRound>;
 
-    getJob(jobId: string): Promise<RuntimeJob>;
+    getRoundSteps(roundId: string, limit?: number): Promise<RuntimeStep[]>;
 
-    getJobTasks(jobId: string, limit?: number): Promise<RuntimeJobTask[]>;
+    getStep(stepId: string): Promise<RuntimeStep>;
 
-    getTask(taskId: string): Promise<RuntimeJobTask>;
+    stopStep(stepId: string, reason?: string): Promise<RuntimeStepCommandResponse>;
 
-    stopStep(stepId: string, reason?: string): Promise<RuntimeTaskCommandResponse>;
+    getStepEvents(stepId: string, afterSeq?: number, limit?: number): Promise<RuntimeStepEvent[]>;
 
-    stopTask(taskId: string, reason?: string): Promise<RuntimeTaskCommandResponse>;
+    getStepMetricSeries(stepId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
 
-    getTaskEvents(taskId: string, afterSeq?: number, limit?: number): Promise<RuntimeTaskEvent[]>;
+    getStepCandidates(stepId: string, limit?: number): Promise<RuntimeStepCandidate[]>;
 
-    getTaskMetricSeries(taskId: string, limit?: number): Promise<RuntimeTaskMetricPoint[]>;
+    getStepArtifacts(stepId: string): Promise<RuntimeStepArtifactsResponse>;
 
-    getTaskCandidates(taskId: string, limit?: number): Promise<RuntimeTaskCandidate[]>;
-
-    getTaskArtifacts(taskId: string): Promise<RuntimeTaskArtifactsResponse>;
-
-    getTaskArtifactDownloadUrl(taskId: string, artifactName: string, expiresInHours?: number): Promise<TaskArtifactDownload>;
+    getStepArtifactDownloadUrl(stepId: string, artifactName: string, expiresInHours?: number): Promise<StepArtifactDownload>;
 
     getRuntimeExecutors(): Promise<RuntimeExecutorListResponse>;
 
@@ -259,8 +255,8 @@ export interface ApiService {
 
     getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
 
-    registerModelFromJob(projectId: string, payload: {
-        jobId: string;
+    registerModelFromRound(projectId: string, payload: {
+        roundId: string;
         name?: string;
         versionTag?: string;
         status?: string;

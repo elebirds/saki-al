@@ -388,7 +388,7 @@ const RuntimeExecutors: React.FC = () => {
                                             <th className="px-4 py-3 text-left font-medium text-github-muted">Executor</th>
                                             <th className="px-4 py-3 text-left font-medium text-github-muted">状态</th>
                                             <th className="px-4 py-3 text-left font-medium text-github-muted">在线</th>
-                                            <th className="px-4 py-3 text-left font-medium text-github-muted">当前任务</th>
+                                            <th className="px-4 py-3 text-left font-medium text-github-muted">当前 Step</th>
                                             <th className="px-4 py-3 text-left font-medium text-github-muted">待派发/待停止</th>
                                             <th className="px-4 py-3 text-left font-medium text-github-muted">最后心跳</th>
                                         </tr>
@@ -414,7 +414,7 @@ const RuntimeExecutors: React.FC = () => {
                                                         {row.isOnline ? <Tag color="success">online</Tag> : <Tag>offline</Tag>}
                                                     </td>
                                                     <td className="px-4 py-3 align-top">
-                                                        {row.currentTaskId ? <code className="text-xs">{row.currentTaskId}</code> : '-'}
+                                                        {row.currentStepId ? <code className="text-xs">{row.currentStepId}</code> : '-'}
                                                     </td>
                                                     <td className="px-4 py-3 align-top">{row.pendingAssignCount}/{row.pendingStopCount}</td>
                                                     <td className="px-4 py-3 align-top text-xs text-github-muted">{formatDateTime(row.lastSeenAt)}</td>
@@ -476,8 +476,8 @@ const RuntimeExecutors: React.FC = () => {
                                                 <Tag color={STATUS_COLOR[selectedExecutor.status] || 'default'}>{selectedExecutor.status}</Tag>
                                             </div>
                                             <div>
-                                                <div className="text-xs text-github-muted">当前任务</div>
-                                                <div>{selectedExecutor.currentTaskId || '-'}</div>
+                                                <div className="text-xs text-github-muted">当前 Step</div>
+                                                <div>{selectedExecutor.currentStepId || '-'}</div>
                                             </div>
                                             <div>
                                                 <div className="text-xs text-github-muted">待派发 / 待停止</div>

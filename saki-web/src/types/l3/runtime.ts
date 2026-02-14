@@ -1,22 +1,25 @@
-export type ALLoopStatus = 'draft' | 'running' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed';
-export type ALLoopMode = 'active_learning' | 'simulation' | 'manual';
+export type LoopState = 'draft' | 'running' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed';
+export type LoopMode = 'active_learning' | 'simulation' | 'manual';
 
 export type LoopPhase =
     | 'al_bootstrap'
     | 'al_train'
     | 'al_score'
-    | 'al_wait_annotation'
-    | 'al_merge'
+    | 'al_select'
+    | 'al_wait_user'
     | 'al_eval'
+    | 'al_finalize'
     | 'sim_bootstrap'
     | 'sim_train'
     | 'sim_score'
+    | 'sim_select'
     | 'sim_activate'
-    | 'sim_auto_label'
     | 'sim_eval'
-    | 'manual_idle'
-    | 'manual_task_running'
-    | 'manual_wait_confirm'
+    | 'sim_finalize'
+    | 'manual_bootstrap'
+    | 'manual_train'
+    | 'manual_eval'
+    | 'manual_export'
     | 'manual_finalize';
 
 export interface LoopSimulationConfig {
@@ -28,12 +31,12 @@ export interface LoopSimulationConfig {
     seeds: number[];
 }
 
-export interface ALLoop {
+export interface Loop {
     id: string;
     projectId: string;
     branchId: string;
     name: string;
-    mode: ALLoopMode;
+    mode: LoopMode;
     phase: LoopPhase;
     phaseMeta: Record<string, any>;
     queryStrategy: string;
@@ -43,7 +46,7 @@ export interface ALLoop {
     simulationConfig: LoopSimulationConfig;
     experimentGroupId?: string | null;
     currentIteration: number;
-    status: ALLoopStatus;
+    state: LoopState;
     maxRounds: number;
     queryBatchSize: number;
     minSeedLabeled: number;
@@ -51,34 +54,28 @@ export interface ALLoop {
     stopPatienceRounds: number;
     stopMinGain: number;
     autoRegisterModel: boolean;
-    lastJobId?: string | null;
+    lastRoundId?: string | null;
     latestModelId?: string | null;
     lastError?: string | null;
     createdAt: string;
     updatedAt: string;
 }
 
-export type RuntimeJobStatus =
-    | 'job_pending'
-    | 'job_running'
-    | 'job_partial_failed'
-    | 'job_failed'
-    | 'job_succeeded'
-    | 'job_cancelled';
+export type RuntimeRoundState = 'pending' | 'running' | 'wait_user' | 'completed' | 'cancelled' | 'failed';
 
-export interface RuntimeJob {
+export interface RuntimeRound {
     id: string;
     projectId: string;
     loopId: string;
     roundIndex: number;
-    mode: ALLoopMode;
-    summaryStatus: RuntimeJobStatus;
-    taskCounts: Record<string, number>;
-    jobType: string;
+    mode: LoopMode;
+    state: RuntimeRoundState;
+    stepCounts: Record<string, number>;
+    roundType: string;
     pluginId: string;
     queryStrategy: string;
-    sourceCommitId?: string | null;
-    resultCommitId?: string | null;
+    inputCommitId?: string | null;
+    outputCommitId?: string | null;
     assignedExecutorId?: string | null;
     startedAt?: string | null;
     endedAt?: string | null;
@@ -86,7 +83,7 @@ export interface RuntimeJob {
     lastError?: string | null;
     finalMetrics: Record<string, any>;
     finalArtifacts: Record<string, any>;
-    params: Record<string, any>;
+    resolvedParams: Record<string, any>;
     resources: Record<string, any>;
     strategyParams: Record<string, any>;
     modelId?: string | null;
@@ -94,8 +91,9 @@ export interface RuntimeJob {
     updatedAt: string;
 }
 
-export type RuntimeTaskStatus =
+export type RuntimeStepState =
     | 'pending'
+    | 'ready'
     | 'dispatching'
     | 'running'
     | 'retrying'
@@ -104,31 +102,34 @@ export type RuntimeTaskStatus =
     | 'cancelled'
     | 'skipped';
 
-export type RuntimeTaskType =
+export type RuntimeStepType =
     | 'train'
     | 'score'
     | 'select'
     | 'activate_samples'
-    | 'auto_label'
     | 'wait_annotation'
     | 'merge'
     | 'eval'
     | 'upload_artifact'
+    | 'export'
     | 'manual_review';
 
-export interface RuntimeJobTask {
+export type RuntimeStepDispatchKind = 'dispatchable' | 'orchestrator';
+
+export interface RuntimeStep {
     id: string;
-    jobId: string;
-    taskType: RuntimeTaskType;
-    status: RuntimeTaskStatus;
+    roundId: string;
+    stepType: RuntimeStepType;
+    dispatchKind: RuntimeStepDispatchKind;
+    state: RuntimeStepState;
     roundIndex: number;
-    taskIndex: number;
-    dependsOn: string[];
-    params: Record<string, any>;
+    stepIndex: number;
+    dependsOnStepIds: string[];
+    resolvedParams: Record<string, any>;
     metrics: Record<string, any>;
     artifacts: Record<string, any>;
-    sourceCommitId?: string | null;
-    resultCommitId?: string | null;
+    inputCommitId?: string | null;
+    outputCommitId?: string | null;
     assignedExecutorId?: string | null;
     attempt: number;
     maxAttempts: number;
@@ -142,14 +143,14 @@ export interface RuntimeJobTask {
 export interface LoopCreateRequest {
     name: string;
     branchId: string;
-    mode?: ALLoopMode;
+    mode?: LoopMode;
     queryStrategy: string;
     modelArch: string;
     globalConfig?: Record<string, any>;
     modelRequestConfig?: Record<string, any>;
     simulationConfig?: LoopSimulationConfig;
     experimentGroupId?: string;
-    status?: ALLoopStatus;
+    state?: LoopState;
     maxRounds?: number;
     queryBatchSize?: number;
     minSeedLabeled?: number;
@@ -161,7 +162,7 @@ export interface LoopCreateRequest {
 
 export interface LoopUpdateRequest {
     name?: string;
-    mode?: ALLoopMode;
+    mode?: LoopMode;
     queryStrategy?: string;
     modelArch?: string;
     globalConfig?: Record<string, any>;
@@ -177,38 +178,38 @@ export interface LoopUpdateRequest {
     autoRegisterModel?: boolean;
 }
 
-export interface RuntimeJobCreateRequest {
+export interface RuntimeRoundCreateRequest {
     projectId: string;
-    sourceCommitId?: string;
+    inputCommitId?: string;
     pluginId: string;
-    jobType?: string;
-    mode?: ALLoopMode;
+    roundType?: string;
+    mode?: LoopMode;
     queryStrategy: string;
-    params?: Record<string, any>;
+    resolvedParams?: Record<string, any>;
     resources?: Record<string, any>;
     strategyParams?: Record<string, any>;
 }
 
-export interface RuntimeJobCommandResponse {
+export interface RuntimeRoundCommandResponse {
     requestId: string;
-    jobId: string;
+    roundId: string;
     status: string;
 }
 
-export interface RuntimeTaskCommandResponse {
+export interface RuntimeStepCommandResponse {
     requestId: string;
-    taskId: string;
+    stepId: string;
     status: string;
 }
 
-export interface RuntimeTaskEvent {
+export interface RuntimeStepEvent {
     seq: number;
     ts: string;
     eventType: string;
     payload: Record<string, any>;
 }
 
-export interface RuntimeTaskMetricPoint {
+export interface RuntimeStepMetricPoint {
     step: number;
     epoch?: number | null;
     metricName: string;
@@ -216,7 +217,7 @@ export interface RuntimeTaskMetricPoint {
     ts: string;
 }
 
-export interface RuntimeTaskCandidate {
+export interface RuntimeStepCandidate {
     sampleId: string;
     rank: number;
     score: number;
@@ -224,20 +225,20 @@ export interface RuntimeTaskCandidate {
     predictionSnapshot: Record<string, any>;
 }
 
-export interface RuntimeTaskArtifact {
+export interface RuntimeStepArtifact {
     name: string;
     kind: string;
     uri: string;
     meta: Record<string, any>;
 }
 
-export interface RuntimeTaskArtifactsResponse {
-    taskId: string;
-    artifacts: RuntimeTaskArtifact[];
+export interface RuntimeStepArtifactsResponse {
+    stepId: string;
+    artifacts: RuntimeStepArtifact[];
 }
 
-export interface TaskArtifactDownload {
-    taskId: string;
+export interface StepArtifactDownload {
+    stepId: string;
     artifactName: string;
     downloadUrl: string;
     expiresInHours: number;
@@ -245,17 +246,14 @@ export interface TaskArtifactDownload {
 
 export interface LoopSummary {
     loopId: string;
-    status: ALLoopStatus;
+    state: LoopState;
     phase: LoopPhase;
-    jobsTotal: number;
-    jobsSucceeded: number;
-    tasksTotal: number;
-    tasksSucceeded: number;
+    roundsTotal: number;
+    roundsSucceeded: number;
+    stepsTotal: number;
+    stepsSucceeded: number;
     metricsLatest: Record<string, any>;
 }
-
-export type RuntimeRound = RuntimeJob;
-export type RuntimeStep = RuntimeJobTask;
 
 export interface SimulationExperimentCreateRequest {
     branchId: string;
@@ -265,7 +263,7 @@ export interface SimulationExperimentCreateRequest {
     globalConfig?: Record<string, any>;
     modelRequestConfig?: Record<string, any>;
     simulationConfig: LoopSimulationConfig;
-    status?: ALLoopStatus;
+    state?: LoopState;
 }
 
 export interface SimulationCurvePoint {
@@ -295,13 +293,13 @@ export interface SimulationComparison {
 
 export interface SimulationExperimentCreateResponse {
     experimentGroupId: string;
-    loops: ALLoop[];
+    loops: Loop[];
 }
 
 export interface LoopConfirmResponse {
     loopId: string;
     phase: LoopPhase;
-    status: ALLoopStatus;
+    state: LoopState;
 }
 
 export interface RoundPredictionCleanupResponse {
@@ -323,8 +321,8 @@ export interface ModelArtifact {
 export interface ProjectModel {
     id: string;
     projectId: string;
-    jobId?: string | null;
-    sourceCommitId?: string | null;
+    roundId?: string | null;
+    inputCommitId?: string | null;
     parentModelId?: string | null;
     pluginId: string;
     modelArch: string;
@@ -359,7 +357,7 @@ export interface RuntimePluginCatalogItem {
     pluginId: string;
     displayName: string;
     version: string;
-    supportedTaskTypes: string[];
+    supportedStepTypes: string[];
     supportedStrategies: string[];
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;
@@ -381,7 +379,7 @@ export interface RuntimeExecutorPluginCapability {
     pluginId: string;
     displayName: string;
     version: string;
-    supportedTaskTypes: string[];
+    supportedStepTypes: string[];
     supportedStrategies: string[];
     supportedAccelerators: ('cpu' | 'cuda' | 'mps')[];
     supportsAutoFallback: boolean;
@@ -402,7 +400,7 @@ export interface RuntimeExecutorRead {
     version: string;
     status: string;
     isOnline: boolean;
-    currentTaskId?: string | null;
+    currentStepId?: string | null;
     pluginIds: {
         plugins?: RuntimeExecutorPluginCapability[];
         ids?: string[];

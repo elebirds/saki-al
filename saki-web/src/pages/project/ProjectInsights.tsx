@@ -12,11 +12,11 @@ import {
 } from 'recharts';
 
 import {api} from '../../services/api';
-import {ALLoop, LoopSummary, ProjectModel, RuntimeJob} from '../../types';
+import {Loop, LoopSummary, ProjectModel, RuntimeRound} from '../../types';
 
 const {Text} = Typography;
 
-const LOOP_STATUS_COLOR: Record<string, string> = {
+const LOOP_STATE_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
@@ -25,21 +25,21 @@ const LOOP_STATUS_COLOR: Record<string, string> = {
     failed: 'error',
 };
 
-const JOB_STATUS_COLOR: Record<string, string> = {
-    job_pending: 'default',
-    job_running: 'processing',
-    job_succeeded: 'success',
-    job_partial_failed: 'warning',
-    job_failed: 'error',
-    job_cancelled: 'warning',
+const ROUND_STATE_COLOR: Record<string, string> = {
+    pending: 'default',
+    running: 'processing',
+    wait_user: 'warning',
+    completed: 'success',
+    failed: 'error',
+    cancelled: 'warning',
 };
 
 const ProjectInsights: React.FC = () => {
     const {projectId} = useParams<{ projectId: string }>();
     const [loading, setLoading] = useState(true);
-    const [loops, setLoops] = useState<ALLoop[]>([]);
+    const [loops, setLoops] = useState<Loop[]>([]);
     const [selectedLoopId, setSelectedLoopId] = useState<string>();
-    const [jobs, setJobs] = useState<RuntimeJob[]>([]);
+    const [rounds, setRounds] = useState<RuntimeRound[]>([]);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
     const [models, setModels] = useState<ProjectModel[]>([]);
 
@@ -49,12 +49,12 @@ const ProjectInsights: React.FC = () => {
     );
 
     const loadLoopDetail = useCallback(async (loopId: string) => {
-        const [jobRows, summaryRow] = await Promise.all([
-            api.getLoopJobs(loopId, 500),
+        const [roundRows, summaryRow] = await Promise.all([
+            api.getLoopRounds(loopId, 500),
             api.getLoopSummary(loopId),
         ]);
-        const sorted = [...jobRows].sort((a, b) => a.roundIndex - b.roundIndex);
-        setJobs(sorted);
+        const sorted = [...roundRows].sort((a, b) => a.roundIndex - b.roundIndex);
+        setRounds(sorted);
         setSummary(summaryRow);
     }, []);
 
@@ -75,7 +75,7 @@ const ProjectInsights: React.FC = () => {
             if (nextLoopId) {
                 await loadLoopDetail(nextLoopId);
             } else {
-                setJobs([]);
+                setRounds([]);
                 setSummary(null);
             }
         } finally {
@@ -88,13 +88,13 @@ const ProjectInsights: React.FC = () => {
     }, [loadAll]);
 
     const chartData = useMemo(() => {
-        return jobs.map((item) => ({
+        return rounds.map((item) => ({
             round: item.roundIndex,
             map50: Number(item.finalMetrics?.map50 || 0),
             recall: Number(item.finalMetrics?.recall || 0),
-            succeededTasks: Number(item.taskCounts?.succeeded || 0),
+            succeededSteps: Number(item.stepCounts?.succeeded || 0),
         }));
-    }, [jobs]);
+    }, [rounds]);
 
     const productionModels = useMemo(() => models.filter((item) => item.status === 'production'), [models]);
     const candidateModels = useMemo(() => models.filter((item) => item.status === 'candidate'), [models]);
@@ -128,12 +128,12 @@ const ProjectInsights: React.FC = () => {
                             await loadLoopDetail(value);
                         }}
                         options={loops.map((item) => ({
-                            label: `${item.name} (${item.status} / ${item.phase})`,
+                            label: `${item.name} (${item.state} / ${item.phase})`,
                             value: item.id,
                         }))}
                     />
                     {selectedLoop ? (
-                        <Tag color={LOOP_STATUS_COLOR[selectedLoop.status] || 'default'}>{selectedLoop.status}</Tag>
+                        <Tag color={LOOP_STATE_COLOR[selectedLoop.state] || 'default'}>{selectedLoop.state}</Tag>
                     ) : null}
                 </div>
             </Card>
@@ -141,31 +141,31 @@ const ProjectInsights: React.FC = () => {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Jobs 总数" value={summary?.jobsTotal ?? jobs.length}/>
+                        <Statistic title="Rounds 总数" value={summary?.roundsTotal ?? rounds.length}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Jobs 成功" value={summary?.jobsSucceeded ?? 0}/>
+                        <Statistic title="Rounds 成功" value={summary?.roundsSucceeded ?? 0}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Tasks 总数" value={summary?.tasksTotal ?? 0}/>
+                        <Statistic title="Steps 总数" value={summary?.stepsTotal ?? 0}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Tasks 成功" value={summary?.tasksSucceeded ?? 0}/>
+                        <Statistic title="Steps 成功" value={summary?.stepsSucceeded ?? 0}/>
                     </Card>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="min-w-0 lg:col-span-2">
-                    <Card className="!border-github-border !bg-github-panel" title="Job 指标走势">
+                    <Card className="!border-github-border !bg-github-panel" title="Round 指标走势">
                         {chartData.length === 0 ? (
-                            <Empty description="暂无 Job 指标"/>
+                            <Empty description="暂无 Round 指标"/>
                         ) : (
                             <div className="h-[340px]">
                                 <ResponsiveContainer width="100%" height="100%">
@@ -177,7 +177,7 @@ const ProjectInsights: React.FC = () => {
                                         <Tooltip/>
                                         <Line yAxisId="left" type="monotone" dataKey="map50" stroke="#1677ff" strokeWidth={2} dot={false}/>
                                         <Line yAxisId="left" type="monotone" dataKey="recall" stroke="#13c2c2" strokeWidth={2} dot={false}/>
-                                        <Line yAxisId="right" type="monotone" dataKey="succeededTasks" stroke="#52c41a" strokeWidth={2} dot={false}/>
+                                        <Line yAxisId="right" type="monotone" dataKey="succeededSteps" stroke="#52c41a" strokeWidth={2} dot={false}/>
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -196,24 +196,24 @@ const ProjectInsights: React.FC = () => {
                 </div>
             </div>
 
-            <Card className="!border-github-border !bg-github-panel" title="Job 明细">
+            <Card className="!border-github-border !bg-github-panel" title="Round 明细">
                 <Table
                     size="small"
                     rowKey={(item) => item.id}
-                    dataSource={jobs}
+                    dataSource={rounds}
                     pagination={{pageSize: 10}}
                     columns={[
                         {title: 'Round', dataIndex: 'roundIndex', width: 90},
                         {
                             title: '状态',
-                            dataIndex: 'summaryStatus',
+                            dataIndex: 'state',
                             width: 140,
-                            render: (value: string) => <Tag color={JOB_STATUS_COLOR[value] || 'default'}>{value}</Tag>,
+                            render: (value: string) => <Tag color={ROUND_STATE_COLOR[value] || 'default'}>{value}</Tag>,
                         },
                         {title: '策略', dataIndex: 'queryStrategy', width: 180},
-                        {title: 'mAP50', render: (_: unknown, row: RuntimeJob) => Number(row.finalMetrics?.map50 || 0).toFixed(4), width: 100},
-                        {title: 'recall', render: (_: unknown, row: RuntimeJob) => Number(row.finalMetrics?.recall || 0).toFixed(4), width: 100},
-                        {title: 'taskCounts', render: (_: unknown, row: RuntimeJob) => JSON.stringify(row.taskCounts || {})},
+                        {title: 'mAP50', render: (_: unknown, row: RuntimeRound) => Number(row.finalMetrics?.map50 || 0).toFixed(4), width: 100},
+                        {title: 'recall', render: (_: unknown, row: RuntimeRound) => Number(row.finalMetrics?.recall || 0).toFixed(4), width: 100},
+                        {title: 'stepCounts', render: (_: unknown, row: RuntimeRound) => JSON.stringify(row.stepCounts || {})},
                     ]}
                 />
             </Card>

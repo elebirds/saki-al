@@ -22,17 +22,17 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {
-    ALLoop,
+    Loop,
     LoopSummary,
     LoopUpdateRequest,
-    RuntimeJob,
+    RuntimeRound,
     RuntimePluginCatalogItem,
     RuntimeRequestConfigField,
 } from '../../../types';
 
 const {Title, Text} = Typography;
 
-const LOOP_STATUS_COLOR: Record<string, string> = {
+const LOOP_STATE_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
@@ -42,13 +42,13 @@ const LOOP_STATUS_COLOR: Record<string, string> = {
     failed: 'error',
 };
 
-const JOB_STATUS_COLOR: Record<string, string> = {
-    job_pending: 'default',
-    job_running: 'processing',
-    job_succeeded: 'success',
-    job_partial_failed: 'warning',
-    job_failed: 'error',
-    job_cancelled: 'warning',
+const ROUND_STATE_COLOR: Record<string, string> = {
+    pending: 'default',
+    running: 'processing',
+    wait_user: 'warning',
+    completed: 'success',
+    failed: 'error',
+    cancelled: 'warning',
 };
 
 type LoopConfigForm = {
@@ -83,9 +83,9 @@ const ProjectLoopDetail: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [controlLoading, setControlLoading] = useState(false);
     const [cleaningRound, setCleaningRound] = useState<number | null>(null);
-    const [loop, setLoop] = useState<ALLoop | null>(null);
+    const [loop, setLoop] = useState<Loop | null>(null);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
-    const [jobs, setJobs] = useState<RuntimeJob[]>([]);
+    const [rounds, setRounds] = useState<RuntimeRound[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [configForm] = Form.useForm<LoopConfigForm>();
 
@@ -134,15 +134,15 @@ const ProjectLoopDetail: React.FC = () => {
 
     const refreshLoopData = useCallback(async () => {
         if (!loopId) return;
-        const [loopRow, summaryRow, jobRows, pluginCatalog] = await Promise.all([
+        const [loopRow, summaryRow, roundRows, pluginCatalog] = await Promise.all([
             api.getLoopById(loopId),
             api.getLoopSummary(loopId),
-            api.getLoopJobs(loopId, 100),
+            api.getLoopRounds(loopId, 100),
             api.getRuntimePlugins(),
         ]);
         setLoop(loopRow);
         setSummary(summaryRow);
-        setJobs(jobRows);
+        setRounds(roundRows);
         setPlugins(pluginCatalog.items || []);
 
         const plugin = pluginCatalog.items.find((item) => item.pluginId === loopRow.modelArch);
@@ -297,7 +297,7 @@ const ProjectLoopDetail: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops`)}>返回概览</Button>
                             <Title level={4} className="!mb-0">{loop.name}</Title>
-                            <Tag color={LOOP_STATUS_COLOR[loop.status] || 'default'}>{loop.status}</Tag>
+                            <Tag color={LOOP_STATE_COLOR[loop.state] || 'default'}>{loop.state}</Tag>
                             <Tag>{loop.phase}</Tag>
                         </div>
                         <Text type="secondary">Loop ID: {loop.id}</Text>
@@ -308,21 +308,21 @@ const ProjectLoopDetail: React.FC = () => {
                             type="primary"
                             loading={controlLoading}
                             onClick={() => handleLoopControl('start')}
-                            disabled={loop.status === 'running' || loop.status === 'stopping'}
+                            disabled={loop.state === 'running' || loop.state === 'stopping'}
                         >
                             Start
                         </Button>
                         <Button
                             loading={controlLoading}
                             onClick={() => handleLoopControl('pause')}
-                            disabled={loop.status !== 'running'}
+                            disabled={loop.state !== 'running'}
                         >
                             Pause
                         </Button>
                         <Button
                             loading={controlLoading}
                             onClick={() => handleLoopControl('resume')}
-                            disabled={loop.status !== 'paused' && loop.status !== 'draft'}
+                            disabled={loop.state !== 'paused' && loop.state !== 'draft'}
                         >
                             Resume
                         </Button>
@@ -330,7 +330,7 @@ const ProjectLoopDetail: React.FC = () => {
                             <Button
                                 loading={controlLoading}
                                 onClick={() => handleLoopControl('confirm')}
-                                disabled={loop.phase !== 'al_wait_annotation'}
+                                disabled={loop.phase !== 'al_wait_user'}
                             >
                                 Confirm Round
                             </Button>
@@ -339,7 +339,7 @@ const ProjectLoopDetail: React.FC = () => {
                             danger
                             loading={controlLoading}
                             onClick={() => handleLoopControl('stop')}
-                            disabled={loop.status === 'stopped' || loop.status === 'stopping' || loop.status === 'completed'}
+                            disabled={loop.state === 'stopped' || loop.state === 'stopping' || loop.state === 'completed'}
                         >
                             Stop
                         </Button>
@@ -350,10 +350,10 @@ const ProjectLoopDetail: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel" title="Loop 摘要">
                 <Descriptions size="small" column={4}>
                     <Descriptions.Item label="模式">{loop.mode}</Descriptions.Item>
-                    <Descriptions.Item label="Rounds 总数">{summary?.jobsTotal ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="Rounds 成功">{summary?.jobsSucceeded ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="Steps 总数">{summary?.tasksTotal ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="Steps 成功">{summary?.tasksSucceeded ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Rounds 总数">{summary?.roundsTotal ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Rounds 成功">{summary?.roundsSucceeded ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Steps 总数">{summary?.stepsTotal ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Steps 成功">{summary?.stepsSucceeded ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="最新 map50">{Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}</Descriptions.Item>
                 </Descriptions>
             </Card>
@@ -508,33 +508,33 @@ const ProjectLoopDetail: React.FC = () => {
                 </Form>
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel" title="当前 Loop 的 Jobs">
+            <Card className="!border-github-border !bg-github-panel" title="当前 Loop 的 Rounds">
                 <Table
                     size="small"
                     rowKey={(item) => item.id}
-                    dataSource={jobs}
+                    dataSource={rounds}
                     pagination={{pageSize: 8}}
                     columns={[
                         {title: 'Round', dataIndex: 'roundIndex', width: 90},
                         {
                             title: '状态',
-                            dataIndex: 'summaryStatus',
+                            dataIndex: 'state',
                             width: 140,
-                            render: (value: string) => <Tag color={JOB_STATUS_COLOR[value] || 'default'}>{value}</Tag>,
+                            render: (value: string) => <Tag color={ROUND_STATE_COLOR[value] || 'default'}>{value}</Tag>,
                         },
                         {title: '插件', dataIndex: 'pluginId'},
                         {title: '策略', dataIndex: 'queryStrategy'},
                         {
-                            title: 'Tasks',
+                            title: 'Steps',
                             width: 180,
-                            render: (_v: unknown, row: RuntimeJob) => JSON.stringify(row.taskCounts || {}),
+                            render: (_v: unknown, row: RuntimeRound) => JSON.stringify(row.stepCounts || {}),
                         },
                         {
                             title: '操作',
                             width: 280,
-                            render: (_v: unknown, row: RuntimeJob) => (
+                            render: (_v: unknown, row: RuntimeRound) => (
                                 <div className="flex items-center gap-2">
-                                    <Button size="small" onClick={() => navigate(`/projects/${projectId}/loops/${loopId}/jobs/${row.id}`)}>
+                                    <Button size="small" onClick={() => navigate(`/projects/${projectId}/loops/${loopId}/rounds/${row.id}`)}>
                                         查看详情
                                     </Button>
                                     <Popconfirm

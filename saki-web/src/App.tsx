@@ -14,7 +14,7 @@ import ProjectSettings from './pages/project/ProjectSettings';
 import ProjectWorkspace from './pages/project/ProjectWorkspace';
 import ProjectLoopOverview from './pages/project/loops/ProjectLoopOverview';
 import ProjectLoopDetail from './pages/project/loops/ProjectLoopDetail';
-import ProjectLoopJobDetail from './pages/project/loops/ProjectLoopJobDetail';
+import ProjectLoopRoundDetail from './pages/project/loops/ProjectLoopRoundDetail';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
 import UserProfile from './pages/user/UserProfile';
@@ -68,7 +68,7 @@ const App: React.FC = () => {
                                     <Route path="samples" element={<ProjectSamplesAnnotations/>}/>
                                     <Route path="loops" element={<ProjectLoopOverview/>}/>
                                     <Route path="loops/:loopId" element={<ProjectLoopDetail/>}/>
-                                    <Route path="loops/:loopId/jobs/:jobId" element={<ProjectLoopJobDetail/>}/>
+                                    <Route path="loops/:loopId/rounds/:roundId" element={<ProjectLoopRoundDetail/>}/>
                                     <Route path="insights" element={<ProjectInsights/>}/>
                                     <Route path="settings" element={<ProjectSettings/>}/>
                                     <Route path="workspace" element={<ProjectWorkspace/>}/>

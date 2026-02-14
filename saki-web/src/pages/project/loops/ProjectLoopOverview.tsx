@@ -21,7 +21,7 @@ import {Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recha
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {
-    ALLoop,
+    Loop,
     LoopCreateRequest,
     LoopSummary,
     ProjectBranch,
@@ -32,7 +32,7 @@ import {
 
 const {Title, Text} = Typography;
 
-const LOOP_STATUS_COLOR: Record<string, string> = {
+const LOOP_STATE_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
@@ -75,7 +75,7 @@ const ProjectLoopOverview: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [createOpen, setCreateOpen] = useState(false);
-    const [loops, setLoops] = useState<ALLoop[]>([]);
+    const [loops, setLoops] = useState<Loop[]>([]);
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [summaryMap, setSummaryMap] = useState<Record<string, LoopSummary>>({});
@@ -194,7 +194,7 @@ const ProjectLoopOverview: React.FC = () => {
             stopPatienceRounds: 2,
             stopMinGain: 0.002,
             autoRegisterModel: true,
-            status: 'draft',
+            state: 'draft',
             simulationConfig: {
                 oracleCommitId: undefined,
                 seedRatio: 0.05,
@@ -252,7 +252,7 @@ const ProjectLoopOverview: React.FC = () => {
                         randomBaselineEnabled: Boolean(values.simulationConfig?.randomBaselineEnabled ?? true),
                         seeds: seeds.length > 0 ? seeds : [0, 1, 2, 3, 4],
                     },
-                    status: values.status || 'draft',
+                    state: values.state || 'draft',
                 };
                 const created = await api.createSimulationExperiment(projectId, simulationPayload);
                 message.success(`Simulation 实验创建成功，共 ${created.loops.length} 条 Loop`);
@@ -371,7 +371,7 @@ const ProjectLoopOverview: React.FC = () => {
                                     <div className="flex w-full flex-col gap-2.5">
                                         <div className="flex w-full items-center justify-between gap-2">
                                             <Text strong>{loop.name}</Text>
-                                            <Tag color={LOOP_STATUS_COLOR[loop.status] || 'default'}>{loop.status}</Tag>
+                                            <Tag color={LOOP_STATE_COLOR[loop.state] || 'default'}>{loop.state}</Tag>
                                         </div>
                                         <Text type="secondary">分支：{branchName}</Text>
                                         <Text type="secondary">模式：{loop.mode}</Text>
@@ -380,16 +380,16 @@ const ProjectLoopOverview: React.FC = () => {
                                         <Text type="secondary">策略：{loop.queryStrategy}</Text>
                                         <div className="grid grid-cols-2 gap-2 text-xs text-github-muted">
                                             <div>
-                                                <Text strong>{summary?.jobsTotal ?? 0}</Text> Jobs
+                                                <Text strong>{summary?.roundsTotal ?? 0}</Text> Rounds
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.jobsSucceeded ?? 0}</Text> Jobs 成功
+                                                <Text strong>{summary?.roundsSucceeded ?? 0}</Text> Rounds 成功
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.tasksTotal ?? 0}</Text> Tasks
+                                                <Text strong>{summary?.stepsTotal ?? 0}</Text> Steps
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.tasksSucceeded ?? 0}</Text> Tasks 成功
+                                                <Text strong>{summary?.stepsSucceeded ?? 0}</Text> Steps 成功
                                             </div>
                                         </div>
                                     </div>

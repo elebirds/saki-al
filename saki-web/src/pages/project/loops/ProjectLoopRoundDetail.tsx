@@ -29,27 +29,28 @@ import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {useAuthStore} from '../../../store/authStore';
 import {
-    RuntimeJob,
-    RuntimeJobTask,
-    RuntimeTaskArtifact,
-    RuntimeTaskCandidate,
-    RuntimeTaskEvent,
-    RuntimeTaskMetricPoint,
+    RuntimeRound,
+    RuntimeStep,
+    RuntimeStepArtifact,
+    RuntimeStepCandidate,
+    RuntimeStepEvent,
+    RuntimeStepMetricPoint,
 } from '../../../types';
 
 const {Text, Title} = Typography;
 
-const JOB_STATUS_COLOR: Record<string, string> = {
-    job_pending: 'default',
-    job_running: 'processing',
-    job_succeeded: 'success',
-    job_partial_failed: 'warning',
-    job_failed: 'error',
-    job_cancelled: 'warning',
+const ROUND_STATE_COLOR: Record<string, string> = {
+    pending: 'default',
+    running: 'processing',
+    wait_user: 'warning',
+    completed: 'success',
+    failed: 'error',
+    cancelled: 'warning',
 };
 
-const TASK_STATUS_COLOR: Record<string, string> = {
+const STEP_STATE_COLOR: Record<string, string> = {
     pending: 'default',
+    ready: 'processing',
     dispatching: 'processing',
     running: 'processing',
     retrying: 'warning',
@@ -59,7 +60,7 @@ const TASK_STATUS_COLOR: Record<string, string> = {
     skipped: 'default',
 };
 
-const TERMINAL_TASK_STATUS = new Set(['succeeded', 'failed', 'cancelled', 'skipped']);
+const TERMINAL_STEP_STATE = new Set(['succeeded', 'failed', 'cancelled', 'skipped']);
 
 const formatDateTime = (value?: string | null) => {
     if (!value) return '-';
@@ -70,10 +71,10 @@ const formatDateTime = (value?: string | null) => {
     }
 };
 
-const buildWsUrl = (taskId: string, afterSeq: number, token: string): string => {
+const buildWsUrl = (stepId: string, afterSeq: number, token: string): string => {
     const apiBaseUrlRaw = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
     const apiBaseUrl = apiBaseUrlRaw.endsWith('/') ? apiBaseUrlRaw.slice(0, -1) : apiBaseUrlRaw;
-    const suffix = `/steps/${taskId}/events/ws?after_seq=${afterSeq}&token=${encodeURIComponent(token)}`;
+    const suffix = `/steps/${stepId}/events/ws?after_seq=${afterSeq}&token=${encodeURIComponent(token)}`;
     if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
         return `${apiBaseUrl.replace(/^http/, 'ws')}${suffix}`;
     }
@@ -82,7 +83,7 @@ const buildWsUrl = (taskId: string, afterSeq: number, token: string): string => 
     return `${protocol}//${window.location.host}${path}${suffix}`;
 };
 
-type RawRuntimeTaskEvent = {
+type RawRuntimeStepEvent = {
     seq?: unknown;
     ts?: unknown;
     eventType?: unknown;
@@ -90,7 +91,7 @@ type RawRuntimeTaskEvent = {
     payload?: unknown;
 };
 
-const normalizeWsEvent = (raw: RawRuntimeTaskEvent): RuntimeTaskEvent | null => {
+const normalizeWsEvent = (raw: RawRuntimeStepEvent): RuntimeStepEvent | null => {
     const seq = Number(raw.seq);
     if (!Number.isFinite(seq)) return null;
     const eventTypeRaw = raw.eventType ?? raw.event_type;
@@ -100,7 +101,7 @@ const normalizeWsEvent = (raw: RawRuntimeTaskEvent): RuntimeTaskEvent | null => 
     return {seq, ts, eventType, payload};
 };
 
-const eventToText = (event: RuntimeTaskEvent): string => {
+const eventToText = (event: RuntimeStepEvent): string => {
     if (event.eventType === 'log') {
         return `[${event.payload.level || 'INFO'}] ${event.payload.message || ''}`;
     }
@@ -119,7 +120,7 @@ const eventToText = (event: RuntimeTaskEvent): string => {
     return `${event.eventType} ${JSON.stringify(event.payload || {})}`;
 };
 
-const isImageArtifact = (artifact: RuntimeTaskArtifact): boolean => {
+const isImageArtifact = (artifact: RuntimeStepArtifact): boolean => {
     const name = (artifact.name || '').toLowerCase();
     const kind = (artifact.kind || '').toLowerCase();
     return (
@@ -132,17 +133,17 @@ const isImageArtifact = (artifact: RuntimeTaskArtifact): boolean => {
     );
 };
 
-const pickDefaultTask = (tasks: RuntimeJobTask[]): RuntimeJobTask | null => {
-    if (tasks.length === 0) return null;
+const pickDefaultStep = (steps: RuntimeStep[]): RuntimeStep | null => {
+    if (steps.length === 0) return null;
     return (
-        tasks.find((item) => ['running', 'dispatching', 'retrying'].includes(item.status))
-        || tasks.find((item) => !TERMINAL_TASK_STATUS.has(item.status))
-        || tasks[tasks.length - 1]
+        steps.find((item) => ['running', 'dispatching', 'retrying', 'ready'].includes(item.state))
+        || steps.find((item) => !TERMINAL_STEP_STATE.has(item.state))
+        || steps[steps.length - 1]
     );
 };
 
-const ProjectLoopJobDetail: React.FC = () => {
-    const {projectId, loopId, jobId} = useParams<{ projectId: string; loopId: string; jobId: string }>();
+const ProjectLoopRoundDetail: React.FC = () => {
+    const {projectId, loopId, roundId} = useParams<{ projectId: string; loopId: string; roundId: string }>();
     const navigate = useNavigate();
     const token = useAuthStore((state) => state.token);
     const {can: canProject} = useResourcePermission('project', projectId);
@@ -150,14 +151,14 @@ const ProjectLoopJobDetail: React.FC = () => {
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [job, setJob] = useState<RuntimeJob | null>(null);
-    const [tasks, setTasks] = useState<RuntimeJobTask[]>([]);
-    const [selectedTaskId, setSelectedTaskId] = useState<string>('');
-    const [selectedTask, setSelectedTask] = useState<RuntimeJobTask | null>(null);
-    const [metricPoints, setMetricPoints] = useState<RuntimeTaskMetricPoint[]>([]);
-    const [candidates, setCandidates] = useState<RuntimeTaskCandidate[]>([]);
-    const [events, setEvents] = useState<RuntimeTaskEvent[]>([]);
-    const [artifacts, setArtifacts] = useState<RuntimeTaskArtifact[]>([]);
+    const [round, setRound] = useState<RuntimeRound | null>(null);
+    const [steps, setSteps] = useState<RuntimeStep[]>([]);
+    const [selectedStepId, setSelectedStepId] = useState<string>('');
+    const [selectedStep, setSelectedStep] = useState<RuntimeStep | null>(null);
+    const [metricPoints, setMetricPoints] = useState<RuntimeStepMetricPoint[]>([]);
+    const [candidates, setCandidates] = useState<RuntimeStepCandidate[]>([]);
+    const [events, setEvents] = useState<RuntimeStepEvent[]>([]);
+    const [artifacts, setArtifacts] = useState<RuntimeStepArtifact[]>([]);
     const [wsConnected, setWsConnected] = useState(false);
     const [artifactUrls, setArtifactUrls] = useState<Record<string, string>>({});
 
@@ -182,8 +183,8 @@ const ProjectLoopJobDetail: React.FC = () => {
 
     const imageArtifacts = useMemo(() => artifacts.filter((item) => isImageArtifact(item)), [artifacts]);
 
-    const ensureArtifactUrls = useCallback(async (taskId: string, items: RuntimeTaskArtifact[]) => {
-        if (!taskId || items.length === 0) return;
+    const ensureArtifactUrls = useCallback(async (stepId: string, items: RuntimeStepArtifact[]) => {
+        if (!stepId || items.length === 0) return;
         const missing = items.filter((item) => !artifactUrls[item.name]);
         if (missing.length === 0) return;
 
@@ -196,7 +197,7 @@ const ProjectLoopJobDetail: React.FC = () => {
             }
             if (!uri.startsWith('s3://')) continue;
             try {
-                const row = await api.getTaskArtifactDownloadUrl(taskId, artifact.name, 2);
+                const row = await api.getStepArtifactDownloadUrl(stepId, artifact.name, 2);
                 updates[artifact.name] = row.downloadUrl;
             } catch {
                 // ignore unavailable artifacts
@@ -208,59 +209,59 @@ const ProjectLoopJobDetail: React.FC = () => {
         }
     }, [artifactUrls]);
 
-    const loadTaskDashboard = useCallback(async (taskId: string) => {
-        const [taskRow, points, topk, artifactsResp, initialEvents] = await Promise.all([
-            api.getTask(taskId),
-            api.getTaskMetricSeries(taskId, 5000),
-            api.getTaskCandidates(taskId, 200),
-            api.getTaskArtifacts(taskId),
-            api.getTaskEvents(taskId, 0, 5000),
+    const loadStepDashboard = useCallback(async (stepId: string) => {
+        const [stepRow, points, topk, artifactsResp, initialEvents] = await Promise.all([
+            api.getStep(stepId),
+            api.getStepMetricSeries(stepId, 5000),
+            api.getStepCandidates(stepId, 200),
+            api.getStepArtifacts(stepId),
+            api.getStepEvents(stepId, 0, 5000),
         ]);
-        setSelectedTask(taskRow);
+        setSelectedStep(stepRow);
         setMetricPoints(points);
         setCandidates(topk);
         setArtifacts(artifactsResp.artifacts || []);
         setEvents(initialEvents);
         eventCursorRef.current = initialEvents.reduce((max, item) => Math.max(max, item.seq), 0);
-        await ensureArtifactUrls(taskId, artifactsResp.artifacts || []);
+        await ensureArtifactUrls(stepId, artifactsResp.artifacts || []);
     }, [ensureArtifactUrls]);
 
-    const loadJobDashboard = useCallback(async () => {
-        if (!jobId || !canManageLoops) return;
-        const [jobRow, taskRows] = await Promise.all([
-            api.getJob(jobId),
-            api.getJobTasks(jobId, 2000),
+    const loadRoundDashboard = useCallback(async () => {
+        if (!roundId || !canManageLoops) return;
+        const [roundRow, stepRows] = await Promise.all([
+            api.getRound(roundId),
+            api.getRoundSteps(roundId, 2000),
         ]);
-        setJob(jobRow);
-        setTasks(taskRows);
+        setRound(roundRow);
+        setSteps(stepRows);
 
-        const chosenTask = taskRows.find((item) => item.id === selectedTaskId) || pickDefaultTask(taskRows);
-        if (chosenTask) {
-            setSelectedTaskId(chosenTask.id);
-            await loadTaskDashboard(chosenTask.id);
+        const chosenStep = stepRows.find((item) => item.id === selectedStepId) || pickDefaultStep(stepRows);
+        if (chosenStep) {
+            setSelectedStepId(chosenStep.id);
+            await loadStepDashboard(chosenStep.id);
         } else {
-            setSelectedTaskId('');
-            setSelectedTask(null);
+            setSelectedStepId('');
+            setSelectedStep(null);
             setMetricPoints([]);
             setCandidates([]);
             setArtifacts([]);
             setEvents([]);
         }
-    }, [jobId, selectedTaskId, loadTaskDashboard, canManageLoops]);
+    }, [roundId, selectedStepId, loadStepDashboard, canManageLoops]);
 
     const loadData = useCallback(async (silent: boolean = false) => {
-        if (!jobId || !canManageLoops) return;
+        if (!roundId || !canManageLoops) return;
         if (!silent) setLoading(true);
         if (silent) setRefreshing(true);
         try {
-            await loadJobDashboard();
+            await loadRoundDashboard();
         } catch (error: any) {
-            message.error(error?.message || '加载 Job 详情失败');
+            message.error(error?.message || '加载 Round 详情失败');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [jobId, loadJobDashboard, canManageLoops]);
+    }, [roundId, loadRoundDashboard, canManageLoops]);
 
     useEffect(() => {
         if (!canManageLoops) return;
@@ -268,24 +269,24 @@ const ProjectLoopJobDetail: React.FC = () => {
     }, [canManageLoops, loadData]);
 
     useEffect(() => {
-        if (!canManageLoops || !selectedTaskId) return;
+        if (!canManageLoops || !selectedStepId) return;
         const timer = window.setInterval(async () => {
             try {
-                const [latestJob, latestTasks, newEvents, latestTask] = await Promise.all([
-                    api.getJob(jobId as string),
-                    api.getJobTasks(jobId as string, 2000),
-                    api.getTaskEvents(selectedTaskId, eventCursorRef.current, 5000),
-                    api.getTask(selectedTaskId),
+                const [latestRound, latestSteps, newEvents, latestStep] = await Promise.all([
+                    api.getRound(roundId as string),
+                    api.getRoundSteps(roundId as string, 2000),
+                    api.getStepEvents(selectedStepId, eventCursorRef.current, 5000),
+                    api.getStep(selectedStepId),
                 ]);
 
-                setJob(latestJob);
-                setTasks(latestTasks);
-                setSelectedTask(latestTask);
+                setRound(latestRound);
+                setSteps(latestSteps);
+                setSelectedStep(latestStep);
 
                 if (newEvents.length > 0) {
                     setEvents((prev) => {
                         const merged = [...prev, ...newEvents];
-                        const dedup = new Map<number, RuntimeTaskEvent>();
+                        const dedup = new Map<number, RuntimeStepEvent>();
                         merged.forEach((item) => dedup.set(item.seq, item));
                         return Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
                     });
@@ -293,24 +294,24 @@ const ProjectLoopJobDetail: React.FC = () => {
                 }
 
                 const shouldRefreshMetrics =
-                    latestTask.status === 'running' ||
-                    latestTask.status === 'dispatching' ||
+                    latestStep.state === 'running' ||
+                    latestStep.state === 'dispatching' ||
                     newEvents.some((item) => item.eventType === 'metric');
                 const shouldRefreshArtifacts =
                     newEvents.some((item) => item.eventType === 'artifact') ||
-                    TERMINAL_TASK_STATUS.has(latestTask.status);
+                    TERMINAL_STEP_STATE.has(latestStep.state);
 
                 if (shouldRefreshMetrics) {
-                    const points = await api.getTaskMetricSeries(selectedTaskId, 5000);
+                    const points = await api.getStepMetricSeries(selectedStepId, 5000);
                     setMetricPoints(points);
                 }
                 if (shouldRefreshArtifacts) {
-                    const artifactsResp = await api.getTaskArtifacts(selectedTaskId);
+                    const artifactsResp = await api.getStepArtifacts(selectedStepId);
                     setArtifacts(artifactsResp.artifacts || []);
-                    await ensureArtifactUrls(selectedTaskId, artifactsResp.artifacts || []);
+                    await ensureArtifactUrls(selectedStepId, artifactsResp.artifacts || []);
                 }
-                if (TERMINAL_TASK_STATUS.has(latestTask.status)) {
-                    const topk = await api.getTaskCandidates(selectedTaskId, 200);
+                if (TERMINAL_STEP_STATE.has(latestStep.state)) {
+                    const topk = await api.getStepCandidates(selectedStepId, 200);
                     setCandidates(topk);
                 }
             } catch {
@@ -318,22 +319,22 @@ const ProjectLoopJobDetail: React.FC = () => {
             }
         }, 3000);
         return () => window.clearInterval(timer);
-    }, [canManageLoops, selectedTaskId, jobId, ensureArtifactUrls]);
+    }, [canManageLoops, selectedStepId, roundId, ensureArtifactUrls]);
 
     useEffect(() => {
-        if (!canManageLoops || !selectedTaskId || !token) return;
-        const ws = new WebSocket(buildWsUrl(selectedTaskId, eventCursorRef.current, token));
+        if (!canManageLoops || !selectedStepId || !token) return;
+        const ws = new WebSocket(buildWsUrl(selectedStepId, eventCursorRef.current, token));
         ws.onopen = () => setWsConnected(true);
         ws.onclose = () => setWsConnected(false);
         ws.onerror = () => setWsConnected(false);
         ws.onmessage = (event: MessageEvent<string>) => {
             try {
-                const raw = JSON.parse(event.data || '{}') as RawRuntimeTaskEvent;
+                const raw = JSON.parse(event.data || '{}') as RawRuntimeStepEvent;
                 const payload = normalizeWsEvent(raw);
                 if (!payload) return;
                 setEvents((prev) => {
                     const merged = [...prev, payload];
-                    const dedup = new Map<number, RuntimeTaskEvent>();
+                    const dedup = new Map<number, RuntimeStepEvent>();
                     merged.forEach((item) => dedup.set(item.seq, item));
                     return Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
                 });
@@ -346,7 +347,7 @@ const ProjectLoopJobDetail: React.FC = () => {
             ws.close();
             setWsConnected(false);
         };
-    }, [canManageLoops, selectedTaskId, token]);
+    }, [canManageLoops, selectedStepId, token]);
 
     if (loading) {
         return (
@@ -364,7 +365,7 @@ const ProjectLoopJobDetail: React.FC = () => {
         );
     }
 
-    if (!job) {
+    if (!round) {
         return (
             <Card className="!border-github-border !bg-github-panel">
                 <Empty description="Round 不存在或无权限访问"/>
@@ -379,10 +380,10 @@ const ProjectLoopJobDetail: React.FC = () => {
                     <div className="flex min-w-0 flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回 Loop 详情</Button>
-                            <Title level={4} className="!mb-0">Round #{job.roundIndex}</Title>
-                            <Tag color={JOB_STATUS_COLOR[job.summaryStatus] || 'default'}>{job.summaryStatus}</Tag>
+                            <Title level={4} className="!mb-0">Round #{round.roundIndex}</Title>
+                            <Tag color={ROUND_STATE_COLOR[round.state] || 'default'}>{round.state}</Tag>
                         </div>
-                        <Text type="secondary">{job.id}</Text>
+                        <Text type="secondary">{round.id}</Text>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'}</Tag>
@@ -393,16 +394,16 @@ const ProjectLoopJobDetail: React.FC = () => {
 
             <Card className="!border-github-border !bg-github-panel" title="Round 概览">
                 <Descriptions size="small" column={4}>
-                    <Descriptions.Item label="插件">{job.pluginId}</Descriptions.Item>
-                    <Descriptions.Item label="采样策略">{job.queryStrategy}</Descriptions.Item>
-                    <Descriptions.Item label="模式">{job.mode}</Descriptions.Item>
-                    <Descriptions.Item label="开始时间">{formatDateTime(job.startedAt)}</Descriptions.Item>
-                    <Descriptions.Item label="结束时间">{formatDateTime(job.endedAt)}</Descriptions.Item>
-                    <Descriptions.Item label="Step 数量">{tasks.length}</Descriptions.Item>
-                    <Descriptions.Item label="Step 聚合">{JSON.stringify(job.taskCounts || {})}</Descriptions.Item>
+                    <Descriptions.Item label="插件">{round.pluginId}</Descriptions.Item>
+                    <Descriptions.Item label="采样策略">{round.queryStrategy}</Descriptions.Item>
+                    <Descriptions.Item label="模式">{round.mode}</Descriptions.Item>
+                    <Descriptions.Item label="开始时间">{formatDateTime(round.startedAt)}</Descriptions.Item>
+                    <Descriptions.Item label="结束时间">{formatDateTime(round.endedAt)}</Descriptions.Item>
+                    <Descriptions.Item label="Step 数量">{steps.length}</Descriptions.Item>
+                    <Descriptions.Item label="Step 聚合">{JSON.stringify(round.stepCounts || {})}</Descriptions.Item>
                 </Descriptions>
-                {job.lastError ? (
-                    <Alert className="!mt-3" type="error" showIcon message={job.lastError}/>
+                {round.lastError ? (
+                    <Alert className="!mt-3" type="error" showIcon message={round.lastError}/>
                 ) : null}
             </Card>
 
@@ -411,22 +412,22 @@ const ProjectLoopJobDetail: React.FC = () => {
                     size="small"
                     rowKey={(item) => item.id}
                     pagination={false}
-                    dataSource={tasks}
-                    rowClassName={(row) => (row.id === selectedTaskId ? 'bg-github-surface' : '')}
+                    dataSource={steps}
+                    rowClassName={(row) => (row.id === selectedStepId ? 'bg-github-surface' : '')}
                     onRow={(row) => ({
                         onClick: () => {
-                            setSelectedTaskId(row.id);
-                            void loadTaskDashboard(row.id);
+                            setSelectedStepId(row.id);
+                            void loadStepDashboard(row.id);
                         },
                     })}
                     columns={[
-                        {title: '#', dataIndex: 'taskIndex', width: 60},
-                        {title: 'Type', dataIndex: 'taskType', width: 180},
+                        {title: '#', dataIndex: 'stepIndex', width: 60},
+                        {title: 'Type', dataIndex: 'stepType', width: 180},
                         {
                             title: 'Status',
-                            dataIndex: 'status',
+                            dataIndex: 'state',
                             width: 140,
-                            render: (value: string) => <Tag color={TASK_STATUS_COLOR[value] || 'default'}>{value}</Tag>,
+                            render: (value: string) => <Tag color={STEP_STATE_COLOR[value] || 'default'}>{value}</Tag>,
                         },
                         {title: 'Executor', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
                         {title: 'Attempt', dataIndex: 'attempt', width: 90},
@@ -435,20 +436,20 @@ const ProjectLoopJobDetail: React.FC = () => {
                 />
             </Card>
 
-            {!selectedTask ? (
+            {!selectedStep ? (
                 <Card className="!border-github-border !bg-github-panel">
                     <Empty description="当前 Round 没有可查看的 Step"/>
                 </Card>
             ) : (
                 <>
-                    <Card className="!border-github-border !bg-github-panel" title={`当前 Step: ${selectedTask.taskType} (#${selectedTask.taskIndex})`}>
+                    <Card className="!border-github-border !bg-github-panel" title={`当前 Step: ${selectedStep.stepType} (#${selectedStep.stepIndex})`}>
                         <Descriptions size="small" column={4}>
                             <Descriptions.Item label="状态">
-                                <Tag color={TASK_STATUS_COLOR[selectedTask.status] || 'default'}>{selectedTask.status}</Tag>
+                                <Tag color={STEP_STATE_COLOR[selectedStep.state] || 'default'}>{selectedStep.state}</Tag>
                             </Descriptions.Item>
-                            <Descriptions.Item label="执行器">{selectedTask.assignedExecutorId || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="开始时间">{formatDateTime(selectedTask.startedAt)}</Descriptions.Item>
-                            <Descriptions.Item label="结束时间">{formatDateTime(selectedTask.endedAt)}</Descriptions.Item>
+                            <Descriptions.Item label="执行器">{selectedStep.assignedExecutorId || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="开始时间">{formatDateTime(selectedStep.startedAt)}</Descriptions.Item>
+                            <Descriptions.Item label="结束时间">{formatDateTime(selectedStep.endedAt)}</Descriptions.Item>
                         </Descriptions>
                     </Card>
 
@@ -529,7 +530,7 @@ const ProjectLoopJobDetail: React.FC = () => {
                         )}
                     </Card>
 
-                    <Card className="!border-github-border !bg-github-panel" title="候选样本（Task 级）">
+                    <Card className="!border-github-border !bg-github-panel" title="候选样本（Step 级）">
                         <Table
                             size="small"
                             pagination={{pageSize: 10, showSizeChanger: false}}
@@ -562,7 +563,7 @@ const ProjectLoopJobDetail: React.FC = () => {
                         />
                     </Card>
 
-                    <Card className="!border-github-border !bg-github-panel" title="Task 制品">
+                    <Card className="!border-github-border !bg-github-panel" title="Step 制品">
                         {artifacts.length === 0 ? (
                             <Empty description="暂无制品"/>
                         ) : (
@@ -577,7 +578,7 @@ const ProjectLoopJobDetail: React.FC = () => {
                                     {
                                         title: '大小',
                                         width: 120,
-                                        render: (_value: unknown, row: RuntimeTaskArtifact) => {
+                                        render: (_value: unknown, row: RuntimeStepArtifact) => {
                                             const size = Number(row.meta?.size || 0);
                                             return size > 0 ? `${(size / 1024 / 1024).toFixed(2)} MB` : '-';
                                         },
@@ -585,7 +586,7 @@ const ProjectLoopJobDetail: React.FC = () => {
                                     {
                                         title: '操作',
                                         width: 220,
-                                        render: (_value: unknown, row: RuntimeTaskArtifact) => {
+                                        render: (_value: unknown, row: RuntimeStepArtifact) => {
                                             const url = artifactUrls[row.name];
                                             return url ? (
                                                 <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
@@ -606,4 +607,4 @@ const ProjectLoopJobDetail: React.FC = () => {
     );
 };
 
-export default ProjectLoopJobDetail;
+export default ProjectLoopRoundDetail;

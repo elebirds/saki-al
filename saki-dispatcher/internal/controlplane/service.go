@@ -1246,9 +1246,6 @@ func (s *Service) runActivateSamplesTx(
 	}
 	commitID := strings.TrimSpace(response.GetCommitId())
 	if response.GetCreated() && commitID != "" {
-		if _, err := s.domainClient.AdvanceBranchHead(ctx, commandID, branchID, commitID, "simulation activate samples"); err != nil {
-			return err
-		}
 		if resultCommitID != nil {
 			*resultCommitID = commitID
 		}

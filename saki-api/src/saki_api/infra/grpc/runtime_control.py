@@ -138,6 +138,70 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 latest_commit_id=str(latest_commit_id),
             )
 
+    async def _create_simulation_commit_tx(
+            self,
+            *,
+            session,
+            project_id: uuid.UUID,
+            oracle_commit_id: uuid.UUID,
+            parent_commit_id: uuid.UUID,
+            command_id: str,
+            loop_id: str,
+            round_index: int,
+            query_strategy: str,
+            topk: int,
+    ) -> Commit:
+        commit = Commit(
+            project_id=project_id,
+            parent_id=parent_commit_id,
+            message=(
+                f"[sim] loop={loop_id or '-'} round={int(round_index)} "
+                f"strategy={query_strategy or '-'} topk={int(topk)}"
+            ),
+            author_type=AuthorType.SYSTEM,
+            author_id=None,
+            stats={},
+            extra={
+                "runtime": {
+                    "command_id": str(command_id or ""),
+                    "loop_id": str(loop_id or ""),
+                    "round_index": int(round_index),
+                    "query_strategy": str(query_strategy or ""),
+                    "topk": int(topk),
+                    "oracle_commit_id": str(oracle_commit_id),
+                    "source_commit_id": str(parent_commit_id),
+                }
+            },
+            commit_hash="",
+        )
+        session.add(commit)
+        await session.flush()
+
+        camap_repo = CAMapRepository(session)
+        source_state = await camap_repo.get_annotations_for_commit(oracle_commit_id)
+        mappings: list[tuple[uuid.UUID, uuid.UUID]] = []
+        for sample_id, annotation_ids in source_state.items():
+            for annotation_id in annotation_ids:
+                mappings.append((sample_id, annotation_id))
+        if mappings:
+            await camap_repo.set_commit_state(
+                commit_id=commit.id,
+                mappings=mappings,
+                project_id=project_id,
+            )
+
+        sample_state_repo = CommitSampleStateRepository(session)
+        await sample_state_repo.copy_commit_state(
+            source_commit_id=parent_commit_id,
+            target_commit_id=commit.id,
+            project_id=project_id,
+        )
+
+        commit.stats = await camap_repo.get_commit_stats(commit.id)
+        await refresh_commit_hash(session, commit)
+        session.add(commit)
+        return commit
+
     async def CreateSimulationCommitFromOracle(self, request, context):  # noqa: N802
         project_id = _parse_uuid(request.project_id)
         branch_id = _parse_uuid(request.branch_id)
@@ -157,81 +221,54 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             if parent_commit_id is None:
                 return domain_pb.CreateSimulationCommitFromOracleResponse(created=False, commit_id="")
 
-            commit = Commit(
+            commit = await self._create_simulation_commit_tx(
+                session=session,
                 project_id=project_id,
-                parent_id=parent_commit_id,
-                message=(
-                    f"[sim] loop={request.loop_id or '-'} round={int(request.round_index)} "
-                    f"strategy={request.query_strategy or '-'} topk={int(request.topk)}"
-                ),
-                author_type=AuthorType.SYSTEM,
-                author_id=None,
-                stats={},
-                extra={
-                    "runtime": {
-                        "command_id": str(request.command_id or ""),
-                        "loop_id": str(request.loop_id or ""),
-                        "round_index": int(request.round_index),
-                        "query_strategy": str(request.query_strategy or ""),
-                        "topk": int(request.topk),
-                        "oracle_commit_id": str(oracle_commit_id),
-                        "source_commit_id": str(parent_commit_id),
-                    }
-                },
-                commit_hash="",
-            )
-            session.add(commit)
-            await session.flush()
-
-            camap_repo = CAMapRepository(session)
-            source_state = await camap_repo.get_annotations_for_commit(oracle_commit_id)
-            mappings: list[tuple[uuid.UUID, uuid.UUID]] = []
-            for sample_id, annotation_ids in source_state.items():
-                for annotation_id in annotation_ids:
-                    mappings.append((sample_id, annotation_id))
-            if mappings:
-                await camap_repo.set_commit_state(
-                    commit_id=commit.id,
-                    mappings=mappings,
-                    project_id=project_id,
-                )
-
-            sample_state_repo = CommitSampleStateRepository(session)
-            await sample_state_repo.copy_commit_state(
-                source_commit_id=parent_commit_id,
-                target_commit_id=commit.id,
-                project_id=project_id,
-            )
-
-            commit.stats = await camap_repo.get_commit_stats(commit.id)
-            await refresh_commit_hash(session, commit)
-            session.add(commit)
-            await session.commit()
-
-            return domain_pb.CreateSimulationCommitFromOracleResponse(
-                created=True,
-                commit_id=str(commit.id),
-            )
-
-    async def ActivateSamples(self, request, context):  # noqa: N802
-        legacy_response = await self.CreateSimulationCommitFromOracle(
-            domain_pb.CreateSimulationCommitFromOracleRequest(
+                oracle_commit_id=oracle_commit_id,
+                parent_commit_id=parent_commit_id,
                 command_id=str(request.command_id or ""),
-                project_id=str(request.project_id or ""),
-                branch_id=str(request.branch_id or ""),
-                oracle_commit_id=str(request.oracle_commit_id or ""),
-                source_commit_id=str(request.source_commit_id or ""),
                 loop_id=str(request.loop_id or ""),
                 round_index=int(request.round_index or 0),
                 query_strategy=str(request.query_strategy or ""),
                 topk=int(request.topk or 0),
-            ),
-            context,
-        )
-        return domain_pb.ActivateSamplesResponse(
-            created=bool(legacy_response.created),
-            commit_id=str(legacy_response.commit_id or ""),
-        )
+            )
+            await session.commit()
+            return domain_pb.CreateSimulationCommitFromOracleResponse(created=True, commit_id=str(commit.id))
+
+    async def ActivateSamples(self, request, context):  # noqa: N802
+        project_id = _parse_uuid(request.project_id)
+        branch_id = _parse_uuid(request.branch_id)
+        oracle_commit_id = _parse_uuid(request.oracle_commit_id)
+        source_commit_id = _parse_uuid(request.source_commit_id)
+
+        if project_id is None or branch_id is None or oracle_commit_id is None:
+            return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
+
+        async with SessionLocal() as session:
+            branch_repo = BranchRepository(session)
+            branch = await branch_repo.get_by_id(branch_id)
+            if not branch or branch.project_id != project_id:
+                return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
+
+            parent_commit_id = source_commit_id or branch.head_commit_id
+            if parent_commit_id is None:
+                return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
+
+            commit = await self._create_simulation_commit_tx(
+                session=session,
+                project_id=project_id,
+                oracle_commit_id=oracle_commit_id,
+                parent_commit_id=parent_commit_id,
+                command_id=str(request.command_id or ""),
+                loop_id=str(request.loop_id or ""),
+                round_index=int(request.round_index or 0),
+                query_strategy=str(request.query_strategy or ""),
+                topk=int(request.topk or 0),
+            )
+            branch.head_commit_id = commit.id
+            session.add(branch)
+            await session.commit()
+            return domain_pb.ActivateSamplesResponse(created=True, commit_id=str(commit.id))
 
     async def AdvanceBranchHead(self, request, context):  # noqa: N802
         branch_id = _parse_uuid(request.branch_id)

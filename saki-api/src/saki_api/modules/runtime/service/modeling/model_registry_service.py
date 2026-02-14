@@ -12,10 +12,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
 from saki_api.infra.storage.provider import get_storage_provider
-from saki_api.modules.runtime.api.job import JobUpdate, LoopPatch
+from saki_api.modules.runtime.api.round_step import RoundUpdate, LoopPatch
 from saki_api.modules.runtime.api.model import ModelCreateData, ModelPatch
 from saki_api.modules.runtime.domain.model import Model
-from saki_api.modules.runtime.repo.job import RoundRepository
+from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.loop import LoopRepository
 from saki_api.modules.runtime.repo.model import ModelRepository
 
@@ -23,7 +23,7 @@ from saki_api.modules.runtime.repo.model import ModelRepository
 class ModelService:
     def __init__(self, session: AsyncSession):
         self.session = session
-        self.job_repo = RoundRepository(session)
+        self.round_repo = RoundRepository(session)
         self.loop_repo = LoopRepository(session)
         self.repository = ModelRepository(session)
         self._storage = None
@@ -45,7 +45,7 @@ class ModelService:
             version_tag: str,
             status: str,
     ) -> Model:
-        round_row = await self.job_repo.get_by_id(round_id)
+        round_row = await self.round_repo.get_by_id(round_id)
         if not round_row:
             raise NotFoundAppException(f"Round {round_id} not found")
         if round_row.project_id != project_id:
@@ -86,7 +86,7 @@ class ModelService:
             created_by=created_by,
         )
         created = await self.repository.create(create_data.model_dump(exclude_none=True))
-        await self.job_repo.update_or_raise(round_row.id, JobUpdate(model_id=created.id).model_dump(exclude_none=True))
+        await self.round_repo.update_or_raise(round_row.id, RoundUpdate(model_id=created.id).model_dump(exclude_none=True))
         if loop:
             await self.loop_repo.update_or_raise(
                 loop.id,

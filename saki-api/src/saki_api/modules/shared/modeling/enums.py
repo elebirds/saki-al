@@ -183,7 +183,7 @@ class StepType(str, Enum):
     SELECT = "select"
     ACTIVATE_SAMPLES = "activate_samples"
     WAIT_ANNOTATION = "wait_annotation"
-    MERGE = "merge"
+    ADVANCE_BRANCH = "advance_branch"
     EVAL = "eval"
     EXPORT = "export"
     UPLOAD_ARTIFACT = "upload_artifact"

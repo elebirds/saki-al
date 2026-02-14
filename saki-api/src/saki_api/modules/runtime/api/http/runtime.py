@@ -29,16 +29,16 @@ router = APIRouter()
 
 async def _ensure_runtime_read_permission(session: AsyncSession, current_user_id: uuid.UUID) -> None:
     checker = PermissionChecker(session)
-    if await checker.check(user_id=current_user_id, permission=Permissions.JOB_READ):
+    if await checker.check(user_id=current_user_id, permission=Permissions.ROUND_READ):
         return
     if await checker.check(user_id=current_user_id, permission=Permissions.PROJECT_READ_ALL):
         return
 
-    # 允许具备任一项目 JOB_READ 资源级权限的用户访问运行时统计入口
+    # 允许具备任一项目 ROUND_READ 资源级权限的用户访问运行时统计入口
     accessible_project_ids = await checker.resource_member_repo.get_resource_ids_by_user_with_permission(
         user_id=current_user_id,
         resource_type=ResourceType.PROJECT,
-        required_permission=Permissions.JOB_READ,
+        required_permission=Permissions.ROUND_READ,
     )
     if accessible_project_ids:
         return

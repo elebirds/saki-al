@@ -37,7 +37,7 @@ const ProtectedLayout: React.FC = () => {
     const canManageUsers = can('user:read') || isSuperAdmin
     const canManageRoles = can('role:read') || isSuperAdmin
     const canManageSystemSettings = can('system_setting:read') || isSuperAdmin
-    const canViewRuntime = can('job:read') || can('project:read:all') || isSuperAdmin
+    const canViewRuntime = can('round:read') || can('project:read:all') || isSuperAdmin
     const canViewProjectOverview = canProject('project:read:assigned')
     const canViewProjectSamples = canProject('project:read:assigned')
     const canViewProjectBranches = canProject('branch:read:assigned')
@@ -45,7 +45,7 @@ const ProtectedLayout: React.FC = () => {
     const canViewProjectLoops = canProject('loop:manage:assigned') || can('loop:manage') || isSuperAdmin
     const canViewProjectInsights =
         canProject('loop:read:assigned') &&
-        canProject('job:read:assigned') &&
+        canProject('round:read:assigned') &&
         canProject('model:read:assigned')
     const canViewProjectSettings =
         canProject('project:update:assigned') ||

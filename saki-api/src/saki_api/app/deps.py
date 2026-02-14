@@ -241,23 +241,23 @@ def get_annotation_sync_service(
 AnnotationSyncServiceDep = Annotated[AnnotationSyncService, Depends(get_annotation_sync_service)]
 
 # ============================================================================
-# Job Service Dependencies (L3 Layer)
+# Runtime Service Dependencies (L3 Layer)
 # ============================================================================
 
-from saki_api.modules.runtime.service.job import JobService
+from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.runtime.service.modeling.model_registry_service import ModelService
 from saki_api.modules.runtime.service.observability.runtime_observability_service import (
     RuntimeObservabilityService,
 )
 
 
-def get_job_service(
+def get_runtime_service(
         session: AsyncSession = Depends(get_session),
-) -> JobService:
-    return JobService(session=session)
+) -> RuntimeService:
+    return RuntimeService(session=session)
 
 
-JobServiceDep = Annotated[JobService, Depends(get_job_service)]
+RuntimeServiceDep = Annotated[RuntimeService, Depends(get_runtime_service)]
 
 
 def get_model_service(

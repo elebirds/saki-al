@@ -12,23 +12,23 @@ def test_struct_roundtrip():
     assert runtime_codec.struct_to_dict(struct) == payload
 
 
-def test_decode_task_status_event():
-    event = pb.TaskEvent(
+def test_decode_step_status_event():
+    event = pb.StepEvent(
         request_id="r1",
         step_id="t1",
         seq=1,
         ts=1,
         status_event=pb.StatusEvent(status=pb.RUNNING, reason="ok"),
     )
-    event_type, payload, status_enum = runtime_codec.decode_task_event(event)
+    event_type, payload, status_enum = runtime_codec.decode_step_event(event)
     assert event_type == "status"
     assert payload["status"] == "running"
     assert payload["reason"] == "ok"
     assert status_enum == pb.RUNNING
 
 
-def test_build_assign_task_message_and_decode_fields():
-    message = runtime_codec.build_assign_task_message(
+def test_build_assign_step_message_and_decode_fields():
+    message = runtime_codec.build_assign_step_message(
         request_id="assign-1",
         payload={
             "step_id": "step-1",
@@ -37,6 +37,7 @@ def test_build_assign_task_message_and_decode_fields():
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "step_type": "train",
+            "dispatch_kind": "orchestrator",
             "plugin_id": "yolo_det_v1",
             "mode": "manual",
             "query_strategy": "random_baseline",
@@ -47,12 +48,13 @@ def test_build_assign_task_message_and_decode_fields():
             "depends_on_step_ids": ["step-0"],
         },
     )
-    assert message.WhichOneof("payload") == "assign_task"
-    task = message.assign_task.step
-    assert task.step_id == "step-1"
-    assert task.step_type == pb.TRAIN
-    assert task.mode == pb.MANUAL
-    assert runtime_codec.struct_to_dict(task.resolved_params) == {"epochs": 1}
+    assert message.WhichOneof("payload") == "assign_step"
+    step_payload = message.assign_step.step
+    assert step_payload.step_id == "step-1"
+    assert step_payload.step_type == pb.TRAIN
+    assert step_payload.dispatch_kind == pb.ORCHESTRATOR
+    assert step_payload.mode == pb.MANUAL
+    assert runtime_codec.struct_to_dict(step_payload.resolved_params) == {"epochs": 1}
 
 
 def test_resource_summary_supports_accelerators_roundtrip():
@@ -75,10 +77,10 @@ def test_resource_summary_supports_accelerators_roundtrip():
     assert runtime_codec.accelerator_type_to_text(pb.CPU) == "cpu"
 
 
-def test_decode_task_artifact_event():
+def test_decode_step_artifact_event():
     meta = Struct()
     meta.update({"size": 12})
-    event = pb.TaskEvent(
+    event = pb.StepEvent(
         request_id="r2",
         step_id="t2",
         seq=2,
@@ -92,7 +94,7 @@ def test_decode_task_artifact_event():
             )
         ),
     )
-    event_type, payload, status_enum = runtime_codec.decode_task_event(event)
+    event_type, payload, status_enum = runtime_codec.decode_step_event(event)
     assert event_type == "artifact"
     assert payload["name"] == "best.pt"
     assert payload["uri"].startswith("s3://")

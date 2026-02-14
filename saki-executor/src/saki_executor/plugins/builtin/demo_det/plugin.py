@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from saki_executor.jobs.workspace import Workspace
+from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.base import EventCallback, ExecutorPlugin, TrainOutput
 from saki_executor.plugins.builtin.demo_det.internal import DemoDetectionInternal
 
@@ -24,8 +24,8 @@ class DemoDetectionPlugin(ExecutorPlugin):
         return self._internal.display_name
 
     @property
-    def supported_job_types(self) -> list[str]:
-        return self._internal.supported_job_types
+    def supported_step_types(self) -> list[str]:
+        return self._internal.supported_step_types
 
     @property
     def supported_strategies(self) -> list[str]:
@@ -68,5 +68,5 @@ class DemoDetectionPlugin(ExecutorPlugin):
     ) -> list[dict[str, Any]]:
         return await self._internal.predict_unlabeled(workspace, unlabeled_samples, strategy, params)
 
-    async def stop(self, job_id: str) -> None:
-        await self._internal.stop(job_id)
+    async def stop(self, step_id: str) -> None:
+        await self._internal.stop(step_id)

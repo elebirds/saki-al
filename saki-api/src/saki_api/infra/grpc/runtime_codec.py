@@ -29,19 +29,25 @@ _STATUS_TO_TEXT: dict[int, str] = {
 
 _TEXT_TO_STATUS: dict[str, int] = {value: key for key, value in _STATUS_TO_TEXT.items()}
 
-_TASK_TYPE_TO_TEXT: dict[int, str] = {
+_STEP_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN: "train",
     pb.SCORE: "score",
     pb.SELECT: "select",
     _ACTIVATE_SAMPLES_ENUM: "activate_samples",
     pb.WAIT_ANNOTATION: "wait_annotation",
-    pb.MERGE: "merge",
+    pb.ADVANCE_BRANCH: "advance_branch",
     pb.EVAL: "eval",
     pb.EXPORT: "export",
     pb.UPLOAD_ARTIFACT: "upload_artifact",
     pb.CUSTOM: "custom",
 }
-_TEXT_TO_TASK_TYPE: dict[str, int] = {value: key for key, value in _TASK_TYPE_TO_TEXT.items()}
+_TEXT_TO_STEP_TYPE: dict[str, int] = {value: key for key, value in _STEP_TYPE_TO_TEXT.items()}
+
+_DISPATCH_KIND_TO_TEXT: dict[int, str] = {
+    pb.DISPATCHABLE: "dispatchable",
+    pb.ORCHESTRATOR: "orchestrator",
+}
+_TEXT_TO_DISPATCH_KIND: dict[str, int] = {value: key for key, value in _DISPATCH_KIND_TO_TEXT.items()}
 
 _LOOP_MODE_TO_TEXT: dict[int, str] = {
     pb.ACTIVE_LEARNING: "active_learning",
@@ -67,8 +73,8 @@ _TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCEL
 
 _ACK_TYPE_TO_TEXT: dict[int, str] = {
     pb.ACK_TYPE_REGISTER: "register",
-    pb.ACK_TYPE_ASSIGN_TASK: "assign_task",
-    pb.ACK_TYPE_STOP_TASK: "stop_task",
+    pb.ACK_TYPE_ASSIGN_STEP: "assign_step",
+    pb.ACK_TYPE_STOP_STEP: "stop_step",
     pb.ACK_TYPE_REQUEST: "request",
 }
 _TEXT_TO_ACK_TYPE: dict[str, int] = {value: key for key, value in _ACK_TYPE_TO_TEXT.items()}
@@ -78,7 +84,7 @@ _ACK_REASON_TO_TEXT: dict[int, str] = {
     pb.ACK_REASON_ACCEPTED: "accepted",
     pb.ACK_REASON_EXECUTOR_BUSY: "executor_busy",
     pb.ACK_REASON_STOPPING: "stopping",
-    pb.ACK_REASON_TASK_NOT_RUNNING: "task_not_running",
+    pb.ACK_REASON_STEP_NOT_RUNNING: "step_not_running",
     pb.ACK_REASON_REJECTED: "rejected",
 }
 _TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
@@ -131,12 +137,20 @@ def text_to_ack_reason(reason: str | None) -> int:
     return _TEXT_TO_ACK_REASON.get((reason or "").strip().lower(), pb.ACK_REASON_REJECTED)
 
 
-def task_type_to_text(task_type: int) -> str:
-    return _TASK_TYPE_TO_TEXT.get(int(task_type), "custom")
+def step_type_to_text(step_type: int) -> str:
+    return _STEP_TYPE_TO_TEXT.get(int(step_type), "custom")
 
 
-def text_to_task_type(task_type: str | None) -> int:
-    return _TEXT_TO_TASK_TYPE.get((task_type or "").strip().lower(), pb.CUSTOM)
+def text_to_step_type(step_type: str | None) -> int:
+    return _TEXT_TO_STEP_TYPE.get((step_type or "").strip().lower(), pb.CUSTOM)
+
+
+def dispatch_kind_to_text(dispatch_kind: int) -> str:
+    return _DISPATCH_KIND_TO_TEXT.get(int(dispatch_kind), "dispatchable")
+
+
+def text_to_dispatch_kind(dispatch_kind: str | None) -> int:
+    return _TEXT_TO_DISPATCH_KIND.get((dispatch_kind or "").strip().lower(), pb.DISPATCHABLE)
 
 
 def loop_mode_to_text(mode: int) -> str:
@@ -311,23 +325,25 @@ def build_error_message(
     )
 
 
-def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) -> pb.RuntimeMessage:
-    task_type = text_to_task_type(str(payload.get("step_type") or payload.get("task_type") or "custom"))
+def build_assign_step_message(*, request_id: str, payload: Mapping[str, Any]) -> pb.RuntimeMessage:
+    step_type = text_to_step_type(str(payload.get("step_type") or "custom"))
+    dispatch_kind = text_to_dispatch_kind(str(payload.get("dispatch_kind") or "dispatchable"))
     loop_mode = text_to_loop_mode(str(payload.get("mode") or "active_learning"))
     step_id = str(payload.get("step_id") or "")
     round_id = str(payload.get("round_id") or "")
     depends_on_step_ids = [str(v) for v in (payload.get("depends_on_step_ids") or [])]
     input_commit_id = str(payload.get("input_commit_id") or "")
     return pb.RuntimeMessage(
-        assign_task=pb.AssignTask(
+        assign_step=pb.AssignStep(
             request_id=request_id,
-            step=pb.TaskPayload(
+            step=pb.StepPayload(
                 step_id=step_id,
                 round_id=round_id,
                 loop_id=str(payload.get("loop_id") or ""),
                 project_id=str(payload.get("project_id") or ""),
                 input_commit_id=input_commit_id,
-                step_type=task_type,
+                step_type=step_type,
+                dispatch_kind=dispatch_kind,
                 plugin_id=str(payload.get("plugin_id") or ""),
                 mode=loop_mode,
                 query_strategy=str(payload.get("query_strategy") or ""),
@@ -341,10 +357,10 @@ def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) ->
     )
 
 
-def build_stop_task_message(*, request_id: str, task_id: str, reason: str) -> pb.RuntimeMessage:
-    step_id = str(task_id)
+def build_stop_step_message(*, request_id: str, step_id: str, reason: str) -> pb.RuntimeMessage:
+    step_id = str(step_id)
     return pb.RuntimeMessage(
-        stop_task=pb.StopTask(
+        stop_step=pb.StopStep(
             request_id=request_id,
             step_id=step_id,
             reason=str(reason or ""),
@@ -352,7 +368,7 @@ def build_stop_task_message(*, request_id: str, task_id: str, reason: str) -> pb
     )
 
 
-def decode_task_event(event: pb.TaskEvent) -> tuple[str, dict[str, Any], int | None]:
+def decode_step_event(event: pb.StepEvent) -> tuple[str, dict[str, Any], int | None]:
     payload_type = event.WhichOneof("event_payload")
     if payload_type == "status_event":
         status_value = int(event.status_event.status)
@@ -423,7 +439,7 @@ def parse_register(message: pb.Register) -> RuntimeRegisterDTO:
             RuntimePluginCapabilityDTO(
                 plugin_id=str(item.plugin_id),
                 version=str(item.version),
-                supported_task_types=[str(v) for v in item.supported_task_types],
+                supported_step_types=[str(v) for v in item.supported_step_types],
                 supported_strategies=[str(v) for v in item.supported_strategies],
                 display_name=str(item.display_name),
                 request_config_schema=struct_to_dict(item.request_config_schema),

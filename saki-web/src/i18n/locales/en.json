@@ -860,15 +860,15 @@
         "runtimeManagementAll": "Runtime Management (All)",
         "loopReadAll": "Read Loop (All)",
         "loopManageAll": "Manage Loop (All)",
-        "jobReadAll": "Read Job (All)",
-        "jobManageAll": "Manage Job (All)",
+        "jobReadAll": "Read Round (All)",
+        "jobManageAll": "Manage Round (All)",
         "modelReadAll": "Read Model (All)",
         "modelManageAll": "Manage Model (All)",
         "runtimeManagementAssigned": "Runtime Management (Assigned)",
         "loopReadAssigned": "Read Loop (Assigned)",
         "loopManageAssigned": "Manage Loop (Assigned)",
-        "jobReadAssigned": "Read Job (Assigned)",
-        "jobManageAssigned": "Manage Job (Assigned)",
+        "jobReadAssigned": "Read Round (Assigned)",
+        "jobManageAssigned": "Manage Round (Assigned)",
         "modelReadAssigned": "Read Model (Assigned)",
         "modelManageAssigned": "Manage Model (Assigned)"
       }
@@ -926,8 +926,8 @@
         "title": "Training & Active Learning",
         "body": "Runtime runs training/inference as stateless executors, continuously closing the loop to surface high-value samples.",
         "tags": {
-          "alLoop": "ALLoop",
-          "jobMetric": "Job/Metric",
+          "alLoop": "Loop",
+          "jobMetric": "Round/Metric",
           "model": "Model"
         }
       },

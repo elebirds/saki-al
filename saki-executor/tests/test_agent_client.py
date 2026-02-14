@@ -5,7 +5,7 @@ import pytest
 from saki_executor.agent.client import AgentClient
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.jobs.manager import JobManager
+from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 
 
@@ -13,8 +13,8 @@ def _build_client(tmp_path):
     registry = PluginRegistry()
     registry.load_builtin()
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    manager = JobManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
-    return AgentClient(plugin_registry=registry, job_manager=manager)
+    manager = StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    return AgentClient(plugin_registry=registry, step_manager=manager)
 
 
 @pytest.mark.anyio
@@ -46,16 +46,16 @@ async def test_error_message_resolves_pending_request_with_error(tmp_path):
 async def test_disconnect_rejects_when_busy_without_force(tmp_path):
     client = _build_client(tmp_path)
     busy_task = asyncio.create_task(asyncio.sleep(60))
-    client.job_manager._task = busy_task  # noqa: SLF001
-    client.job_manager.current_task_id = "task-1"
+    client.step_manager._task = busy_task  # noqa: SLF001
+    client.step_manager.current_step_id = "task-1"
     try:
         disconnected = await client.disconnect(force=False)
         assert disconnected is False
         assert client.transport_snapshot()["connect_enabled"] is True
     finally:
         busy_task.cancel()
-        client.job_manager._task = None  # noqa: SLF001
-        client.job_manager.current_task_id = None
+        client.step_manager._task = None  # noqa: SLF001
+        client.step_manager.current_step_id = None
 
 
 @pytest.mark.anyio
@@ -79,18 +79,18 @@ async def test_disconnect_force_waits_for_stop_before_disconnect(tmp_path, monke
     monkeypatch.setattr("saki_executor.agent.client.settings.DISCONNECT_FORCE_WAIT_SEC", 1)
 
     busy_task = asyncio.create_task(asyncio.sleep(60))
-    client.job_manager._task = busy_task  # noqa: SLF001
-    client.job_manager.current_task_id = "task-force-1"
+    client.step_manager._task = busy_task  # noqa: SLF001
+    client.step_manager.current_step_id = "task-force-1"
     stop_called: list[str] = []
 
     async def fake_stop(task_id: str) -> bool:
         stop_called.append(task_id)
-        client.job_manager._task = None  # noqa: SLF001
-        client.job_manager.current_task_id = None
+        client.step_manager._task = None  # noqa: SLF001
+        client.step_manager.current_step_id = None
         busy_task.cancel()
         return True
 
-    client.job_manager.stop_task = fake_stop  # type: ignore[method-assign]
+    client.step_manager.stop_step = fake_stop  # type: ignore[method-assign]
 
     disconnected = await client.disconnect(force=True)
     assert disconnected is True
@@ -99,25 +99,25 @@ async def test_disconnect_force_waits_for_stop_before_disconnect(tmp_path, monke
 
 
 @pytest.mark.anyio
-async def test_duplicate_assign_task_returns_cached_ack_without_reassign(tmp_path):
+async def test_duplicate_assign_step_returns_cached_ack_without_reassign(tmp_path):
     client = _build_client(tmp_path)
     assign_calls: list[str] = []
     sent_messages: list[pb.RuntimeMessage] = []
 
-    async def fake_assign_task(request_id: str, payload: dict):  # noqa: ARG001
+    async def fake_assign_step(request_id: str, payload: dict):  # noqa: ARG001
         assign_calls.append(request_id)
         return True
 
     async def fake_send_message(message: pb.RuntimeMessage):
         sent_messages.append(message)
 
-    client.job_manager.assign_task = fake_assign_task  # type: ignore[method-assign]
+    client.step_manager.assign_step = fake_assign_step  # type: ignore[method-assign]
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
-        assign_task=pb.AssignTask(
+        assign_step=pb.AssignStep(
             request_id="assign-dup-1",
-            step=pb.TaskPayload(
+            step=pb.StepPayload(
                 step_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 round_id="11111111-1111-1111-1111-111111111111",
                 project_id="22222222-2222-2222-2222-222222222222",
@@ -141,23 +141,23 @@ async def test_duplicate_assign_task_returns_cached_ack_without_reassign(tmp_pat
 
 
 @pytest.mark.anyio
-async def test_duplicate_stop_task_returns_cached_ack_without_restop(tmp_path):
+async def test_duplicate_stop_step_returns_cached_ack_without_restop(tmp_path):
     client = _build_client(tmp_path)
     stop_calls: list[str] = []
     sent_messages: list[pb.RuntimeMessage] = []
 
-    async def fake_stop_task(task_id: str):
-        stop_calls.append(task_id)
+    async def fake_stop_step(step_id: str):
+        stop_calls.append(step_id)
         return True
 
     async def fake_send_message(message: pb.RuntimeMessage):
         sent_messages.append(message)
 
-    client.job_manager.stop_task = fake_stop_task  # type: ignore[method-assign]
+    client.step_manager.stop_step = fake_stop_step  # type: ignore[method-assign]
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
-        stop_task=pb.StopTask(
+        stop_step=pb.StopStep(
             request_id="stop-dup-1",
             step_id="task-dup-1",
             reason="manual",

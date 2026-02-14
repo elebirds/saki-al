@@ -6,7 +6,7 @@ import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.jobs.manager import JobManager
+from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.base import ExecutorPlugin, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
 
@@ -26,7 +26,7 @@ class _ModeAwarePlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
-    def supported_job_types(self) -> list[str]:
+    def supported_step_types(self) -> list[str]:
         return ["train_detection"]
 
     @property
@@ -77,8 +77,8 @@ class _ModeAwarePlugin(ExecutorPlugin):
             if item.get("id")
         ]
 
-    async def stop(self, job_id: str) -> None:
-        del job_id
+    async def stop(self, step_id: str) -> None:
+        del step_id
         return
 
 
@@ -106,11 +106,11 @@ class _BatchScoringPlugin(_ModeAwarePlugin):
         return candidates
 
 
-def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> JobManager:
+def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> StepManager:
     registry = PluginRegistry()
     registry.register(plugin)
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    manager = JobManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    manager = StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
     return manager
 
 
@@ -178,27 +178,27 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-simulation-1",
         {
-            "task_id": "task-sim-1",
-            "job_id": "job-sim-1",
+            "step_id": "task-sim-1",
+            "round_id": "job-sim-1",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "simulation",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {},
+            "resolved_params": {},
         },
     )
     assert accepted is True
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].task_result
+    result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 2
     assert plugin.predict_calls == 1
@@ -229,27 +229,27 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-al-1",
         {
-            "task_id": "task-al-1",
-            "job_id": "job-al-1",
+            "step_id": "task-al-1",
+            "round_id": "job-al-1",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {"topk": 10},
+            "resolved_params": {"topk": 10},
         },
     )
     assert accepted is True
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].task_result
+    result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 2
     assert plugin.predict_calls == 1
@@ -308,27 +308,27 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
 
     manager.set_transport(fake_send, fake_request)
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-al-stream-1",
         {
-            "task_id": "task-al-stream-1",
-            "job_id": "job-al-stream-1",
+            "step_id": "task-al-stream-1",
+            "round_id": "job-al-stream-1",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {"topk": 2, "unlabeled_page_size": 3},
+            "resolved_params": {"topk": 2, "unlabeled_page_size": 3},
         },
     )
     assert accepted is True
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].task_result
+    result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
     assert [item.sample_id for item in result.candidates] == ["u9", "u5"]
     assert plugin.batch_calls == 2
@@ -361,22 +361,22 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
     manager.set_transport(fake_send, fake_request)
 
     with pytest.raises(ValueError, match="unsupported mode"):
-        await manager.assign_task(
+        await manager.assign_step(
             "assign-unknown-mode-1",
             {
-                "task_id": "task-unknown-mode-1",
-                "job_id": "job-unknown-mode-1",
+                "step_id": "task-unknown-mode-1",
+                "round_id": "job-unknown-mode-1",
                 "project_id": "project-1",
-                "source_commit_id": "commit-1",
+                "input_commit_id": "commit-1",
                 "plugin_id": plugin.plugin_id,
                 "mode": "unexpected_mode",
                 "round_index": 1,
                 "query_strategy": "uncertainty_1_minus_max_conf",
-                "params": {},
+                "resolved_params": {},
             },
         )
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 0
     assert request_calls == 0
     assert plugin.prepare_samples_count == 0

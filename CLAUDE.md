@@ -37,7 +37,7 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 #### saki-api
 - **L1 (Physical)**: ✅ 完成 (Asset去重, MinIO上传, Sample逻辑封装)
 - **L2 (Logic)**: ✅ 基本完成 (三层架构、标注流水线协议、项目概览与设置界面 已基本就绪)
-- **L3 (Experiment)**: ✅ 已落地主链路（Loop/Job/Round/Batch/Model + Runtime gRPC + Executor），当前持续收敛在“稳定性、可复现性、指标可信度”。
+- **L3 (Experiment)**: ✅ 已落地主链路（Loop/Round/Step + Runtime gRPC + Executor），当前持续收敛在“稳定性、可复现性、指标可信度”。
 #### saki-executor
 已完成基础闭环（注册/心跳/派发/事件/结果/停止/数据请求/上传票据），当前处于“强类型与可靠性收敛”阶段。
 
@@ -60,8 +60,18 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 
 ### 设计契约 (Model Runtime)
 - **单一职责**: `saki-api` 是数据与其关系的 "Source of Truth"；`saki-executor` 是执行器。
-- **数据流向**: Executor **不直接写** 业务数据库，只通过 API 拉取数据，并将制品/日志持久化在本地 `runs/{job_id}` 目录。
+- **数据流向**: Executor **不直接写** 业务数据库，只通过 API 拉取数据，并将制品/日志持久化在本地 `runs/{step_id}` 目录。
 - **接口风格**: gRPC 双向流（控制 + 事件）+ 对象存储预签名 URL（制品/样本）。
+
+### Runtime v2 语义（简版）
+- 统一命名冻结为 `Loop / Round / Step`，不再使用 `ALLoop / Job / JobTask`。
+- `Step` 是最小执行单元，所有运行时事件、指标、制品都挂在 `step_id`。
+- `StepDispatchKind` 仅有两类：`DISPATCHABLE`（下发 executor）与 `ORCHESTRATOR`（dispatcher 内部执行）。
+- 模式策略：
+  - `ACTIVE_LEARNING`：每轮结束进入 `WAIT_USER`，仅该模式允许 `confirm`。
+  - `SIMULATION`：自动推进，无 `confirm`，支持轮次冷却。
+  - `MANUAL`：单轮闭环（默认 `max_rounds=1`）。
+- `STOPPING` 需具备重启恢复能力：重启后继续扫描并收敛到 `STOPPED`。
 
 
 ### Saki-API 三层架构协议 (Architecture Protocol)
@@ -93,10 +103,11 @@ Saki 是一个集数据集管理、样本标注（支持版本控制）、模型
 
 - **定位**：处理“如何利用标注进行迭代”，解决“实验复现”和“任务调度”的问题。
 - **核心模型**：
-- - **ALLoop**: 实验容器。每个 Loop 必须绑定一个独立的 **Branch**，确保实验数据与主分支隔离。
-- - **Job**: 执行单元。**设计契约**：必须记录 `source_commit_id`。
-- - **Metric**: 评估结果。与 Job 关联，记录实验效果。
-- - **Model**: 模型制品。与 Job 关联，记录训练输出。
+- - **Loop**: 实验容器。每个 Loop 必须绑定一个独立的 **Branch**，确保实验数据与主分支隔离。
+- - **Round**: 单轮执行上下文，记录 `input_commit_id / output_commit_id`。
+- - **Step**: 最小执行单元。**设计契约**：必须记录 `step_type / dispatch_kind / resolved_params`。
+- - **Metric**: 评估结果。与 Round/Step 聚合关联。
+- - **Model**: 模型制品。与 Step 关联，支持按轮次回溯。
 
 ### 标注流水线协议 (Annotation Pipeline)
 为了平衡实时响应、数据安全与版本严谨性，标注采用三级处理流程：
@@ -123,7 +134,7 @@ saki/
 ├── saki-executor/      # GPU 执行器（训练/推理/选样）
 │   ├── src/saki_executor/
 │   │   ├── agent/      # gRPC 客户端与连接生命周期
-│   │   ├── jobs/       # 任务执行与状态机
+│   │   ├── steps/      # Step 执行与状态机
 │   │   ├── plugins/    # 模型插件
 │   │   └── strategies/ # 内置选样策略
 ├── saki-web/           # 交互式前端 (React)
@@ -197,6 +208,7 @@ saki/
 
 ## 8. Copilot/AI/Claude 协作提示。
 - 编写 Runtime 相关代码时，**必须** 严格遵守 `MODEL_RUNTIME_DESIGN.md` 中的“强约束”章节。
+- 编写 Loop/Round/Step 编排逻辑时，优先对齐 `docs/runtime-loop-round-step-语义计划书-v2.md`（该文档是当前语义基线）。
 - 遇到数据库模型问题时，请先查看 `saki-api/src/saki_api/models` 下的文件结构
 - 在涉及数据库设计的建议中，优先考虑数据一致性和长期维护成本，而非短期性能提升。
 

@@ -242,13 +242,13 @@ class Permissions:
     # ============================================================================
     LOOP_READ_ALL = "loop:read:all"  # 全局允许：读取 Loop 信息
     LOOP_MANAGE_ALL = "loop:manage:all"  # 全局允许：创建/启动/暂停/停止 Loop
-    JOB_READ_ALL = "job:read:all"  # 全局允许：读取任务信息/事件/指标
-    JOB_MANAGE_ALL = "job:manage:all"  # 全局允许：创建/停止任务
+    ROUND_READ_ALL = "round:read:all"  # 全局允许：读取 Round/Step 信息/事件/指标
+    ROUND_MANAGE_ALL = "round:manage:all"  # 全局允许：创建/停止 Round/Step
     MODEL_READ_ALL = "model:read:all"  # 全局允许：读取模型信息
     MODEL_MANAGE_ALL = "model:manage:all"  # 全局允许：注册/晋升模型
     LOOP_READ = "loop:read:assigned"  # 成员允许：读取 Loop 信息
     LOOP_MANAGE = "loop:manage:assigned"  # 成员允许：创建/启动/暂停/停止 Loop
-    JOB_READ = "job:read:assigned"  # 成员允许：读取任务信息/事件/指标
-    JOB_MANAGE = "job:manage:assigned"  # 成员允许：创建/停止任务
+    ROUND_READ = "round:read:assigned"  # 成员允许：读取 Round/Step 信息/事件/指标
+    ROUND_MANAGE = "round:manage:assigned"  # 成员允许：创建/停止 Round/Step
     MODEL_READ = "model:read:assigned"  # 成员允许：读取模型信息
     MODEL_MANAGE = "model:manage:assigned"  # 成员允许：注册/晋升模型

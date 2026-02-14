@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Awaitable
 
-from saki_executor.jobs.workspace import Workspace
+from saki_executor.steps.workspace import Workspace
 
 
 EventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -44,7 +44,7 @@ class ExecutorPlugin(ABC):
 
     @property
     @abstractmethod
-    def supported_job_types(self) -> list[str]:
+    def supported_step_types(self) -> list[str]:
         pass
 
     @property
@@ -116,5 +116,5 @@ class ExecutorPlugin(ABC):
         )
 
     @abstractmethod
-    async def stop(self, job_id: str) -> None:
+    async def stop(self, step_id: str) -> None:
         pass

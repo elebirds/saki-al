@@ -7,9 +7,9 @@ import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.jobs.manager import JobManager
-from saki_executor.jobs.services.artifact_uploader import ArtifactUploader
-import saki_executor.jobs.services.artifact_uploader as uploader_module
+from saki_executor.steps.manager import StepManager
+from saki_executor.steps.services.artifact_uploader import ArtifactUploader
+import saki_executor.steps.services.artifact_uploader as uploader_module
 from saki_executor.plugins.base import ExecutorPlugin, TrainArtifact, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
 
@@ -24,7 +24,7 @@ class _ArtifactPlugin(ExecutorPlugin):
         return "0.1.0"
 
     @property
-    def supported_job_types(self) -> list[str]:
+    def supported_step_types(self) -> list[str]:
         return ["train_detection"]
 
     @property
@@ -100,15 +100,15 @@ class _ArtifactPlugin(ExecutorPlugin):
         del workspace, unlabeled_samples, strategy, params
         return []
 
-    async def stop(self, job_id: str) -> None:
-        del job_id
+    async def stop(self, step_id: str) -> None:
+        del step_id
 
 
-def _build_manager(tmp_path: Path) -> JobManager:
+def _build_manager(tmp_path: Path) -> StepManager:
     registry = PluginRegistry()
     registry.register(_ArtifactPlugin())
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    return JobManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    return StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
 
 
 def _mock_data_items(query_type: int) -> list[pb.DataItem]:
@@ -157,7 +157,7 @@ def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
     return fake_request
 
 
-def _install_async_client_mock(manager: JobManager):
+def _install_async_client_mock(manager: StepManager):
     state = {
         "attempts": {},
         "uploaded_bytes": {},
@@ -229,27 +229,27 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "2"}}),
     )
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-artifact-1",
         {
-            "task_id": "task-artifact-1",
-            "job_id": "job-artifact-1",
+            "step_id": "task-artifact-1",
+            "round_id": "job-artifact-1",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {},
+            "resolved_params": {},
         },
     )
     assert accepted is True
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].task_result
+    result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
 
     optional_url = "https://upload.local/confusion_matrix.png"
@@ -259,9 +259,9 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
     assert upload_state["headers"][best_url].get("Content-Length") == str(len(upload_state["uploaded_bytes"][best_url]))
 
     artifact_events = [
-        m.task_event for m in sent_messages
-        if m.WhichOneof("payload") == "task_event"
-        and m.task_event.WhichOneof("event_payload") == "artifact_event"
+        m.step_event for m in sent_messages
+        if m.WhichOneof("payload") == "step_event"
+        and m.step_event.WhichOneof("event_payload") == "artifact_event"
     ]
     assert {event.artifact_event.artifact.name for event in artifact_events} == {
         "best.pt",
@@ -289,27 +289,27 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
         _make_fake_request({"confusion_matrix.png": {"x-fail-attempts": "3"}}),
     )
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-artifact-2",
         {
-            "task_id": "task-artifact-2",
-            "job_id": "job-artifact-2",
+            "step_id": "task-artifact-2",
+            "round_id": "job-artifact-2",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {},
+            "resolved_params": {},
         },
     )
     assert accepted is True
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].task_result
+    result = result_messages[0].step_result
     assert result.status == pb.FAILED
     assert "confusion_matrix.png" in result.error_message
     assert {item.name for item in result.artifacts} == {"best.pt", "report.json"}
@@ -330,27 +330,27 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
     monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-fail-attempts": "3"}}))
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-artifact-3",
         {
-            "task_id": "task-artifact-3",
-            "job_id": "job-artifact-3",
+            "step_id": "task-artifact-3",
+            "round_id": "job-artifact-3",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {},
+            "resolved_params": {},
         },
     )
     assert accepted is True
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].task_result
+    result = result_messages[0].step_result
     assert result.status == pb.FAILED
     assert "required artifact upload failed" in result.error_message
 
@@ -371,18 +371,18 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-read-error-attempts": "2"}}))
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-artifact-4",
         {
-            "task_id": "task-artifact-4",
-            "job_id": "job-artifact-4",
+            "step_id": "task-artifact-4",
+            "round_id": "job-artifact-4",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {},
+            "resolved_params": {},
         },
     )
     assert accepted is True
@@ -392,9 +392,9 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
     best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][best_url] == 3
     assert backoff_calls == [1.0, 2.0]
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    assert result_messages[0].task_result.status == pb.SUCCEEDED
+    assert result_messages[0].step_result.status == pb.SUCCEEDED
 
 
 @pytest.mark.anyio
@@ -413,18 +413,18 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(uploader_module.asyncio, "sleep", fake_sleep)
     manager.set_transport(fake_send, _make_fake_request({"best.pt": {"x-force-status": "403"}}))
 
-    accepted = await manager.assign_task(
+    accepted = await manager.assign_step(
         "assign-artifact-5",
         {
-            "task_id": "task-artifact-5",
-            "job_id": "job-artifact-5",
+            "step_id": "task-artifact-5",
+            "round_id": "job-artifact-5",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
+            "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
-            "params": {},
+            "resolved_params": {},
         },
     )
     assert accepted is True
@@ -434,8 +434,8 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
     best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][best_url] == 1
     assert backoff_calls == []
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].task_result
+    result = result_messages[0].step_result
     assert result.status == pb.FAILED
     assert "non-retryable status=403" in result.error_message

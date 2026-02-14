@@ -1,30 +1,45 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import uuid
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.modules.shared.modeling  # noqa: F401
+from saki_api.modules.access.domain.rbac.audit_log import AuditLog
 from saki_api.modules.runtime.api.http import loop_control as loop_control_endpoint
 from saki_api.modules.runtime.api.http import query as loop_query_endpoint
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.session import _session_ctx
-from saki_api.modules.shared.modeling.enums import AuthorType, LoopMode, LoopPhase, LoopStatus, RoundStatus, TaskType
+from saki_api.modules.shared.modeling.enums import (
+    AuthorType,
+    LoopMode,
+    LoopPhase,
+    LoopStatus,
+    RoundStatus,
+    StepDispatchKind,
+    StepStatus,
+    StepType,
+    TaskType,
+)
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
 from saki_api.modules.project.domain.project import Project
 from saki_api.modules.runtime.domain.round import Round
-from saki_api.modules.runtime.api.job import (
+from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.step_event import StepEvent
+from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
+from saki_api.modules.runtime.api.round_step import (
     LoopCreateRequest,
     LoopRead,
     LoopSimulationConfig,
     LoopUpdateRequest,
     SimulationExperimentCreateRequest,
 )
-from saki_api.modules.runtime.service.job import JobService
+from saki_api.modules.runtime.service.runtime_service import RuntimeService
 
 
 @pytest.fixture
@@ -78,7 +93,7 @@ async def test_loop_read_model_validate_accepts_orm_instance(loop_api_env):
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
-        service = JobService(session)
+        service = RuntimeService(session)
 
         token = _session_ctx.set(session)
         try:
@@ -113,7 +128,7 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
-        service = JobService(session)
+        service = RuntimeService(session)
         current_user_id = uuid.uuid4()
 
         token = _session_ctx.set(session)
@@ -128,7 +143,7 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
                     global_config={"warm_start": False},
                     model_request_config={"epochs": 24, "batch": 16},
                 ),
-                job_service=service,
+                runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
@@ -136,7 +151,7 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
 
             listed = await loop_query_endpoint.list_project_loops(
                 project_id=project.id,
-                job_service=service,
+                runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
@@ -145,7 +160,7 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
 
             fetched = await loop_query_endpoint.get_loop(
                 loop_id=created.id,
-                job_service=service,
+                runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
@@ -158,7 +173,7 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
                     query_strategy="uncertainty_1_minus_max_conf",
                     model_request_config={"epochs": 30, "lr": 0.001},
                 ),
-                job_service=service,
+                runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
@@ -175,7 +190,7 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
-        service = JobService(session)
+        service = RuntimeService(session)
 
         token = _session_ctx.set(session)
         try:
@@ -224,7 +239,7 @@ async def test_loop_control_confirm_rejects_manual_mode(loop_api_env, monkeypatc
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
-        service = JobService(session)
+        service = RuntimeService(session)
         current_user_id = uuid.uuid4()
 
         token = _session_ctx.set(session)
@@ -248,12 +263,175 @@ async def test_loop_control_confirm_rejects_manual_mode(loop_api_env, monkeypatc
             with pytest.raises(BadRequestAppException):
                 await loop_control_endpoint.confirm_loop(
                     loop_id=loop.id,
-                    job_service=service,
+                    runtime_service=service,
                     dispatcher_admin_client=dispatcher_admin_stub,
                     session=session,
                     current_user_id=current_user_id,
                 )
             assert dispatcher_admin_stub.confirm_calls == []
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_loop_control_confirm_forwards_force_flag(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+
+    class _DispatcherAdminStub:
+        def __init__(self) -> None:
+            self.enabled = True
+            self.confirm_calls: list[tuple[str, bool]] = []
+
+        async def confirm_loop(self, loop_id: str, force: bool = False):
+            self.confirm_calls.append((loop_id, force))
+
+    dispatcher_admin_stub = _DispatcherAdminStub()
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-al-confirm",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    query_strategy="random_baseline",
+                    model_arch="yolo_det_v1",
+                    status=LoopStatus.RUNNING,
+                ),
+            )
+
+            await loop_control_endpoint.confirm_loop(
+                loop_id=loop.id,
+                force=True,
+                runtime_service=service,
+                dispatcher_admin_client=dispatcher_admin_stub,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert dispatcher_admin_stub.confirm_calls == [(str(loop.id), True)]
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-cleanup-audit",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    query_strategy="random_baseline",
+                    model_arch="yolo_det_v1",
+                    status=LoopStatus.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.RUNNING,
+                step_counts={},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                query_strategy=loop.query_strategy,
+                resolved_params={},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SCORE,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add(step)
+            await session.flush()
+            session.add(
+                StepEvent(
+                    step_id=step.id,
+                    seq=1,
+                    ts=datetime.now(UTC),
+                    event_type="metric",
+                    payload={"name": "map50"},
+                )
+            )
+            session.add(
+                StepMetricPoint(
+                    step_id=step.id,
+                    metric_step=1,
+                    epoch=1,
+                    metric_name="map50",
+                    metric_value=0.7,
+                    ts=datetime.now(UTC),
+                )
+            )
+            await session.commit()
+
+            response = await loop_control_endpoint.cleanup_round_predictions(
+                loop_id=loop.id,
+                round_index=1,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert response.event_rows_deleted == 1
+            assert response.metric_rows_deleted == 1
+
+            audit_rows = list(
+                (
+                    await session.exec(
+                        select(AuditLog).where(
+                            AuditLog.target_id == round_row.id,
+                            AuditLog.target_type == "runtime.cleanup_round_predictions",
+                        )
+                    )
+                ).all()
+            )
+            assert len(audit_rows) == 1
+            assert audit_rows[0].new_value["loop_id"] == str(loop.id)
         finally:
             _session_ctx.reset(token)
 
@@ -270,7 +448,7 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
-        service = JobService(session)
+        service = RuntimeService(session)
         current_user_id = uuid.uuid4()
 
         token = _session_ctx.set(session)
@@ -290,7 +468,7 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
                         seeds=[0, 1],
                     ),
                 ),
-                job_service=service,
+                runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
@@ -325,7 +503,7 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
             comparison = await loop_query_endpoint.get_simulation_experiment_comparison(
                 group_id=created.experiment_group_id,
                 metric_name="map50",
-                job_service=service,
+                runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )

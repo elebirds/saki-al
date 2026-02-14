@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from saki_api.modules.runtime.api.job import LoopRead
+from saki_api.modules.runtime.api.round_step import LoopRead
 from saki_api.modules.runtime.service.config.loop_config_service import (
     extract_model_request_config,
     extract_simulation_config,

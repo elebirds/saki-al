@@ -6,7 +6,7 @@ from saki_executor.agent.client import AgentClient
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.commands.server import CommandServer
 from saki_executor.core.logging import get_log_level
-from saki_executor.jobs.manager import JobManager
+from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 
 
@@ -14,11 +14,11 @@ def _build_command_server(tmp_path):
     registry = PluginRegistry()
     registry.load_builtin()
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    manager = JobManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
-    client = AgentClient(plugin_registry=registry, job_manager=manager)
+    manager = StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    client = AgentClient(plugin_registry=registry, step_manager=manager)
     shutdown = asyncio.Event()
     command_server = CommandServer(
-        job_manager=manager,
+        step_manager=manager,
         plugin_registry=registry,
         client=client,
         shutdown_event=shutdown,

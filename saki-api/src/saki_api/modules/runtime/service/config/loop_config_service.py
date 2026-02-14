@@ -27,9 +27,9 @@ def to_int(value: Any, default: int) -> int:
 
 def normalize_loop_global_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
     config = dict(raw_config or {})
-    job_resources_default = config.get("job_resources_default")
-    config["job_resources_default"] = (
-        dict(job_resources_default) if isinstance(job_resources_default, dict) else {}
+    round_resources_default = config.get("round_resources_default")
+    config["round_resources_default"] = (
+        dict(round_resources_default) if isinstance(round_resources_default, dict) else {}
     )
     config["warm_start"] = to_bool(config.get("warm_start"), True)
 
@@ -107,9 +107,9 @@ def merge_simulation_config(
     return config
 
 
-def build_job_params_from_loop_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
+def build_round_params_from_loop_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
     """
-    训练作业参数（传给 executor）:
+    轮次执行参数（传给 executor）:
     仅以 `model_request_config` 作为来源。
     其余编排控制参数由 orchestrator 显式注入。
     """

@@ -12,23 +12,23 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.websockets import WebSocketState
 
-from saki_api.app.deps import JobServiceDep
+from saki_api.app.deps import RuntimeServiceDep
 from saki_api.core.exceptions import ForbiddenAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
-from saki_api.modules.runtime.api.http.support.task_event_stream import (
+from saki_api.modules.runtime.api.http.support.step_event_stream import (
     authenticate_stream_token,
     authorize_stream_step_access,
     stream_step_events_loop,
 )
-from saki_api.modules.runtime.api.job import (
-    JobRead,
+from saki_api.modules.runtime.api.round_step import (
     LoopCreateRequest,
     LoopRead,
     LoopSummaryRead,
     LoopUpdateRequest,
+    RoundRead,
     SimulationComparisonRead,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
@@ -46,7 +46,7 @@ async def _ensure_project_perm(
     project_id: uuid.UUID,
     required: str,
 ) -> None:
-    fallback = (Permissions.PROJECT_READ,) if required in {Permissions.LOOP_READ, Permissions.JOB_READ} else (
+    fallback = (Permissions.PROJECT_READ,) if required in {Permissions.LOOP_READ, Permissions.ROUND_READ} else (
         Permissions.PROJECT_UPDATE,
     )
     await ensure_project_permission(
@@ -96,7 +96,7 @@ async def _stream_step_events_loop(
 async def list_project_loops(
     *,
     project_id: uuid.UUID,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -106,7 +106,7 @@ async def list_project_loops(
         project_id=project_id,
         required=Permissions.LOOP_READ,
     )
-    loops = await job_service.list_loops(project_id)
+    loops = await runtime_service.list_loops(project_id)
     return [_build_loop_read(item) for item in loops]
 
 
@@ -115,7 +115,7 @@ async def create_simulation_experiment(
     *,
     project_id: uuid.UUID,
     payload: SimulationExperimentCreateRequest,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -125,7 +125,7 @@ async def create_simulation_experiment(
         project_id=project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    group_id, loops = await job_service.create_simulation_experiment(project_id=project_id, payload=payload)
+    group_id, loops = await runtime_service.create_simulation_experiment(project_id=project_id, payload=payload)
     return SimulationExperimentCreateResponse(
         experiment_group_id=group_id,
         loops=[_build_loop_read(item) for item in loops],
@@ -137,7 +137,7 @@ async def create_project_loop(
     *,
     project_id: uuid.UUID,
     payload: LoopCreateRequest,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -147,7 +147,7 @@ async def create_project_loop(
         project_id=project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    loop = await job_service.create_loop(project_id, payload)
+    loop = await runtime_service.create_loop(project_id, payload)
     return _build_loop_read(loop)
 
 
@@ -155,11 +155,11 @@ async def create_project_loop(
 async def get_loop(
     *,
     loop_id: uuid.UUID,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
@@ -174,57 +174,57 @@ async def update_loop(
     *,
     loop_id: uuid.UUID,
     payload: LoopUpdateRequest,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    updated = await job_service.update_loop(loop_id, payload)
+    updated = await runtime_service.update_loop(loop_id, payload)
     return _build_loop_read(updated)
 
 
-@router.get("/loops/{loop_id}/rounds", response_model=List[JobRead])
+@router.get("/loops/{loop_id}/rounds", response_model=List[RoundRead])
 async def list_loop_rounds(
     *,
     loop_id: uuid.UUID,
     limit: int = Query(default=50, ge=1, le=1000),
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
         project_id=loop.project_id,
-        required=Permissions.JOB_READ,
+        required=Permissions.ROUND_READ,
     )
-    jobs = await job_service.list_jobs(loop_id, limit=limit)
-    return [JobRead.model_validate(item) for item in jobs]
+    rounds = await runtime_service.list_rounds(loop_id, limit=limit)
+    return [RoundRead.model_validate(item) for item in rounds]
 
 
 @router.get("/loops/{loop_id}/summary", response_model=LoopSummaryRead)
 async def get_loop_summary(
     *,
     loop_id: uuid.UUID,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
         project_id=loop.project_id,
         required=Permissions.LOOP_READ,
     )
-    summary = await job_service.summarize_loop(loop_id)
+    summary = await runtime_service.summarize_loop(loop_id)
     return LoopSummaryRead(
         loop_id=loop.id,
         status=loop.status,
@@ -242,11 +242,11 @@ async def get_simulation_experiment_comparison(
     *,
     group_id: uuid.UUID,
     metric_name: str = Query(default="map50"),
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    payload = await job_service.get_simulation_experiment_comparison(
+    payload = await runtime_service.get_simulation_experiment_comparison(
         experiment_group_id=group_id,
         metric_name=metric_name,
     )

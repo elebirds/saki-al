@@ -205,7 +205,7 @@ export interface ApiService {
 
     startLoop(loopId: string): Promise<Loop>;
 
-    confirmLoop(loopId: string): Promise<LoopConfirmResponse>;
+    confirmLoop(loopId: string, force?: boolean): Promise<LoopConfirmResponse>;
 
     pauseLoop(loopId: string): Promise<Loop>;
 

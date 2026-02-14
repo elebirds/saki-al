@@ -98,7 +98,7 @@ func (s *Server) GetRuntimeSummary(_ context.Context, _ *dispatcheradminv1.Runti
 		BusyExecutors:      snapshot.BusyExecutors,
 		PendingAssignCount: snapshot.PendingAssign,
 		PendingStopCount:   snapshot.PendingStop,
-		QueuedTaskCount:    snapshot.QueuedTaskCount,
+		QueuedStepCount:    snapshot.QueuedStepCount,
 	}
 	if !snapshot.LatestHeartbeatAt.IsZero() {
 		response.LatestHeartbeatAt = snapshot.LatestHeartbeatAt.Format(time.RFC3339)

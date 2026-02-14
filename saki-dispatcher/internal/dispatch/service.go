@@ -41,7 +41,7 @@ type Dispatcher struct {
 
 	pendingAssign map[string]PendingAssign
 	pendingStop   map[string]string
-	queuedTasks   map[string]struct{}
+	queuedSteps   map[string]struct{}
 }
 
 type SummarySnapshot struct {
@@ -49,7 +49,7 @@ type SummarySnapshot struct {
 	BusyExecutors     int64
 	PendingAssign     int64
 	PendingStop       int64
-	QueuedTaskCount   int64
+	QueuedStepCount   int64
 	LatestHeartbeatAt time.Time
 }
 
@@ -72,7 +72,7 @@ func NewDispatcher() *Dispatcher {
 		sessions:      map[string]*ExecutorSession{},
 		pendingAssign: map[string]PendingAssign{},
 		pendingStop:   map[string]string{},
-		queuedTasks:   map[string]struct{}{},
+		queuedSteps:   map[string]struct{}{},
 	}
 }
 
@@ -167,7 +167,7 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 	defer d.mu.Unlock()
 
 	switch ack.GetType() {
-	case runtimecontrolv1.AckType_ACK_TYPE_ASSIGN_TASK:
+	case runtimecontrolv1.AckType_ACK_TYPE_ASSIGN_STEP:
 		pending, ok := d.pendingAssign[ack.GetAckFor()]
 		if ok {
 			delete(d.pendingAssign, ack.GetAckFor())
@@ -179,7 +179,7 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 				}
 			}
 		}
-	case runtimecontrolv1.AckType_ACK_TYPE_STOP_TASK:
+	case runtimecontrolv1.AckType_ACK_TYPE_STOP_STEP:
 		delete(d.pendingStop, ack.GetAckFor())
 	}
 }
@@ -270,13 +270,13 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 	return candidates[0].ExecutorID, true
 }
 
-func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *runtimecontrolv1.TaskPayload) bool {
+func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *runtimecontrolv1.StepPayload) bool {
 	executorID = strings.TrimSpace(executorID)
 	requestID = strings.TrimSpace(requestID)
-	if executorID == "" || requestID == "" || task == nil {
+	if executorID == "" || requestID == "" || step == nil {
 		return false
 	}
-	stepID := strings.TrimSpace(task.GetStepId())
+	stepID := strings.TrimSpace(step.GetStepId())
 	if stepID == "" {
 		return false
 	}
@@ -290,10 +290,10 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	}
 
 	message := &runtimecontrolv1.RuntimeMessage{
-		Payload: &runtimecontrolv1.RuntimeMessage_AssignTask{
-			AssignTask: &runtimecontrolv1.AssignTask{
+		Payload: &runtimecontrolv1.RuntimeMessage_AssignStep{
+			AssignStep: &runtimecontrolv1.AssignStep{
 				RequestId: requestID,
-				Step:      task,
+				Step:      step,
 			},
 		},
 	}
@@ -314,9 +314,9 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	}
 }
 
-func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
+func (d *Dispatcher) StopStep(stepID string, reason string) (string, bool) {
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
 		return "", false
 	}
 	requestID := uuid.NewString()
@@ -333,7 +333,7 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 		if !session.IsOnline {
 			continue
 		}
-		if session.CurrentStepID == taskID {
+		if session.CurrentStepID == stepID {
 			target = session
 			break
 		}
@@ -343,41 +343,41 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 	}
 
 	message := &runtimecontrolv1.RuntimeMessage{
-		Payload: &runtimecontrolv1.RuntimeMessage_StopTask{
-			StopTask: &runtimecontrolv1.StopTask{
+		Payload: &runtimecontrolv1.RuntimeMessage_StopStep{
+			StopStep: &runtimecontrolv1.StopStep{
 				RequestId: requestID,
-				StepId:    taskID,
+				StepId:    stepID,
 				Reason:    reason,
 			},
 		},
 	}
 	select {
 	case target.Queue <- message:
-		d.pendingStop[requestID] = taskID
+		d.pendingStop[requestID] = stepID
 		return requestID, true
 	default:
 		return requestID, false
 	}
 }
 
-func (d *Dispatcher) QueueTask(stepID string) {
+func (d *Dispatcher) QueueStep(stepID string) {
 	stepID = strings.TrimSpace(stepID)
 	if stepID == "" {
 		return
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.queuedTasks[stepID] = struct{}{}
+	d.queuedSteps[stepID] = struct{}{}
 }
 
-func (d *Dispatcher) DrainQueuedTaskIDs() []string {
+func (d *Dispatcher) DrainQueuedStepIDs() []string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	ids := make([]string, 0, len(d.queuedTasks))
-	for taskID := range d.queuedTasks {
-		ids = append(ids, taskID)
-		delete(d.queuedTasks, taskID)
+	ids := make([]string, 0, len(d.queuedSteps))
+	for stepID := range d.queuedSteps {
+		ids = append(ids, stepID)
+		delete(d.queuedSteps, stepID)
 	}
 	sort.Strings(ids)
 	return ids
@@ -390,7 +390,7 @@ func (d *Dispatcher) Summary() SummarySnapshot {
 	snapshot := SummarySnapshot{
 		PendingAssign:   int64(len(d.pendingAssign)),
 		PendingStop:     int64(len(d.pendingStop)),
-		QueuedTaskCount: int64(len(d.queuedTasks)),
+		QueuedStepCount: int64(len(d.queuedSteps)),
 	}
 	for _, session := range d.sessions {
 		if !session.IsOnline {
@@ -422,7 +422,7 @@ func (d *Dispatcher) ListExecutors() []ExecutorSnapshot {
 			LastSeen:      session.LastSeen,
 			LastError:     session.LastError,
 			PendingAssign: d.countPendingAssign(executorID),
-			PendingStop:   d.countPendingStop(session.CurrentStepID),
+			PendingStop:   d.countPendingStopByStep(session.CurrentStepID),
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -452,7 +452,7 @@ func (d *Dispatcher) GetExecutor(executorID string) (ExecutorSnapshot, bool) {
 		LastSeen:      session.LastSeen,
 		LastError:     session.LastError,
 		PendingAssign: d.countPendingAssign(executorID),
-		PendingStop:   d.countPendingStop(session.CurrentStepID),
+		PendingStop:   d.countPendingStopByStep(session.CurrentStepID),
 	}, true
 }
 
@@ -466,13 +466,13 @@ func (d *Dispatcher) countPendingAssign(executorID string) int64 {
 	return total
 }
 
-func (d *Dispatcher) countPendingStop(taskID string) int64 {
-	if strings.TrimSpace(taskID) == "" {
+func (d *Dispatcher) countPendingStopByStep(stepID string) int64 {
+	if strings.TrimSpace(stepID) == "" {
 		return 0
 	}
 	var total int64
-	for _, pendingTaskID := range d.pendingStop {
-		if pendingTaskID == taskID {
+	for _, pendingStepID := range d.pendingStop {
+		if pendingStepID == stepID {
 			total++
 		}
 	}

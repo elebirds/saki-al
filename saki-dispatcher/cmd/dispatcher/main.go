@@ -87,6 +87,7 @@ func run() error {
 		domainClient,
 		cfg.DispatchScanLockKey,
 		cfg.SimulationRoundCooldownSec,
+		cfg.StoppingForceCancelSec,
 		cfg.PredictionTTLDays,
 		cfg.PredictionTTLKeepRounds,
 		logger.With().Str("service", "controlplane").Logger(),

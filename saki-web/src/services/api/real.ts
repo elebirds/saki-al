@@ -841,8 +841,10 @@ export class RealApiService implements ApiService {
         return normalizeLoop(response.data);
     }
 
-    async confirmLoop(loopId: string): Promise<LoopConfirmResponse> {
-        const response = await this.client.post<LoopConfirmResponse>(`/loops/${loopId}:confirm`);
+    async confirmLoop(loopId: string, force: boolean = false): Promise<LoopConfirmResponse> {
+        const response = await this.client.post<LoopConfirmResponse>(`/loops/${loopId}:confirm`, null, {
+            params: {force},
+        });
         return {
             ...response.data,
             state: (response.data as any).state ?? (response.data as any).status,

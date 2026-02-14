@@ -415,7 +415,7 @@ type RuntimeSummaryResponse struct {
 	BusyExecutors      int64                  `protobuf:"varint,2,opt,name=busy_executors,json=busyExecutors,proto3" json:"busy_executors,omitempty"`
 	PendingAssignCount int64                  `protobuf:"varint,3,opt,name=pending_assign_count,json=pendingAssignCount,proto3" json:"pending_assign_count,omitempty"`
 	PendingStopCount   int64                  `protobuf:"varint,4,opt,name=pending_stop_count,json=pendingStopCount,proto3" json:"pending_stop_count,omitempty"`
-	QueuedTaskCount    int64                  `protobuf:"varint,5,opt,name=queued_task_count,json=queuedTaskCount,proto3" json:"queued_task_count,omitempty"`
+	QueuedStepCount    int64                  `protobuf:"varint,5,opt,name=queued_step_count,json=queuedStepCount,proto3" json:"queued_step_count,omitempty"`
 	LatestHeartbeatAt  string                 `protobuf:"bytes,6,opt,name=latest_heartbeat_at,json=latestHeartbeatAt,proto3" json:"latest_heartbeat_at,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -479,9 +479,9 @@ func (x *RuntimeSummaryResponse) GetPendingStopCount() int64 {
 	return 0
 }
 
-func (x *RuntimeSummaryResponse) GetQueuedTaskCount() int64 {
+func (x *RuntimeSummaryResponse) GetQueuedStepCount() int64 {
 	if x != nil {
-		return x.QueuedTaskCount
+		return x.QueuedStepCount
 	}
 	return 0
 }
@@ -810,7 +810,7 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\x0ebusy_executors\x18\x02 \x01(\x03R\rbusyExecutors\x120\n" +
 	"\x14pending_assign_count\x18\x03 \x01(\x03R\x12pendingAssignCount\x12,\n" +
 	"\x12pending_stop_count\x18\x04 \x01(\x03R\x10pendingStopCount\x12*\n" +
-	"\x11queued_task_count\x18\x05 \x01(\x03R\x0fqueuedTaskCount\x12.\n" +
+	"\x11queued_step_count\x18\x05 \x01(\x03R\x0fqueuedStepCount\x12.\n" +
 	"\x13latest_heartbeat_at\x18\x06 \x01(\tR\x11latestHeartbeatAt\"6\n" +
 	"\x13ExecutorReadRequest\x12\x1f\n" +
 	"\vexecutor_id\x18\x01 \x01(\tR\n" +

@@ -1,3 +1,3 @@
-from saki_executor.sdk.reporter import JobReporter
+from saki_executor.sdk.reporter import StepReporter
 
-__all__ = ["JobReporter"]
+__all__ = ["StepReporter"]

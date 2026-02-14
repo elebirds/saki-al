@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from saki_executor.jobs.workspace import Workspace
+from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.base import TrainArtifact, TrainOutput, EventCallback
 from saki_executor.strategies.builtin import score_by_strategy
 
@@ -23,7 +23,7 @@ class DemoDetectionInternal:
         return "Demo Detection (Mock)"
 
     @property
-    def supported_job_types(self) -> list[str]:
+    def supported_step_types(self) -> list[str]:
         return ["train_detection"]
 
     @property
@@ -144,6 +144,6 @@ class DemoDetectionInternal:
         topk = int(params.get("topk", 200))
         return candidates[:topk]
 
-    async def stop(self, job_id: str) -> None:
+    async def stop(self, step_id: str) -> None:
         # Demo plugin has no long-lived child process to stop.
         return

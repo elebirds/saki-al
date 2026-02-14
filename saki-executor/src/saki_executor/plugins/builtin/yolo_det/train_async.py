@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from saki_executor.jobs.workspace import Workspace
+from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.builtin.yolo_det.types import TrainConfig
 from saki_executor.plugins.base import EventCallback
 

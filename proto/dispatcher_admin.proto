@@ -45,7 +45,7 @@ message RuntimeSummaryResponse {
   int64 busy_executors = 2;
   int64 pending_assign_count = 3;
   int64 pending_stop_count = 4;
-  int64 queued_task_count = 5;
+  int64 queued_step_count = 5;
   string latest_heartbeat_at = 6;
 }
 

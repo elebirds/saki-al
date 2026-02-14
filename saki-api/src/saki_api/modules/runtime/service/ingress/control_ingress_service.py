@@ -25,12 +25,12 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
 )
 from saki_api.modules.runtime.service.application.event_dto import (
     RuntimeArtifactDTO,
-    RuntimeTaskCandidateDTO,
-    RuntimeTaskEventDTO,
-    RuntimeTaskResultDTO,
+    RuntimeStepCandidateDTO,
+    RuntimeStepEventDTO,
+    RuntimeStepResultDTO,
 )
-from saki_api.modules.runtime.service.persistence.task_runtime_persistence_service import (
-    RuntimeTaskPersistenceService,
+from saki_api.modules.runtime.service.persistence.step_runtime_persistence_service import (
+    RuntimeStepPersistenceService,
 )
 from saki_api.modules.shared.modeling.enums import StepStatus
 from saki_api.modules.storage.domain.asset import Asset
@@ -89,14 +89,14 @@ class RuntimeControlIngressService:
             logger.exception(
                 "data request failed request_id={} step_id={} error={}",
                 request.request_id,
-                request.task_id,
+                request.step_id,
                 exc,
             )
             return runtime_codec.build_error_message(
                 code="data_query_failed",
                 message="data query failed",
                 reply_to=request.request_id,
-                step_id=request.task_id,
+                step_id=request.step_id,
                 query_type=request.query_type,
                 reason=str(exc),
             )
@@ -105,7 +105,7 @@ class RuntimeControlIngressService:
             data_response=pb.DataResponse(
                 request_id=str(uuid.uuid4()),
                 reply_to=request.request_id,
-                step_id=request.task_id,
+                step_id=request.step_id,
                 query_type=request.query_type,
                 items=items,
                 next_cursor=next_cursor or "",
@@ -124,19 +124,19 @@ class RuntimeControlIngressService:
                 reason=exc.reason,
             )
 
-        object_name = f"runtime/steps/{request.task_id}/{request.artifact_name}"
+        object_name = f"runtime/steps/{request.step_id}/{request.artifact_name}"
         try:
             upload_url = self.storage.get_presigned_put_url(
                 object_name=object_name,
                 expires_delta=timedelta(hours=settings.RUNTIME_UPLOAD_URL_EXPIRE_HOURS),
             )
         except Exception as exc:
-            logger.exception("failed to issue upload ticket step_id={} error={}", request.task_id, exc)
+            logger.exception("failed to issue upload ticket step_id={} error={}", request.step_id, exc)
             return runtime_codec.build_error_message(
                 code="upload_ticket_failed",
                 message="failed to issue upload ticket",
                 reply_to=request.request_id,
-                step_id=request.task_id,
+                step_id=request.step_id,
                 reason=str(exc),
             )
 
@@ -145,19 +145,19 @@ class RuntimeControlIngressService:
             upload_ticket_response=pb.UploadTicketResponse(
                 request_id=str(uuid.uuid4()),
                 reply_to=request.request_id,
-                step_id=request.task_id,
+                step_id=request.step_id,
                 upload_url=upload_url,
                 storage_uri=storage_uri,
                 headers={"Content-Type": request.content_type},
             )
         )
 
-    async def persist_task_event(self, message: pb.TaskEvent) -> None:
-        task_id = self._parse_uuid(message.step_id, "step_id")
-        event_type, payload, status_enum = runtime_codec.decode_task_event(message)
+    async def persist_step_event(self, message: pb.StepEvent) -> None:
+        step_id = self._parse_uuid(message.step_id, "step_id")
+        event_type, payload, status_enum = runtime_codec.decode_step_event(message)
         mapped_status = self._status_from_pb(status_enum) if status_enum is not None else None
-        event_dto = RuntimeTaskEventDTO(
-            task_id=task_id,
+        event_dto = RuntimeStepEventDTO(
+            step_id=step_id,
             seq=int(message.seq),
             ts=self._to_datetime_millis(int(message.ts)),
             event_type=event_type,
@@ -167,12 +167,12 @@ class RuntimeControlIngressService:
         )
 
         async with self._session_local() as session:
-            persistence = RuntimeTaskPersistenceService(session)
-            await persistence.persist_task_event(event_dto)
+            persistence = RuntimeStepPersistenceService(session)
+            await persistence.persist_step_event(event_dto)
             await session.commit()
 
-    async def persist_task_result(self, message: pb.TaskResult) -> None:
-        task_id = self._parse_uuid(message.step_id, "step_id")
+    async def persist_step_result(self, message: pb.StepResult) -> None:
+        step_id = self._parse_uuid(message.step_id, "step_id")
         artifacts: list[RuntimeArtifactDTO] = [
             RuntimeArtifactDTO(
                 name=str(item.name or ""),
@@ -184,7 +184,7 @@ class RuntimeControlIngressService:
             if str(item.name or "")
         ]
 
-        candidates: list[RuntimeTaskCandidateDTO] = []
+        candidates: list[RuntimeStepCandidateDTO] = []
         for idx, candidate in enumerate(message.candidates, start=1):
             sample_id_raw = str(candidate.sample_id or "").strip()
             if not sample_id_raw:
@@ -194,7 +194,7 @@ class RuntimeControlIngressService:
             except Exception:
                 continue
             candidates.append(
-                RuntimeTaskCandidateDTO(
+                RuntimeStepCandidateDTO(
                     sample_id=sample_id,
                     rank=idx,
                     score=float(candidate.score or 0.0),
@@ -202,8 +202,8 @@ class RuntimeControlIngressService:
                 )
             )
 
-        result_dto = RuntimeTaskResultDTO(
-            task_id=task_id,
+        result_dto = RuntimeStepResultDTO(
+            step_id=step_id,
             status=self._status_from_pb(int(message.status)),
             metrics={str(k): float(v) for k, v in message.metrics.items()},
             artifacts=artifacts,
@@ -212,14 +212,14 @@ class RuntimeControlIngressService:
         )
 
         async with self._session_local() as session:
-            persistence = RuntimeTaskPersistenceService(session)
-            await persistence.persist_task_result(result_dto)
+            persistence = RuntimeStepPersistenceService(session)
+            await persistence.persist_step_result(result_dto)
             await session.commit()
 
     def _decode_data_request(self, message: pb.DataRequest) -> RuntimeDataRequestDTO:
         request_id = str(message.request_id or "")
-        task_id = str(message.step_id or "")
-        if not request_id or not task_id:
+        step_id = str(message.step_id or "")
+        if not request_id or not step_id:
             raise _InvalidRuntimeRequest("request_id and step_id are required", "missing_required_field")
 
         try:
@@ -230,7 +230,7 @@ class RuntimeControlIngressService:
 
         return RuntimeDataRequestDTO(
             request_id=request_id,
-            task_id=task_id,
+            step_id=step_id,
             query_type=int(message.query_type),
             project_id=project_id,
             commit_id=commit_id,
@@ -240,9 +240,9 @@ class RuntimeControlIngressService:
 
     def _decode_upload_ticket_request(self, message: pb.UploadTicketRequest) -> RuntimeUploadTicketRequestDTO:
         request_id = str(message.request_id or "")
-        task_id = str(message.step_id or "")
+        step_id = str(message.step_id or "")
         artifact_name = str(message.artifact_name or "").strip()
-        if not request_id or not task_id or not artifact_name:
+        if not request_id or not step_id or not artifact_name:
             raise _InvalidRuntimeRequest(
                 "request_id/step_id/artifact_name are required",
                 "missing_required_field",
@@ -250,7 +250,7 @@ class RuntimeControlIngressService:
 
         return RuntimeUploadTicketRequestDTO(
             request_id=request_id,
-            task_id=task_id,
+            step_id=step_id,
             artifact_name=artifact_name,
             content_type=str(message.content_type or "application/octet-stream"),
         )

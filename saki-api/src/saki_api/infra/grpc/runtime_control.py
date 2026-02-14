@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 
 import grpc
@@ -39,6 +40,12 @@ def _parse_uuid(raw: str) -> uuid.UUID | None:
 
 def _resolve_step_id(step_id: str) -> str:
     return str(step_id or "").strip()
+
+
+def _build_activation_key(loop_id: uuid.UUID, round_index: int, sample_ids: list[uuid.UUID]) -> str:
+    unique_sorted_ids = sorted({str(sample_id) for sample_id in sample_ids if sample_id})
+    digest = hashlib.sha256(",".join(unique_sorted_ids).encode("utf-8")).hexdigest()
+    return f"{loop_id}:{int(round_index)}:{digest}"
 
 
 def _to_domain_data_item(item: pb.DataItem) -> domain_pb.DataItem:
@@ -147,6 +154,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             parent_commit_id: uuid.UUID,
             selected_sample_ids: list[uuid.UUID],
             command_id: str,
+            activation_key: str,
             loop_id: str,
             round_index: int,
             query_strategy: str,
@@ -165,6 +173,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             extra={
                 "runtime": {
                     "command_id": str(command_id or ""),
+                    "activation_key": str(activation_key or ""),
                     "loop_id": str(loop_id or ""),
                     "round_index": int(round_index),
                     "query_strategy": str(query_strategy or ""),
@@ -284,6 +293,35 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             ordered.append(sample_id)
         return ordered
 
+    async def _find_existing_activation_commit_tx(
+            self,
+            *,
+            session,
+            project_id: uuid.UUID,
+            activation_key: str,
+    ) -> Commit | None:
+        activation_key = str(activation_key or "").strip()
+        if not activation_key:
+            return None
+        statement = (
+            select(Commit)
+            .where(
+                Commit.project_id == project_id,
+                Commit.author_type == AuthorType.SYSTEM,
+            )
+            .order_by(Commit.created_at.desc())
+            .limit(256)
+        )
+        candidates = list((await session.exec(statement)).all())
+        for item in candidates:
+            extra_payload = item.extra if isinstance(item.extra, dict) else {}
+            runtime_extra = extra_payload.get("runtime", {})
+            if not isinstance(runtime_extra, dict):
+                continue
+            if str(runtime_extra.get("activation_key") or "").strip() == activation_key:
+                return item
+        return None
+
     async def ActivateSamples(self, request, context):  # noqa: N802
         project_id = _parse_uuid(request.project_id)
         branch_id = _parse_uuid(request.branch_id)
@@ -317,13 +355,31 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             if not selected_sample_ids:
                 return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
 
+            activation_key = _build_activation_key(loop_uuid, round_index, selected_sample_ids)
+            existing_commit = await self._find_existing_activation_commit_tx(
+                session=session,
+                project_id=project_id,
+                activation_key=activation_key,
+            )
+            if existing_commit is not None:
+                if branch.head_commit_id != existing_commit.id:
+                    branch.head_commit_id = existing_commit.id
+                    session.add(branch)
+                    await session.commit()
+                return domain_pb.ActivateSamplesResponse(created=False, commit_id=str(existing_commit.id))
+
+            command_id = str(request.command_id or "").strip()
+            if not command_id:
+                command_id = f"activate:{activation_key}"
+
             commit = await self._create_simulation_commit_tx(
                 session=session,
                 project_id=project_id,
                 oracle_commit_id=oracle_commit_id,
                 parent_commit_id=parent_commit_id,
                 selected_sample_ids=selected_sample_ids,
-                command_id=str(request.command_id or ""),
+                command_id=command_id,
+                activation_key=activation_key,
                 loop_id=str(request.loop_id or ""),
                 round_index=round_index,
                 query_strategy=str(request.query_strategy or ""),

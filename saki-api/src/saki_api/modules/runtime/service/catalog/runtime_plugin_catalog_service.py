@@ -9,7 +9,7 @@ from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 PLUGIN_COMPARE_FIELDS = (
     "display_name",
     "version",
-    "supported_task_types",
+    "supported_step_types",
     "supported_strategies",
     "supported_accelerators",
     "supports_auto_fallback",
@@ -23,7 +23,7 @@ class RuntimePluginCapabilityVO:
     plugin_id: str
     display_name: str
     version: str
-    supported_task_types: list[str] = field(default_factory=list)
+    supported_step_types: list[str] = field(default_factory=list)
     supported_strategies: list[str] = field(default_factory=list)
     supported_accelerators: list[str] = field(default_factory=list)
     supports_auto_fallback: bool = True
@@ -63,7 +63,7 @@ def extract_executor_plugins(raw_payload: dict[str, Any] | None) -> list[Runtime
                 plugin_id=plugin_id,
                 display_name=display_name,
                 version=str(item.get("version") or ""),
-                supported_task_types=_normalize_text_list(item.get("supported_task_types")),
+                supported_step_types=_normalize_text_list(item.get("supported_step_types")),
                 supported_strategies=_normalize_text_list(item.get("supported_strategies")),
                 supported_accelerators=_normalize_text_list(item.get("supported_accelerators")),
                 supports_auto_fallback=bool(item.get("supports_auto_fallback", True)),

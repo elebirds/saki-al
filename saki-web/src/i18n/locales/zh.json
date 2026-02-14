@@ -860,15 +860,15 @@
         "runtimeManagementAll": "运行时管理（全局）",
         "loopReadAll": "查看 Loop（全局）",
         "loopManageAll": "管理 Loop（全局）",
-        "jobReadAll": "查看任务（全局）",
-        "jobManageAll": "管理任务（全局）",
+        "jobReadAll": "查看轮次（全局）",
+        "jobManageAll": "管理轮次（全局）",
         "modelReadAll": "查看模型（全局）",
         "modelManageAll": "管理模型（全局）",
         "runtimeManagementAssigned": "运行时管理（成员）",
         "loopReadAssigned": "查看 Loop（成员）",
         "loopManageAssigned": "管理 Loop（成员）",
-        "jobReadAssigned": "查看任务（成员）",
-        "jobManageAssigned": "管理任务（成员）",
+        "jobReadAssigned": "查看轮次（成员）",
+        "jobManageAssigned": "管理轮次（成员）",
         "modelReadAssigned": "查看模型（成员）",
         "modelManageAssigned": "管理模型（成员）"
       }
@@ -926,8 +926,8 @@
         "title": "训练与主动学习",
         "body": "Runtime 以无状态执行器方式运行训练/推理任务，持续闭环筛选高价值样本。",
         "tags": {
-          "alLoop": "ALLoop",
-          "jobMetric": "任务/指标",
+          "alLoop": "Loop",
+          "jobMetric": "轮次/指标",
           "model": "模型"
         }
       },

@@ -20,7 +20,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
 
-from saki_executor.jobs.workspace import Workspace
+from saki_executor.steps.workspace import Workspace
 from saki_executor.hardware.probe import (
     ACCELERATOR_PRIORITY,
     available_accelerators,
@@ -158,7 +158,7 @@ class YoloDetectionInternal:
         return "YOLO Detection (OBB)"
 
     @property
-    def supported_job_types(self) -> list[str]:
+    def supported_step_types(self) -> list[str]:
         return ["train_detection"]
 
     @property
@@ -433,8 +433,8 @@ class YoloDetectionInternal:
         candidates.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
         return candidates[:topk]
 
-    async def stop(self, job_id: str) -> None:
-        del job_id
+    async def stop(self, step_id: str) -> None:
+        del step_id
         self._stop_flag.set()
 
     def _annotation_to_yolo_obb_line(

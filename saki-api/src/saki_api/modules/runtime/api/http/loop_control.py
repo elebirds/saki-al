@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.app.deps import DispatcherAdminClientDep, JobServiceDep
+from saki_api.app.deps import DispatcherAdminClientDep, RuntimeServiceDep
 from saki_api.core.exceptions import BadRequestAppException, InternalServerErrorAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
-from saki_api.modules.runtime.api.job import LoopConfirmResponse, LoopRead, RoundPredictionCleanupResponse
+from saki_api.modules.runtime.api.round_step import LoopConfirmResponse, LoopRead, RoundPredictionCleanupResponse
 from saki_api.modules.shared.modeling import Permissions
 from saki_api.modules.shared.modeling.enums import LoopMode
 
@@ -78,12 +78,12 @@ async def _dispatch_loop_command(
 async def start_loop(
     *,
     loop_id: uuid.UUID,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
@@ -95,7 +95,7 @@ async def start_loop(
         loop_id=loop_id,
         dispatcher_admin_client=dispatcher_admin_client,
     )
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -103,12 +103,12 @@ async def start_loop(
 async def pause_loop(
     *,
     loop_id: uuid.UUID,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
@@ -120,7 +120,7 @@ async def pause_loop(
         loop_id=loop_id,
         dispatcher_admin_client=dispatcher_admin_client,
     )
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -128,12 +128,12 @@ async def pause_loop(
 async def resume_loop(
     *,
     loop_id: uuid.UUID,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
@@ -145,7 +145,7 @@ async def resume_loop(
         loop_id=loop_id,
         dispatcher_admin_client=dispatcher_admin_client,
     )
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -153,12 +153,12 @@ async def resume_loop(
 async def stop_loop(
     *,
     loop_id: uuid.UUID,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
@@ -170,7 +170,7 @@ async def stop_loop(
         loop_id=loop_id,
         dispatcher_admin_client=dispatcher_admin_client,
     )
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     return _build_loop_read(loop)
 
 
@@ -178,12 +178,13 @@ async def stop_loop(
 async def confirm_loop(
     *,
     loop_id: uuid.UUID,
-    job_service: JobServiceDep,
+    force: bool = Query(default=False),
+    runtime_service: RuntimeServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
@@ -198,9 +199,10 @@ async def confirm_loop(
     await _dispatch_loop_command(
         command="confirm",
         loop_id=loop_id,
+        force=force,
         dispatcher_admin_client=dispatcher_admin_client,
     )
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     return LoopConfirmResponse(loop_id=loop.id, phase=loop.phase, state=loop.status)
 
 
@@ -209,18 +211,22 @@ async def cleanup_round_predictions(
     *,
     loop_id: uuid.UUID,
     round_index: int,
-    job_service: JobServiceDep,
+    runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    stats = await job_service.cleanup_round_predictions(loop_id=loop_id, round_index=round_index)
+    stats = await runtime_service.cleanup_round_predictions(
+        loop_id=loop_id,
+        round_index=round_index,
+        actor_user_id=current_user_id,
+    )
     return RoundPredictionCleanupResponse(
         loop_id=loop_id,
         round_index=round_index,

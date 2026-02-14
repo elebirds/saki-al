@@ -121,10 +121,6 @@ class DispatcherAdminClient:
             metadata=self._metadata(),
         )
 
-    async def stop_job(self, job_id: str, *, reason: str = "", command_id: str | None = None) -> pb.CommandResponse:
-        # backward alias for existing callers
-        return await self.stop_round(job_id, reason=reason, command_id=command_id)
-
     async def stop_step(
             self,
             step_id: str,
@@ -142,10 +138,6 @@ class DispatcherAdminClient:
             timeout=self.timeout_sec,
             metadata=self._metadata(),
         )
-
-    async def stop_task(self, task_id: str, *, reason: str = "", command_id: str | None = None) -> pb.CommandResponse:
-        # backward alias for existing callers
-        return await self.stop_step(task_id, reason=reason, command_id=command_id)
 
     async def trigger_dispatch(self, *, step_id: str = "", command_id: str | None = None) -> pb.CommandResponse:
         stub = await self._get_stub()

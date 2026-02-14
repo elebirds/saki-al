@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Event
 from typing import Any, Callable
 
-from saki_executor.jobs.workspace import Workspace
+from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.builtin.yolo_det.artifact_collector import (
     collect_optional_artifacts,
     copy_best_weights,

@@ -239,8 +239,8 @@ const getPermissionCategories = (
             permissions: [
                 {value: 'loop:read:all', label: t('role.management.permissionLabels.loopReadAll')},
                 {value: 'loop:manage:all', label: t('role.management.permissionLabels.loopManageAll')},
-                {value: 'job:read:all', label: t('role.management.permissionLabels.jobReadAll')},
-                {value: 'job:manage:all', label: t('role.management.permissionLabels.jobManageAll')},
+                {value: 'round:read:all', label: t('role.management.permissionLabels.jobReadAll')},
+                {value: 'round:manage:all', label: t('role.management.permissionLabels.jobManageAll')},
                 {value: 'model:read:all', label: t('role.management.permissionLabels.modelReadAll')},
                 {value: 'model:manage:all', label: t('role.management.permissionLabels.modelManageAll')},
             ],
@@ -250,8 +250,8 @@ const getPermissionCategories = (
             permissions: [
                 {value: 'loop:read:assigned', label: t('role.management.permissionLabels.loopReadAssigned')},
                 {value: 'loop:manage:assigned', label: t('role.management.permissionLabels.loopManageAssigned')},
-                {value: 'job:read:assigned', label: t('role.management.permissionLabels.jobReadAssigned')},
-                {value: 'job:manage:assigned', label: t('role.management.permissionLabels.jobManageAssigned')},
+                {value: 'round:read:assigned', label: t('role.management.permissionLabels.jobReadAssigned')},
+                {value: 'round:manage:assigned', label: t('role.management.permissionLabels.jobManageAssigned')},
                 {value: 'model:read:assigned', label: t('role.management.permissionLabels.modelReadAssigned')},
                 {value: 'model:manage:assigned', label: t('role.management.permissionLabels.modelManageAssigned')},
             ],

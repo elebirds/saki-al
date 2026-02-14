@@ -184,11 +184,11 @@ func (s *Server) handleIncoming(
 		s.dispatcher.HandleAck(payload.Ack)
 		return nil, currentExecutorID, nil
 
-	case *runtimecontrolv1.RuntimeMessage_TaskEvent:
-		event := payload.TaskEvent
+	case *runtimecontrolv1.RuntimeMessage_StepEvent:
+		event := payload.StepEvent
 		stepID := resolveStepID(event.GetStepId())
 		if s.controlPlane != nil {
-			if err := s.controlPlane.OnTaskEvent(context.Background(), event); err != nil {
+			if err := s.controlPlane.OnStepEvent(context.Background(), event); err != nil {
 				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_event failed")
 			}
 		}
@@ -200,11 +200,11 @@ func (s *Server) handleIncoming(
 			"step_event accepted",
 		), currentExecutorID, nil
 
-	case *runtimecontrolv1.RuntimeMessage_TaskResult:
-		result := payload.TaskResult
+	case *runtimecontrolv1.RuntimeMessage_StepResult:
+		result := payload.StepResult
 		stepID := resolveStepID(result.GetStepId())
 		if s.controlPlane != nil {
-			if err := s.controlPlane.OnTaskResult(context.Background(), result); err != nil {
+			if err := s.controlPlane.OnStepResult(context.Background(), result); err != nil {
 				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_result failed")
 			}
 		}

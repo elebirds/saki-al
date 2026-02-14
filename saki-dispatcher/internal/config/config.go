@@ -19,6 +19,7 @@ type Config struct {
 	HeartbeatTimeoutSec        int   `env:"RUNTIME_HEARTBEAT_TIMEOUT_SEC" envDefault:"30"`
 	DispatchIntervalSec        int   `env:"DISPATCH_SCAN_INTERVAL_SEC" envDefault:"3"`
 	SimulationRoundCooldownSec int   `env:"SIMULATION_ROUND_COOLDOWN_SEC" envDefault:"5"`
+	StoppingForceCancelSec     int   `env:"STOPPING_FORCE_CANCEL_SEC" envDefault:"120"`
 	PredictionTTLDays          int   `env:"PREDICTION_TTL_DAYS" envDefault:"0"`
 	PredictionTTLKeepRounds    int   `env:"PREDICTION_TTL_KEEP_ROUNDS" envDefault:"2"`
 	AssignAckTimeoutSec        int   `env:"ASSIGN_ACK_TIMEOUT_SEC" envDefault:"30"`
@@ -57,6 +58,9 @@ func (c Config) Validate() error {
 	}
 	if c.SimulationRoundCooldownSec < 0 {
 		return fmt.Errorf("SIMULATION_ROUND_COOLDOWN_SEC must be >= 0")
+	}
+	if c.StoppingForceCancelSec < 0 {
+		return fmt.Errorf("STOPPING_FORCE_CANCEL_SEC must be >= 0")
 	}
 	if c.PredictionTTLDays < 0 {
 		return fmt.Errorf("PREDICTION_TTL_DAYS must be >= 0")

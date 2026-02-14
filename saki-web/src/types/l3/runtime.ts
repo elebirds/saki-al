@@ -108,7 +108,7 @@ export type RuntimeStepType =
     | 'select'
     | 'activate_samples'
     | 'wait_annotation'
-    | 'merge'
+    | 'advance_branch'
     | 'eval'
     | 'upload_artifact'
     | 'export'

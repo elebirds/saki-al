@@ -7,45 +7,51 @@ from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.jobs.state import TaskStatus
+from saki_executor.steps.state import StepStatus
 
 _ACTIVATE_SAMPLES_ENUM = pb.ACTIVATE_SAMPLES
 
 _STATUS_TO_ENUM: dict[str, int] = {
-    TaskStatus.PENDING.value: pb.PENDING,
-    TaskStatus.DISPATCHING.value: pb.DISPATCHING,
-    TaskStatus.RUNNING.value: pb.RUNNING,
-    TaskStatus.RETRYING.value: pb.RETRYING,
-    TaskStatus.SUCCEEDED.value: pb.SUCCEEDED,
-    TaskStatus.FAILED.value: pb.FAILED,
-    TaskStatus.CANCELLED.value: pb.CANCELLED,
-    TaskStatus.SKIPPED.value: pb.SKIPPED,
+    StepStatus.PENDING.value: pb.PENDING,
+    StepStatus.DISPATCHING.value: pb.DISPATCHING,
+    StepStatus.RUNNING.value: pb.RUNNING,
+    StepStatus.RETRYING.value: pb.RETRYING,
+    StepStatus.SUCCEEDED.value: pb.SUCCEEDED,
+    StepStatus.FAILED.value: pb.FAILED,
+    StepStatus.CANCELLED.value: pb.CANCELLED,
+    StepStatus.SKIPPED.value: pb.SKIPPED,
 }
 
 _ENUM_TO_STATUS: dict[int, str] = {
-    pb.PENDING: TaskStatus.PENDING.value,
-    pb.DISPATCHING: TaskStatus.DISPATCHING.value,
-    pb.RUNNING: TaskStatus.RUNNING.value,
-    pb.RETRYING: TaskStatus.RETRYING.value,
-    pb.SUCCEEDED: TaskStatus.SUCCEEDED.value,
-    pb.FAILED: TaskStatus.FAILED.value,
-    pb.CANCELLED: TaskStatus.CANCELLED.value,
-    pb.SKIPPED: TaskStatus.SKIPPED.value,
+    pb.PENDING: StepStatus.PENDING.value,
+    pb.DISPATCHING: StepStatus.DISPATCHING.value,
+    pb.RUNNING: StepStatus.RUNNING.value,
+    pb.RETRYING: StepStatus.RETRYING.value,
+    pb.SUCCEEDED: StepStatus.SUCCEEDED.value,
+    pb.FAILED: StepStatus.FAILED.value,
+    pb.CANCELLED: StepStatus.CANCELLED.value,
+    pb.SKIPPED: StepStatus.SKIPPED.value,
 }
 
-_TASK_TYPE_TO_TEXT: dict[int, str] = {
+_STEP_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN: "train",
     pb.SCORE: "score",
     pb.SELECT: "select",
     _ACTIVATE_SAMPLES_ENUM: "activate_samples",
     pb.WAIT_ANNOTATION: "wait_annotation",
-    pb.MERGE: "merge",
+    pb.ADVANCE_BRANCH: "advance_branch",
     pb.EVAL: "eval",
     pb.EXPORT: "export",
     pb.UPLOAD_ARTIFACT: "upload_artifact",
     pb.CUSTOM: "custom",
 }
-_TEXT_TO_TASK_TYPE: dict[str, int] = {value: key for key, value in _TASK_TYPE_TO_TEXT.items()}
+_TEXT_TO_STEP_TYPE: dict[str, int] = {value: key for key, value in _STEP_TYPE_TO_TEXT.items()}
+
+_DISPATCH_KIND_TO_TEXT: dict[int, str] = {
+    pb.DISPATCHABLE: "dispatchable",
+    pb.ORCHESTRATOR: "orchestrator",
+}
+_TEXT_TO_DISPATCH_KIND: dict[str, int] = {value: key for key, value in _DISPATCH_KIND_TO_TEXT.items()}
 
 _LOOP_MODE_TO_TEXT: dict[int, str] = {
     pb.ACTIVE_LEARNING: "active_learning",
@@ -71,8 +77,8 @@ _TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCEL
 
 _ACK_TYPE_TO_TEXT: dict[int, str] = {
     pb.ACK_TYPE_REGISTER: "register",
-    pb.ACK_TYPE_ASSIGN_TASK: "assign_task",
-    pb.ACK_TYPE_STOP_TASK: "stop_task",
+    pb.ACK_TYPE_ASSIGN_STEP: "assign_step",
+    pb.ACK_TYPE_STOP_STEP: "stop_step",
     pb.ACK_TYPE_REQUEST: "request",
 }
 _TEXT_TO_ACK_TYPE: dict[str, int] = {value: key for key, value in _ACK_TYPE_TO_TEXT.items()}
@@ -82,7 +88,7 @@ _ACK_REASON_TO_TEXT: dict[int, str] = {
     pb.ACK_REASON_ACCEPTED: "accepted",
     pb.ACK_REASON_EXECUTOR_BUSY: "executor_busy",
     pb.ACK_REASON_STOPPING: "stopping",
-    pb.ACK_REASON_TASK_NOT_RUNNING: "task_not_running",
+    pb.ACK_REASON_STEP_NOT_RUNNING: "step_not_running",
     pb.ACK_REASON_REJECTED: "rejected",
 }
 _TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
@@ -106,17 +112,25 @@ def struct_to_dict(payload: Struct | None) -> dict[str, Any]:
     return dict(MessageToDict(payload, preserving_proto_field_name=True))
 
 
-def task_status_to_enum(status: str | TaskStatus) -> int:
-    raw = status.value if isinstance(status, TaskStatus) else str(status or "").lower()
+def step_status_to_enum(status: str | StepStatus) -> int:
+    raw = status.value if isinstance(status, StepStatus) else str(status or "").lower()
     return _STATUS_TO_ENUM.get(raw, pb.PENDING)
 
 
 def status_enum_to_text(status: int) -> str:
-    return _ENUM_TO_STATUS.get(int(status), TaskStatus.PENDING.value)
+    return _ENUM_TO_STATUS.get(int(status), StepStatus.PENDING.value)
 
 
 def text_to_query_type(query_type: str | None) -> int:
     return _TEXT_TO_QUERY_TYPE.get((query_type or "").lower(), pb.LABELS)
+
+
+def dispatch_kind_to_text(dispatch_kind: int) -> str:
+    return _DISPATCH_KIND_TO_TEXT.get(int(dispatch_kind), "dispatchable")
+
+
+def text_to_dispatch_kind(dispatch_kind: str | None) -> int:
+    return _TEXT_TO_DISPATCH_KIND.get((dispatch_kind or "").strip().lower(), pb.DISPATCHABLE)
 
 
 def query_type_to_text(query_type: int) -> str:
@@ -259,7 +273,7 @@ def build_register_message(
             pb.PluginCapability(
                 plugin_id=str(item.get("plugin_id") or ""),
                 version=str(item.get("version") or ""),
-                supported_task_types=[str(v) for v in (item.get("supported_task_types") or [])],
+                supported_step_types=[str(v) for v in (item.get("supported_step_types") or [])],
                 supported_strategies=[str(v) for v in (item.get("supported_strategies") or [])],
                 display_name=str(item.get("display_name") or item.get("plugin_id") or ""),
                 request_config_schema=dict_to_struct(item.get("request_config_schema") or {}),
@@ -289,10 +303,10 @@ def build_heartbeat_message(
     request_id: str,
     executor_id: str,
     busy: bool,
-    current_task_id: str | None,
+    current_step_id: str | None,
     resources: Mapping[str, Any],
 ) -> pb.RuntimeMessage:
-    step_id = str(current_task_id or "")
+    step_id = str(current_step_id or "")
     return pb.RuntimeMessage(
         heartbeat=pb.Heartbeat(
             request_id=request_id,
@@ -328,14 +342,14 @@ def build_ack_message(
 def build_data_request_message(
     *,
     request_id: str,
-    task_id: str,
+    step_id: str,
     query_type: str,
     project_id: str,
     commit_id: str,
     cursor: str | None,
     limit: int,
 ) -> pb.RuntimeMessage:
-    step_id = str(task_id)
+    step_id = str(step_id)
     return pb.RuntimeMessage(
         data_request=pb.DataRequest(
             request_id=request_id,
@@ -352,11 +366,11 @@ def build_data_request_message(
 def build_upload_ticket_request_message(
     *,
     request_id: str,
-    task_id: str,
+    step_id: str,
     artifact_name: str,
     content_type: str,
 ) -> pb.RuntimeMessage:
-    step_id = str(task_id)
+    step_id = str(step_id)
     return pb.RuntimeMessage(
         upload_ticket_request=pb.UploadTicketRequest(
             request_id=request_id,
@@ -367,17 +381,17 @@ def build_upload_ticket_request_message(
     )
 
 
-def build_task_event_message(
+def build_step_event_message(
     *,
     request_id: str,
-    task_id: str,
+    step_id: str,
     seq: int,
     ts: int,
     event_type: str,
     payload: Mapping[str, Any],
 ) -> pb.RuntimeMessage:
-    step_id = str(task_id)
-    task_event = pb.TaskEvent(
+    step_id = str(step_id)
+    step_event = pb.StepEvent(
         request_id=request_id,
         step_id=step_id,
         seq=int(seq),
@@ -385,65 +399,65 @@ def build_task_event_message(
     )
 
     if event_type == "status":
-        task_event.status_event.status = task_status_to_enum(str(payload.get("status") or ""))
+        step_event.status_event.status = step_status_to_enum(str(payload.get("status") or ""))
         if payload.get("reason") is not None:
-            task_event.status_event.reason = str(payload.get("reason"))
+            step_event.status_event.reason = str(payload.get("reason"))
     elif event_type == "log":
-        task_event.log_event.level = str(payload.get("level") or "")
-        task_event.log_event.message = str(payload.get("message") or "")
+        step_event.log_event.level = str(payload.get("level") or "")
+        step_event.log_event.message = str(payload.get("message") or "")
     elif event_type == "progress":
-        task_event.progress_event.epoch = int(payload.get("epoch") or 0)
-        task_event.progress_event.step = int(payload.get("step") or 0)
-        task_event.progress_event.total_steps = int(payload.get("total_steps") or 0)
-        task_event.progress_event.eta_sec = int(payload.get("eta_sec") or 0)
+        step_event.progress_event.epoch = int(payload.get("epoch") or 0)
+        step_event.progress_event.step = int(payload.get("step") or 0)
+        step_event.progress_event.total_steps = int(payload.get("total_steps") or 0)
+        step_event.progress_event.eta_sec = int(payload.get("eta_sec") or 0)
     elif event_type == "metric":
-        task_event.metric_event.step = int(payload.get("step") or 0)
-        task_event.metric_event.epoch = int(payload.get("epoch") or 0)
+        step_event.metric_event.step = int(payload.get("step") or 0)
+        step_event.metric_event.epoch = int(payload.get("epoch") or 0)
         for metric_name, metric_value in (payload.get("metrics") or {}).items():
             try:
-                task_event.metric_event.metrics[str(metric_name)] = float(metric_value)
+                step_event.metric_event.metrics[str(metric_name)] = float(metric_value)
             except Exception:
                 continue
     elif event_type == "artifact":
-        artifact = task_event.artifact_event.artifact
+        artifact = step_event.artifact_event.artifact
         artifact.kind = str(payload.get("kind") or "artifact")
         artifact.name = str(payload.get("name") or "")
         artifact.uri = str(payload.get("uri") or "")
         artifact.meta.CopyFrom(dict_to_struct(payload.get("meta") or {}))
     else:
-        task_event.log_event.level = "WARN"
-        task_event.log_event.message = f"unknown event type: {event_type}"
+        step_event.log_event.level = "WARN"
+        step_event.log_event.message = f"unknown event type: {event_type}"
 
-    return pb.RuntimeMessage(task_event=task_event)
+    return pb.RuntimeMessage(step_event=step_event)
 
 
-def build_task_result_message(
+def build_step_result_message(
     *,
     request_id: str,
-    task_id: str,
-    status: str | TaskStatus,
+    step_id: str,
+    status: str | StepStatus,
     metrics: Mapping[str, Any],
     artifacts: Mapping[str, Any],
     candidates: list[dict[str, Any]],
     error_message: str = "",
 ) -> pb.RuntimeMessage:
-    step_id = str(task_id)
-    task_result = pb.TaskResult(
+    step_id = str(step_id)
+    step_result = pb.StepResult(
         request_id=request_id,
         step_id=step_id,
-        status=task_status_to_enum(status),
+        status=step_status_to_enum(status),
         error_message=str(error_message or ""),
     )
     for metric_name, metric_value in (metrics or {}).items():
         try:
-            task_result.metrics[str(metric_name)] = float(metric_value)
+            step_result.metrics[str(metric_name)] = float(metric_value)
         except Exception:
             continue
 
     for name, artifact in (artifacts or {}).items():
         if not isinstance(artifact, Mapping):
             continue
-        task_result.artifacts.append(
+        step_result.artifacts.append(
             pb.ArtifactItem(
                 kind=str(artifact.get("kind") or "artifact"),
                 name=str(name),
@@ -453,7 +467,7 @@ def build_task_result_message(
         )
 
     for candidate in candidates or []:
-        task_result.candidates.append(
+        step_result.candidates.append(
             pb.QueryCandidate(
                 sample_id=str(candidate.get("sample_id") or ""),
                 score=float(candidate.get("score") or 0.0),
@@ -461,7 +475,7 @@ def build_task_result_message(
             )
         )
 
-    return pb.RuntimeMessage(task_result=task_result)
+    return pb.RuntimeMessage(step_result=step_result)
 
 
 def get_message_request_id(message: pb.RuntimeMessage) -> str:
@@ -481,32 +495,27 @@ def set_message_request_id(message: pb.RuntimeMessage, request_id: str) -> None:
         setattr(payload, "request_id", request_id)
 
 
-def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
-    task = assign_task.step
-    step_id = _resolve_step_id(task.step_id)
-    round_id = str(task.round_id or "")
-    depends_on_step_ids = list(task.depends_on_step_ids or [])
+def parse_assign_step(assign_step: pb.AssignStep) -> dict[str, Any]:
+    step_payload = assign_step.step
+    step_id = _resolve_step_id(step_payload.step_id)
+    round_id = str(step_payload.round_id or "")
+    depends_on_step_ids = list(step_payload.depends_on_step_ids or [])
     return {
         "step_id": step_id,
         "round_id": round_id,
-        "task_id": step_id,
-        "job_id": round_id,
-        "loop_id": task.loop_id,
-        "project_id": task.project_id,
-        "input_commit_id": task.input_commit_id,
-        "source_commit_id": task.input_commit_id,
-        "step_type": _TASK_TYPE_TO_TEXT.get(int(task.step_type), "custom"),
-        "task_type": _TASK_TYPE_TO_TEXT.get(int(task.step_type), "custom"),
-        "plugin_id": task.plugin_id,
-        "mode": _LOOP_MODE_TO_TEXT.get(int(task.mode), "active_learning"),
-        "query_strategy": task.query_strategy,
-        "resolved_params": struct_to_dict(task.resolved_params),
-        "params": struct_to_dict(task.resolved_params),
-        "resources": _resource_summary_to_dict(task.resources),
-        "round_index": int(task.round_index or 0),
-        "attempt": int(task.attempt or 1),
+        "loop_id": step_payload.loop_id,
+        "project_id": step_payload.project_id,
+        "input_commit_id": step_payload.input_commit_id,
+        "step_type": _STEP_TYPE_TO_TEXT.get(int(step_payload.step_type), "custom"),
+        "dispatch_kind": dispatch_kind_to_text(int(step_payload.dispatch_kind)),
+        "plugin_id": step_payload.plugin_id,
+        "mode": _LOOP_MODE_TO_TEXT.get(int(step_payload.mode), "active_learning"),
+        "query_strategy": step_payload.query_strategy,
+        "resolved_params": struct_to_dict(step_payload.resolved_params),
+        "resources": _resource_summary_to_dict(step_payload.resources),
+        "round_index": int(step_payload.round_index or 0),
+        "attempt": int(step_payload.attempt or 1),
         "depends_on_step_ids": [str(v) for v in depends_on_step_ids],
-        "depends_on_task_ids": [str(v) for v in depends_on_step_ids],
     }
 
 
@@ -548,7 +557,6 @@ def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
         "request_id": data_response.request_id,
         "reply_to": data_response.reply_to,
         "step_id": step_id,
-        "task_id": step_id,
         "query_type": query_type_to_text(data_response.query_type),
         "items": items,
         "next_cursor": data_response.next_cursor or None,
@@ -561,7 +569,6 @@ def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict
         "request_id": upload_ticket.request_id,
         "reply_to": upload_ticket.reply_to,
         "step_id": step_id,
-        "task_id": step_id,
         "upload_url": upload_ticket.upload_url,
         "storage_uri": upload_ticket.storage_uri,
         "headers": dict(upload_ticket.headers),
@@ -580,7 +587,6 @@ def parse_error(error_payload: pb.Error) -> dict[str, Any]:
         "reply_to": error_payload.reply_to,
         "ack_for": error_payload.ack_for,
         "step_id": step_id,
-        "task_id": step_id,
         "query_type": query_type,
         "reason": error_payload.reason,
         "error": error_payload.reason or error_payload.message or error_payload.code or "runtime error",

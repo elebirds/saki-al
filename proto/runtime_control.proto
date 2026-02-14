@@ -9,8 +9,8 @@ service RuntimeControl {
   rpc Stream(stream RuntimeMessage) returns (stream RuntimeMessage);
 }
 
-enum RuntimeTaskStatus {
-  RUNTIME_TASK_STATUS_UNSPECIFIED = 0;
+enum RuntimeStepStatus {
+  RUNTIME_STEP_STATUS_UNSPECIFIED = 0;
   PENDING = 1;
   DISPATCHING = 2;
   RUNNING = 3;
@@ -30,8 +30,8 @@ enum AckStatus {
 enum AckType {
   ACK_TYPE_UNSPECIFIED = 0;
   ACK_TYPE_REGISTER = 1;
-  ACK_TYPE_ASSIGN_TASK = 2;
-  ACK_TYPE_STOP_TASK = 3;
+  ACK_TYPE_ASSIGN_STEP = 2;
+  ACK_TYPE_STOP_STEP = 3;
   ACK_TYPE_REQUEST = 4;
 }
 
@@ -41,22 +41,28 @@ enum AckReason {
   ACK_REASON_ACCEPTED = 2;
   ACK_REASON_EXECUTOR_BUSY = 3;
   ACK_REASON_STOPPING = 4;
-  ACK_REASON_TASK_NOT_RUNNING = 5;
+  ACK_REASON_STEP_NOT_RUNNING = 5;
   ACK_REASON_REJECTED = 6;
 }
 
-enum RuntimeTaskType {
-  RUNTIME_TASK_TYPE_UNSPECIFIED = 0;
+enum RuntimeStepType {
+  RUNTIME_STEP_TYPE_UNSPECIFIED = 0;
   TRAIN = 1;
   SCORE = 2;
   SELECT = 3;
   ACTIVATE_SAMPLES = 4;
   WAIT_ANNOTATION = 5;
-  MERGE = 6;
+  ADVANCE_BRANCH = 6;
   EVAL = 7;
   UPLOAD_ARTIFACT = 8;
   EXPORT = 9;
   CUSTOM = 99;
+}
+
+enum RuntimeStepDispatchKind {
+  RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED = 0;
+  DISPATCHABLE = 1;
+  ORCHESTRATOR = 2;
 }
 
 enum RuntimeLoopMode {
@@ -91,7 +97,7 @@ message AcceleratorCapability {
 message PluginCapability {
   string plugin_id = 1;
   string version = 2;
-  repeated string supported_task_types = 3;
+  repeated string supported_step_types = 3;
   repeated string supported_strategies = 4;
   string display_name = 5;
   google.protobuf.Struct request_config_schema = 6;
@@ -124,13 +130,13 @@ message Heartbeat {
   ResourceSummary resources = 5;
 }
 
-message TaskPayload {
+message StepPayload {
   string step_id = 1;
   string round_id = 2;
   string loop_id = 3;
   string project_id = 4;
   string input_commit_id = 5;
-  RuntimeTaskType step_type = 6;
+  RuntimeStepType step_type = 6;
   string plugin_id = 7;
   RuntimeLoopMode mode = 8;
   string query_strategy = 9;
@@ -139,21 +145,22 @@ message TaskPayload {
   int32 round_index = 12;
   int32 attempt = 13;
   repeated string depends_on_step_ids = 14;
+  RuntimeStepDispatchKind dispatch_kind = 15;
 }
 
-message AssignTask {
+message AssignStep {
   string request_id = 1;
-  TaskPayload step = 2;
+  StepPayload step = 2;
 }
 
-message StopTask {
+message StopStep {
   string request_id = 1;
   string step_id = 2;
   string reason = 3;
 }
 
 message StatusEvent {
-  RuntimeTaskStatus status = 1;
+  RuntimeStepStatus status = 1;
   string reason = 2;
 }
 
@@ -186,7 +193,7 @@ message ArtifactEvent {
   ArtifactItem artifact = 1;
 }
 
-message TaskEvent {
+message StepEvent {
   string request_id = 1;
   string step_id = 2;
   int64 seq = 3;
@@ -206,10 +213,10 @@ message QueryCandidate {
   google.protobuf.Struct reason = 3;
 }
 
-message TaskResult {
+message StepResult {
   string request_id = 1;
   string step_id = 2;
-  RuntimeTaskStatus status = 3;
+  RuntimeStepStatus status = 3;
   map<string, double> metrics = 4;
   repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;
@@ -308,10 +315,10 @@ message RuntimeMessage {
   oneof payload {
     Register register = 1;
     Heartbeat heartbeat = 2;
-    AssignTask assign_task = 3;
-    StopTask stop_task = 4;
-    TaskEvent task_event = 5;
-    TaskResult task_result = 6;
+    AssignStep assign_step = 3;
+    StopStep stop_step = 4;
+    StepEvent step_event = 5;
+    StepResult step_result = 6;
     DataRequest data_request = 7;
     DataResponse data_response = 8;
     UploadTicketRequest upload_ticket_request = 9;

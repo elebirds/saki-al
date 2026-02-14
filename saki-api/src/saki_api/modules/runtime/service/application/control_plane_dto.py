@@ -10,7 +10,7 @@ from typing import Any
 @dataclass(slots=True)
 class RuntimeDataRequestDTO:
     request_id: str
-    task_id: str
+    step_id: str
     query_type: int
     project_id: uuid.UUID
     commit_id: uuid.UUID
@@ -21,7 +21,7 @@ class RuntimeDataRequestDTO:
 @dataclass(slots=True)
 class RuntimeUploadTicketRequestDTO:
     request_id: str
-    task_id: str
+    step_id: str
     artifact_name: str
     content_type: str
 
@@ -30,7 +30,7 @@ class RuntimeUploadTicketRequestDTO:
 class RuntimePluginCapabilityDTO:
     plugin_id: str
     version: str = ""
-    supported_task_types: list[str] = field(default_factory=list)
+    supported_step_types: list[str] = field(default_factory=list)
     supported_strategies: list[str] = field(default_factory=list)
     display_name: str = ""
     request_config_schema: dict[str, Any] = field(default_factory=dict)

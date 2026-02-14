@@ -9,7 +9,7 @@ from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.commands.server import CommandServer
 from saki_executor.core.config import settings
 from saki_executor.core.logging import setup_logging
-from saki_executor.jobs.manager import JobManager
+from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 
 
@@ -27,12 +27,12 @@ async def run() -> None:
     registry.load_builtin()
 
     cache = AssetCache(root_dir=settings.CACHE_DIR, max_bytes=settings.CACHE_MAX_BYTES)
-    manager = JobManager(
+    manager = StepManager(
         runs_dir=settings.RUNS_DIR,
         cache=cache,
         plugin_registry=registry,
     )
-    client = AgentClient(plugin_registry=registry, job_manager=manager)
+    client = AgentClient(plugin_registry=registry, step_manager=manager)
     manager.set_transport(client.send_message, client.request_message)
 
     shutdown_event = asyncio.Event()
@@ -43,7 +43,7 @@ async def run() -> None:
             loop.add_signal_handler(sig, shutdown_event.set)
 
     command_server = CommandServer(
-        job_manager=manager,
+        step_manager=manager,
         plugin_registry=registry,
         client=client,
         shutdown_event=shutdown_event,

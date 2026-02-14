@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Callable
 
-from saki_executor.jobs.workspace import Workspace
+from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.builtin.yolo_det.split_policy import resolve_train_val_split
 from saki_executor.plugins.builtin.yolo_det.types import PreparedDataset
 

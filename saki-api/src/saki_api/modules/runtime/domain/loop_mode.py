@@ -14,6 +14,7 @@ LOOP_STEP_SPECS_BY_MODE: dict[LoopMode, tuple[StepType, ...]] = {
         StepType.EVAL,
         StepType.SELECT,
         StepType.ACTIVATE_SAMPLES,
+        StepType.ADVANCE_BRANCH,
     ),
     LoopMode.ACTIVE_LEARNING: (
         StepType.TRAIN,
@@ -50,26 +51,26 @@ class LoopTerminalDecision:
 
 
 class LoopModePolicy(Protocol):
-    def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:
+    def on_terminal(self, *, loop, sim_finished: bool, latest_round_index: int) -> LoopTerminalDecision:
         ...
 
 
 class ActiveLearningModePolicy:
-    def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:  # noqa: ARG002
-        if loop.current_iteration >= loop.max_rounds:
+    def on_terminal(self, *, loop, sim_finished: bool, latest_round_index: int) -> LoopTerminalDecision:  # noqa: ARG002
+        if latest_round_index >= loop.max_rounds:
             return LoopTerminalDecision(set_status=LoopStatus.COMPLETED, set_phase=LoopPhase.AL_FINALIZE)
         return LoopTerminalDecision(set_phase=LoopPhase.AL_WAIT_USER)
 
 
 class SimulationModePolicy:
-    def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:
-        if loop.current_iteration >= loop.max_rounds or sim_finished:
+    def on_terminal(self, *, loop, sim_finished: bool, latest_round_index: int) -> LoopTerminalDecision:
+        if latest_round_index >= loop.max_rounds or sim_finished:
             return LoopTerminalDecision(set_status=LoopStatus.COMPLETED, set_phase=LoopPhase.SIM_FINALIZE)
         return LoopTerminalDecision(create_next_round=True, set_phase=LoopPhase.SIM_TRAIN)
 
 
 class ManualModePolicy:
-    def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:  # noqa: ARG002
+    def on_terminal(self, *, loop, sim_finished: bool, latest_round_index: int) -> LoopTerminalDecision:  # noqa: ARG002
         return LoopTerminalDecision(set_status=LoopStatus.COMPLETED, set_phase=LoopPhase.MANUAL_FINALIZE)
 
 

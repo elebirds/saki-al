@@ -67,22 +67,6 @@ func (s *Server) ConfirmLoop(ctx context.Context, req *dispatcheradminv1.Confirm
 	return convertCommandResult(result), nil
 }
 
-func (s *Server) StopJob(ctx context.Context, req *dispatcheradminv1.JobCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
-	result, err := s.commands.StopJob(ctx, req.GetCommandId(), req.GetJobId(), req.GetReason())
-	if err != nil {
-		return nil, err
-	}
-	return convertCommandResult(result), nil
-}
-
-func (s *Server) StopTask(ctx context.Context, req *dispatcheradminv1.TaskCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
-	result, err := s.commands.StopTask(ctx, req.GetCommandId(), req.GetTaskId(), req.GetReason())
-	if err != nil {
-		return nil, err
-	}
-	return convertCommandResult(result), nil
-}
-
 func (s *Server) StopRound(ctx context.Context, req *dispatcheradminv1.RoundCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
 	result, err := s.commands.StopRound(ctx, req.GetCommandId(), req.GetRoundId(), req.GetReason())
 	if err != nil {
@@ -100,11 +84,7 @@ func (s *Server) StopStep(ctx context.Context, req *dispatcheradminv1.StepComman
 }
 
 func (s *Server) TriggerDispatch(ctx context.Context, req *dispatcheradminv1.TriggerDispatchRequest) (*dispatcheradminv1.CommandResponse, error) {
-	stepID := req.GetStepId()
-	if stepID == "" {
-		stepID = req.GetTaskId()
-	}
-	result, err := s.commands.TriggerDispatch(ctx, req.GetCommandId(), stepID)
+	result, err := s.commands.TriggerDispatch(ctx, req.GetCommandId(), req.GetStepId())
 	if err != nil {
 		return nil, err
 	}
@@ -160,8 +140,7 @@ func convertExecutor(item dispatch.ExecutorSnapshot) *dispatcheradminv1.Executor
 		Version:            item.Version,
 		Status:             item.Status,
 		IsOnline:           item.IsOnline,
-		CurrentStepId:      item.CurrentTaskID,
-		CurrentTaskId:      item.CurrentTaskID,
+		CurrentStepId:      item.CurrentStepID,
 		LastError:          item.LastError,
 		PendingAssignCount: item.PendingAssign,
 		PendingStopCount:   item.PendingStop,

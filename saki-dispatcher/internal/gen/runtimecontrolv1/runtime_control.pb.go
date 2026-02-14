@@ -266,6 +266,7 @@ const (
 	RuntimeTaskType_MERGE                         RuntimeTaskType = 6
 	RuntimeTaskType_EVAL                          RuntimeTaskType = 7
 	RuntimeTaskType_UPLOAD_ARTIFACT               RuntimeTaskType = 8
+	RuntimeTaskType_EXPORT                        RuntimeTaskType = 9
 	RuntimeTaskType_CUSTOM                        RuntimeTaskType = 99
 )
 
@@ -281,6 +282,7 @@ var (
 		6:  "MERGE",
 		7:  "EVAL",
 		8:  "UPLOAD_ARTIFACT",
+		9:  "EXPORT",
 		99: "CUSTOM",
 	}
 	RuntimeTaskType_value = map[string]int32{
@@ -293,6 +295,7 @@ var (
 		"MERGE":                         6,
 		"EVAL":                          7,
 		"UPLOAD_ARTIFACT":               8,
+		"EXPORT":                        9,
 		"CUSTOM":                        99,
 	}
 )
@@ -818,8 +821,6 @@ type Heartbeat struct {
 	Busy          bool                   `protobuf:"varint,3,opt,name=busy,proto3" json:"busy,omitempty"`
 	CurrentStepId string                 `protobuf:"bytes,4,opt,name=current_step_id,json=currentStepId,proto3" json:"current_step_id,omitempty"`
 	Resources     *ResourceSummary       `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	CurrentTaskId string `protobuf:"bytes,101,opt,name=current_task_id,json=currentTaskId,proto3" json:"current_task_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -889,36 +890,22 @@ func (x *Heartbeat) GetResources() *ResourceSummary {
 	return nil
 }
 
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *Heartbeat) GetCurrentTaskId() string {
-	if x != nil {
-		return x.CurrentTaskId
-	}
-	return ""
-}
-
 type TaskPayload struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	StepId           string                 `protobuf:"bytes,1,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
 	RoundId          string                 `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
 	LoopId           string                 `protobuf:"bytes,3,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
 	ProjectId        string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	SourceCommitId   string                 `protobuf:"bytes,5,opt,name=source_commit_id,json=sourceCommitId,proto3" json:"source_commit_id,omitempty"`
-	TaskType         RuntimeTaskType        `protobuf:"varint,6,opt,name=task_type,json=taskType,proto3,enum=saki.runtime.v1.RuntimeTaskType" json:"task_type,omitempty"`
+	InputCommitId    string                 `protobuf:"bytes,5,opt,name=input_commit_id,json=inputCommitId,proto3" json:"input_commit_id,omitempty"`
+	StepType         RuntimeTaskType        `protobuf:"varint,6,opt,name=step_type,json=stepType,proto3,enum=saki.runtime.v1.RuntimeTaskType" json:"step_type,omitempty"`
 	PluginId         string                 `protobuf:"bytes,7,opt,name=plugin_id,json=pluginId,proto3" json:"plugin_id,omitempty"`
 	Mode             RuntimeLoopMode        `protobuf:"varint,8,opt,name=mode,proto3,enum=saki.runtime.v1.RuntimeLoopMode" json:"mode,omitempty"`
 	QueryStrategy    string                 `protobuf:"bytes,9,opt,name=query_strategy,json=queryStrategy,proto3" json:"query_strategy,omitempty"`
-	Params           *structpb.Struct       `protobuf:"bytes,10,opt,name=params,proto3" json:"params,omitempty"`
+	ResolvedParams   *structpb.Struct       `protobuf:"bytes,10,opt,name=resolved_params,json=resolvedParams,proto3" json:"resolved_params,omitempty"`
 	Resources        *ResourceSummary       `protobuf:"bytes,11,opt,name=resources,proto3" json:"resources,omitempty"`
 	RoundIndex       int32                  `protobuf:"varint,12,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
 	Attempt          int32                  `protobuf:"varint,13,opt,name=attempt,proto3" json:"attempt,omitempty"`
 	DependsOnStepIds []string               `protobuf:"bytes,14,rep,name=depends_on_step_ids,json=dependsOnStepIds,proto3" json:"depends_on_step_ids,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	JobId string `protobuf:"bytes,102,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	DependsOnTaskIds []string `protobuf:"bytes,103,rep,name=depends_on_task_ids,json=dependsOnTaskIds,proto3" json:"depends_on_task_ids,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -981,16 +968,16 @@ func (x *TaskPayload) GetProjectId() string {
 	return ""
 }
 
-func (x *TaskPayload) GetSourceCommitId() string {
+func (x *TaskPayload) GetInputCommitId() string {
 	if x != nil {
-		return x.SourceCommitId
+		return x.InputCommitId
 	}
 	return ""
 }
 
-func (x *TaskPayload) GetTaskType() RuntimeTaskType {
+func (x *TaskPayload) GetStepType() RuntimeTaskType {
 	if x != nil {
-		return x.TaskType
+		return x.StepType
 	}
 	return RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED
 }
@@ -1016,9 +1003,9 @@ func (x *TaskPayload) GetQueryStrategy() string {
 	return ""
 }
 
-func (x *TaskPayload) GetParams() *structpb.Struct {
+func (x *TaskPayload) GetResolvedParams() *structpb.Struct {
 	if x != nil {
-		return x.Params
+		return x.ResolvedParams
 	}
 	return nil
 }
@@ -1051,34 +1038,10 @@ func (x *TaskPayload) GetDependsOnStepIds() []string {
 	return nil
 }
 
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *TaskPayload) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
-}
-
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *TaskPayload) GetJobId() string {
-	if x != nil {
-		return x.JobId
-	}
-	return ""
-}
-
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *TaskPayload) GetDependsOnTaskIds() []string {
-	if x != nil {
-		return x.DependsOnTaskIds
-	}
-	return nil
-}
-
 type AssignTask struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	Task          *TaskPayload           `protobuf:"bytes,2,opt,name=task,proto3" json:"task,omitempty"`
+	Step          *TaskPayload           `protobuf:"bytes,2,opt,name=step,proto3" json:"step,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1120,20 +1083,18 @@ func (x *AssignTask) GetRequestId() string {
 	return ""
 }
 
-func (x *AssignTask) GetTask() *TaskPayload {
+func (x *AssignTask) GetStep() *TaskPayload {
 	if x != nil {
-		return x.Task
+		return x.Step
 	}
 	return nil
 }
 
 type StopTask struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId    string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	Reason    string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1185,14 +1146,6 @@ func (x *StopTask) GetStepId() string {
 func (x *StopTask) GetReason() string {
 	if x != nil {
 		return x.Reason
-	}
-	return ""
-}
-
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *StopTask) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
 	}
 	return ""
 }
@@ -1554,9 +1507,7 @@ type TaskEvent struct {
 	//	*TaskEvent_ProgressEvent
 	//	*TaskEvent_MetricEvent
 	//	*TaskEvent_ArtifactEvent
-	EventPayload isTaskEvent_EventPayload `protobuf_oneof:"event_payload"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	EventPayload  isTaskEvent_EventPayload `protobuf_oneof:"event_payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1671,14 +1622,6 @@ func (x *TaskEvent) GetArtifactEvent() *ArtifactEvent {
 	return nil
 }
 
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *TaskEvent) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
-}
-
 type isTaskEvent_EventPayload interface {
 	isTaskEvent_EventPayload()
 }
@@ -1774,16 +1717,14 @@ func (x *QueryCandidate) GetReason() *structpb.Struct {
 }
 
 type TaskResult struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	RequestId    string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId       string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	Status       RuntimeTaskStatus      `protobuf:"varint,3,opt,name=status,proto3,enum=saki.runtime.v1.RuntimeTaskStatus" json:"status,omitempty"`
-	Metrics      map[string]float64     `protobuf:"bytes,4,rep,name=metrics,proto3" json:"metrics,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
-	Artifacts    []*ArtifactItem        `protobuf:"bytes,5,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
-	Candidates   []*QueryCandidate      `protobuf:"bytes,6,rep,name=candidates,proto3" json:"candidates,omitempty"`
-	ErrorMessage string                 `protobuf:"bytes,7,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	Status        RuntimeTaskStatus      `protobuf:"varint,3,opt,name=status,proto3,enum=saki.runtime.v1.RuntimeTaskStatus" json:"status,omitempty"`
+	Metrics       map[string]float64     `protobuf:"bytes,4,rep,name=metrics,proto3" json:"metrics,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	Artifacts     []*ArtifactItem        `protobuf:"bytes,5,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
+	Candidates    []*QueryCandidate      `protobuf:"bytes,6,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,7,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1867,25 +1808,15 @@ func (x *TaskResult) GetErrorMessage() string {
 	return ""
 }
 
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *TaskResult) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
-}
-
 type DataRequest struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId    string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	QueryType RuntimeQueryType       `protobuf:"varint,3,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
-	ProjectId string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	CommitId  string                 `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
-	Cursor    string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Limit     int32                  `protobuf:"varint,7,opt,name=limit,proto3" json:"limit,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	QueryType     RuntimeQueryType       `protobuf:"varint,3,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
+	ProjectId     string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	CommitId      string                 `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
+	Cursor        string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Limit         int32                  `protobuf:"varint,7,opt,name=limit,proto3" json:"limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1967,14 +1898,6 @@ func (x *DataRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
-}
-
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *DataRequest) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
 }
 
 type LabelItem struct {
@@ -2312,15 +2235,13 @@ func (*DataItem_SampleItem) isDataItem_Item() {}
 func (*DataItem_AnnotationItem) isDataItem_Item() {}
 
 type DataResponse struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	RequestId  string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	ReplyTo    string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId     string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	QueryType  RuntimeQueryType       `protobuf:"varint,4,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
-	Items      []*DataItem            `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
-	NextCursor string                 `protobuf:"bytes,6,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	ReplyTo       string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
+	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	QueryType     RuntimeQueryType       `protobuf:"varint,4,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
+	Items         []*DataItem            `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
+	NextCursor    string                 `protobuf:"bytes,6,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2397,22 +2318,12 @@ func (x *DataResponse) GetNextCursor() string {
 	return ""
 }
 
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *DataResponse) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
-}
-
 type UploadTicketRequest struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	RequestId    string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId       string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	ArtifactName string                 `protobuf:"bytes,3,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
-	ContentType  string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	ArtifactName  string                 `protobuf:"bytes,3,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
+	ContentType   string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2475,24 +2386,14 @@ func (x *UploadTicketRequest) GetContentType() string {
 	return ""
 }
 
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *UploadTicketRequest) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
-}
-
 type UploadTicketResponse struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	RequestId  string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	ReplyTo    string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId     string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	UploadUrl  string                 `protobuf:"bytes,4,opt,name=upload_url,json=uploadUrl,proto3" json:"upload_url,omitempty"`
-	StorageUri string                 `protobuf:"bytes,5,opt,name=storage_uri,json=storageUri,proto3" json:"storage_uri,omitempty"`
-	Headers    map[string]string      `protobuf:"bytes,6,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	ReplyTo       string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
+	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	UploadUrl     string                 `protobuf:"bytes,4,opt,name=upload_url,json=uploadUrl,proto3" json:"upload_url,omitempty"`
+	StorageUri    string                 `protobuf:"bytes,5,opt,name=storage_uri,json=storageUri,proto3" json:"storage_uri,omitempty"`
+	Headers       map[string]string      `protobuf:"bytes,6,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2567,14 +2468,6 @@ func (x *UploadTicketResponse) GetHeaders() map[string]string {
 		return x.Headers
 	}
 	return nil
-}
-
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *UploadTicketResponse) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
 }
 
 type Ack struct {
@@ -2662,17 +2555,15 @@ func (x *Ack) GetDetail() string {
 }
 
 type Error struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	Code      string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
-	Message   string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
-	ReplyTo   string                 `protobuf:"bytes,4,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	AckFor    string                 `protobuf:"bytes,5,opt,name=ack_for,json=ackFor,proto3" json:"ack_for,omitempty"`
-	StepId    string                 `protobuf:"bytes,6,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	QueryType RuntimeQueryType       `protobuf:"varint,7,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
-	Reason    string                 `protobuf:"bytes,8,opt,name=reason,proto3" json:"reason,omitempty"`
-	// Deprecated: Marked as deprecated in runtime_control.proto.
-	TaskId        string `protobuf:"bytes,101,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	ReplyTo       string                 `protobuf:"bytes,4,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
+	AckFor        string                 `protobuf:"bytes,5,opt,name=ack_for,json=ackFor,proto3" json:"ack_for,omitempty"`
+	StepId        string                 `protobuf:"bytes,6,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	QueryType     RuntimeQueryType       `protobuf:"varint,7,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
+	Reason        string                 `protobuf:"bytes,8,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2759,14 +2650,6 @@ func (x *Error) GetQueryType() RuntimeQueryType {
 func (x *Error) GetReason() string {
 	if x != nil {
 		return x.Reason
-	}
-	return ""
-}
-
-// Deprecated: Marked as deprecated in runtime_control.proto.
-func (x *Error) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
 	}
 	return ""
 }
@@ -3048,7 +2931,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"executorId\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12;\n" +
 	"\aplugins\x18\x04 \x03(\v2!.saki.runtime.v1.PluginCapabilityR\aplugins\x12>\n" +
-	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\xf3\x01\n" +
+	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\xc7\x01\n" +
 	"\tHeartbeat\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1f\n" +
@@ -3056,40 +2939,35 @@ const file_runtime_control_proto_rawDesc = "" +
 	"executorId\x12\x12\n" +
 	"\x04busy\x18\x03 \x01(\bR\x04busy\x12&\n" +
 	"\x0fcurrent_step_id\x18\x04 \x01(\tR\rcurrentStepId\x12>\n" +
-	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\x12*\n" +
-	"\x0fcurrent_task_id\x18e \x01(\tB\x02\x18\x01R\rcurrentTaskId\"\xa2\x05\n" +
+	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\xc6\x04\n" +
 	"\vTaskPayload\x12\x17\n" +
 	"\astep_id\x18\x01 \x01(\tR\x06stepId\x12\x19\n" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x17\n" +
 	"\aloop_id\x18\x03 \x01(\tR\x06loopId\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x04 \x01(\tR\tprojectId\x12(\n" +
-	"\x10source_commit_id\x18\x05 \x01(\tR\x0esourceCommitId\x12=\n" +
-	"\ttask_type\x18\x06 \x01(\x0e2 .saki.runtime.v1.RuntimeTaskTypeR\btaskType\x12\x1b\n" +
+	"project_id\x18\x04 \x01(\tR\tprojectId\x12&\n" +
+	"\x0finput_commit_id\x18\x05 \x01(\tR\rinputCommitId\x12=\n" +
+	"\tstep_type\x18\x06 \x01(\x0e2 .saki.runtime.v1.RuntimeTaskTypeR\bstepType\x12\x1b\n" +
 	"\tplugin_id\x18\a \x01(\tR\bpluginId\x124\n" +
 	"\x04mode\x18\b \x01(\x0e2 .saki.runtime.v1.RuntimeLoopModeR\x04mode\x12%\n" +
-	"\x0equery_strategy\x18\t \x01(\tR\rqueryStrategy\x12/\n" +
-	"\x06params\x18\n" +
-	" \x01(\v2\x17.google.protobuf.StructR\x06params\x12>\n" +
+	"\x0equery_strategy\x18\t \x01(\tR\rqueryStrategy\x12@\n" +
+	"\x0fresolved_params\x18\n" +
+	" \x01(\v2\x17.google.protobuf.StructR\x0eresolvedParams\x12>\n" +
 	"\tresources\x18\v \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\x12\x1f\n" +
 	"\vround_index\x18\f \x01(\x05R\n" +
 	"roundIndex\x12\x18\n" +
 	"\aattempt\x18\r \x01(\x05R\aattempt\x12-\n" +
-	"\x13depends_on_step_ids\x18\x0e \x03(\tR\x10dependsOnStepIds\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\x12\x19\n" +
-	"\x06job_id\x18f \x01(\tB\x02\x18\x01R\x05jobId\x121\n" +
-	"\x13depends_on_task_ids\x18g \x03(\tB\x02\x18\x01R\x10dependsOnTaskIds\"]\n" +
+	"\x13depends_on_step_ids\x18\x0e \x03(\tR\x10dependsOnStepIds\"]\n" +
 	"\n" +
 	"AssignTask\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x120\n" +
-	"\x04task\x18\x02 \x01(\v2\x1c.saki.runtime.v1.TaskPayloadR\x04task\"w\n" +
+	"\x04step\x18\x02 \x01(\v2\x1c.saki.runtime.v1.TaskPayloadR\x04step\"Z\n" +
 	"\bStopTask\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
 	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\"a\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"a\n" +
 	"\vStatusEvent\x12:\n" +
 	"\x06status\x18\x01 \x01(\x0e2\".saki.runtime.v1.RuntimeTaskStatusR\x06status\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\":\n" +
@@ -3115,7 +2993,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x03uri\x18\x03 \x01(\tR\x03uri\x12+\n" +
 	"\x04meta\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04meta\"J\n" +
 	"\rArtifactEvent\x129\n" +
-	"\bartifact\x18\x01 \x01(\v2\x1d.saki.runtime.v1.ArtifactItemR\bartifact\"\xe5\x03\n" +
+	"\bartifact\x18\x01 \x01(\v2\x1d.saki.runtime.v1.ArtifactItemR\bartifact\"\xc8\x03\n" +
 	"\tTaskEvent\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
@@ -3126,13 +3004,12 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\tlog_event\x18\x06 \x01(\v2\x19.saki.runtime.v1.LogEventH\x00R\blogEvent\x12G\n" +
 	"\x0eprogress_event\x18\a \x01(\v2\x1e.saki.runtime.v1.ProgressEventH\x00R\rprogressEvent\x12A\n" +
 	"\fmetric_event\x18\b \x01(\v2\x1c.saki.runtime.v1.MetricEventH\x00R\vmetricEvent\x12G\n" +
-	"\x0eartifact_event\x18\t \x01(\v2\x1e.saki.runtime.v1.ArtifactEventH\x00R\rartifactEvent\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskIdB\x0f\n" +
+	"\x0eartifact_event\x18\t \x01(\v2\x1e.saki.runtime.v1.ArtifactEventH\x00R\rartifactEventB\x0f\n" +
 	"\revent_payload\"t\n" +
 	"\x0eQueryCandidate\x12\x1b\n" +
 	"\tsample_id\x18\x01 \x01(\tR\bsampleId\x12\x14\n" +
 	"\x05score\x18\x02 \x01(\x01R\x05score\x12/\n" +
-	"\x06reason\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06reason\"\xc0\x03\n" +
+	"\x06reason\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06reason\"\xa3\x03\n" +
 	"\n" +
 	"TaskResult\x12\x1d\n" +
 	"\n" +
@@ -3144,11 +3021,10 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\n" +
 	"candidates\x18\x06 \x03(\v2\x1f.saki.runtime.v1.QueryCandidateR\n" +
 	"candidates\x12#\n" +
-	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\x1a:\n" +
+	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x1a:\n" +
 	"\fMetricsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\x8e\x02\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xf1\x01\n" +
 	"\vDataRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
@@ -3159,8 +3035,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"project_id\x18\x04 \x01(\tR\tprojectId\x12\x1b\n" +
 	"\tcommit_id\x18\x05 \x01(\tR\bcommitId\x12\x16\n" +
 	"\x06cursor\x18\x06 \x01(\tR\x06cursor\x12\x14\n" +
-	"\x05limit\x18\a \x01(\x05R\x05limit\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\"E\n" +
+	"\x05limit\x18\a \x01(\x05R\x05limit\"E\n" +
 	"\tLabelItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -3191,7 +3066,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\vsample_item\x18\x02 \x01(\v2\x1b.saki.runtime.v1.SampleItemH\x00R\n" +
 	"sampleItem\x12J\n" +
 	"\x0fannotation_item\x18\x03 \x01(\v2\x1f.saki.runtime.v1.AnnotationItemH\x00R\x0eannotationItemB\x06\n" +
-	"\x04item\"\x92\x02\n" +
+	"\x04item\"\xf5\x01\n" +
 	"\fDataResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
@@ -3201,15 +3076,13 @@ const file_runtime_control_proto_rawDesc = "" +
 	"query_type\x18\x04 \x01(\x0e2!.saki.runtime.v1.RuntimeQueryTypeR\tqueryType\x12/\n" +
 	"\x05items\x18\x05 \x03(\v2\x19.saki.runtime.v1.DataItemR\x05items\x12\x1f\n" +
 	"\vnext_cursor\x18\x06 \x01(\tR\n" +
-	"nextCursor\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\"\xb2\x01\n" +
+	"nextCursor\"\x95\x01\n" +
 	"\x13UploadTicketRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
 	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12#\n" +
 	"\rartifact_name\x18\x03 \x01(\tR\fartifactName\x12!\n" +
-	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\"\xd0\x02\n" +
+	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\"\xb3\x02\n" +
 	"\x14UploadTicketResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
@@ -3219,8 +3092,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"upload_url\x18\x04 \x01(\tR\tuploadUrl\x12\x1f\n" +
 	"\vstorage_uri\x18\x05 \x01(\tR\n" +
 	"storageUri\x12L\n" +
-	"\aheaders\x18\x06 \x03(\v22.saki.runtime.v1.UploadTicketResponse.HeadersEntryR\aheaders\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\x1a:\n" +
+	"\aheaders\x18\x06 \x03(\v22.saki.runtime.v1.UploadTicketResponse.HeadersEntryR\aheaders\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xeb\x01\n" +
@@ -3231,7 +3103,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\x0e2\x1a.saki.runtime.v1.AckStatusR\x06status\x12,\n" +
 	"\x04type\x18\x04 \x01(\x0e2\x18.saki.runtime.v1.AckTypeR\x04type\x122\n" +
 	"\x06reason\x18\x05 \x01(\x0e2\x1a.saki.runtime.v1.AckReasonR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x06 \x01(\tR\x06detail\"\x98\x02\n" +
+	"\x06detail\x18\x06 \x01(\tR\x06detail\"\xfb\x01\n" +
 	"\x05Error\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x12\n" +
@@ -3242,8 +3114,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\astep_id\x18\x06 \x01(\tR\x06stepId\x12@\n" +
 	"\n" +
 	"query_type\x18\a \x01(\x0e2!.saki.runtime.v1.RuntimeQueryTypeR\tqueryType\x12\x16\n" +
-	"\x06reason\x18\b \x01(\tR\x06reason\x12\x1b\n" +
-	"\atask_id\x18e \x01(\tB\x02\x18\x01R\x06taskId\"\xa5\x06\n" +
+	"\x06reason\x18\b \x01(\tR\x06reason\"\xa5\x06\n" +
 	"\x0eRuntimeMessage\x127\n" +
 	"\bregister\x18\x01 \x01(\v2\x19.saki.runtime.v1.RegisterH\x00R\bregister\x12:\n" +
 	"\theartbeat\x18\x02 \x01(\v2\x1a.saki.runtime.v1.HeartbeatH\x00R\theartbeat\x12>\n" +
@@ -3290,7 +3161,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x18ACK_REASON_EXECUTOR_BUSY\x10\x03\x12\x17\n" +
 	"\x13ACK_REASON_STOPPING\x10\x04\x12\x1f\n" +
 	"\x1bACK_REASON_TASK_NOT_RUNNING\x10\x05\x12\x17\n" +
-	"\x13ACK_REASON_REJECTED\x10\x06*\xb7\x01\n" +
+	"\x13ACK_REASON_REJECTED\x10\x06*\xc3\x01\n" +
 	"\x0fRuntimeTaskType\x12!\n" +
 	"\x1dRUNTIME_TASK_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05TRAIN\x10\x01\x12\t\n" +
@@ -3302,6 +3173,8 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x05MERGE\x10\x06\x12\b\n" +
 	"\x04EVAL\x10\a\x12\x13\n" +
 	"\x0fUPLOAD_ARTIFACT\x10\b\x12\n" +
+	"\n" +
+	"\x06EXPORT\x10\t\x12\n" +
 	"\n" +
 	"\x06CUSTOM\x10c*e\n" +
 	"\x0fRuntimeLoopMode\x12!\n" +
@@ -3391,11 +3264,11 @@ var file_runtime_control_proto_depIdxs = []int32{
 	9,  // 5: saki.runtime.v1.Register.plugins:type_name -> saki.runtime.v1.PluginCapability
 	10, // 6: saki.runtime.v1.Register.resources:type_name -> saki.runtime.v1.ResourceSummary
 	10, // 7: saki.runtime.v1.Heartbeat.resources:type_name -> saki.runtime.v1.ResourceSummary
-	4,  // 8: saki.runtime.v1.TaskPayload.task_type:type_name -> saki.runtime.v1.RuntimeTaskType
+	4,  // 8: saki.runtime.v1.TaskPayload.step_type:type_name -> saki.runtime.v1.RuntimeTaskType
 	5,  // 9: saki.runtime.v1.TaskPayload.mode:type_name -> saki.runtime.v1.RuntimeLoopMode
-	39, // 10: saki.runtime.v1.TaskPayload.params:type_name -> google.protobuf.Struct
+	39, // 10: saki.runtime.v1.TaskPayload.resolved_params:type_name -> google.protobuf.Struct
 	10, // 11: saki.runtime.v1.TaskPayload.resources:type_name -> saki.runtime.v1.ResourceSummary
-	13, // 12: saki.runtime.v1.AssignTask.task:type_name -> saki.runtime.v1.TaskPayload
+	13, // 12: saki.runtime.v1.AssignTask.step:type_name -> saki.runtime.v1.TaskPayload
 	0,  // 13: saki.runtime.v1.StatusEvent.status:type_name -> saki.runtime.v1.RuntimeTaskStatus
 	36, // 14: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
 	39, // 15: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct

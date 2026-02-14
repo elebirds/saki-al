@@ -30,26 +30,35 @@ const (
 	statusFailed    = "FAILED"
 
 	phaseALTrain          = "AL_TRAIN"
-	phaseALWaitAnnotation = "AL_WAIT_ANNOTATION"
+	phaseALScore          = "AL_SCORE"
+	phaseALSelect         = "AL_SELECT"
+	phaseALWaitAnnotation = "AL_WAIT_USER"
 	phaseALEval           = "AL_EVAL"
+	phaseALFinalize       = "AL_FINALIZE"
 	phaseSimTrain         = "SIM_TRAIN"
+	phaseSimScore         = "SIM_SCORE"
+	phaseSimSelect        = "SIM_SELECT"
+	phaseSimActivate      = "SIM_ACTIVATE"
 	phaseSimEval          = "SIM_EVAL"
-	phaseManualTaskRun    = "MANUAL_TASK_RUNNING"
-	phaseManualWait       = "MANUAL_WAIT_CONFIRM"
+	phaseSimFinalize      = "SIM_FINALIZE"
+	phaseManualTaskRun    = "MANUAL_TRAIN"
+	phaseManualEval       = "MANUAL_EVAL"
+	phaseManualExport     = "MANUAL_EXPORT"
 	phaseManualFinalize   = "MANUAL_FINALIZE"
 
 	modeAL     = "ACTIVE_LEARNING"
 	modeSIM    = "SIMULATION"
 	modeManual = "MANUAL"
 
-	jobPending       = "JOB_PENDING"
-	jobRunning       = "JOB_RUNNING"
-	jobPartialFailed = "JOB_PARTIAL_FAILED"
-	jobFailed        = "JOB_FAILED"
-	jobSucceeded     = "JOB_SUCCEEDED"
-	jobCancelled     = "JOB_CANCELLED"
+	roundPending   = "PENDING"
+	roundRunning   = "RUNNING"
+	roundWaitUser  = "WAIT_USER"
+	roundCompleted = "COMPLETED"
+	roundFailed    = "FAILED"
+	roundCancelled = "CANCELLED"
 
 	taskPending     = "PENDING"
+	taskReady       = "READY"
 	taskDispatching = "DISPATCHING"
 	taskRunning     = "RUNNING"
 	taskRetrying    = "RETRYING"
@@ -60,10 +69,9 @@ const (
 )
 
 var terminalJobStatuses = map[string]struct{}{
-	jobSucceeded:     {},
-	jobFailed:        {},
-	jobPartialFailed: {},
-	jobCancelled:     {},
+	roundCompleted: {},
+	roundFailed:    {},
+	roundCancelled: {},
 }
 
 type CommandResult struct {
@@ -203,7 +211,7 @@ func (s *Service) ConfirmLoop(
 				return "rejected", "active-learning loop is not waiting for annotation", nil
 			}
 			if loop.CurrentIteration >= loop.MaxRounds {
-				if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseALEval, "", loop.LastConfirmedCommitID); err != nil {
+				if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseALFinalize, "", loop.LastConfirmedCommitID); err != nil {
 					return "", "", err
 				}
 				return "applied", "active-learning loop completed", nil
@@ -257,17 +265,17 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 	return s.StopJob(ctx, commandID, roundID, reason)
 }
 
-func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, reason string) (CommandResult, error) {
+func (s *Service) StopJob(ctx context.Context, commandID string, roundID string, reason string) (CommandResult, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		reason = "user requested stop"
 	}
-	return s.withCommand(ctx, commandID, "stop_job", jobID, func(tx pgx.Tx, _ string) (string, string, error) {
+	return s.withCommand(ctx, commandID, "stop_round", roundID, func(tx pgx.Tx, _ string) (string, string, error) {
 		var currentStatus string
 		if err := tx.QueryRow(
 			ctx,
-			`SELECT COALESCE(summary_status::text,'') FROM round WHERE id=$1::uuid`,
-			jobID,
+			`SELECT COALESCE(state::text,'') FROM round WHERE id=$1::uuid`,
+			roundID,
 		).Scan(&currentStatus); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return "rejected", "round not found", nil
@@ -280,9 +288,9 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE round SET summary_status=$2,last_error=$3,updated_at=now() WHERE id=$1::uuid`,
-			jobID,
-			jobCancelled,
+			`UPDATE round SET state=$2::roundstatus,terminal_reason=$3,updated_at=now() WHERE id=$1::uuid`,
+			roundID,
+			roundCancelled,
 			reason,
 		); err != nil {
 			return "", "", err
@@ -290,9 +298,9 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 		rows, err := tx.Query(
 			ctx,
 			`SELECT id::text FROM step
-				 WHERE job_id=$1::uuid
-				   AND status IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
-			jobID,
+				 WHERE round_id=$1::uuid
+				   AND state IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
+			roundID,
 		)
 		if err != nil {
 			return "", "", err
@@ -310,10 +318,10 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 		if _, err := tx.Exec(
 			ctx,
 			`UPDATE step
-				 SET status='CANCELLED',last_error=$2,ended_at=COALESCE(ended_at,now()),updated_at=now()
-				 WHERE job_id=$1::uuid
-				   AND status IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
-			jobID,
+				 SET state='CANCELLED',last_error=$2,ended_at=COALESCE(ended_at,now()),updated_at=now()
+				 WHERE round_id=$1::uuid
+				   AND state IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
+			roundID,
 			reason,
 		); err != nil {
 			return "", "", err
@@ -321,7 +329,7 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 		for _, taskID := range taskIDs {
 			s.dispatcher.StopTask(taskID, reason)
 		}
-		return "applied", "stop_job applied", nil
+		return "applied", "stop_round applied", nil
 	})
 }
 
@@ -338,7 +346,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 		var currentStatus string
 		if err := tx.QueryRow(
 			ctx,
-			`SELECT COALESCE(status::text,'') FROM step WHERE id=$1::uuid`,
+			`SELECT COALESCE(state::text,'') FROM step WHERE id=$1::uuid`,
 			taskID,
 		).Scan(&currentStatus); err != nil {
 			if err == pgx.ErrNoRows {
@@ -353,7 +361,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 		if _, err := tx.Exec(
 			ctx,
 			`UPDATE step
-			 SET status='CANCELLED',last_error=$2,ended_at=COALESCE(ended_at,now()),updated_at=now()
+			 SET state='CANCELLED',last_error=$2,ended_at=COALESCE(ended_at,now()),updated_at=now()
 			 WHERE id=$1::uuid`,
 			taskID,
 			reason,
@@ -427,7 +435,7 @@ func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontr
 	_, err = s.repo.Pool().Exec(
 		ctx,
 		`INSERT INTO runtime_executor(
-		     id,executor_id,version,status,is_online,current_task_id,plugin_ids,resources,last_seen_at,last_error,created_at,updated_at
+		     id,executor_id,version,status,is_online,current_step_id,plugin_ids,resources,last_seen_at,last_error,created_at,updated_at
 		   ) VALUES(
 		     $1::uuid,$2,$3,'idle',TRUE,NULL,$4::jsonb,$5::jsonb,now(),NULL,now(),now()
 		   )
@@ -435,7 +443,7 @@ func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontr
 		     version=EXCLUDED.version,
 		     status='idle',
 		     is_online=TRUE,
-		     current_task_id=NULL,
+		     current_step_id=NULL,
 		     plugin_ids=EXCLUDED.plugin_ids,
 		     resources=EXCLUDED.resources,
 		     last_seen_at=EXCLUDED.last_seen_at,
@@ -464,9 +472,6 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 		status = "busy"
 	}
 	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentStepId())
-	if currentTaskID == "" {
-		currentTaskID = strings.TrimSpace(heartbeat.GetCurrentTaskId())
-	}
 	resourcesJSON, err := marshalJSON(resourceSummaryToMap(heartbeat.GetResources()))
 	if err != nil {
 		return err
@@ -475,14 +480,14 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 	_, err = s.repo.Pool().Exec(
 		ctx,
 		`INSERT INTO runtime_executor(
-		     id,executor_id,version,status,is_online,current_task_id,plugin_ids,resources,last_seen_at,last_error,created_at,updated_at
+		     id,executor_id,version,status,is_online,current_step_id,plugin_ids,resources,last_seen_at,last_error,created_at,updated_at
 		   ) VALUES(
 		     $1::uuid,$2,'',$3,TRUE,NULLIF($4,''),'{}'::jsonb,$5::jsonb,now(),NULL,now(),now()
 		   )
 		   ON CONFLICT (executor_id) DO UPDATE SET
 		     status=EXCLUDED.status,
 		     is_online=TRUE,
-		     current_task_id=EXCLUDED.current_task_id,
+		     current_step_id=EXCLUDED.current_step_id,
 		     resources=EXCLUDED.resources,
 		     last_seen_at=EXCLUDED.last_seen_at,
 		     last_error=NULL,
@@ -510,7 +515,7 @@ func (s *Service) OnExecutorDisconnected(ctx context.Context, executorID string,
 		`UPDATE runtime_executor
 		 SET status='offline',
 		     is_online=FALSE,
-		     current_task_id=NULL,
+		     current_step_id=NULL,
 		     last_error=NULLIF($2,''),
 		     last_seen_at=now(),
 		     updated_at=now()
@@ -526,9 +531,6 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		return nil
 	}
 	taskID := strings.TrimSpace(event.GetStepId())
-	if taskID == "" {
-		taskID = strings.TrimSpace(event.GetTaskId())
-	}
 	if taskID == "" {
 		return nil
 	}
@@ -561,7 +563,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	); err != nil {
 		return err
 	} else if !inserted {
-		// Duplicate event by (task_id, seq), skip side effects.
+		// Duplicate event by (step_id, seq), skip side effects.
 		return tx.Commit(ctx)
 	}
 
@@ -571,10 +573,10 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		tag, err := tx.Exec(
 			ctx,
 			`UPDATE step
-			 SET status=$2::jobtaskstatus,
-			     started_at=CASE WHEN $2::jobtaskstatus='RUNNING'::jobtaskstatus THEN COALESCE(started_at,now()) ELSE started_at END,
-			     ended_at=CASE WHEN $2::jobtaskstatus IN ('SUCCEEDED'::jobtaskstatus,'FAILED'::jobtaskstatus,'CANCELLED'::jobtaskstatus,'SKIPPED'::jobtaskstatus) THEN COALESCE(ended_at,now()) ELSE ended_at END,
-			     last_error=CASE WHEN $2::jobtaskstatus IN ('SUCCEEDED'::jobtaskstatus,'FAILED'::jobtaskstatus,'CANCELLED'::jobtaskstatus,'SKIPPED'::jobtaskstatus) THEN NULLIF($3,'') ELSE last_error END,
+			 SET state=$2::stepstatus,
+			     started_at=CASE WHEN $2::stepstatus='RUNNING'::stepstatus THEN COALESCE(started_at,now()) ELSE started_at END,
+			     ended_at=CASE WHEN $2::stepstatus IN ('SUCCEEDED'::stepstatus,'FAILED'::stepstatus,'CANCELLED'::stepstatus,'SKIPPED'::stepstatus) THEN COALESCE(ended_at,now()) ELSE ended_at END,
+			     last_error=CASE WHEN $2::stepstatus IN ('SUCCEEDED'::stepstatus,'FAILED'::stepstatus,'CANCELLED'::stepstatus,'SKIPPED'::stepstatus) THEN NULLIF($3,'') ELSE last_error END,
 			     updated_at=now()
 			 WHERE id=$1::uuid`,
 			taskID,
@@ -631,9 +633,6 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	}
 	taskID := strings.TrimSpace(result.GetStepId())
 	if taskID == "" {
-		taskID = strings.TrimSpace(result.GetTaskId())
-	}
-	if taskID == "" {
 		return nil
 	}
 	statusText := runtimeStatusToTaskStatus(result.GetStatus())
@@ -660,12 +659,12 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	tag, err := tx.Exec(
 		ctx,
 		`UPDATE step
-		 SET status=$2::jobtaskstatus,
+		 SET state=$2::stepstatus,
 		     metrics=$3::jsonb,
 		     artifacts=$4::jsonb,
 		     last_error=NULLIF($5,''),
 		     started_at=COALESCE(started_at,now()),
-		     ended_at=CASE WHEN $2::jobtaskstatus IN ('SUCCEEDED'::jobtaskstatus,'FAILED'::jobtaskstatus,'CANCELLED'::jobtaskstatus,'SKIPPED'::jobtaskstatus) THEN COALESCE(ended_at,now()) ELSE ended_at END,
+		     ended_at=CASE WHEN $2::stepstatus IN ('SUCCEEDED'::stepstatus,'FAILED'::stepstatus,'CANCELLED'::stepstatus,'SKIPPED'::stepstatus) THEN COALESCE(ended_at,now()) ELSE ended_at END,
 		     updated_at=now()
 		 WHERE id=$1::uuid`,
 		taskID,
@@ -863,7 +862,7 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 		return nil
 	}
 
-	if jobStatus == jobFailed || jobStatus == jobCancelled || jobStatus == jobPartialFailed {
+	if jobStatus == roundFailed || jobStatus == roundCancelled {
 		if err := s.updateLoopState(ctx, tx, loop.ID, statusFailed, loop.Phase, "round terminal failure", loop.LastConfirmedCommitID); err != nil {
 			return err
 		}
@@ -873,7 +872,7 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 	switch loop.Mode {
 	case modeSIM:
 		if loop.CurrentIteration >= loop.MaxRounds {
-			if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseSimEval, "", loop.LastConfirmedCommitID); err != nil {
+			if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseSimFinalize, "", loop.LastConfirmedCommitID); err != nil {
 				return err
 			}
 		} else {
@@ -886,7 +885,7 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 		}
 	case modeAL:
 		if loop.CurrentIteration >= loop.MaxRounds {
-			if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseALEval, "", loop.LastConfirmedCommitID); err != nil {
+			if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseALFinalize, "", loop.LastConfirmedCommitID); err != nil {
 				return err
 			}
 		} else if err := s.updateLoopState(ctx, tx, loop.ID, statusRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID); err != nil {
@@ -905,9 +904,9 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 		ctx,
 		`SELECT t.id::text
 		   FROM step t
-		   JOIN round j ON j.id=t.job_id
+		   JOIN round j ON j.id=t.round_id
 		  WHERE j.loop_id=$1::uuid
-		    AND t.status IN ('PENDING','DISPATCHING','RUNNING','RETRYING')
+		    AND t.state IN ('PENDING','DISPATCHING','RUNNING','RETRYING')
 		  ORDER BY t.created_at ASC`,
 		loop.ID,
 	)
@@ -933,12 +932,12 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 		if _, err := tx.Exec(
 			ctx,
 			`UPDATE step
-			    SET status='CANCELLED',
+			    SET state='CANCELLED',
 			        last_error=$2,
 			        ended_at=COALESCE(ended_at,now()),
 			        updated_at=now()
 			  WHERE id = ANY($1::uuid[])
-			    AND status IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
+			    AND state IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
 			taskIDs,
 			reason,
 		); err != nil {
@@ -1031,14 +1030,14 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID string) (bool, er
 		return false, tx.Commit(ctx)
 	}
 
-	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, task.DependsOnTaskIDs)
+	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, task.DependsOnStepIDs)
 	if err != nil {
 		return false, err
 	}
 	if !depsOK {
 		return false, tx.Commit(ctx)
 	}
-	if isOrchestratorTaskType(task.TaskType) {
+	if isOrchestratorTaskType(task.StepType) {
 		executed, err := s.executeOrchestratorTaskTx(ctx, tx, task)
 		if err != nil {
 			return false, err
@@ -1051,7 +1050,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID string) (bool, er
 		return false, tx.Commit(ctx)
 	}
 	requestID := uuid.NewString()
-	updated, err := s.markTaskDispatchingTx(ctx, tx, task.TaskID, executorID, requestID)
+	updated, err := s.markTaskDispatchingTx(ctx, tx, task.StepID, executorID, requestID)
 	if err != nil {
 		return false, err
 	}
@@ -1060,29 +1059,26 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID string) (bool, er
 	}
 
 	message := &runtimecontrolv1.TaskPayload{
-		StepId:           task.TaskID,
-		RoundId:          task.JobID,
+		StepId:           task.StepID,
+		RoundId:          task.RoundID,
 		LoopId:           task.LoopID,
 		ProjectId:        task.ProjectID,
-		SourceCommitId:   task.SourceCommitID,
-		TaskType:         toRuntimeTaskType(task.TaskType),
+		InputCommitId:    task.InputCommitID,
+		StepType:         toRuntimeTaskType(task.StepType),
 		PluginId:         task.PluginID,
 		Mode:             toRuntimeLoopMode(task.Mode),
 		QueryStrategy:    task.QueryStrategy,
-		Params:           task.Params,
+		ResolvedParams:   task.Params,
 		Resources:        task.Resources,
 		RoundIndex:       int32(task.RoundIndex),
 		Attempt:          int32(task.Attempt),
-		DependsOnStepIds: task.DependsOnTaskIDs,
-		TaskId:           task.TaskID,
-		JobId:            task.JobID,
-		DependsOnTaskIds: task.DependsOnTaskIDs,
+		DependsOnStepIds: task.DependsOnStepIDs,
 	}
 	if !s.dispatcher.DispatchTask(executorID, requestID, message) {
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE step SET status='PENDING',assigned_executor_id=NULL,last_error='dispatcher queue full',updated_at=now() WHERE id=$1::uuid`,
-			task.TaskID,
+			`UPDATE step SET state='PENDING',assigned_executor_id=NULL,last_error='dispatcher queue full',updated_at=now() WHERE id=$1::uuid`,
+			task.StepID,
 		); err != nil {
 			return false, err
 		}
@@ -1093,6 +1089,8 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID string) (bool, er
 
 func isOrchestratorTaskType(taskType string) bool {
 	switch strings.ToUpper(strings.TrimSpace(taskType)) {
+	case "SELECT":
+		return true
 	case "ACTIVATE_SAMPLES":
 		return true
 	default:
@@ -1108,12 +1106,12 @@ func (s *Service) executeOrchestratorTaskTx(
 	started, err := tx.Exec(
 		ctx,
 		`UPDATE step
-		    SET status='RUNNING',
+		    SET state='RUNNING',
 		        started_at=COALESCE(started_at,now()),
 		        updated_at=now()
 		  WHERE id=$1::uuid
-		    AND status='PENDING'`,
-		task.TaskID,
+		    AND state='PENDING'`,
+		task.StepID,
 	)
 	if err != nil {
 		return false, err
@@ -1133,13 +1131,13 @@ func (s *Service) executeOrchestratorTaskTx(
 	if _, err := tx.Exec(
 		ctx,
 		`UPDATE step
-		    SET status=$2::jobtaskstatus,
+		    SET state=$2::stepstatus,
 		        last_error=NULLIF($3,''),
-		        result_commit_id=NULLIF($4,'')::uuid,
+		        output_commit_id=NULLIF($4,'')::uuid,
 		        ended_at=COALESCE(ended_at,now()),
 		        updated_at=now()
 		  WHERE id=$1::uuid`,
-		task.TaskID,
+		task.StepID,
 		resultStatus,
 		lastError,
 		resultCommitID,
@@ -1151,17 +1149,17 @@ func (s *Service) executeOrchestratorTaskTx(
 		if _, err := tx.Exec(
 			ctx,
 			`UPDATE round
-			    SET result_commit_id=NULLIF($2,'')::uuid,
+			    SET output_commit_id=NULLIF($2,'')::uuid,
 			        updated_at=now()
 			  WHERE id=$1::uuid`,
-			task.JobID,
+			task.RoundID,
 			resultCommitID,
 		); err != nil {
 			return false, err
 		}
 	}
 
-	if _, err := s.refreshJobAggregateTx(ctx, tx, task.JobID); err != nil {
+	if _, err := s.refreshJobAggregateTx(ctx, tx, task.RoundID); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -1173,7 +1171,7 @@ func (s *Service) runOrchestratorTaskTx(
 	task taskDispatchPayload,
 	resultCommitID *string,
 ) error {
-	switch strings.ToUpper(strings.TrimSpace(task.TaskType)) {
+	switch strings.ToUpper(strings.TrimSpace(task.StepType)) {
 	case "ACTIVATE_SAMPLES":
 		return s.runActivateSamplesTx(ctx, tx, task, resultCommitID)
 	default:
@@ -1217,7 +1215,7 @@ func (s *Service) runActivateSamplesTx(
 		return nil
 	}
 
-	sourceCommitID := strings.TrimSpace(task.SourceCommitID)
+	sourceCommitID := strings.TrimSpace(task.InputCommitID)
 	if sourceCommitID == "" {
 		headCommitID, branchProjectID, err := s.resolveBranchHead(ctx, branchID)
 		if err != nil {
@@ -1281,7 +1279,7 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 		projectID = projectIDFromBranch
 	}
 
-	jobID := uuid.NewString()
+	roundID := uuid.NewString()
 	paramsJSON, err := marshalJSON(map[string]any{
 		"round_index":    nextRound,
 		"loop_mode":      loop.Mode,
@@ -1300,20 +1298,20 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 	if _, err := tx.Exec(
 		ctx,
 		`INSERT INTO round(
-		     id,project_id,loop_id,round_index,mode,summary_status,task_counts,job_type,plugin_id,query_strategy,
-		     params,resources,source_commit_id,retry_count,last_error,final_metrics,final_artifacts,strategy_params,
+		     id,project_id,loop_id,round_index,mode,state,step_counts,round_type,plugin_id,query_strategy,
+		     resolved_params,resources,input_commit_id,retry_count,terminal_reason,final_metrics,final_artifacts,strategy_params,
 		     created_at,updated_at
 		   ) VALUES (
 		     $1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7::jsonb,'loop_job',$8,$9,
 		     $10::jsonb,$11::jsonb,NULLIF($12,'')::uuid,0,NULL,'{}'::jsonb,'{}'::jsonb,'{}'::jsonb,
 		     now(),now()
 		   )`,
-		jobID,
+		roundID,
 		projectID,
 		loop.ID,
 		nextRound,
 		loop.Mode,
-		jobPending,
+		roundPending,
 		`{}`,
 		loop.ModelArch,
 		loop.QueryStrategy,
@@ -1336,18 +1334,23 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 		if err != nil {
 			return false, err
 		}
+		dispatchKind := "DISPATCHABLE"
+		if isOrchestratorTaskType(taskType) {
+			dispatchKind = "ORCHESTRATOR"
+		}
 		if _, err := tx.Exec(
 			ctx,
 			`INSERT INTO step(
-				     id,job_id,task_type,status,round_index,task_index,depends_on,params,metrics,artifacts,
-				     source_commit_id,attempt,max_attempts,state_version,dispatch_request_id,created_at,updated_at
+				     id,round_id,step_type,dispatch_kind,state,round_index,step_index,depends_on_step_ids,resolved_params,metrics,artifacts,
+				     input_commit_id,attempt,max_attempts,state_version,dispatch_request_id,created_at,updated_at
 				   ) VALUES (
-				     $1::uuid,$2::uuid,$3,'PENDING',$4,$5,$6::jsonb,$7::jsonb,'{}'::jsonb,'{}'::jsonb,
-				     NULLIF($8,'')::uuid,1,3,0,NULL,now(),now()
+				     $1::uuid,$2::uuid,$3,$4,'PENDING',$5,$6,$7::jsonb,$8::jsonb,'{}'::jsonb,'{}'::jsonb,
+				     NULLIF($9,'')::uuid,1,3,0,NULL,now(),now()
 				   )`,
 			taskID,
-			jobID,
+			roundID,
 			taskType,
+			dispatchKind,
 			nextRound,
 			idx+1,
 			dependsOnJSON,
@@ -1374,15 +1377,15 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 		ctx,
 		`UPDATE loop
 		 SET current_iteration=$2,
-		     last_job_id=$3::uuid,
+		     last_round_id=$3::uuid,
 		     status='RUNNING',
 		     phase=$4,
-		     last_error=NULL,
+		     terminal_reason=NULL,
 		     updated_at=now()
 		 WHERE id=$1::uuid`,
 		loop.ID,
 		nextRound,
-		jobID,
+		roundID,
 		phase,
 	); err != nil {
 		return false, err
@@ -1391,28 +1394,28 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 }
 
 func (s *Service) refreshJobAggregateTx(ctx context.Context, tx pgx.Tx, jobID string) (string, error) {
-	rows, err := tx.Query(ctx, `SELECT status,COUNT(*)::int FROM step WHERE job_id=$1::uuid GROUP BY status`, jobID)
+	rows, err := tx.Query(ctx, `SELECT state,COUNT(*)::int FROM step WHERE round_id=$1::uuid GROUP BY state`, jobID)
 	if err != nil {
 		return "", err
 	}
 	counts := map[string]int{}
 	total := 0
 	for rows.Next() {
-		var status string
+		var state string
 		var count int
-		if err := rows.Scan(&status, &count); err != nil {
+		if err := rows.Scan(&state, &count); err != nil {
 			rows.Close()
 			return "", err
 		}
-		counts[status] = count
+		counts[state] = count
 		total += count
 	}
 	rows.Close()
 	if total == 0 {
-		return jobPending, nil
+		return roundPending, nil
 	}
 
-	status := summarizeJobStatus(counts, total)
+	state := summarizeRoundState(counts, total)
 	countsJSON, err := marshalJSON(counts)
 	if err != nil {
 		return "", err
@@ -1420,62 +1423,59 @@ func (s *Service) refreshJobAggregateTx(ctx context.Context, tx pgx.Tx, jobID st
 	if _, err := tx.Exec(
 		ctx,
 		`UPDATE round
-		 SET summary_status=$2::jobstatusv2,
-		     task_counts=$3::jsonb,
-		     started_at=CASE WHEN $2::jobstatusv2='JOB_RUNNING'::jobstatusv2 THEN COALESCE(started_at,now()) ELSE started_at END,
-		     ended_at=CASE WHEN $2::jobstatusv2 IN ('JOB_SUCCEEDED'::jobstatusv2,'JOB_FAILED'::jobstatusv2,'JOB_PARTIAL_FAILED'::jobstatusv2,'JOB_CANCELLED'::jobstatusv2) THEN COALESCE(ended_at,now()) ELSE ended_at END,
+		 SET state=$2::roundstatus,
+		     step_counts=$3::jsonb,
+		     started_at=CASE WHEN $2::roundstatus='RUNNING'::roundstatus THEN COALESCE(started_at,now()) ELSE started_at END,
+		     ended_at=CASE WHEN $2::roundstatus IN ('COMPLETED'::roundstatus,'FAILED'::roundstatus,'CANCELLED'::roundstatus) THEN COALESCE(ended_at,now()) ELSE ended_at END,
 		     updated_at=now()
 		 WHERE id=$1::uuid`,
 		jobID,
-		status,
+		state,
 		countsJSON,
 	); err != nil {
 		return "", err
 	}
-	return status, nil
+	return state, nil
 }
 
-func summarizeJobStatus(counts map[string]int, total int) string {
+func summarizeRoundState(counts map[string]int, total int) string {
 	if total <= 0 {
-		return jobPending
+		return roundPending
 	}
 	failed := counts[taskFailed]
 	cancelled := counts[taskCancelled]
 	running := counts[taskRunning] + counts[taskDispatching] + counts[taskRetrying]
-	pending := counts[taskPending]
+	pending := counts[taskPending] + counts[taskReady]
 	succeeded := counts[taskSucceeded] + counts[taskSkipped]
 
 	if failed > 0 {
-		if succeeded > 0 || cancelled > 0 {
-			return jobPartialFailed
-		}
-		return jobFailed
+		return roundFailed
 	}
 	if running > 0 {
-		return jobRunning
+		return roundRunning
 	}
 	if pending > 0 && succeeded == 0 && cancelled == 0 {
-		return jobPending
+		return roundPending
 	}
 	if cancelled == total {
-		return jobCancelled
+		return roundCancelled
 	}
 	if succeeded == total {
-		return jobSucceeded
-	}
-	if cancelled > 0 && succeeded > 0 {
-		return jobPartialFailed
+		return roundCompleted
 	}
 	if pending > 0 {
-		return jobRunning
+		return roundRunning
 	}
-	return jobPending
+	if cancelled > 0 {
+		return roundCancelled
+	}
+	return roundPending
 }
 
 func (s *Service) listPendingTaskIDs(ctx context.Context, limit int) ([]string, error) {
 	rows, err := s.repo.Pool().Query(
 		ctx,
-		`SELECT id::text FROM step WHERE status='PENDING' ORDER BY created_at ASC LIMIT $1`,
+		`SELECT id::text FROM step WHERE state='PENDING' ORDER BY created_at ASC LIMIT $1`,
 		max(1, limit),
 	)
 	if err != nil {
@@ -1507,7 +1507,7 @@ func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, depend
 	}
 	rows, err := tx.Query(
 		ctx,
-		`SELECT status FROM step WHERE id = ANY($1::uuid[])`,
+		`SELECT state FROM step WHERE id = ANY($1::uuid[])`,
 		uuids,
 	)
 	if err != nil {
@@ -1517,11 +1517,11 @@ func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, depend
 	count := 0
 	for rows.Next() {
 		count++
-		var status string
-		if err := rows.Scan(&status); err != nil {
+		var state string
+		if err := rows.Scan(&state); err != nil {
 			return false, err
 		}
-		if status != taskSucceeded {
+		if state != taskSucceeded {
 			return false, nil
 		}
 	}
@@ -1538,12 +1538,12 @@ func (s *Service) markTaskDispatchingTx(
 	tag, err := tx.Exec(
 		ctx,
 		`UPDATE step
-		 SET status='DISPATCHING',
+		 SET state='DISPATCHING',
 		     assigned_executor_id=$2,
 		     dispatch_request_id=$3,
 		     state_version=state_version+1,
 		     updated_at=now()
-		 WHERE id=$1::uuid AND status='PENDING'`,
+		 WHERE id=$1::uuid AND state='PENDING'`,
 		taskID,
 		executorID,
 		requestID,
@@ -1578,7 +1578,7 @@ func (s *Service) updateLoopState(
 		`UPDATE loop
 		 SET status=$2,
 		     phase=$3,
-		     last_error=NULLIF($4,''),
+		     terminal_reason=NULLIF($4,''),
 		     last_confirmed_commit_id=NULLIF($5,'')::uuid,
 		     updated_at=now()
 		 WHERE id=$1::uuid`,
@@ -1593,7 +1593,7 @@ func (s *Service) updateLoopState(
 
 func (s *Service) findJobIDByTask(ctx context.Context, tx pgx.Tx, taskID string) (string, error) {
 	var jobID string
-	if err := tx.QueryRow(ctx, `SELECT job_id::text FROM step WHERE id=$1::uuid`, taskID).Scan(&jobID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT round_id::text FROM step WHERE id=$1::uuid`, taskID).Scan(&jobID); err != nil {
 		if err == pgx.ErrNoRows {
 			return "", nil
 		}
@@ -1666,7 +1666,7 @@ func (s *Service) getLatestJobByLoopTx(ctx context.Context, tx pgx.Tx, loopID st
 	var row jobRow
 	if err := tx.QueryRow(
 		ctx,
-		`SELECT id::text,round_index,COALESCE(summary_status::text,''),ended_at
+		`SELECT id::text,round_index,COALESCE(state::text,''),ended_at
 		   FROM round
 		  WHERE loop_id=$1::uuid
 		  ORDER BY round_index DESC,created_at DESC
@@ -1741,56 +1741,56 @@ func (s *Service) getTaskPayloadByIDTx(ctx context.Context, tx pgx.Tx, taskID st
 		ctx,
 		`SELECT
 		     t.id::text,
-		     t.job_id::text,
-		     COALESCE(t.status::text,''),
-		     COALESCE(t.task_type::text,''),
+		     t.round_id::text,
+		     COALESCE(t.state::text,''),
+		     COALESCE(t.step_type::text,''),
 		     t.round_index,
 		     t.attempt,
-		     COALESCE(t.depends_on::text,'[]'),
-		     COALESCE(t.params::text,'{}'),
-		     COALESCE(t.source_commit_id::text,''),
+		     COALESCE(t.depends_on_step_ids::text,'[]'),
+		     COALESCE(t.resolved_params::text,'{}'),
+		     COALESCE(t.input_commit_id::text,''),
 		     j.loop_id::text,
 		     j.project_id::text,
 		     COALESCE(j.plugin_id,''),
 		     COALESCE(j.mode::text,''),
 		     COALESCE(j.query_strategy,''),
-		     COALESCE(j.params::text,'{}'),
+		     COALESCE(j.resolved_params::text,'{}'),
 		     COALESCE(j.resources::text,'{}'),
-		     COALESCE(j.source_commit_id::text,'')
+		     COALESCE(j.input_commit_id::text,'')
 		   FROM step t
-		   JOIN round j ON j.id=t.job_id
+		   JOIN round j ON j.id=t.round_id
 		  WHERE t.id=$1::uuid
 		  FOR UPDATE`,
 		taskID,
 	).Scan(
-		&row.TaskID,
-		&row.JobID,
+		&row.StepID,
+		&row.RoundID,
 		&row.Status,
-		&row.TaskType,
+		&row.StepType,
 		&row.RoundIndex,
 		&row.Attempt,
 		&row.dependsOnRaw,
 		&row.paramsRaw,
-		&row.SourceCommitID,
+		&row.InputCommitID,
 		&row.LoopID,
 		&row.ProjectID,
 		&row.PluginID,
 		&row.Mode,
 		&row.QueryStrategy,
-		&row.jobParamsRaw,
+		&row.roundParamsRaw,
 		&row.resourcesRaw,
-		&row.jobSourceCommitID,
+		&row.roundInputCommitID,
 	); err != nil {
 		if err == pgx.ErrNoRows {
 			return taskDispatchPayload{}, false, nil
 		}
 		return taskDispatchPayload{}, false, err
 	}
-	if strings.TrimSpace(row.SourceCommitID) == "" {
-		row.SourceCommitID = row.jobSourceCommitID
+	if strings.TrimSpace(row.InputCommitID) == "" {
+		row.InputCommitID = row.roundInputCommitID
 	}
 	var parseErr error
-	row.DependsOnTaskIDs, parseErr = parseJSONStrings(row.dependsOnRaw)
+	row.DependsOnStepIDs, parseErr = parseJSONStrings(row.dependsOnRaw)
 	if parseErr != nil {
 		return taskDispatchPayload{}, false, parseErr
 	}
@@ -1799,7 +1799,7 @@ func (s *Service) getTaskPayloadByIDTx(ctx context.Context, tx pgx.Tx, taskID st
 		return taskDispatchPayload{}, false, parseErr
 	}
 	if row.Params == nil || len(row.Params.GetFields()) == 0 {
-		row.Params, parseErr = toStruct(row.jobParamsRaw)
+		row.Params, parseErr = toStruct(row.roundParamsRaw)
 		if parseErr != nil {
 			return taskDispatchPayload{}, false, parseErr
 		}
@@ -1862,9 +1862,9 @@ func (s *Service) insertTaskEventTx(
 ) (bool, error) {
 	tag, err := tx.Exec(
 		ctx,
-		`INSERT INTO step_event(id,task_id,seq,ts,event_type,payload,request_id,created_at,updated_at)
+		`INSERT INTO step_event(id,step_id,seq,ts,event_type,payload,request_id,created_at,updated_at)
 		 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb,NULLIF($7,''),now(),now())
-		 ON CONFLICT (task_id,seq) DO NOTHING`,
+		 ON CONFLICT (step_id,seq) DO NOTHING`,
 		uuid.NewString(),
 		taskID,
 		seq,
@@ -1898,7 +1898,7 @@ func (s *Service) insertMetricPointsTx(
 		}
 		if _, err := tx.Exec(
 			ctx,
-			`INSERT INTO step_metric_point(id,task_id,step,epoch,metric_name,metric_value,ts,created_at,updated_at)
+			`INSERT INTO step_metric_point(id,step_id,step,epoch,metric_name,metric_value,ts,created_at,updated_at)
 			 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,now(),now())`,
 			uuid.NewString(),
 			taskID,
@@ -1920,7 +1920,7 @@ func (s *Service) replaceTaskCandidatesTx(
 	taskID string,
 	candidates []*runtimecontrolv1.QueryCandidate,
 ) error {
-	if _, err := tx.Exec(ctx, `DELETE FROM step_candidate_item WHERE task_id=$1::uuid`, taskID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM step_candidate_item WHERE step_id=$1::uuid`, taskID); err != nil {
 		return err
 	}
 	for idx, item := range candidates {
@@ -1939,7 +1939,7 @@ func (s *Service) replaceTaskCandidatesTx(
 		if _, err := tx.Exec(
 			ctx,
 			`INSERT INTO step_candidate_item(
-			     id,task_id,sample_id,rank,score,reason,prediction_snapshot,created_at,updated_at
+			     id,step_id,sample_id,rank,score,reason,prediction_snapshot,created_at,updated_at
 			   ) VALUES(
 			     $1::uuid,$2::uuid,$3::uuid,$4,$5,$6::jsonb,'{}'::jsonb,now(),now()
 			   )`,
@@ -2033,27 +2033,27 @@ type commandLogEntry struct {
 }
 
 type taskDispatchPayload struct {
-	TaskID           string
-	JobID            string
+	StepID           string
+	RoundID            string
 	LoopID           string
 	ProjectID        string
-	SourceCommitID   string
-	TaskType         string
+	InputCommitID   string
+	StepType         string
 	PluginID         string
 	Mode             string
 	QueryStrategy    string
 	RoundIndex       int
 	Attempt          int
 	Status           string
-	DependsOnTaskIDs []string
+	DependsOnStepIDs []string
 	Params           *structpb.Struct
 	Resources        *runtimecontrolv1.ResourceSummary
 
 	dependsOnRaw      string
 	paramsRaw         string
-	jobParamsRaw      string
+	roundParamsRaw      string
 	resourcesRaw      string
-	jobSourceCommitID string
+	roundInputCommitID string
 }
 
 func toStruct(raw string) (*structpb.Struct, error) {
@@ -2233,11 +2233,11 @@ func toResourceSummary(raw string) *runtimecontrolv1.ResourceSummary {
 func taskSpecsByMode(mode string) []string {
 	switch mode {
 	case modeSIM:
-		return []string{"TRAIN", "SCORE", "SELECT", "ACTIVATE_SAMPLES", "EVAL"}
+		return []string{"TRAIN", "SCORE", "EVAL", "SELECT", "ACTIVATE_SAMPLES"}
 	case modeManual:
-		return []string{"TRAIN", "SCORE", "UPLOAD_ARTIFACT"}
+		return []string{"TRAIN", "EVAL", "EXPORT"}
 	default:
-		return []string{"TRAIN", "SCORE", "SELECT", "UPLOAD_ARTIFACT"}
+		return []string{"TRAIN", "SCORE", "EVAL", "SELECT"}
 	}
 }
 
@@ -2338,6 +2338,8 @@ func toRuntimeTaskType(raw string) runtimecontrolv1.RuntimeTaskType {
 		return runtimecontrolv1.RuntimeTaskType_MERGE
 	case "EVAL":
 		return runtimecontrolv1.RuntimeTaskType_EVAL
+	case "EXPORT":
+		return runtimecontrolv1.RuntimeTaskType_UPLOAD_ARTIFACT
 	case "UPLOAD_ARTIFACT":
 		return runtimecontrolv1.RuntimeTaskType_UPLOAD_ARTIFACT
 	default:

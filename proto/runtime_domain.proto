@@ -28,23 +28,6 @@ message CountNewLabelsSinceCommitResponse {
   string latest_commit_id = 2;
 }
 
-message CreateSimulationCommitFromOracleRequest {
-  string command_id = 1;
-  string project_id = 2;
-  string branch_id = 3;
-  string oracle_commit_id = 4;
-  string source_commit_id = 5;
-  string loop_id = 6;
-  int32 round_index = 7;
-  string query_strategy = 8;
-  int32 topk = 9;
-}
-
-message CreateSimulationCommitFromOracleResponse {
-  bool created = 1;
-  string commit_id = 2;
-}
-
 message ActivateSamplesRequest {
   string command_id = 1;
   string project_id = 2;
@@ -91,7 +74,6 @@ message DataRequest {
   string commit_id = 5;
   string cursor = 6;
   int32 limit = 7;
-  string task_id = 101 [deprecated = true];
 }
 
 message LabelItem {
@@ -134,7 +116,6 @@ message DataResponse {
   RuntimeQueryType query_type = 4;
   repeated DataItem items = 5;
   string next_cursor = 6;
-  string task_id = 101 [deprecated = true];
 }
 
 message UploadTicketRequest {
@@ -142,7 +123,6 @@ message UploadTicketRequest {
   string step_id = 2;
   string artifact_name = 3;
   string content_type = 4;
-  string task_id = 101 [deprecated = true];
 }
 
 message UploadTicketResponse {
@@ -152,14 +132,12 @@ message UploadTicketResponse {
   string upload_url = 4;
   string storage_uri = 5;
   map<string, string> headers = 6;
-  string task_id = 101 [deprecated = true];
 }
 
 service RuntimeDomain {
   rpc GetBranchHead(GetBranchHeadRequest) returns (GetBranchHeadResponse);
   rpc CountNewLabelsSinceCommit(CountNewLabelsSinceCommitRequest) returns (CountNewLabelsSinceCommitResponse);
   rpc ActivateSamples(ActivateSamplesRequest) returns (ActivateSamplesResponse);
-  rpc CreateSimulationCommitFromOracle(CreateSimulationCommitFromOracleRequest) returns (CreateSimulationCommitFromOracleResponse);
   rpc AdvanceBranchHead(AdvanceBranchHeadRequest) returns (AdvanceBranchHeadResponse);
   rpc QueryData(DataRequest) returns (DataResponse);
   rpc CreateUploadTicket(UploadTicketRequest) returns (UploadTicketResponse);

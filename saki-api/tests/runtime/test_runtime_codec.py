@@ -15,7 +15,7 @@ def test_struct_roundtrip():
 def test_decode_task_status_event():
     event = pb.TaskEvent(
         request_id="r1",
-        task_id="t1",
+        step_id="t1",
         seq=1,
         ts=1,
         status_event=pb.StatusEvent(status=pb.RUNNING, reason="ok"),
@@ -48,11 +48,11 @@ def test_build_assign_task_message_and_decode_fields():
         },
     )
     assert message.WhichOneof("payload") == "assign_task"
-    task = message.assign_task.task
-    assert task.task_id == "task-1"
-    assert task.task_type == pb.TRAIN
+    task = message.assign_task.step
+    assert task.step_id == "task-1"
+    assert task.step_type == pb.TRAIN
     assert task.mode == pb.MANUAL
-    assert runtime_codec.struct_to_dict(task.params) == {"epochs": 1}
+    assert runtime_codec.struct_to_dict(task.resolved_params) == {"epochs": 1}
 
 
 def test_resource_summary_supports_accelerators_roundtrip():
@@ -80,7 +80,7 @@ def test_decode_task_artifact_event():
     meta.update({"size": 12})
     event = pb.TaskEvent(
         request_id="r2",
-        task_id="t2",
+        step_id="t2",
         seq=2,
         ts=2,
         artifact_event=pb.ArtifactEvent(

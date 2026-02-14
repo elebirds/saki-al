@@ -113,9 +113,9 @@ class TrainingJobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class ALLoopStatus(str, Enum):
+class LoopStatus(str, Enum):
     """
-    Enum for active-learning loop lifecycle.
+    Enum for loop lifecycle.
     """
     DRAFT = "draft"
     RUNNING = "running"
@@ -126,9 +126,9 @@ class ALLoopStatus(str, Enum):
     FAILED = "failed"
 
 
-class ALLoopMode(str, Enum):
+class LoopMode(str, Enum):
     """
-    Enum for active-learning execution mode.
+    Enum for loop execution mode.
     """
     ACTIVE_LEARNING = "active_learning"
     SIMULATION = "simulation"
@@ -142,56 +142,87 @@ class LoopPhase(str, Enum):
     AL_BOOTSTRAP = "al_bootstrap"
     AL_TRAIN = "al_train"
     AL_SCORE = "al_score"
-    AL_WAIT_ANNOTATION = "al_wait_annotation"
-    AL_MERGE = "al_merge"
+    AL_SELECT = "al_select"
+    AL_WAIT_USER = "al_wait_user"
     AL_EVAL = "al_eval"
+    AL_FINALIZE = "al_finalize"
 
     SIM_BOOTSTRAP = "sim_bootstrap"
     SIM_TRAIN = "sim_train"
     SIM_SCORE = "sim_score"
+    SIM_SELECT = "sim_select"
     SIM_ACTIVATE = "sim_activate"
-    SIM_AUTO_LABEL = "sim_activate"
     SIM_EVAL = "sim_eval"
+    SIM_FINALIZE = "sim_finalize"
 
-    MANUAL_IDLE = "manual_idle"
-    MANUAL_TASK_RUNNING = "manual_task_running"
-    MANUAL_WAIT_CONFIRM = "manual_wait_confirm"
+    MANUAL_BOOTSTRAP = "manual_bootstrap"
+    MANUAL_TRAIN = "manual_train"
+    MANUAL_EVAL = "manual_eval"
+    MANUAL_EXPORT = "manual_export"
     MANUAL_FINALIZE = "manual_finalize"
 
-
-class JobStatusV2(str, Enum):
-    """
-    Enum for aggregated Job status.
-    """
-    JOB_PENDING = "job_pending"
-    JOB_RUNNING = "job_running"
-    JOB_PARTIAL_FAILED = "job_partial_failed"
-    JOB_FAILED = "job_failed"
-    JOB_SUCCEEDED = "job_succeeded"
-    JOB_CANCELLED = "job_cancelled"
+    # Backward aliases.
+    AL_WAIT_ANNOTATION = "al_wait_user"
+    AL_MERGE = "al_select"
+    SIM_AUTO_LABEL = "sim_activate"
+    MANUAL_IDLE = "manual_bootstrap"
+    MANUAL_TASK_RUNNING = "manual_train"
+    MANUAL_WAIT_CONFIRM = "manual_eval"
 
 
-class JobTaskType(str, Enum):
+class RoundStatus(str, Enum):
     """
-    Enum for runtime task type in L3 runtime context.
+    Enum for aggregated Round status.
+    """
+    PENDING = "pending"
+    RUNNING = "running"
+    WAIT_USER = "wait_user"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+    # Backward aliases.
+    JOB_PENDING = "pending"
+    JOB_RUNNING = "running"
+    JOB_PARTIAL_FAILED = "failed"
+    JOB_FAILED = "failed"
+    JOB_SUCCEEDED = "completed"
+    JOB_CANCELLED = "cancelled"
+
+
+class StepType(str, Enum):
+    """
+    Enum for runtime step type in L3 runtime context.
     """
     TRAIN = "train"
     SCORE = "score"
     SELECT = "select"
     ACTIVATE_SAMPLES = "activate_samples"
-    AUTO_LABEL = "activate_samples"
     WAIT_ANNOTATION = "wait_annotation"
     MERGE = "merge"
     EVAL = "eval"
+    EXPORT = "export"
     UPLOAD_ARTIFACT = "upload_artifact"
     MANUAL_REVIEW = "manual_review"
 
+    # Backward alias.
+    AUTO_LABEL = "activate_samples"
 
-class JobTaskStatus(str, Enum):
+
+class StepDispatchKind(str, Enum):
     """
-    Enum for runtime task execution status.
+    Enum for step execution ownership.
+    """
+    DISPATCHABLE = "dispatchable"
+    ORCHESTRATOR = "orchestrator"
+
+
+class StepStatus(str, Enum):
+    """
+    Enum for runtime step execution status.
     """
     PENDING = "pending"
+    READY = "ready"
     DISPATCHING = "dispatching"
     RUNNING = "running"
     RETRYING = "retrying"
@@ -199,6 +230,14 @@ class JobTaskStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     SKIPPED = "skipped"
+
+
+# Backward type aliases.
+ALLoopStatus = LoopStatus
+ALLoopMode = LoopMode
+JobStatusV2 = RoundStatus
+JobTaskType = StepType
+JobTaskStatus = StepStatus
 
 
 class LoopRoundStatus(str, Enum):

@@ -186,7 +186,7 @@ func (s *Server) handleIncoming(
 
 	case *runtimecontrolv1.RuntimeMessage_TaskEvent:
 		event := payload.TaskEvent
-		stepID := resolveStepID(event.GetStepId(), event.GetTaskId())
+		stepID := resolveStepID(event.GetStepId())
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnTaskEvent(context.Background(), event); err != nil {
 				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_event failed")
@@ -202,7 +202,7 @@ func (s *Server) handleIncoming(
 
 	case *runtimecontrolv1.RuntimeMessage_TaskResult:
 		result := payload.TaskResult
-		stepID := resolveStepID(result.GetStepId(), result.GetTaskId())
+		stepID := resolveStepID(result.GetStepId())
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnTaskResult(context.Background(), result); err != nil {
 				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_result failed")
@@ -218,7 +218,7 @@ func (s *Server) handleIncoming(
 
 	case *runtimecontrolv1.RuntimeMessage_DataRequest:
 		request := payload.DataRequest
-		stepID := resolveStepID(request.GetStepId(), request.GetTaskId())
+		stepID := resolveStepID(request.GetStepId())
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return buildError(
 				"not_implemented",
@@ -231,7 +231,6 @@ func (s *Server) handleIncoming(
 		response, err := s.domainClient.QueryData(context.Background(), &runtimedomainv1.DataRequest{
 			RequestId: request.GetRequestId(),
 			StepId:    stepID,
-			TaskId:    stepID,
 			QueryType: toDomainQueryType(request.GetQueryType()),
 			ProjectId: request.GetProjectId(),
 			CommitId:  request.GetCommitId(),
@@ -260,7 +259,7 @@ func (s *Server) handleIncoming(
 
 	case *runtimecontrolv1.RuntimeMessage_UploadTicketRequest:
 		request := payload.UploadTicketRequest
-		stepID := resolveStepID(request.GetStepId(), request.GetTaskId())
+		stepID := resolveStepID(request.GetStepId())
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return buildError(
 				"not_implemented",
@@ -273,7 +272,6 @@ func (s *Server) handleIncoming(
 		response, err := s.domainClient.CreateUploadTicket(context.Background(), &runtimedomainv1.UploadTicketRequest{
 			RequestId:    request.GetRequestId(),
 			StepId:       stepID,
-			TaskId:       stepID,
 			ArtifactName: request.GetArtifactName(),
 			ContentType:  request.GetContentType(),
 		})
@@ -291,14 +289,13 @@ func (s *Server) handleIncoming(
 				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
 			), currentExecutorID, nil
 		}
-		respStepID := resolveStepID(response.GetStepId(), response.GetTaskId())
+		respStepID := resolveStepID(response.GetStepId())
 		return &runtimecontrolv1.RuntimeMessage{
 			Payload: &runtimecontrolv1.RuntimeMessage_UploadTicketResponse{
 				UploadTicketResponse: &runtimecontrolv1.UploadTicketResponse{
 					RequestId:  response.GetRequestId(),
 					ReplyTo:    response.GetReplyTo(),
 					StepId:     respStepID,
-					TaskId:     respStepID,
 					UploadUrl:  response.GetUploadUrl(),
 					StorageUri: response.GetStorageUri(),
 					Headers:    response.GetHeaders(),
@@ -362,7 +359,6 @@ func buildError(
 				Message:   message,
 				ReplyTo:   replyTo,
 				StepId:    stepID,
-				TaskId:    stepID,
 				QueryType: queryType,
 			},
 		},
@@ -410,19 +406,15 @@ func toRuntimeDataResponse(response *runtimedomainv1.DataResponse) *runtimecontr
 	return &runtimecontrolv1.DataResponse{
 		RequestId:  response.GetRequestId(),
 		ReplyTo:    response.GetReplyTo(),
-		StepId:     resolveStepID(response.GetStepId(), response.GetTaskId()),
-		TaskId:     resolveStepID(response.GetStepId(), response.GetTaskId()),
+		StepId:     resolveStepID(response.GetStepId()),
 		QueryType:  toRuntimeQueryType(response.GetQueryType()),
 		Items:      items,
 		NextCursor: response.GetNextCursor(),
 	}
 }
 
-func resolveStepID(stepID string, legacyTaskID string) string {
-	if strings.TrimSpace(stepID) != "" {
-		return strings.TrimSpace(stepID)
-	}
-	return strings.TrimSpace(legacyTaskID)
+func resolveStepID(stepID string) string {
+	return strings.TrimSpace(stepID)
 }
 
 func toRuntimeDataItem(item *runtimedomainv1.DataItem) *runtimecontrolv1.DataItem {

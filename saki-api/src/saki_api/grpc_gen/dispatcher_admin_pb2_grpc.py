@@ -69,16 +69,6 @@ class DispatcherAdminStub(object):
                 request_serializer=dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
                 _registered_method=True)
-        self.StopJob = channel.unary_unary(
-                '/saki.dispatcher.admin.v1.DispatcherAdmin/StopJob',
-                request_serializer=dispatcher__admin__pb2.JobCommandRequest.SerializeToString,
-                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
-                _registered_method=True)
-        self.StopTask = channel.unary_unary(
-                '/saki.dispatcher.admin.v1.DispatcherAdmin/StopTask',
-                request_serializer=dispatcher__admin__pb2.TaskCommandRequest.SerializeToString,
-                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
-                _registered_method=True)
         self.TriggerDispatch = channel.unary_unary(
                 '/saki.dispatcher.admin.v1.DispatcherAdmin/TriggerDispatch',
                 request_serializer=dispatcher__admin__pb2.TriggerDispatchRequest.SerializeToString,
@@ -146,18 +136,6 @@ class DispatcherAdminServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def StopJob(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def StopTask(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def TriggerDispatch(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -218,16 +196,6 @@ def add_DispatcherAdminServicer_to_server(servicer, server):
             'StopStep': grpc.unary_unary_rpc_method_handler(
                     servicer.StopStep,
                     request_deserializer=dispatcher__admin__pb2.StepCommandRequest.FromString,
-                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
-            ),
-            'StopJob': grpc.unary_unary_rpc_method_handler(
-                    servicer.StopJob,
-                    request_deserializer=dispatcher__admin__pb2.JobCommandRequest.FromString,
-                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
-            ),
-            'StopTask': grpc.unary_unary_rpc_method_handler(
-                    servicer.StopTask,
-                    request_deserializer=dispatcher__admin__pb2.TaskCommandRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
             'TriggerDispatch': grpc.unary_unary_rpc_method_handler(
@@ -439,60 +407,6 @@ class DispatcherAdmin(object):
             target,
             '/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep',
             dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
-            dispatcher__admin__pb2.CommandResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def StopJob(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/saki.dispatcher.admin.v1.DispatcherAdmin/StopJob',
-            dispatcher__admin__pb2.JobCommandRequest.SerializeToString,
-            dispatcher__admin__pb2.CommandResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def StopTask(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/saki.dispatcher.admin.v1.DispatcherAdmin/StopTask',
-            dispatcher__admin__pb2.TaskCommandRequest.SerializeToString,
             dispatcher__admin__pb2.CommandResponse.FromString,
             options,
             channel_credentials,

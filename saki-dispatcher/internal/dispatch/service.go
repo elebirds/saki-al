@@ -18,7 +18,7 @@ type ExecutorSession struct {
 	PluginIDs  []string
 
 	Busy          bool
-	CurrentTaskID string
+	CurrentStepID string
 	Status        string
 	IsOnline      bool
 	LastSeen      time.Time
@@ -29,7 +29,7 @@ type ExecutorSession struct {
 
 type PendingAssign struct {
 	RequestID  string
-	TaskID     string
+	StepID     string
 	ExecutorID string
 	CreatedAt  time.Time
 }
@@ -59,7 +59,7 @@ type ExecutorSnapshot struct {
 	Status     string
 	IsOnline   bool
 
-	CurrentTaskID string
+	CurrentStepID string
 	LastSeen      time.Time
 	LastError     string
 
@@ -107,7 +107,7 @@ func (d *Dispatcher) RegisterExecutor(register *runtimecontrolv1.Register) (*Exe
 	existing.Version = register.GetVersion()
 	existing.PluginIDs = pluginIDs
 	existing.Busy = false
-	existing.CurrentTaskID = ""
+	existing.CurrentStepID = ""
 	existing.Status = "idle"
 	existing.IsOnline = true
 	existing.LastSeen = now
@@ -127,7 +127,7 @@ func (d *Dispatcher) UnregisterExecutor(executorID string) {
 		session.IsOnline = false
 		session.Status = "offline"
 		session.Busy = false
-		session.CurrentTaskID = ""
+		session.CurrentStepID = ""
 		session.LastSeen = time.Now().UTC()
 	}
 	for requestID, pending := range d.pendingAssign {
@@ -152,10 +152,7 @@ func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) erro
 	}
 	session.Busy = heartbeat.GetBusy()
 	currentStepID := strings.TrimSpace(heartbeat.GetCurrentStepId())
-	if currentStepID == "" {
-		currentStepID = strings.TrimSpace(heartbeat.GetCurrentTaskId())
-	}
-	session.CurrentTaskID = currentStepID
+	session.CurrentStepID = currentStepID
 	session.Status = "idle"
 	if session.Busy {
 		session.Status = "busy"
@@ -175,9 +172,9 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 		if ok {
 			delete(d.pendingAssign, ack.GetAckFor())
 			if ack.GetStatus() != runtimecontrolv1.AckStatus_OK {
-				if session := d.sessions[pending.ExecutorID]; session != nil && session.CurrentTaskID == pending.TaskID {
+				if session := d.sessions[pending.ExecutorID]; session != nil && session.CurrentStepID == pending.StepID {
 					session.Busy = false
-					session.CurrentTaskID = ""
+					session.CurrentStepID = ""
 					session.Status = "idle"
 				}
 			}
@@ -281,9 +278,6 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	}
 	stepID := strings.TrimSpace(task.GetStepId())
 	if stepID == "" {
-		stepID = strings.TrimSpace(task.GetTaskId())
-	}
-	if stepID == "" {
 		return false
 	}
 
@@ -299,7 +293,7 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 		Payload: &runtimecontrolv1.RuntimeMessage_AssignTask{
 			AssignTask: &runtimecontrolv1.AssignTask{
 				RequestId: requestID,
-				Task:      task,
+				Step:      task,
 			},
 		},
 	}
@@ -307,12 +301,12 @@ func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *run
 	case session.Queue <- message:
 		d.pendingAssign[requestID] = PendingAssign{
 			RequestID:  requestID,
-			TaskID:     stepID,
+			StepID:     stepID,
 			ExecutorID: executorID,
 			CreatedAt:  time.Now().UTC(),
 		}
 		session.Busy = true
-		session.CurrentTaskID = stepID
+		session.CurrentStepID = stepID
 		session.Status = "busy"
 		return true
 	default:
@@ -339,7 +333,7 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 		if !session.IsOnline {
 			continue
 		}
-		if session.CurrentTaskID == taskID {
+		if session.CurrentStepID == taskID {
 			target = session
 			break
 		}
@@ -354,7 +348,6 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 				RequestId: requestID,
 				StepId:    taskID,
 				Reason:    reason,
-				TaskId:    taskID,
 			},
 		},
 	}
@@ -367,14 +360,14 @@ func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
 	}
 }
 
-func (d *Dispatcher) QueueTask(taskID string) {
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
+func (d *Dispatcher) QueueTask(stepID string) {
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
 		return
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.queuedTasks[taskID] = struct{}{}
+	d.queuedTasks[stepID] = struct{}{}
 }
 
 func (d *Dispatcher) DrainQueuedTaskIDs() []string {
@@ -425,11 +418,11 @@ func (d *Dispatcher) ListExecutors() []ExecutorSnapshot {
 			Version:       session.Version,
 			Status:        session.Status,
 			IsOnline:      session.IsOnline,
-			CurrentTaskID: session.CurrentTaskID,
+			CurrentStepID: session.CurrentStepID,
 			LastSeen:      session.LastSeen,
 			LastError:     session.LastError,
 			PendingAssign: d.countPendingAssign(executorID),
-			PendingStop:   d.countPendingStop(session.CurrentTaskID),
+			PendingStop:   d.countPendingStop(session.CurrentStepID),
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -455,11 +448,11 @@ func (d *Dispatcher) GetExecutor(executorID string) (ExecutorSnapshot, bool) {
 		Version:       session.Version,
 		Status:        session.Status,
 		IsOnline:      session.IsOnline,
-		CurrentTaskID: session.CurrentTaskID,
+		CurrentStepID: session.CurrentStepID,
 		LastSeen:      session.LastSeen,
 		LastError:     session.LastError,
 		PendingAssign: d.countPendingAssign(executorID),
-		PendingStop:   d.countPendingStop(session.CurrentTaskID),
+		PendingStop:   d.countPendingStop(session.CurrentStepID),
 	}, true
 }
 

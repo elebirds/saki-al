@@ -8,7 +8,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from saki_api.modules.shared.modeling.base import UUIDMixin, TimestampMixin, OPT_JSON
 
 if TYPE_CHECKING:
-    from saki_api.modules.runtime.domain.job import Job
+    from saki_api.modules.runtime.domain.round import Round
 
 
 class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
@@ -20,8 +20,8 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
 
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
 
-    # 溯源：这个模型是哪次训练任务产出的？
-    job_id: uuid.UUID | None = Field(foreign_key="round.id")
+    # 溯源：这个模型是哪次训练轮次产出的？
+    round_id: uuid.UUID | None = Field(foreign_key="round.id")
     source_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
     parent_model_id: uuid.UUID | None = Field(default=None, foreign_key="model.id", index=True)
     plugin_id: str = Field(default="", index=True)
@@ -40,9 +40,26 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     created_by: uuid.UUID | None = Field(default=None, foreign_key="user.id")
 
     # 关系
-    job: Optional["Job"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": "[Model.job_id]"}
+    round: Optional["Round"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[Model.round_id]"}
     )
     parent_model: Optional["Model"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[Model.parent_model_id]"}
     )
+
+    # Backward compatibility properties.
+    @property
+    def job_id(self) -> uuid.UUID | None:
+        return self.round_id
+
+    @job_id.setter
+    def job_id(self, value: uuid.UUID | None) -> None:
+        self.round_id = value
+
+    @property
+    def job(self) -> Optional["Round"]:
+        return self.round
+
+    @job.setter
+    def job(self, value: Optional["Round"]) -> None:
+        self.round = value

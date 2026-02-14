@@ -41,6 +41,7 @@ _TASK_TYPE_TO_TEXT: dict[int, str] = {
     pb.WAIT_ANNOTATION: "wait_annotation",
     pb.MERGE: "merge",
     pb.EVAL: "eval",
+    pb.EXPORT: "export",
     pb.UPLOAD_ARTIFACT: "upload_artifact",
     pb.CUSTOM: "custom",
 }
@@ -88,11 +89,9 @@ _ACK_REASON_TO_TEXT: dict[int, str] = {
 _TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
 
 
-def _resolve_step_id(step_id: str | None, task_id: str | None) -> str:
+def _resolve_step_id(step_id: str | None) -> str:
     value = str(step_id or "").strip()
-    if value:
-        return value
-    return str(task_id or "").strip()
+    return value
 
 
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
@@ -301,7 +300,6 @@ def build_heartbeat_message(
             executor_id=executor_id,
             busy=busy,
             current_step_id=step_id,
-            current_task_id=step_id,
             resources=_dict_to_resource_summary(resources),
         )
     )
@@ -343,7 +341,6 @@ def build_data_request_message(
         data_request=pb.DataRequest(
             request_id=request_id,
             step_id=step_id,
-            task_id=step_id,
             query_type=text_to_query_type(query_type),
             project_id=project_id,
             commit_id=commit_id,
@@ -365,7 +362,6 @@ def build_upload_ticket_request_message(
         upload_ticket_request=pb.UploadTicketRequest(
             request_id=request_id,
             step_id=step_id,
-            task_id=step_id,
             artifact_name=artifact_name,
             content_type=content_type,
         )
@@ -385,7 +381,6 @@ def build_task_event_message(
     task_event = pb.TaskEvent(
         request_id=request_id,
         step_id=step_id,
-        task_id=step_id,
         seq=int(seq),
         ts=int(ts),
     )
@@ -437,7 +432,6 @@ def build_task_result_message(
     task_result = pb.TaskResult(
         request_id=request_id,
         step_id=step_id,
-        task_id=step_id,
         status=task_status_to_enum(status),
         error_message=str(error_message or ""),
     )
@@ -489,10 +483,10 @@ def set_message_request_id(message: pb.RuntimeMessage, request_id: str) -> None:
 
 
 def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
-    task = assign_task.task
-    step_id = _resolve_step_id(task.step_id, task.task_id)
-    round_id = str(task.round_id or task.job_id or "")
-    depends_on_step_ids = list(task.depends_on_step_ids or task.depends_on_task_ids or [])
+    task = assign_task.step
+    step_id = _resolve_step_id(task.step_id)
+    round_id = str(task.round_id or "")
+    depends_on_step_ids = list(task.depends_on_step_ids or [])
     return {
         "step_id": step_id,
         "round_id": round_id,
@@ -500,12 +494,15 @@ def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
         "job_id": round_id,
         "loop_id": task.loop_id,
         "project_id": task.project_id,
-        "source_commit_id": task.source_commit_id,
-        "task_type": _TASK_TYPE_TO_TEXT.get(int(task.task_type), "custom"),
+        "input_commit_id": task.input_commit_id,
+        "source_commit_id": task.input_commit_id,
+        "step_type": _TASK_TYPE_TO_TEXT.get(int(task.step_type), "custom"),
+        "task_type": _TASK_TYPE_TO_TEXT.get(int(task.step_type), "custom"),
         "plugin_id": task.plugin_id,
         "mode": _LOOP_MODE_TO_TEXT.get(int(task.mode), "active_learning"),
         "query_strategy": task.query_strategy,
-        "params": struct_to_dict(task.params),
+        "resolved_params": struct_to_dict(task.resolved_params),
+        "params": struct_to_dict(task.resolved_params),
         "resources": _resource_summary_to_dict(task.resources),
         "round_index": int(task.round_index or 0),
         "attempt": int(task.attempt or 1),
@@ -515,7 +512,7 @@ def parse_assign_task(assign_task: pb.AssignTask) -> dict[str, Any]:
 
 
 def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
-    step_id = _resolve_step_id(data_response.step_id, data_response.task_id)
+    step_id = _resolve_step_id(data_response.step_id)
     items: list[dict[str, Any]] = []
     for item in data_response.items:
         item_type = item.WhichOneof("item")
@@ -560,7 +557,7 @@ def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
 
 
 def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict[str, Any]:
-    step_id = _resolve_step_id(upload_ticket.step_id, upload_ticket.task_id)
+    step_id = _resolve_step_id(upload_ticket.step_id)
     return {
         "request_id": upload_ticket.request_id,
         "reply_to": upload_ticket.reply_to,
@@ -573,7 +570,7 @@ def parse_upload_ticket_response(upload_ticket: pb.UploadTicketResponse) -> dict
 
 
 def parse_error(error_payload: pb.Error) -> dict[str, Any]:
-    step_id = _resolve_step_id(error_payload.step_id, error_payload.task_id)
+    step_id = _resolve_step_id(error_payload.step_id)
     query_type = ""
     if int(error_payload.query_type) != pb.RUNTIME_QUERY_TYPE_UNSPECIFIED:
         query_type = query_type_to_text(error_payload.query_type)

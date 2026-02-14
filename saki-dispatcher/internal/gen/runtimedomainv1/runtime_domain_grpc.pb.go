@@ -19,13 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RuntimeDomain_GetBranchHead_FullMethodName                    = "/saki.runtime.domain.v1.RuntimeDomain/GetBranchHead"
-	RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName        = "/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit"
-	RuntimeDomain_ActivateSamples_FullMethodName                  = "/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples"
-	RuntimeDomain_CreateSimulationCommitFromOracle_FullMethodName = "/saki.runtime.domain.v1.RuntimeDomain/CreateSimulationCommitFromOracle"
-	RuntimeDomain_AdvanceBranchHead_FullMethodName                = "/saki.runtime.domain.v1.RuntimeDomain/AdvanceBranchHead"
-	RuntimeDomain_QueryData_FullMethodName                        = "/saki.runtime.domain.v1.RuntimeDomain/QueryData"
-	RuntimeDomain_CreateUploadTicket_FullMethodName               = "/saki.runtime.domain.v1.RuntimeDomain/CreateUploadTicket"
+	RuntimeDomain_GetBranchHead_FullMethodName             = "/saki.runtime.domain.v1.RuntimeDomain/GetBranchHead"
+	RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName = "/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit"
+	RuntimeDomain_ActivateSamples_FullMethodName           = "/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples"
+	RuntimeDomain_AdvanceBranchHead_FullMethodName         = "/saki.runtime.domain.v1.RuntimeDomain/AdvanceBranchHead"
+	RuntimeDomain_QueryData_FullMethodName                 = "/saki.runtime.domain.v1.RuntimeDomain/QueryData"
+	RuntimeDomain_CreateUploadTicket_FullMethodName        = "/saki.runtime.domain.v1.RuntimeDomain/CreateUploadTicket"
 )
 
 // RuntimeDomainClient is the client API for RuntimeDomain service.
@@ -35,7 +34,6 @@ type RuntimeDomainClient interface {
 	GetBranchHead(ctx context.Context, in *GetBranchHeadRequest, opts ...grpc.CallOption) (*GetBranchHeadResponse, error)
 	CountNewLabelsSinceCommit(ctx context.Context, in *CountNewLabelsSinceCommitRequest, opts ...grpc.CallOption) (*CountNewLabelsSinceCommitResponse, error)
 	ActivateSamples(ctx context.Context, in *ActivateSamplesRequest, opts ...grpc.CallOption) (*ActivateSamplesResponse, error)
-	CreateSimulationCommitFromOracle(ctx context.Context, in *CreateSimulationCommitFromOracleRequest, opts ...grpc.CallOption) (*CreateSimulationCommitFromOracleResponse, error)
 	AdvanceBranchHead(ctx context.Context, in *AdvanceBranchHeadRequest, opts ...grpc.CallOption) (*AdvanceBranchHeadResponse, error)
 	QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (*DataResponse, error)
 	CreateUploadTicket(ctx context.Context, in *UploadTicketRequest, opts ...grpc.CallOption) (*UploadTicketResponse, error)
@@ -79,16 +77,6 @@ func (c *runtimeDomainClient) ActivateSamples(ctx context.Context, in *ActivateS
 	return out, nil
 }
 
-func (c *runtimeDomainClient) CreateSimulationCommitFromOracle(ctx context.Context, in *CreateSimulationCommitFromOracleRequest, opts ...grpc.CallOption) (*CreateSimulationCommitFromOracleResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateSimulationCommitFromOracleResponse)
-	err := c.cc.Invoke(ctx, RuntimeDomain_CreateSimulationCommitFromOracle_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *runtimeDomainClient) AdvanceBranchHead(ctx context.Context, in *AdvanceBranchHeadRequest, opts ...grpc.CallOption) (*AdvanceBranchHeadResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AdvanceBranchHeadResponse)
@@ -126,7 +114,6 @@ type RuntimeDomainServer interface {
 	GetBranchHead(context.Context, *GetBranchHeadRequest) (*GetBranchHeadResponse, error)
 	CountNewLabelsSinceCommit(context.Context, *CountNewLabelsSinceCommitRequest) (*CountNewLabelsSinceCommitResponse, error)
 	ActivateSamples(context.Context, *ActivateSamplesRequest) (*ActivateSamplesResponse, error)
-	CreateSimulationCommitFromOracle(context.Context, *CreateSimulationCommitFromOracleRequest) (*CreateSimulationCommitFromOracleResponse, error)
 	AdvanceBranchHead(context.Context, *AdvanceBranchHeadRequest) (*AdvanceBranchHeadResponse, error)
 	QueryData(context.Context, *DataRequest) (*DataResponse, error)
 	CreateUploadTicket(context.Context, *UploadTicketRequest) (*UploadTicketResponse, error)
@@ -148,9 +135,6 @@ func (UnimplementedRuntimeDomainServer) CountNewLabelsSinceCommit(context.Contex
 }
 func (UnimplementedRuntimeDomainServer) ActivateSamples(context.Context, *ActivateSamplesRequest) (*ActivateSamplesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ActivateSamples not implemented")
-}
-func (UnimplementedRuntimeDomainServer) CreateSimulationCommitFromOracle(context.Context, *CreateSimulationCommitFromOracleRequest) (*CreateSimulationCommitFromOracleResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateSimulationCommitFromOracle not implemented")
 }
 func (UnimplementedRuntimeDomainServer) AdvanceBranchHead(context.Context, *AdvanceBranchHeadRequest) (*AdvanceBranchHeadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AdvanceBranchHead not implemented")
@@ -236,24 +220,6 @@ func _RuntimeDomain_ActivateSamples_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RuntimeDomain_CreateSimulationCommitFromOracle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateSimulationCommitFromOracleRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RuntimeDomainServer).CreateSimulationCommitFromOracle(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RuntimeDomain_CreateSimulationCommitFromOracle_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RuntimeDomainServer).CreateSimulationCommitFromOracle(ctx, req.(*CreateSimulationCommitFromOracleRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _RuntimeDomain_AdvanceBranchHead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AdvanceBranchHeadRequest)
 	if err := dec(in); err != nil {
@@ -326,10 +292,6 @@ var RuntimeDomain_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ActivateSamples",
 			Handler:    _RuntimeDomain_ActivateSamples_Handler,
-		},
-		{
-			MethodName: "CreateSimulationCommitFromOracle",
-			Handler:    _RuntimeDomain_CreateSimulationCommitFromOracle_Handler,
 		},
 		{
 			MethodName: "AdvanceBranchHead",

@@ -5,19 +5,17 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field, Relationship, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
-from saki_api.modules.shared.modeling.enums import ALLoopMode, ALLoopStatus, LoopPhase
+from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopStatus
 
 if TYPE_CHECKING:
     from saki_api.modules.project.domain.branch import Branch
     from saki_api.modules.project.domain.project import Project
-    from saki_api.modules.runtime.domain.job import Job
     from saki_api.modules.runtime.domain.model import Model
+    from saki_api.modules.runtime.domain.round import Round
 
 
-class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    """
-    L3 loop container for runtime orchestration.
-    """
+class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
+    """L3 loop container for runtime orchestration."""
 
     __tablename__ = "loop"
     __table_args__ = (UniqueConstraint("branch_id", name="uq_loop_branch_id"),)
@@ -26,7 +24,7 @@ class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     branch_id: uuid.UUID = Field(foreign_key="branch.id", index=True)
 
     name: str = Field(max_length=100)
-    mode: ALLoopMode = Field(default=ALLoopMode.ACTIVE_LEARNING, index=True)
+    mode: LoopMode = Field(default=LoopMode.ACTIVE_LEARNING, index=True)
     phase: LoopPhase = Field(default=LoopPhase.AL_BOOTSTRAP, index=True)
     phase_meta: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
@@ -37,7 +35,7 @@ class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     global_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     current_iteration: int = Field(default=0)
-    status: ALLoopStatus = Field(default=ALLoopStatus.DRAFT, index=True)
+    status: LoopStatus = Field(default=LoopStatus.DRAFT, index=True)
     max_rounds: int = Field(default=5, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
     min_seed_labeled: int = Field(default=100, ge=1)
@@ -46,17 +44,46 @@ class ALLoop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     stop_min_gain: float = Field(default=0.002)
     auto_register_model: bool = Field(default=True)
 
-    last_job_id: Optional[uuid.UUID] = Field(default=None, foreign_key="round.id", index=True)
+    last_round_id: Optional[uuid.UUID] = Field(default=None, foreign_key="round.id", index=True)
     latest_model_id: Optional[uuid.UUID] = Field(default=None, foreign_key="model.id", index=True)
     last_confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
-    last_error: str | None = Field(default=None, max_length=4000)
+    terminal_reason: str | None = Field(default=None, max_length=4000)
 
     project: "Project" = Relationship(back_populates="loops")
     branch: "Branch" = Relationship(back_populates="active_learning_loop")
-    jobs: List["Job"] = Relationship(
+    rounds: List["Round"] = Relationship(
         back_populates="loop",
-        sa_relationship_kwargs={"foreign_keys": "[Job.loop_id]"},
+        sa_relationship_kwargs={"foreign_keys": "[Round.loop_id]"},
     )
     latest_model: Optional["Model"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": "[ALLoop.latest_model_id]"}
+        sa_relationship_kwargs={"foreign_keys": "[Loop.latest_model_id]"}
     )
+
+    # Backward compatibility properties.
+    @property
+    def last_job_id(self) -> Optional[uuid.UUID]:
+        return self.last_round_id
+
+    @last_job_id.setter
+    def last_job_id(self, value: Optional[uuid.UUID]) -> None:
+        self.last_round_id = value
+
+    @property
+    def last_error(self) -> Optional[str]:
+        return self.terminal_reason
+
+    @last_error.setter
+    def last_error(self, value: Optional[str]) -> None:
+        self.terminal_reason = value
+
+    @property
+    def jobs(self) -> List["Round"]:
+        return self.rounds
+
+    @jobs.setter
+    def jobs(self, value: List["Round"]) -> None:
+        self.rounds = value
+
+
+# Backward alias.
+ALLoop = Loop

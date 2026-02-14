@@ -24,25 +24,25 @@ def test_parse_assign_task_payload():
     runtime_message = pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id="req1",
-            task=pb.TaskPayload(
-                task_id="task1",
-                job_id="job1",
+            step=pb.TaskPayload(
+                step_id="task1",
+                round_id="job1",
                 project_id="project1",
                 loop_id="loop1",
-                source_commit_id="commit1",
-                task_type=pb.TRAIN,
+                input_commit_id="commit1",
+                step_type=pb.TRAIN,
                 plugin_id="demo_det_v1",
                 mode=pb.ACTIVE_LEARNING,
                 query_strategy="uncertainty_1_minus_max_conf",
-                params=codec.dict_to_struct({"epochs": 5}),
+                resolved_params=codec.dict_to_struct({"epochs": 5}),
                 resources=pb.ResourceSummary(gpu_count=1, gpu_device_ids=[0], cpu_workers=4, memory_mb=0),
                 round_index=3,
             ),
         )
     )
     payload = codec.parse_assign_task(runtime_message.assign_task)
-    assert payload["task_id"] == "task1"
-    assert payload["job_id"] == "job1"
+    assert payload["step_id"] == "task1"
+    assert payload["round_id"] == "job1"
     assert payload["params"]["epochs"] == 5
     assert payload["task_type"] == "train"
     assert payload["mode"] == "active_learning"
@@ -70,12 +70,12 @@ def test_parse_error_message_includes_reply_to_and_error():
         message="boom",
         reply_to="req-1",
         reason="boom",
-        task_id="task-1",
+        step_id="task-1",
         query_type=pb.LABELS,
     )
     parsed = codec.parse_error(error_payload)
     assert parsed["reply_to"] == "req-1"
-    assert parsed["task_id"] == "task-1"
+    assert parsed["step_id"] == "task-1"
     assert parsed["error"] == "boom"
     assert parsed["query_type"] == "labels"
 

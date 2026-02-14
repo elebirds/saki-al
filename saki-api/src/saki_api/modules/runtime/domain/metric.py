@@ -7,13 +7,13 @@ from sqlmodel import Field, SQLModel
 from saki_api.modules.shared.modeling.base import UUIDMixin, OPT_JSON
 
 
-class JobSampleMetric(UUIDMixin, SQLModel, table=True):
+class RoundSampleMetric(UUIDMixin, SQLModel, table=True):
     """
     L3 评价层：样本多维价值分数。
     """
     __tablename__ = "round_sample_metric"
 
-    job_id: uuid.UUID = Field(foreign_key="round.id", primary_key=True)
+    round_id: uuid.UUID = Field(foreign_key="round.id", primary_key=True)
     sample_id: uuid.UUID = Field(foreign_key="sample.id", primary_key=True)
 
     # 1. 主排序分值（Primary Score）
@@ -37,3 +37,7 @@ class JobSampleMetric(UUIDMixin, SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(OPT_JSON)
     )
+
+
+# Backward alias.
+JobSampleMetric = RoundSampleMetric

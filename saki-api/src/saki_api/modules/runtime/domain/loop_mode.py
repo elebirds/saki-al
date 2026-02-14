@@ -5,48 +5,48 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from saki_api.modules.shared.modeling.enums import ALLoopMode, ALLoopStatus, JobTaskType, LoopPhase
+from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopStatus, StepType
 
-LOOP_TASK_SPECS_BY_MODE: dict[ALLoopMode, tuple[JobTaskType, ...]] = {
-    ALLoopMode.SIMULATION: (
-        JobTaskType.TRAIN,
-        JobTaskType.SCORE,
-        JobTaskType.SELECT,
-        JobTaskType.ACTIVATE_SAMPLES,
-        JobTaskType.EVAL,
+LOOP_STEP_SPECS_BY_MODE: dict[LoopMode, tuple[StepType, ...]] = {
+    LoopMode.SIMULATION: (
+        StepType.TRAIN,
+        StepType.SCORE,
+        StepType.EVAL,
+        StepType.SELECT,
+        StepType.ACTIVATE_SAMPLES,
     ),
-    ALLoopMode.ACTIVE_LEARNING: (
-        JobTaskType.TRAIN,
-        JobTaskType.SCORE,
-        JobTaskType.SELECT,
-        JobTaskType.UPLOAD_ARTIFACT,
+    LoopMode.ACTIVE_LEARNING: (
+        StepType.TRAIN,
+        StepType.SCORE,
+        StepType.EVAL,
+        StepType.SELECT,
     ),
-    ALLoopMode.MANUAL: (
-        JobTaskType.TRAIN,
-        JobTaskType.EVAL,
-        JobTaskType.UPLOAD_ARTIFACT,
+    LoopMode.MANUAL: (
+        StepType.TRAIN,
+        StepType.EVAL,
+        StepType.EXPORT,
     ),
 }
 
 
-def task_specs_for_mode(mode: ALLoopMode) -> tuple[JobTaskType, ...]:
-    return LOOP_TASK_SPECS_BY_MODE.get(mode, LOOP_TASK_SPECS_BY_MODE[ALLoopMode.ACTIVE_LEARNING])
+def step_specs_for_mode(mode: LoopMode) -> tuple[StepType, ...]:
+    return LOOP_STEP_SPECS_BY_MODE.get(mode, LOOP_STEP_SPECS_BY_MODE[LoopMode.ACTIVE_LEARNING])
 
 
-def phase_for_mode(mode: ALLoopMode) -> LoopPhase:
-    if mode == ALLoopMode.SIMULATION:
+def phase_for_mode(mode: LoopMode) -> LoopPhase:
+    if mode == LoopMode.SIMULATION:
         return LoopPhase.SIM_BOOTSTRAP
-    if mode == ALLoopMode.MANUAL:
-        return LoopPhase.MANUAL_IDLE
+    if mode == LoopMode.MANUAL:
+        return LoopPhase.MANUAL_BOOTSTRAP
     return LoopPhase.AL_BOOTSTRAP
 
 
 @dataclass(slots=True)
 class LoopTerminalDecision:
-    set_status: ALLoopStatus | None = None
+    set_status: LoopStatus | None = None
     set_phase: LoopPhase | None = None
-    set_last_error: str | None = None
-    create_next_job: bool = False
+    set_terminal_reason: str | None = None
+    create_next_round: bool = False
 
 
 class LoopModePolicy(Protocol):
@@ -57,26 +57,29 @@ class LoopModePolicy(Protocol):
 class ActiveLearningModePolicy:
     def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:  # noqa: ARG002
         if loop.current_iteration >= loop.max_rounds:
-            return LoopTerminalDecision(set_status=ALLoopStatus.COMPLETED, set_phase=LoopPhase.AL_EVAL)
-        return LoopTerminalDecision(create_next_job=True)
+            return LoopTerminalDecision(set_status=LoopStatus.COMPLETED, set_phase=LoopPhase.AL_FINALIZE)
+        return LoopTerminalDecision(set_phase=LoopPhase.AL_WAIT_USER)
 
 
 class SimulationModePolicy:
     def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:
         if loop.current_iteration >= loop.max_rounds or sim_finished:
-            return LoopTerminalDecision(set_status=ALLoopStatus.COMPLETED, set_phase=LoopPhase.SIM_EVAL)
-        return LoopTerminalDecision(create_next_job=True)
+            return LoopTerminalDecision(set_status=LoopStatus.COMPLETED, set_phase=LoopPhase.SIM_FINALIZE)
+        return LoopTerminalDecision(create_next_round=True, set_phase=LoopPhase.SIM_TRAIN)
 
 
 class ManualModePolicy:
     def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:  # noqa: ARG002
-        if loop.current_iteration >= loop.max_rounds:
-            return LoopTerminalDecision(set_status=ALLoopStatus.COMPLETED, set_phase=LoopPhase.MANUAL_FINALIZE)
-        return LoopTerminalDecision(set_status=ALLoopStatus.COMPLETED, set_phase=LoopPhase.MANUAL_FINALIZE)
+        return LoopTerminalDecision(set_status=LoopStatus.COMPLETED, set_phase=LoopPhase.MANUAL_FINALIZE)
 
 
-DEFAULT_MODE_POLICIES: dict[ALLoopMode, LoopModePolicy] = {
-    ALLoopMode.ACTIVE_LEARNING: ActiveLearningModePolicy(),
-    ALLoopMode.SIMULATION: SimulationModePolicy(),
-    ALLoopMode.MANUAL: ManualModePolicy(),
+DEFAULT_MODE_POLICIES: dict[LoopMode, LoopModePolicy] = {
+    LoopMode.ACTIVE_LEARNING: ActiveLearningModePolicy(),
+    LoopMode.SIMULATION: SimulationModePolicy(),
+    LoopMode.MANUAL: ManualModePolicy(),
 }
+
+
+# Backward aliases.
+LOOP_TASK_SPECS_BY_MODE = LOOP_STEP_SPECS_BY_MODE
+task_specs_for_mode = step_specs_for_mode

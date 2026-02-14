@@ -55,6 +55,7 @@ enum RuntimeTaskType {
   MERGE = 6;
   EVAL = 7;
   UPLOAD_ARTIFACT = 8;
+  EXPORT = 9;
   CUSTOM = 99;
 }
 
@@ -121,7 +122,6 @@ message Heartbeat {
   bool busy = 3;
   string current_step_id = 4;
   ResourceSummary resources = 5;
-  string current_task_id = 101 [deprecated = true];
 }
 
 message TaskPayload {
@@ -129,31 +129,27 @@ message TaskPayload {
   string round_id = 2;
   string loop_id = 3;
   string project_id = 4;
-  string source_commit_id = 5;
-  RuntimeTaskType task_type = 6;
+  string input_commit_id = 5;
+  RuntimeTaskType step_type = 6;
   string plugin_id = 7;
   RuntimeLoopMode mode = 8;
   string query_strategy = 9;
-  google.protobuf.Struct params = 10;
+  google.protobuf.Struct resolved_params = 10;
   ResourceSummary resources = 11;
   int32 round_index = 12;
   int32 attempt = 13;
   repeated string depends_on_step_ids = 14;
-  string task_id = 101 [deprecated = true];
-  string job_id = 102 [deprecated = true];
-  repeated string depends_on_task_ids = 103 [deprecated = true];
 }
 
 message AssignTask {
   string request_id = 1;
-  TaskPayload task = 2;
+  TaskPayload step = 2;
 }
 
 message StopTask {
   string request_id = 1;
   string step_id = 2;
   string reason = 3;
-  string task_id = 101 [deprecated = true];
 }
 
 message StatusEvent {
@@ -202,7 +198,6 @@ message TaskEvent {
     MetricEvent metric_event = 8;
     ArtifactEvent artifact_event = 9;
   }
-  string task_id = 101 [deprecated = true];
 }
 
 message QueryCandidate {
@@ -219,7 +214,6 @@ message TaskResult {
   repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;
   string error_message = 7;
-  string task_id = 101 [deprecated = true];
 }
 
 message DataRequest {
@@ -230,7 +224,6 @@ message DataRequest {
   string commit_id = 5;
   string cursor = 6;
   int32 limit = 7;
-  string task_id = 101 [deprecated = true];
 }
 
 message LabelItem {
@@ -273,7 +266,6 @@ message DataResponse {
   RuntimeQueryType query_type = 4;
   repeated DataItem items = 5;
   string next_cursor = 6;
-  string task_id = 101 [deprecated = true];
 }
 
 message UploadTicketRequest {
@@ -281,7 +273,6 @@ message UploadTicketRequest {
   string step_id = 2;
   string artifact_name = 3;
   string content_type = 4;
-  string task_id = 101 [deprecated = true];
 }
 
 message UploadTicketResponse {
@@ -291,7 +282,6 @@ message UploadTicketResponse {
   string upload_url = 4;
   string storage_uri = 5;
   map<string, string> headers = 6;
-  string task_id = 101 [deprecated = true];
 }
 
 message Ack {
@@ -312,7 +302,6 @@ message Error {
   string step_id = 6;
   RuntimeQueryType query_type = 7;
   string reason = 8;
-  string task_id = 101 [deprecated = true];
 }
 
 message RuntimeMessage {

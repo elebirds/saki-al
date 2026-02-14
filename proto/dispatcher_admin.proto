@@ -14,18 +14,6 @@ message ConfirmLoopRequest {
   bool force = 3;
 }
 
-message JobCommandRequest {
-  string command_id = 1;
-  string job_id = 2;
-  string reason = 3;
-}
-
-message TaskCommandRequest {
-  string command_id = 1;
-  string task_id = 2;
-  string reason = 3;
-}
-
 message RoundCommandRequest {
   string command_id = 1;
   string round_id = 2;
@@ -41,7 +29,6 @@ message StepCommandRequest {
 message TriggerDispatchRequest {
   string command_id = 1;
   string step_id = 2;
-  string task_id = 3; // deprecated alias
 }
 
 message CommandResponse {
@@ -78,7 +65,6 @@ message ExecutorRead {
   string last_error = 7;
   int64 pending_assign_count = 8;
   int64 pending_stop_count = 9;
-  string current_task_id = 101 [deprecated = true];
 }
 
 message ExecutorReadResponse {
@@ -97,8 +83,6 @@ service DispatcherAdmin {
   rpc ConfirmLoop(ConfirmLoopRequest) returns (CommandResponse);
   rpc StopRound(RoundCommandRequest) returns (CommandResponse);
   rpc StopStep(StepCommandRequest) returns (CommandResponse);
-  rpc StopJob(JobCommandRequest) returns (CommandResponse);
-  rpc StopTask(TaskCommandRequest) returns (CommandResponse);
   rpc TriggerDispatch(TriggerDispatchRequest) returns (CommandResponse);
   rpc GetRuntimeSummary(RuntimeSummaryRequest) returns (RuntimeSummaryResponse);
   rpc GetExecutor(ExecutorReadRequest) returns (ExecutorReadResponse);

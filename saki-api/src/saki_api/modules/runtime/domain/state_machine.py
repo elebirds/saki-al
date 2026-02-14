@@ -6,38 +6,38 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
-from saki_api.modules.shared.modeling.enums import JobStatusV2, JobTaskStatus
+from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 
-TERMINAL_TASK_STATUSES: set[JobTaskStatus] = {
-    JobTaskStatus.SUCCEEDED,
-    JobTaskStatus.FAILED,
-    JobTaskStatus.CANCELLED,
-    JobTaskStatus.SKIPPED,
+TERMINAL_STEP_STATES: set[StepStatus] = {
+    StepStatus.SUCCEEDED,
+    StepStatus.FAILED,
+    StepStatus.CANCELLED,
+    StepStatus.SKIPPED,
 }
 
-RUNNING_TASK_STATUSES: set[JobTaskStatus] = {
-    JobTaskStatus.RUNNING,
-    JobTaskStatus.DISPATCHING,
-    JobTaskStatus.RETRYING,
+RUNNING_STEP_STATES: set[StepStatus] = {
+    StepStatus.RUNNING,
+    StepStatus.DISPATCHING,
+    StepStatus.RETRYING,
 }
 
-TERMINAL_JOB_STATUSES: set[JobStatusV2] = {
-    JobStatusV2.JOB_SUCCEEDED,
-    JobStatusV2.JOB_PARTIAL_FAILED,
-    JobStatusV2.JOB_FAILED,
-    JobStatusV2.JOB_CANCELLED,
+TERMINAL_ROUND_STATES: set[RoundStatus] = {
+    RoundStatus.COMPLETED,
+    RoundStatus.FAILED,
+    RoundStatus.CANCELLED,
 }
 
-RUNNING_JOB_STATUSES: set[JobStatusV2] = {
-    JobStatusV2.JOB_PENDING,
-    JobStatusV2.JOB_RUNNING,
+RUNNING_ROUND_STATES: set[RoundStatus] = {
+    RoundStatus.PENDING,
+    RoundStatus.RUNNING,
+    RoundStatus.WAIT_USER,
 }
 
 
 @dataclass(slots=True, frozen=True)
-class JobAggregateSnapshot:
-    summary_status: JobStatusV2
-    task_counts: dict[str, int]
+class RoundAggregateSnapshot:
+    state: RoundStatus
+    step_counts: dict[str, int]
     all_terminal: bool
     any_running: bool
     any_failed: bool
@@ -45,12 +45,12 @@ class JobAggregateSnapshot:
     all_succeeded: bool
 
 
-def summarize_task_statuses(statuses: Iterable[JobTaskStatus]) -> JobAggregateSnapshot:
-    values = list(statuses)
+def summarize_step_states(states: Iterable[StepStatus]) -> RoundAggregateSnapshot:
+    values = list(states)
     if not values:
-        return JobAggregateSnapshot(
-            summary_status=JobStatusV2.JOB_PENDING,
-            task_counts={},
+        return RoundAggregateSnapshot(
+            state=RoundStatus.PENDING,
+            step_counts={},
             all_terminal=False,
             any_running=False,
             any_failed=False,
@@ -59,28 +59,26 @@ def summarize_task_statuses(statuses: Iterable[JobTaskStatus]) -> JobAggregateSn
         )
 
     counter = Counter(item.value for item in values)
-    all_terminal = all(item in TERMINAL_TASK_STATUSES for item in values)
-    any_running = any(item in RUNNING_TASK_STATUSES for item in values)
-    any_failed = any(item == JobTaskStatus.FAILED for item in values)
-    any_cancelled = any(item == JobTaskStatus.CANCELLED for item in values)
-    all_succeeded = all(item in {JobTaskStatus.SUCCEEDED, JobTaskStatus.SKIPPED} for item in values)
+    all_terminal = all(item in TERMINAL_STEP_STATES for item in values)
+    any_running = any(item in RUNNING_STEP_STATES for item in values)
+    any_failed = any(item == StepStatus.FAILED for item in values)
+    any_cancelled = any(item == StepStatus.CANCELLED for item in values)
+    all_succeeded = all(item in {StepStatus.SUCCEEDED, StepStatus.SKIPPED} for item in values)
 
     if any_running:
-        summary = JobStatusV2.JOB_RUNNING
+        state = RoundStatus.RUNNING
     elif all_terminal and all_succeeded:
-        summary = JobStatusV2.JOB_SUCCEEDED
+        state = RoundStatus.COMPLETED
     elif all_terminal and any_cancelled and not any_failed:
-        summary = JobStatusV2.JOB_CANCELLED
-    elif all_terminal and any_failed and all(item == JobTaskStatus.FAILED for item in values):
-        summary = JobStatusV2.JOB_FAILED
-    elif all_terminal and (any_failed or any_cancelled):
-        summary = JobStatusV2.JOB_PARTIAL_FAILED
+        state = RoundStatus.CANCELLED
+    elif all_terminal and any_failed:
+        state = RoundStatus.FAILED
     else:
-        summary = JobStatusV2.JOB_PENDING
+        state = RoundStatus.PENDING
 
-    return JobAggregateSnapshot(
-        summary_status=summary,
-        task_counts=dict(counter),
+    return RoundAggregateSnapshot(
+        state=state,
+        step_counts=dict(counter),
         all_terminal=all_terminal,
         any_running=any_running,
         any_failed=any_failed,
@@ -88,3 +86,11 @@ def summarize_task_statuses(statuses: Iterable[JobTaskStatus]) -> JobAggregateSn
         all_succeeded=all_succeeded,
     )
 
+
+# Backward aliases.
+TERMINAL_TASK_STATUSES = TERMINAL_STEP_STATES
+RUNNING_TASK_STATUSES = RUNNING_STEP_STATES
+TERMINAL_JOB_STATUSES = TERMINAL_ROUND_STATES
+RUNNING_JOB_STATUSES = RUNNING_ROUND_STATES
+JobAggregateSnapshot = RoundAggregateSnapshot
+summarize_task_statuses = summarize_step_states

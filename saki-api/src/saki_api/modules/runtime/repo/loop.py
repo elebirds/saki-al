@@ -1,46 +1,44 @@
-"""
-Loop Repository - Data access layer for ALLoop operations.
-"""
+"""Loop repository - Data access layer for Loop operations."""
 
 import uuid
-from typing import Optional, List
+from typing import List, Optional
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
-from saki_api.modules.runtime.domain.loop import ALLoop
-from saki_api.modules.shared.modeling.enums import ALLoopStatus
+from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.shared.modeling.enums import LoopStatus
 
 
-class LoopRepository(BaseRepository[ALLoop]):
-    """Repository for ALLoop data access."""
+class LoopRepository(BaseRepository[Loop]):
+    """Repository for Loop data access."""
 
     def __init__(self, session: AsyncSession):
-        super().__init__(ALLoop, session)
+        super().__init__(Loop, session)
 
-    async def get_active_by_branch(self, branch_id: uuid.UUID) -> Optional[ALLoop]:
+    async def get_active_by_branch(self, branch_id: uuid.UUID) -> Optional[Loop]:
         return await self.get_one(
-            filters=[ALLoop.branch_id == branch_id, ALLoop.status == ALLoopStatus.RUNNING]
+            filters=[Loop.branch_id == branch_id, Loop.status == LoopStatus.RUNNING]
         )
 
-    async def list_by_project(self, project_id: uuid.UUID) -> List[ALLoop]:
+    async def list_by_project(self, project_id: uuid.UUID) -> List[Loop]:
         return await self.list(
-            filters=[ALLoop.project_id == project_id],
-            order_by=[ALLoop.updated_at.desc()],
+            filters=[Loop.project_id == project_id],
+            order_by=[Loop.updated_at.desc()],
         )
 
     async def list_running_ids(self) -> List[uuid.UUID]:
         rows = await self.session.exec(
-            select(ALLoop.id).where(ALLoop.status == ALLoopStatus.RUNNING)
+            select(Loop.id).where(Loop.status == LoopStatus.RUNNING)
         )
         return [item for item in rows.all()]
 
-    async def list_by_experiment_group(self, experiment_group_id: uuid.UUID) -> List[ALLoop]:
+    async def list_by_experiment_group(self, experiment_group_id: uuid.UUID) -> List[Loop]:
         stmt = (
-            select(ALLoop)
-            .where(ALLoop.experiment_group_id == experiment_group_id)
-            .order_by(ALLoop.created_at.asc())
+            select(Loop)
+            .where(Loop.experiment_group_id == experiment_group_id)
+            .order_by(Loop.created_at.asc())
         )
         rows = await self.session.exec(stmt)
         return list(rows.all())

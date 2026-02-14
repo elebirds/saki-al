@@ -37,6 +37,7 @@ _TASK_TYPE_TO_TEXT: dict[int, str] = {
     pb.WAIT_ANNOTATION: "wait_annotation",
     pb.MERGE: "merge",
     pb.EVAL: "eval",
+    pb.EXPORT: "export",
     pb.UPLOAD_ARTIFACT: "upload_artifact",
     pb.CUSTOM: "custom",
 }
@@ -305,7 +306,6 @@ def build_error_message(
             reply_to=str(reply_to),
             ack_for=str(ack_for),
             step_id=step_id_value,
-            task_id=str(task_id),
             query_type=int(query_type),
             reason=str(reason),
         )
@@ -318,27 +318,25 @@ def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) ->
     step_id = str(payload.get("step_id") or payload.get("task_id") or "")
     round_id = str(payload.get("round_id") or payload.get("job_id") or "")
     depends_on_step_ids = [str(v) for v in (payload.get("depends_on_step_ids") or payload.get("depends_on_task_ids") or [])]
+    input_commit_id = str(payload.get("input_commit_id") or payload.get("source_commit_id") or "")
     return pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id=request_id,
-            task=pb.TaskPayload(
+            step=pb.TaskPayload(
                 step_id=step_id,
                 round_id=round_id,
                 loop_id=str(payload.get("loop_id") or ""),
                 project_id=str(payload.get("project_id") or ""),
-                source_commit_id=str(payload.get("source_commit_id") or ""),
-                task_type=task_type,
+                input_commit_id=input_commit_id,
+                step_type=task_type,
                 plugin_id=str(payload.get("plugin_id") or ""),
                 mode=loop_mode,
                 query_strategy=str(payload.get("query_strategy") or ""),
-                params=dict_to_struct(payload.get("params") or {}),
+                resolved_params=dict_to_struct(payload.get("resolved_params") or payload.get("params") or {}),
                 resources=dict_to_resource_summary(payload.get("resources") or {}),
                 round_index=int(payload.get("round_index") or 0),
                 attempt=int(payload.get("attempt") or 1),
                 depends_on_step_ids=depends_on_step_ids,
-                task_id=step_id,
-                job_id=round_id,
-                depends_on_task_ids=depends_on_step_ids,
             ),
         )
     )
@@ -350,7 +348,6 @@ def build_stop_task_message(*, request_id: str, task_id: str, reason: str) -> pb
         stop_task=pb.StopTask(
             request_id=request_id,
             step_id=step_id,
-            task_id=step_id,
             reason=str(reason or ""),
         )
     )

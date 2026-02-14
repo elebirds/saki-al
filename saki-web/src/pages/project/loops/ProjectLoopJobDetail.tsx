@@ -367,7 +367,7 @@ const ProjectLoopJobDetail: React.FC = () => {
     if (!job) {
         return (
             <Card className="!border-github-border !bg-github-panel">
-                <Empty description="Job 不存在或无权限访问"/>
+                <Empty description="Round 不存在或无权限访问"/>
             </Card>
         );
     }
@@ -379,7 +379,7 @@ const ProjectLoopJobDetail: React.FC = () => {
                     <div className="flex min-w-0 flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回 Loop 详情</Button>
-                            <Title level={4} className="!mb-0">Job #{job.roundIndex}</Title>
+                            <Title level={4} className="!mb-0">Round #{job.roundIndex}</Title>
                             <Tag color={JOB_STATUS_COLOR[job.summaryStatus] || 'default'}>{job.summaryStatus}</Tag>
                         </div>
                         <Text type="secondary">{job.id}</Text>
@@ -391,22 +391,22 @@ const ProjectLoopJobDetail: React.FC = () => {
                 </div>
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel" title="任务概览">
+            <Card className="!border-github-border !bg-github-panel" title="Round 概览">
                 <Descriptions size="small" column={4}>
                     <Descriptions.Item label="插件">{job.pluginId}</Descriptions.Item>
                     <Descriptions.Item label="采样策略">{job.queryStrategy}</Descriptions.Item>
                     <Descriptions.Item label="模式">{job.mode}</Descriptions.Item>
                     <Descriptions.Item label="开始时间">{formatDateTime(job.startedAt)}</Descriptions.Item>
                     <Descriptions.Item label="结束时间">{formatDateTime(job.endedAt)}</Descriptions.Item>
-                    <Descriptions.Item label="Task 数量">{tasks.length}</Descriptions.Item>
-                    <Descriptions.Item label="Task 聚合">{JSON.stringify(job.taskCounts || {})}</Descriptions.Item>
+                    <Descriptions.Item label="Step 数量">{tasks.length}</Descriptions.Item>
+                    <Descriptions.Item label="Step 聚合">{JSON.stringify(job.taskCounts || {})}</Descriptions.Item>
                 </Descriptions>
                 {job.lastError ? (
                     <Alert className="!mt-3" type="error" showIcon message={job.lastError}/>
                 ) : null}
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel" title="Task 时间线">
+            <Card className="!border-github-border !bg-github-panel" title="Step 时间线">
                 <Table
                     size="small"
                     rowKey={(item) => item.id}
@@ -437,11 +437,11 @@ const ProjectLoopJobDetail: React.FC = () => {
 
             {!selectedTask ? (
                 <Card className="!border-github-border !bg-github-panel">
-                    <Empty description="当前 Job 没有可查看的 Task"/>
+                    <Empty description="当前 Round 没有可查看的 Step"/>
                 </Card>
             ) : (
                 <>
-                    <Card className="!border-github-border !bg-github-panel" title={`当前 Task: ${selectedTask.taskType} (#${selectedTask.taskIndex})`}>
+                    <Card className="!border-github-border !bg-github-panel" title={`当前 Step: ${selectedTask.taskType} (#${selectedTask.taskIndex})`}>
                         <Descriptions size="small" column={4}>
                             <Descriptions.Item label="状态">
                                 <Tag color={TASK_STATUS_COLOR[selectedTask.status] || 'default'}>{selectedTask.status}</Tag>

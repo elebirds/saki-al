@@ -36,6 +36,7 @@ const LOOP_STATUS_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
+    stopping: 'warning',
     stopped: 'default',
     completed: 'success',
     failed: 'error',
@@ -304,8 +305,8 @@ const ProjectLoopOverview: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <Title level={4} className="!mb-1">AL Loop 概览</Title>
-                        <Text type="secondary">Loop/Job/Task 新模型概览页。</Text>
+                        <Title level={4} className="!mb-1">Loop 概览</Title>
+                        <Text type="secondary">Loop/Round/Step 统一语义概览页。</Text>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <Button onClick={() => navigate('/runtime/executors')}>查看执行器状态</Button>

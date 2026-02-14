@@ -785,9 +785,13 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async stopJob(jobId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
-        const response = await this.client.post<RuntimeJobCommandResponse>(`/jobs/${jobId}:stop`, null, {params: {reason}});
+    async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
+        const response = await this.client.post<RuntimeJobCommandResponse>(`/jobs/${roundId}:stop`, null, {params: {reason}});
         return response.data;
+    }
+
+    async stopJob(jobId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
+        return await this.stopRound(jobId, reason);
     }
 
     async getJob(jobId: string): Promise<RuntimeJob> {
@@ -805,9 +809,13 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async stopTask(taskId: string, reason: string = 'user requested stop'): Promise<RuntimeTaskCommandResponse> {
-        const response = await this.client.post<RuntimeTaskCommandResponse>(`/tasks/${taskId}:stop`, null, {params: {reason}});
+    async stopStep(stepId: string, reason: string = 'user requested stop'): Promise<RuntimeTaskCommandResponse> {
+        const response = await this.client.post<RuntimeTaskCommandResponse>(`/tasks/${stepId}:stop`, null, {params: {reason}});
         return response.data;
+    }
+
+    async stopTask(taskId: string, reason: string = 'user requested stop'): Promise<RuntimeTaskCommandResponse> {
+        return await this.stopStep(taskId, reason);
     }
 
     async getTaskEvents(taskId: string, afterSeq: number = 0, limit: number = 5000): Promise<RuntimeTaskEvent[]> {

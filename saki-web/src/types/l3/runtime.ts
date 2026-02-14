@@ -1,4 +1,4 @@
-export type ALLoopStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed' | 'failed';
+export type ALLoopStatus = 'draft' | 'running' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed';
 export type ALLoopMode = 'active_learning' | 'simulation' | 'manual';
 
 export type LoopPhase =
@@ -11,6 +11,7 @@ export type LoopPhase =
     | 'sim_bootstrap'
     | 'sim_train'
     | 'sim_score'
+    | 'sim_activate'
     | 'sim_auto_label'
     | 'sim_eval'
     | 'manual_idle'
@@ -107,6 +108,7 @@ export type RuntimeTaskType =
     | 'train'
     | 'score'
     | 'select'
+    | 'activate_samples'
     | 'auto_label'
     | 'wait_annotation'
     | 'merge'
@@ -251,6 +253,9 @@ export interface LoopSummary {
     tasksSucceeded: number;
     metricsLatest: Record<string, any>;
 }
+
+export type RuntimeRound = RuntimeJob;
+export type RuntimeStep = RuntimeJobTask;
 
 export interface SimulationExperimentCreateRequest {
     branchId: string;

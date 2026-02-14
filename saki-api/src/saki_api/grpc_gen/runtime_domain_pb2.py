@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14runtime_domain.proto\x12\x16saki.runtime.domain.v1\x1a\x1cgoogle/protobuf/struct.proto\")\n\x14GetBranchHeadRequest\x12\x11\n\tbranch_id\x18\x01 \x01(\t\"z\n\x15GetBranchHeadResponse\x12\r\n\x05\x66ound\x18\x01 \x01(\x08\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x12\n\nproject_id\x18\x03 \x01(\t\x12\x13\n\x0b\x62ranch_name\x18\x04 \x01(\t\x12\x16\n\x0ehead_commit_id\x18\x05 \x01(\t\"b\n CountNewLabelsSinceCommitRequest\x12\x12\n\nproject_id\x18\x01 \x01(\t\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x17\n\x0fsince_commit_id\x18\x03 \x01(\t\"V\n!CountNewLabelsSinceCommitResponse\x12\x17\n\x0fnew_label_count\x18\x01 \x01(\x03\x12\x18\n\x10latest_commit_id\x18\x02 \x01(\t\"\xe4\x01\n\'CreateSimulationCommitFromOracleRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nproject_id\x18\x02 \x01(\t\x12\x11\n\tbranch_id\x18\x03 \x01(\t\x12\x18\n\x10oracle_commit_id\x18\x04 \x01(\t\x12\x18\n\x10source_commit_id\x18\x05 \x01(\t\x12\x0f\n\x07loop_id\x18\x06 \x01(\t\x12\x13\n\x0bround_index\x18\x07 \x01(\x05\x12\x16\n\x0equery_strategy\x18\x08 \x01(\t\x12\x0c\n\x04topk\x18\t \x01(\x05\"N\n(CreateSimulationCommitFromOracleResponse\x12\x0f\n\x07\x63reated\x18\x01 \x01(\x08\x12\x11\n\tcommit_id\x18\x02 \x01(\t\"g\n\x18\x41\x64vanceBranchHeadRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x14\n\x0cto_commit_id\x18\x03 \x01(\t\x12\x0e\n\x06reason\x18\x04 \x01(\t\"X\n\x19\x41\x64vanceBranchHeadResponse\x12\x10\n\x08\x61\x64vanced\x18\x01 \x01(\x08\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x16\n\x0ehead_commit_id\x18\x03 \x01(\t\"\xb6\x01\n\x0b\x44\x61taRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07task_id\x18\x02 \x01(\t\x12<\n\nquery_type\x18\x03 \x01(\x0e\x32(.saki.runtime.domain.v1.RuntimeQueryType\x12\x12\n\nproject_id\x18\x04 \x01(\t\x12\x11\n\tcommit_id\x18\x05 \x01(\t\x12\x0e\n\x06\x63ursor\x18\x06 \x01(\t\x12\r\n\x05limit\x18\x07 \x01(\x05\"4\n\tLabelItem\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05\x63olor\x18\x03 \x01(\t\"\x88\x01\n\nSampleItem\x12\n\n\x02id\x18\x01 \x01(\t\x12\x12\n\nasset_hash\x18\x02 \x01(\t\x12\x14\n\x0c\x64ownload_url\x18\x03 \x01(\t\x12\r\n\x05width\x18\x04 \x01(\x05\x12\x0e\n\x06height\x18\x05 \x01(\x05\x12%\n\x04meta\x18\x06 \x01(\x0b\x32\x17.google.protobuf.Struct\"\xa1\x01\n\x0e\x41nnotationItem\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\tsample_id\x18\x02 \x01(\t\x12\x13\n\x0b\x63\x61tegory_id\x18\x03 \x01(\t\x12\x11\n\tbbox_xywh\x18\x04 \x03(\x01\x12$\n\x03obb\x18\x05 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x0e\n\x06source\x18\x06 \x01(\t\x12\x12\n\nconfidence\x18\x07 \x01(\x01\"\xc9\x01\n\x08\x44\x61taItem\x12\x37\n\nlabel_item\x18\x01 \x01(\x0b\x32!.saki.runtime.domain.v1.LabelItemH\x00\x12\x39\n\x0bsample_item\x18\x02 \x01(\x0b\x32\".saki.runtime.domain.v1.SampleItemH\x00\x12\x41\n\x0f\x61nnotation_item\x18\x03 \x01(\x0b\x32&.saki.runtime.domain.v1.AnnotationItemH\x00\x42\x06\n\x04item\"\xc9\x01\n\x0c\x44\x61taResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x10\n\x08reply_to\x18\x02 \x01(\t\x12\x0f\n\x07task_id\x18\x03 \x01(\t\x12<\n\nquery_type\x18\x04 \x01(\x0e\x32(.saki.runtime.domain.v1.RuntimeQueryType\x12/\n\x05items\x18\x05 \x03(\x0b\x32 .saki.runtime.domain.v1.DataItem\x12\x13\n\x0bnext_cursor\x18\x06 \x01(\t\"g\n\x13UploadTicketRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07task_id\x18\x02 \x01(\t\x12\x15\n\rartifact_name\x18\x03 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x04 \x01(\t\"\xf2\x01\n\x14UploadTicketResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x10\n\x08reply_to\x18\x02 \x01(\t\x12\x0f\n\x07task_id\x18\x03 \x01(\t\x12\x12\n\nupload_url\x18\x04 \x01(\t\x12\x13\n\x0bstorage_uri\x18\x05 \x01(\t\x12J\n\x07headers\x18\x06 \x03(\x0b\x32\x39.saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*w\n\x10RuntimeQueryType\x12\"\n\x1eRUNTIME_QUERY_TYPE_UNSPECIFIED\x10\x00\x12\n\n\x06LABELS\x10\x01\x12\x0b\n\x07SAMPLES\x10\x02\x12\x0f\n\x0b\x41NNOTATIONS\x10\x03\x12\x15\n\x11UNLABELED_SAMPLES\x10\x04\x32\xfb\x05\n\rRuntimeDomain\x12l\n\rGetBranchHead\x12,.saki.runtime.domain.v1.GetBranchHeadRequest\x1a-.saki.runtime.domain.v1.GetBranchHeadResponse\x12\x90\x01\n\x19\x43ountNewLabelsSinceCommit\x12\x38.saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest\x1a\x39.saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse\x12\xa5\x01\n CreateSimulationCommitFromOracle\x12?.saki.runtime.domain.v1.CreateSimulationCommitFromOracleRequest\x1a@.saki.runtime.domain.v1.CreateSimulationCommitFromOracleResponse\x12x\n\x11\x41\x64vanceBranchHead\x12\x30.saki.runtime.domain.v1.AdvanceBranchHeadRequest\x1a\x31.saki.runtime.domain.v1.AdvanceBranchHeadResponse\x12V\n\tQueryData\x12#.saki.runtime.domain.v1.DataRequest\x1a$.saki.runtime.domain.v1.DataResponse\x12o\n\x12\x43reateUploadTicket\x12+.saki.runtime.domain.v1.UploadTicketRequest\x1a,.saki.runtime.domain.v1.UploadTicketResponseBWZUgithub.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1;runtimedomainv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14runtime_domain.proto\x12\x16saki.runtime.domain.v1\x1a\x1cgoogle/protobuf/struct.proto\")\n\x14GetBranchHeadRequest\x12\x11\n\tbranch_id\x18\x01 \x01(\t\"z\n\x15GetBranchHeadResponse\x12\r\n\x05\x66ound\x18\x01 \x01(\x08\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x12\n\nproject_id\x18\x03 \x01(\t\x12\x13\n\x0b\x62ranch_name\x18\x04 \x01(\t\x12\x16\n\x0ehead_commit_id\x18\x05 \x01(\t\"b\n CountNewLabelsSinceCommitRequest\x12\x12\n\nproject_id\x18\x01 \x01(\t\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x17\n\x0fsince_commit_id\x18\x03 \x01(\t\"V\n!CountNewLabelsSinceCommitResponse\x12\x17\n\x0fnew_label_count\x18\x01 \x01(\x03\x12\x18\n\x10latest_commit_id\x18\x02 \x01(\t\"\xe4\x01\n\'CreateSimulationCommitFromOracleRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nproject_id\x18\x02 \x01(\t\x12\x11\n\tbranch_id\x18\x03 \x01(\t\x12\x18\n\x10oracle_commit_id\x18\x04 \x01(\t\x12\x18\n\x10source_commit_id\x18\x05 \x01(\t\x12\x0f\n\x07loop_id\x18\x06 \x01(\t\x12\x13\n\x0bround_index\x18\x07 \x01(\x05\x12\x16\n\x0equery_strategy\x18\x08 \x01(\t\x12\x0c\n\x04topk\x18\t \x01(\x05\"N\n(CreateSimulationCommitFromOracleResponse\x12\x0f\n\x07\x63reated\x18\x01 \x01(\x08\x12\x11\n\tcommit_id\x18\x02 \x01(\t\"\xd3\x01\n\x16\x41\x63tivateSamplesRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x12\n\nproject_id\x18\x02 \x01(\t\x12\x11\n\tbranch_id\x18\x03 \x01(\t\x12\x18\n\x10oracle_commit_id\x18\x04 \x01(\t\x12\x18\n\x10source_commit_id\x18\x05 \x01(\t\x12\x0f\n\x07loop_id\x18\x06 \x01(\t\x12\x13\n\x0bround_index\x18\x07 \x01(\x05\x12\x16\n\x0equery_strategy\x18\x08 \x01(\t\x12\x0c\n\x04topk\x18\t \x01(\x05\"=\n\x17\x41\x63tivateSamplesResponse\x12\x0f\n\x07\x63reated\x18\x01 \x01(\x08\x12\x11\n\tcommit_id\x18\x02 \x01(\t\"g\n\x18\x41\x64vanceBranchHeadRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x14\n\x0cto_commit_id\x18\x03 \x01(\t\x12\x0e\n\x06reason\x18\x04 \x01(\t\"X\n\x19\x41\x64vanceBranchHeadResponse\x12\x10\n\x08\x61\x64vanced\x18\x01 \x01(\x08\x12\x11\n\tbranch_id\x18\x02 \x01(\t\x12\x16\n\x0ehead_commit_id\x18\x03 \x01(\t\"\xb6\x01\n\x0b\x44\x61taRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07task_id\x18\x02 \x01(\t\x12<\n\nquery_type\x18\x03 \x01(\x0e\x32(.saki.runtime.domain.v1.RuntimeQueryType\x12\x12\n\nproject_id\x18\x04 \x01(\t\x12\x11\n\tcommit_id\x18\x05 \x01(\t\x12\x0e\n\x06\x63ursor\x18\x06 \x01(\t\x12\r\n\x05limit\x18\x07 \x01(\x05\"4\n\tLabelItem\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05\x63olor\x18\x03 \x01(\t\"\x88\x01\n\nSampleItem\x12\n\n\x02id\x18\x01 \x01(\t\x12\x12\n\nasset_hash\x18\x02 \x01(\t\x12\x14\n\x0c\x64ownload_url\x18\x03 \x01(\t\x12\r\n\x05width\x18\x04 \x01(\x05\x12\x0e\n\x06height\x18\x05 \x01(\x05\x12%\n\x04meta\x18\x06 \x01(\x0b\x32\x17.google.protobuf.Struct\"\xa1\x01\n\x0e\x41nnotationItem\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\tsample_id\x18\x02 \x01(\t\x12\x13\n\x0b\x63\x61tegory_id\x18\x03 \x01(\t\x12\x11\n\tbbox_xywh\x18\x04 \x03(\x01\x12$\n\x03obb\x18\x05 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x0e\n\x06source\x18\x06 \x01(\t\x12\x12\n\nconfidence\x18\x07 \x01(\x01\"\xc9\x01\n\x08\x44\x61taItem\x12\x37\n\nlabel_item\x18\x01 \x01(\x0b\x32!.saki.runtime.domain.v1.LabelItemH\x00\x12\x39\n\x0bsample_item\x18\x02 \x01(\x0b\x32\".saki.runtime.domain.v1.SampleItemH\x00\x12\x41\n\x0f\x61nnotation_item\x18\x03 \x01(\x0b\x32&.saki.runtime.domain.v1.AnnotationItemH\x00\x42\x06\n\x04item\"\xc9\x01\n\x0c\x44\x61taResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x10\n\x08reply_to\x18\x02 \x01(\t\x12\x0f\n\x07task_id\x18\x03 \x01(\t\x12<\n\nquery_type\x18\x04 \x01(\x0e\x32(.saki.runtime.domain.v1.RuntimeQueryType\x12/\n\x05items\x18\x05 \x03(\x0b\x32 .saki.runtime.domain.v1.DataItem\x12\x13\n\x0bnext_cursor\x18\x06 \x01(\t\"g\n\x13UploadTicketRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07task_id\x18\x02 \x01(\t\x12\x15\n\rartifact_name\x18\x03 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x04 \x01(\t\"\xf2\x01\n\x14UploadTicketResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x10\n\x08reply_to\x18\x02 \x01(\t\x12\x0f\n\x07task_id\x18\x03 \x01(\t\x12\x12\n\nupload_url\x18\x04 \x01(\t\x12\x13\n\x0bstorage_uri\x18\x05 \x01(\t\x12J\n\x07headers\x18\x06 \x03(\x0b\x32\x39.saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*w\n\x10RuntimeQueryType\x12\"\n\x1eRUNTIME_QUERY_TYPE_UNSPECIFIED\x10\x00\x12\n\n\x06LABELS\x10\x01\x12\x0b\n\x07SAMPLES\x10\x02\x12\x0f\n\x0b\x41NNOTATIONS\x10\x03\x12\x15\n\x11UNLABELED_SAMPLES\x10\x04\x32\xef\x06\n\rRuntimeDomain\x12l\n\rGetBranchHead\x12,.saki.runtime.domain.v1.GetBranchHeadRequest\x1a-.saki.runtime.domain.v1.GetBranchHeadResponse\x12\x90\x01\n\x19\x43ountNewLabelsSinceCommit\x12\x38.saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest\x1a\x39.saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse\x12r\n\x0f\x41\x63tivateSamples\x12..saki.runtime.domain.v1.ActivateSamplesRequest\x1a/.saki.runtime.domain.v1.ActivateSamplesResponse\x12\xa5\x01\n CreateSimulationCommitFromOracle\x12?.saki.runtime.domain.v1.CreateSimulationCommitFromOracleRequest\x1a@.saki.runtime.domain.v1.CreateSimulationCommitFromOracleResponse\x12x\n\x11\x41\x64vanceBranchHead\x12\x30.saki.runtime.domain.v1.AdvanceBranchHeadRequest\x1a\x31.saki.runtime.domain.v1.AdvanceBranchHeadResponse\x12V\n\tQueryData\x12#.saki.runtime.domain.v1.DataRequest\x1a$.saki.runtime.domain.v1.DataResponse\x12o\n\x12\x43reateUploadTicket\x12+.saki.runtime.domain.v1.UploadTicketRequest\x1a,.saki.runtime.domain.v1.UploadTicketResponseBWZUgithub.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1;runtimedomainv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,8 +35,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._serialized_options = b'ZUgithub.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1;runtimedomainv1'
   _globals['_UPLOADTICKETRESPONSE_HEADERSENTRY']._loaded_options = None
   _globals['_UPLOADTICKETRESPONSE_HEADERSENTRY']._serialized_options = b'8\001'
-  _globals['_RUNTIMEQUERYTYPE']._serialized_start=2239
-  _globals['_RUNTIMEQUERYTYPE']._serialized_end=2358
+  _globals['_RUNTIMEQUERYTYPE']._serialized_start=2516
+  _globals['_RUNTIMEQUERYTYPE']._serialized_end=2635
   _globals['_GETBRANCHHEADREQUEST']._serialized_start=78
   _globals['_GETBRANCHHEADREQUEST']._serialized_end=119
   _globals['_GETBRANCHHEADRESPONSE']._serialized_start=121
@@ -49,28 +49,32 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CREATESIMULATIONCOMMITFROMORACLEREQUEST']._serialized_end=662
   _globals['_CREATESIMULATIONCOMMITFROMORACLERESPONSE']._serialized_start=664
   _globals['_CREATESIMULATIONCOMMITFROMORACLERESPONSE']._serialized_end=742
-  _globals['_ADVANCEBRANCHHEADREQUEST']._serialized_start=744
-  _globals['_ADVANCEBRANCHHEADREQUEST']._serialized_end=847
-  _globals['_ADVANCEBRANCHHEADRESPONSE']._serialized_start=849
-  _globals['_ADVANCEBRANCHHEADRESPONSE']._serialized_end=937
-  _globals['_DATAREQUEST']._serialized_start=940
-  _globals['_DATAREQUEST']._serialized_end=1122
-  _globals['_LABELITEM']._serialized_start=1124
-  _globals['_LABELITEM']._serialized_end=1176
-  _globals['_SAMPLEITEM']._serialized_start=1179
-  _globals['_SAMPLEITEM']._serialized_end=1315
-  _globals['_ANNOTATIONITEM']._serialized_start=1318
-  _globals['_ANNOTATIONITEM']._serialized_end=1479
-  _globals['_DATAITEM']._serialized_start=1482
-  _globals['_DATAITEM']._serialized_end=1683
-  _globals['_DATARESPONSE']._serialized_start=1686
-  _globals['_DATARESPONSE']._serialized_end=1887
-  _globals['_UPLOADTICKETREQUEST']._serialized_start=1889
-  _globals['_UPLOADTICKETREQUEST']._serialized_end=1992
-  _globals['_UPLOADTICKETRESPONSE']._serialized_start=1995
-  _globals['_UPLOADTICKETRESPONSE']._serialized_end=2237
-  _globals['_UPLOADTICKETRESPONSE_HEADERSENTRY']._serialized_start=2191
-  _globals['_UPLOADTICKETRESPONSE_HEADERSENTRY']._serialized_end=2237
-  _globals['_RUNTIMEDOMAIN']._serialized_start=2361
-  _globals['_RUNTIMEDOMAIN']._serialized_end=3124
+  _globals['_ACTIVATESAMPLESREQUEST']._serialized_start=745
+  _globals['_ACTIVATESAMPLESREQUEST']._serialized_end=956
+  _globals['_ACTIVATESAMPLESRESPONSE']._serialized_start=958
+  _globals['_ACTIVATESAMPLESRESPONSE']._serialized_end=1019
+  _globals['_ADVANCEBRANCHHEADREQUEST']._serialized_start=1021
+  _globals['_ADVANCEBRANCHHEADREQUEST']._serialized_end=1124
+  _globals['_ADVANCEBRANCHHEADRESPONSE']._serialized_start=1126
+  _globals['_ADVANCEBRANCHHEADRESPONSE']._serialized_end=1214
+  _globals['_DATAREQUEST']._serialized_start=1217
+  _globals['_DATAREQUEST']._serialized_end=1399
+  _globals['_LABELITEM']._serialized_start=1401
+  _globals['_LABELITEM']._serialized_end=1453
+  _globals['_SAMPLEITEM']._serialized_start=1456
+  _globals['_SAMPLEITEM']._serialized_end=1592
+  _globals['_ANNOTATIONITEM']._serialized_start=1595
+  _globals['_ANNOTATIONITEM']._serialized_end=1756
+  _globals['_DATAITEM']._serialized_start=1759
+  _globals['_DATAITEM']._serialized_end=1960
+  _globals['_DATARESPONSE']._serialized_start=1963
+  _globals['_DATARESPONSE']._serialized_end=2164
+  _globals['_UPLOADTICKETREQUEST']._serialized_start=2166
+  _globals['_UPLOADTICKETREQUEST']._serialized_end=2269
+  _globals['_UPLOADTICKETRESPONSE']._serialized_start=2272
+  _globals['_UPLOADTICKETRESPONSE']._serialized_end=2514
+  _globals['_UPLOADTICKETRESPONSE_HEADERSENTRY']._serialized_start=2468
+  _globals['_UPLOADTICKETRESPONSE_HEADERSENTRY']._serialized_end=2514
+  _globals['_RUNTIMEDOMAIN']._serialized_start=2638
+  _globals['_RUNTIMEDOMAIN']._serialized_end=3517
 # @@protoc_insertion_point(module_scope)

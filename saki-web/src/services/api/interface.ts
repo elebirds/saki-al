@@ -227,6 +227,8 @@ export interface ApiService {
 
     createLoopJob(loopId: string, payload: RuntimeJobCreateRequest): Promise<RuntimeJob>;
 
+    stopRound(roundId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
+
     stopJob(jobId: string, reason?: string): Promise<RuntimeJobCommandResponse>;
 
     getJob(jobId: string): Promise<RuntimeJob>;
@@ -234,6 +236,8 @@ export interface ApiService {
     getJobTasks(jobId: string, limit?: number): Promise<RuntimeJobTask[]>;
 
     getTask(taskId: string): Promise<RuntimeJobTask>;
+
+    stopStep(stepId: string, reason?: string): Promise<RuntimeTaskCommandResponse>;
 
     stopTask(taskId: string, reason?: string): Promise<RuntimeTaskCommandResponse>;
 

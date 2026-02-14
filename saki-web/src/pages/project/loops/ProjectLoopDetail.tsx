@@ -35,6 +35,7 @@ const LOOP_STATUS_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
+    stopping: 'warning',
     stopped: 'default',
     completed: 'success',
     failed: 'error',
@@ -289,7 +290,7 @@ const ProjectLoopDetail: React.FC = () => {
                             type="primary"
                             loading={controlLoading}
                             onClick={() => handleLoopControl('start')}
-                            disabled={loop.status === 'running'}
+                            disabled={loop.status === 'running' || loop.status === 'stopping'}
                         >
                             Start
                         </Button>
@@ -307,20 +308,20 @@ const ProjectLoopDetail: React.FC = () => {
                         >
                             Resume
                         </Button>
-                        {loop.mode === 'manual' ? (
+                        {loop.mode === 'active_learning' ? (
                             <Button
                                 loading={controlLoading}
                                 onClick={() => handleLoopControl('confirm')}
-                                disabled={loop.phase !== 'manual_wait_confirm'}
+                                disabled={loop.phase !== 'al_wait_annotation'}
                             >
-                                Confirm
+                                Confirm Round
                             </Button>
                         ) : null}
                         <Button
                             danger
                             loading={controlLoading}
                             onClick={() => handleLoopControl('stop')}
-                            disabled={loop.status === 'stopped' || loop.status === 'completed'}
+                            disabled={loop.status === 'stopped' || loop.status === 'stopping' || loop.status === 'completed'}
                         >
                             Stop
                         </Button>
@@ -331,10 +332,10 @@ const ProjectLoopDetail: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel" title="Loop 摘要">
                 <Descriptions size="small" column={4}>
                     <Descriptions.Item label="模式">{loop.mode}</Descriptions.Item>
-                    <Descriptions.Item label="Jobs 总数">{summary?.jobsTotal ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="Jobs 成功">{summary?.jobsSucceeded ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="Tasks 总数">{summary?.tasksTotal ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="Tasks 成功">{summary?.tasksSucceeded ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Rounds 总数">{summary?.jobsTotal ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Rounds 成功">{summary?.jobsSucceeded ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Steps 总数">{summary?.tasksTotal ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="Steps 成功">{summary?.tasksSucceeded ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="最新 map50">{Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}</Descriptions.Item>
                 </Descriptions>
             </Card>

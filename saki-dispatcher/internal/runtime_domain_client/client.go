@@ -8,8 +8,10 @@ import (
 
 	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type Client struct {
@@ -95,6 +97,45 @@ func (c *Client) CreateSimulationCommitFromOracle(
 	callCtx, cancel := context.WithTimeout(withToken(ctx, c.token), c.timeout)
 	defer cancel()
 	return c.grpcClient.CreateSimulationCommitFromOracle(callCtx, req)
+}
+
+func (c *Client) ActivateSamples(
+	ctx context.Context,
+	req *runtimedomainv1.ActivateSamplesRequest,
+) (*runtimedomainv1.ActivateSamplesResponse, error) {
+	if !c.Enabled() || c.grpcClient == nil {
+		return nil, fmt.Errorf("runtime_domain client is not connected")
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, c.token), c.timeout)
+	defer cancel()
+
+	resp, err := c.grpcClient.ActivateSamples(callCtx, req)
+	if err == nil {
+		return resp, nil
+	}
+	st, ok := status.FromError(err)
+	if !ok || (st.Code() != codes.Unimplemented && st.Code() != codes.Unknown) {
+		return nil, err
+	}
+
+	legacyResp, legacyErr := c.grpcClient.CreateSimulationCommitFromOracle(callCtx, &runtimedomainv1.CreateSimulationCommitFromOracleRequest{
+		CommandId:      req.GetCommandId(),
+		ProjectId:      req.GetProjectId(),
+		BranchId:       req.GetBranchId(),
+		OracleCommitId: req.GetOracleCommitId(),
+		SourceCommitId: req.GetSourceCommitId(),
+		LoopId:         req.GetLoopId(),
+		RoundIndex:     req.GetRoundIndex(),
+		QueryStrategy:  req.GetQueryStrategy(),
+		Topk:           req.GetTopk(),
+	})
+	if legacyErr != nil {
+		return nil, legacyErr
+	}
+	return &runtimedomainv1.ActivateSamplesResponse{
+		Created:  legacyResp.GetCreated(),
+		CommitId: legacyResp.GetCommitId(),
+	}, nil
 }
 
 func (c *Client) AdvanceBranchHead(

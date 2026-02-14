@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	RuntimeDomain_GetBranchHead_FullMethodName                    = "/saki.runtime.domain.v1.RuntimeDomain/GetBranchHead"
 	RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName        = "/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit"
+	RuntimeDomain_ActivateSamples_FullMethodName                  = "/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples"
 	RuntimeDomain_CreateSimulationCommitFromOracle_FullMethodName = "/saki.runtime.domain.v1.RuntimeDomain/CreateSimulationCommitFromOracle"
 	RuntimeDomain_AdvanceBranchHead_FullMethodName                = "/saki.runtime.domain.v1.RuntimeDomain/AdvanceBranchHead"
 	RuntimeDomain_QueryData_FullMethodName                        = "/saki.runtime.domain.v1.RuntimeDomain/QueryData"
@@ -33,6 +34,7 @@ const (
 type RuntimeDomainClient interface {
 	GetBranchHead(ctx context.Context, in *GetBranchHeadRequest, opts ...grpc.CallOption) (*GetBranchHeadResponse, error)
 	CountNewLabelsSinceCommit(ctx context.Context, in *CountNewLabelsSinceCommitRequest, opts ...grpc.CallOption) (*CountNewLabelsSinceCommitResponse, error)
+	ActivateSamples(ctx context.Context, in *ActivateSamplesRequest, opts ...grpc.CallOption) (*ActivateSamplesResponse, error)
 	CreateSimulationCommitFromOracle(ctx context.Context, in *CreateSimulationCommitFromOracleRequest, opts ...grpc.CallOption) (*CreateSimulationCommitFromOracleResponse, error)
 	AdvanceBranchHead(ctx context.Context, in *AdvanceBranchHeadRequest, opts ...grpc.CallOption) (*AdvanceBranchHeadResponse, error)
 	QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (*DataResponse, error)
@@ -61,6 +63,16 @@ func (c *runtimeDomainClient) CountNewLabelsSinceCommit(ctx context.Context, in 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CountNewLabelsSinceCommitResponse)
 	err := c.cc.Invoke(ctx, RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeDomainClient) ActivateSamples(ctx context.Context, in *ActivateSamplesRequest, opts ...grpc.CallOption) (*ActivateSamplesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ActivateSamplesResponse)
+	err := c.cc.Invoke(ctx, RuntimeDomain_ActivateSamples_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +125,7 @@ func (c *runtimeDomainClient) CreateUploadTicket(ctx context.Context, in *Upload
 type RuntimeDomainServer interface {
 	GetBranchHead(context.Context, *GetBranchHeadRequest) (*GetBranchHeadResponse, error)
 	CountNewLabelsSinceCommit(context.Context, *CountNewLabelsSinceCommitRequest) (*CountNewLabelsSinceCommitResponse, error)
+	ActivateSamples(context.Context, *ActivateSamplesRequest) (*ActivateSamplesResponse, error)
 	CreateSimulationCommitFromOracle(context.Context, *CreateSimulationCommitFromOracleRequest) (*CreateSimulationCommitFromOracleResponse, error)
 	AdvanceBranchHead(context.Context, *AdvanceBranchHeadRequest) (*AdvanceBranchHeadResponse, error)
 	QueryData(context.Context, *DataRequest) (*DataResponse, error)
@@ -132,6 +145,9 @@ func (UnimplementedRuntimeDomainServer) GetBranchHead(context.Context, *GetBranc
 }
 func (UnimplementedRuntimeDomainServer) CountNewLabelsSinceCommit(context.Context, *CountNewLabelsSinceCommitRequest) (*CountNewLabelsSinceCommitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountNewLabelsSinceCommit not implemented")
+}
+func (UnimplementedRuntimeDomainServer) ActivateSamples(context.Context, *ActivateSamplesRequest) (*ActivateSamplesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ActivateSamples not implemented")
 }
 func (UnimplementedRuntimeDomainServer) CreateSimulationCommitFromOracle(context.Context, *CreateSimulationCommitFromOracleRequest) (*CreateSimulationCommitFromOracleResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateSimulationCommitFromOracle not implemented")
@@ -198,6 +214,24 @@ func _RuntimeDomain_CountNewLabelsSinceCommit_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RuntimeDomainServer).CountNewLabelsSinceCommit(ctx, req.(*CountNewLabelsSinceCommitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeDomain_ActivateSamples_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ActivateSamplesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeDomainServer).ActivateSamples(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeDomain_ActivateSamples_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeDomainServer).ActivateSamples(ctx, req.(*ActivateSamplesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -288,6 +322,10 @@ var RuntimeDomain_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CountNewLabelsSinceCommit",
 			Handler:    _RuntimeDomain_CountNewLabelsSinceCommit_Handler,
+		},
+		{
+			MethodName: "ActivateSamples",
+			Handler:    _RuntimeDomain_ActivateSamples_Handler,
 		},
 		{
 			MethodName: "CreateSimulationCommitFromOracle",

@@ -45,6 +45,23 @@ message CreateSimulationCommitFromOracleResponse {
   string commit_id = 2;
 }
 
+message ActivateSamplesRequest {
+  string command_id = 1;
+  string project_id = 2;
+  string branch_id = 3;
+  string oracle_commit_id = 4;
+  string source_commit_id = 5;
+  string loop_id = 6;
+  int32 round_index = 7;
+  string query_strategy = 8;
+  int32 topk = 9;
+}
+
+message ActivateSamplesResponse {
+  bool created = 1;
+  string commit_id = 2;
+}
+
 message AdvanceBranchHeadRequest {
   string command_id = 1;
   string branch_id = 2;
@@ -137,6 +154,7 @@ message UploadTicketResponse {
 service RuntimeDomain {
   rpc GetBranchHead(GetBranchHeadRequest) returns (GetBranchHeadResponse);
   rpc CountNewLabelsSinceCommit(CountNewLabelsSinceCommitRequest) returns (CountNewLabelsSinceCommitResponse);
+  rpc ActivateSamples(ActivateSamplesRequest) returns (ActivateSamplesResponse);
   rpc CreateSimulationCommitFromOracle(CreateSimulationCommitFromOracleRequest) returns (CreateSimulationCommitFromOracleResponse);
   rpc AdvanceBranchHead(AdvanceBranchHeadRequest) returns (AdvanceBranchHeadResponse);
   rpc QueryData(DataRequest) returns (DataResponse);

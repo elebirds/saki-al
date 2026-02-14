@@ -1218,7 +1218,7 @@ func (s *Service) runActivateSamplesTx(
 	}
 
 	commandID := uuid.NewString()
-	response, err := s.domainClient.CreateSimulationCommitFromOracle(ctx, &runtimedomainv1.CreateSimulationCommitFromOracleRequest{
+	response, err := s.domainClient.ActivateSamples(ctx, &runtimedomainv1.ActivateSamplesRequest{
 		CommandId:      commandID,
 		ProjectId:      projectID,
 		BranchId:       branchID,

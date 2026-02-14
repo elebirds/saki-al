@@ -204,6 +204,26 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 commit_id=str(commit.id),
             )
 
+    async def ActivateSamples(self, request, context):  # noqa: N802
+        legacy_response = await self.CreateSimulationCommitFromOracle(
+            domain_pb.CreateSimulationCommitFromOracleRequest(
+                command_id=str(request.command_id or ""),
+                project_id=str(request.project_id or ""),
+                branch_id=str(request.branch_id or ""),
+                oracle_commit_id=str(request.oracle_commit_id or ""),
+                source_commit_id=str(request.source_commit_id or ""),
+                loop_id=str(request.loop_id or ""),
+                round_index=int(request.round_index or 0),
+                query_strategy=str(request.query_strategy or ""),
+                topk=int(request.topk or 0),
+            ),
+            context,
+        )
+        return domain_pb.ActivateSamplesResponse(
+            created=bool(legacy_response.created),
+            commit_id=str(legacy_response.commit_id or ""),
+        )
+
     async def AdvanceBranchHead(self, request, context):  # noqa: N802
         branch_id = _parse_uuid(request.branch_id)
         to_commit_id = _parse_uuid(request.to_commit_id)

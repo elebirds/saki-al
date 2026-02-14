@@ -87,6 +87,8 @@ func run() error {
 		domainClient,
 		cfg.DispatchScanLockKey,
 		cfg.SimulationRoundCooldownSec,
+		cfg.PredictionTTLDays,
+		cfg.PredictionTTLKeepRounds,
 		logger.With().Str("service", "controlplane").Logger(),
 	)
 	runtimeServer := runtimegrpc.NewServer(

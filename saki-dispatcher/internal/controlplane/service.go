@@ -82,12 +82,16 @@ type CommandResult struct {
 }
 
 type Service struct {
-	repo            *repo.RuntimeRepo
-	dispatcher      *dispatch.Dispatcher
-	domainClient    *runtime_domain_client.Client
-	dispatchLockKey int64
-	simCooldown     time.Duration
-	logger          zerolog.Logger
+	repo                    *repo.RuntimeRepo
+	dispatcher              *dispatch.Dispatcher
+	domainClient            *runtime_domain_client.Client
+	dispatchLockKey         int64
+	simCooldown             time.Duration
+	predictionTTLDays       int
+	predictionTTLKeepRounds int
+	lastTTLCleanupAt        time.Time
+	ttlCleanupInterval      time.Duration
+	logger                  zerolog.Logger
 }
 
 func NewService(
@@ -96,18 +100,29 @@ func NewService(
 	domainClient *runtime_domain_client.Client,
 	dispatchLockKey int64,
 	simulationCooldownSec int,
+	predictionTTLDays int,
+	predictionTTLKeepRounds int,
 	logger zerolog.Logger,
 ) *Service {
 	if simulationCooldownSec < 0 {
 		simulationCooldownSec = 0
 	}
+	if predictionTTLDays < 0 {
+		predictionTTLDays = 0
+	}
+	if predictionTTLKeepRounds < 0 {
+		predictionTTLKeepRounds = 0
+	}
 	return &Service{
-		repo:            repository,
-		dispatcher:      dispatcher,
-		domainClient:    domainClient,
-		dispatchLockKey: dispatchLockKey,
-		simCooldown:     time.Duration(simulationCooldownSec) * time.Second,
-		logger:          logger,
+		repo:                    repository,
+		dispatcher:              dispatcher,
+		domainClient:            domainClient,
+		dispatchLockKey:         dispatchLockKey,
+		simCooldown:             time.Duration(simulationCooldownSec) * time.Second,
+		predictionTTLDays:       predictionTTLDays,
+		predictionTTLKeepRounds: predictionTTLKeepRounds,
+		ttlCleanupInterval:      time.Hour,
+		logger:                  logger,
 	}
 }
 
@@ -402,6 +417,7 @@ func (s *Service) Tick(ctx context.Context) error {
 	if !s.repo.Enabled() {
 		return nil
 	}
+	s.maybeCleanupPredictionRows(ctx)
 	loopIDs, err := s.listTickLoopIDs(ctx, 512)
 	if err != nil {
 		return err
@@ -413,6 +429,148 @@ func (s *Service) Tick(ctx context.Context) error {
 	}
 	_, err = s.dispatchPending(ctx, 256)
 	return err
+}
+
+func (s *Service) maybeCleanupPredictionRows(ctx context.Context) {
+	if s.predictionTTLDays <= 0 {
+		return
+	}
+	now := time.Now().UTC()
+	if !s.lastTTLCleanupAt.IsZero() && now.Sub(s.lastTTLCleanupAt) < s.ttlCleanupInterval {
+		return
+	}
+	s.lastTTLCleanupAt = now
+
+	cutoff := now.AddDate(0, 0, -s.predictionTTLDays)
+	candidateRows, eventRows, metricRows, err := s.cleanupPredictionRows(ctx, cutoff, s.predictionTTLKeepRounds)
+	if err != nil {
+		s.logger.Warn().Err(err).Time("cutoff", cutoff).Msg("cleanup prediction rows failed")
+		return
+	}
+	if candidateRows == 0 && eventRows == 0 && metricRows == 0 {
+		return
+	}
+	s.logger.Info().
+		Int64("candidate_rows", candidateRows).
+		Int64("event_rows", eventRows).
+		Int64("metric_rows", metricRows).
+		Int("ttl_days", s.predictionTTLDays).
+		Int("keep_rounds", s.predictionTTLKeepRounds).
+		Msg("cleanup prediction rows completed")
+}
+
+func (s *Service) cleanupPredictionRows(ctx context.Context, cutoff time.Time, keepRounds int) (int64, int64, int64, error) {
+	if keepRounds < 0 {
+		keepRounds = 0
+	}
+	tx, err := s.repo.Begin(ctx)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	candidateRows, err := s.deletePredictionCandidatesTx(ctx, tx, cutoff, keepRounds)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	eventRows, err := s.deletePredictionEventsTx(ctx, tx, cutoff, keepRounds)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	metricRows, err := s.deletePredictionMetricsTx(ctx, tx, cutoff, keepRounds)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, 0, 0, err
+	}
+	return candidateRows, eventRows, metricRows, nil
+}
+
+func (s *Service) deletePredictionCandidatesTx(ctx context.Context, tx pgx.Tx, cutoff time.Time, keepRounds int) (int64, error) {
+	result, err := tx.Exec(
+		ctx,
+		`WITH ranked_rounds AS (
+		    SELECT r.id AS round_id,
+		           ROW_NUMBER() OVER (PARTITION BY r.loop_id ORDER BY r.round_index DESC) AS round_rank
+		      FROM round r
+		  ),
+		  eligible_steps AS (
+		    SELECT s.id AS step_id
+		      FROM step s
+		      JOIN round r ON r.id = s.round_id
+		      JOIN ranked_rounds rr ON rr.round_id = r.id
+		     WHERE s.step_type = 'SCORE'
+		       AND COALESCE(s.ended_at, s.updated_at, s.created_at) < $1
+		       AND rr.round_rank > $2
+		  )
+		  DELETE FROM step_candidate_item c
+		   WHERE c.step_id IN (SELECT step_id FROM eligible_steps)`,
+		cutoff,
+		keepRounds,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+func (s *Service) deletePredictionEventsTx(ctx context.Context, tx pgx.Tx, cutoff time.Time, keepRounds int) (int64, error) {
+	result, err := tx.Exec(
+		ctx,
+		`WITH ranked_rounds AS (
+		    SELECT r.id AS round_id,
+		           ROW_NUMBER() OVER (PARTITION BY r.loop_id ORDER BY r.round_index DESC) AS round_rank
+		      FROM round r
+		  ),
+		  eligible_steps AS (
+		    SELECT s.id AS step_id
+		      FROM step s
+		      JOIN round r ON r.id = s.round_id
+		      JOIN ranked_rounds rr ON rr.round_id = r.id
+		     WHERE s.step_type = 'SCORE'
+		       AND COALESCE(s.ended_at, s.updated_at, s.created_at) < $1
+		       AND rr.round_rank > $2
+		  )
+		  DELETE FROM step_event e
+		   WHERE e.step_id IN (SELECT step_id FROM eligible_steps)
+		     AND e.event_type = ANY($3::text[])`,
+		cutoff,
+		keepRounds,
+		[]string{"metric", "progress", "log"},
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+func (s *Service) deletePredictionMetricsTx(ctx context.Context, tx pgx.Tx, cutoff time.Time, keepRounds int) (int64, error) {
+	result, err := tx.Exec(
+		ctx,
+		`WITH ranked_rounds AS (
+		    SELECT r.id AS round_id,
+		           ROW_NUMBER() OVER (PARTITION BY r.loop_id ORDER BY r.round_index DESC) AS round_rank
+		      FROM round r
+		  ),
+		  eligible_steps AS (
+		    SELECT s.id AS step_id
+		      FROM step s
+		      JOIN round r ON r.id = s.round_id
+		      JOIN ranked_rounds rr ON rr.round_id = r.id
+		     WHERE s.step_type = 'SCORE'
+		       AND COALESCE(s.ended_at, s.updated_at, s.created_at) < $1
+		       AND rr.round_rank > $2
+		  )
+		  DELETE FROM step_metric_point m
+		   WHERE m.step_id IN (SELECT step_id FROM eligible_steps)`,
+		cutoff,
+		keepRounds,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontrolv1.Register) error {

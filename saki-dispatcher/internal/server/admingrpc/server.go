@@ -83,8 +83,28 @@ func (s *Server) StopTask(ctx context.Context, req *dispatcheradminv1.TaskComman
 	return convertCommandResult(result), nil
 }
 
+func (s *Server) StopRound(ctx context.Context, req *dispatcheradminv1.RoundCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	result, err := s.commands.StopRound(ctx, req.GetCommandId(), req.GetRoundId(), req.GetReason())
+	if err != nil {
+		return nil, err
+	}
+	return convertCommandResult(result), nil
+}
+
+func (s *Server) StopStep(ctx context.Context, req *dispatcheradminv1.StepCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	result, err := s.commands.StopStep(ctx, req.GetCommandId(), req.GetStepId(), req.GetReason())
+	if err != nil {
+		return nil, err
+	}
+	return convertCommandResult(result), nil
+}
+
 func (s *Server) TriggerDispatch(ctx context.Context, req *dispatcheradminv1.TriggerDispatchRequest) (*dispatcheradminv1.CommandResponse, error) {
-	result, err := s.commands.TriggerDispatch(ctx, req.GetCommandId(), req.GetTaskId())
+	stepID := req.GetStepId()
+	if stepID == "" {
+		stepID = req.GetTaskId()
+	}
+	result, err := s.commands.TriggerDispatch(ctx, req.GetCommandId(), stepID)
 	if err != nil {
 		return nil, err
 	}

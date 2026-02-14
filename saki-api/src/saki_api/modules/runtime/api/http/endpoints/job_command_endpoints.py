@@ -87,7 +87,7 @@ async def stop_job(
     if not dispatcher_admin_client.enabled:
         raise InternalServerErrorAppException("dispatcher_admin is not configured")
     try:
-        response = await dispatcher_admin_client.stop_job(str(job_id), reason=reason)
+        response = await dispatcher_admin_client.stop_round(str(job_id), reason=reason)
         status = str(response.status or "").strip().lower() or "accepted"
         return JobCommandResponse(
             request_id=str(response.request_id or response.command_id or uuid.uuid4()),
@@ -95,8 +95,8 @@ async def stop_job(
             status="stopping" if status == "accepted" else status,
         )
     except Exception as exc:
-        logger.warning("dispatcher stop_job failed job_id={} error={}", job_id, exc)
-        raise InternalServerErrorAppException("dispatcher stop_job failed") from exc
+        logger.warning("dispatcher stop_round failed round_id={} error={}", job_id, exc)
+        raise InternalServerErrorAppException("dispatcher stop_round failed") from exc
 
 
 @router.post("/tasks/{task_id}:stop", response_model=TaskCommandResponse)
@@ -125,7 +125,7 @@ async def stop_task(
     if not dispatcher_admin_client.enabled:
         raise InternalServerErrorAppException("dispatcher_admin is not configured")
     try:
-        response = await dispatcher_admin_client.stop_task(str(task_id), reason=reason)
+        response = await dispatcher_admin_client.stop_step(str(task_id), reason=reason)
         status = str(response.status or "").strip().lower() or "accepted"
         return TaskCommandResponse(
             request_id=str(response.request_id or response.command_id or uuid.uuid4()),
@@ -133,5 +133,5 @@ async def stop_task(
             status="stopping" if status == "accepted" else status,
         )
     except Exception as exc:
-        logger.warning("dispatcher stop_task failed task_id={} error={}", task_id, exc)
-        raise InternalServerErrorAppException("dispatcher stop_task failed") from exc
+        logger.warning("dispatcher stop_step failed step_id={} error={}", task_id, exc)
+        raise InternalServerErrorAppException("dispatcher stop_step failed") from exc

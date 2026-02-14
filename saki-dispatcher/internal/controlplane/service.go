@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -252,6 +253,10 @@ func (s *Service) ConfirmLoop(
 	})
 }
 
+func (s *Service) StopRound(ctx context.Context, commandID string, roundID string, reason string) (CommandResult, error) {
+	return s.StopJob(ctx, commandID, roundID, reason)
+}
+
 func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, reason string) (CommandResult, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
@@ -264,7 +269,7 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 			`SELECT COALESCE(summary_status::text,'') FROM job WHERE id=$1::uuid`,
 			jobID,
 		).Scan(&currentStatus); err != nil {
-			if err == pgx.ErrNoRows {
+			if errors.Is(err, pgx.ErrNoRows) {
 				return "rejected", "job not found", nil
 			}
 			return "", "", err
@@ -318,6 +323,10 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 		}
 		return "applied", "stop_job applied", nil
 	})
+}
+
+func (s *Service) StopStep(ctx context.Context, commandID string, stepID string, reason string) (CommandResult, error) {
+	return s.StopTask(ctx, commandID, stepID, reason)
 }
 
 func (s *Service) StopTask(ctx context.Context, commandID string, taskID string, reason string) (CommandResult, error) {

@@ -103,12 +103,40 @@ class DispatcherAdminClient:
             metadata=self._metadata(),
         )
 
-    async def stop_job(self, job_id: str, *, reason: str = "", command_id: str | None = None) -> pb.CommandResponse:
+    async def stop_round(
+            self,
+            round_id: str,
+            *,
+            reason: str = "",
+            command_id: str | None = None,
+    ) -> pb.CommandResponse:
         stub = await self._get_stub()
-        return await stub.StopJob(
-            pb.JobCommandRequest(
+        return await stub.StopRound(
+            pb.RoundCommandRequest(
                 command_id=command_id or str(uuid.uuid4()),
-                job_id=str(job_id),
+                round_id=str(round_id),
+                reason=str(reason or ""),
+            ),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )
+
+    async def stop_job(self, job_id: str, *, reason: str = "", command_id: str | None = None) -> pb.CommandResponse:
+        # backward alias for existing callers
+        return await self.stop_round(job_id, reason=reason, command_id=command_id)
+
+    async def stop_step(
+            self,
+            step_id: str,
+            *,
+            reason: str = "",
+            command_id: str | None = None,
+    ) -> pb.CommandResponse:
+        stub = await self._get_stub()
+        return await stub.StopStep(
+            pb.StepCommandRequest(
+                command_id=command_id or str(uuid.uuid4()),
+                step_id=str(step_id),
                 reason=str(reason or ""),
             ),
             timeout=self.timeout_sec,
@@ -116,23 +144,15 @@ class DispatcherAdminClient:
         )
 
     async def stop_task(self, task_id: str, *, reason: str = "", command_id: str | None = None) -> pb.CommandResponse:
-        stub = await self._get_stub()
-        return await stub.StopTask(
-            pb.TaskCommandRequest(
-                command_id=command_id or str(uuid.uuid4()),
-                task_id=str(task_id),
-                reason=str(reason or ""),
-            ),
-            timeout=self.timeout_sec,
-            metadata=self._metadata(),
-        )
+        # backward alias for existing callers
+        return await self.stop_step(task_id, reason=reason, command_id=command_id)
 
-    async def trigger_dispatch(self, *, task_id: str = "", command_id: str | None = None) -> pb.CommandResponse:
+    async def trigger_dispatch(self, *, step_id: str = "", command_id: str | None = None) -> pb.CommandResponse:
         stub = await self._get_stub()
         return await stub.TriggerDispatch(
             pb.TriggerDispatchRequest(
                 command_id=command_id or str(uuid.uuid4()),
-                task_id=str(task_id or ""),
+                step_id=str(step_id or ""),
             ),
             timeout=self.timeout_sec,
             metadata=self._metadata(),

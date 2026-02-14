@@ -31,6 +31,7 @@ async def _trigger_dispatch(dispatcher_admin_client: DispatcherAdminClientDep) -
 
 
 @router.post("/loops/{loop_id}/jobs", response_model=JobRead)
+@router.post("/loops/{loop_id}/rounds", response_model=JobRead)
 async def create_job(
     *,
     loop_id: uuid.UUID,
@@ -54,6 +55,7 @@ async def create_job(
 
 
 @router.post("/jobs/{job_id}:stop", response_model=JobCommandResponse)
+@router.post("/rounds/{job_id}:stop", response_model=JobCommandResponse)
 async def stop_job(
     *,
     job_id: uuid.UUID,
@@ -100,6 +102,7 @@ async def stop_job(
 
 
 @router.post("/tasks/{task_id}:stop", response_model=TaskCommandResponse)
+@router.post("/steps/{task_id}:stop", response_model=TaskCommandResponse)
 async def stop_task(
     *,
     task_id: uuid.UUID,

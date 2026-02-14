@@ -776,17 +776,17 @@ export class RealApiService implements ApiService {
     }
 
     async getLoopJobs(loopId: string, limit: number = 50): Promise<RuntimeJob[]> {
-        const response = await this.client.get<RuntimeJob[]>(`/loops/${loopId}/jobs`, {params: {limit}});
+        const response = await this.client.get<RuntimeJob[]>(`/loops/${loopId}/rounds`, {params: {limit}});
         return response.data;
     }
 
     async createLoopJob(loopId: string, payload: RuntimeJobCreateRequest): Promise<RuntimeJob> {
-        const response = await this.client.post<RuntimeJob>(`/loops/${loopId}/jobs`, payload);
+        const response = await this.client.post<RuntimeJob>(`/loops/${loopId}/rounds`, payload);
         return response.data;
     }
 
     async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeJobCommandResponse> {
-        const response = await this.client.post<RuntimeJobCommandResponse>(`/jobs/${roundId}:stop`, null, {params: {reason}});
+        const response = await this.client.post<RuntimeJobCommandResponse>(`/rounds/${roundId}:stop`, null, {params: {reason}});
         return response.data;
     }
 
@@ -795,22 +795,22 @@ export class RealApiService implements ApiService {
     }
 
     async getJob(jobId: string): Promise<RuntimeJob> {
-        const response = await this.client.get<RuntimeJob>(`/jobs/${jobId}`);
+        const response = await this.client.get<RuntimeJob>(`/rounds/${jobId}`);
         return response.data;
     }
 
     async getJobTasks(jobId: string, limit: number = 2000): Promise<RuntimeJobTask[]> {
-        const response = await this.client.get<RuntimeJobTask[]>(`/jobs/${jobId}/tasks`, {params: {limit}});
+        const response = await this.client.get<RuntimeJobTask[]>(`/rounds/${jobId}/steps`, {params: {limit}});
         return response.data;
     }
 
     async getTask(taskId: string): Promise<RuntimeJobTask> {
-        const response = await this.client.get<RuntimeJobTask>(`/tasks/${taskId}`);
+        const response = await this.client.get<RuntimeJobTask>(`/steps/${taskId}`);
         return response.data;
     }
 
     async stopStep(stepId: string, reason: string = 'user requested stop'): Promise<RuntimeTaskCommandResponse> {
-        const response = await this.client.post<RuntimeTaskCommandResponse>(`/tasks/${stepId}:stop`, null, {params: {reason}});
+        const response = await this.client.post<RuntimeTaskCommandResponse>(`/steps/${stepId}:stop`, null, {params: {reason}});
         return response.data;
     }
 
@@ -820,24 +820,24 @@ export class RealApiService implements ApiService {
 
     async getTaskEvents(taskId: string, afterSeq: number = 0, limit: number = 5000): Promise<RuntimeTaskEvent[]> {
         const response = await this.client.get<RuntimeTaskEvent[]>(
-            `/tasks/${taskId}/events`,
+            `/steps/${taskId}/events`,
             {params: {after_seq: afterSeq, limit}},
         );
         return response.data;
     }
 
     async getTaskMetricSeries(taskId: string, limit: number = 5000): Promise<RuntimeTaskMetricPoint[]> {
-        const response = await this.client.get<RuntimeTaskMetricPoint[]>(`/tasks/${taskId}/metrics/series`, {params: {limit}});
+        const response = await this.client.get<RuntimeTaskMetricPoint[]>(`/steps/${taskId}/metrics/series`, {params: {limit}});
         return response.data;
     }
 
     async getTaskCandidates(taskId: string, limit: number = 200): Promise<RuntimeTaskCandidate[]> {
-        const response = await this.client.get<RuntimeTaskCandidate[]>(`/tasks/${taskId}/candidates`, {params: {limit}});
+        const response = await this.client.get<RuntimeTaskCandidate[]>(`/steps/${taskId}/candidates`, {params: {limit}});
         return response.data;
     }
 
     async getTaskArtifacts(taskId: string): Promise<RuntimeTaskArtifactsResponse> {
-        const response = await this.client.get<RuntimeTaskArtifactsResponse>(`/tasks/${taskId}/artifacts`);
+        const response = await this.client.get<RuntimeTaskArtifactsResponse>(`/steps/${taskId}/artifacts`);
         return response.data;
     }
 
@@ -847,7 +847,7 @@ export class RealApiService implements ApiService {
         expiresInHours: number = 2
     ): Promise<TaskArtifactDownload> {
         const response = await this.client.get<TaskArtifactDownload>(
-            `/tasks/${taskId}/artifacts/${artifactName}:download-url`,
+            `/steps/${taskId}/artifacts/${artifactName}:download-url`,
             {params: {expires_in_hours: expiresInHours}}
         );
         return response.data;

@@ -27,6 +27,7 @@ router = APIRouter()
 
 
 @router.get("/jobs/{job_id}", response_model=JobRead)
+@router.get("/rounds/{job_id}", response_model=JobRead)
 async def get_job(
     *,
     job_id: uuid.UUID,
@@ -46,6 +47,7 @@ async def get_job(
 
 
 @router.get("/jobs/{job_id}/tasks", response_model=List[JobTaskRead])
+@router.get("/rounds/{job_id}/steps", response_model=List[JobTaskRead])
 async def list_job_tasks(
     *,
     job_id: uuid.UUID,
@@ -67,6 +69,7 @@ async def list_job_tasks(
 
 
 @router.get("/tasks/{task_id}", response_model=JobTaskRead)
+@router.get("/steps/{task_id}", response_model=JobTaskRead)
 async def get_task(
     *,
     task_id: uuid.UUID,
@@ -87,6 +90,7 @@ async def get_task(
 
 
 @router.get("/tasks/{task_id}/events", response_model=List[TaskEventRead])
+@router.get("/steps/{task_id}/events", response_model=List[TaskEventRead])
 async def get_task_events(
     *,
     task_id: uuid.UUID,
@@ -110,6 +114,7 @@ async def get_task_events(
 
 
 @router.get("/tasks/{task_id}/metrics/series", response_model=List[TaskMetricPointRead])
+@router.get("/steps/{task_id}/metrics/series", response_model=List[TaskMetricPointRead])
 async def get_task_metric_series(
     *,
     task_id: uuid.UUID,
@@ -141,6 +146,7 @@ async def get_task_metric_series(
 
 
 @router.get("/tasks/{task_id}/candidates", response_model=List[TaskCandidateRead])
+@router.get("/steps/{task_id}/candidates", response_model=List[TaskCandidateRead])
 async def get_task_candidates(
     *,
     task_id: uuid.UUID,
@@ -172,6 +178,7 @@ async def get_task_candidates(
 
 
 @router.get("/tasks/{task_id}/artifacts", response_model=TaskArtifactsResponse)
+@router.get("/steps/{task_id}/artifacts", response_model=TaskArtifactsResponse)
 async def get_task_artifacts(
     *,
     task_id: uuid.UUID,
@@ -193,6 +200,7 @@ async def get_task_artifacts(
 
 
 @router.get("/tasks/{task_id}/artifacts/{artifact_name}:download-url", response_model=TaskArtifactDownloadResponse)
+@router.get("/steps/{task_id}/artifacts/{artifact_name}:download-url", response_model=TaskArtifactDownloadResponse)
 async def get_task_artifact_download_url(
     *,
     task_id: uuid.UUID,

@@ -267,6 +267,7 @@ async def get_simulation_experiment_comparison(
 
 
 @router.websocket("/tasks/{task_id}/events/ws")
+@router.websocket("/steps/{task_id}/events/ws")
 async def stream_task_events(
     websocket: WebSocket,
     task_id: str,

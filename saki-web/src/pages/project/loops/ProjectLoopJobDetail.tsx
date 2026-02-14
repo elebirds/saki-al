@@ -73,7 +73,7 @@ const formatDateTime = (value?: string | null) => {
 const buildWsUrl = (taskId: string, afterSeq: number, token: string): string => {
     const apiBaseUrlRaw = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
     const apiBaseUrl = apiBaseUrlRaw.endsWith('/') ? apiBaseUrlRaw.slice(0, -1) : apiBaseUrlRaw;
-    const suffix = `/tasks/${taskId}/events/ws?after_seq=${afterSeq}&token=${encodeURIComponent(token)}`;
+    const suffix = `/steps/${taskId}/events/ws?after_seq=${afterSeq}&token=${encodeURIComponent(token)}`;
     if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
         return `${apiBaseUrl.replace(/^http/, 'ws')}${suffix}`;
     }

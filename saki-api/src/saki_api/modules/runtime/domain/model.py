@@ -21,7 +21,7 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
 
     # 溯源：这个模型是哪次训练任务产出的？
-    job_id: uuid.UUID | None = Field(foreign_key="job.id")
+    job_id: uuid.UUID | None = Field(foreign_key="round.id")
     source_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
     parent_model_id: uuid.UUID | None = Field(default=None, foreign_key="model.id", index=True)
     plugin_id: str = Field(default="", index=True)

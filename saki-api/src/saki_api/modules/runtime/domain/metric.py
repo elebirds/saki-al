@@ -11,9 +11,9 @@ class JobSampleMetric(UUIDMixin, SQLModel, table=True):
     """
     L3 评价层：样本多维价值分数。
     """
-    __tablename__ = "job_sample_metric"
+    __tablename__ = "round_sample_metric"
 
-    job_id: uuid.UUID = Field(foreign_key="job.id", primary_key=True)
+    job_id: uuid.UUID = Field(foreign_key="round.id", primary_key=True)
     sample_id: uuid.UUID = Field(foreign_key="sample.id", primary_key=True)
 
     # 1. 主排序分值（Primary Score）

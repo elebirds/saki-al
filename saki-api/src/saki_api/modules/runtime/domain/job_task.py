@@ -18,10 +18,10 @@ if TYPE_CHECKING:
 
 
 class JobTask(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    __tablename__ = "job_task"
-    __table_args__ = (UniqueConstraint("job_id", "task_index", name="uq_job_task_order"),)
+    __tablename__ = "step"
+    __table_args__ = (UniqueConstraint("job_id", "task_index", name="uq_step_order"),)
 
-    job_id: uuid.UUID = Field(foreign_key="job.id", index=True)
+    job_id: uuid.UUID = Field(foreign_key="round.id", index=True)
     task_type: JobTaskType = Field(index=True)
     status: JobTaskStatus = Field(default=JobTaskStatus.PENDING, index=True)
 

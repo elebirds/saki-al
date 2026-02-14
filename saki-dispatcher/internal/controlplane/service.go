@@ -231,7 +231,7 @@ func (s *Service) ConfirmLoop(
 				return "", "", err
 			}
 			if !created {
-				return "rejected", "cannot create next job for active-learning loop", nil
+				return "rejected", "cannot create next round for active-learning loop", nil
 			}
 			if latestCommitID != "" {
 				if _, err := tx.Exec(
@@ -266,21 +266,21 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 		var currentStatus string
 		if err := tx.QueryRow(
 			ctx,
-			`SELECT COALESCE(summary_status::text,'') FROM job WHERE id=$1::uuid`,
+			`SELECT COALESCE(summary_status::text,'') FROM round WHERE id=$1::uuid`,
 			jobID,
 		).Scan(&currentStatus); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return "rejected", "job not found", nil
+				return "rejected", "round not found", nil
 			}
 			return "", "", err
 		}
 		if _, ok := terminalJobStatuses[currentStatus]; ok {
-			return "applied", "job already in terminal state", nil
+			return "applied", "round already in terminal state", nil
 		}
 
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE job SET summary_status=$2,last_error=$3,updated_at=now() WHERE id=$1::uuid`,
+			`UPDATE round SET summary_status=$2,last_error=$3,updated_at=now() WHERE id=$1::uuid`,
 			jobID,
 			jobCancelled,
 			reason,
@@ -289,7 +289,7 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 		}
 		rows, err := tx.Query(
 			ctx,
-			`SELECT id::text FROM job_task
+			`SELECT id::text FROM step
 				 WHERE job_id=$1::uuid
 				   AND status IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
 			jobID,
@@ -309,7 +309,7 @@ func (s *Service) StopJob(ctx context.Context, commandID string, jobID string, r
 		rows.Close()
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE job_task
+			`UPDATE step
 				 SET status='CANCELLED',last_error=$2,ended_at=COALESCE(ended_at,now()),updated_at=now()
 				 WHERE job_id=$1::uuid
 				   AND status IN ('PENDING','DISPATCHING','RUNNING','RETRYING')`,
@@ -338,7 +338,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 		var currentStatus string
 		if err := tx.QueryRow(
 			ctx,
-			`SELECT COALESCE(status::text,'') FROM job_task WHERE id=$1::uuid`,
+			`SELECT COALESCE(status::text,'') FROM step WHERE id=$1::uuid`,
 			taskID,
 		).Scan(&currentStatus); err != nil {
 			if err == pgx.ErrNoRows {
@@ -352,7 +352,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE job_task
+			`UPDATE step
 			 SET status='CANCELLED',last_error=$2,ended_at=COALESCE(ended_at,now()),updated_at=now()
 			 WHERE id=$1::uuid`,
 			taskID,
@@ -564,7 +564,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		statusDB := statusText
 		tag, err := tx.Exec(
 			ctx,
-			`UPDATE job_task
+			`UPDATE step
 			 SET status=$2::jobtaskstatus,
 			     started_at=CASE WHEN $2::jobtaskstatus='RUNNING'::jobtaskstatus THEN COALESCE(started_at,now()) ELSE started_at END,
 			     ended_at=CASE WHEN $2::jobtaskstatus IN ('SUCCEEDED'::jobtaskstatus,'FAILED'::jobtaskstatus,'CANCELLED'::jobtaskstatus,'SKIPPED'::jobtaskstatus) THEN COALESCE(ended_at,now()) ELSE ended_at END,
@@ -650,7 +650,7 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 
 	tag, err := tx.Exec(
 		ctx,
-		`UPDATE job_task
+		`UPDATE step
 		 SET status=$2::jobtaskstatus,
 		     metrics=$3::jsonb,
 		     artifacts=$4::jsonb,
@@ -855,7 +855,7 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 	}
 
 	if jobStatus == jobFailed || jobStatus == jobCancelled || jobStatus == jobPartialFailed {
-		if err := s.updateLoopState(ctx, tx, loop.ID, statusFailed, loop.Phase, "job terminal failure", loop.LastConfirmedCommitID); err != nil {
+		if err := s.updateLoopState(ctx, tx, loop.ID, statusFailed, loop.Phase, "round terminal failure", loop.LastConfirmedCommitID); err != nil {
 			return err
 		}
 		return nil
@@ -895,8 +895,8 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 	rows, err := tx.Query(
 		ctx,
 		`SELECT t.id::text
-		   FROM job_task t
-		   JOIN job j ON j.id=t.job_id
+		   FROM step t
+		   JOIN round j ON j.id=t.job_id
 		  WHERE j.loop_id=$1::uuid
 		    AND t.status IN ('PENDING','DISPATCHING','RUNNING','RETRYING')
 		  ORDER BY t.created_at ASC`,
@@ -923,7 +923,7 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 		reason := "loop stopping requested"
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE job_task
+			`UPDATE step
 			    SET status='CANCELLED',
 			        last_error=$2,
 			        ended_at=COALESCE(ended_at,now()),
@@ -1069,7 +1069,7 @@ func (s *Service) dispatchTaskByID(ctx context.Context, taskID string) (bool, er
 	if !s.dispatcher.DispatchTask(executorID, requestID, message) {
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE job_task SET status='PENDING',assigned_executor_id=NULL,last_error='dispatcher queue full',updated_at=now() WHERE id=$1::uuid`,
+			`UPDATE step SET status='PENDING',assigned_executor_id=NULL,last_error='dispatcher queue full',updated_at=now() WHERE id=$1::uuid`,
 			task.TaskID,
 		); err != nil {
 			return false, err
@@ -1095,7 +1095,7 @@ func (s *Service) executeOrchestratorTaskTx(
 ) (bool, error) {
 	started, err := tx.Exec(
 		ctx,
-		`UPDATE job_task
+		`UPDATE step
 		    SET status='RUNNING',
 		        started_at=COALESCE(started_at,now()),
 		        updated_at=now()
@@ -1120,7 +1120,7 @@ func (s *Service) executeOrchestratorTaskTx(
 
 	if _, err := tx.Exec(
 		ctx,
-		`UPDATE job_task
+		`UPDATE step
 		    SET status=$2::jobtaskstatus,
 		        last_error=NULLIF($3,''),
 		        result_commit_id=NULLIF($4,'')::uuid,
@@ -1138,7 +1138,7 @@ func (s *Service) executeOrchestratorTaskTx(
 	if strings.TrimSpace(resultCommitID) != "" {
 		if _, err := tx.Exec(
 			ctx,
-			`UPDATE job
+			`UPDATE round
 			    SET result_commit_id=NULLIF($2,'')::uuid,
 			        updated_at=now()
 			  WHERE id=$1::uuid`,
@@ -1290,7 +1290,7 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 
 	if _, err := tx.Exec(
 		ctx,
-		`INSERT INTO job(
+		`INSERT INTO round(
 		     id,project_id,loop_id,round_index,mode,summary_status,task_counts,job_type,plugin_id,query_strategy,
 		     params,resources,source_commit_id,retry_count,last_error,final_metrics,final_artifacts,strategy_params,
 		     created_at,updated_at
@@ -1329,7 +1329,7 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 		}
 		if _, err := tx.Exec(
 			ctx,
-			`INSERT INTO job_task(
+			`INSERT INTO step(
 				     id,job_id,task_type,status,round_index,task_index,depends_on,params,metrics,artifacts,
 				     source_commit_id,attempt,max_attempts,state_version,dispatch_request_id,created_at,updated_at
 				   ) VALUES (
@@ -1382,7 +1382,7 @@ func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, 
 }
 
 func (s *Service) refreshJobAggregateTx(ctx context.Context, tx pgx.Tx, jobID string) (string, error) {
-	rows, err := tx.Query(ctx, `SELECT status,COUNT(*)::int FROM job_task WHERE job_id=$1::uuid GROUP BY status`, jobID)
+	rows, err := tx.Query(ctx, `SELECT status,COUNT(*)::int FROM step WHERE job_id=$1::uuid GROUP BY status`, jobID)
 	if err != nil {
 		return "", err
 	}
@@ -1410,7 +1410,7 @@ func (s *Service) refreshJobAggregateTx(ctx context.Context, tx pgx.Tx, jobID st
 	}
 	if _, err := tx.Exec(
 		ctx,
-		`UPDATE job
+		`UPDATE round
 		 SET summary_status=$2::jobstatusv2,
 		     task_counts=$3::jsonb,
 		     started_at=CASE WHEN $2::jobstatusv2='JOB_RUNNING'::jobstatusv2 THEN COALESCE(started_at,now()) ELSE started_at END,
@@ -1466,7 +1466,7 @@ func summarizeJobStatus(counts map[string]int, total int) string {
 func (s *Service) listPendingTaskIDs(ctx context.Context, limit int) ([]string, error) {
 	rows, err := s.repo.Pool().Query(
 		ctx,
-		`SELECT id::text FROM job_task WHERE status='PENDING' ORDER BY created_at ASC LIMIT $1`,
+		`SELECT id::text FROM step WHERE status='PENDING' ORDER BY created_at ASC LIMIT $1`,
 		max(1, limit),
 	)
 	if err != nil {
@@ -1498,7 +1498,7 @@ func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, depend
 	}
 	rows, err := tx.Query(
 		ctx,
-		`SELECT status FROM job_task WHERE id = ANY($1::uuid[])`,
+		`SELECT status FROM step WHERE id = ANY($1::uuid[])`,
 		uuids,
 	)
 	if err != nil {
@@ -1528,7 +1528,7 @@ func (s *Service) markTaskDispatchingTx(
 ) (bool, error) {
 	tag, err := tx.Exec(
 		ctx,
-		`UPDATE job_task
+		`UPDATE step
 		 SET status='DISPATCHING',
 		     assigned_executor_id=$2,
 		     dispatch_request_id=$3,
@@ -1584,7 +1584,7 @@ func (s *Service) updateLoopState(
 
 func (s *Service) findJobIDByTask(ctx context.Context, tx pgx.Tx, taskID string) (string, error) {
 	var jobID string
-	if err := tx.QueryRow(ctx, `SELECT job_id::text FROM job_task WHERE id=$1::uuid`, taskID).Scan(&jobID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT job_id::text FROM step WHERE id=$1::uuid`, taskID).Scan(&jobID); err != nil {
 		if err == pgx.ErrNoRows {
 			return "", nil
 		}
@@ -1658,7 +1658,7 @@ func (s *Service) getLatestJobByLoopTx(ctx context.Context, tx pgx.Tx, loopID st
 	if err := tx.QueryRow(
 		ctx,
 		`SELECT id::text,round_index,COALESCE(summary_status::text,''),ended_at
-		   FROM job
+		   FROM round
 		  WHERE loop_id=$1::uuid
 		  ORDER BY round_index DESC,created_at DESC
 		  LIMIT 1`,
@@ -1748,8 +1748,8 @@ func (s *Service) getTaskPayloadByIDTx(ctx context.Context, tx pgx.Tx, taskID st
 		     COALESCE(j.params::text,'{}'),
 		     COALESCE(j.resources::text,'{}'),
 		     COALESCE(j.source_commit_id::text,'')
-		   FROM job_task t
-		   JOIN job j ON j.id=t.job_id
+		   FROM step t
+		   JOIN round j ON j.id=t.job_id
 		  WHERE t.id=$1::uuid
 		  FOR UPDATE`,
 		taskID,
@@ -1853,7 +1853,7 @@ func (s *Service) insertTaskEventTx(
 ) (bool, error) {
 	tag, err := tx.Exec(
 		ctx,
-		`INSERT INTO task_event(id,task_id,seq,ts,event_type,payload,request_id,created_at,updated_at)
+		`INSERT INTO step_event(id,task_id,seq,ts,event_type,payload,request_id,created_at,updated_at)
 		 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb,NULLIF($7,''),now(),now())
 		 ON CONFLICT (task_id,seq) DO NOTHING`,
 		uuid.NewString(),
@@ -1889,7 +1889,7 @@ func (s *Service) insertMetricPointsTx(
 		}
 		if _, err := tx.Exec(
 			ctx,
-			`INSERT INTO task_metric_point(id,task_id,step,epoch,metric_name,metric_value,ts,created_at,updated_at)
+			`INSERT INTO step_metric_point(id,task_id,step,epoch,metric_name,metric_value,ts,created_at,updated_at)
 			 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,now(),now())`,
 			uuid.NewString(),
 			taskID,
@@ -1911,7 +1911,7 @@ func (s *Service) replaceTaskCandidatesTx(
 	taskID string,
 	candidates []*runtimecontrolv1.QueryCandidate,
 ) error {
-	if _, err := tx.Exec(ctx, `DELETE FROM task_candidate_item WHERE task_id=$1::uuid`, taskID); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM step_candidate_item WHERE task_id=$1::uuid`, taskID); err != nil {
 		return err
 	}
 	for idx, item := range candidates {
@@ -1929,7 +1929,7 @@ func (s *Service) replaceTaskCandidatesTx(
 		}
 		if _, err := tx.Exec(
 			ctx,
-			`INSERT INTO task_candidate_item(
+			`INSERT INTO step_candidate_item(
 			     id,task_id,sample_id,rank,score,reason,prediction_snapshot,created_at,updated_at
 			   ) VALUES(
 			     $1::uuid,$2::uuid,$3::uuid,$4,$5,$6::jsonb,'{}'::jsonb,now(),now()
@@ -1964,7 +1964,7 @@ func (s *Service) mergeArtifactIntoTaskTx(
 	var rawArtifacts string
 	if err := tx.QueryRow(
 		ctx,
-		`SELECT COALESCE(artifacts::text,'{}') FROM job_task WHERE id=$1::uuid FOR UPDATE`,
+		`SELECT COALESCE(artifacts::text,'{}') FROM step WHERE id=$1::uuid FOR UPDATE`,
 		taskID,
 	).Scan(&rawArtifacts); err != nil {
 		if err == pgx.ErrNoRows {
@@ -1987,7 +1987,7 @@ func (s *Service) mergeArtifactIntoTaskTx(
 	}
 	_, err = tx.Exec(
 		ctx,
-		`UPDATE job_task SET artifacts=$2::jsonb,updated_at=now() WHERE id=$1::uuid`,
+		`UPDATE step SET artifacts=$2::jsonb,updated_at=now() WHERE id=$1::uuid`,
 		taskID,
 		artifactsJSON,
 	)

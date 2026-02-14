@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 
 
 class TaskMetricPoint(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    __tablename__ = "task_metric_point"
+    __tablename__ = "step_metric_point"
 
-    task_id: uuid.UUID = Field(foreign_key="job_task.id", index=True)
+    task_id: uuid.UUID = Field(foreign_key="step.id", index=True)
     step: int = Field(index=True, ge=0)
     epoch: Optional[int] = Field(default=None, index=True)
     metric_name: str = Field(index=True, max_length=128)

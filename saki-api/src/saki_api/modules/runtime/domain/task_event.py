@@ -14,10 +14,10 @@ if TYPE_CHECKING:
 
 
 class TaskEvent(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    __tablename__ = "task_event"
-    __table_args__ = (UniqueConstraint("task_id", "seq", name="uq_task_event_seq"),)
+    __tablename__ = "step_event"
+    __table_args__ = (UniqueConstraint("task_id", "seq", name="uq_step_event_seq"),)
 
-    task_id: uuid.UUID = Field(foreign_key="job_task.id", index=True)
+    task_id: uuid.UUID = Field(foreign_key="step.id", index=True)
     seq: int = Field(index=True, ge=1)
     ts: datetime = Field(index=True)
     event_type: str = Field(index=True, max_length=64)

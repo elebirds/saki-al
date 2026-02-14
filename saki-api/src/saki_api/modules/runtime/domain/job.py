@@ -49,8 +49,8 @@ class JobBase(SQLModel):
 
 
 class Job(JobBase, TimestampMixin, UUIDMixin, table=True):
-    __tablename__ = "job"
-    __table_args__ = (UniqueConstraint("loop_id", "round_index", name="uq_job_loop_round"),)
+    __tablename__ = "round"
+    __table_args__ = (UniqueConstraint("loop_id", "round_index", name="uq_round_loop_round"),)
 
     project: "Project" = Relationship(back_populates="jobs")
     loop: "ALLoop" = Relationship(

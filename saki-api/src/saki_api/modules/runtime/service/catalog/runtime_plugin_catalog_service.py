@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -89,7 +89,7 @@ def aggregate_runtime_plugins(executors: list[RuntimeExecutor]) -> list[RuntimeP
             plugin_id = plugin.plugin_id
             row = catalog.get(plugin_id)
             if row is None:
-                row = RuntimePluginCapabilityVO(**plugin.__dict__)
+                row = RuntimePluginCapabilityVO(**asdict(plugin))
                 catalog[plugin_id] = row
                 latest_seen_by_plugin[plugin_id] = seen_at
             else:

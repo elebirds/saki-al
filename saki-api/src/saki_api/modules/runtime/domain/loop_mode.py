@@ -11,7 +11,8 @@ LOOP_TASK_SPECS_BY_MODE: dict[ALLoopMode, tuple[JobTaskType, ...]] = {
     ALLoopMode.SIMULATION: (
         JobTaskType.TRAIN,
         JobTaskType.SCORE,
-        JobTaskType.AUTO_LABEL,
+        JobTaskType.SELECT,
+        JobTaskType.ACTIVATE_SAMPLES,
         JobTaskType.EVAL,
     ),
     ALLoopMode.ACTIVE_LEARNING: (
@@ -22,8 +23,7 @@ LOOP_TASK_SPECS_BY_MODE: dict[ALLoopMode, tuple[JobTaskType, ...]] = {
     ),
     ALLoopMode.MANUAL: (
         JobTaskType.TRAIN,
-        JobTaskType.SCORE,
-        JobTaskType.SELECT,
+        JobTaskType.EVAL,
         JobTaskType.UPLOAD_ARTIFACT,
     ),
 }
@@ -70,15 +70,9 @@ class SimulationModePolicy:
 
 class ManualModePolicy:
     def on_terminal(self, *, loop, sim_finished: bool) -> LoopTerminalDecision:  # noqa: ARG002
-        if loop.phase == LoopPhase.MANUAL_TASK_RUNNING:
-            return LoopTerminalDecision(set_phase=LoopPhase.MANUAL_WAIT_CONFIRM)
-        if loop.phase == LoopPhase.MANUAL_FINALIZE:
-            if loop.current_iteration >= loop.max_rounds:
-                return LoopTerminalDecision(set_status=ALLoopStatus.COMPLETED)
-            return LoopTerminalDecision(create_next_job=True)
-        if loop.phase == LoopPhase.MANUAL_IDLE:
-            return LoopTerminalDecision(create_next_job=True)
-        return LoopTerminalDecision()
+        if loop.current_iteration >= loop.max_rounds:
+            return LoopTerminalDecision(set_status=ALLoopStatus.COMPLETED, set_phase=LoopPhase.MANUAL_FINALIZE)
+        return LoopTerminalDecision(set_status=ALLoopStatus.COMPLETED, set_phase=LoopPhase.MANUAL_FINALIZE)
 
 
 DEFAULT_MODE_POLICIES: dict[ALLoopMode, LoopModePolicy] = {
@@ -86,4 +80,3 @@ DEFAULT_MODE_POLICIES: dict[ALLoopMode, LoopModePolicy] = {
     ALLoopMode.SIMULATION: SimulationModePolicy(),
     ALLoopMode.MANUAL: ManualModePolicy(),
 }
-

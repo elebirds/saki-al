@@ -261,7 +261,7 @@ const (
 	RuntimeTaskType_TRAIN                         RuntimeTaskType = 1
 	RuntimeTaskType_SCORE                         RuntimeTaskType = 2
 	RuntimeTaskType_SELECT                        RuntimeTaskType = 3
-	RuntimeTaskType_AUTO_LABEL                    RuntimeTaskType = 4
+	RuntimeTaskType_ACTIVATE_SAMPLES              RuntimeTaskType = 4
 	RuntimeTaskType_WAIT_ANNOTATION               RuntimeTaskType = 5
 	RuntimeTaskType_MERGE                         RuntimeTaskType = 6
 	RuntimeTaskType_EVAL                          RuntimeTaskType = 7
@@ -276,7 +276,7 @@ var (
 		1:  "TRAIN",
 		2:  "SCORE",
 		3:  "SELECT",
-		4:  "AUTO_LABEL",
+		4:  "ACTIVATE_SAMPLES",
 		5:  "WAIT_ANNOTATION",
 		6:  "MERGE",
 		7:  "EVAL",
@@ -288,7 +288,7 @@ var (
 		"TRAIN":                         1,
 		"SCORE":                         2,
 		"SELECT":                        3,
-		"AUTO_LABEL":                    4,
+		"ACTIVATE_SAMPLES":              4,
 		"WAIT_ANNOTATION":               5,
 		"MERGE":                         6,
 		"EVAL":                          7,
@@ -3158,15 +3158,14 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x18ACK_REASON_EXECUTOR_BUSY\x10\x03\x12\x17\n" +
 	"\x13ACK_REASON_STOPPING\x10\x04\x12\x1f\n" +
 	"\x1bACK_REASON_TASK_NOT_RUNNING\x10\x05\x12\x17\n" +
-	"\x13ACK_REASON_REJECTED\x10\x06*\xb1\x01\n" +
+	"\x13ACK_REASON_REJECTED\x10\x06*\xb7\x01\n" +
 	"\x0fRuntimeTaskType\x12!\n" +
 	"\x1dRUNTIME_TASK_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05TRAIN\x10\x01\x12\t\n" +
 	"\x05SCORE\x10\x02\x12\n" +
 	"\n" +
-	"\x06SELECT\x10\x03\x12\x0e\n" +
-	"\n" +
-	"AUTO_LABEL\x10\x04\x12\x13\n" +
+	"\x06SELECT\x10\x03\x12\x14\n" +
+	"\x10ACTIVATE_SAMPLES\x10\x04\x12\x13\n" +
 	"\x0fWAIT_ANNOTATION\x10\x05\x12\t\n" +
 	"\x05MERGE\x10\x06\x12\b\n" +
 	"\x04EVAL\x10\a\x12\x13\n" +

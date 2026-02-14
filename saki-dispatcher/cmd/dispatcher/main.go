@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/rs/zerolog"
@@ -85,6 +86,7 @@ func run() error {
 		dispatcher,
 		domainClient,
 		cfg.DispatchScanLockKey,
+		cfg.SimulationRoundCooldownSec,
 		logger.With().Str("service", "controlplane").Logger(),
 	)
 	runtimeServer := runtimegrpc.NewServer(
@@ -148,9 +150,34 @@ func run() error {
 
 	<-ctx.Done()
 	logger.Info().Msg("shutdown signal received")
-	runtimeGRPC.GracefulStop()
-	adminGRPC.GracefulStop()
+	stopGRPCWithTimeout("runtime", runtimeGRPC, 5*time.Second, logger)
+	stopGRPCWithTimeout("admin", adminGRPC, 5*time.Second, logger)
 	return nil
+}
+
+func stopGRPCWithTimeout(name string, server *grpc.Server, timeout time.Duration, logger zerolog.Logger) {
+	if server == nil {
+		return
+	}
+
+	done := make(chan struct{})
+	go func() {
+		server.GracefulStop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Info().Str("grpc", name).Msg("grpc server stopped gracefully")
+	case <-time.After(timeout):
+		logger.Warn().
+			Str("grpc", name).
+			Dur("timeout", timeout).
+			Msg("grpc graceful stop timed out, forcing stop")
+		server.Stop()
+		<-done
+		logger.Info().Str("grpc", name).Msg("grpc server force-stopped")
+	}
 }
 
 func setupLogger(level string) {

@@ -16,10 +16,11 @@ type Config struct {
 	InternalToken string `env:"INTERNAL_TOKEN" envDefault:"dev-secret"`
 	LogLevel      string `env:"LOG_LEVEL" envDefault:"info"`
 
-	HeartbeatTimeoutSec int   `env:"RUNTIME_HEARTBEAT_TIMEOUT_SEC" envDefault:"30"`
-	DispatchIntervalSec int   `env:"DISPATCH_SCAN_INTERVAL_SEC" envDefault:"3"`
-	AssignAckTimeoutSec int   `env:"ASSIGN_ACK_TIMEOUT_SEC" envDefault:"30"`
-	DispatchScanLockKey int64 `env:"DISPATCH_SCAN_LOCK_KEY" envDefault:"8042002"`
+	HeartbeatTimeoutSec        int   `env:"RUNTIME_HEARTBEAT_TIMEOUT_SEC" envDefault:"30"`
+	DispatchIntervalSec        int   `env:"DISPATCH_SCAN_INTERVAL_SEC" envDefault:"3"`
+	SimulationRoundCooldownSec int   `env:"SIMULATION_ROUND_COOLDOWN_SEC" envDefault:"5"`
+	AssignAckTimeoutSec        int   `env:"ASSIGN_ACK_TIMEOUT_SEC" envDefault:"30"`
+	DispatchScanLockKey        int64 `env:"DISPATCH_SCAN_LOCK_KEY" envDefault:"8042002"`
 
 	RuntimeDomainTarget string `env:"RUNTIME_DOMAIN_TARGET" envDefault:""`
 	RuntimeDomainToken  string `env:"RUNTIME_DOMAIN_TOKEN" envDefault:""`
@@ -51,6 +52,9 @@ func (c Config) Validate() error {
 	}
 	if c.DispatchIntervalSec <= 0 {
 		return fmt.Errorf("DISPATCH_SCAN_INTERVAL_SEC must be > 0")
+	}
+	if c.SimulationRoundCooldownSec < 0 {
+		return fmt.Errorf("SIMULATION_ROUND_COOLDOWN_SEC must be >= 0")
 	}
 	return nil
 }

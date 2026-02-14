@@ -32,7 +32,7 @@ from saki_api.modules.runtime.service.application.event_dto import (
 from saki_api.modules.runtime.service.persistence.task_runtime_persistence_service import (
     RuntimeTaskPersistenceService,
 )
-from saki_api.modules.shared.modeling.enums import JobTaskStatus
+from saki_api.modules.shared.modeling.enums import StepStatus
 from saki_api.modules.storage.domain.asset import Asset
 from saki_api.modules.storage.domain.sample import Sample
 
@@ -72,7 +72,7 @@ class RuntimeControlIngressService:
                 code="invalid_data_request",
                 message=exc.message,
                 reply_to=str(message.request_id or ""),
-                task_id=str(message.task_id or ""),
+                step_id=str(message.step_id or ""),
                 query_type=int(message.query_type),
                 reason=exc.reason,
             )
@@ -87,7 +87,7 @@ class RuntimeControlIngressService:
             )
         except Exception as exc:
             logger.exception(
-                "data request failed request_id={} task_id={} error={}",
+                "data request failed request_id={} step_id={} error={}",
                 request.request_id,
                 request.task_id,
                 exc,
@@ -96,7 +96,7 @@ class RuntimeControlIngressService:
                 code="data_query_failed",
                 message="data query failed",
                 reply_to=request.request_id,
-                task_id=request.task_id,
+                step_id=request.task_id,
                 query_type=request.query_type,
                 reason=str(exc),
             )
@@ -105,7 +105,7 @@ class RuntimeControlIngressService:
             data_response=pb.DataResponse(
                 request_id=str(uuid.uuid4()),
                 reply_to=request.request_id,
-                task_id=request.task_id,
+                step_id=request.task_id,
                 query_type=request.query_type,
                 items=items,
                 next_cursor=next_cursor or "",
@@ -120,23 +120,23 @@ class RuntimeControlIngressService:
                 code="invalid_upload_ticket_request",
                 message=exc.message,
                 reply_to=str(message.request_id or ""),
-                task_id=str(message.task_id or ""),
+                step_id=str(message.step_id or ""),
                 reason=exc.reason,
             )
 
-        object_name = f"runtime/tasks/{request.task_id}/{request.artifact_name}"
+        object_name = f"runtime/steps/{request.task_id}/{request.artifact_name}"
         try:
             upload_url = self.storage.get_presigned_put_url(
                 object_name=object_name,
                 expires_delta=timedelta(hours=settings.RUNTIME_UPLOAD_URL_EXPIRE_HOURS),
             )
         except Exception as exc:
-            logger.exception("failed to issue upload ticket task_id={} error={}", request.task_id, exc)
+            logger.exception("failed to issue upload ticket step_id={} error={}", request.task_id, exc)
             return runtime_codec.build_error_message(
                 code="upload_ticket_failed",
                 message="failed to issue upload ticket",
                 reply_to=request.request_id,
-                task_id=request.task_id,
+                step_id=request.task_id,
                 reason=str(exc),
             )
 
@@ -145,7 +145,7 @@ class RuntimeControlIngressService:
             upload_ticket_response=pb.UploadTicketResponse(
                 request_id=str(uuid.uuid4()),
                 reply_to=request.request_id,
-                task_id=request.task_id,
+                step_id=request.task_id,
                 upload_url=upload_url,
                 storage_uri=storage_uri,
                 headers={"Content-Type": request.content_type},
@@ -153,7 +153,7 @@ class RuntimeControlIngressService:
         )
 
     async def persist_task_event(self, message: pb.TaskEvent) -> None:
-        task_id = self._parse_uuid(message.task_id, "task_id")
+        task_id = self._parse_uuid(message.step_id, "step_id")
         event_type, payload, status_enum = runtime_codec.decode_task_event(message)
         mapped_status = self._status_from_pb(status_enum) if status_enum is not None else None
         event_dto = RuntimeTaskEventDTO(
@@ -172,7 +172,7 @@ class RuntimeControlIngressService:
             await session.commit()
 
     async def persist_task_result(self, message: pb.TaskResult) -> None:
-        task_id = self._parse_uuid(message.task_id, "task_id")
+        task_id = self._parse_uuid(message.step_id, "step_id")
         artifacts: list[RuntimeArtifactDTO] = [
             RuntimeArtifactDTO(
                 name=str(item.name or ""),
@@ -218,9 +218,9 @@ class RuntimeControlIngressService:
 
     def _decode_data_request(self, message: pb.DataRequest) -> RuntimeDataRequestDTO:
         request_id = str(message.request_id or "")
-        task_id = str(message.task_id or "")
+        task_id = str(message.step_id or "")
         if not request_id or not task_id:
-            raise _InvalidRuntimeRequest("request_id and task_id are required", "missing_required_field")
+            raise _InvalidRuntimeRequest("request_id and step_id are required", "missing_required_field")
 
         try:
             project_id = self._parse_uuid(str(message.project_id or ""), "project_id")
@@ -240,11 +240,11 @@ class RuntimeControlIngressService:
 
     def _decode_upload_ticket_request(self, message: pb.UploadTicketRequest) -> RuntimeUploadTicketRequestDTO:
         request_id = str(message.request_id or "")
-        task_id = str(message.task_id or "")
+        task_id = str(message.step_id or "")
         artifact_name = str(message.artifact_name or "").strip()
         if not request_id or not task_id or not artifact_name:
             raise _InvalidRuntimeRequest(
-                "request_id/task_id/artifact_name are required",
+                "request_id/step_id/artifact_name are required",
                 "missing_required_field",
             )
 
@@ -407,18 +407,18 @@ class RuntimeControlIngressService:
             raise ValueError(f"invalid {field_name}: {value}") from exc
 
     @staticmethod
-    def _status_from_pb(status: int) -> JobTaskStatus:
+    def _status_from_pb(status: int) -> StepStatus:
         mapping = {
-            pb.PENDING: JobTaskStatus.PENDING,
-            pb.DISPATCHING: JobTaskStatus.DISPATCHING,
-            pb.RUNNING: JobTaskStatus.RUNNING,
-            pb.RETRYING: JobTaskStatus.RETRYING,
-            pb.SUCCEEDED: JobTaskStatus.SUCCEEDED,
-            pb.FAILED: JobTaskStatus.FAILED,
-            pb.CANCELLED: JobTaskStatus.CANCELLED,
-            pb.SKIPPED: JobTaskStatus.SKIPPED,
+            pb.PENDING: StepStatus.PENDING,
+            pb.DISPATCHING: StepStatus.DISPATCHING,
+            pb.RUNNING: StepStatus.RUNNING,
+            pb.RETRYING: StepStatus.RETRYING,
+            pb.SUCCEEDED: StepStatus.SUCCEEDED,
+            pb.FAILED: StepStatus.FAILED,
+            pb.CANCELLED: StepStatus.CANCELLED,
+            pb.SKIPPED: StepStatus.SKIPPED,
         }
-        return mapping.get(int(status), JobTaskStatus.PENDING)
+        return mapping.get(int(status), StepStatus.PENDING)
 
     @staticmethod
     def _to_datetime_millis(ts: int) -> datetime:

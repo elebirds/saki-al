@@ -1,4 +1,4 @@
-"""Job/task command endpoints."""
+"""Round/step command endpoints."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.job import JobCommandResponse, JobCreateRequest, JobRead, TaskCommandResponse
 from saki_api.modules.shared.modeling import Permissions
-from saki_api.modules.shared.modeling.enums import JobStatusV2, JobTaskStatus
+from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 
 router = APIRouter()
 
@@ -30,9 +30,8 @@ async def _trigger_dispatch(dispatcher_admin_client: DispatcherAdminClientDep) -
         raise InternalServerErrorAppException("dispatcher trigger_dispatch failed") from exc
 
 
-@router.post("/loops/{loop_id}/jobs", response_model=JobRead)
 @router.post("/loops/{loop_id}/rounds", response_model=JobRead)
-async def create_job(
+async def create_round(
     *,
     loop_id: uuid.UUID,
     payload: JobCreateRequest,
@@ -49,92 +48,89 @@ async def create_job(
         required_permission=Permissions.JOB_MANAGE,
         fallback_permissions=(Permissions.PROJECT_UPDATE,),
     )
-    job = await job_service.create_job_for_loop(loop_id, payload)
+    round_item = await job_service.create_job_for_loop(loop_id, payload)
     await _trigger_dispatch(dispatcher_admin_client)
-    return JobRead.model_validate(job)
+    return JobRead.model_validate(round_item)
 
 
-@router.post("/jobs/{job_id}:stop", response_model=JobCommandResponse)
-@router.post("/rounds/{job_id}:stop", response_model=JobCommandResponse)
-async def stop_job(
+@router.post("/rounds/{round_id}:stop", response_model=JobCommandResponse)
+async def stop_round(
     *,
-    job_id: uuid.UUID,
+    round_id: uuid.UUID,
     reason: str = Query(default="user requested stop"),
     job_service: JobServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    job = await job_service.get_by_id_or_raise(job_id)
+    round_item = await job_service.get_by_id_or_raise(round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_MANAGE,
         fallback_permissions=(Permissions.PROJECT_UPDATE,),
     )
 
-    if job.summary_status in {
-        JobStatusV2.JOB_SUCCEEDED,
-        JobStatusV2.JOB_FAILED,
-        JobStatusV2.JOB_PARTIAL_FAILED,
-        JobStatusV2.JOB_CANCELLED,
+    if round_item.state in {
+        RoundStatus.COMPLETED,
+        RoundStatus.FAILED,
+        RoundStatus.CANCELLED,
     }:
         return JobCommandResponse(
             request_id=str(uuid.uuid4()),
-            job_id=job_id,
-            status=job.summary_status.value,
+            round_id=round_id,
+            status=round_item.state.value,
         )
 
     if not dispatcher_admin_client.enabled:
         raise InternalServerErrorAppException("dispatcher_admin is not configured")
     try:
-        response = await dispatcher_admin_client.stop_round(str(job_id), reason=reason)
+        response = await dispatcher_admin_client.stop_round(str(round_id), reason=reason)
         status = str(response.status or "").strip().lower() or "accepted"
         return JobCommandResponse(
             request_id=str(response.request_id or response.command_id or uuid.uuid4()),
-            job_id=job_id,
+            round_id=round_id,
             status="stopping" if status == "accepted" else status,
         )
     except Exception as exc:
-        logger.warning("dispatcher stop_round failed round_id={} error={}", job_id, exc)
+        logger.warning("dispatcher stop_round failed round_id={} error={}", round_id, exc)
         raise InternalServerErrorAppException("dispatcher stop_round failed") from exc
 
 
-@router.post("/tasks/{task_id}:stop", response_model=TaskCommandResponse)
-@router.post("/steps/{task_id}:stop", response_model=TaskCommandResponse)
-async def stop_task(
+@router.post("/steps/{step_id}:stop", response_model=TaskCommandResponse)
+async def stop_step(
     *,
-    task_id: uuid.UUID,
+    step_id: uuid.UUID,
     reason: str = Query(default="user requested stop"),
     job_service: JobServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    task = await job_service.get_task_by_id_or_raise(task_id)
-    job = await job_service.get_by_id_or_raise(task.job_id)
+    step = await job_service.get_task_by_id_or_raise(step_id)
+    round_item = await job_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_MANAGE,
         fallback_permissions=(Permissions.PROJECT_UPDATE,),
     )
 
-    if task.status in {JobTaskStatus.SUCCEEDED, JobTaskStatus.FAILED, JobTaskStatus.CANCELLED, JobTaskStatus.SKIPPED}:
-        return TaskCommandResponse(request_id=str(uuid.uuid4()), task_id=task_id, status=task.status.value)
+    if step.state in {StepStatus.SUCCEEDED, StepStatus.FAILED, StepStatus.CANCELLED, StepStatus.SKIPPED}:
+        return TaskCommandResponse(request_id=str(uuid.uuid4()), step_id=step_id, status=step.state.value)
 
     if not dispatcher_admin_client.enabled:
         raise InternalServerErrorAppException("dispatcher_admin is not configured")
     try:
-        response = await dispatcher_admin_client.stop_step(str(task_id), reason=reason)
+        response = await dispatcher_admin_client.stop_step(str(step_id), reason=reason)
         status = str(response.status or "").strip().lower() or "accepted"
         return TaskCommandResponse(
             request_id=str(response.request_id or response.command_id or uuid.uuid4()),
-            task_id=task_id,
+            step_id=step_id,
             status="stopping" if status == "accepted" else status,
         )
     except Exception as exc:
-        logger.warning("dispatcher stop_step failed step_id={} error={}", task_id, exc)
+        logger.warning("dispatcher stop_step failed step_id={} error={}", step_id, exc)
         raise InternalServerErrorAppException("dispatcher stop_step failed") from exc

@@ -16,50 +16,50 @@ from saki_api.modules.runtime.api.job import (
     SimulationStrategySummaryRead,
     TaskArtifactRead,
 )
-from saki_api.modules.runtime.domain.job import Job
-from saki_api.modules.runtime.domain.job_task import JobTask
-from saki_api.modules.runtime.domain.loop import ALLoop
-from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
-from saki_api.modules.shared.modeling.enums import JobStatusV2, JobTaskStatus
+from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 
 
 @dataclass(slots=True)
 class LoopSummaryStatsVO:
-    jobs_total: int
-    jobs_succeeded: int
-    tasks_total: int
-    tasks_succeeded: int
+    rounds_total: int
+    rounds_succeeded: int
+    steps_total: int
+    steps_succeeded: int
     metrics_latest: Dict[str, Any]
 
 
 class RuntimeQueryMixin:
-    async def list_loops(self, project_id: uuid.UUID) -> List[ALLoop]:
+    async def list_loops(self, project_id: uuid.UUID) -> List[Loop]:
         return await self.loop_repo.list_by_project(project_id)
 
-    async def list_jobs(self, loop_id: uuid.UUID, limit: int = 50) -> List[Job]:
+    async def list_jobs(self, loop_id: uuid.UUID, limit: int = 50) -> List[Round]:
         await self.loop_repo.get_by_id_or_raise(loop_id)
         return await self.repository.list_by_loop_desc(loop_id, limit=max(1, min(limit, 1000)))
 
-    async def list_tasks(self, job_id: uuid.UUID, limit: int = 1000) -> List[JobTask]:
+    async def list_tasks(self, job_id: uuid.UUID, limit: int = 1000) -> List[Step]:
         await self.repository.get_by_id_or_raise(job_id)
-        tasks = await self.job_task_repo.list_by_job(job_id)
+        tasks = await self.job_task_repo.list_by_round(job_id)
         return tasks[: max(1, min(limit, 5000))]
 
     async def list_task_events(self, task_id: uuid.UUID, after_seq: int = 0, limit: int = 5000):
         await self.job_task_repo.get_by_id_or_raise(task_id)
-        return await self.task_event_repo.list_by_task_after_seq(
-            task_id=task_id,
+        return await self.task_event_repo.list_by_step_after_seq(
+            step_id=task_id,
             after_seq=max(0, after_seq),
             limit=max(1, min(limit, 100000)),
         )
 
     async def list_task_metric_series(self, task_id: uuid.UUID, limit: int = 5000):
         await self.job_task_repo.get_by_id_or_raise(task_id)
-        return await self.task_metric_repo.list_by_task(task_id, limit=max(1, min(limit, 100000)))
+        return await self.task_metric_repo.list_by_step(task_id, limit=max(1, min(limit, 100000)))
 
-    async def list_task_candidates(self, task_id: uuid.UUID, limit: int = 200) -> List[TaskCandidateItem]:
+    async def list_task_candidates(self, task_id: uuid.UUID, limit: int = 200) -> List[StepCandidateItem]:
         await self.job_task_repo.get_by_id_or_raise(task_id)
-        return await self.task_candidate_repo.list_topk_by_task(task_id, limit=max(1, min(limit, 5000)))
+        return await self.task_candidate_repo.list_topk_by_step(task_id, limit=max(1, min(limit, 5000)))
 
     async def list_task_artifacts(self, task_id: uuid.UUID) -> list[TaskArtifactRead]:
         task = await self.job_task_repo.get_by_id_or_raise(task_id)
@@ -119,22 +119,22 @@ class RuntimeQueryMixin:
         jobs = await self.repository.list_by_loop(loop_id)
         if not jobs:
             return LoopSummaryStatsVO(
-                jobs_total=0,
-                jobs_succeeded=0,
-                tasks_total=0,
-                tasks_succeeded=0,
+                rounds_total=0,
+                rounds_succeeded=0,
+                steps_total=0,
+                steps_succeeded=0,
                 metrics_latest={},
             )
 
         job_ids = [job.id for job in jobs]
-        tasks = await self.job_task_repo.list_by_job_ids(job_ids)
+        tasks = await self.job_task_repo.list_by_round_ids(job_ids)
         latest_job = jobs[-1]
 
         return LoopSummaryStatsVO(
-            jobs_total=len(jobs),
-            jobs_succeeded=sum(1 for item in jobs if item.summary_status == JobStatusV2.JOB_SUCCEEDED),
-            tasks_total=len(tasks),
-            tasks_succeeded=sum(1 for item in tasks if item.status == JobTaskStatus.SUCCEEDED),
+            rounds_total=len(jobs),
+            rounds_succeeded=sum(1 for item in jobs if item.state == RoundStatus.COMPLETED),
+            steps_total=len(tasks),
+            steps_succeeded=sum(1 for item in tasks if item.state == StepStatus.SUCCEEDED),
             metrics_latest=dict(latest_job.final_metrics or {}),
         )
 

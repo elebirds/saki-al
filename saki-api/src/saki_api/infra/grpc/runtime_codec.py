@@ -14,7 +14,7 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeRegisterDTO,
 )
 
-_ACTIVATE_SAMPLES_ENUM = getattr(pb, "ACTIVATE_SAMPLES", getattr(pb, "AUTO_LABEL", pb.CUSTOM))
+_ACTIVATE_SAMPLES_ENUM = pb.ACTIVATE_SAMPLES
 
 _STATUS_TO_TEXT: dict[int, str] = {
     pb.PENDING: "pending",
@@ -42,7 +42,6 @@ _TASK_TYPE_TO_TEXT: dict[int, str] = {
     pb.CUSTOM: "custom",
 }
 _TEXT_TO_TASK_TYPE: dict[str, int] = {value: key for key, value in _TASK_TYPE_TO_TEXT.items()}
-_TEXT_TO_TASK_TYPE["auto_label"] = _ACTIVATE_SAMPLES_ENUM
 
 _LOOP_MODE_TO_TEXT: dict[int, str] = {
     pb.ACTIVE_LEARNING: "active_learning",
@@ -293,11 +292,11 @@ def build_error_message(
     request_id: str | None = None,
     reply_to: str = "",
     ack_for: str = "",
-    task_id: str = "",
+    step_id: str = "",
     query_type: int = pb.RUNTIME_QUERY_TYPE_UNSPECIFIED,
     reason: str = "",
 ) -> pb.RuntimeMessage:
-    step_id_value = str(task_id)
+    step_id_value = str(step_id)
     return pb.RuntimeMessage(
         error=pb.Error(
             request_id=request_id or str(uuid.uuid4()),
@@ -313,12 +312,12 @@ def build_error_message(
 
 
 def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) -> pb.RuntimeMessage:
-    task_type = text_to_task_type(str(payload.get("task_type") or "custom"))
+    task_type = text_to_task_type(str(payload.get("step_type") or payload.get("task_type") or "custom"))
     loop_mode = text_to_loop_mode(str(payload.get("mode") or "active_learning"))
-    step_id = str(payload.get("step_id") or payload.get("task_id") or "")
-    round_id = str(payload.get("round_id") or payload.get("job_id") or "")
-    depends_on_step_ids = [str(v) for v in (payload.get("depends_on_step_ids") or payload.get("depends_on_task_ids") or [])]
-    input_commit_id = str(payload.get("input_commit_id") or payload.get("source_commit_id") or "")
+    step_id = str(payload.get("step_id") or "")
+    round_id = str(payload.get("round_id") or "")
+    depends_on_step_ids = [str(v) for v in (payload.get("depends_on_step_ids") or [])]
+    input_commit_id = str(payload.get("input_commit_id") or "")
     return pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id=request_id,
@@ -332,7 +331,7 @@ def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) ->
                 plugin_id=str(payload.get("plugin_id") or ""),
                 mode=loop_mode,
                 query_strategy=str(payload.get("query_strategy") or ""),
-                resolved_params=dict_to_struct(payload.get("resolved_params") or payload.get("params") or {}),
+                resolved_params=dict_to_struct(payload.get("resolved_params") or {}),
                 resources=dict_to_resource_summary(payload.get("resources") or {}),
                 round_index=int(payload.get("round_index") or 0),
                 attempt=int(payload.get("attempt") or 1),
@@ -447,13 +446,10 @@ def parse_register(message: pb.Register) -> RuntimeRegisterDTO:
 
 
 def parse_heartbeat(message: pb.Heartbeat) -> RuntimeHeartbeatDTO:
-    current_step_id = str(message.current_step_id or "")
-    if not current_step_id:
-        current_step_id = str(message.current_task_id or "")
     return RuntimeHeartbeatDTO(
         request_id=str(message.request_id),
         executor_id=str(message.executor_id),
         busy=bool(message.busy),
-        current_task_id=current_step_id,
+        current_step_id=str(message.current_step_id or ""),
         resources=resource_summary_to_dict(message.resources),
     )

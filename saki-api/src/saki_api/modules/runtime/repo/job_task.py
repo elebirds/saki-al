@@ -61,20 +61,3 @@ class StepRepository(BaseRepository[Step]):
         stmt = select(Step).where(Step.id.in_(step_ids))
         rows = await self.session.exec(stmt)
         return list(rows.all())
-
-    # Backward aliases.
-    async def list_by_job(self, job_id: uuid.UUID) -> List[Step]:
-        return await self.list_by_round(job_id)
-
-    async def list_pending_by_job(self, job_id: uuid.UUID) -> List[Step]:
-        return await self.list_pending_by_round(job_id)
-
-    async def list_active_by_job(self, job_id: uuid.UUID) -> List[Step]:
-        return await self.list_active_by_round(job_id)
-
-    async def list_by_job_ids(self, job_ids: List[uuid.UUID]) -> List[Step]:
-        return await self.list_by_round_ids(job_ids)
-
-
-# Backward alias.
-JobTaskRepository = StepRepository

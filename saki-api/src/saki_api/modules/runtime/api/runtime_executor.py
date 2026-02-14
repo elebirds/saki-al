@@ -17,7 +17,7 @@ class RuntimeExecutorRead(BaseModel):
     version: str
     status: str
     is_online: bool
-    current_task_id: str | None = None
+    current_step_id: str | None = None
     plugin_ids: dict[str, Any] = Field(default_factory=dict)
     resources: dict[str, Any] = Field(default_factory=dict)
     last_seen_at: datetime | None = None

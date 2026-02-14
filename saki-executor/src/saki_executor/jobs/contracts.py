@@ -61,10 +61,6 @@ class TaskExecutionRequest:
         )
 
 
-# Backward alias for internal modules not yet renamed.
-JobExecutionRequest = TaskExecutionRequest
-
-
 @dataclass(frozen=True)
 class FetchedPage:
     request_id: str
@@ -135,7 +131,3 @@ class TaskFinalResult:
     artifacts: dict[str, Any]
     candidates: list[dict[str, Any]]
     error_message: str = ""
-
-
-# Backward alias for internal modules not yet renamed.
-JobFinalResult = TaskFinalResult

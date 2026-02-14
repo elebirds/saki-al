@@ -37,7 +37,3 @@ class RoundSampleMetric(UUIDMixin, SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(OPT_JSON)
     )
-
-
-# Backward alias.
-JobSampleMetric = RoundSampleMetric

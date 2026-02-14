@@ -8,8 +8,8 @@ from typing import Any
 
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.modules.runtime.api.job import LoopSimulationConfig
-from saki_api.modules.runtime.domain.loop import ALLoop
-from saki_api.modules.shared.modeling.enums import ALLoopMode, LoopPhase
+from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase
 from saki_api.modules.system.service.system_settings_reader import system_settings_reader
 
 
@@ -82,14 +82,14 @@ class SimulationConfigMixin:
     async def _resolve_simulation_round(
         self,
         *,
-        loop: ALLoop,
+        loop: Loop,
         next_round: int,
         source_commit_id: uuid.UUID | None,
         params: dict[str, Any],
     ) -> tuple[uuid.UUID | None, LoopPhase, dict[str, Any]]:
-        if loop.mode != ALLoopMode.SIMULATION:
-            if loop.mode == ALLoopMode.MANUAL:
-                return source_commit_id, LoopPhase.MANUAL_TASK_RUNNING, dict(loop.phase_meta or {})
+        if loop.mode != LoopMode.SIMULATION:
+            if loop.mode == LoopMode.MANUAL:
+                return source_commit_id, LoopPhase.MANUAL_TRAIN, dict(loop.phase_meta or {})
             return source_commit_id, LoopPhase.AL_TRAIN, dict(loop.phase_meta or {})
 
         simulation = LoopSimulationConfig.model_validate((loop.global_config or {}).get("simulation") or {})

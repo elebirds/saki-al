@@ -161,14 +161,6 @@ class LoopPhase(str, Enum):
     MANUAL_EXPORT = "manual_export"
     MANUAL_FINALIZE = "manual_finalize"
 
-    # Backward aliases.
-    AL_WAIT_ANNOTATION = "al_wait_user"
-    AL_MERGE = "al_select"
-    SIM_AUTO_LABEL = "sim_activate"
-    MANUAL_IDLE = "manual_bootstrap"
-    MANUAL_TASK_RUNNING = "manual_train"
-    MANUAL_WAIT_CONFIRM = "manual_eval"
-
 
 class RoundStatus(str, Enum):
     """
@@ -180,14 +172,6 @@ class RoundStatus(str, Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     FAILED = "failed"
-
-    # Backward aliases.
-    JOB_PENDING = "pending"
-    JOB_RUNNING = "running"
-    JOB_PARTIAL_FAILED = "failed"
-    JOB_FAILED = "failed"
-    JOB_SUCCEEDED = "completed"
-    JOB_CANCELLED = "cancelled"
 
 
 class StepType(str, Enum):
@@ -204,9 +188,6 @@ class StepType(str, Enum):
     EXPORT = "export"
     UPLOAD_ARTIFACT = "upload_artifact"
     MANUAL_REVIEW = "manual_review"
-
-    # Backward alias.
-    AUTO_LABEL = "activate_samples"
 
 
 class StepDispatchKind(str, Enum):
@@ -230,14 +211,6 @@ class StepStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     SKIPPED = "skipped"
-
-
-# Backward type aliases.
-ALLoopStatus = LoopStatus
-ALLoopMode = LoopMode
-JobStatusV2 = RoundStatus
-JobTaskType = StepType
-JobTaskStatus = StepStatus
 
 
 class LoopRoundStatus(str, Enum):

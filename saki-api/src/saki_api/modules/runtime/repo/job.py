@@ -38,7 +38,3 @@ class RoundRepository(BaseRepository[Round]):
         )
         rows = await self.session.exec(stmt)
         return list(rows.all())
-
-
-# Backward alias.
-JobRepository = RoundRepository

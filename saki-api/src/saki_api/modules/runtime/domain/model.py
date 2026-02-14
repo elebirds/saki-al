@@ -46,20 +46,3 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     parent_model: Optional["Model"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[Model.parent_model_id]"}
     )
-
-    # Backward compatibility properties.
-    @property
-    def job_id(self) -> uuid.UUID | None:
-        return self.round_id
-
-    @job_id.setter
-    def job_id(self, value: uuid.UUID | None) -> None:
-        self.round_id = value
-
-    @property
-    def job(self) -> Optional["Round"]:
-        return self.round
-
-    @job.setter
-    def job(self, value: Optional["Round"]) -> None:
-        self.round = value

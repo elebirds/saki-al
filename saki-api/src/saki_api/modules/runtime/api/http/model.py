@@ -14,7 +14,7 @@ from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.access.service.permission_checker import PermissionChecker
 from saki_api.modules.runtime.api.model import (
-    ModelRegisterFromJobRequest,
+    ModelRegisterFromRoundRequest,
     ModelRead,
     ModelPromoteRequest,
     ModelArtifactDownloadResponse,
@@ -50,11 +50,11 @@ async def _ensure_project_perm(
         raise ForbiddenAppException(f"Permission denied: {required}")
 
 
-@router.post("/projects/{project_id}/models:register-from-job", response_model=ModelRead)
-async def register_model_from_job(
+@router.post("/projects/{project_id}/models:register-from-round", response_model=ModelRead)
+async def register_model_from_round(
         *,
         project_id: uuid.UUID,
-        payload: ModelRegisterFromJobRequest,
+        payload: ModelRegisterFromRoundRequest,
         model_service: ModelServiceDep,
         session: AsyncSession = Depends(get_session),
         current_user_id: uuid.UUID = Depends(get_current_user_id),
@@ -65,9 +65,9 @@ async def register_model_from_job(
         project_id=project_id,
         required=Permissions.MODEL_MANAGE,
     )
-    model = await model_service.register_from_job(
+    model = await model_service.register_from_round(
         project_id=project_id,
-        job_id=payload.job_id,
+        round_id=payload.round_id,
         created_by=current_user_id,
         name=payload.name,
         version_tag=payload.version_tag,

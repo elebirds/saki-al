@@ -6,18 +6,18 @@ import pytest
 
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
-from saki_api.modules.shared.modeling.enums import JobTaskStatus
+from saki_api.modules.shared.modeling.enums import StepStatus
 
 
 def test_task_status_mapping():
-    assert RuntimeControlIngressService._status_from_pb(pb.PENDING) == JobTaskStatus.PENDING
-    assert RuntimeControlIngressService._status_from_pb(pb.DISPATCHING) == JobTaskStatus.DISPATCHING
-    assert RuntimeControlIngressService._status_from_pb(pb.RUNNING) == JobTaskStatus.RUNNING
-    assert RuntimeControlIngressService._status_from_pb(pb.RETRYING) == JobTaskStatus.RETRYING
-    assert RuntimeControlIngressService._status_from_pb(pb.SUCCEEDED) == JobTaskStatus.SUCCEEDED
-    assert RuntimeControlIngressService._status_from_pb(pb.FAILED) == JobTaskStatus.FAILED
-    assert RuntimeControlIngressService._status_from_pb(pb.CANCELLED) == JobTaskStatus.CANCELLED
-    assert RuntimeControlIngressService._status_from_pb(pb.SKIPPED) == JobTaskStatus.SKIPPED
+    assert RuntimeControlIngressService._status_from_pb(pb.PENDING) == StepStatus.PENDING
+    assert RuntimeControlIngressService._status_from_pb(pb.DISPATCHING) == StepStatus.DISPATCHING
+    assert RuntimeControlIngressService._status_from_pb(pb.RUNNING) == StepStatus.RUNNING
+    assert RuntimeControlIngressService._status_from_pb(pb.RETRYING) == StepStatus.RETRYING
+    assert RuntimeControlIngressService._status_from_pb(pb.SUCCEEDED) == StepStatus.SUCCEEDED
+    assert RuntimeControlIngressService._status_from_pb(pb.FAILED) == StepStatus.FAILED
+    assert RuntimeControlIngressService._status_from_pb(pb.CANCELLED) == StepStatus.CANCELLED
+    assert RuntimeControlIngressService._status_from_pb(pb.SKIPPED) == StepStatus.SKIPPED
 
 
 def test_parse_uuid_success_and_failure():

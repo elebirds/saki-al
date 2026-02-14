@@ -27,12 +27,3 @@ class StepMetricPoint(UUIDMixin, TimestampMixin, SQLModel, table=True):
         back_populates="metric_points",
         sa_relationship_kwargs={"foreign_keys": "[StepMetricPoint.step_id]"},
     )
-
-    # Backward compatibility.
-    @property
-    def task_id(self) -> uuid.UUID:
-        return self.step_id
-
-    @task_id.setter
-    def task_id(self, value: uuid.UUID) -> None:
-        self.step_id = value

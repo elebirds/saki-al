@@ -1,4 +1,4 @@
-"""Job/task query endpoints."""
+"""Round/step query endpoints."""
 
 from __future__ import annotations
 
@@ -26,116 +26,111 @@ from saki_api.modules.shared.modeling import Permissions
 router = APIRouter()
 
 
-@router.get("/jobs/{job_id}", response_model=JobRead)
-@router.get("/rounds/{job_id}", response_model=JobRead)
-async def get_job(
+@router.get("/rounds/{round_id}", response_model=JobRead)
+async def get_round(
     *,
-    job_id: uuid.UUID,
+    round_id: uuid.UUID,
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    job = await job_service.get_by_id_or_raise(job_id)
+    round_item = await job_service.get_by_id_or_raise(round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    return JobRead.model_validate(job)
+    return JobRead.model_validate(round_item)
 
 
-@router.get("/jobs/{job_id}/tasks", response_model=List[JobTaskRead])
-@router.get("/rounds/{job_id}/steps", response_model=List[JobTaskRead])
-async def list_job_tasks(
+@router.get("/rounds/{round_id}/steps", response_model=List[JobTaskRead])
+async def list_round_steps(
     *,
-    job_id: uuid.UUID,
+    round_id: uuid.UUID,
     limit: int = Query(default=2000, ge=1, le=5000),
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    job = await job_service.get_by_id_or_raise(job_id)
+    round_item = await job_service.get_by_id_or_raise(round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    tasks = await job_service.list_tasks(job_id, limit=limit)
-    return [JobTaskRead.model_validate(item) for item in tasks]
+    steps = await job_service.list_tasks(round_id, limit=limit)
+    return [JobTaskRead.model_validate(item) for item in steps]
 
 
-@router.get("/tasks/{task_id}", response_model=JobTaskRead)
-@router.get("/steps/{task_id}", response_model=JobTaskRead)
-async def get_task(
+@router.get("/steps/{step_id}", response_model=JobTaskRead)
+async def get_step(
     *,
-    task_id: uuid.UUID,
+    step_id: uuid.UUID,
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    task = await job_service.get_task_by_id_or_raise(task_id)
-    job = await job_service.get_by_id_or_raise(task.job_id)
+    step = await job_service.get_task_by_id_or_raise(step_id)
+    round_item = await job_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    return JobTaskRead.model_validate(task)
+    return JobTaskRead.model_validate(step)
 
 
-@router.get("/tasks/{task_id}/events", response_model=List[TaskEventRead])
-@router.get("/steps/{task_id}/events", response_model=List[TaskEventRead])
-async def get_task_events(
+@router.get("/steps/{step_id}/events", response_model=List[TaskEventRead])
+async def get_step_events(
     *,
-    task_id: uuid.UUID,
+    step_id: uuid.UUID,
     after_seq: int = Query(default=0, ge=0),
     limit: int = Query(default=5000, ge=1, le=100000),
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    task = await job_service.get_task_by_id_or_raise(task_id)
-    job = await job_service.get_by_id_or_raise(task.job_id)
+    step = await job_service.get_task_by_id_or_raise(step_id)
+    round_item = await job_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    events = await job_service.list_task_events(task_id, after_seq=after_seq, limit=limit)
+    events = await job_service.list_task_events(step_id, after_seq=after_seq, limit=limit)
     return [TaskEventRead(seq=e.seq, ts=e.ts, event_type=e.event_type, payload=e.payload) for e in events]
 
 
-@router.get("/tasks/{task_id}/metrics/series", response_model=List[TaskMetricPointRead])
-@router.get("/steps/{task_id}/metrics/series", response_model=List[TaskMetricPointRead])
-async def get_task_metric_series(
+@router.get("/steps/{step_id}/metrics/series", response_model=List[TaskMetricPointRead])
+async def get_step_metric_series(
     *,
-    task_id: uuid.UUID,
+    step_id: uuid.UUID,
     limit: int = Query(default=5000, ge=1, le=100000),
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    task = await job_service.get_task_by_id_or_raise(task_id)
-    job = await job_service.get_by_id_or_raise(task.job_id)
+    step = await job_service.get_task_by_id_or_raise(step_id)
+    round_item = await job_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    points = await job_service.list_task_metric_series(task_id, limit=limit)
+    points = await job_service.list_task_metric_series(step_id, limit=limit)
     return [
         TaskMetricPointRead(
-            step=item.step,
+            step=item.metric_step,
             epoch=item.epoch,
             metric_name=item.metric_name,
             metric_value=item.metric_value,
@@ -145,26 +140,25 @@ async def get_task_metric_series(
     ]
 
 
-@router.get("/tasks/{task_id}/candidates", response_model=List[TaskCandidateRead])
-@router.get("/steps/{task_id}/candidates", response_model=List[TaskCandidateRead])
-async def get_task_candidates(
+@router.get("/steps/{step_id}/candidates", response_model=List[TaskCandidateRead])
+async def get_step_candidates(
     *,
-    task_id: uuid.UUID,
+    step_id: uuid.UUID,
     limit: int = Query(default=200, ge=1, le=5000),
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    task = await job_service.get_task_by_id_or_raise(task_id)
-    job = await job_service.get_by_id_or_raise(task.job_id)
+    step = await job_service.get_task_by_id_or_raise(step_id)
+    round_item = await job_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    rows = await job_service.list_task_candidates(task_id, limit=limit)
+    rows = await job_service.list_task_candidates(step_id, limit=limit)
     return [
         TaskCandidateRead(
             sample_id=item.sample_id,
@@ -177,55 +171,53 @@ async def get_task_candidates(
     ]
 
 
-@router.get("/tasks/{task_id}/artifacts", response_model=TaskArtifactsResponse)
-@router.get("/steps/{task_id}/artifacts", response_model=TaskArtifactsResponse)
-async def get_task_artifacts(
+@router.get("/steps/{step_id}/artifacts", response_model=TaskArtifactsResponse)
+async def get_step_artifacts(
     *,
-    task_id: uuid.UUID,
+    step_id: uuid.UUID,
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    task = await job_service.get_task_by_id_or_raise(task_id)
-    job = await job_service.get_by_id_or_raise(task.job_id)
+    step = await job_service.get_task_by_id_or_raise(step_id)
+    round_item = await job_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    artifacts = await job_service.list_task_artifacts(task_id)
-    return TaskArtifactsResponse(task_id=task_id, artifacts=artifacts)
+    artifacts = await job_service.list_task_artifacts(step_id)
+    return TaskArtifactsResponse(step_id=step_id, artifacts=artifacts)
 
 
-@router.get("/tasks/{task_id}/artifacts/{artifact_name}:download-url", response_model=TaskArtifactDownloadResponse)
-@router.get("/steps/{task_id}/artifacts/{artifact_name}:download-url", response_model=TaskArtifactDownloadResponse)
-async def get_task_artifact_download_url(
+@router.get("/steps/{step_id}/artifacts/{artifact_name}:download-url", response_model=TaskArtifactDownloadResponse)
+async def get_step_artifact_download_url(
     *,
-    task_id: uuid.UUID,
+    step_id: uuid.UUID,
     artifact_name: str,
     expires_in_hours: int = Query(default=2, ge=1, le=24),
     job_service: JobServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    task = await job_service.get_task_by_id_or_raise(task_id)
-    job = await job_service.get_by_id_or_raise(task.job_id)
+    step = await job_service.get_task_by_id_or_raise(step_id)
+    round_item = await job_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
-        project_id=job.project_id,
+        project_id=round_item.project_id,
         required_permission=Permissions.JOB_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
     download_url = await job_service.get_task_artifact_download_url(
-        task_id=task_id,
+        task_id=step_id,
         artifact_name=artifact_name,
         expires_in_hours=expires_in_hours,
     )
     return TaskArtifactDownloadResponse(
-        task_id=task_id,
+        step_id=step_id,
         artifact_name=artifact_name,
         download_url=download_url,
         expires_in_hours=expires_in_hours,

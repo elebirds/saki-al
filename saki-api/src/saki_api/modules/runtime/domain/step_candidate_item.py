@@ -24,12 +24,3 @@ class StepCandidateItem(UUIDMixin, TimestampMixin, SQLModel, table=True):
     prediction_snapshot: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     step: "Step" = Relationship(back_populates="candidates")
-
-    # Backward compatibility.
-    @property
-    def task_id(self) -> uuid.UUID:
-        return self.step_id
-
-    @task_id.setter
-    def task_id(self, value: uuid.UUID) -> None:
-        self.step_id = value

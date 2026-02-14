@@ -25,12 +25,3 @@ class StepEvent(UUIDMixin, TimestampMixin, SQLModel, table=True):
     request_id: str | None = Field(default=None, max_length=128)
 
     step: "Step" = Relationship(back_populates="events")
-
-    # Backward compatibility.
-    @property
-    def task_id(self) -> uuid.UUID:
-        return self.step_id
-
-    @task_id.setter
-    def task_id(self, value: uuid.UUID) -> None:
-        self.step_id = value

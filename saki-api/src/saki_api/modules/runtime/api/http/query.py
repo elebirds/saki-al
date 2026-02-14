@@ -1,4 +1,4 @@
-"""L3 query endpoints for Loop/Job/Task runtime."""
+"""L3 query endpoints for Loop/Round/Step runtime."""
 
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ from saki_api.modules.runtime.api.http.support.loop_read_builder import build_lo
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.http.support.task_event_stream import (
     authenticate_stream_token,
-    authorize_stream_task_access,
-    stream_task_events_loop,
+    authorize_stream_step_access,
+    stream_step_events_loop,
 )
 from saki_api.modules.runtime.api.job import (
     JobRead,
@@ -33,7 +33,7 @@ from saki_api.modules.runtime.api.job import (
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
 )
-from saki_api.modules.runtime.domain.loop import ALLoop
+from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.shared.modeling import Permissions
 
 router = APIRouter()
@@ -66,28 +66,28 @@ async def _authenticate_stream_token(websocket: WebSocket) -> uuid.UUID | None:
     return await authenticate_stream_token(websocket)
 
 
-async def _authorize_stream_task_access(
+async def _authorize_stream_step_access(
     *,
     websocket: WebSocket,
     user_id: uuid.UUID,
-    parsed_task_id: uuid.UUID,
+    parsed_step_id: uuid.UUID,
 ) -> bool:
-    return await authorize_stream_task_access(
+    return await authorize_stream_step_access(
         websocket=websocket,
         user_id=user_id,
-        parsed_task_id=parsed_task_id,
+        parsed_step_id=parsed_step_id,
     )
 
 
-async def _stream_task_events_loop(
+async def _stream_step_events_loop(
     *,
     websocket: WebSocket,
-    parsed_task_id: uuid.UUID,
+    parsed_step_id: uuid.UUID,
     cursor: int,
 ) -> int:
-    return await stream_task_events_loop(
+    return await stream_step_events_loop(
         websocket=websocket,
-        parsed_task_id=parsed_task_id,
+        parsed_step_id=parsed_step_id,
         cursor=cursor,
     )
 
@@ -189,8 +189,8 @@ async def update_loop(
     return _build_loop_read(updated)
 
 
-@router.get("/loops/{loop_id}/jobs", response_model=List[JobRead])
-async def list_loop_jobs(
+@router.get("/loops/{loop_id}/rounds", response_model=List[JobRead])
+async def list_loop_rounds(
     *,
     loop_id: uuid.UUID,
     limit: int = Query(default=50, ge=1, le=1000),
@@ -229,10 +229,10 @@ async def get_loop_summary(
         loop_id=loop.id,
         status=loop.status,
         phase=loop.phase,
-        jobs_total=summary.jobs_total,
-        jobs_succeeded=summary.jobs_succeeded,
-        tasks_total=summary.tasks_total,
-        tasks_succeeded=summary.tasks_succeeded,
+        rounds_total=summary.rounds_total,
+        rounds_succeeded=summary.rounds_succeeded,
+        steps_total=summary.steps_total,
+        steps_succeeded=summary.steps_succeeded,
         metrics_latest=summary.metrics_latest,
     )
 
@@ -252,7 +252,7 @@ async def get_simulation_experiment_comparison(
     )
     loop_row = (
         await session.exec(
-            select(ALLoop).where(ALLoop.experiment_group_id == group_id).limit(1)
+            select(Loop).where(Loop.experiment_group_id == group_id).limit(1)
         )
     ).first()
     if not loop_row:
@@ -266,11 +266,10 @@ async def get_simulation_experiment_comparison(
     return payload
 
 
-@router.websocket("/tasks/{task_id}/events/ws")
-@router.websocket("/steps/{task_id}/events/ws")
-async def stream_task_events(
+@router.websocket("/steps/{step_id}/events/ws")
+async def stream_step_events(
     websocket: WebSocket,
-    task_id: str,
+    step_id: str,
     after_seq: int = 0,
 ):
     user_id = await _authenticate_stream_token(websocket)
@@ -278,15 +277,15 @@ async def stream_task_events(
         return
 
     try:
-        parsed_task_id = uuid.UUID(task_id)
+        parsed_step_id = uuid.UUID(step_id)
     except Exception:
-        await websocket.close(code=1008, reason="invalid task_id")
+        await websocket.close(code=1008, reason="invalid step_id")
         return
 
-    authorized = await _authorize_stream_task_access(
+    authorized = await _authorize_stream_step_access(
         websocket=websocket,
         user_id=user_id,
-        parsed_task_id=parsed_task_id,
+        parsed_step_id=parsed_step_id,
     )
     if not authorized:
         return
@@ -294,16 +293,16 @@ async def stream_task_events(
     await websocket.accept()
     cursor = max(0, after_seq)
     try:
-        cursor = await _stream_task_events_loop(
+        cursor = await _stream_step_events_loop(
             websocket=websocket,
-            parsed_task_id=parsed_task_id,
+            parsed_step_id=parsed_step_id,
             cursor=cursor,
         )
     except WebSocketDisconnect:
-        logger.debug("task event stream disconnected task_id={} after_seq={}", parsed_task_id, cursor)
+        logger.debug("step event stream disconnected step_id={} after_seq={}", parsed_step_id, cursor)
         return
     except Exception:
-        logger.exception("task event stream failed task_id={} after_seq={}", parsed_task_id, cursor)
+        logger.exception("step event stream failed step_id={} after_seq={}", parsed_step_id, cursor)
         if websocket.client_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close(code=1011, reason="internal error")

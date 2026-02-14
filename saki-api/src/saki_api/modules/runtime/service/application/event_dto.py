@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from saki_api.modules.shared.modeling.enums import JobTaskStatus
+from saki_api.modules.shared.modeling.enums import StepStatus
 
 
 class RuntimeArtifactDTO(BaseModel):
@@ -31,13 +31,13 @@ class RuntimeTaskEventDTO(BaseModel):
     ts: datetime
     event_type: Literal["status", "log", "progress", "metric", "artifact"]
     payload: dict[str, Any] = Field(default_factory=dict)
-    status: JobTaskStatus | None = None
+    status: StepStatus | None = None
     request_id: str | None = None
 
 
 class RuntimeTaskResultDTO(BaseModel):
     task_id: uuid.UUID
-    status: JobTaskStatus
+    status: StepStatus
     metrics: dict[str, float] = Field(default_factory=dict)
     artifacts: list[RuntimeArtifactDTO] = Field(default_factory=list)
     candidates: list[RuntimeTaskCandidateDTO] = Field(default_factory=list)

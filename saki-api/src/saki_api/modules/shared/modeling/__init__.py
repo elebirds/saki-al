@@ -16,28 +16,28 @@ from saki_api.modules.access.domain.rbac.enums import Permissions
 from saki_api.modules.annotation.domain import Annotation, AnnotationDraft, CommitAnnotationMap
 from saki_api.modules.project.domain import Branch, Commit, CommitSampleState, Label, Project
 from saki_api.modules.runtime.domain import (
-    ALLoop,
-    Job,
-    JobSampleMetric,
-    JobTask,
+    Loop,
+    RoundSampleMetric,
+    Round,
+    Step,
     Model,
     RuntimeCommandLog,
     RuntimeExecutor,
     RuntimeExecutorStats,
-    TaskCandidateItem,
-    TaskEvent,
-    TaskMetricPoint,
+    StepCandidateItem,
+    StepEvent,
+    StepMetricPoint,
 )
 from saki_api.modules.shared.modeling.enums import (
-    ALLoopMode,
-    ALLoopStatus,
+    LoopMode,
+    LoopStatus,
     AnnotationSource,
     AnnotationType,
     CommitSampleReviewState,
     DatasetType,
-    JobStatusV2,
-    JobTaskStatus,
-    JobTaskType,
+    RoundStatus,
+    StepStatus,
+    StepType,
     LoopPhase,
     LoopRoundStatus,
     ModelStatus,
@@ -58,17 +58,17 @@ __all__ = [
     "Branch", "Project",
 
     # Runtime
-    "Job", "ALLoop", "JobSampleMetric", "Model",
+    "Loop", "Round", "Step", "RoundSampleMetric", "Model",
     "RuntimeCommandLog",
     "RuntimeExecutor", "RuntimeExecutorStats",
-    "JobTask", "TaskEvent", "TaskMetricPoint", "TaskCandidateItem",
+    "StepEvent", "StepMetricPoint", "StepCandidateItem",
     "SystemSetting",
 
     # Enums
     "TaskType", "ProjectStatus", "ModelStatus", "DatasetType",
     "AnnotationType", "AnnotationSource", "TrainingJobStatus",
-    "ALLoopStatus", "ALLoopMode", "LoopRoundStatus",
-    "LoopPhase", "JobStatusV2", "JobTaskType", "JobTaskStatus", "CommitSampleReviewState",
+    "LoopStatus", "LoopMode", "LoopRoundStatus",
+    "LoopPhase", "RoundStatus", "StepType", "StepStatus", "CommitSampleReviewState",
 
     # Access
     "User",

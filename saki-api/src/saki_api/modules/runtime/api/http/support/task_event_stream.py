@@ -1,4 +1,4 @@
-"""Task-event WebSocket auth and streaming helpers."""
+"""Step-event WebSocket auth and streaming helpers."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from starlette.websockets import WebSocket, WebSocketState
 from saki_api.core.config import settings
 from saki_api.infra.db.session import SessionLocal
 from saki_api.modules.access.service.permission_checker import PermissionChecker
-from saki_api.modules.runtime.domain.job_task import JobTask
+from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.service.job import JobService
 from saki_api.modules.shared.modeling import Permissions, ResourceType
 
@@ -35,32 +35,32 @@ async def authenticate_stream_token(websocket: WebSocket) -> uuid.UUID | None:
         return None
 
 
-async def authorize_stream_task_access(
+async def authorize_stream_step_access(
     *,
     websocket: WebSocket,
     user_id: uuid.UUID,
-    parsed_task_id: uuid.UUID,
+    parsed_step_id: uuid.UUID,
 ) -> bool:
     async with SessionLocal() as session:
-        task = await session.get(JobTask, parsed_task_id)
-        if not task:
-            await websocket.close(code=1008, reason="task not found")
+        step = await session.get(Step, parsed_step_id)
+        if not step:
+            await websocket.close(code=1008, reason="step not found")
             return False
         job_service = JobService(session=session)
-        job = await job_service.get_by_id_or_raise(task.job_id)
+        round_row = await job_service.get_by_id_or_raise(step.round_id)
         checker = PermissionChecker(session)
         allowed = await checker.check(
             user_id=user_id,
             permission=Permissions.JOB_READ,
             resource_type=ResourceType.PROJECT,
-            resource_id=str(job.project_id),
+            resource_id=str(round_row.project_id),
         )
         if not allowed:
             allowed = await checker.check(
                 user_id=user_id,
                 permission=Permissions.PROJECT_READ,
                 resource_type=ResourceType.PROJECT,
-                resource_id=str(job.project_id),
+                resource_id=str(round_row.project_id),
             )
         if not allowed:
             await websocket.close(code=1008, reason="permission denied")
@@ -68,10 +68,10 @@ async def authorize_stream_task_access(
     return True
 
 
-async def stream_task_events_loop(
+async def stream_step_events_loop(
     *,
     websocket: WebSocket,
-    parsed_task_id: uuid.UUID,
+    parsed_step_id: uuid.UUID,
     cursor: int,
 ) -> int:
     while True:
@@ -80,7 +80,7 @@ async def stream_task_events_loop(
 
         async with SessionLocal() as session:  # type: AsyncSession
             job_service = JobService(session=session)
-            events = await job_service.list_task_events(parsed_task_id, after_seq=cursor, limit=500)
+            events = await job_service.list_task_events(parsed_step_id, after_seq=cursor, limit=500)
 
         if events:
             for event in events:

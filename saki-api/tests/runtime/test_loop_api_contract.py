@@ -12,11 +12,11 @@ from saki_api.modules.runtime.api.http import loop_control as loop_control_endpo
 from saki_api.modules.runtime.api.http import query as loop_query_endpoint
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.session import _session_ctx
-from saki_api.modules.shared.modeling.enums import ALLoopMode, ALLoopStatus, AuthorType, JobStatusV2, LoopPhase, TaskType
+from saki_api.modules.shared.modeling.enums import AuthorType, LoopMode, LoopPhase, LoopStatus, RoundStatus, TaskType
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
 from saki_api.modules.project.domain.project import Project
-from saki_api.modules.runtime.domain.job import Job
+from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.api.job import (
     LoopCreateRequest,
     LoopRead,
@@ -203,7 +203,7 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
 
 
 @pytest.mark.anyio
-async def test_loop_control_confirm_for_manual_mode(loop_api_env, monkeypatch):
+async def test_loop_control_confirm_rejects_manual_mode(loop_api_env, monkeypatch):
     session_local = loop_api_env
 
     async def _allow(*args, **kwargs) -> None:
@@ -234,27 +234,26 @@ async def test_loop_control_confirm_for_manual_mode(loop_api_env, monkeypatch):
                 LoopCreateRequest(
                     name="loop-manual",
                     branch_id=branch.id,
-                    mode=ALLoopMode.MANUAL,
+                    mode=LoopMode.MANUAL,
                     query_strategy="random_baseline",
                     model_arch="yolo_det_v1",
-                    status=ALLoopStatus.RUNNING,
+                    status=LoopStatus.RUNNING,
                 ),
             )
-            loop.phase = LoopPhase.MANUAL_WAIT_CONFIRM
+            loop.phase = LoopPhase.MANUAL_EVAL
             session.add(loop)
             await session.commit()
             await session.refresh(loop)
 
-            resp = await loop_control_endpoint.confirm_loop(
-                loop_id=loop.id,
-                job_service=service,
-                dispatcher_admin_client=dispatcher_admin_stub,
-                session=session,
-                current_user_id=current_user_id,
-            )
-            assert resp.loop_id == loop.id
-            assert resp.phase == LoopPhase.MANUAL_WAIT_CONFIRM
-            assert dispatcher_admin_stub.confirm_calls == [(str(loop.id), False)]
+            with pytest.raises(BadRequestAppException):
+                await loop_control_endpoint.confirm_loop(
+                    loop_id=loop.id,
+                    job_service=service,
+                    dispatcher_admin_client=dispatcher_admin_stub,
+                    session=session,
+                    current_user_id=current_user_id,
+                )
+            assert dispatcher_admin_stub.confirm_calls == []
         finally:
             _session_ctx.reset(token)
 
@@ -298,25 +297,25 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
 
             # random_baseline + one strategy, each with 2 seeds
             assert len(created.loops) == 4
-            assert all(loop.mode == ALLoopMode.SIMULATION for loop in created.loops)
+            assert all(loop.mode == LoopMode.SIMULATION for loop in created.loops)
 
             for loop in created.loops:
                 for ridx in [1, 2, 3]:
                     base = 0.5 if loop.query_strategy == "random_baseline" else 0.6
                     session.add(
-                        Job(
+                        Round(
                             project_id=project.id,
                             loop_id=loop.id,
                             round_index=ridx,
-                            mode=ALLoopMode.SIMULATION,
-                            summary_status=JobStatusV2.JOB_SUCCEEDED,
-                            task_counts={"succeeded": 4},
-                            job_type="loop_round",
+                            mode=LoopMode.SIMULATION,
+                            state=RoundStatus.COMPLETED,
+                            step_counts={"succeeded": 4},
+                            round_type="loop_round",
                             plugin_id=loop.model_arch,
                             query_strategy=loop.query_strategy,
-                            params={},
+                            resolved_params={},
                             resources={},
-                            source_commit_id=branch.head_commit_id,
+                            input_commit_id=branch.head_commit_id,
                             final_metrics={"map50": base + ridx * 0.01},
                             final_artifacts={},
                         )

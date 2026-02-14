@@ -37,16 +37,3 @@ class StepCandidateItemRepository(BaseRepository[StepCandidateItem]):
         )
         rows = await self.session.exec(stmt)
         return list(rows.all())
-
-    # Backward aliases.
-    async def list_by_task(self, task_id: uuid.UUID):
-        return await self.list_by_step(task_id)
-
-    async def delete_by_task(self, task_id: uuid.UUID) -> int:
-        return await self.delete_by_step(task_id)
-
-    async def list_topk_by_task(self, task_id: uuid.UUID, limit: int = 200):
-        return await self.list_topk_by_step(task_id, limit)
-
-
-TaskCandidateItemRepository = StepCandidateItemRepository

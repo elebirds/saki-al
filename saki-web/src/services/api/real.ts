@@ -251,74 +251,74 @@ async function withOptionalPasswordHashing<T>(
 function normalizeLoop(loop: Loop): Loop {
     return {
         ...loop,
-        state: (loop as any).state ?? (loop as any).status,
-        lastRoundId: (loop as any).lastRoundId ?? (loop as any).lastJobId ?? null,
+        state: (loop as any).state ?? (loop as any).status ?? 'draft',
+        lastRoundId: (loop as any).lastRoundId ?? null,
     };
 }
 
 function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
     return {
         ...summary,
-        state: (summary as any).state ?? (summary as any).status,
-        roundsTotal: (summary as any).roundsTotal ?? (summary as any).jobsTotal ?? 0,
-        roundsSucceeded: (summary as any).roundsSucceeded ?? (summary as any).jobsSucceeded ?? 0,
-        stepsTotal: (summary as any).stepsTotal ?? (summary as any).tasksTotal ?? 0,
-        stepsSucceeded: (summary as any).stepsSucceeded ?? (summary as any).tasksSucceeded ?? 0,
+        state: (summary as any).state ?? (summary as any).status ?? 'draft',
+        roundsTotal: (summary as any).roundsTotal ?? 0,
+        roundsSucceeded: (summary as any).roundsSucceeded ?? 0,
+        stepsTotal: (summary as any).stepsTotal ?? 0,
+        stepsSucceeded: (summary as any).stepsSucceeded ?? 0,
     };
 }
 
 function normalizeRound(round: RuntimeRound): RuntimeRound {
     return {
         ...round,
-        state: (round as any).state ?? (round as any).summaryStatus,
-        stepCounts: (round as any).stepCounts ?? (round as any).taskCounts ?? {},
-        roundType: (round as any).roundType ?? (round as any).jobType ?? 'loop_round',
-        inputCommitId: (round as any).inputCommitId ?? (round as any).sourceCommitId ?? null,
-        outputCommitId: (round as any).outputCommitId ?? (round as any).resultCommitId ?? null,
-        resolvedParams: (round as any).resolvedParams ?? (round as any).params ?? {},
+        state: (round as any).state ?? 'pending',
+        stepCounts: (round as any).stepCounts ?? {},
+        roundType: (round as any).roundType ?? 'loop_round',
+        inputCommitId: (round as any).inputCommitId ?? null,
+        outputCommitId: (round as any).outputCommitId ?? null,
+        resolvedParams: (round as any).resolvedParams ?? {},
     };
 }
 
 function normalizeStep(step: RuntimeStep): RuntimeStep {
     return {
         ...step,
-        roundId: (step as any).roundId ?? (step as any).jobId,
-        stepType: (step as any).stepType ?? (step as any).taskType,
-        state: (step as any).state ?? (step as any).status,
-        stepIndex: (step as any).stepIndex ?? (step as any).taskIndex,
-        dependsOnStepIds: (step as any).dependsOnStepIds ?? (step as any).dependsOn ?? [],
-        resolvedParams: (step as any).resolvedParams ?? (step as any).params ?? {},
+        roundId: (step as any).roundId ?? '',
+        stepType: (step as any).stepType ?? 'train',
+        state: (step as any).state ?? 'pending',
+        stepIndex: (step as any).stepIndex ?? 1,
+        dependsOnStepIds: (step as any).dependsOnStepIds ?? [],
+        resolvedParams: (step as any).resolvedParams ?? {},
         dispatchKind: (step as any).dispatchKind ?? 'dispatchable',
-        inputCommitId: (step as any).inputCommitId ?? (step as any).sourceCommitId ?? null,
-        outputCommitId: (step as any).outputCommitId ?? (step as any).resultCommitId ?? null,
+        inputCommitId: (step as any).inputCommitId ?? null,
+        outputCommitId: (step as any).outputCommitId ?? null,
     };
 }
 
 function normalizeRoundCommandResponse(response: RuntimeRoundCommandResponse): RuntimeRoundCommandResponse {
     return {
         ...response,
-        roundId: (response as any).roundId ?? (response as any).jobId,
+        roundId: (response as any).roundId,
     };
 }
 
 function normalizeStepCommandResponse(response: RuntimeStepCommandResponse): RuntimeStepCommandResponse {
     return {
         ...response,
-        stepId: (response as any).stepId ?? (response as any).taskId,
+        stepId: (response as any).stepId,
     };
 }
 
 function normalizeStepArtifactsResponse(response: RuntimeStepArtifactsResponse): RuntimeStepArtifactsResponse {
     return {
         ...response,
-        stepId: (response as any).stepId ?? (response as any).taskId,
+        stepId: (response as any).stepId,
     };
 }
 
 function normalizeStepArtifactDownload(response: StepArtifactDownload): StepArtifactDownload {
     return {
         ...response,
-        stepId: (response as any).stepId ?? (response as any).taskId,
+        stepId: (response as any).stepId,
     };
 }
 
@@ -327,7 +327,7 @@ function normalizeRuntimePluginCatalog(response: RuntimePluginCatalogResponse): 
         ...response,
         items: (response.items || []).map((item: any) => ({
             ...item,
-            supportedStepTypes: item.supportedStepTypes ?? item.supportedTaskTypes ?? [],
+            supportedStepTypes: item.supportedStepTypes ?? [],
         })),
     };
 }
@@ -337,12 +337,12 @@ function normalizeRuntimeExecutor(executor: RuntimeExecutorRead): RuntimeExecuto
     const plugins = Array.isArray(pluginIds.plugins)
         ? pluginIds.plugins.map((plugin: any) => ({
             ...plugin,
-            supportedStepTypes: plugin.supportedStepTypes ?? plugin.supportedTaskTypes ?? [],
+            supportedStepTypes: plugin.supportedStepTypes ?? [],
         }))
         : pluginIds.plugins;
     return {
         ...executor,
-        currentStepId: (executor as any).currentStepId ?? (executor as any).currentTaskId ?? null,
+        currentStepId: (executor as any).currentStepId ?? null,
         pluginIds: {
             ...pluginIds,
             plugins,
@@ -360,8 +360,8 @@ function normalizeRuntimeExecutorList(response: RuntimeExecutorListResponse): Ru
 function normalizeProjectModel(model: ProjectModel): ProjectModel {
     return {
         ...model,
-        roundId: (model as any).roundId ?? (model as any).jobId ?? null,
-        inputCommitId: (model as any).inputCommitId ?? (model as any).sourceCommitId ?? null,
+        roundId: (model as any).roundId ?? null,
+        inputCommitId: (model as any).inputCommitId ?? null,
     };
 }
 
@@ -1000,11 +1000,8 @@ export class RealApiService implements ApiService {
         }
     ): Promise<ProjectModel> {
         const response = await this.client.post<ProjectModel>(
-            `/projects/${projectId}/models:register-from-job`,
-            {
-                ...payload,
-                jobId: payload.roundId,
-            },
+            `/projects/${projectId}/models:register-from-round`,
+            payload,
         );
         return normalizeProjectModel(response.data);
     }

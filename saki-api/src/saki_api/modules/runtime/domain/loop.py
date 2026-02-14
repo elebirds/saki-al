@@ -50,7 +50,7 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     terminal_reason: str | None = Field(default=None, max_length=4000)
 
     project: "Project" = Relationship(back_populates="loops")
-    branch: "Branch" = Relationship(back_populates="active_learning_loop")
+    branch: "Branch" = Relationship(back_populates="loop")
     rounds: List["Round"] = Relationship(
         back_populates="loop",
         sa_relationship_kwargs={"foreign_keys": "[Round.loop_id]"},
@@ -58,32 +58,3 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     latest_model: Optional["Model"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[Loop.latest_model_id]"}
     )
-
-    # Backward compatibility properties.
-    @property
-    def last_job_id(self) -> Optional[uuid.UUID]:
-        return self.last_round_id
-
-    @last_job_id.setter
-    def last_job_id(self, value: Optional[uuid.UUID]) -> None:
-        self.last_round_id = value
-
-    @property
-    def last_error(self) -> Optional[str]:
-        return self.terminal_reason
-
-    @last_error.setter
-    def last_error(self, value: Optional[str]) -> None:
-        self.terminal_reason = value
-
-    @property
-    def jobs(self) -> List["Round"]:
-        return self.rounds
-
-    @jobs.setter
-    def jobs(self, value: List["Round"]) -> None:
-        self.rounds = value
-
-
-# Backward alias.
-ALLoop = Loop

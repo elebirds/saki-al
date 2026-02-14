@@ -85,12 +85,3 @@ def summarize_step_states(states: Iterable[StepStatus]) -> RoundAggregateSnapsho
         any_cancelled=any_cancelled,
         all_succeeded=all_succeeded,
     )
-
-
-# Backward aliases.
-TERMINAL_TASK_STATUSES = TERMINAL_STEP_STATES
-RUNNING_TASK_STATUSES = RUNNING_STEP_STATES
-TERMINAL_JOB_STATUSES = TERMINAL_ROUND_STATES
-RUNNING_JOB_STATUSES = RUNNING_ROUND_STATES
-JobAggregateSnapshot = RoundAggregateSnapshot
-summarize_task_statuses = summarize_step_states

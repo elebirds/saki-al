@@ -117,13 +117,13 @@ async def test_duplicate_assign_task_returns_cached_ack_without_reassign(tmp_pat
     incoming = pb.RuntimeMessage(
         assign_task=pb.AssignTask(
             request_id="assign-dup-1",
-            task=pb.TaskPayload(
-                task_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                job_id="11111111-1111-1111-1111-111111111111",
+            step=pb.TaskPayload(
+                step_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                round_id="11111111-1111-1111-1111-111111111111",
                 project_id="22222222-2222-2222-2222-222222222222",
                 loop_id="33333333-3333-3333-3333-333333333333",
-                source_commit_id="44444444-4444-4444-4444-444444444444",
-                task_type=pb.TRAIN,
+                input_commit_id="44444444-4444-4444-4444-444444444444",
+                step_type=pb.TRAIN,
                 plugin_id="demo_det_v1",
                 mode=pb.ACTIVE_LEARNING,
             ),
@@ -159,7 +159,7 @@ async def test_duplicate_stop_task_returns_cached_ack_without_restop(tmp_path):
     incoming = pb.RuntimeMessage(
         stop_task=pb.StopTask(
             request_id="stop-dup-1",
-            task_id="task-dup-1",
+            step_id="task-dup-1",
             reason="manual",
         )
     )

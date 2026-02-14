@@ -52,75 +52,10 @@ class Round(RoundBase, TimestampMixin, UUIDMixin, table=True):
     __tablename__ = "round"
     __table_args__ = (UniqueConstraint("loop_id", "round_index", name="uq_round_loop_round"),)
 
-    project: "Project" = Relationship(back_populates="jobs")
+    project: "Project" = Relationship(back_populates="rounds")
     loop: "Loop" = Relationship(
         back_populates="rounds",
         sa_relationship_kwargs={"foreign_keys": "[Round.loop_id]"},
     )
     model: Optional["Model"] = Relationship(sa_relationship_kwargs={"foreign_keys": "[Round.model_id]"})
     steps: List["Step"] = Relationship(back_populates="round")
-
-    # Backward compatibility properties.
-    @property
-    def summary_status(self) -> RoundStatus:
-        return self.state
-
-    @summary_status.setter
-    def summary_status(self, value: RoundStatus) -> None:
-        self.state = value
-
-    @property
-    def task_counts(self) -> Dict[str, int]:
-        return self.step_counts
-
-    @task_counts.setter
-    def task_counts(self, value: Dict[str, int]) -> None:
-        self.step_counts = value
-
-    @property
-    def job_type(self) -> str:
-        return self.round_type
-
-    @job_type.setter
-    def job_type(self, value: str) -> None:
-        self.round_type = value
-
-    @property
-    def params(self) -> Dict[str, Any]:
-        return self.resolved_params
-
-    @params.setter
-    def params(self, value: Dict[str, Any]) -> None:
-        self.resolved_params = value
-
-    @property
-    def source_commit_id(self) -> Optional[uuid.UUID]:
-        return self.input_commit_id
-
-    @source_commit_id.setter
-    def source_commit_id(self, value: Optional[uuid.UUID]) -> None:
-        self.input_commit_id = value
-
-    @property
-    def result_commit_id(self) -> Optional[uuid.UUID]:
-        return self.output_commit_id
-
-    @result_commit_id.setter
-    def result_commit_id(self, value: Optional[uuid.UUID]) -> None:
-        self.output_commit_id = value
-
-    @property
-    def last_error(self) -> Optional[str]:
-        return self.terminal_reason
-
-    @last_error.setter
-    def last_error(self, value: Optional[str]) -> None:
-        self.terminal_reason = value
-
-    @property
-    def tasks(self) -> List["Step"]:
-        return self.steps
-
-    @tasks.setter
-    def tasks(self, value: List["Step"]) -> None:
-        self.steps = value

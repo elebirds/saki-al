@@ -32,13 +32,3 @@ class StepMetricPointRepository(BaseRepository[StepMetricPoint]):
         stmt = delete(StepMetricPoint).where(StepMetricPoint.step_id == step_id)
         result = await self.session.exec(stmt)
         return int(result.rowcount or 0)
-
-    # Backward aliases.
-    async def list_by_task(self, task_id: uuid.UUID, limit: int = 5000):
-        return await self.list_by_step(task_id, limit)
-
-    async def delete_by_task(self, task_id: uuid.UUID) -> int:
-        return await self.delete_by_step(task_id)
-
-
-TaskMetricPointRepository = StepMetricPointRepository

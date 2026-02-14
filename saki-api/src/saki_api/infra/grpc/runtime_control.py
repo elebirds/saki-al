@@ -6,6 +6,7 @@ import uuid
 
 import grpc
 from loguru import logger
+from sqlmodel import select
 
 from saki_api.core.config import settings
 from saki_api.grpc_gen import runtime_control_pb2 as pb
@@ -19,25 +20,25 @@ from saki_api.modules.project.repo.branch import BranchRepository
 from saki_api.modules.project.repo.commit import CommitRepository
 from saki_api.modules.project.repo.commit_sample_state import CommitSampleStateRepository
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
+from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
-from saki_api.modules.shared.modeling.enums import AuthorType
+from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, StepType
 
 
 def _parse_uuid(raw: str) -> uuid.UUID | None:
     value = str(raw or "").strip()
     if not value:
         return None
-
-
-def _resolve_step_id(step_id: str, task_id: str) -> str:
-    value = str(step_id or "").strip()
-    if value:
-        return value
-    return str(task_id or "").strip()
     try:
         return uuid.UUID(value)
     except Exception:
         return None
+
+
+def _resolve_step_id(step_id: str) -> str:
+    return str(step_id or "").strip()
 
 
 def _to_domain_data_item(item: pb.DataItem) -> domain_pb.DataItem:
@@ -69,12 +70,11 @@ def _to_domain_data_item(item: pb.DataItem) -> domain_pb.DataItem:
 
 
 def _to_domain_data_response(response: pb.DataResponse) -> domain_pb.DataResponse:
-    step_id = _resolve_step_id(response.step_id, response.task_id)
+    step_id = _resolve_step_id(response.step_id)
     return domain_pb.DataResponse(
         request_id=str(response.request_id or ""),
         reply_to=str(response.reply_to or ""),
         step_id=step_id,
-        task_id=step_id,
         query_type=int(response.query_type),
         items=[_to_domain_data_item(item) for item in response.items],
         next_cursor=str(response.next_cursor or ""),
@@ -145,6 +145,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             project_id: uuid.UUID,
             oracle_commit_id: uuid.UUID,
             parent_commit_id: uuid.UUID,
+            selected_sample_ids: list[uuid.UUID],
             command_id: str,
             loop_id: str,
             round_index: int,
@@ -170,6 +171,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     "topk": int(topk),
                     "oracle_commit_id": str(oracle_commit_id),
                     "source_commit_id": str(parent_commit_id),
+                    "selected_sample_ids": [str(item) for item in selected_sample_ids],
                 }
             },
             commit_hash="",
@@ -178,15 +180,15 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
         await session.flush()
 
         camap_repo = CAMapRepository(session)
-        source_state = await camap_repo.get_annotations_for_commit(oracle_commit_id)
-        mappings: list[tuple[uuid.UUID, uuid.UUID]] = []
-        for sample_id, annotation_ids in source_state.items():
+        parent_state = await camap_repo.get_annotations_for_commit(parent_commit_id)
+        base_mappings: list[tuple[uuid.UUID, uuid.UUID]] = []
+        for sample_id, annotation_ids in parent_state.items():
             for annotation_id in annotation_ids:
-                mappings.append((sample_id, annotation_id))
-        if mappings:
+                base_mappings.append((sample_id, annotation_id))
+        if base_mappings:
             await camap_repo.set_commit_state(
                 commit_id=commit.id,
-                mappings=mappings,
+                mappings=base_mappings,
                 project_id=project_id,
             )
 
@@ -197,43 +199,90 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             project_id=project_id,
         )
 
+        existing_by_sample: dict[uuid.UUID, set[uuid.UUID]] = {
+            sample_id: set(annotation_ids) for sample_id, annotation_ids in parent_state.items()
+        }
+        delta_mappings: list[tuple[uuid.UUID, uuid.UUID]] = []
+        for sample_id in selected_sample_ids:
+            oracle_annotation_ids = await camap_repo.get_sample_annotations(oracle_commit_id, sample_id)
+            if not oracle_annotation_ids:
+                continue
+            existing = existing_by_sample.setdefault(sample_id, set())
+            for annotation_id in oracle_annotation_ids:
+                if annotation_id in existing:
+                    continue
+                existing.add(annotation_id)
+                delta_mappings.append((sample_id, annotation_id))
+
+        if delta_mappings:
+            await camap_repo.set_commit_state(
+                commit_id=commit.id,
+                mappings=delta_mappings,
+                project_id=project_id,
+            )
+
+        for sample_id in selected_sample_ids:
+            await sample_state_repo.delete_commit_sample_state(
+                commit_id=commit.id,
+                sample_id=sample_id,
+            )
+            await sample_state_repo.set_commit_sample_state(
+                commit_id=commit.id,
+                sample_id=sample_id,
+                project_id=project_id,
+                state=CommitSampleReviewState.LABELED,
+            )
+
         commit.stats = await camap_repo.get_commit_stats(commit.id)
         await refresh_commit_hash(session, commit)
         session.add(commit)
         return commit
 
-    async def CreateSimulationCommitFromOracle(self, request, context):  # noqa: N802
-        project_id = _parse_uuid(request.project_id)
-        branch_id = _parse_uuid(request.branch_id)
-        oracle_commit_id = _parse_uuid(request.oracle_commit_id)
-        source_commit_id = _parse_uuid(request.source_commit_id)
-
-        if project_id is None or branch_id is None or oracle_commit_id is None:
-            return domain_pb.CreateSimulationCommitFromOracleResponse(created=False, commit_id="")
-
-        async with SessionLocal() as session:
-            branch_repo = BranchRepository(session)
-            branch = await branch_repo.get_by_id(branch_id)
-            if not branch or branch.project_id != project_id:
-                return domain_pb.CreateSimulationCommitFromOracleResponse(created=False, commit_id="")
-
-            parent_commit_id = source_commit_id or branch.head_commit_id
-            if parent_commit_id is None:
-                return domain_pb.CreateSimulationCommitFromOracleResponse(created=False, commit_id="")
-
-            commit = await self._create_simulation_commit_tx(
-                session=session,
-                project_id=project_id,
-                oracle_commit_id=oracle_commit_id,
-                parent_commit_id=parent_commit_id,
-                command_id=str(request.command_id or ""),
-                loop_id=str(request.loop_id or ""),
-                round_index=int(request.round_index or 0),
-                query_strategy=str(request.query_strategy or ""),
-                topk=int(request.topk or 0),
+    async def _load_selected_sample_ids(
+            self,
+            *,
+            session,
+            loop_id: uuid.UUID,
+            round_index: int,
+            topk: int,
+    ) -> list[uuid.UUID]:
+        limit = max(1, int(topk or 1))
+        select_stmt = (
+            select(StepCandidateItem.sample_id)
+            .join(Step, Step.id == StepCandidateItem.step_id)
+            .join(Round, Round.id == Step.round_id)
+            .where(
+                Round.loop_id == loop_id,
+                Round.round_index == round_index,
+                Step.step_type == StepType.SELECT,
             )
-            await session.commit()
-            return domain_pb.CreateSimulationCommitFromOracleResponse(created=True, commit_id=str(commit.id))
+            .order_by(StepCandidateItem.rank.asc(), StepCandidateItem.created_at.asc())
+            .limit(limit)
+        )
+        sample_ids = list((await session.exec(select_stmt)).all())
+        if not sample_ids:
+            fallback_stmt = (
+                select(StepCandidateItem.sample_id)
+                .join(Step, Step.id == StepCandidateItem.step_id)
+                .join(Round, Round.id == Step.round_id)
+                .where(
+                    Round.loop_id == loop_id,
+                    Round.round_index == round_index,
+                    Step.step_type == StepType.SCORE,
+                )
+                .order_by(StepCandidateItem.rank.asc(), StepCandidateItem.created_at.asc())
+                .limit(limit)
+            )
+            sample_ids = list((await session.exec(fallback_stmt)).all())
+
+        ordered: list[uuid.UUID] = []
+        seen: set[uuid.UUID] = set()
+        for sample_id in sample_ids:
+            if sample_id in seen:
+                continue
+            seen.add(sample_id)
+            ordered.append(sample_id)
+        return ordered
 
     async def ActivateSamples(self, request, context):  # noqa: N802
         project_id = _parse_uuid(request.project_id)
@@ -254,14 +303,29 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             if parent_commit_id is None:
                 return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
 
+            loop_uuid = _parse_uuid(request.loop_id)
+            round_index = int(request.round_index or 0)
+            if loop_uuid is None or round_index <= 0:
+                return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
+
+            selected_sample_ids = await self._load_selected_sample_ids(
+                session=session,
+                loop_id=loop_uuid,
+                round_index=round_index,
+                topk=int(request.topk or 0),
+            )
+            if not selected_sample_ids:
+                return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
+
             commit = await self._create_simulation_commit_tx(
                 session=session,
                 project_id=project_id,
                 oracle_commit_id=oracle_commit_id,
                 parent_commit_id=parent_commit_id,
+                selected_sample_ids=selected_sample_ids,
                 command_id=str(request.command_id or ""),
                 loop_id=str(request.loop_id or ""),
-                round_index=int(request.round_index or 0),
+                round_index=round_index,
                 query_strategy=str(request.query_strategy or ""),
                 topk=int(request.topk or 0),
             )
@@ -294,12 +358,11 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
 
     async def QueryData(self, request, context):  # noqa: N802
-        step_id = _resolve_step_id(request.step_id, request.task_id)
+        step_id = _resolve_step_id(request.step_id)
         response_message = await self._runtime_ingress.handle_data_request(
             pb.DataRequest(
                 request_id=str(request.request_id or ""),
                 step_id=step_id,
-                task_id=step_id,
                 query_type=int(request.query_type),
                 project_id=str(request.project_id or ""),
                 commit_id=str(request.commit_id or ""),
@@ -316,7 +379,6 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
                 step_id=step_id,
-                task_id=step_id,
                 query_type=int(request.query_type),
                 items=[],
                 next_cursor="",
@@ -328,7 +390,6 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
                 step_id=step_id,
-                task_id=step_id,
                 query_type=int(request.query_type),
                 items=[],
                 next_cursor="",
@@ -336,12 +397,11 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
         return _to_domain_data_response(response_message.data_response)
 
     async def CreateUploadTicket(self, request, context):  # noqa: N802
-        step_id = _resolve_step_id(request.step_id, request.task_id)
+        step_id = _resolve_step_id(request.step_id)
         response_message = await self._runtime_ingress.handle_upload_ticket_request(
             pb.UploadTicketRequest(
                 request_id=str(request.request_id or ""),
                 step_id=step_id,
-                task_id=step_id,
                 artifact_name=str(request.artifact_name or ""),
                 content_type=str(request.content_type or "application/octet-stream"),
             )
@@ -355,7 +415,6 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
                 step_id=step_id,
-                task_id=step_id,
                 upload_url="",
                 storage_uri="",
                 headers={},
@@ -367,18 +426,16 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
                 step_id=step_id,
-                task_id=step_id,
                 upload_url="",
                 storage_uri="",
                 headers={},
             )
         upload_ticket = response_message.upload_ticket_response
-        upload_step_id = _resolve_step_id(upload_ticket.step_id, upload_ticket.task_id)
+        upload_step_id = _resolve_step_id(upload_ticket.step_id)
         return domain_pb.UploadTicketResponse(
             request_id=str(upload_ticket.request_id or ""),
             reply_to=str(upload_ticket.reply_to or ""),
             step_id=upload_step_id,
-            task_id=upload_step_id,
             upload_url=str(upload_ticket.upload_url or ""),
             storage_uri=str(upload_ticket.storage_uri or ""),
             headers=dict(upload_ticket.headers),

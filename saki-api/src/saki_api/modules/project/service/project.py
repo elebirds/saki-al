@@ -46,10 +46,10 @@ from saki_api.modules.project.repo.commit_sample_state import CommitSampleStateR
 from saki_api.modules.project.repo.dataset import DatasetRepository
 from saki_api.modules.project.repo.label import LabelRepository
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
-from saki_api.modules.runtime.domain.job import Job
-from saki_api.modules.runtime.domain.job_task import JobTask
-from saki_api.modules.runtime.domain.metric import JobSampleMetric
-from saki_api.modules.runtime.domain.task_candidate_item import TaskCandidateItem
+from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.metric import RoundSampleMetric
+from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.shared.modeling import ResourceType, Permissions
 from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, ProjectStatus
@@ -629,29 +629,29 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             await self.session.delete(row)
 
         # Runtime artifacts cleanup (L3 sample-scoped records).
-        job_id_rows = await self.session.exec(
-            select(Job.id).where(Job.project_id == project_id)
+        round_id_rows = await self.session.exec(
+            select(Round.id).where(Round.project_id == project_id)
         )
-        job_ids = list(job_id_rows.all())
-        if job_ids:
+        round_ids = list(round_id_rows.all())
+        if round_ids:
             metric_rows = await self.session.exec(
-                select(JobSampleMetric).where(
-                    JobSampleMetric.job_id.in_(job_ids),
-                    JobSampleMetric.sample_id.in_(sample_ids),
+                select(RoundSampleMetric).where(
+                    RoundSampleMetric.round_id.in_(round_ids),
+                    RoundSampleMetric.sample_id.in_(sample_ids),
                 )
             )
             for row in metric_rows:
                 await self.session.delete(row)
 
-            task_id_rows = await self.session.exec(
-                select(JobTask.id).where(JobTask.job_id.in_(job_ids))
+            step_id_rows = await self.session.exec(
+                select(Step.id).where(Step.round_id.in_(round_ids))
             )
-            task_ids = list(task_id_rows.all())
-            if task_ids:
+            step_ids = list(step_id_rows.all())
+            if step_ids:
                 candidate_rows = await self.session.exec(
-                    select(TaskCandidateItem).where(
-                        TaskCandidateItem.task_id.in_(task_ids),
-                        TaskCandidateItem.sample_id.in_(sample_ids),
+                    select(StepCandidateItem).where(
+                        StepCandidateItem.step_id.in_(step_ids),
+                        StepCandidateItem.sample_id.in_(sample_ids),
                     )
                 )
                 for row in candidate_rows:

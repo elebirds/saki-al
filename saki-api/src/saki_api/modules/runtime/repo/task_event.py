@@ -44,16 +44,3 @@ class StepEventRepository(BaseRepository[StepEvent]):
         )
         result = await self.session.exec(stmt)
         return int(result.rowcount or 0)
-
-    # Backward aliases.
-    async def exists_by_task_seq(self, *, task_id: uuid.UUID, seq: int) -> bool:
-        return await self.exists_by_step_seq(step_id=task_id, seq=seq)
-
-    async def list_by_task_after_seq(self, *, task_id: uuid.UUID, after_seq: int = 0, limit: int = 5000):
-        return await self.list_by_step_after_seq(step_id=task_id, after_seq=after_seq, limit=limit)
-
-    async def delete_by_task_and_types(self, *, task_id: uuid.UUID, event_types: List[str]) -> int:
-        return await self.delete_by_step_and_types(step_id=task_id, event_types=event_types)
-
-
-TaskEventRepository = StepEventRepository

@@ -78,8 +78,3 @@ DEFAULT_MODE_POLICIES: dict[LoopMode, LoopModePolicy] = {
     LoopMode.SIMULATION: SimulationModePolicy(),
     LoopMode.MANUAL: ManualModePolicy(),
 }
-
-
-# Backward aliases.
-LOOP_TASK_SPECS_BY_MODE = LOOP_STEP_SPECS_BY_MODE
-task_specs_for_mode = step_specs_for_mode

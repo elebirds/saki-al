@@ -16,7 +16,7 @@ from saki_api.modules.runtime.api.http.support.loop_read_builder import build_lo
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.job import LoopConfirmResponse, LoopRead, RoundPredictionCleanupResponse
 from saki_api.modules.shared.modeling import Permissions
-from saki_api.modules.shared.modeling.enums import ALLoopMode
+from saki_api.modules.shared.modeling.enums import LoopMode
 
 router = APIRouter()
 
@@ -190,9 +190,9 @@ async def confirm_loop(
         project_id=loop.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    if loop.mode == ALLoopMode.MANUAL:
+    if loop.mode == LoopMode.MANUAL:
         raise BadRequestAppException("manual mode is single-run and does not require confirm")
-    if loop.mode == ALLoopMode.SIMULATION:
+    if loop.mode == LoopMode.SIMULATION:
         raise BadRequestAppException("simulation mode does not require confirm")
 
     await _dispatch_loop_command(
@@ -201,7 +201,7 @@ async def confirm_loop(
         dispatcher_admin_client=dispatcher_admin_client,
     )
     loop = await job_service.loop_repo.get_by_id_or_raise(loop_id)
-    return LoopConfirmResponse(loop_id=loop.id, phase=loop.phase, status=loop.status)
+    return LoopConfirmResponse(loop_id=loop.id, phase=loop.phase, state=loop.status)
 
 
 @router.post("/loops/{loop_id}/rounds/{round_index}:cleanup-predictions", response_model=RoundPredictionCleanupResponse)

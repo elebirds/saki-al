@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from saki_api.modules.shared.modeling.enums import (
-    ALLoopMode,
-    ALLoopStatus,
-    JobStatusV2,
-    JobTaskStatus,
-    JobTaskType,
+    LoopMode,
+    LoopStatus,
+    RoundStatus,
+    StepStatus,
+    StepType,
     LoopPhase,
 )
 
@@ -29,14 +29,14 @@ class LoopSimulationConfig(BaseModel):
 class LoopCreateRequest(BaseModel):
     name: str
     branch_id: uuid.UUID
-    mode: ALLoopMode = ALLoopMode.ACTIVE_LEARNING
+    mode: LoopMode = LoopMode.ACTIVE_LEARNING
     query_strategy: str
     model_arch: str
     global_config: Dict[str, Any] = Field(default_factory=dict)
     model_request_config: Dict[str, Any] = Field(default_factory=dict)
     simulation_config: LoopSimulationConfig = Field(default_factory=LoopSimulationConfig)
     experiment_group_id: Optional[uuid.UUID] = None
-    status: ALLoopStatus = ALLoopStatus.DRAFT
+    status: LoopStatus = LoopStatus.DRAFT
     max_rounds: int = Field(default=20, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
     min_seed_labeled: int = Field(default=100, ge=1)
@@ -48,7 +48,7 @@ class LoopCreateRequest(BaseModel):
 
 class LoopUpdateRequest(BaseModel):
     name: Optional[str] = None
-    mode: Optional[ALLoopMode] = None
+    mode: Optional[LoopMode] = None
     query_strategy: Optional[str] = None
     model_arch: Optional[str] = None
     global_config: Optional[Dict[str, Any]] = None
@@ -68,7 +68,7 @@ class LoopCreateData(BaseModel):
     project_id: uuid.UUID
     branch_id: uuid.UUID
     name: str
-    mode: ALLoopMode = ALLoopMode.ACTIVE_LEARNING
+    mode: LoopMode = LoopMode.ACTIVE_LEARNING
     phase: LoopPhase = LoopPhase.AL_BOOTSTRAP
     phase_meta: Dict[str, Any] = Field(default_factory=dict)
     query_strategy: str
@@ -76,7 +76,7 @@ class LoopCreateData(BaseModel):
     experiment_group_id: Optional[uuid.UUID] = None
     global_config: Dict[str, Any] = Field(default_factory=dict)
     current_iteration: int = Field(default=0, ge=0)
-    status: ALLoopStatus = ALLoopStatus.DRAFT
+    status: LoopStatus = LoopStatus.DRAFT
     max_rounds: int = Field(default=20, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
     min_seed_labeled: int = Field(default=100, ge=1)
@@ -84,14 +84,14 @@ class LoopCreateData(BaseModel):
     stop_patience_rounds: int = Field(default=2, ge=1)
     stop_min_gain: float = Field(default=0.002)
     auto_register_model: bool = True
-    last_job_id: Optional[uuid.UUID] = None
+    last_round_id: Optional[uuid.UUID] = None
     latest_model_id: Optional[uuid.UUID] = None
-    last_error: Optional[str] = None
+    terminal_reason: Optional[str] = None
 
 
 class LoopPatch(BaseModel):
     name: Optional[str] = None
-    mode: Optional[ALLoopMode] = None
+    mode: Optional[LoopMode] = None
     phase: Optional[LoopPhase] = None
     phase_meta: Optional[Dict[str, Any]] = None
     query_strategy: Optional[str] = None
@@ -99,7 +99,7 @@ class LoopPatch(BaseModel):
     experiment_group_id: Optional[uuid.UUID] = None
     global_config: Optional[Dict[str, Any]] = None
     current_iteration: Optional[int] = Field(default=None, ge=0)
-    status: Optional[ALLoopStatus] = None
+    status: Optional[LoopStatus] = None
     max_rounds: Optional[int] = Field(default=None, ge=1)
     query_batch_size: Optional[int] = Field(default=None, ge=1)
     min_seed_labeled: Optional[int] = Field(default=None, ge=1)
@@ -107,9 +107,9 @@ class LoopPatch(BaseModel):
     stop_patience_rounds: Optional[int] = Field(default=None, ge=1)
     stop_min_gain: Optional[float] = None
     auto_register_model: Optional[bool] = None
-    last_job_id: Optional[uuid.UUID] = None
+    last_round_id: Optional[uuid.UUID] = None
     latest_model_id: Optional[uuid.UUID] = None
-    last_error: Optional[str] = None
+    terminal_reason: Optional[str] = None
 
 
 class LoopRead(BaseModel):
@@ -119,7 +119,7 @@ class LoopRead(BaseModel):
     project_id: uuid.UUID
     branch_id: uuid.UUID
     name: str
-    mode: ALLoopMode
+    mode: LoopMode
     phase: LoopPhase
     phase_meta: Dict[str, Any]
     query_strategy: str
@@ -129,7 +129,7 @@ class LoopRead(BaseModel):
     simulation_config: LoopSimulationConfig = Field(default_factory=LoopSimulationConfig)
     experiment_group_id: Optional[uuid.UUID] = None
     current_iteration: int
-    status: ALLoopStatus
+    status: LoopStatus
     max_rounds: int
     query_batch_size: int
     min_seed_labeled: int
@@ -137,21 +137,21 @@ class LoopRead(BaseModel):
     stop_patience_rounds: int
     stop_min_gain: float
     auto_register_model: bool
-    last_job_id: Optional[uuid.UUID] = None
+    last_round_id: Optional[uuid.UUID] = None
     latest_model_id: Optional[uuid.UUID] = None
-    last_error: Optional[str] = None
+    terminal_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
 
 class JobCreateRequest(BaseModel):
     project_id: uuid.UUID
-    source_commit_id: Optional[uuid.UUID] = None
+    input_commit_id: Optional[uuid.UUID] = None
     plugin_id: str
-    job_type: str = "loop_job"
-    mode: ALLoopMode = ALLoopMode.ACTIVE_LEARNING
+    round_type: str = "loop_round"
+    mode: LoopMode = LoopMode.ACTIVE_LEARNING
     query_strategy: str
-    params: Dict[str, Any] = Field(default_factory=dict)
+    resolved_params: Dict[str, Any] = Field(default_factory=dict)
     resources: Dict[str, Any] = Field(default_factory=dict)
     strategy_params: Dict[str, Any] = Field(default_factory=dict)
 
@@ -160,19 +160,19 @@ class JobCreate(BaseModel):
     project_id: uuid.UUID
     loop_id: uuid.UUID
     round_index: int = Field(ge=1)
-    mode: ALLoopMode = ALLoopMode.ACTIVE_LEARNING
-    summary_status: JobStatusV2 = JobStatusV2.JOB_PENDING
-    task_counts: Dict[str, int] = Field(default_factory=dict)
-    job_type: str = "loop_job"
+    mode: LoopMode = LoopMode.ACTIVE_LEARNING
+    state: RoundStatus = RoundStatus.PENDING
+    step_counts: Dict[str, int] = Field(default_factory=dict)
+    round_type: str = "loop_round"
     plugin_id: str
     query_strategy: str
-    params: Dict[str, Any] = Field(default_factory=dict)
+    resolved_params: Dict[str, Any] = Field(default_factory=dict)
     resources: Dict[str, Any] = Field(default_factory=dict)
-    source_commit_id: Optional[uuid.UUID] = None
-    result_commit_id: Optional[uuid.UUID] = None
+    input_commit_id: Optional[uuid.UUID] = None
+    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     retry_count: int = Field(default=0, ge=0)
-    last_error: Optional[str] = None
+    terminal_reason: Optional[str] = None
     final_metrics: Dict[str, Any] = Field(default_factory=dict)
     final_artifacts: Dict[str, Any] = Field(default_factory=dict)
     strategy_params: Dict[str, Any] = Field(default_factory=dict)
@@ -180,14 +180,14 @@ class JobCreate(BaseModel):
 
 
 class JobUpdate(BaseModel):
-    summary_status: Optional[JobStatusV2] = None
-    task_counts: Optional[Dict[str, int]] = None
+    state: Optional[RoundStatus] = None
+    step_counts: Optional[Dict[str, int]] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
-    result_commit_id: Optional[uuid.UUID] = None
+    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     retry_count: Optional[int] = Field(default=None, ge=0)
-    last_error: Optional[str] = None
+    terminal_reason: Optional[str] = None
     final_metrics: Optional[Dict[str, Any]] = None
     final_artifacts: Optional[Dict[str, Any]] = None
     strategy_params: Optional[Dict[str, Any]] = None
@@ -195,17 +195,17 @@ class JobUpdate(BaseModel):
 
 
 class JobTaskCreate(BaseModel):
-    job_id: uuid.UUID
-    task_type: JobTaskType
-    status: JobTaskStatus = JobTaskStatus.PENDING
+    round_id: uuid.UUID
+    step_type: StepType
+    state: StepStatus = StepStatus.PENDING
     round_index: int = Field(default=1, ge=1)
-    task_index: int = Field(default=1, ge=1)
-    depends_on: List[str] = Field(default_factory=list)
-    params: Dict[str, Any] = Field(default_factory=dict)
+    step_index: int = Field(default=1, ge=1)
+    depends_on_step_ids: List[str] = Field(default_factory=list)
+    resolved_params: Dict[str, Any] = Field(default_factory=dict)
     metrics: Dict[str, Any] = Field(default_factory=dict)
     artifacts: Dict[str, Any] = Field(default_factory=dict)
-    source_commit_id: Optional[uuid.UUID] = None
-    result_commit_id: Optional[uuid.UUID] = None
+    input_commit_id: Optional[uuid.UUID] = None
+    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     attempt: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=2, ge=1)
@@ -213,10 +213,10 @@ class JobTaskCreate(BaseModel):
 
 
 class JobTaskUpdate(BaseModel):
-    status: Optional[JobTaskStatus] = None
+    state: Optional[StepStatus] = None
     metrics: Optional[Dict[str, Any]] = None
     artifacts: Optional[Dict[str, Any]] = None
-    result_commit_id: Optional[uuid.UUID] = None
+    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     attempt: Optional[int] = Field(default=None, ge=1)
     max_attempts: Optional[int] = Field(default=None, ge=1)
@@ -230,22 +230,22 @@ class JobRead(BaseModel):
     project_id: uuid.UUID
     loop_id: uuid.UUID
     round_index: int
-    mode: ALLoopMode
-    summary_status: JobStatusV2
-    task_counts: Dict[str, int]
-    job_type: str
+    mode: LoopMode
+    state: RoundStatus
+    step_counts: Dict[str, int]
+    round_type: str
     plugin_id: str
     query_strategy: str
-    source_commit_id: Optional[uuid.UUID] = None
-    result_commit_id: Optional[uuid.UUID] = None
+    input_commit_id: Optional[uuid.UUID] = None
+    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     retry_count: int
-    last_error: Optional[str] = None
+    terminal_reason: Optional[str] = None
     final_metrics: Dict[str, Any]
     final_artifacts: Dict[str, Any]
-    params: Dict[str, Any]
+    resolved_params: Dict[str, Any]
     resources: Dict[str, Any]
     strategy_params: Dict[str, Any]
     model_id: Optional[uuid.UUID] = None
@@ -255,7 +255,7 @@ class JobRead(BaseModel):
 
 class JobCommandResponse(BaseModel):
     request_id: str
-    job_id: uuid.UUID
+    round_id: uuid.UUID
     status: str
 
 
@@ -263,17 +263,17 @@ class JobTaskRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    job_id: uuid.UUID
-    task_type: JobTaskType
-    status: JobTaskStatus
+    round_id: uuid.UUID
+    step_type: StepType
+    state: StepStatus
     round_index: int
-    task_index: int
-    depends_on: List[str]
-    params: Dict[str, Any]
+    step_index: int
+    depends_on_step_ids: List[str]
+    resolved_params: Dict[str, Any]
     metrics: Dict[str, Any]
     artifacts: Dict[str, Any]
-    source_commit_id: Optional[uuid.UUID] = None
-    result_commit_id: Optional[uuid.UUID] = None
+    input_commit_id: Optional[uuid.UUID] = None
+    output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     attempt: int
     max_attempts: int
@@ -286,7 +286,7 @@ class JobTaskRead(BaseModel):
 
 class TaskCommandResponse(BaseModel):
     request_id: str
-    task_id: uuid.UUID
+    step_id: uuid.UUID
     status: str
 
 
@@ -321,12 +321,12 @@ class TaskArtifactRead(BaseModel):
 
 
 class TaskArtifactsResponse(BaseModel):
-    task_id: uuid.UUID
+    step_id: uuid.UUID
     artifacts: List[TaskArtifactRead]
 
 
 class TaskArtifactDownloadResponse(BaseModel):
-    task_id: uuid.UUID
+    step_id: uuid.UUID
     artifact_name: str
     download_url: str
     expires_in_hours: int = Field(default=2, ge=1, le=24)
@@ -334,12 +334,12 @@ class TaskArtifactDownloadResponse(BaseModel):
 
 class LoopSummaryRead(BaseModel):
     loop_id: uuid.UUID
-    status: ALLoopStatus
+    status: LoopStatus
     phase: LoopPhase
-    jobs_total: int
-    jobs_succeeded: int
-    tasks_total: int
-    tasks_succeeded: int
+    rounds_total: int
+    rounds_succeeded: int
+    steps_total: int
+    steps_succeeded: int
     metrics_latest: Dict[str, Any]
 
 
@@ -351,7 +351,7 @@ class SimulationExperimentCreateRequest(BaseModel):
     global_config: Dict[str, Any] = Field(default_factory=dict)
     model_request_config: Dict[str, Any] = Field(default_factory=dict)
     simulation_config: LoopSimulationConfig
-    status: ALLoopStatus = ALLoopStatus.DRAFT
+    status: LoopStatus = LoopStatus.DRAFT
 
 
 class SimulationExperimentCreateResponse(BaseModel):
@@ -387,7 +387,7 @@ class SimulationComparisonRead(BaseModel):
 class LoopConfirmResponse(BaseModel):
     loop_id: uuid.UUID
     phase: LoopPhase
-    status: ALLoopStatus
+    state: LoopStatus
 
 
 class RoundPredictionCleanupResponse(BaseModel):

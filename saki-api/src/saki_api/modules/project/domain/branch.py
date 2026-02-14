@@ -16,7 +16,7 @@ from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from saki_api.modules.project.domain.commit import Commit
     from saki_api.modules.project.domain.project import Project
-    from saki_api.modules.runtime.domain.loop import ALLoop
+    from saki_api.modules.runtime.domain.loop import Loop
 
 
 class BranchBase(SQLModel):
@@ -46,7 +46,7 @@ class Branch(BranchBase, TimestampMixin, UUIDMixin, table=True):
     project: "Project" = Relationship(back_populates="branches")
     head_commit: "Commit" = Relationship()
     # 允许反向找到它所属的 Loop（如果是实验分支的话）
-    active_learning_loop: Optional["ALLoop"] = Relationship(
+    loop: Optional["Loop"] = Relationship(
         back_populates="branch",
         sa_relationship_kwargs={"uselist": False}
     )

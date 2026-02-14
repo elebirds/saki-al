@@ -17,13 +17,13 @@ from saki_api.modules.runtime.api.job import (
     SimulationExperimentCreateRequest,
 )
 from saki_api.modules.runtime.domain import phase_for_mode
-from saki_api.modules.runtime.domain.loop import ALLoop
-from saki_api.modules.shared.modeling.enums import ALLoopMode, ALLoopStatus, LoopPhase
+from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.shared.modeling.enums import LoopMode, LoopStatus, LoopPhase
 
 
 class LoopCommandMixin:
     @transactional
-    async def create_loop(self, project_id: uuid.UUID, payload: LoopCreateRequest) -> ALLoop:
+    async def create_loop(self, project_id: uuid.UUID, payload: LoopCreateRequest) -> Loop:
         branch = await self.project_gateway.get_branch(payload.branch_id)
         if not branch:
             raise NotFoundAppException(f"Branch {payload.branch_id} not found")
@@ -32,7 +32,7 @@ class LoopCommandMixin:
 
         await self._validate_plugin_id(payload.model_arch)
 
-        existing = await self.loop_repo.get_one(filters=[ALLoop.branch_id == payload.branch_id])
+        existing = await self.loop_repo.get_one(filters=[Loop.branch_id == payload.branch_id])
         if existing:
             raise BadRequestAppException("Branch already has a loop bound")
 
@@ -49,11 +49,11 @@ class LoopCommandMixin:
         )
         normalized_global_config["simulation"] = normalized_simulation.model_dump(mode="json", exclude_none=True)
 
-        if payload.mode == ALLoopMode.SIMULATION and normalized_simulation.oracle_commit_id is None:
+        if payload.mode == LoopMode.SIMULATION and normalized_simulation.oracle_commit_id is None:
             raise BadRequestAppException("simulation mode requires oracle_commit_id")
 
         resolved_max_rounds = payload.max_rounds
-        if payload.mode == ALLoopMode.MANUAL:
+        if payload.mode == LoopMode.MANUAL:
             resolved_max_rounds = 1
 
         create_data = LoopCreateData(
@@ -80,7 +80,7 @@ class LoopCommandMixin:
         return await self.loop_repo.create(create_data.model_dump(exclude_none=True))
 
     @transactional
-    async def update_loop(self, loop_id: uuid.UUID, payload: LoopUpdateRequest) -> ALLoop:
+    async def update_loop(self, loop_id: uuid.UUID, payload: LoopUpdateRequest) -> Loop:
         loop = await self.loop_repo.get_by_id(loop_id)
         if not loop:
             raise NotFoundAppException(f"Loop {loop_id} not found")
@@ -138,11 +138,11 @@ class LoopCommandMixin:
         ):
             patch.global_config = resolved_global_config
 
-        if next_mode == ALLoopMode.SIMULATION:
+        if next_mode == LoopMode.SIMULATION:
             simulation_config = self._extract_simulation_config(resolved_global_config or {})
             if simulation_config.oracle_commit_id is None:
                 raise BadRequestAppException("simulation mode requires oracle_commit_id")
-        if next_mode == ALLoopMode.MANUAL:
+        if next_mode == LoopMode.MANUAL:
             patch.max_rounds = 1
 
         patch_payload = patch.model_dump(exclude_none=True)
@@ -156,7 +156,7 @@ class LoopCommandMixin:
         *,
         project_id: uuid.UUID,
         payload: SimulationExperimentCreateRequest,
-    ) -> tuple[uuid.UUID, List[ALLoop]]:
+    ) -> tuple[uuid.UUID, List[Loop]]:
         branch = await self.project_gateway.get_branch(payload.branch_id)
         if not branch:
             raise NotFoundAppException(f"Branch {payload.branch_id} not found")
@@ -184,7 +184,7 @@ class LoopCommandMixin:
         experiment_name = str(payload.experiment_name or f"sim-{str(group_id)[:8]}").strip()
         group_token = str(group_id).split("-")[0]
 
-        loops: list[ALLoop] = []
+        loops: list[Loop] = []
         for strategy in strategies:
             for seed in simulation_config.seeds:
                 strategy_segment = self._normalize_branch_segment(strategy, fallback="strategy")
@@ -212,7 +212,7 @@ class LoopCommandMixin:
                 loop_payload = LoopCreateRequest(
                     name=self._truncate(f"{experiment_name}-{strategy}-seed-{seed}", max_len=100),
                     branch_id=fork_branch.id,
-                    mode=ALLoopMode.SIMULATION,
+                    mode=LoopMode.SIMULATION,
                     query_strategy=strategy,
                     model_arch=payload.model_arch,
                     global_config=loop_global_config,
@@ -229,11 +229,11 @@ class LoopCommandMixin:
         return group_id, loops
 
     @transactional
-    async def confirm_loop_step(self, loop_id: uuid.UUID) -> ALLoop:
+    async def confirm_loop_step(self, loop_id: uuid.UUID) -> Loop:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.mode != ALLoopMode.MANUAL:
+        if loop.mode != LoopMode.MANUAL:
             raise BadRequestAppException("confirm is only available in manual mode")
-        if loop.phase != LoopPhase.MANUAL_WAIT_CONFIRM:
+        if loop.phase != LoopPhase.MANUAL_EVAL:
             raise BadRequestAppException("loop is not waiting for manual confirmation")
 
         return await self.loop_repo.update_or_raise(
@@ -242,37 +242,37 @@ class LoopCommandMixin:
         )
 
     @transactional
-    async def start_loop(self, loop_id: uuid.UUID) -> ALLoop:
+    async def start_loop(self, loop_id: uuid.UUID) -> Loop:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.status == ALLoopStatus.COMPLETED:
+        if loop.status == LoopStatus.COMPLETED:
             raise BadRequestAppException("Completed loop cannot be started")
         return await self.loop_repo.update_or_raise(
             loop_id,
-            LoopPatch(status=ALLoopStatus.RUNNING).model_dump(exclude_none=True),
+            LoopPatch(status=LoopStatus.RUNNING).model_dump(exclude_none=True),
         )
 
     @transactional
-    async def pause_loop(self, loop_id: uuid.UUID) -> ALLoop:
+    async def pause_loop(self, loop_id: uuid.UUID) -> Loop:
         await self.loop_repo.get_by_id_or_raise(loop_id)
         return await self.loop_repo.update_or_raise(
             loop_id,
-            LoopPatch(status=ALLoopStatus.PAUSED).model_dump(exclude_none=True),
+            LoopPatch(status=LoopStatus.PAUSED).model_dump(exclude_none=True),
         )
 
     @transactional
-    async def resume_loop(self, loop_id: uuid.UUID) -> ALLoop:
+    async def resume_loop(self, loop_id: uuid.UUID) -> Loop:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.status in {ALLoopStatus.STOPPED, ALLoopStatus.COMPLETED}:
+        if loop.status in {LoopStatus.STOPPED, LoopStatus.COMPLETED}:
             raise BadRequestAppException(f"Loop in status {loop.status} cannot be resumed")
         return await self.loop_repo.update_or_raise(
             loop_id,
-            LoopPatch(status=ALLoopStatus.RUNNING).model_dump(exclude_none=True),
+            LoopPatch(status=LoopStatus.RUNNING).model_dump(exclude_none=True),
         )
 
     @transactional
-    async def stop_loop(self, loop_id: uuid.UUID) -> ALLoop:
+    async def stop_loop(self, loop_id: uuid.UUID) -> Loop:
         await self.loop_repo.get_by_id_or_raise(loop_id)
         return await self.loop_repo.update_or_raise(
             loop_id,
-            LoopPatch(status=ALLoopStatus.STOPPED).model_dump(exclude_none=True),
+            LoopPatch(status=LoopStatus.STOPPED).model_dump(exclude_none=True),
         )

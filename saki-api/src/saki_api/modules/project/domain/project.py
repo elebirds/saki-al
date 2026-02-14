@@ -9,8 +9,8 @@ from saki_api.modules.shared.modeling.enums import TaskType, ProjectStatus
 
 if TYPE_CHECKING:
     from saki_api.modules.storage.domain.dataset import Dataset
-    from saki_api.modules.runtime.domain.job import Job
-    from saki_api.modules.runtime.domain.loop import ALLoop
+    from saki_api.modules.runtime.domain.round import Round
+    from saki_api.modules.runtime.domain.loop import Loop
     from saki_api.modules.project.domain.branch import Branch
     from saki_api.modules.project.domain.commit import Commit
     from saki_api.modules.project.domain.label import Label
@@ -61,5 +61,5 @@ class Project(ProjectBase, TimestampMixin, UUIDMixin, table=True):
     labels: List["Label"] = Relationship(back_populates="project", cascade_delete=True)
 
     # 3. 训练任务 (L3)
-    jobs: List["Job"] = Relationship(back_populates="project")
-    loops: List["ALLoop"] = Relationship(back_populates="project", cascade_delete=True)
+    rounds: List["Round"] = Relationship(back_populates="project")
+    loops: List["Loop"] = Relationship(back_populates="project", cascade_delete=True)

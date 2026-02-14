@@ -20,8 +20,8 @@ class RuntimeAppModule:
     name: str = "runtime"
 
     def register_routes(self, api_router: APIRouter) -> None:
-        api_router.include_router(l3_job.router, prefix="", tags=["jobs"])
-        api_router.include_router(l3_query.router, prefix="", tags=["loops", "jobs"])
+        api_router.include_router(l3_job.router, prefix="", tags=["rounds", "steps"])
+        api_router.include_router(l3_query.router, prefix="", tags=["loops", "rounds", "steps"])
         api_router.include_router(l3_runtime.router, prefix="", tags=["runtime"])
         api_router.include_router(l3_loop_control.router, prefix="", tags=["loops", "annotation-batches"])
         api_router.include_router(l3_model.router, prefix="", tags=["models"])

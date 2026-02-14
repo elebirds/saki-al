@@ -118,7 +118,7 @@ def _build_data_response_message(
         *,
         request_id: str,
         reply_to: str,
-        task_id: str,
+        step_id: str,
         query_type: int,
         items: list[pb.DataItem],
 ) -> pb.RuntimeMessage:
@@ -126,7 +126,7 @@ def _build_data_response_message(
         data_response=pb.DataResponse(
             request_id=request_id,
             reply_to=reply_to,
-            task_id=task_id,
+            step_id=step_id,
             query_type=query_type,
             items=items,
             next_cursor="",
@@ -171,7 +171,7 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            task_id=request.task_id,
+            step_id=request.step_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -222,7 +222,7 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            task_id=request.task_id,
+            step_id=request.step_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -291,7 +291,7 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
                 data_response=pb.DataResponse(
                     request_id=f"resp-{request.request_id}",
                     reply_to=request.request_id,
-                    task_id=request.task_id,
+                    step_id=request.step_id,
                     query_type=request.query_type,
                     items=items,
                     next_cursor=next_cursor,
@@ -301,7 +301,7 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            task_id=request.task_id,
+            step_id=request.step_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -353,7 +353,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
         return _build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            task_id=request.task_id,
+            step_id=request.step_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )

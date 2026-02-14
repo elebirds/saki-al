@@ -31,25 +31,25 @@ def test_build_assign_task_message_and_decode_fields():
     message = runtime_codec.build_assign_task_message(
         request_id="assign-1",
         payload={
-            "task_id": "task-1",
-            "job_id": "job-1",
+            "step_id": "step-1",
+            "round_id": "round-1",
             "loop_id": "loop-1",
             "project_id": "project-1",
-            "source_commit_id": "commit-1",
-            "task_type": "train",
+            "input_commit_id": "commit-1",
+            "step_type": "train",
             "plugin_id": "yolo_det_v1",
             "mode": "manual",
             "query_strategy": "random_baseline",
-            "params": {"epochs": 1},
+            "resolved_params": {"epochs": 1},
             "resources": {"gpu_count": 0, "cpu_workers": 2, "memory_mb": 1024},
             "round_index": 2,
             "attempt": 1,
-            "depends_on_task_ids": ["task-0"],
+            "depends_on_step_ids": ["step-0"],
         },
     )
     assert message.WhichOneof("payload") == "assign_task"
     task = message.assign_task.step
-    assert task.step_id == "task-1"
+    assert task.step_id == "step-1"
     assert task.step_type == pb.TRAIN
     assert task.mode == pb.MANUAL
     assert runtime_codec.struct_to_dict(task.resolved_params) == {"epochs": 1}

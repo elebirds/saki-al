@@ -53,5 +53,5 @@ class RuntimeHeartbeatDTO:
     request_id: str
     executor_id: str
     busy: bool
-    current_task_id: str
+    current_step_id: str
     resources: dict[str, Any] = field(default_factory=dict)

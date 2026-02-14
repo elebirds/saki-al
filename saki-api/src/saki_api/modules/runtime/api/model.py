@@ -5,8 +5,8 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
-class ModelRegisterFromJobRequest(BaseModel):
-    job_id: uuid.UUID
+class ModelRegisterFromRoundRequest(BaseModel):
+    round_id: uuid.UUID
     name: Optional[str] = None
     version_tag: str = "v1.0"
     status: str = "candidate"
@@ -14,7 +14,7 @@ class ModelRegisterFromJobRequest(BaseModel):
 
 class ModelCreateData(BaseModel):
     project_id: uuid.UUID
-    job_id: Optional[uuid.UUID] = None
+    round_id: Optional[uuid.UUID] = None
     source_commit_id: Optional[uuid.UUID] = None
     parent_model_id: Optional[uuid.UUID] = None
     plugin_id: str
@@ -39,7 +39,7 @@ class ModelRead(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
-    job_id: Optional[uuid.UUID] = None
+    round_id: Optional[uuid.UUID] = None
     source_commit_id: Optional[uuid.UUID] = None
     parent_model_id: Optional[uuid.UUID] = None
     plugin_id: str

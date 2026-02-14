@@ -210,7 +210,11 @@ func (s *Service) ConfirmLoop(
 			if loop.Phase != phaseALWaitAnnotation {
 				return "rejected", "active-learning loop is not waiting for annotation", nil
 			}
-			if loop.CurrentIteration >= loop.MaxRounds {
+			nextRound, err := s.getNextRoundIndexTx(ctx, tx, loop.ID)
+			if err != nil {
+				return "", "", err
+			}
+			if nextRound > loop.MaxRounds {
 				if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseALFinalize, "", loop.LastConfirmedCommitID); err != nil {
 					return "", "", err
 				}
@@ -871,7 +875,7 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 
 	switch loop.Mode {
 	case modeSIM:
-		if loop.CurrentIteration >= loop.MaxRounds {
+		if latestJob.RoundIndex >= loop.MaxRounds {
 			if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseSimFinalize, "", loop.LastConfirmedCommitID); err != nil {
 				return err
 			}
@@ -884,7 +888,7 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 			}
 		}
 	case modeAL:
-		if loop.CurrentIteration >= loop.MaxRounds {
+		if latestJob.RoundIndex >= loop.MaxRounds {
 			if err := s.updateLoopState(ctx, tx, loop.ID, statusCompleted, phaseALFinalize, "", loop.LastConfirmedCommitID); err != nil {
 				return err
 			}
@@ -1172,11 +1176,116 @@ func (s *Service) runOrchestratorTaskTx(
 	resultCommitID *string,
 ) error {
 	switch strings.ToUpper(strings.TrimSpace(task.StepType)) {
+	case "SELECT":
+		return s.runSelectTopKTx(ctx, tx, task)
 	case "ACTIVATE_SAMPLES":
 		return s.runActivateSamplesTx(ctx, tx, task, resultCommitID)
 	default:
 		return nil
 	}
+}
+
+func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, task taskDispatchPayload) error {
+	var queryBatch int
+	if err := tx.QueryRow(
+		ctx,
+		`SELECT query_batch_size FROM loop WHERE id=$1::uuid`,
+		task.LoopID,
+	).Scan(&queryBatch); err != nil {
+		return err
+	}
+	if queryBatch <= 0 {
+		queryBatch = 1
+	}
+
+	var scoreStepID string
+	if err := tx.QueryRow(
+		ctx,
+		`SELECT id::text
+		   FROM step
+		  WHERE round_id=$1::uuid
+		    AND step_type='SCORE'
+		    AND state='SUCCEEDED'
+		  ORDER BY step_index DESC
+		  LIMIT 1`,
+		task.RoundID,
+	).Scan(&scoreStepID); err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("score step not ready for select step %s", task.StepID)
+		}
+		return err
+	}
+
+	rows, err := tx.Query(
+		ctx,
+		`SELECT sample_id::text,
+		        rank,
+		        score,
+		        COALESCE(reason::text,'{}'),
+		        COALESCE(prediction_snapshot::text,'{}')
+		   FROM step_candidate_item
+		  WHERE step_id=$1::uuid
+		  ORDER BY rank ASC, score DESC
+		  LIMIT $2`,
+		scoreStepID,
+		queryBatch,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type candidateRow struct {
+		sampleID       string
+		score          float64
+		reasonJSON     string
+		predictionJSON string
+	}
+	candidates := make([]candidateRow, 0, queryBatch)
+	for rows.Next() {
+		var (
+			row  candidateRow
+			rank int
+		)
+		if err := rows.Scan(&row.sampleID, &rank, &row.score, &row.reasonJSON, &row.predictionJSON); err != nil {
+			return err
+		}
+		_ = rank
+		candidates = append(candidates, row)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM step_candidate_item WHERE step_id=$1::uuid`, task.StepID); err != nil {
+		return err
+	}
+
+	for idx, item := range candidates {
+		parsedSampleID, err := uuid.Parse(strings.TrimSpace(item.sampleID))
+		if err != nil {
+			continue
+		}
+		if _, err := tx.Exec(
+			ctx,
+			`INSERT INTO step_candidate_item(
+			     id,step_id,sample_id,rank,score,reason,prediction_snapshot,created_at,updated_at
+			   ) VALUES(
+			     $1::uuid,$2::uuid,$3::uuid,$4,$5,$6::jsonb,$7::jsonb,now(),now()
+			   )`,
+			uuid.NewString(),
+			task.StepID,
+			parsedSampleID.String(),
+			idx+1,
+			item.score,
+			item.reasonJSON,
+			item.predictionJSON,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) runActivateSamplesTx(
@@ -1265,11 +1374,26 @@ func (s *Service) ensureLoopHasJob(ctx context.Context, tx pgx.Tx, loop loopRow,
 	return false, nil
 }
 
+func (s *Service) getNextRoundIndexTx(ctx context.Context, tx pgx.Tx, loopID string) (int, error) {
+	var currentMax int
+	if err := tx.QueryRow(
+		ctx,
+		`SELECT COALESCE(MAX(round_index),0) FROM round WHERE loop_id=$1::uuid`,
+		loopID,
+	).Scan(&currentMax); err != nil {
+		return 0, err
+	}
+	return currentMax + 1, nil
+}
+
 func (s *Service) createNextJobTx(ctx context.Context, tx pgx.Tx, loop loopRow, commandID string) (bool, error) {
-	if loop.CurrentIteration >= loop.MaxRounds {
+	nextRound, err := s.getNextRoundIndexTx(ctx, tx, loop.ID)
+	if err != nil {
+		return false, err
+	}
+	if nextRound > loop.MaxRounds {
 		return false, nil
 	}
-	nextRound := loop.CurrentIteration + 1
 	sourceCommitID, projectIDFromBranch, err := s.resolveBranchHead(ctx, loop.BranchID)
 	if err != nil {
 		s.logger.Warn().Err(err).Str("loop_id", loop.ID).Msg("resolve branch head failed, continue with empty source commit")
@@ -2034,10 +2158,10 @@ type commandLogEntry struct {
 
 type taskDispatchPayload struct {
 	StepID           string
-	RoundID            string
+	RoundID          string
 	LoopID           string
 	ProjectID        string
-	InputCommitID   string
+	InputCommitID    string
 	StepType         string
 	PluginID         string
 	Mode             string
@@ -2049,10 +2173,10 @@ type taskDispatchPayload struct {
 	Params           *structpb.Struct
 	Resources        *runtimecontrolv1.ResourceSummary
 
-	dependsOnRaw      string
-	paramsRaw         string
-	roundParamsRaw      string
-	resourcesRaw      string
+	dependsOnRaw       string
+	paramsRaw          string
+	roundParamsRaw     string
+	resourcesRaw       string
 	roundInputCommitID string
 }
 
@@ -2328,9 +2452,6 @@ func toRuntimeTaskType(raw string) runtimecontrolv1.RuntimeTaskType {
 	case "SELECT":
 		return runtimecontrolv1.RuntimeTaskType_SELECT
 	case "ACTIVATE_SAMPLES":
-		return runtimecontrolv1.RuntimeTaskType_ACTIVATE_SAMPLES
-	case "AUTO_LABEL":
-		// Backward alias.
 		return runtimecontrolv1.RuntimeTaskType_ACTIVATE_SAMPLES
 	case "WAIT_ANNOTATION":
 		return runtimecontrolv1.RuntimeTaskType_WAIT_ANNOTATION

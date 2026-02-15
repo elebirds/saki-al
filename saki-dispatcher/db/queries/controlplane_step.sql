@@ -8,12 +8,12 @@ WHERE s.state = 'PENDING'::stepstatus
 ORDER BY s.created_at ASC
 LIMIT sqlc.arg(limit_count);
 
--- name: ListPendingStepIDsForUpdateSkipLocked :many
+-- name: ListReadyStepIDsForUpdateSkipLocked :many
 SELECT s.id::text AS id
 FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
-WHERE s.state = 'PENDING'::stepstatus
+WHERE s.state = 'READY'::stepstatus
   AND l.status = 'RUNNING'::loopstatus
 ORDER BY s.created_at ASC
 LIMIT sqlc.arg(limit_count)
@@ -23,18 +23,19 @@ FOR UPDATE OF s SKIP LOCKED;
 SELECT
   t.id::text AS step_id,
   t.round_id::text AS round_id,
-  t.state::text AS status,
-  t.step_type::text AS step_type,
-  t.dispatch_kind::text AS dispatch_kind,
+  t.state AS status,
+  t.step_type AS step_type,
+  t.dispatch_kind AS dispatch_kind,
   t.round_index,
   t.attempt,
+  t.state_version,
   COALESCE(t.depends_on_step_ids::text, '[]'::text)::text AS depends_on_raw,
   COALESCE(t.resolved_params::text, '{}'::text)::text AS params_raw,
   COALESCE(t.input_commit_id::text, ''::text)::text AS input_commit_id,
   j.loop_id::text AS loop_id,
   j.project_id::text AS project_id,
   j.plugin_id,
-  j.mode::text AS mode,
+  j.mode AS mode,
   j.query_strategy,
   COALESCE(j.resolved_params::text, '{}'::text)::text AS round_params_raw,
   COALESCE(j.resources::text, '{}'::text)::text AS resources_raw,
@@ -45,9 +46,17 @@ WHERE t.id = sqlc.arg(step_id)::uuid
 FOR UPDATE SKIP LOCKED;
 
 -- name: GetDependencyStatesByIDs :many
-SELECT state::text AS state
+SELECT state
 FROM step
 WHERE id = ANY(sqlc.arg(step_ids)::uuid[]);
+
+-- name: PromoteStepToReady :execrows
+UPDATE step
+SET state = 'READY'::stepstatus,
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = 'PENDING'::stepstatus;
 
 -- name: MarkStepDispatching :execrows
 UPDATE step
@@ -57,32 +66,49 @@ SET state = 'DISPATCHING'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'PENDING'::stepstatus;
+  AND state = 'READY'::stepstatus;
 
--- name: ResetStepToPendingQueueFull :exec
+-- name: ResetStepToReadyQueueFull :execrows
 UPDATE step
-SET state = 'PENDING'::stepstatus,
+SET state = 'READY'::stepstatus,
     assigned_executor_id = NULL,
+    dispatch_request_id = NULL,
     last_error = 'dispatcher queue full',
+    state_version = state_version + 1,
     updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid;
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = 'DISPATCHING'::stepstatus;
+
+-- name: RecoverStaleDispatchingStepToReady :execrows
+UPDATE step
+SET state = 'READY'::stepstatus,
+    assigned_executor_id = NULL,
+    dispatch_request_id = NULL,
+    last_error = sqlc.arg(last_error),
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = 'DISPATCHING'::stepstatus;
 
 -- name: MarkOrchestratorStepRunning :execrows
 UPDATE step
 SET state = 'RUNNING'::stepstatus,
     started_at = COALESCE(started_at, now()),
+    state_version = state_version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'PENDING'::stepstatus;
+  AND state = 'READY'::stepstatus;
 
--- name: UpdateStepExecutionResult :exec
+-- name: UpdateStepExecutionResultGuarded :execrows
 UPDATE step
 SET state = sqlc.arg(state)::stepstatus,
     last_error = sqlc.narg(last_error)::text,
     output_commit_id = sqlc.narg(output_commit_id)::uuid,
     ended_at = COALESCE(ended_at, now()),
+    state_version = state_version + 1,
     updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid;
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = sqlc.arg(from_state)::stepstatus;
 
 -- name: UpdateRoundOutputCommit :exec
 UPDATE round
@@ -166,16 +192,24 @@ WHERE round_id = sqlc.arg(round_id)::uuid
 ORDER BY step_index DESC
 LIMIT 1;
 
--- name: UpdateStepStatusFromEvent :execrows
+-- name: GetStepStateForUpdate :one
+SELECT state
+FROM step
+WHERE id = sqlc.arg(step_id)::uuid
+FOR UPDATE;
+
+-- name: UpdateStepStatusFromEventGuarded :execrows
 UPDATE step
 SET state = sqlc.arg(state)::stepstatus,
     started_at = CASE WHEN sqlc.arg(state)::stepstatus = 'RUNNING'::stepstatus THEN COALESCE(started_at, now()) ELSE started_at END,
     ended_at = CASE WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
     last_error = CASE WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN sqlc.narg(reason)::text ELSE last_error END,
+    state_version = state_version + 1,
     updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid;
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = sqlc.arg(from_state)::stepstatus;
 
--- name: UpdateStepResult :execrows
+-- name: UpdateStepResultGuarded :execrows
 UPDATE step
 SET state = sqlc.arg(state)::stepstatus,
     metrics = sqlc.arg(metrics)::jsonb,
@@ -183,8 +217,10 @@ SET state = sqlc.arg(state)::stepstatus,
     last_error = sqlc.narg(error_message)::text,
     started_at = COALESCE(started_at, now()),
     ended_at = CASE WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
+    state_version = state_version + 1,
     updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid;
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = sqlc.arg(from_state)::stepstatus;
 
 -- name: InsertStepMetricPoint :exec
 INSERT INTO step_metric_point(

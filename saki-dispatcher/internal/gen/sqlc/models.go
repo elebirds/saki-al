@@ -939,6 +939,22 @@ type Dataset struct {
 	OwnerID                   pgtype.UUID
 }
 
+type DispatchOutbox struct {
+	CreatedAt     pgtype.Timestamp
+	UpdatedAt     pgtype.Timestamp
+	ID            pgtype.UUID
+	StepID        pgtype.UUID
+	ExecutorID    string
+	RequestID     string
+	Payload       []byte
+	Status        string
+	AttemptCount  int32
+	NextAttemptAt pgtype.Timestamp
+	LockedAt      pgtype.Timestamp
+	SentAt        pgtype.Timestamp
+	LastError     pgtype.Text
+}
+
 type Label struct {
 	ID          pgtype.UUID
 	CreatedAt   pgtype.Timestamp

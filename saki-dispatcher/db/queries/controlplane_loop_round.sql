@@ -12,9 +12,9 @@ SELECT
   id::text AS id,
   project_id::text AS project_id,
   branch_id::text AS branch_id,
-  mode::text AS mode,
-  phase::text AS phase,
-  status::text AS status,
+  mode,
+  phase,
+  status,
   current_iteration,
   max_rounds,
   query_batch_size,
@@ -30,7 +30,7 @@ FOR UPDATE;
 SELECT
   id::text AS id,
   round_index,
-  state::text AS summary_status,
+  state AS summary_status,
   ended_at
 FROM round
 WHERE loop_id = sqlc.arg(loop_id)::uuid
@@ -110,6 +110,13 @@ SET status = sqlc.arg(status)::loopstatus,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid;
 
+-- name: UpdateLoopStatusGuarded :execrows
+UPDATE loop
+SET status = sqlc.arg(status)::loopstatus,
+    updated_at = now()
+WHERE id = sqlc.arg(loop_id)::uuid
+  AND status = sqlc.arg(from_status)::loopstatus;
+
 -- name: UpdateLoopState :exec
 UPDATE loop
 SET status = sqlc.arg(status)::loopstatus,
@@ -118,6 +125,16 @@ SET status = sqlc.arg(status)::loopstatus,
     last_confirmed_commit_id = sqlc.narg(last_confirmed_commit_id)::uuid,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid;
+
+-- name: UpdateLoopStateGuarded :execrows
+UPDATE loop
+SET status = sqlc.arg(status)::loopstatus,
+    phase = sqlc.arg(phase)::loopphase,
+    terminal_reason = sqlc.narg(terminal_reason)::text,
+    last_confirmed_commit_id = sqlc.narg(last_confirmed_commit_id)::uuid,
+    updated_at = now()
+WHERE id = sqlc.arg(loop_id)::uuid
+  AND status = sqlc.arg(from_status)::loopstatus;
 
 -- name: UpdateLoopLastConfirmedCommit :exec
 UPDATE loop
@@ -140,7 +157,7 @@ SET state = 'WAIT_USER'::roundstatus,
 WHERE id = sqlc.arg(round_id)::uuid;
 
 -- name: CountStepStatesByRound :many
-SELECT state::text AS state, COUNT(*)::int AS count
+SELECT state, COUNT(*)::int AS count
 FROM step
 WHERE round_id = sqlc.arg(round_id)::uuid
 GROUP BY state;
@@ -155,7 +172,7 @@ SET state = sqlc.arg(state)::roundstatus,
 WHERE id = sqlc.arg(round_id)::uuid;
 
 -- name: GetRoundState :one
-SELECT state::text AS state
+SELECT state
 FROM round
 WHERE id = sqlc.arg(round_id)::uuid;
 
@@ -166,23 +183,32 @@ SET state = sqlc.arg(state)::roundstatus,
     updated_at = now()
 WHERE id = sqlc.arg(round_id)::uuid;
 
+-- name: UpdateRoundStateWithReasonGuarded :execrows
+UPDATE round
+SET state = sqlc.arg(state)::roundstatus,
+    terminal_reason = sqlc.arg(terminal_reason),
+    updated_at = now()
+WHERE id = sqlc.arg(round_id)::uuid
+  AND state = sqlc.arg(from_state)::roundstatus;
+
 -- name: ListRoundActiveStepIDs :many
 SELECT id::text AS id
 FROM step
 WHERE round_id = sqlc.arg(round_id)::uuid
-  AND state IN ('PENDING'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
+  AND state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
 
 -- name: CancelStepsByRound :exec
 UPDATE step
 SET state = 'CANCELLED'::stepstatus,
     last_error = sqlc.arg(last_error),
     ended_at = COALESCE(ended_at, now()),
+    state_version = state_version + 1,
     updated_at = now()
 WHERE round_id = sqlc.arg(round_id)::uuid
-  AND state IN ('PENDING'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
+  AND state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
 
 -- name: GetStepState :one
-SELECT state::text AS state
+SELECT state
 FROM step
 WHERE id = sqlc.arg(step_id)::uuid;
 
@@ -191,19 +217,21 @@ UPDATE step
 SET state = 'CANCELLED'::stepstatus,
     last_error = sqlc.arg(last_error),
     ended_at = COALESCE(ended_at, now()),
+    state_version = state_version + 1,
     updated_at = now()
-WHERE id = sqlc.arg(step_id)::uuid;
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
 
 -- name: ListLoopStoppableSteps :many
 SELECT
   t.id::text AS id,
-  t.state::text AS state,
+  t.state,
   t.attempt,
   t.updated_at
 FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE j.loop_id = sqlc.arg(loop_id)::uuid
-  AND t.state IN ('PENDING'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus)
+  AND t.state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus)
 ORDER BY t.created_at ASC;
 
 -- name: CancelStepsByIDs :exec
@@ -211,16 +239,17 @@ UPDATE step
 SET state = 'CANCELLED'::stepstatus,
     last_error = sqlc.arg(last_error),
     ended_at = COALESCE(ended_at, now()),
+    state_version = state_version + 1,
     updated_at = now()
 WHERE id = ANY(sqlc.arg(step_ids)::uuid[])
-  AND state IN ('PENDING'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
+  AND state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
 
 -- name: CountLoopActiveSteps :one
 SELECT COUNT(*)::int AS count
 FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE j.loop_id = sqlc.arg(loop_id)::uuid
-  AND t.state IN ('PENDING'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
+  AND t.state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
 
 -- name: FindRoundIDByStep :one
 SELECT round_id::text AS round_id
@@ -240,7 +269,7 @@ FROM commit_annotation_map
 WHERE commit_id = sqlc.arg(commit_id)::uuid;
 
 -- name: GetLoopStatus :one
-SELECT status::text AS status
+SELECT status
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 

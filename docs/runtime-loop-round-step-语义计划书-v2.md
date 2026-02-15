@@ -758,6 +758,12 @@ Round 模板：
 
 `activation_key = loop_id + round_index + hash(sample_ids)`
 
+补充约定（双层幂等）：
+
+1. `command_id`：控制面命令幂等键，由 dispatcher 生成并透传，保证命令日志可重放与去重。
+2. `activation_key`：业务语义幂等键，由 runtime_domain 根据样本集合计算，保证“同一轮同一样本集合”返回同一 `commit_id`。
+3. 两者职责不同，不要求同公式；`command_id` 变化但 `activation_key` 不变时，仍必须命中同一业务结果。
+
 ### 8.3 事务边界
 
 1. dispatcher 生成 `ACTIVATE_SAMPLES` step。
@@ -897,4 +903,3 @@ Round 模板：
 4. `ACTIVATE_SAMPLES` 支持幂等重试，且不产生半提交。
 5. 前端可按 Loop -> Round -> Step 逐级查看日志与指标。
 6. Cleanup 不破坏核心追溯能力。
-

@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 )
@@ -53,21 +56,23 @@ func (s *Service) OnStepEvent(ctx context.Context, event *runtimecontrolv1.StepE
 
 	switch eventType {
 	case "status":
-		statusDB := statusText
 		stepPGID, err := toPGUUID(stepID)
 		if err != nil {
 			return err
 		}
-		affected, err := s.qtx(tx).UpdateStepStatusFromEvent(ctx, db.UpdateStepStatusFromEventParams{
-			State:  db.Stepstatus(statusDB),
-			Reason: toNullablePGText(strings.TrimSpace(event.GetStatusEvent().GetReason())),
-			StepID: stepPGID,
-		})
+		targetState := db.Stepstatus(statusText)
+		affected, err := s.updateStepStatusFromEventGuardedTx(
+			ctx,
+			tx,
+			stepPGID,
+			targetState,
+			strings.TrimSpace(event.GetStatusEvent().GetReason()),
+		)
 		if err != nil {
 			return err
 		}
 		if affected == 0 {
-			return fmt.Errorf("step not found: %s", stepID)
+			return fmt.Errorf("invalid step transition from runtime event: step=%s target=%s", stepID, targetState)
 		}
 
 	case "metric":
@@ -119,7 +124,7 @@ func (s *Service) OnStepResult(ctx context.Context, result *runtimecontrolv1.Ste
 	if statusText == "" {
 		statusText = stepFailed
 	}
-	statusDB := statusText
+	targetState := db.Stepstatus(statusText)
 
 	metricsJSON, err := marshalJSON(result.GetMetrics())
 	if err != nil {
@@ -140,18 +145,12 @@ func (s *Service) OnStepResult(ctx context.Context, result *runtimecontrolv1.Ste
 	if err != nil {
 		return err
 	}
-	affected, err := s.qtx(tx).UpdateStepResult(ctx, db.UpdateStepResultParams{
-		State:        db.Stepstatus(statusDB),
-		Metrics:      []byte(metricsJSON),
-		Artifacts:    []byte(artifactsJSON),
-		ErrorMessage: toNullablePGText(strings.TrimSpace(result.GetErrorMessage())),
-		StepID:       stepPGID,
-	})
+	affected, err := s.updateStepResultGuardedTx(ctx, tx, stepPGID, targetState, []byte(metricsJSON), []byte(artifactsJSON), strings.TrimSpace(result.GetErrorMessage()))
 	if err != nil {
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("step not found: %s", stepID)
+		return fmt.Errorf("invalid step result transition: step=%s target=%s", stepID, targetState)
 	}
 
 	if err := s.replaceStepCandidatesTx(ctx, tx, stepID, result.GetCandidates()); err != nil {
@@ -171,4 +170,76 @@ func (s *Service) OnStepResult(ctx context.Context, result *runtimecontrolv1.Ste
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Service) updateStepStatusFromEventGuardedTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID pgtype.UUID,
+	target db.Stepstatus,
+	reason string,
+) (int64, error) {
+	for _, fromState := range stepFromCandidatesForTarget(target) {
+		if !canStepTransition(fromState, target) {
+			continue
+		}
+		affected, err := s.qtx(tx).UpdateStepStatusFromEventGuarded(ctx, db.UpdateStepStatusFromEventGuardedParams{
+			State:     target,
+			Reason:    toNullablePGText(reason),
+			StepID:    stepID,
+			FromState: fromState,
+		})
+		if err != nil {
+			return 0, err
+		}
+		if affected > 0 {
+			return affected, nil
+		}
+	}
+	current, err := s.qtx(tx).GetStepStateForUpdate(ctx, stepID)
+	if err != nil {
+		return 0, err
+	}
+	if current == target {
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func (s *Service) updateStepResultGuardedTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID pgtype.UUID,
+	target db.Stepstatus,
+	metrics []byte,
+	artifacts []byte,
+	errorMessage string,
+) (int64, error) {
+	for _, fromState := range stepFromCandidatesForTarget(target) {
+		if !canStepTransition(fromState, target) {
+			continue
+		}
+		affected, err := s.qtx(tx).UpdateStepResultGuarded(ctx, db.UpdateStepResultGuardedParams{
+			State:        target,
+			Metrics:      metrics,
+			Artifacts:    artifacts,
+			ErrorMessage: toNullablePGText(errorMessage),
+			StepID:       stepID,
+			FromState:    fromState,
+		})
+		if err != nil {
+			return 0, err
+		}
+		if affected > 0 {
+			return affected, nil
+		}
+	}
+	current, err := s.qtx(tx).GetStepStateForUpdate(ctx, stepID)
+	if err != nil {
+		return 0, err
+	}
+	if current == target {
+		return 1, nil
+	}
+	return 0, nil
 }

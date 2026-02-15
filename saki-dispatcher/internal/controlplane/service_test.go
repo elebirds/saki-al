@@ -41,6 +41,20 @@ func TestActivationCommandIDChangesWhenAttemptChanges(t *testing.T) {
 	}
 }
 
+func TestActivationCommandIDMatchesFixedVector(t *testing.T) {
+	stepPayload := stepDispatchPayload{
+		LoopID:        "5f9cc0b9-5605-45f9-ab99-57e099a14d77",
+		RoundIndex:    3,
+		StepID:        "b7b947e9-9985-4637-ae6e-8812d78cbe3d",
+		Attempt:       2,
+		InputCommitID: "afdc1e09-7fd4-4ef6-909f-87a406f5da8f",
+	}
+	const want = "activate_samples:096bfc91a1c3db5e98c4b00f9d21abe2bbd9951a02f173e59eb2a0ff2f7cc3df"
+	if got := activationCommandID(stepPayload); got != want {
+		t.Fatalf("activation command id vector mismatch: got=%q want=%q", got, want)
+	}
+}
+
 func TestCancelAttemptCommandIDIsDeterministicAndAttemptScoped(t *testing.T) {
 	base := cancelAttemptCommandID("a03fbb75-c393-45d9-abab-76f3272f06fc", 1)
 	if base == "" {

@@ -207,12 +207,17 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 			return "applied", "round already in terminal state", nil
 		}
 
-		if err := s.qtx(tx).UpdateRoundStateWithReason(ctx, db.UpdateRoundStateWithReasonParams{
+		affected, err := s.qtx(tx).UpdateRoundStateWithReasonGuarded(ctx, db.UpdateRoundStateWithReasonGuardedParams{
 			State:          db.Roundstatus(roundCancelled),
 			TerminalReason: toPGText(reason),
 			RoundID:        roundPGID,
-		}); err != nil {
+			FromState:      db.Roundstatus(currentStatus),
+		})
+		if err != nil {
 			return "", "", err
+		}
+		if affected == 0 {
+			return "conflict", "round state changed concurrently", nil
 		}
 		stepIDs, err := s.qtx(tx).ListRoundActiveStepIDs(ctx, roundPGID)
 		if err != nil {

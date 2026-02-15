@@ -231,6 +231,7 @@ func (s *Service) withCommand(
 
 	status, detail, err := action(tx, commandID)
 	if err != nil {
+		s.persistCommandFailure(ctx, commandID, commandType, resourceID, err)
 		return CommandResult{}, err
 	}
 	if status == "" {
@@ -257,6 +258,40 @@ func (s *Service) withCommand(
 		Message:   detail,
 		RequestID: requestID,
 	}, nil
+}
+
+func (s *Service) persistCommandFailure(
+	ctx context.Context,
+	commandID string,
+	commandType string,
+	resourceID string,
+	actionErr error,
+) {
+	if !s.dbEnabled() {
+		return
+	}
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	requestID := uuid.NewString()
+	if _, err := s.insertCommandLogTx(ctx, tx, requestID, commandID, commandType, resourceID); err != nil {
+		return
+	}
+	detail := strings.TrimSpace(actionErr.Error())
+	if detail == "" {
+		detail = "command failed"
+	}
+	if err := s.qtx(tx).UpdateCommandLogStatusDetail(ctx, db.UpdateCommandLogStatusDetailParams{
+		CommandID: commandID,
+		Status:    "failed",
+		Detail:    detail,
+	}); err != nil {
+		return
+	}
+	_ = tx.Commit(ctx)
 }
 
 func (s *Service) listTickLoopIDs(ctx context.Context, limit int) ([]string, error) {
@@ -384,24 +419,7 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 	if err != nil {
 		return err
 	}
-	type stoppingStep struct {
-		ID        string
-		State     string
-		Attempt   int
-		UpdatedAt time.Time
-	}
-	tasks := make([]stoppingStep, 0, len(rows))
-	for _, row := range rows {
-		item := stoppingStep{
-			ID:      row.ID,
-			State:   asString(row.State),
-			Attempt: int(row.Attempt),
-		}
-		if row.UpdatedAt.Valid {
-			item.UpdatedAt = row.UpdatedAt.Time
-		}
-		tasks = append(tasks, item)
-	}
+	tasks := mapLoopStoppableSteps(rows)
 
 	if len(tasks) > 0 {
 		reason := "loop stopping requested"
@@ -701,7 +719,11 @@ func summarizeRoundState(counts map[string]int, total int) string {
 }
 
 func (s *Service) listPendingStepIDs(ctx context.Context, limit int) ([]string, error) {
-	return s.queries.ListPendingStepIDsForUpdateSkipLocked(ctx, int32(max(1, limit)))
+	return s.queries.ListPendingStepIDs(ctx, int32(max(1, limit)))
+}
+
+func (s *Service) listReadyStepIDs(ctx context.Context, limit int) ([]string, error) {
+	return s.queries.ListReadyStepIDsForUpdateSkipLocked(ctx, int32(max(1, limit)))
 }
 
 func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, dependencyIDs []string) (bool, error) {
@@ -717,7 +739,7 @@ func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, depend
 		return false, err
 	}
 	for _, state := range states {
-		if asString(state) != stepSucceeded {
+		if state != db.StepstatusSUCCEEDED {
 			return false, nil
 		}
 	}
@@ -746,15 +768,43 @@ func (s *Service) markStepDispatchingTx(
 	return updated > 0, nil
 }
 
+func (s *Service) promoteStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID string) (bool, error) {
+	stepPGID, err := toPGUUID(stepID)
+	if err != nil {
+		return false, err
+	}
+	updated, err := s.qtx(tx).PromoteStepToReady(ctx, stepPGID)
+	if err != nil {
+		return false, err
+	}
+	return updated > 0, nil
+}
+
 func (s *Service) updateLoopStatus(ctx context.Context, tx pgx.Tx, loopID string, status string) error {
 	loopPGID, err := toPGUUID(loopID)
 	if err != nil {
 		return err
 	}
-	return s.qtx(tx).UpdateLoopStatus(ctx, db.UpdateLoopStatusParams{
-		Status: db.Loopstatus(status),
-		LoopID: loopPGID,
+	currentStatus, err := s.qtx(tx).GetLoopStatus(ctx, loopPGID)
+	if err != nil {
+		return err
+	}
+	target := db.Loopstatus(status)
+	if !canLoopTransition(currentStatus, target) {
+		return fmt.Errorf("invalid loop transition: %s -> %s", currentStatus, target)
+	}
+	affected, err := s.qtx(tx).UpdateLoopStatusGuarded(ctx, db.UpdateLoopStatusGuardedParams{
+		Status:     target,
+		LoopID:     loopPGID,
+		FromStatus: currentStatus,
 	})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("loop transition conflict: %s -> %s", currentStatus, target)
+	}
+	return nil
 }
 
 func (s *Service) updateLoopState(
@@ -770,17 +820,33 @@ func (s *Service) updateLoopState(
 	if err != nil {
 		return err
 	}
+	currentStatus, err := s.qtx(tx).GetLoopStatus(ctx, loopPGID)
+	if err != nil {
+		return err
+	}
+	target := db.Loopstatus(status)
+	if !canLoopTransition(currentStatus, target) {
+		return fmt.Errorf("invalid loop transition: %s -> %s", currentStatus, target)
+	}
 	lastConfirmedCommitPGID, err := toNullablePGUUID(lastConfirmedCommitID)
 	if err != nil {
 		return err
 	}
-	return s.qtx(tx).UpdateLoopState(ctx, db.UpdateLoopStateParams{
-		Status:                db.Loopstatus(status),
+	affected, err := s.qtx(tx).UpdateLoopStateGuarded(ctx, db.UpdateLoopStateGuardedParams{
+		Status:                target,
 		Phase:                 db.Loopphase(phase),
 		TerminalReason:        toNullablePGText(terminalReason),
 		LastConfirmedCommitID: lastConfirmedCommitPGID,
 		LoopID:                loopPGID,
+		FromStatus:            currentStatus,
 	})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("loop state transition conflict: %s -> %s", currentStatus, target)
+	}
+	return nil
 }
 
 func (s *Service) findRoundIDByStep(ctx context.Context, tx pgx.Tx, stepID string) (string, error) {
@@ -870,13 +936,7 @@ func (s *Service) getLatestRoundByLoopTx(ctx context.Context, tx pgx.Tx, loopID 
 		}
 		return roundRow{}, false, err
 	}
-	row := roundRow{
-		ID:            record.ID,
-		RoundIndex:    int(record.RoundIndex),
-		SummaryStatus: asString(record.SummaryStatus),
-		EndedAt:       timestampPtr(record.EndedAt),
-	}
-	return row, true, nil
+	return mapLatestRound(record), true, nil
 }
 
 func (s *Service) lockLoop(ctx context.Context, tx pgx.Tx, loopID string) (loopRow, bool, error) {
@@ -901,22 +961,7 @@ func (s *Service) lockLoop(ctx context.Context, tx pgx.Tx, loopID string) (loopR
 		}
 		return loopRow{}, false, err
 	}
-	row := loopRow{
-		ID:                    record.ID,
-		ProjectID:             record.ProjectID,
-		BranchID:              record.BranchID,
-		Mode:                  asString(record.Mode),
-		Phase:                 asString(record.Phase),
-		Status:                asString(record.Status),
-		CurrentIteration:      int(record.CurrentIteration),
-		MaxRounds:             int(record.MaxRounds),
-		QueryBatchSize:        int(record.QueryBatchSize),
-		QueryStrategy:         record.QueryStrategy,
-		ModelArch:             record.ModelArch,
-		GlobalConfig:          asString(record.GlobalConfig),
-		LastConfirmedCommitID: asString(record.LastConfirmedCommitID),
-	}
-	return row, true, nil
+	return mapLoopForUpdate(record), true, nil
 }
 
 func (s *Service) getStepPayloadByIDTx(ctx context.Context, tx pgx.Tx, stepID string) (stepDispatchPayload, bool, error) {
@@ -931,45 +976,10 @@ func (s *Service) getStepPayloadByIDTx(ctx context.Context, tx pgx.Tx, stepID st
 		}
 		return stepDispatchPayload{}, false, err
 	}
-	row := stepDispatchPayload{
-		StepID:             record.StepID,
-		RoundID:            record.RoundID,
-		Status:             asString(record.Status),
-		StepType:           asString(record.StepType),
-		DispatchKind:       asString(record.DispatchKind),
-		RoundIndex:         int(record.RoundIndex),
-		Attempt:            int(record.Attempt),
-		dependsOnRaw:       asString(record.DependsOnRaw),
-		paramsRaw:          asString(record.ParamsRaw),
-		InputCommitID:      asString(record.InputCommitID),
-		LoopID:             record.LoopID,
-		ProjectID:          record.ProjectID,
-		PluginID:           record.PluginID,
-		Mode:               asString(record.Mode),
-		QueryStrategy:      record.QueryStrategy,
-		roundParamsRaw:     asString(record.RoundParamsRaw),
-		resourcesRaw:       asString(record.ResourcesRaw),
-		roundInputCommitID: asString(record.RoundInputCommitID),
+	row, err := mapStepPayload(record)
+	if err != nil {
+		return stepDispatchPayload{}, false, err
 	}
-	if strings.TrimSpace(row.InputCommitID) == "" {
-		row.InputCommitID = row.roundInputCommitID
-	}
-	var parseErr error
-	row.DependsOnStepIDs, parseErr = parseJSONStrings(row.dependsOnRaw)
-	if parseErr != nil {
-		return stepDispatchPayload{}, false, parseErr
-	}
-	row.Params, parseErr = toStruct(row.paramsRaw)
-	if parseErr != nil {
-		return stepDispatchPayload{}, false, parseErr
-	}
-	if row.Params == nil || len(row.Params.GetFields()) == 0 {
-		row.Params, parseErr = toStruct(row.roundParamsRaw)
-		if parseErr != nil {
-			return stepDispatchPayload{}, false, parseErr
-		}
-	}
-	row.Resources = toResourceSummary(row.resourcesRaw)
 	return row, true, nil
 }
 
@@ -1251,60 +1261,6 @@ func (s *Service) mergeArtifactIntoStepTx(
 	})
 }
 
-type loopRow struct {
-	ID                    string
-	ProjectID             string
-	BranchID              string
-	Mode                  string
-	Phase                 string
-	Status                string
-	CurrentIteration      int
-	MaxRounds             int
-	QueryBatchSize        int
-	QueryStrategy         string
-	ModelArch             string
-	GlobalConfig          string
-	LastConfirmedCommitID string
-}
-
-type roundRow struct {
-	ID            string
-	RoundIndex    int
-	SummaryStatus string
-	EndedAt       *time.Time
-}
-
-type commandLogEntry struct {
-	ID     string
-	Status string
-	Detail string
-}
-
-type stepDispatchPayload struct {
-	StepID           string
-	RoundID          string
-	LoopID           string
-	ProjectID        string
-	InputCommitID    string
-	StepType         string
-	DispatchKind     string
-	PluginID         string
-	Mode             string
-	QueryStrategy    string
-	RoundIndex       int
-	Attempt          int
-	Status           string
-	DependsOnStepIDs []string
-	Params           *structpb.Struct
-	Resources        *runtimecontrolv1.ResourceSummary
-
-	dependsOnRaw       string
-	paramsRaw          string
-	roundParamsRaw     string
-	resourcesRaw       string
-	roundInputCommitID string
-}
-
 func toStruct(raw string) (*structpb.Struct, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -1436,7 +1392,7 @@ func parseJSONStrings(raw string) ([]string, error) {
 	if raw == "" {
 		return []string{}, nil
 	}
-	result := []string{}
+	var result []string
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return []string{}, nil
 	}

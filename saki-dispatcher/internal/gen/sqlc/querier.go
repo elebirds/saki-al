@@ -14,6 +14,7 @@ type Querier interface {
 	CancelStepByID(ctx context.Context, arg CancelStepByIDParams) error
 	CancelStepsByIDs(ctx context.Context, arg CancelStepsByIDsParams) error
 	CancelStepsByRound(ctx context.Context, arg CancelStepsByRoundParams) error
+	ClaimDispatchOutboxDue(ctx context.Context, limitCount int32) ([]ClaimDispatchOutboxDueRow, error)
 	CopyStepCandidateItems(ctx context.Context, arg []CopyStepCandidateItemsParams) (int64, error)
 	CopyStepMetricPoints(ctx context.Context, arg []CopyStepMetricPointsParams) (int64, error)
 	CountCommitAnnotationsByCommit(ctx context.Context, commitID pgtype.UUID) (int64, error)
@@ -22,40 +23,49 @@ type Querier interface {
 	DeletePredictionCandidates(ctx context.Context, arg DeletePredictionCandidatesParams) (int64, error)
 	DeletePredictionEvents(ctx context.Context, arg DeletePredictionEventsParams) (int64, error)
 	DeletePredictionMetrics(ctx context.Context, arg DeletePredictionMetricsParams) (int64, error)
+	DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgtype.Timestamp) (int64, error)
 	DeleteStepCandidatesByStepID(ctx context.Context, stepID pgtype.UUID) error
 	FindRoundIDByStep(ctx context.Context, stepID pgtype.UUID) (string, error)
 	GetCommandLogByCommandID(ctx context.Context, commandID string) (GetCommandLogByCommandIDRow, error)
-	GetDependencyStatesByIDs(ctx context.Context, stepIds []pgtype.UUID) ([]string, error)
+	GetDependencyStatesByIDs(ctx context.Context, stepIds []pgtype.UUID) ([]Stepstatus, error)
 	GetLatestActivateOutputCommitByRound(ctx context.Context, roundID pgtype.UUID) (string, error)
 	GetLatestRoundByLoop(ctx context.Context, loopID pgtype.UUID) (GetLatestRoundByLoopRow, error)
 	GetLoopBranchID(ctx context.Context, loopID pgtype.UUID) (string, error)
 	GetLoopForUpdate(ctx context.Context, loopID pgtype.UUID) (GetLoopForUpdateRow, error)
 	GetLoopQueryBatchSize(ctx context.Context, loopID pgtype.UUID) (int32, error)
 	GetLoopRuntimeConfig(ctx context.Context, loopID pgtype.UUID) (GetLoopRuntimeConfigRow, error)
-	GetLoopStatus(ctx context.Context, loopID pgtype.UUID) (string, error)
+	GetLoopStatus(ctx context.Context, loopID pgtype.UUID) (Loopstatus, error)
 	GetNextRoundIndex(ctx context.Context, loopID pgtype.UUID) (int32, error)
-	GetRoundState(ctx context.Context, roundID pgtype.UUID) (string, error)
+	GetRoundState(ctx context.Context, roundID pgtype.UUID) (Roundstatus, error)
 	GetStepArtifactsForUpdate(ctx context.Context, stepID pgtype.UUID) (string, error)
 	GetStepPayloadByIDForUpdate(ctx context.Context, stepID pgtype.UUID) (GetStepPayloadByIDForUpdateRow, error)
-	GetStepState(ctx context.Context, stepID pgtype.UUID) (string, error)
+	GetStepState(ctx context.Context, stepID pgtype.UUID) (Stepstatus, error)
+	GetStepStateForUpdate(ctx context.Context, stepID pgtype.UUID) (Stepstatus, error)
 	GetSucceededScoreStepIDByRound(ctx context.Context, roundID pgtype.UUID) (string, error)
 	Healthcheck(ctx context.Context) (int32, error)
 	InsertCommandLog(ctx context.Context, arg InsertCommandLogParams) (int64, error)
+	InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOutboxParams) (int64, error)
 	InsertRound(ctx context.Context, arg InsertRoundParams) error
 	InsertStep(ctx context.Context, arg InsertStepParams) error
 	InsertStepCandidateItem(ctx context.Context, arg InsertStepCandidateItemParams) error
 	InsertStepEvent(ctx context.Context, arg InsertStepEventParams) (int64, error)
 	InsertStepMetricPoint(ctx context.Context, arg InsertStepMetricPointParams) error
 	ListLoopStoppableSteps(ctx context.Context, loopID pgtype.UUID) ([]ListLoopStoppableStepsRow, error)
+	ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]string, error)
 	ListPendingStepIDs(ctx context.Context, limitCount int32) ([]string, error)
-	ListPendingStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]string, error)
+	ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]string, error)
 	ListRoundActiveStepIDs(ctx context.Context, roundID pgtype.UUID) ([]string, error)
 	ListStepCandidatesByStepID(ctx context.Context, arg ListStepCandidatesByStepIDParams) ([]ListStepCandidatesByStepIDRow, error)
 	ListTickLoopIDs(ctx context.Context, limitCount int32) ([]string, error)
+	MarkDispatchOutboxRetry(ctx context.Context, arg MarkDispatchOutboxRetryParams) (int64, error)
+	MarkDispatchOutboxSent(ctx context.Context, outboxID pgtype.UUID) (int64, error)
 	MarkOrchestratorStepRunning(ctx context.Context, stepID pgtype.UUID) (int64, error)
 	MarkStepDispatching(ctx context.Context, arg MarkStepDispatchingParams) (int64, error)
+	PromoteStepToReady(ctx context.Context, stepID pgtype.UUID) (int64, error)
+	RecoverStaleDispatchingStepToReady(ctx context.Context, arg RecoverStaleDispatchingStepToReadyParams) (int64, error)
 	ReleaseDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
-	ResetStepToPendingQueueFull(ctx context.Context, stepID pgtype.UUID) error
+	ReleaseStaleSendingOutbox(ctx context.Context, cutoff pgtype.Timestamp) (int64, error)
+	ResetStepToReadyQueueFull(ctx context.Context, stepID pgtype.UUID) (int64, error)
 	ResolveBranchHeadFromDB(ctx context.Context, branchID pgtype.UUID) (ResolveBranchHeadFromDBRow, error)
 	TryDispatchAdvisoryLock(ctx context.Context, lockKey int64) (bool, error)
 	TryLoopAdvisoryXactLock(ctx context.Context, lockKey int64) (bool, error)
@@ -63,16 +73,19 @@ type Querier interface {
 	UpdateLoopAfterRoundCreated(ctx context.Context, arg UpdateLoopAfterRoundCreatedParams) error
 	UpdateLoopLastConfirmedCommit(ctx context.Context, arg UpdateLoopLastConfirmedCommitParams) error
 	UpdateLoopState(ctx context.Context, arg UpdateLoopStateParams) error
+	UpdateLoopStateGuarded(ctx context.Context, arg UpdateLoopStateGuardedParams) (int64, error)
 	UpdateLoopStatus(ctx context.Context, arg UpdateLoopStatusParams) error
+	UpdateLoopStatusGuarded(ctx context.Context, arg UpdateLoopStatusGuardedParams) (int64, error)
 	UpdateRoundAggregate(ctx context.Context, arg UpdateRoundAggregateParams) error
 	UpdateRoundOutputCommit(ctx context.Context, arg UpdateRoundOutputCommitParams) error
 	UpdateRoundStateWithReason(ctx context.Context, arg UpdateRoundStateWithReasonParams) error
+	UpdateRoundStateWithReasonGuarded(ctx context.Context, arg UpdateRoundStateWithReasonGuardedParams) (int64, error)
 	UpdateRoundWaitUser(ctx context.Context, roundID pgtype.UUID) error
 	UpdateRuntimeExecutorDisconnected(ctx context.Context, arg UpdateRuntimeExecutorDisconnectedParams) error
 	UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifactsParams) error
-	UpdateStepExecutionResult(ctx context.Context, arg UpdateStepExecutionResultParams) error
-	UpdateStepResult(ctx context.Context, arg UpdateStepResultParams) (int64, error)
-	UpdateStepStatusFromEvent(ctx context.Context, arg UpdateStepStatusFromEventParams) (int64, error)
+	UpdateStepExecutionResultGuarded(ctx context.Context, arg UpdateStepExecutionResultGuardedParams) (int64, error)
+	UpdateStepResultGuarded(ctx context.Context, arg UpdateStepResultGuardedParams) (int64, error)
+	UpdateStepStatusFromEventGuarded(ctx context.Context, arg UpdateStepStatusFromEventGuardedParams) (int64, error)
 	UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg UpsertRuntimeExecutorOnHeartbeatParams) error
 	UpsertRuntimeExecutorOnRegister(ctx context.Context, arg UpsertRuntimeExecutorOnRegisterParams) error
 }

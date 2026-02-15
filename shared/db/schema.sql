@@ -438,6 +438,27 @@ CREATE TABLE public.dataset (
 
 
 --
+-- Name: dispatch_outbox; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.dispatch_outbox (
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    id uuid NOT NULL,
+    step_id uuid NOT NULL,
+    executor_id character varying(128) NOT NULL,
+    request_id character varying(128) NOT NULL,
+    payload jsonb,
+    status character varying(32) NOT NULL,
+    attempt_count integer NOT NULL,
+    next_attempt_at timestamp without time zone NOT NULL,
+    locked_at timestamp without time zone,
+    sent_at timestamp without time zone,
+    last_error character varying(4000)
+);
+
+
+--
 -- Name: label; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -912,6 +933,14 @@ ALTER TABLE ONLY public.commit_sample_state
 
 ALTER TABLE ONLY public.dataset
     ADD CONSTRAINT dataset_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: dispatch_outbox dispatch_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dispatch_outbox
+    ADD CONSTRAINT dispatch_outbox_pkey PRIMARY KEY (id);
 
 
 --
@@ -1390,6 +1419,27 @@ CREATE INDEX ix_commit_sample_state_state ON public.commit_sample_state USING bt
 --
 
 CREATE INDEX ix_dataset_owner_id ON public.dataset USING btree (owner_id);
+
+
+--
+-- Name: ix_dispatch_outbox_request_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_dispatch_outbox_request_id ON public.dispatch_outbox USING btree (request_id);
+
+
+--
+-- Name: ix_dispatch_outbox_status_next_attempt_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_dispatch_outbox_status_next_attempt_at ON public.dispatch_outbox USING btree (status, next_attempt_at);
+
+
+--
+-- Name: ix_dispatch_outbox_step_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_dispatch_outbox_step_id ON public.dispatch_outbox USING btree (step_id);
 
 
 --
@@ -2041,6 +2091,14 @@ ALTER TABLE ONLY public.commit_sample_state
 
 ALTER TABLE ONLY public.dataset
     ADD CONSTRAINT dataset_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public."user"(id);
+
+
+--
+-- Name: dispatch_outbox dispatch_outbox_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dispatch_outbox
+    ADD CONSTRAINT dispatch_outbox_step_id_fkey FOREIGN KEY (step_id) REFERENCES public.step(id);
 
 
 --

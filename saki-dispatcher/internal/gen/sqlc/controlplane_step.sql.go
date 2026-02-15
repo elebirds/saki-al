@@ -46,20 +46,20 @@ func (q *Queries) DeleteStepCandidatesByStepID(ctx context.Context, stepID pgtyp
 }
 
 const getDependencyStatesByIDs = `-- name: GetDependencyStatesByIDs :many
-SELECT state::text AS state
+SELECT state
 FROM step
 WHERE id = ANY($1::uuid[])
 `
 
-func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []pgtype.UUID) ([]string, error) {
+func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []pgtype.UUID) ([]Stepstatus, error) {
 	rows, err := q.db.Query(ctx, getDependencyStatesByIDs, stepIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []Stepstatus
 	for rows.Next() {
-		var state string
+		var state Stepstatus
 		if err := rows.Scan(&state); err != nil {
 			return nil, err
 		}
@@ -164,18 +164,19 @@ const getStepPayloadByIDForUpdate = `-- name: GetStepPayloadByIDForUpdate :one
 SELECT
   t.id::text AS step_id,
   t.round_id::text AS round_id,
-  t.state::text AS status,
-  t.step_type::text AS step_type,
-  t.dispatch_kind::text AS dispatch_kind,
+  t.state AS status,
+  t.step_type AS step_type,
+  t.dispatch_kind AS dispatch_kind,
   t.round_index,
   t.attempt,
+  t.state_version,
   COALESCE(t.depends_on_step_ids::text, '[]'::text)::text AS depends_on_raw,
   COALESCE(t.resolved_params::text, '{}'::text)::text AS params_raw,
   COALESCE(t.input_commit_id::text, ''::text)::text AS input_commit_id,
   j.loop_id::text AS loop_id,
   j.project_id::text AS project_id,
   j.plugin_id,
-  j.mode::text AS mode,
+  j.mode AS mode,
   j.query_strategy,
   COALESCE(j.resolved_params::text, '{}'::text)::text AS round_params_raw,
   COALESCE(j.resources::text, '{}'::text)::text AS resources_raw,
@@ -189,18 +190,19 @@ FOR UPDATE SKIP LOCKED
 type GetStepPayloadByIDForUpdateRow struct {
 	StepID             string
 	RoundID            string
-	Status             string
-	StepType           string
-	DispatchKind       string
+	Status             Stepstatus
+	StepType           Steptype
+	DispatchKind       Stepdispatchkind
 	RoundIndex         int32
 	Attempt            int32
+	StateVersion       int32
 	DependsOnRaw       string
 	ParamsRaw          string
 	InputCommitID      string
 	LoopID             string
 	ProjectID          string
 	PluginID           string
-	Mode               string
+	Mode               Loopmode
 	QueryStrategy      string
 	RoundParamsRaw     string
 	ResourcesRaw       string
@@ -218,6 +220,7 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID pgtype
 		&i.DispatchKind,
 		&i.RoundIndex,
 		&i.Attempt,
+		&i.StateVersion,
 		&i.DependsOnRaw,
 		&i.ParamsRaw,
 		&i.InputCommitID,
@@ -231,6 +234,20 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID pgtype
 		&i.RoundInputCommitID,
 	)
 	return i, err
+}
+
+const getStepStateForUpdate = `-- name: GetStepStateForUpdate :one
+SELECT state
+FROM step
+WHERE id = $1::uuid
+FOR UPDATE
+`
+
+func (q *Queries) GetStepStateForUpdate(ctx context.Context, stepID pgtype.UUID) (Stepstatus, error) {
+	row := q.db.QueryRow(ctx, getStepStateForUpdate, stepID)
+	var state Stepstatus
+	err := row.Scan(&state)
+	return state, err
 }
 
 const getSucceededScoreStepIDByRound = `-- name: GetSucceededScoreStepIDByRound :one
@@ -359,20 +376,20 @@ func (q *Queries) ListPendingStepIDs(ctx context.Context, limitCount int32) ([]s
 	return items, nil
 }
 
-const listPendingStepIDsForUpdateSkipLocked = `-- name: ListPendingStepIDsForUpdateSkipLocked :many
+const listReadyStepIDsForUpdateSkipLocked = `-- name: ListReadyStepIDsForUpdateSkipLocked :many
 SELECT s.id::text AS id
 FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
-WHERE s.state = 'PENDING'::stepstatus
+WHERE s.state = 'READY'::stepstatus
   AND l.status = 'RUNNING'::loopstatus
 ORDER BY s.created_at ASC
 LIMIT $1
 FOR UPDATE OF s SKIP LOCKED
 `
 
-func (q *Queries) ListPendingStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]string, error) {
-	rows, err := q.db.Query(ctx, listPendingStepIDsForUpdateSkipLocked, limitCount)
+func (q *Queries) ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]string, error) {
+	rows, err := q.db.Query(ctx, listReadyStepIDsForUpdateSkipLocked, limitCount)
 	if err != nil {
 		return nil, err
 	}
@@ -447,9 +464,10 @@ const markOrchestratorStepRunning = `-- name: MarkOrchestratorStepRunning :execr
 UPDATE step
 SET state = 'RUNNING'::stepstatus,
     started_at = COALESCE(started_at, now()),
+    state_version = state_version + 1,
     updated_at = now()
 WHERE id = $1::uuid
-  AND state = 'PENDING'::stepstatus
+  AND state = 'READY'::stepstatus
 `
 
 func (q *Queries) MarkOrchestratorStepRunning(ctx context.Context, stepID pgtype.UUID) (int64, error) {
@@ -468,7 +486,7 @@ SET state = 'DISPATCHING'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = $3::uuid
-  AND state = 'PENDING'::stepstatus
+  AND state = 'READY'::stepstatus
 `
 
 type MarkStepDispatchingParams struct {
@@ -485,18 +503,66 @@ func (q *Queries) MarkStepDispatching(ctx context.Context, arg MarkStepDispatchi
 	return result.RowsAffected(), nil
 }
 
-const resetStepToPendingQueueFull = `-- name: ResetStepToPendingQueueFull :exec
+const promoteStepToReady = `-- name: PromoteStepToReady :execrows
 UPDATE step
-SET state = 'PENDING'::stepstatus,
-    assigned_executor_id = NULL,
-    last_error = 'dispatcher queue full',
+SET state = 'READY'::stepstatus,
+    state_version = state_version + 1,
     updated_at = now()
 WHERE id = $1::uuid
+  AND state = 'PENDING'::stepstatus
 `
 
-func (q *Queries) ResetStepToPendingQueueFull(ctx context.Context, stepID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, resetStepToPendingQueueFull, stepID)
-	return err
+func (q *Queries) PromoteStepToReady(ctx context.Context, stepID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, promoteStepToReady, stepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recoverStaleDispatchingStepToReady = `-- name: RecoverStaleDispatchingStepToReady :execrows
+UPDATE step
+SET state = 'READY'::stepstatus,
+    assigned_executor_id = NULL,
+    dispatch_request_id = NULL,
+    last_error = $1,
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = $2::uuid
+  AND state = 'DISPATCHING'::stepstatus
+`
+
+type RecoverStaleDispatchingStepToReadyParams struct {
+	LastError pgtype.Text
+	StepID    pgtype.UUID
+}
+
+func (q *Queries) RecoverStaleDispatchingStepToReady(ctx context.Context, arg RecoverStaleDispatchingStepToReadyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recoverStaleDispatchingStepToReady, arg.LastError, arg.StepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const resetStepToReadyQueueFull = `-- name: ResetStepToReadyQueueFull :execrows
+UPDATE step
+SET state = 'READY'::stepstatus,
+    assigned_executor_id = NULL,
+    dispatch_request_id = NULL,
+    last_error = 'dispatcher queue full',
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = $1::uuid
+  AND state = 'DISPATCHING'::stepstatus
+`
+
+func (q *Queries) ResetStepToReadyQueueFull(ctx context.Context, stepID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, resetStepToReadyQueueFull, stepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateRoundOutputCommit = `-- name: UpdateRoundOutputCommit :exec
@@ -533,60 +599,33 @@ func (q *Queries) UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifac
 	return err
 }
 
-const updateStepExecutionResult = `-- name: UpdateStepExecutionResult :exec
+const updateStepExecutionResultGuarded = `-- name: UpdateStepExecutionResultGuarded :execrows
 UPDATE step
 SET state = $1::stepstatus,
     last_error = $2::text,
     output_commit_id = $3::uuid,
     ended_at = COALESCE(ended_at, now()),
+    state_version = state_version + 1,
     updated_at = now()
 WHERE id = $4::uuid
+  AND state = $5::stepstatus
 `
 
-type UpdateStepExecutionResultParams struct {
+type UpdateStepExecutionResultGuardedParams struct {
 	State          Stepstatus
 	LastError      pgtype.Text
 	OutputCommitID pgtype.UUID
 	StepID         pgtype.UUID
+	FromState      Stepstatus
 }
 
-func (q *Queries) UpdateStepExecutionResult(ctx context.Context, arg UpdateStepExecutionResultParams) error {
-	_, err := q.db.Exec(ctx, updateStepExecutionResult,
+func (q *Queries) UpdateStepExecutionResultGuarded(ctx context.Context, arg UpdateStepExecutionResultGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateStepExecutionResultGuarded,
 		arg.State,
 		arg.LastError,
 		arg.OutputCommitID,
 		arg.StepID,
-	)
-	return err
-}
-
-const updateStepResult = `-- name: UpdateStepResult :execrows
-UPDATE step
-SET state = $1::stepstatus,
-    metrics = $2::jsonb,
-    artifacts = $3::jsonb,
-    last_error = $4::text,
-    started_at = COALESCE(started_at, now()),
-    ended_at = CASE WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
-    updated_at = now()
-WHERE id = $5::uuid
-`
-
-type UpdateStepResultParams struct {
-	State        Stepstatus
-	Metrics      []byte
-	Artifacts    []byte
-	ErrorMessage pgtype.Text
-	StepID       pgtype.UUID
-}
-
-func (q *Queries) UpdateStepResult(ctx context.Context, arg UpdateStepResultParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateStepResult,
-		arg.State,
-		arg.Metrics,
-		arg.Artifacts,
-		arg.ErrorMessage,
-		arg.StepID,
+		arg.FromState,
 	)
 	if err != nil {
 		return 0, err
@@ -594,24 +633,70 @@ func (q *Queries) UpdateStepResult(ctx context.Context, arg UpdateStepResultPara
 	return result.RowsAffected(), nil
 }
 
-const updateStepStatusFromEvent = `-- name: UpdateStepStatusFromEvent :execrows
+const updateStepResultGuarded = `-- name: UpdateStepResultGuarded :execrows
+UPDATE step
+SET state = $1::stepstatus,
+    metrics = $2::jsonb,
+    artifacts = $3::jsonb,
+    last_error = $4::text,
+    started_at = COALESCE(started_at, now()),
+    ended_at = CASE WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = $5::uuid
+  AND state = $6::stepstatus
+`
+
+type UpdateStepResultGuardedParams struct {
+	State        Stepstatus
+	Metrics      []byte
+	Artifacts    []byte
+	ErrorMessage pgtype.Text
+	StepID       pgtype.UUID
+	FromState    Stepstatus
+}
+
+func (q *Queries) UpdateStepResultGuarded(ctx context.Context, arg UpdateStepResultGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateStepResultGuarded,
+		arg.State,
+		arg.Metrics,
+		arg.Artifacts,
+		arg.ErrorMessage,
+		arg.StepID,
+		arg.FromState,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateStepStatusFromEventGuarded = `-- name: UpdateStepStatusFromEventGuarded :execrows
 UPDATE step
 SET state = $1::stepstatus,
     started_at = CASE WHEN $1::stepstatus = 'RUNNING'::stepstatus THEN COALESCE(started_at, now()) ELSE started_at END,
     ended_at = CASE WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN COALESCE(ended_at, now()) ELSE ended_at END,
     last_error = CASE WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus) THEN $2::text ELSE last_error END,
+    state_version = state_version + 1,
     updated_at = now()
 WHERE id = $3::uuid
+  AND state = $4::stepstatus
 `
 
-type UpdateStepStatusFromEventParams struct {
-	State  Stepstatus
-	Reason pgtype.Text
-	StepID pgtype.UUID
+type UpdateStepStatusFromEventGuardedParams struct {
+	State     Stepstatus
+	Reason    pgtype.Text
+	StepID    pgtype.UUID
+	FromState Stepstatus
 }
 
-func (q *Queries) UpdateStepStatusFromEvent(ctx context.Context, arg UpdateStepStatusFromEventParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateStepStatusFromEvent, arg.State, arg.Reason, arg.StepID)
+func (q *Queries) UpdateStepStatusFromEventGuarded(ctx context.Context, arg UpdateStepStatusFromEventGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateStepStatusFromEventGuarded,
+		arg.State,
+		arg.Reason,
+		arg.StepID,
+		arg.FromState,
+	)
 	if err != nil {
 		return 0, err
 	}

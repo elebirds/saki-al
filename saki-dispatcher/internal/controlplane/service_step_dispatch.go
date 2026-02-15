@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
@@ -40,34 +41,67 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 		}()
 	}
 
-	count := 0
+	if err := s.recoverDispatchOutbox(ctx, max(64, limit*2)); err != nil {
+		return 0, err
+	}
+
+	claimed := 0
 	for _, queuedStepID := range s.dispatcher.DrainQueuedStepIDs() {
 		dispatched, err := s.dispatchStepByID(ctx, queuedStepID)
 		if err != nil {
-			return count, err
+			return claimed, err
 		}
 		if dispatched {
-			count++
+			claimed++
 		}
 	}
 
-	stepIDs, err := s.listPendingStepIDs(ctx, limit)
+	if _, err := s.promotePendingStepsToReady(ctx, max(64, limit*2)); err != nil {
+		return claimed, err
+	}
+	stepIDs, err := s.listReadyStepIDs(ctx, limit)
 	if err != nil {
-		return count, err
+		return claimed, err
 	}
 	for _, stepID := range stepIDs {
 		dispatched, err := s.dispatchStepByID(ctx, stepID)
 		if err != nil {
-			return count, err
+			return claimed, err
 		}
 		if dispatched {
+			claimed++
+		}
+	}
+
+	sent, err := s.dispatchOutboxBatch(ctx, max(64, limit*2))
+	if err != nil {
+		return claimed, err
+	}
+	if sent > 0 {
+		s.logger.Debug().Int("claimed", claimed).Int("sent", sent).Msg("dispatch outbox drained")
+	}
+	return claimed + sent, nil
+}
+
+func (s *Service) promotePendingStepsToReady(ctx context.Context, limit int) (int, error) {
+	stepIDs, err := s.listPendingStepIDs(ctx, limit)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, stepID := range stepIDs {
+		promoted, err := s.promotePendingStepIfReady(ctx, stepID)
+		if err != nil {
+			return count, err
+		}
+		if promoted {
 			count++
 		}
 	}
 	return count, nil
 }
 
-func (s *Service) dispatchStepByID(ctx context.Context, stepID string) (bool, error) {
+func (s *Service) promotePendingStepIfReady(ctx context.Context, stepID string) (bool, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
 		return false, err
@@ -81,7 +115,20 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID string) (bool, er
 	if !ok || stepPayload.Status != stepPending {
 		return false, tx.Commit(ctx)
 	}
-
+	loopPGID, err := toPGUUID(stepPayload.LoopID)
+	if err != nil {
+		return false, tx.Commit(ctx)
+	}
+	loopStatus, err := s.qtx(tx).GetLoopStatus(ctx, loopPGID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, tx.Commit(ctx)
+		}
+		return false, err
+	}
+	if loopStatus != db.LoopstatusRUNNING {
+		return false, tx.Commit(ctx)
+	}
 	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)
 	if err != nil {
 		return false, err
@@ -89,19 +136,64 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID string) (bool, er
 	if !depsOK {
 		return false, tx.Commit(ctx)
 	}
-	loopPGID, err := toPGUUID(stepPayload.LoopID)
+	updated, err := s.promoteStepToReadyTx(ctx, tx, stepPayload.StepID)
 	if err != nil {
-		return false, tx.Commit(ctx)
-	}
-	loopStatusRaw, err := s.qtx(tx).GetLoopStatus(ctx, loopPGID)
-	loopStatus := asString(loopStatusRaw)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return false, tx.Commit(ctx)
-		}
 		return false, err
 	}
-	if strings.TrimSpace(loopStatus) != statusRunning {
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return updated, nil
+}
+
+func (s *Service) dispatchStepByID(ctx context.Context, stepID string) (bool, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	stepPayload, ok, err := s.getStepPayloadByIDTx(ctx, tx, stepID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, tx.Commit(ctx)
+	}
+
+	if stepPayload.Status == stepPending {
+		loopPGID, err := toPGUUID(stepPayload.LoopID)
+		if err != nil {
+			return false, tx.Commit(ctx)
+		}
+		loopStatus, err := s.qtx(tx).GetLoopStatus(ctx, loopPGID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return false, tx.Commit(ctx)
+			}
+			return false, err
+		}
+		if loopStatus != db.LoopstatusRUNNING {
+			return false, tx.Commit(ctx)
+		}
+		depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)
+		if err != nil {
+			return false, err
+		}
+		if !depsOK {
+			return false, tx.Commit(ctx)
+		}
+		promoted, err := s.promoteStepToReadyTx(ctx, tx, stepPayload.StepID)
+		if err != nil {
+			return false, err
+		}
+		if !promoted {
+			return false, tx.Commit(ctx)
+		}
+		stepPayload.Status = stepReady
+	}
+
+	if stepPayload.Status != stepReady {
 		return false, tx.Commit(ctx)
 	}
 	if isOrchestratorDispatchKind(stepPayload.DispatchKind) {
@@ -142,14 +234,29 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID string) (bool, er
 		Attempt:          int32(stepPayload.Attempt),
 		DependsOnStepIds: stepPayload.DependsOnStepIDs,
 	}
-	if !s.dispatcher.DispatchStep(executorID, requestID, message) {
-		stepPGID, err := toPGUUID(stepPayload.StepID)
-		if err != nil {
-			return false, err
-		}
-		if err := s.qtx(tx).ResetStepToPendingQueueFull(ctx, stepPGID); err != nil {
-			return false, err
-		}
+	payloadRaw, err := protojson.Marshal(message)
+	if err != nil {
+		return false, err
+	}
+	outboxID, err := toPGUUID(uuid.NewString())
+	if err != nil {
+		return false, err
+	}
+	stepPGID, err := toPGUUID(stepPayload.StepID)
+	if err != nil {
+		return false, err
+	}
+	inserted, err := s.qtx(tx).InsertDispatchOutbox(ctx, db.InsertDispatchOutboxParams{
+		OutboxID:   outboxID,
+		StepID:     stepPGID,
+		ExecutorID: executorID,
+		RequestID:  requestID,
+		Payload:    payloadRaw,
+	})
+	if err != nil {
+		return false, err
+	}
+	if inserted == 0 {
 		return false, tx.Commit(ctx)
 	}
 	return true, tx.Commit(ctx)
@@ -201,13 +308,18 @@ func (s *Service) executeOrchestratorStepTx(
 		return false, err
 	}
 
-	if err := s.qtx(tx).UpdateStepExecutionResult(ctx, db.UpdateStepExecutionResultParams{
+	affected, err := s.qtx(tx).UpdateStepExecutionResultGuarded(ctx, db.UpdateStepExecutionResultGuardedParams{
 		State:          db.Stepstatus(resultStatus),
 		LastError:      toNullablePGText(lastError),
 		OutputCommitID: resultCommitPGID,
 		StepID:         stepPGID,
-	}); err != nil {
+		FromState:      db.StepstatusRUNNING,
+	})
+	if err != nil {
 		return false, err
+	}
+	if affected == 0 {
+		return false, nil
 	}
 
 	if strings.TrimSpace(resultCommitID) != "" {

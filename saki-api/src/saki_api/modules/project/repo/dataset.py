@@ -11,7 +11,7 @@ from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
 from saki_api.infra.db.repository import BaseRepository
 from saki_api.modules.access.service.permission_checker import PermissionChecker
-from saki_api.modules.shared.modeling import ResourceType, Permissions
+from saki_api.modules.access.domain.rbac import ResourceType, Permissions
 from saki_api.modules.storage.domain.dataset import Dataset
 
 

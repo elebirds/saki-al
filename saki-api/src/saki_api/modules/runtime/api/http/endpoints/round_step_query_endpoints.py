@@ -21,7 +21,7 @@ from saki_api.modules.runtime.api.round_step import (
     StepEventRead,
     StepMetricPointRead,
 )
-from saki_api.modules.shared.modeling import Permissions
+from saki_api.modules.access.domain.rbac import Permissions
 
 router = APIRouter()
 

@@ -14,7 +14,7 @@ from saki_api.infra.db.session import SessionLocal
 from saki_api.modules.access.service.permission_checker import PermissionChecker
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 
 async def authenticate_stream_token(websocket: WebSocket) -> uuid.UUID | None:

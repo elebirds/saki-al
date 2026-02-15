@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from saki_api.app.deps import BranchServiceDep
 from saki_api.modules.access.api.dependencies import require_permission
 from saki_api.modules.project.api.branch import BranchRead, BranchReadMinimal, BranchSwitch
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
 

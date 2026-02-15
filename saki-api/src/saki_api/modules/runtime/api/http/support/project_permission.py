@@ -8,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import ForbiddenAppException
 from saki_api.modules.access.service.permission_checker import PermissionChecker
-from saki_api.modules.shared.modeling import ResourceType
+from saki_api.modules.access.domain.rbac import ResourceType
 
 
 async def ensure_project_permission(

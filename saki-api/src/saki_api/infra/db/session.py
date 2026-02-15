@@ -1,6 +1,7 @@
 from contextvars import ContextVar, Token
 from typing import AsyncGenerator, Optional
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -76,7 +77,7 @@ async def dispose_engine() -> None:
 
 async def init_db() -> None:
     """
-    初始化数据库并进行 runtime schema version gate 校验。
+    初始化数据库连接并进行连通性校验。
     """
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)

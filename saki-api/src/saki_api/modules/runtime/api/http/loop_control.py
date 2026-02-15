@@ -15,7 +15,7 @@ from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import LoopConfirmResponse, LoopRead, RoundPredictionCleanupResponse
-from saki_api.modules.shared.modeling import Permissions
+from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.modules.shared.modeling.enums import LoopMode
 
 router = APIRouter()

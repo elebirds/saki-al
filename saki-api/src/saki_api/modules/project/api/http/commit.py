@@ -14,7 +14,7 @@ from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id, require_permission
 from saki_api.modules.access.service.permission_checker import PermissionChecker
 from saki_api.modules.project.api.commit import CommitCreate, CommitDiff, CommitHistoryItem, CommitRead, CommitTree
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
 

@@ -51,7 +51,7 @@ from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
-from saki_api.modules.shared.modeling import ResourceType, Permissions
+from saki_api.modules.access.domain.rbac import ResourceType, Permissions
 from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, ProjectStatus
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample

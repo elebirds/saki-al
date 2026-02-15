@@ -19,7 +19,7 @@ from saki_api.app.deps import AssetServiceDep
 from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
 from saki_api.modules.access.api.dependencies import require_permission
-from saki_api.modules.shared.modeling import Permissions
+from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.modules.shared.modeling.enums import StorageType
 from saki_api.modules.storage.api.asset import (
     AssetRead,

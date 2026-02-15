@@ -14,7 +14,7 @@ from saki_api.infra.db.repository import BaseRepository
 from saki_api.modules.access.api.user_system_role import UserSystemRoleCreate, UserSystemRoleRead
 from saki_api.modules.access.domain.rbac.role import Role
 from saki_api.modules.access.domain.rbac.user_system_role import UserSystemRole
-from saki_api.modules.shared.modeling import RoleType
+from saki_api.modules.access.domain.rbac import RoleType
 
 
 class UserSystemRoleRepository(BaseRepository[UserSystemRole]):

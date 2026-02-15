@@ -19,7 +19,7 @@ from saki_api.modules.runtime.api.round_step import (
     RoundRead,
     StepCommandResponse,
 )
-from saki_api.modules.shared.modeling import Permissions
+from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 
 router = APIRouter()

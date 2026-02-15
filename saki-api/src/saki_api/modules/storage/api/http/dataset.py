@@ -14,7 +14,8 @@ from saki_api.modules.access.api.dependencies import get_current_user_id, requir
 from saki_api.modules.access.api.resource_member import ResourceMemberCreateRequest, ResourceMemberRead, \
     ResourceMemberUpdateRequest
 from saki_api.modules.access.api.role import RoleReadMinimal
-from saki_api.modules.shared.modeling import Permissions, ResourceType, Dataset
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
+from saki_api.modules.storage.domain import Dataset
 from saki_api.modules.storage.api.dataset import DatasetCreate, DatasetRead, DatasetUpdate
 
 router = APIRouter()

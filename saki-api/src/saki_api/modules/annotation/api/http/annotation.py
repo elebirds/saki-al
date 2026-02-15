@@ -31,7 +31,7 @@ from saki_api.modules.annotation.domain.coordinate_converter import convert_anno
     convert_annotation_data_to_frontend
 from saki_api.modules.annotation.extensions.factory import AnnotationSystemFactory
 from saki_api.modules.annotation.extensions.sync.base import AnnotationContext
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
 

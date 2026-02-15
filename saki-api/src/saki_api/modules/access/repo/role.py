@@ -7,7 +7,7 @@ from typing import List
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
-from saki_api.modules.shared.modeling import Role
+from saki_api.modules.access.domain.rbac import Role
 
 
 class RoleRepository(BaseRepository[Role]):

@@ -25,7 +25,7 @@ from saki_api.modules.project.api import (
     ProjectReadMinimal,
     ProjectUpdate,
 )
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 from saki_api.modules.shared.modeling.enums import ProjectStatus
 from saki_api.modules.storage.api.dataset import DatasetRead
 from saki_api.modules.storage.api.sample import ProjectSampleRead

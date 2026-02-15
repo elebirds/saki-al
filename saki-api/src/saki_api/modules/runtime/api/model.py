@@ -14,7 +14,6 @@ class ModelRegisterFromRoundRequest(BaseModel):
 
 class ModelCreateData(BaseModel):
     project_id: uuid.UUID
-    round_id: Optional[uuid.UUID] = None
     source_commit_id: Optional[uuid.UUID] = None
     parent_model_id: Optional[uuid.UUID] = None
     plugin_id: str
@@ -39,7 +38,6 @@ class ModelRead(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
-    round_id: Optional[uuid.UUID] = None
     source_commit_id: Optional[uuid.UUID] = None
     parent_model_id: Optional[uuid.UUID] = None
     plugin_id: str

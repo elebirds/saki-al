@@ -9,7 +9,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
-from saki_api.modules.shared.modeling import RolePermission
+from saki_api.modules.access.domain.rbac import RolePermission
 
 
 class PermissionRepository(BaseRepository[RolePermission]):
@@ -38,7 +38,7 @@ class PermissionRepository(BaseRepository[RolePermission]):
 
     async def get_by_user(self, user_id: uuid.UUID) -> List[str]:
         """Get all permissions for a user through their system roles."""
-        from saki_api.modules.shared.modeling import UserSystemRole
+        from saki_api.modules.access.domain.rbac import UserSystemRole
 
         statement = select(RolePermission).join(UserSystemRole).where(UserSystemRole.user_id == user_id)
 
@@ -65,8 +65,8 @@ class PermissionRepository(BaseRepository[RolePermission]):
             Set of permission strings
         """
         from datetime import datetime
-        from saki_api.modules.shared.modeling import UserSystemRole, Role
-        from saki_api.modules.shared.modeling import RoleType
+        from saki_api.modules.access.domain.rbac import UserSystemRole, Role
+        from saki_api.modules.access.domain.rbac import RoleType
 
         if now is None:
             now = datetime.utcnow()
@@ -106,7 +106,7 @@ class PermissionRepository(BaseRepository[RolePermission]):
         Returns:
             Set of permission strings
         """
-        from saki_api.modules.shared.modeling import ResourceMember
+        from saki_api.modules.access.domain.rbac import ResourceMember
 
         # Single SQL query with JOIN to get permissions from resource role
         statement = (

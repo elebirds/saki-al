@@ -206,7 +206,7 @@ def require_permission(
 
 async def get_sample_dataset_id(session: AsyncSession, sample_id: str) -> Optional[str]:
     """Get the dataset ID of a sample."""
-    from saki_api.modules.shared.modeling import Sample
+    from saki_api.modules.storage.domain import Sample
     from saki_api.infra.db.repository import BaseRepository
 
     try:
@@ -229,7 +229,7 @@ async def get_label_dataset_id(session: AsyncSession, label_id: str) -> Optional
     If labels don't have a direct dataset relationship, this should return None
     or be refactored to get dataset through project.
     """
-    from saki_api.modules.shared.modeling import Label
+    from saki_api.modules.project.domain import Label
     from saki_api.infra.db.repository import BaseRepository
 
     try:

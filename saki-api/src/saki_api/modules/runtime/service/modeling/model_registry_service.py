@@ -12,7 +12,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
 from saki_api.infra.storage.provider import get_storage_provider
-from saki_api.modules.runtime.api.round_step import RoundUpdate, LoopPatch
 from saki_api.modules.runtime.api.model import ModelCreateData, ModelPatch
 from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.repo.round import RoundRepository
@@ -55,7 +54,7 @@ class ModelService:
 
         loop = await self.loop_repo.get_by_id(round_row.loop_id)
         model_name = name or f"{loop.name if loop else 'loop'}-round-{round_row.round_index}"
-        parent_model_id = loop.latest_model_id if loop else None
+        parent_model_id = None
 
         artifact_map = dict(round_row.final_artifacts or {})
         weights_path = ""
@@ -72,7 +71,6 @@ class ModelService:
 
         create_data = ModelCreateData(
             project_id=project_id,
-            round_id=round_row.id,
             source_commit_id=round_row.input_commit_id,
             parent_model_id=parent_model_id,
             plugin_id=round_row.plugin_id,
@@ -86,12 +84,6 @@ class ModelService:
             created_by=created_by,
         )
         created = await self.repository.create(create_data.model_dump(exclude_none=True))
-        await self.round_repo.update_or_raise(round_row.id, RoundUpdate(model_id=created.id).model_dump(exclude_none=True))
-        if loop:
-            await self.loop_repo.update_or_raise(
-                loop.id,
-                LoopPatch(latest_model_id=created.id).model_dump(exclude_none=True),
-            )
         return created
 
     async def list_by_project(self, project_id: uuid.UUID, limit: int = 100) -> list[Model]:

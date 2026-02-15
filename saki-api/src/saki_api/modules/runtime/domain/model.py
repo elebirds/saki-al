@@ -1,15 +1,11 @@
 import uuid
 from datetime import datetime
-from typing import Optional, TYPE_CHECKING, Dict, Any
+from typing import Optional, Dict, Any
 
 from sqlalchemy import Column
 from sqlmodel import SQLModel, Field, Relationship
 
 from saki_api.modules.shared.modeling.base import UUIDMixin, TimestampMixin, OPT_JSON
-
-if TYPE_CHECKING:
-    from saki_api.modules.runtime.domain.round import Round
-
 
 class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     """
@@ -20,8 +16,6 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
 
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
 
-    # 溯源：这个模型是哪次训练轮次产出的？
-    round_id: uuid.UUID | None = Field(foreign_key="round.id")
     source_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
     parent_model_id: uuid.UUID | None = Field(default=None, foreign_key="model.id", index=True)
     plugin_id: str = Field(default="", index=True)
@@ -40,9 +34,6 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     created_by: uuid.UUID | None = Field(default=None, foreign_key="user.id")
 
     # 关系
-    round: Optional["Round"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": "[Model.round_id]"}
-    )
     parent_model: Optional["Model"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[Model.parent_model_id]"}
     )

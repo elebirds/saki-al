@@ -1,0 +1,9 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "../shared/db/schema.sql"
+    queries: "db/queries"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/gen/sqlc"

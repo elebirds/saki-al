@@ -10,7 +10,6 @@ from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopStat
 if TYPE_CHECKING:
     from saki_api.modules.project.domain.branch import Branch
     from saki_api.modules.project.domain.project import Project
-    from saki_api.modules.runtime.domain.model import Model
     from saki_api.modules.runtime.domain.round import Round
 
 
@@ -44,8 +43,6 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     stop_min_gain: float = Field(default=0.002)
     auto_register_model: bool = Field(default=True)
 
-    last_round_id: Optional[uuid.UUID] = Field(default=None, foreign_key="round.id", index=True)
-    latest_model_id: Optional[uuid.UUID] = Field(default=None, foreign_key="model.id", index=True)
     last_confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
     terminal_reason: str | None = Field(default=None, max_length=4000)
 
@@ -54,7 +51,4 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     rounds: List["Round"] = Relationship(
         back_populates="loop",
         sa_relationship_kwargs={"foreign_keys": "[Round.loop_id]"},
-    )
-    latest_model: Optional["Model"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": "[Loop.latest_model_id]"}
     )

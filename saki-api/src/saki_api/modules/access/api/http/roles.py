@@ -19,7 +19,7 @@ from saki_api.modules.access.api.dependencies import (
 )
 from saki_api.modules.access.api.permission import PermissionCatalogResponse
 from saki_api.modules.access.service.guards import AdminGuardDep
-from saki_api.modules.shared.modeling import RoleType, Permissions
+from saki_api.modules.access.domain.rbac import RoleType, Permissions
 from saki_api.schemas import (
     RoleCreate, RoleRead, RoleUpdate,
     UserSystemRoleAssign, UserSystemRoleRead,

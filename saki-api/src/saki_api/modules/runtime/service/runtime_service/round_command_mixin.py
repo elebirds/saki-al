@@ -128,7 +128,6 @@ class RoundCommandMixin:
                 phase=next_phase,
                 phase_meta=phase_meta,
                 current_iteration=next_round,
-                last_round_id=round_item.id,
                 terminal_reason=None,
             ).model_dump(exclude_none=True),
         )

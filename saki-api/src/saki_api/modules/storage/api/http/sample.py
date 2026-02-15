@@ -15,7 +15,7 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
 from saki_api.modules.access.api.dependencies import require_permission
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 from saki_api.modules.storage.api.sample import SampleRead
 from saki_api.modules.storage.domain.sample import Sample
 

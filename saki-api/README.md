@@ -12,8 +12,25 @@ uv run uvicorn saki_api.main:app --reload
 
 ## Database
 
-快速开发模式下，服务启动时会自动执行 `SQLModel.metadata.create_all`。
-需要重建表结构时，直接删库或删表后重启服务即可。
+数据库结构以 SQLModel 为唯一标准，通过 Alembic 进行迁移管理。
+
+在仓库根目录执行：
+
+```bash
+./scripts/sync_schema.sh
+```
+
+如需彻底重建（会清空 `public` schema）：
+
+```bash
+./scripts/sync_schema.sh --reset
+```
+
+如果 PostgreSQL 在 Docker 中运行：
+
+```bash
+./scripts/sync_schema.sh --docker
+```
 
 ## Logging
 

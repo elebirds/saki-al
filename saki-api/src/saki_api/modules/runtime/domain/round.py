@@ -13,7 +13,6 @@ from saki_api.modules.shared.modeling.enums import LoopMode, RoundStatus
 if TYPE_CHECKING:
     from saki_api.modules.project.domain.project import Project
     from saki_api.modules.runtime.domain.loop import Loop
-    from saki_api.modules.runtime.domain.model import Model
     from saki_api.modules.runtime.domain.step import Step
 
 
@@ -45,7 +44,6 @@ class RoundBase(SQLModel):
     final_metrics: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     final_artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     strategy_params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
-    model_id: Optional[uuid.UUID] = Field(default=None, foreign_key="model.id", index=True)
 
 
 class Round(RoundBase, TimestampMixin, UUIDMixin, table=True):
@@ -57,5 +55,4 @@ class Round(RoundBase, TimestampMixin, UUIDMixin, table=True):
         back_populates="rounds",
         sa_relationship_kwargs={"foreign_keys": "[Round.loop_id]"},
     )
-    model: Optional["Model"] = Relationship(sa_relationship_kwargs={"foreign_keys": "[Round.model_id]"})
     steps: List["Step"] = Relationship(back_populates="round")

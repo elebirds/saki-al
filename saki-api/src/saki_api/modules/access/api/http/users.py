@@ -17,9 +17,7 @@ from saki_api.modules.access.api.dependencies import (
     require_permission,
 )
 from saki_api.modules.access.service.guards import AdminGuardDep
-from saki_api.modules.shared.modeling import (
-    Permissions,
-)
+from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.schemas import (UserCreate, UserRead, UserUpdate, UserListItem)
 
 router = APIRouter()

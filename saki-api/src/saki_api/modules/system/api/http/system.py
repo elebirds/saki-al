@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from saki_api.app.deps import SystemServiceDep, SystemSettingsServiceDep
 from saki_api.modules.access.api.dependencies import get_current_user_id, require_permission
-from saki_api.modules.shared.modeling import Permissions
+from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.modules.system.service.system import SystemService
 from saki_api.modules.system.service.system_setting_keys import SystemSettingKeys
 from saki_api.schemas import UserCreate, UserRead

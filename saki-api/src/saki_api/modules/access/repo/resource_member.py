@@ -10,11 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
 from saki_api.infra.db.transaction import transactional
-from saki_api.modules.access.domain.rbac.enums import ResourceType
-from saki_api.modules.access.domain.rbac.permission import Permission, parse_permission
-from saki_api.modules.access.domain.rbac.resource_member import ResourceMember
-from saki_api.modules.access.domain.rbac.role import Role
-from saki_api.modules.shared.modeling import RolePermission
+from saki_api.modules.access.domain.rbac import RolePermission,Role, ResourceType, Permission, parse_permission,ResourceMember
 
 
 class ResourceMemberRepository(BaseRepository[ResourceMember]):

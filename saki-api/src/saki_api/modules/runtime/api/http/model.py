@@ -19,7 +19,7 @@ from saki_api.modules.runtime.api.model import (
     ModelPromoteRequest,
     ModelArtifactDownloadResponse,
 )
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
 

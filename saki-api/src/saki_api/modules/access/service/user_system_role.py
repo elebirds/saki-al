@@ -24,7 +24,7 @@ from saki_api.modules.access.service.audit import (
 )
 from saki_api.modules.access.service.guards import AdminGuard
 from saki_api.modules.access.service.permission_checker import PermissionChecker
-from saki_api.modules.shared.modeling import RoleType
+from saki_api.modules.access.domain.rbac import RoleType
 
 
 class UserRoleService:

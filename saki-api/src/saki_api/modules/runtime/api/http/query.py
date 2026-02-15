@@ -34,7 +34,7 @@ from saki_api.modules.runtime.api.round_step import (
     SimulationExperimentCreateResponse,
 )
 from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.shared.modeling import Permissions
+from saki_api.modules.access.domain.rbac import Permissions
 
 router = APIRouter()
 

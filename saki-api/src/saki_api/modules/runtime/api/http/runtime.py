@@ -22,7 +22,7 @@ from saki_api.modules.runtime.api.runtime_executor import (
 from saki_api.modules.runtime.service.observability.runtime_observability_service import (
     RuntimeObservabilityService,
 )
-from saki_api.modules.shared.modeling import Permissions, ResourceType
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
 

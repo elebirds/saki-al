@@ -85,8 +85,6 @@ class LoopCreateData(BaseModel):
     stop_patience_rounds: int = Field(default=2, ge=1)
     stop_min_gain: float = Field(default=0.002)
     auto_register_model: bool = True
-    last_round_id: Optional[uuid.UUID] = None
-    latest_model_id: Optional[uuid.UUID] = None
     terminal_reason: Optional[str] = None
 
 
@@ -108,8 +106,6 @@ class LoopPatch(BaseModel):
     stop_patience_rounds: Optional[int] = Field(default=None, ge=1)
     stop_min_gain: Optional[float] = None
     auto_register_model: Optional[bool] = None
-    last_round_id: Optional[uuid.UUID] = None
-    latest_model_id: Optional[uuid.UUID] = None
     terminal_reason: Optional[str] = None
 
 
@@ -138,8 +134,6 @@ class LoopRead(BaseModel):
     stop_patience_rounds: int
     stop_min_gain: float
     auto_register_model: bool
-    last_round_id: Optional[uuid.UUID] = None
-    latest_model_id: Optional[uuid.UUID] = None
     terminal_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -177,7 +171,6 @@ class RoundCreate(BaseModel):
     final_metrics: Dict[str, Any] = Field(default_factory=dict)
     final_artifacts: Dict[str, Any] = Field(default_factory=dict)
     strategy_params: Dict[str, Any] = Field(default_factory=dict)
-    model_id: Optional[uuid.UUID] = None
 
 
 class RoundUpdate(BaseModel):
@@ -192,7 +185,6 @@ class RoundUpdate(BaseModel):
     final_metrics: Optional[Dict[str, Any]] = None
     final_artifacts: Optional[Dict[str, Any]] = None
     strategy_params: Optional[Dict[str, Any]] = None
-    model_id: Optional[uuid.UUID] = None
 
 
 class StepCreate(BaseModel):
@@ -250,7 +242,6 @@ class RoundRead(BaseModel):
     resolved_params: Dict[str, Any]
     resources: Dict[str, Any]
     strategy_params: Dict[str, Any]
-    model_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 

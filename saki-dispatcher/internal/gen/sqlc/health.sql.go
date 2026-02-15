@@ -14,7 +14,7 @@ SELECT 1
 `
 
 func (q *Queries) Healthcheck(ctx context.Context) (int32, error) {
-	row := q.db.QueryRowContext(ctx, healthcheck)
+	row := q.db.QueryRow(ctx, healthcheck)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err

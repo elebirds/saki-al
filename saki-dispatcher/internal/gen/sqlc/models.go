@@ -5,13 +5,10 @@
 package sqlc
 
 import (
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Annotationsource string
@@ -833,141 +830,141 @@ type AlembicVersion struct {
 }
 
 type Annotation struct {
-	ID          uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	SampleID    uuid.UUID
-	LabelID     uuid.UUID
-	ProjectID   uuid.UUID
-	GroupID     uuid.UUID
-	LineageID   uuid.UUID
+	ID          pgtype.UUID
+	CreatedAt   pgtype.Timestamp
+	UpdatedAt   pgtype.Timestamp
+	SampleID    pgtype.UUID
+	LabelID     pgtype.UUID
+	ProjectID   pgtype.UUID
+	GroupID     pgtype.UUID
+	LineageID   pgtype.UUID
 	ViewRole    string
-	ParentID    uuid.NullUUID
+	ParentID    pgtype.UUID
 	Type        Annotationtype
 	Source      Annotationsource
-	Data        pqtype.NullRawMessage
-	Extra       pqtype.NullRawMessage
+	Data        []byte
+	Extra       []byte
 	Confidence  float64
-	AnnotatorID uuid.NullUUID
+	AnnotatorID pgtype.UUID
 }
 
 type AnnotationDraft struct {
-	ID         uuid.UUID
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	ProjectID  uuid.UUID
-	SampleID   uuid.UUID
-	UserID     uuid.UUID
+	ID         pgtype.UUID
+	CreatedAt  pgtype.Timestamp
+	UpdatedAt  pgtype.Timestamp
+	ProjectID  pgtype.UUID
+	SampleID   pgtype.UUID
+	UserID     pgtype.UUID
 	BranchName string
-	Payload    pqtype.NullRawMessage
+	Payload    []byte
 }
 
 type Asset struct {
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	ID               uuid.UUID
+	CreatedAt        pgtype.Timestamp
+	UpdatedAt        pgtype.Timestamp
+	ID               pgtype.UUID
 	Hash             string
 	StorageType      Storagetype
 	Path             string
-	Bucket           sql.NullString
+	Bucket           pgtype.Text
 	OriginalFilename string
 	Extension        string
 	MimeType         string
 	Size             int32
-	MetaInfo         pqtype.NullRawMessage
+	MetaInfo         []byte
 }
 
 type AuditLog struct {
-	CreatedBy  uuid.NullUUID
-	UpdatedBy  uuid.NullUUID
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	ID         uuid.UUID
+	CreatedBy  pgtype.UUID
+	UpdatedBy  pgtype.UUID
+	CreatedAt  pgtype.Timestamp
+	UpdatedAt  pgtype.Timestamp
+	ID         pgtype.UUID
 	Action     Auditaction
 	TargetType string
-	TargetID   uuid.UUID
-	OldValue   pqtype.NullRawMessage
-	NewValue   pqtype.NullRawMessage
-	IpAddress  sql.NullString
-	UserAgent  sql.NullString
+	TargetID   pgtype.UUID
+	OldValue   []byte
+	NewValue   []byte
+	IpAddress  pgtype.Text
+	UserAgent  pgtype.Text
 }
 
 type Branch struct {
-	ID           uuid.UUID
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           pgtype.UUID
+	CreatedAt    pgtype.Timestamp
+	UpdatedAt    pgtype.Timestamp
 	Name         string
-	ProjectID    uuid.UUID
-	HeadCommitID uuid.UUID
-	Description  sql.NullString
+	ProjectID    pgtype.UUID
+	HeadCommitID pgtype.UUID
+	Description  pgtype.Text
 	IsProtected  bool
 }
 
 type Commit struct {
-	ID         uuid.UUID
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	ProjectID  uuid.UUID
-	ParentID   uuid.NullUUID
+	ID         pgtype.UUID
+	CreatedAt  pgtype.Timestamp
+	UpdatedAt  pgtype.Timestamp
+	ProjectID  pgtype.UUID
+	ParentID   pgtype.UUID
 	Message    string
 	AuthorType Authortype
-	AuthorID   uuid.NullUUID
-	Stats      pqtype.NullRawMessage
-	Extra      pqtype.NullRawMessage
+	AuthorID   pgtype.UUID
+	Stats      []byte
+	Extra      []byte
 	CommitHash string
 }
 
 type CommitAnnotationMap struct {
-	CommitID     uuid.UUID
-	SampleID     uuid.UUID
-	AnnotationID uuid.UUID
-	ProjectID    uuid.UUID
+	CommitID     pgtype.UUID
+	SampleID     pgtype.UUID
+	AnnotationID pgtype.UUID
+	ProjectID    pgtype.UUID
 }
 
 type CommitSampleState struct {
-	CommitID  uuid.UUID
-	SampleID  uuid.UUID
-	ProjectID uuid.UUID
+	CommitID  pgtype.UUID
+	SampleID  pgtype.UUID
+	ProjectID pgtype.UUID
 	State     Commitsamplereviewstate
 }
 
 type Dataset struct {
-	ID                        uuid.UUID
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
+	ID                        pgtype.UUID
+	CreatedAt                 pgtype.Timestamp
+	UpdatedAt                 pgtype.Timestamp
 	Name                      string
-	Description               sql.NullString
+	Description               pgtype.Text
 	Type                      Datasettype
 	AllowDuplicateSampleNames bool
-	OwnerID                   uuid.UUID
+	OwnerID                   pgtype.UUID
 }
 
 type Label struct {
-	ID          uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          pgtype.UUID
+	CreatedAt   pgtype.Timestamp
+	UpdatedAt   pgtype.Timestamp
 	Name        string
 	Color       string
-	Description sql.NullString
+	Description pgtype.Text
 	SortOrder   int32
-	Shortcut    sql.NullString
-	ProjectID   uuid.UUID
+	Shortcut    pgtype.Text
+	ProjectID   pgtype.UUID
 }
 
 type Loop struct {
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	ID                    uuid.UUID
-	ProjectID             uuid.UUID
-	BranchID              uuid.UUID
+	CreatedAt             pgtype.Timestamp
+	UpdatedAt             pgtype.Timestamp
+	ID                    pgtype.UUID
+	ProjectID             pgtype.UUID
+	BranchID              pgtype.UUID
 	Name                  string
 	Mode                  Loopmode
 	Phase                 Loopphase
-	PhaseMeta             pqtype.NullRawMessage
+	PhaseMeta             []byte
 	QueryStrategy         string
 	ModelArch             string
-	ExperimentGroupID     uuid.NullUUID
-	GlobalConfig          pqtype.NullRawMessage
+	ExperimentGroupID     pgtype.UUID
+	GlobalConfig          []byte
 	CurrentIteration      int32
 	Status                Loopstatus
 	MaxRounds             int32
@@ -977,67 +974,67 @@ type Loop struct {
 	StopPatienceRounds    int32
 	StopMinGain           float64
 	AutoRegisterModel     bool
-	LastConfirmedCommitID uuid.NullUUID
-	TerminalReason        sql.NullString
+	LastConfirmedCommitID pgtype.UUID
+	TerminalReason        pgtype.Text
 }
 
 type Model struct {
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ID             uuid.UUID
-	ProjectID      uuid.UUID
-	SourceCommitID uuid.NullUUID
-	ParentModelID  uuid.NullUUID
+	CreatedAt      pgtype.Timestamp
+	UpdatedAt      pgtype.Timestamp
+	ID             pgtype.UUID
+	ProjectID      pgtype.UUID
+	SourceCommitID pgtype.UUID
+	ParentModelID  pgtype.UUID
 	PluginID       string
 	ModelArch      string
 	Name           string
 	VersionTag     string
 	WeightsPath    string
 	Status         string
-	Metrics        pqtype.NullRawMessage
-	Artifacts      pqtype.NullRawMessage
-	PromotedAt     sql.NullTime
-	CreatedBy      uuid.NullUUID
+	Metrics        []byte
+	Artifacts      []byte
+	PromotedAt     pgtype.Timestamp
+	CreatedBy      pgtype.UUID
 }
 
 type Project struct {
-	ID          uuid.UUID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          pgtype.UUID
+	CreatedAt   pgtype.Timestamp
+	UpdatedAt   pgtype.Timestamp
 	Name        string
-	Description sql.NullString
+	Description pgtype.Text
 	TaskType    Tasktype
 	Status      Projectstatus
-	Config      pqtype.NullRawMessage
+	Config      []byte
 }
 
 type ProjectDataset struct {
-	ProjectID uuid.UUID
-	DatasetID uuid.UUID
+	ProjectID pgtype.UUID
+	DatasetID pgtype.UUID
 }
 
 type ResourceMember struct {
-	CreatedBy    uuid.NullUUID
-	UpdatedBy    uuid.NullUUID
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	ID           uuid.UUID
+	CreatedBy    pgtype.UUID
+	UpdatedBy    pgtype.UUID
+	CreatedAt    pgtype.Timestamp
+	UpdatedAt    pgtype.Timestamp
+	ID           pgtype.UUID
 	ResourceType Resourcetype
-	ResourceID   uuid.UUID
-	UserID       uuid.UUID
-	RoleID       uuid.UUID
+	ResourceID   pgtype.UUID
+	UserID       pgtype.UUID
+	RoleID       pgtype.UUID
 }
 
 type Role struct {
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	ID           uuid.UUID
+	CreatedAt    pgtype.Timestamp
+	UpdatedAt    pgtype.Timestamp
+	ID           pgtype.UUID
 	IsSystem     bool
 	IsDefault    bool
 	IsSuperAdmin bool
 	IsAdmin      bool
 	DisplayName  string
-	Description  sql.NullString
+	Description  pgtype.Text
 	SortOrder    int32
 	Name         string
 	Type         Roletype
@@ -1046,53 +1043,53 @@ type Role struct {
 }
 
 type RolePermission struct {
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	ID         uuid.UUID
+	CreatedAt  pgtype.Timestamp
+	UpdatedAt  pgtype.Timestamp
+	ID         pgtype.UUID
 	Permission string
-	RoleID     uuid.UUID
+	RoleID     pgtype.UUID
 }
 
 type Round struct {
-	ID                 uuid.UUID
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	ProjectID          uuid.UUID
-	LoopID             uuid.UUID
+	ID                 pgtype.UUID
+	CreatedAt          pgtype.Timestamp
+	UpdatedAt          pgtype.Timestamp
+	ProjectID          pgtype.UUID
+	LoopID             pgtype.UUID
 	RoundIndex         int32
 	Mode               Loopmode
 	State              Roundstatus
-	StepCounts         pqtype.NullRawMessage
+	StepCounts         []byte
 	RoundType          string
 	PluginID           string
 	QueryStrategy      string
-	ResolvedParams     pqtype.NullRawMessage
-	Resources          pqtype.NullRawMessage
-	InputCommitID      uuid.NullUUID
-	OutputCommitID     uuid.NullUUID
-	AssignedExecutorID sql.NullString
-	StartedAt          sql.NullTime
-	EndedAt            sql.NullTime
+	ResolvedParams     []byte
+	Resources          []byte
+	InputCommitID      pgtype.UUID
+	OutputCommitID     pgtype.UUID
+	AssignedExecutorID pgtype.Text
+	StartedAt          pgtype.Timestamp
+	EndedAt            pgtype.Timestamp
 	RetryCount         int32
-	TerminalReason     sql.NullString
-	FinalMetrics       pqtype.NullRawMessage
-	FinalArtifacts     pqtype.NullRawMessage
-	StrategyParams     pqtype.NullRawMessage
+	TerminalReason     pgtype.Text
+	FinalMetrics       []byte
+	FinalArtifacts     []byte
+	StrategyParams     []byte
 }
 
 type RoundSampleMetric struct {
-	ID                 uuid.UUID
-	RoundID            uuid.UUID
-	SampleID           uuid.UUID
+	ID                 pgtype.UUID
+	RoundID            pgtype.UUID
+	SampleID           pgtype.UUID
 	Score              float64
-	Extra              pqtype.NullRawMessage
-	PredictionSnapshot pqtype.NullRawMessage
+	Extra              []byte
+	PredictionSnapshot []byte
 }
 
 type RuntimeCommandLog struct {
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	ID          uuid.UUID
+	CreatedAt   pgtype.Timestamp
+	UpdatedAt   pgtype.Timestamp
+	ID          pgtype.UUID
 	CommandID   string
 	CommandType string
 	ResourceID  string
@@ -1101,25 +1098,25 @@ type RuntimeCommandLog struct {
 }
 
 type RuntimeExecutor struct {
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	ID            uuid.UUID
+	CreatedAt     pgtype.Timestamp
+	UpdatedAt     pgtype.Timestamp
+	ID            pgtype.UUID
 	ExecutorID    string
 	Version       string
 	Status        string
 	IsOnline      bool
-	CurrentStepID sql.NullString
-	PluginIds     pqtype.NullRawMessage
-	Resources     pqtype.NullRawMessage
-	LastSeenAt    sql.NullTime
-	LastError     sql.NullString
+	CurrentStepID pgtype.Text
+	PluginIds     []byte
+	Resources     []byte
+	LastSeenAt    pgtype.Timestamp
+	LastError     pgtype.Text
 }
 
 type RuntimeExecutorStat struct {
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	ID                 uuid.UUID
-	Ts                 time.Time
+	CreatedAt          pgtype.Timestamp
+	UpdatedAt          pgtype.Timestamp
+	ID                 pgtype.UUID
+	Ts                 pgtype.Timestamp
 	TotalCount         int32
 	OnlineCount        int32
 	BusyCount          int32
@@ -1130,106 +1127,106 @@ type RuntimeExecutorStat struct {
 }
 
 type Sample struct {
-	ID             uuid.UUID
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DatasetID      uuid.UUID
+	ID             pgtype.UUID
+	CreatedAt      pgtype.Timestamp
+	UpdatedAt      pgtype.Timestamp
+	DatasetID      pgtype.UUID
 	Name           string
-	AssetGroup     pqtype.NullRawMessage
-	PrimaryAssetID uuid.NullUUID
+	AssetGroup     []byte
+	PrimaryAssetID pgtype.UUID
 	Remark         string
-	MetaInfo       pqtype.NullRawMessage
+	MetaInfo       []byte
 }
 
 type Step struct {
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	ID                 uuid.UUID
-	RoundID            uuid.UUID
+	CreatedAt          pgtype.Timestamp
+	UpdatedAt          pgtype.Timestamp
+	ID                 pgtype.UUID
+	RoundID            pgtype.UUID
 	StepType           Steptype
 	DispatchKind       Stepdispatchkind
 	State              Stepstatus
 	RoundIndex         int32
 	StepIndex          int32
-	DependsOnStepIds   pqtype.NullRawMessage
-	ResolvedParams     pqtype.NullRawMessage
-	Metrics            pqtype.NullRawMessage
-	Artifacts          pqtype.NullRawMessage
-	InputCommitID      uuid.NullUUID
-	OutputCommitID     uuid.NullUUID
-	AssignedExecutorID sql.NullString
-	DispatchRequestID  sql.NullString
+	DependsOnStepIds   []byte
+	ResolvedParams     []byte
+	Metrics            []byte
+	Artifacts          []byte
+	InputCommitID      pgtype.UUID
+	OutputCommitID     pgtype.UUID
+	AssignedExecutorID pgtype.Text
+	DispatchRequestID  pgtype.Text
 	StateVersion       int32
 	Attempt            int32
 	MaxAttempts        int32
-	StartedAt          sql.NullTime
-	EndedAt            sql.NullTime
-	LastError          sql.NullString
+	StartedAt          pgtype.Timestamp
+	EndedAt            pgtype.Timestamp
+	LastError          pgtype.Text
 }
 
 type StepCandidateItem struct {
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	ID                 uuid.UUID
-	StepID             uuid.UUID
-	SampleID           uuid.UUID
+	CreatedAt          pgtype.Timestamp
+	UpdatedAt          pgtype.Timestamp
+	ID                 pgtype.UUID
+	StepID             pgtype.UUID
+	SampleID           pgtype.UUID
 	Rank               int32
 	Score              float64
-	Reason             pqtype.NullRawMessage
-	PredictionSnapshot pqtype.NullRawMessage
+	Reason             []byte
+	PredictionSnapshot []byte
 }
 
 type StepEvent struct {
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	ID        uuid.UUID
-	StepID    uuid.UUID
+	CreatedAt pgtype.Timestamp
+	UpdatedAt pgtype.Timestamp
+	ID        pgtype.UUID
+	StepID    pgtype.UUID
 	Seq       int32
-	Ts        time.Time
+	Ts        pgtype.Timestamp
 	EventType string
-	Payload   pqtype.NullRawMessage
-	RequestID sql.NullString
+	Payload   []byte
+	RequestID pgtype.Text
 }
 
 type StepMetricPoint struct {
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	ID          uuid.UUID
-	StepID      uuid.UUID
+	CreatedAt   pgtype.Timestamp
+	UpdatedAt   pgtype.Timestamp
+	ID          pgtype.UUID
+	StepID      pgtype.UUID
 	Step        int32
-	Epoch       sql.NullInt32
+	Epoch       pgtype.Int4
 	MetricName  string
 	MetricValue float64
-	Ts          time.Time
+	Ts          pgtype.Timestamp
 }
 
 type SystemSetting struct {
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt pgtype.Timestamp
+	UpdatedAt pgtype.Timestamp
 	Key       string
-	ValueJson pqtype.NullRawMessage
-	UpdatedBy uuid.NullUUID
+	ValueJson []byte
+	UpdatedBy pgtype.UUID
 }
 
 type User struct {
-	ID                 uuid.UUID
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 pgtype.UUID
+	CreatedAt          pgtype.Timestamp
+	UpdatedAt          pgtype.Timestamp
 	Email              string
-	FullName           sql.NullString
+	FullName           pgtype.Text
 	IsActive           bool
-	AvatarUrl          sql.NullString
+	AvatarUrl          pgtype.Text
 	MustChangePassword bool
 	HashedPassword     string
 }
 
 type UserSystemRole struct {
-	CreatedBy uuid.NullUUID
-	UpdatedBy uuid.NullUUID
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	ID        uuid.UUID
-	UserID    uuid.UUID
-	RoleID    uuid.UUID
-	ExpiresAt sql.NullTime
+	CreatedBy pgtype.UUID
+	UpdatedBy pgtype.UUID
+	CreatedAt pgtype.Timestamp
+	UpdatedAt pgtype.Timestamp
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	RoleID    pgtype.UUID
+	ExpiresAt pgtype.Timestamp
 }

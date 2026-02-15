@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -84,8 +83,10 @@ func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (re
 		}
 	}()
 
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
+	var queueChan <-chan *runtimecontrolv1.RuntimeMessage
+	if executorID != "" {
+		queueChan = s.dispatcher.GetQueue(executorID)
+	}
 
 	for {
 		select {
@@ -99,19 +100,16 @@ func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (re
 			if err != nil {
 				return err
 			}
-			if nextExecutorID != "" {
+			if nextExecutorID != "" && nextExecutorID != executorID {
 				executorID = nextExecutorID
+				queueChan = s.dispatcher.GetQueue(executorID)
 			}
 			if response != nil {
 				if err := stream.Send(response); err != nil {
 					return err
 				}
 			}
-		case <-ticker.C:
-			if executorID == "" {
-				continue
-			}
-			outgoing := s.dispatcher.PullOutgoing(executorID, 5*time.Millisecond)
+		case outgoing := <-queueChan:
 			if outgoing == nil {
 				continue
 			}

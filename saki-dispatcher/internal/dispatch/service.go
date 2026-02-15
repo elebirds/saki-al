@@ -205,6 +205,22 @@ func (d *Dispatcher) EnqueueOutgoing(executorID string, message *runtimecontrolv
 	}
 }
 
+func (d *Dispatcher) GetQueue(executorID string) <-chan *runtimecontrolv1.RuntimeMessage {
+	executorID = strings.TrimSpace(executorID)
+	if executorID == "" {
+		return nil
+	}
+
+	d.mu.RLock()
+	session := d.sessions[executorID]
+	d.mu.RUnlock()
+	if session == nil {
+		return nil
+	}
+
+	return session.Queue
+}
+
 func (d *Dispatcher) PullOutgoing(executorID string, timeout time.Duration) *runtimecontrolv1.RuntimeMessage {
 	executorID = strings.TrimSpace(executorID)
 	if executorID == "" {

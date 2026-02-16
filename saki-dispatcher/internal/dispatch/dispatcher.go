@@ -184,27 +184,6 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 	}
 }
 
-func (d *Dispatcher) EnqueueOutgoing(executorID string, message *runtimecontrolv1.RuntimeMessage) bool {
-	executorID = strings.TrimSpace(executorID)
-	if executorID == "" || message == nil {
-		return false
-	}
-
-	d.mu.RLock()
-	session := d.sessions[executorID]
-	d.mu.RUnlock()
-	if session == nil {
-		return false
-	}
-
-	select {
-	case session.Queue <- message:
-		return true
-	default:
-		return false
-	}
-}
-
 func (d *Dispatcher) GetQueue(executorID string) <-chan *runtimecontrolv1.RuntimeMessage {
 	executorID = strings.TrimSpace(executorID)
 	if executorID == "" {
@@ -219,38 +198,6 @@ func (d *Dispatcher) GetQueue(executorID string) <-chan *runtimecontrolv1.Runtim
 	}
 
 	return session.Queue
-}
-
-func (d *Dispatcher) PullOutgoing(executorID string, timeout time.Duration) *runtimecontrolv1.RuntimeMessage {
-	executorID = strings.TrimSpace(executorID)
-	if executorID == "" {
-		return nil
-	}
-
-	d.mu.RLock()
-	session := d.sessions[executorID]
-	d.mu.RUnlock()
-	if session == nil {
-		return nil
-	}
-
-	if timeout <= 0 {
-		select {
-		case message := <-session.Queue:
-			return message
-		default:
-			return nil
-		}
-	}
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case message := <-session.Queue:
-		return message
-	case <-timer.C:
-		return nil
-	}
 }
 
 func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {

@@ -9,9 +9,9 @@ SELECT pg_advisory_unlock(sqlc.arg(lock_key))::bool AS unlocked;
 
 -- name: GetLoopForUpdate :one
 SELECT
-  id::text AS id,
-  project_id::text AS project_id,
-  branch_id::text AS branch_id,
+  id,
+  project_id,
+  branch_id,
   mode,
   phase,
   status,
@@ -20,15 +20,15 @@ SELECT
   query_batch_size,
   query_strategy,
   model_arch,
-  COALESCE(global_config::text, '{}'::text)::text AS global_config,
-  COALESCE(last_confirmed_commit_id::text, ''::text)::text AS last_confirmed_commit_id
+  global_config,
+  last_confirmed_commit_id
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid
 FOR UPDATE;
 
 -- name: GetLatestRoundByLoop :one
 SELECT
-  id::text AS id,
+  id,
   round_index,
   state AS summary_status,
   ended_at
@@ -143,7 +143,7 @@ SET last_confirmed_commit_id = sqlc.arg(last_confirmed_commit_id)::uuid,
 WHERE id = sqlc.arg(loop_id)::uuid;
 
 -- name: ListTickLoopIDs :many
-SELECT id::text AS id
+SELECT id
 FROM loop
 WHERE status IN ('RUNNING'::loopstatus, 'STOPPING'::loopstatus)
 ORDER BY updated_at ASC
@@ -192,7 +192,7 @@ WHERE id = sqlc.arg(round_id)::uuid
   AND state = sqlc.arg(from_state)::roundstatus;
 
 -- name: ListRoundActiveStepIDs :many
-SELECT id::text AS id
+SELECT id
 FROM step
 WHERE round_id = sqlc.arg(round_id)::uuid
   AND state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
@@ -224,7 +224,7 @@ WHERE id = sqlc.arg(step_id)::uuid
 
 -- name: ListLoopStoppableSteps :many
 SELECT
-  t.id::text AS id,
+  t.id AS id,
   t.state,
   t.attempt,
   t.updated_at
@@ -252,14 +252,14 @@ WHERE j.loop_id = sqlc.arg(loop_id)::uuid
   AND t.state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
 
 -- name: FindRoundIDByStep :one
-SELECT round_id::text AS round_id
+SELECT round_id
 FROM step
 WHERE id = sqlc.arg(step_id)::uuid;
 
 -- name: ResolveBranchHeadFromDB :one
 SELECT
-  COALESCE(head_commit_id::text, ''::text)::text AS head_commit_id,
-  project_id::text AS project_id
+  head_commit_id,
+  project_id
 FROM branch
 WHERE id = sqlc.arg(branch_id)::uuid;
 
@@ -275,7 +275,7 @@ WHERE id = sqlc.arg(loop_id)::uuid;
 
 -- name: GetCommandLogByCommandID :one
 SELECT
-  id::text AS id,
+  id,
   status,
   detail
 FROM runtime_command_log

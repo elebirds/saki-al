@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -24,7 +25,7 @@ WHERE id = $2::uuid
 
 type CancelStepByIDParams struct {
 	LastError pgtype.Text
-	StepID    pgtype.UUID
+	StepID    uuid.UUID
 }
 
 func (q *Queries) CancelStepByID(ctx context.Context, arg CancelStepByIDParams) error {
@@ -45,7 +46,7 @@ WHERE id = ANY($2::uuid[])
 
 type CancelStepsByIDsParams struct {
 	LastError pgtype.Text
-	StepIds   []pgtype.UUID
+	StepIds   []uuid.UUID
 }
 
 func (q *Queries) CancelStepsByIDs(ctx context.Context, arg CancelStepsByIDsParams) error {
@@ -66,7 +67,7 @@ WHERE round_id = $2::uuid
 
 type CancelStepsByRoundParams struct {
 	LastError pgtype.Text
-	RoundID   pgtype.UUID
+	RoundID   uuid.UUID
 }
 
 func (q *Queries) CancelStepsByRound(ctx context.Context, arg CancelStepsByRoundParams) error {
@@ -80,7 +81,7 @@ FROM commit_annotation_map
 WHERE commit_id = $1::uuid
 `
 
-func (q *Queries) CountCommitAnnotationsByCommit(ctx context.Context, commitID pgtype.UUID) (int64, error) {
+func (q *Queries) CountCommitAnnotationsByCommit(ctx context.Context, commitID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countCommitAnnotationsByCommit, commitID)
 	var count int64
 	err := row.Scan(&count)
@@ -95,7 +96,7 @@ WHERE j.loop_id = $1::uuid
   AND t.state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus)
 `
 
-func (q *Queries) CountLoopActiveSteps(ctx context.Context, loopID pgtype.UUID) (int32, error) {
+func (q *Queries) CountLoopActiveSteps(ctx context.Context, loopID uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, countLoopActiveSteps, loopID)
 	var count int32
 	err := row.Scan(&count)
@@ -114,7 +115,7 @@ type CountStepStatesByRoundRow struct {
 	Count int32
 }
 
-func (q *Queries) CountStepStatesByRound(ctx context.Context, roundID pgtype.UUID) ([]CountStepStatesByRoundRow, error) {
+func (q *Queries) CountStepStatesByRound(ctx context.Context, roundID uuid.UUID) ([]CountStepStatesByRoundRow, error) {
 	rows, err := q.db.Query(ctx, countStepStatesByRound, roundID)
 	if err != nil {
 		return nil, err
@@ -135,21 +136,21 @@ func (q *Queries) CountStepStatesByRound(ctx context.Context, roundID pgtype.UUI
 }
 
 const findRoundIDByStep = `-- name: FindRoundIDByStep :one
-SELECT round_id::text AS round_id
+SELECT round_id
 FROM step
 WHERE id = $1::uuid
 `
 
-func (q *Queries) FindRoundIDByStep(ctx context.Context, stepID pgtype.UUID) (string, error) {
+func (q *Queries) FindRoundIDByStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, findRoundIDByStep, stepID)
-	var round_id string
+	var round_id uuid.UUID
 	err := row.Scan(&round_id)
 	return round_id, err
 }
 
 const getCommandLogByCommandID = `-- name: GetCommandLogByCommandID :one
 SELECT
-  id::text AS id,
+  id,
   status,
   detail
 FROM runtime_command_log
@@ -158,7 +159,7 @@ LIMIT 1
 `
 
 type GetCommandLogByCommandIDRow struct {
-	ID     string
+	ID     uuid.UUID
 	Status string
 	Detail string
 }
@@ -172,7 +173,7 @@ func (q *Queries) GetCommandLogByCommandID(ctx context.Context, commandID string
 
 const getLatestRoundByLoop = `-- name: GetLatestRoundByLoop :one
 SELECT
-  id::text AS id,
+  id,
   round_index,
   state AS summary_status,
   ended_at
@@ -183,13 +184,13 @@ LIMIT 1
 `
 
 type GetLatestRoundByLoopRow struct {
-	ID            string
+	ID            uuid.UUID
 	RoundIndex    int32
 	SummaryStatus Roundstatus
 	EndedAt       pgtype.Timestamp
 }
 
-func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID pgtype.UUID) (GetLatestRoundByLoopRow, error) {
+func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (GetLatestRoundByLoopRow, error) {
 	row := q.db.QueryRow(ctx, getLatestRoundByLoop, loopID)
 	var i GetLatestRoundByLoopRow
 	err := row.Scan(
@@ -203,9 +204,9 @@ func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID pgtype.UUID) 
 
 const getLoopForUpdate = `-- name: GetLoopForUpdate :one
 SELECT
-  id::text AS id,
-  project_id::text AS project_id,
-  branch_id::text AS branch_id,
+  id,
+  project_id,
+  branch_id,
   mode,
   phase,
   status,
@@ -214,17 +215,17 @@ SELECT
   query_batch_size,
   query_strategy,
   model_arch,
-  COALESCE(global_config::text, '{}'::text)::text AS global_config,
-  COALESCE(last_confirmed_commit_id::text, ''::text)::text AS last_confirmed_commit_id
+  global_config,
+  last_confirmed_commit_id
 FROM loop
 WHERE id = $1::uuid
 FOR UPDATE
 `
 
 type GetLoopForUpdateRow struct {
-	ID                    string
-	ProjectID             string
-	BranchID              string
+	ID                    uuid.UUID
+	ProjectID             uuid.UUID
+	BranchID              uuid.UUID
 	Mode                  Loopmode
 	Phase                 Loopphase
 	Status                Loopstatus
@@ -233,11 +234,11 @@ type GetLoopForUpdateRow struct {
 	QueryBatchSize        int32
 	QueryStrategy         string
 	ModelArch             string
-	GlobalConfig          string
-	LastConfirmedCommitID string
+	GlobalConfig          []byte
+	LastConfirmedCommitID *uuid.UUID
 }
 
-func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID pgtype.UUID) (GetLoopForUpdateRow, error) {
+func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLoopForUpdateRow, error) {
 	row := q.db.QueryRow(ctx, getLoopForUpdate, loopID)
 	var i GetLoopForUpdateRow
 	err := row.Scan(
@@ -264,7 +265,7 @@ FROM loop
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetLoopStatus(ctx context.Context, loopID pgtype.UUID) (Loopstatus, error) {
+func (q *Queries) GetLoopStatus(ctx context.Context, loopID uuid.UUID) (Loopstatus, error) {
 	row := q.db.QueryRow(ctx, getLoopStatus, loopID)
 	var status Loopstatus
 	err := row.Scan(&status)
@@ -277,7 +278,7 @@ FROM round
 WHERE loop_id = $1::uuid
 `
 
-func (q *Queries) GetNextRoundIndex(ctx context.Context, loopID pgtype.UUID) (int32, error) {
+func (q *Queries) GetNextRoundIndex(ctx context.Context, loopID uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, getNextRoundIndex, loopID)
 	var next_round_index int32
 	err := row.Scan(&next_round_index)
@@ -290,7 +291,7 @@ FROM round
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetRoundState(ctx context.Context, roundID pgtype.UUID) (Roundstatus, error) {
+func (q *Queries) GetRoundState(ctx context.Context, roundID uuid.UUID) (Roundstatus, error) {
 	row := q.db.QueryRow(ctx, getRoundState, roundID)
 	var state Roundstatus
 	err := row.Scan(&state)
@@ -303,7 +304,7 @@ FROM step
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetStepState(ctx context.Context, stepID pgtype.UUID) (Stepstatus, error) {
+func (q *Queries) GetStepState(ctx context.Context, stepID uuid.UUID) (Stepstatus, error) {
 	row := q.db.QueryRow(ctx, getStepState, stepID)
 	var state Stepstatus
 	err := row.Scan(&state)
@@ -327,7 +328,7 @@ ON CONFLICT (command_id) DO NOTHING
 `
 
 type InsertCommandLogParams struct {
-	RequestID   pgtype.UUID
+	RequestID   uuid.UUID
 	CommandID   string
 	CommandType string
 	ResourceID  string
@@ -376,9 +377,9 @@ INSERT INTO round(
 `
 
 type InsertRoundParams struct {
-	RoundID        pgtype.UUID
-	ProjectID      pgtype.UUID
-	LoopID         pgtype.UUID
+	RoundID        uuid.UUID
+	ProjectID      uuid.UUID
+	LoopID         uuid.UUID
 	RoundIndex     int32
 	Mode           Loopmode
 	State          Roundstatus
@@ -387,7 +388,7 @@ type InsertRoundParams struct {
 	QueryStrategy  string
 	ResolvedParams []byte
 	Resources      []byte
-	InputCommitID  pgtype.UUID
+	InputCommitID  *uuid.UUID
 }
 
 func (q *Queries) InsertRound(ctx context.Context, arg InsertRoundParams) error {
@@ -435,15 +436,15 @@ INSERT INTO step(
 `
 
 type InsertStepParams struct {
-	StepID           pgtype.UUID
-	RoundID          pgtype.UUID
+	StepID           uuid.UUID
+	RoundID          uuid.UUID
 	StepType         Steptype
 	DispatchKind     Stepdispatchkind
 	RoundIndex       int32
 	StepIndex        int32
 	DependsOnStepIds []byte
 	ResolvedParams   []byte
-	InputCommitID    pgtype.UUID
+	InputCommitID    *uuid.UUID
 }
 
 func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) error {
@@ -463,7 +464,7 @@ func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) error {
 
 const listLoopStoppableSteps = `-- name: ListLoopStoppableSteps :many
 SELECT
-  t.id::text AS id,
+  t.id AS id,
   t.state,
   t.attempt,
   t.updated_at
@@ -475,13 +476,13 @@ ORDER BY t.created_at ASC
 `
 
 type ListLoopStoppableStepsRow struct {
-	ID        string
+	ID        uuid.UUID
 	State     Stepstatus
 	Attempt   int32
 	UpdatedAt pgtype.Timestamp
 }
 
-func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID pgtype.UUID) ([]ListLoopStoppableStepsRow, error) {
+func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error) {
 	rows, err := q.db.Query(ctx, listLoopStoppableSteps, loopID)
 	if err != nil {
 		return nil, err
@@ -507,21 +508,21 @@ func (q *Queries) ListLoopStoppableSteps(ctx context.Context, loopID pgtype.UUID
 }
 
 const listRoundActiveStepIDs = `-- name: ListRoundActiveStepIDs :many
-SELECT id::text AS id
+SELECT id
 FROM step
 WHERE round_id = $1::uuid
   AND state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus)
 `
 
-func (q *Queries) ListRoundActiveStepIDs(ctx context.Context, roundID pgtype.UUID) ([]string, error) {
+func (q *Queries) ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listRoundActiveStepIDs, roundID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []uuid.UUID
 	for rows.Next() {
-		var id string
+		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -534,22 +535,22 @@ func (q *Queries) ListRoundActiveStepIDs(ctx context.Context, roundID pgtype.UUI
 }
 
 const listTickLoopIDs = `-- name: ListTickLoopIDs :many
-SELECT id::text AS id
+SELECT id
 FROM loop
 WHERE status IN ('RUNNING'::loopstatus, 'STOPPING'::loopstatus)
 ORDER BY updated_at ASC
 LIMIT $1
 `
 
-func (q *Queries) ListTickLoopIDs(ctx context.Context, limitCount int32) ([]string, error) {
+func (q *Queries) ListTickLoopIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listTickLoopIDs, limitCount)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []uuid.UUID
 	for rows.Next() {
-		var id string
+		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -574,18 +575,18 @@ func (q *Queries) ReleaseDispatchAdvisoryLock(ctx context.Context, lockKey int64
 
 const resolveBranchHeadFromDB = `-- name: ResolveBranchHeadFromDB :one
 SELECT
-  COALESCE(head_commit_id::text, ''::text)::text AS head_commit_id,
-  project_id::text AS project_id
+  head_commit_id,
+  project_id
 FROM branch
 WHERE id = $1::uuid
 `
 
 type ResolveBranchHeadFromDBRow struct {
-	HeadCommitID string
-	ProjectID    string
+	HeadCommitID uuid.UUID
+	ProjectID    uuid.UUID
 }
 
-func (q *Queries) ResolveBranchHeadFromDB(ctx context.Context, branchID pgtype.UUID) (ResolveBranchHeadFromDBRow, error) {
+func (q *Queries) ResolveBranchHeadFromDB(ctx context.Context, branchID uuid.UUID) (ResolveBranchHeadFromDBRow, error) {
 	row := q.db.QueryRow(ctx, resolveBranchHeadFromDB, branchID)
 	var i ResolveBranchHeadFromDBRow
 	err := row.Scan(&i.HeadCommitID, &i.ProjectID)
@@ -646,7 +647,7 @@ WHERE id = $3::uuid
 type UpdateLoopAfterRoundCreatedParams struct {
 	CurrentIteration int32
 	Phase            Loopphase
-	LoopID           pgtype.UUID
+	LoopID           uuid.UUID
 }
 
 func (q *Queries) UpdateLoopAfterRoundCreated(ctx context.Context, arg UpdateLoopAfterRoundCreatedParams) error {
@@ -662,8 +663,8 @@ WHERE id = $2::uuid
 `
 
 type UpdateLoopLastConfirmedCommitParams struct {
-	LastConfirmedCommitID pgtype.UUID
-	LoopID                pgtype.UUID
+	LastConfirmedCommitID uuid.UUID
+	LoopID                uuid.UUID
 }
 
 func (q *Queries) UpdateLoopLastConfirmedCommit(ctx context.Context, arg UpdateLoopLastConfirmedCommitParams) error {
@@ -685,8 +686,8 @@ type UpdateLoopStateParams struct {
 	Status                Loopstatus
 	Phase                 Loopphase
 	TerminalReason        pgtype.Text
-	LastConfirmedCommitID pgtype.UUID
-	LoopID                pgtype.UUID
+	LastConfirmedCommitID *uuid.UUID
+	LoopID                uuid.UUID
 }
 
 func (q *Queries) UpdateLoopState(ctx context.Context, arg UpdateLoopStateParams) error {
@@ -715,8 +716,8 @@ type UpdateLoopStateGuardedParams struct {
 	Status                Loopstatus
 	Phase                 Loopphase
 	TerminalReason        pgtype.Text
-	LastConfirmedCommitID pgtype.UUID
-	LoopID                pgtype.UUID
+	LastConfirmedCommitID *uuid.UUID
+	LoopID                uuid.UUID
 	FromStatus            Loopstatus
 }
 
@@ -744,7 +745,7 @@ WHERE id = $2::uuid
 
 type UpdateLoopStatusParams struct {
 	Status Loopstatus
-	LoopID pgtype.UUID
+	LoopID uuid.UUID
 }
 
 func (q *Queries) UpdateLoopStatus(ctx context.Context, arg UpdateLoopStatusParams) error {
@@ -762,7 +763,7 @@ WHERE id = $2::uuid
 
 type UpdateLoopStatusGuardedParams struct {
 	Status     Loopstatus
-	LoopID     pgtype.UUID
+	LoopID     uuid.UUID
 	FromStatus Loopstatus
 }
 
@@ -787,7 +788,7 @@ WHERE id = $3::uuid
 type UpdateRoundAggregateParams struct {
 	State      Roundstatus
 	StepCounts []byte
-	RoundID    pgtype.UUID
+	RoundID    uuid.UUID
 }
 
 func (q *Queries) UpdateRoundAggregate(ctx context.Context, arg UpdateRoundAggregateParams) error {
@@ -806,7 +807,7 @@ WHERE id = $3::uuid
 type UpdateRoundStateWithReasonParams struct {
 	State          Roundstatus
 	TerminalReason pgtype.Text
-	RoundID        pgtype.UUID
+	RoundID        uuid.UUID
 }
 
 func (q *Queries) UpdateRoundStateWithReason(ctx context.Context, arg UpdateRoundStateWithReasonParams) error {
@@ -826,7 +827,7 @@ WHERE id = $3::uuid
 type UpdateRoundStateWithReasonGuardedParams struct {
 	State          Roundstatus
 	TerminalReason pgtype.Text
-	RoundID        pgtype.UUID
+	RoundID        uuid.UUID
 	FromState      Roundstatus
 }
 
@@ -851,7 +852,7 @@ SET state = 'WAIT_USER'::roundstatus,
 WHERE id = $1::uuid
 `
 
-func (q *Queries) UpdateRoundWaitUser(ctx context.Context, roundID pgtype.UUID) error {
+func (q *Queries) UpdateRoundWaitUser(ctx context.Context, roundID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, updateRoundWaitUser, roundID)
 	return err
 }

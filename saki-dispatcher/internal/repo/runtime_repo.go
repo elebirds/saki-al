@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -53,11 +52,4 @@ func (r *RuntimeRepo) Pool() *pgxpool.Pool {
 		return nil
 	}
 	return r.pool
-}
-
-func (r *RuntimeRepo) Begin(ctx context.Context) (pgx.Tx, error) {
-	if !r.Enabled() {
-		return nil, fmt.Errorf("runtime repo is not enabled")
-	}
-	return r.pool.Begin(ctx)
 }

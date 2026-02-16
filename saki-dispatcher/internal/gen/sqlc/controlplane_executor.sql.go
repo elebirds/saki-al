@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -41,7 +42,7 @@ INSERT INTO runtime_executor(
   '',
   $3,
   TRUE,
-  $4::text,
+  $4::uuid,
   '{}'::jsonb,
   $5::jsonb,
   now(),
@@ -60,10 +61,10 @@ ON CONFLICT (executor_id) DO UPDATE SET
 `
 
 type UpsertRuntimeExecutorOnHeartbeatParams struct {
-	ExecutorRowID pgtype.UUID
+	ExecutorRowID uuid.UUID
 	ExecutorID    string
 	Status        string
-	CurrentStepID pgtype.Text
+	CurrentStepID *uuid.UUID
 	Resources     []byte
 }
 
@@ -108,7 +109,7 @@ ON CONFLICT (executor_id) DO UPDATE SET
 `
 
 type UpsertRuntimeExecutorOnRegisterParams struct {
-	ExecutorRowID pgtype.UUID
+	ExecutorRowID uuid.UUID
 	ExecutorID    string
 	Version       string
 	PluginIds     []byte

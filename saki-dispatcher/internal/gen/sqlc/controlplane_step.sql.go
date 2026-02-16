@@ -8,13 +8,14 @@ package sqlc
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type CopyStepCandidateItemsParams struct {
-	ID                 pgtype.UUID
-	StepID             pgtype.UUID
-	SampleID           pgtype.UUID
+	ID                 uuid.UUID
+	StepID             uuid.UUID
+	SampleID           uuid.UUID
 	Rank               int32
 	Score              float64
 	Reason             []byte
@@ -24,8 +25,8 @@ type CopyStepCandidateItemsParams struct {
 }
 
 type CopyStepMetricPointsParams struct {
-	ID          pgtype.UUID
-	StepID      pgtype.UUID
+	ID          uuid.UUID
+	StepID      uuid.UUID
 	Step        int32
 	Epoch       pgtype.Int4
 	MetricName  string
@@ -40,7 +41,7 @@ DELETE FROM step_candidate_item
 WHERE step_id = $1::uuid
 `
 
-func (q *Queries) DeleteStepCandidatesByStepID(ctx context.Context, stepID pgtype.UUID) error {
+func (q *Queries) DeleteStepCandidatesByStepID(ctx context.Context, stepID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteStepCandidatesByStepID, stepID)
 	return err
 }
@@ -51,7 +52,7 @@ FROM step
 WHERE id = ANY($1::uuid[])
 `
 
-func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []pgtype.UUID) ([]Stepstatus, error) {
+func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []uuid.UUID) ([]Stepstatus, error) {
 	rows, err := q.db.Query(ctx, getDependencyStatesByIDs, stepIds)
 	if err != nil {
 		return nil, err
@@ -72,7 +73,7 @@ func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []pgtype
 }
 
 const getLatestActivateOutputCommitByRound = `-- name: GetLatestActivateOutputCommitByRound :one
-SELECT COALESCE(output_commit_id::text, ''::text)::text AS output_commit_id
+SELECT output_commit_id
 FROM step
 WHERE round_id = $1::uuid
   AND step_type = 'ACTIVATE_SAMPLES'::steptype
@@ -81,22 +82,22 @@ ORDER BY step_index DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLatestActivateOutputCommitByRound(ctx context.Context, roundID pgtype.UUID) (string, error) {
+func (q *Queries) GetLatestActivateOutputCommitByRound(ctx context.Context, roundID uuid.UUID) (*uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getLatestActivateOutputCommitByRound, roundID)
-	var output_commit_id string
+	var output_commit_id *uuid.UUID
 	err := row.Scan(&output_commit_id)
 	return output_commit_id, err
 }
 
 const getLoopBranchID = `-- name: GetLoopBranchID :one
-SELECT branch_id::text AS branch_id
+SELECT branch_id AS branch_id
 FROM loop
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetLoopBranchID(ctx context.Context, loopID pgtype.UUID) (string, error) {
+func (q *Queries) GetLoopBranchID(ctx context.Context, loopID uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getLoopBranchID, loopID)
-	var branch_id string
+	var branch_id uuid.UUID
 	err := row.Scan(&branch_id)
 	return branch_id, err
 }
@@ -107,7 +108,7 @@ FROM loop
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetLoopQueryBatchSize(ctx context.Context, loopID pgtype.UUID) (int32, error) {
+func (q *Queries) GetLoopQueryBatchSize(ctx context.Context, loopID uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, getLoopQueryBatchSize, loopID)
 	var query_batch_size int32
 	err := row.Scan(&query_batch_size)
@@ -116,24 +117,24 @@ func (q *Queries) GetLoopQueryBatchSize(ctx context.Context, loopID pgtype.UUID)
 
 const getLoopRuntimeConfig = `-- name: GetLoopRuntimeConfig :one
 SELECT
-  project_id::text AS project_id,
-  branch_id::text AS branch_id,
+  project_id AS project_id,
+  branch_id AS branch_id,
   query_strategy,
-  COALESCE(global_config::text, '{}'::text)::text AS global_config,
+  global_config,
   query_batch_size
 FROM loop
 WHERE id = $1::uuid
 `
 
 type GetLoopRuntimeConfigRow struct {
-	ProjectID      string
-	BranchID       string
+	ProjectID      uuid.UUID
+	BranchID       uuid.UUID
 	QueryStrategy  string
-	GlobalConfig   string
+	GlobalConfig   []byte
 	QueryBatchSize int32
 }
 
-func (q *Queries) GetLoopRuntimeConfig(ctx context.Context, loopID pgtype.UUID) (GetLoopRuntimeConfigRow, error) {
+func (q *Queries) GetLoopRuntimeConfig(ctx context.Context, loopID uuid.UUID) (GetLoopRuntimeConfigRow, error) {
 	row := q.db.QueryRow(ctx, getLoopRuntimeConfig, loopID)
 	var i GetLoopRuntimeConfigRow
 	err := row.Scan(
@@ -147,40 +148,40 @@ func (q *Queries) GetLoopRuntimeConfig(ctx context.Context, loopID pgtype.UUID) 
 }
 
 const getStepArtifactsForUpdate = `-- name: GetStepArtifactsForUpdate :one
-SELECT COALESCE(artifacts::text, '{}'::text)::text AS artifacts
+SELECT artifacts
 FROM step
 WHERE id = $1::uuid
 FOR UPDATE
 `
 
-func (q *Queries) GetStepArtifactsForUpdate(ctx context.Context, stepID pgtype.UUID) (string, error) {
+func (q *Queries) GetStepArtifactsForUpdate(ctx context.Context, stepID uuid.UUID) ([]byte, error) {
 	row := q.db.QueryRow(ctx, getStepArtifactsForUpdate, stepID)
-	var artifacts string
+	var artifacts []byte
 	err := row.Scan(&artifacts)
 	return artifacts, err
 }
 
 const getStepPayloadByIDForUpdate = `-- name: GetStepPayloadByIDForUpdate :one
 SELECT
-  t.id::text AS step_id,
-  t.round_id::text AS round_id,
+  t.id AS step_id,
+  t.round_id AS round_id,
   t.state AS status,
   t.step_type AS step_type,
   t.dispatch_kind AS dispatch_kind,
   t.round_index,
   t.attempt,
   t.state_version,
-  COALESCE(t.depends_on_step_ids::text, '[]'::text)::text AS depends_on_raw,
-  COALESCE(t.resolved_params::text, '{}'::text)::text AS params_raw,
-  COALESCE(t.input_commit_id::text, ''::text)::text AS input_commit_id,
-  j.loop_id::text AS loop_id,
-  j.project_id::text AS project_id,
+  t.depends_on_step_ids AS depends_on_raw,
+  t.resolved_params AS params_raw,
+  t.input_commit_id AS input_commit_id,
+  j.loop_id AS loop_id,
+  j.project_id AS project_id,
   j.plugin_id,
   j.mode AS mode,
   j.query_strategy,
-  COALESCE(j.resolved_params::text, '{}'::text)::text AS round_params_raw,
-  COALESCE(j.resources::text, '{}'::text)::text AS resources_raw,
-  COALESCE(j.input_commit_id::text, ''::text)::text AS round_input_commit_id
+  j.resolved_params AS round_params_raw,
+  j.resources AS resources_raw,
+  j.input_commit_id AS round_input_commit_id
 FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE t.id = $1::uuid
@@ -188,28 +189,28 @@ FOR UPDATE SKIP LOCKED
 `
 
 type GetStepPayloadByIDForUpdateRow struct {
-	StepID             string
-	RoundID            string
+	StepID             uuid.UUID
+	RoundID            uuid.UUID
 	Status             Stepstatus
 	StepType           Steptype
 	DispatchKind       Stepdispatchkind
 	RoundIndex         int32
 	Attempt            int32
 	StateVersion       int32
-	DependsOnRaw       string
-	ParamsRaw          string
-	InputCommitID      string
-	LoopID             string
-	ProjectID          string
+	DependsOnRaw       []byte
+	ParamsRaw          []byte
+	InputCommitID      *uuid.UUID
+	LoopID             uuid.UUID
+	ProjectID          uuid.UUID
 	PluginID           string
 	Mode               Loopmode
 	QueryStrategy      string
-	RoundParamsRaw     string
-	ResourcesRaw       string
-	RoundInputCommitID string
+	RoundParamsRaw     []byte
+	ResourcesRaw       []byte
+	RoundInputCommitID *uuid.UUID
 }
 
-func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID pgtype.UUID) (GetStepPayloadByIDForUpdateRow, error) {
+func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.UUID) (GetStepPayloadByIDForUpdateRow, error) {
 	row := q.db.QueryRow(ctx, getStepPayloadByIDForUpdate, stepID)
 	var i GetStepPayloadByIDForUpdateRow
 	err := row.Scan(
@@ -243,7 +244,7 @@ WHERE id = $1::uuid
 FOR UPDATE
 `
 
-func (q *Queries) GetStepStateForUpdate(ctx context.Context, stepID pgtype.UUID) (Stepstatus, error) {
+func (q *Queries) GetStepStateForUpdate(ctx context.Context, stepID uuid.UUID) (Stepstatus, error) {
 	row := q.db.QueryRow(ctx, getStepStateForUpdate, stepID)
 	var state Stepstatus
 	err := row.Scan(&state)
@@ -251,7 +252,7 @@ func (q *Queries) GetStepStateForUpdate(ctx context.Context, stepID pgtype.UUID)
 }
 
 const getSucceededScoreStepIDByRound = `-- name: GetSucceededScoreStepIDByRound :one
-SELECT id::text AS step_id
+SELECT id AS step_id
 FROM step
 WHERE round_id = $1::uuid
   AND step_type = 'SCORE'::steptype
@@ -260,9 +261,9 @@ ORDER BY step_index DESC
 LIMIT 1
 `
 
-func (q *Queries) GetSucceededScoreStepIDByRound(ctx context.Context, roundID pgtype.UUID) (string, error) {
+func (q *Queries) GetSucceededScoreStepIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getSucceededScoreStepIDByRound, roundID)
-	var step_id string
+	var step_id uuid.UUID
 	err := row.Scan(&step_id)
 	return step_id, err
 }
@@ -284,9 +285,9 @@ INSERT INTO step_candidate_item(
 `
 
 type InsertStepCandidateItemParams struct {
-	CandidateID        pgtype.UUID
-	StepID             pgtype.UUID
-	SampleID           pgtype.UUID
+	CandidateID        uuid.UUID
+	StepID             uuid.UUID
+	SampleID           uuid.UUID
 	Rank               int32
 	Score              float64
 	Reason             []byte
@@ -323,8 +324,8 @@ INSERT INTO step_metric_point(
 `
 
 type InsertStepMetricPointParams struct {
-	MetricID    pgtype.UUID
-	StepID      pgtype.UUID
+	MetricID    uuid.UUID
+	StepID      uuid.UUID
 	Step        int32
 	Epoch       pgtype.Int4
 	MetricName  string
@@ -346,7 +347,7 @@ func (q *Queries) InsertStepMetricPoint(ctx context.Context, arg InsertStepMetri
 }
 
 const listPendingStepIDs = `-- name: ListPendingStepIDs :many
-SELECT s.id::text AS id
+SELECT s.id AS id
 FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
@@ -356,15 +357,15 @@ ORDER BY s.created_at ASC
 LIMIT $1
 `
 
-func (q *Queries) ListPendingStepIDs(ctx context.Context, limitCount int32) ([]string, error) {
+func (q *Queries) ListPendingStepIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listPendingStepIDs, limitCount)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []uuid.UUID
 	for rows.Next() {
-		var id string
+		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -377,7 +378,7 @@ func (q *Queries) ListPendingStepIDs(ctx context.Context, limitCount int32) ([]s
 }
 
 const listReadyStepIDsForUpdateSkipLocked = `-- name: ListReadyStepIDsForUpdateSkipLocked :many
-SELECT s.id::text AS id
+SELECT s.id AS id
 FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
@@ -388,15 +389,15 @@ LIMIT $1
 FOR UPDATE OF s SKIP LOCKED
 `
 
-func (q *Queries) ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]string, error) {
+func (q *Queries) ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listReadyStepIDsForUpdateSkipLocked, limitCount)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []uuid.UUID
 	for rows.Next() {
-		var id string
+		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -410,11 +411,11 @@ func (q *Queries) ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limit
 
 const listStepCandidatesByStepID = `-- name: ListStepCandidatesByStepID :many
 SELECT
-  sample_id::text AS sample_id,
+  sample_id AS sample_id,
   rank,
   score,
-  COALESCE(reason::text, '{}'::text)::text AS reason_json,
-  COALESCE(prediction_snapshot::text, '{}'::text)::text AS prediction_json
+  reason AS reason_json,
+  prediction_snapshot AS prediction_json
 FROM step_candidate_item
 WHERE step_id = $1::uuid
 ORDER BY rank ASC, score DESC
@@ -422,16 +423,16 @@ LIMIT $2
 `
 
 type ListStepCandidatesByStepIDParams struct {
-	StepID     pgtype.UUID
+	StepID     uuid.UUID
 	LimitCount int32
 }
 
 type ListStepCandidatesByStepIDRow struct {
-	SampleID       string
+	SampleID       uuid.UUID
 	Rank           int32
 	Score          float64
-	ReasonJson     string
-	PredictionJson string
+	ReasonJson     []byte
+	PredictionJson []byte
 }
 
 func (q *Queries) ListStepCandidatesByStepID(ctx context.Context, arg ListStepCandidatesByStepIDParams) ([]ListStepCandidatesByStepIDRow, error) {
@@ -470,7 +471,7 @@ WHERE id = $1::uuid
   AND state = 'READY'::stepstatus
 `
 
-func (q *Queries) MarkOrchestratorStepRunning(ctx context.Context, stepID pgtype.UUID) (int64, error) {
+func (q *Queries) MarkOrchestratorStepRunning(ctx context.Context, stepID uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, markOrchestratorStepRunning, stepID)
 	if err != nil {
 		return 0, err
@@ -492,7 +493,7 @@ WHERE id = $3::uuid
 type MarkStepDispatchingParams struct {
 	AssignedExecutorID pgtype.Text
 	DispatchRequestID  pgtype.Text
-	StepID             pgtype.UUID
+	StepID             uuid.UUID
 }
 
 func (q *Queries) MarkStepDispatching(ctx context.Context, arg MarkStepDispatchingParams) (int64, error) {
@@ -512,7 +513,7 @@ WHERE id = $1::uuid
   AND state = 'PENDING'::stepstatus
 `
 
-func (q *Queries) PromoteStepToReady(ctx context.Context, stepID pgtype.UUID) (int64, error) {
+func (q *Queries) PromoteStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, promoteStepToReady, stepID)
 	if err != nil {
 		return 0, err
@@ -534,7 +535,7 @@ WHERE id = $2::uuid
 
 type RecoverStaleDispatchingStepToReadyParams struct {
 	LastError pgtype.Text
-	StepID    pgtype.UUID
+	StepID    uuid.UUID
 }
 
 func (q *Queries) RecoverStaleDispatchingStepToReady(ctx context.Context, arg RecoverStaleDispatchingStepToReadyParams) (int64, error) {
@@ -557,7 +558,7 @@ WHERE id = $1::uuid
   AND state = 'DISPATCHING'::stepstatus
 `
 
-func (q *Queries) ResetStepToReadyQueueFull(ctx context.Context, stepID pgtype.UUID) (int64, error) {
+func (q *Queries) ResetStepToReadyQueueFull(ctx context.Context, stepID uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, resetStepToReadyQueueFull, stepID)
 	if err != nil {
 		return 0, err
@@ -573,8 +574,8 @@ WHERE id = $2::uuid
 `
 
 type UpdateRoundOutputCommitParams struct {
-	OutputCommitID pgtype.UUID
-	RoundID        pgtype.UUID
+	OutputCommitID *uuid.UUID
+	RoundID        uuid.UUID
 }
 
 func (q *Queries) UpdateRoundOutputCommit(ctx context.Context, arg UpdateRoundOutputCommitParams) error {
@@ -591,7 +592,7 @@ WHERE id = $2::uuid
 
 type UpdateStepArtifactsParams struct {
 	Artifacts []byte
-	StepID    pgtype.UUID
+	StepID    uuid.UUID
 }
 
 func (q *Queries) UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifactsParams) error {
@@ -614,8 +615,8 @@ WHERE id = $4::uuid
 type UpdateStepExecutionResultGuardedParams struct {
 	State          Stepstatus
 	LastError      pgtype.Text
-	OutputCommitID pgtype.UUID
-	StepID         pgtype.UUID
+	OutputCommitID *uuid.UUID
+	StepID         uuid.UUID
 	FromState      Stepstatus
 }
 
@@ -652,7 +653,7 @@ type UpdateStepResultGuardedParams struct {
 	Metrics      []byte
 	Artifacts    []byte
 	ErrorMessage pgtype.Text
-	StepID       pgtype.UUID
+	StepID       uuid.UUID
 	FromState    Stepstatus
 }
 
@@ -686,7 +687,7 @@ WHERE id = $3::uuid
 type UpdateStepStatusFromEventGuardedParams struct {
 	State     Stepstatus
 	Reason    pgtype.Text
-	StepID    pgtype.UUID
+	StepID    uuid.UUID
 	FromState Stepstatus
 }
 

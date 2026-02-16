@@ -1,5 +1,5 @@
 -- name: ListPendingStepIDs :many
-SELECT s.id::text AS id
+SELECT s.id AS id
 FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
@@ -9,7 +9,7 @@ ORDER BY s.created_at ASC
 LIMIT sqlc.arg(limit_count);
 
 -- name: ListReadyStepIDsForUpdateSkipLocked :many
-SELECT s.id::text AS id
+SELECT s.id AS id
 FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
@@ -21,25 +21,25 @@ FOR UPDATE OF s SKIP LOCKED;
 
 -- name: GetStepPayloadByIDForUpdate :one
 SELECT
-  t.id::text AS step_id,
-  t.round_id::text AS round_id,
+  t.id AS step_id,
+  t.round_id AS round_id,
   t.state AS status,
   t.step_type AS step_type,
   t.dispatch_kind AS dispatch_kind,
   t.round_index,
   t.attempt,
   t.state_version,
-  COALESCE(t.depends_on_step_ids::text, '[]'::text)::text AS depends_on_raw,
-  COALESCE(t.resolved_params::text, '{}'::text)::text AS params_raw,
-  COALESCE(t.input_commit_id::text, ''::text)::text AS input_commit_id,
-  j.loop_id::text AS loop_id,
-  j.project_id::text AS project_id,
+  t.depends_on_step_ids AS depends_on_raw,
+  t.resolved_params AS params_raw,
+  t.input_commit_id AS input_commit_id,
+  j.loop_id AS loop_id,
+  j.project_id AS project_id,
   j.plugin_id,
   j.mode AS mode,
   j.query_strategy,
-  COALESCE(j.resolved_params::text, '{}'::text)::text AS round_params_raw,
-  COALESCE(j.resources::text, '{}'::text)::text AS resources_raw,
-  COALESCE(j.input_commit_id::text, ''::text)::text AS round_input_commit_id
+  j.resolved_params AS round_params_raw,
+  j.resources AS resources_raw,
+  j.input_commit_id AS round_input_commit_id
 FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE t.id = sqlc.arg(step_id)::uuid
@@ -122,7 +122,7 @@ FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 
 -- name: GetSucceededScoreStepIDByRound :one
-SELECT id::text AS step_id
+SELECT id AS step_id
 FROM step
 WHERE round_id = sqlc.arg(round_id)::uuid
   AND step_type = 'SCORE'::steptype
@@ -132,11 +132,11 @@ LIMIT 1;
 
 -- name: ListStepCandidatesByStepID :many
 SELECT
-  sample_id::text AS sample_id,
+  sample_id AS sample_id,
   rank,
   score,
-  COALESCE(reason::text, '{}'::text)::text AS reason_json,
-  COALESCE(prediction_snapshot::text, '{}'::text)::text AS prediction_json
+  reason AS reason_json,
+  prediction_snapshot AS prediction_json
 FROM step_candidate_item
 WHERE step_id = sqlc.arg(step_id)::uuid
 ORDER BY rank ASC, score DESC
@@ -170,21 +170,21 @@ INSERT INTO step_candidate_item(
 
 -- name: GetLoopRuntimeConfig :one
 SELECT
-  project_id::text AS project_id,
-  branch_id::text AS branch_id,
+  project_id AS project_id,
+  branch_id AS branch_id,
   query_strategy,
-  COALESCE(global_config::text, '{}'::text)::text AS global_config,
+  global_config,
   query_batch_size
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 
 -- name: GetLoopBranchID :one
-SELECT branch_id::text AS branch_id
+SELECT branch_id AS branch_id
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 
 -- name: GetLatestActivateOutputCommitByRound :one
-SELECT COALESCE(output_commit_id::text, ''::text)::text AS output_commit_id
+SELECT output_commit_id
 FROM step
 WHERE round_id = sqlc.arg(round_id)::uuid
   AND step_type = 'ACTIVATE_SAMPLES'::steptype
@@ -245,7 +245,7 @@ INSERT INTO step_metric_point(
 );
 
 -- name: GetStepArtifactsForUpdate :one
-SELECT COALESCE(artifacts::text, '{}'::text)::text AS artifacts
+SELECT artifacts
 FROM step
 WHERE id = sqlc.arg(step_id)::uuid
 FOR UPDATE;

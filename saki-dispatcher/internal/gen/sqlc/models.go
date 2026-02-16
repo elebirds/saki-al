@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -830,31 +831,31 @@ type AlembicVersion struct {
 }
 
 type Annotation struct {
-	ID          pgtype.UUID
+	ID          uuid.UUID
 	CreatedAt   pgtype.Timestamp
 	UpdatedAt   pgtype.Timestamp
-	SampleID    pgtype.UUID
-	LabelID     pgtype.UUID
-	ProjectID   pgtype.UUID
-	GroupID     pgtype.UUID
-	LineageID   pgtype.UUID
+	SampleID    uuid.UUID
+	LabelID     uuid.UUID
+	ProjectID   uuid.UUID
+	GroupID     uuid.UUID
+	LineageID   uuid.UUID
 	ViewRole    string
-	ParentID    pgtype.UUID
+	ParentID    *uuid.UUID
 	Type        Annotationtype
 	Source      Annotationsource
 	Data        []byte
 	Extra       []byte
 	Confidence  float64
-	AnnotatorID pgtype.UUID
+	AnnotatorID *uuid.UUID
 }
 
 type AnnotationDraft struct {
-	ID         pgtype.UUID
+	ID         uuid.UUID
 	CreatedAt  pgtype.Timestamp
 	UpdatedAt  pgtype.Timestamp
-	ProjectID  pgtype.UUID
-	SampleID   pgtype.UUID
-	UserID     pgtype.UUID
+	ProjectID  uuid.UUID
+	SampleID   uuid.UUID
+	UserID     uuid.UUID
 	BranchName string
 	Payload    []byte
 }
@@ -862,7 +863,7 @@ type AnnotationDraft struct {
 type Asset struct {
 	CreatedAt        pgtype.Timestamp
 	UpdatedAt        pgtype.Timestamp
-	ID               pgtype.UUID
+	ID               uuid.UUID
 	Hash             string
 	StorageType      Storagetype
 	Path             string
@@ -875,14 +876,14 @@ type Asset struct {
 }
 
 type AuditLog struct {
-	CreatedBy  pgtype.UUID
-	UpdatedBy  pgtype.UUID
+	CreatedBy  *uuid.UUID
+	UpdatedBy  *uuid.UUID
 	CreatedAt  pgtype.Timestamp
 	UpdatedAt  pgtype.Timestamp
-	ID         pgtype.UUID
+	ID         uuid.UUID
 	Action     Auditaction
 	TargetType string
-	TargetID   pgtype.UUID
+	TargetID   uuid.UUID
 	OldValue   []byte
 	NewValue   []byte
 	IpAddress  pgtype.Text
@@ -890,60 +891,60 @@ type AuditLog struct {
 }
 
 type Branch struct {
-	ID           pgtype.UUID
+	ID           uuid.UUID
 	CreatedAt    pgtype.Timestamp
 	UpdatedAt    pgtype.Timestamp
 	Name         string
-	ProjectID    pgtype.UUID
-	HeadCommitID pgtype.UUID
+	ProjectID    uuid.UUID
+	HeadCommitID uuid.UUID
 	Description  pgtype.Text
 	IsProtected  bool
 }
 
 type Commit struct {
-	ID         pgtype.UUID
+	ID         uuid.UUID
 	CreatedAt  pgtype.Timestamp
 	UpdatedAt  pgtype.Timestamp
-	ProjectID  pgtype.UUID
-	ParentID   pgtype.UUID
+	ProjectID  uuid.UUID
+	ParentID   *uuid.UUID
 	Message    string
 	AuthorType Authortype
-	AuthorID   pgtype.UUID
+	AuthorID   *uuid.UUID
 	Stats      []byte
 	Extra      []byte
 	CommitHash string
 }
 
 type CommitAnnotationMap struct {
-	CommitID     pgtype.UUID
-	SampleID     pgtype.UUID
-	AnnotationID pgtype.UUID
-	ProjectID    pgtype.UUID
+	CommitID     uuid.UUID
+	SampleID     uuid.UUID
+	AnnotationID uuid.UUID
+	ProjectID    uuid.UUID
 }
 
 type CommitSampleState struct {
-	CommitID  pgtype.UUID
-	SampleID  pgtype.UUID
-	ProjectID pgtype.UUID
+	CommitID  uuid.UUID
+	SampleID  uuid.UUID
+	ProjectID uuid.UUID
 	State     Commitsamplereviewstate
 }
 
 type Dataset struct {
-	ID                        pgtype.UUID
+	ID                        uuid.UUID
 	CreatedAt                 pgtype.Timestamp
 	UpdatedAt                 pgtype.Timestamp
 	Name                      string
 	Description               pgtype.Text
 	Type                      Datasettype
 	AllowDuplicateSampleNames bool
-	OwnerID                   pgtype.UUID
+	OwnerID                   uuid.UUID
 }
 
 type DispatchOutbox struct {
 	CreatedAt     pgtype.Timestamp
 	UpdatedAt     pgtype.Timestamp
-	ID            pgtype.UUID
-	StepID        pgtype.UUID
+	ID            uuid.UUID
+	StepID        uuid.UUID
 	ExecutorID    string
 	RequestID     string
 	Payload       []byte
@@ -956,7 +957,7 @@ type DispatchOutbox struct {
 }
 
 type Label struct {
-	ID          pgtype.UUID
+	ID          uuid.UUID
 	CreatedAt   pgtype.Timestamp
 	UpdatedAt   pgtype.Timestamp
 	Name        string
@@ -964,22 +965,22 @@ type Label struct {
 	Description pgtype.Text
 	SortOrder   int32
 	Shortcut    pgtype.Text
-	ProjectID   pgtype.UUID
+	ProjectID   uuid.UUID
 }
 
 type Loop struct {
 	CreatedAt             pgtype.Timestamp
 	UpdatedAt             pgtype.Timestamp
-	ID                    pgtype.UUID
-	ProjectID             pgtype.UUID
-	BranchID              pgtype.UUID
+	ID                    uuid.UUID
+	ProjectID             uuid.UUID
+	BranchID              uuid.UUID
 	Name                  string
 	Mode                  Loopmode
 	Phase                 Loopphase
 	PhaseMeta             []byte
 	QueryStrategy         string
 	ModelArch             string
-	ExperimentGroupID     pgtype.UUID
+	ExperimentGroupID     *uuid.UUID
 	GlobalConfig          []byte
 	CurrentIteration      int32
 	Status                Loopstatus
@@ -990,17 +991,17 @@ type Loop struct {
 	StopPatienceRounds    int32
 	StopMinGain           float64
 	AutoRegisterModel     bool
-	LastConfirmedCommitID pgtype.UUID
+	LastConfirmedCommitID *uuid.UUID
 	TerminalReason        pgtype.Text
 }
 
 type Model struct {
 	CreatedAt      pgtype.Timestamp
 	UpdatedAt      pgtype.Timestamp
-	ID             pgtype.UUID
-	ProjectID      pgtype.UUID
-	SourceCommitID pgtype.UUID
-	ParentModelID  pgtype.UUID
+	ID             uuid.UUID
+	ProjectID      uuid.UUID
+	SourceCommitID *uuid.UUID
+	ParentModelID  *uuid.UUID
 	PluginID       string
 	ModelArch      string
 	Name           string
@@ -1010,11 +1011,11 @@ type Model struct {
 	Metrics        []byte
 	Artifacts      []byte
 	PromotedAt     pgtype.Timestamp
-	CreatedBy      pgtype.UUID
+	CreatedBy      *uuid.UUID
 }
 
 type Project struct {
-	ID          pgtype.UUID
+	ID          uuid.UUID
 	CreatedAt   pgtype.Timestamp
 	UpdatedAt   pgtype.Timestamp
 	Name        string
@@ -1025,26 +1026,26 @@ type Project struct {
 }
 
 type ProjectDataset struct {
-	ProjectID pgtype.UUID
-	DatasetID pgtype.UUID
+	ProjectID uuid.UUID
+	DatasetID uuid.UUID
 }
 
 type ResourceMember struct {
-	CreatedBy    pgtype.UUID
-	UpdatedBy    pgtype.UUID
+	CreatedBy    *uuid.UUID
+	UpdatedBy    *uuid.UUID
 	CreatedAt    pgtype.Timestamp
 	UpdatedAt    pgtype.Timestamp
-	ID           pgtype.UUID
+	ID           uuid.UUID
 	ResourceType Resourcetype
-	ResourceID   pgtype.UUID
-	UserID       pgtype.UUID
-	RoleID       pgtype.UUID
+	ResourceID   uuid.UUID
+	UserID       uuid.UUID
+	RoleID       uuid.UUID
 }
 
 type Role struct {
 	CreatedAt    pgtype.Timestamp
 	UpdatedAt    pgtype.Timestamp
-	ID           pgtype.UUID
+	ID           uuid.UUID
 	IsSystem     bool
 	IsDefault    bool
 	IsSuperAdmin bool
@@ -1061,17 +1062,17 @@ type Role struct {
 type RolePermission struct {
 	CreatedAt  pgtype.Timestamp
 	UpdatedAt  pgtype.Timestamp
-	ID         pgtype.UUID
+	ID         uuid.UUID
 	Permission string
-	RoleID     pgtype.UUID
+	RoleID     uuid.UUID
 }
 
 type Round struct {
-	ID                 pgtype.UUID
+	ID                 uuid.UUID
 	CreatedAt          pgtype.Timestamp
 	UpdatedAt          pgtype.Timestamp
-	ProjectID          pgtype.UUID
-	LoopID             pgtype.UUID
+	ProjectID          uuid.UUID
+	LoopID             uuid.UUID
 	RoundIndex         int32
 	Mode               Loopmode
 	State              Roundstatus
@@ -1081,8 +1082,8 @@ type Round struct {
 	QueryStrategy      string
 	ResolvedParams     []byte
 	Resources          []byte
-	InputCommitID      pgtype.UUID
-	OutputCommitID     pgtype.UUID
+	InputCommitID      *uuid.UUID
+	OutputCommitID     *uuid.UUID
 	AssignedExecutorID pgtype.Text
 	StartedAt          pgtype.Timestamp
 	EndedAt            pgtype.Timestamp
@@ -1094,9 +1095,9 @@ type Round struct {
 }
 
 type RoundSampleMetric struct {
-	ID                 pgtype.UUID
-	RoundID            pgtype.UUID
-	SampleID           pgtype.UUID
+	ID                 uuid.UUID
+	RoundID            uuid.UUID
+	SampleID           uuid.UUID
 	Score              float64
 	Extra              []byte
 	PredictionSnapshot []byte
@@ -1105,7 +1106,7 @@ type RoundSampleMetric struct {
 type RuntimeCommandLog struct {
 	CreatedAt   pgtype.Timestamp
 	UpdatedAt   pgtype.Timestamp
-	ID          pgtype.UUID
+	ID          uuid.UUID
 	CommandID   string
 	CommandType string
 	ResourceID  string
@@ -1116,7 +1117,7 @@ type RuntimeCommandLog struct {
 type RuntimeExecutor struct {
 	CreatedAt     pgtype.Timestamp
 	UpdatedAt     pgtype.Timestamp
-	ID            pgtype.UUID
+	ID            uuid.UUID
 	ExecutorID    string
 	Version       string
 	Status        string
@@ -1131,7 +1132,7 @@ type RuntimeExecutor struct {
 type RuntimeExecutorStat struct {
 	CreatedAt          pgtype.Timestamp
 	UpdatedAt          pgtype.Timestamp
-	ID                 pgtype.UUID
+	ID                 uuid.UUID
 	Ts                 pgtype.Timestamp
 	TotalCount         int32
 	OnlineCount        int32
@@ -1143,13 +1144,13 @@ type RuntimeExecutorStat struct {
 }
 
 type Sample struct {
-	ID             pgtype.UUID
+	ID             uuid.UUID
 	CreatedAt      pgtype.Timestamp
 	UpdatedAt      pgtype.Timestamp
-	DatasetID      pgtype.UUID
+	DatasetID      uuid.UUID
 	Name           string
 	AssetGroup     []byte
-	PrimaryAssetID pgtype.UUID
+	PrimaryAssetID *uuid.UUID
 	Remark         string
 	MetaInfo       []byte
 }
@@ -1157,8 +1158,8 @@ type Sample struct {
 type Step struct {
 	CreatedAt          pgtype.Timestamp
 	UpdatedAt          pgtype.Timestamp
-	ID                 pgtype.UUID
-	RoundID            pgtype.UUID
+	ID                 uuid.UUID
+	RoundID            uuid.UUID
 	StepType           Steptype
 	DispatchKind       Stepdispatchkind
 	State              Stepstatus
@@ -1168,8 +1169,8 @@ type Step struct {
 	ResolvedParams     []byte
 	Metrics            []byte
 	Artifacts          []byte
-	InputCommitID      pgtype.UUID
-	OutputCommitID     pgtype.UUID
+	InputCommitID      *uuid.UUID
+	OutputCommitID     *uuid.UUID
 	AssignedExecutorID pgtype.Text
 	DispatchRequestID  pgtype.Text
 	StateVersion       int32
@@ -1183,9 +1184,9 @@ type Step struct {
 type StepCandidateItem struct {
 	CreatedAt          pgtype.Timestamp
 	UpdatedAt          pgtype.Timestamp
-	ID                 pgtype.UUID
-	StepID             pgtype.UUID
-	SampleID           pgtype.UUID
+	ID                 uuid.UUID
+	StepID             uuid.UUID
+	SampleID           uuid.UUID
 	Rank               int32
 	Score              float64
 	Reason             []byte
@@ -1195,8 +1196,8 @@ type StepCandidateItem struct {
 type StepEvent struct {
 	CreatedAt pgtype.Timestamp
 	UpdatedAt pgtype.Timestamp
-	ID        pgtype.UUID
-	StepID    pgtype.UUID
+	ID        uuid.UUID
+	StepID    uuid.UUID
 	Seq       int32
 	Ts        pgtype.Timestamp
 	EventType string
@@ -1207,8 +1208,8 @@ type StepEvent struct {
 type StepMetricPoint struct {
 	CreatedAt   pgtype.Timestamp
 	UpdatedAt   pgtype.Timestamp
-	ID          pgtype.UUID
-	StepID      pgtype.UUID
+	ID          uuid.UUID
+	StepID      uuid.UUID
 	Step        int32
 	Epoch       pgtype.Int4
 	MetricName  string
@@ -1221,11 +1222,11 @@ type SystemSetting struct {
 	UpdatedAt pgtype.Timestamp
 	Key       string
 	ValueJson []byte
-	UpdatedBy pgtype.UUID
+	UpdatedBy *uuid.UUID
 }
 
 type User struct {
-	ID                 pgtype.UUID
+	ID                 uuid.UUID
 	CreatedAt          pgtype.Timestamp
 	UpdatedAt          pgtype.Timestamp
 	Email              string
@@ -1237,12 +1238,12 @@ type User struct {
 }
 
 type UserSystemRole struct {
-	CreatedBy pgtype.UUID
-	UpdatedBy pgtype.UUID
+	CreatedBy *uuid.UUID
+	UpdatedBy *uuid.UUID
 	CreatedAt pgtype.Timestamp
 	UpdatedAt pgtype.Timestamp
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	RoleID    pgtype.UUID
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	RoleID    uuid.UUID
 	ExpiresAt pgtype.Timestamp
 }

@@ -2,9 +2,13 @@ package admingrpc
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/elebirds/saki/saki-dispatcher/internal/controlplane"
 	"github.com/elebirds/saki/saki-dispatcher/internal/dispatch"
@@ -28,6 +32,9 @@ func NewServer(dispatcher *dispatch.Dispatcher, commands *controlplane.Service, 
 }
 
 func (s *Server) StartLoop(ctx context.Context, req *dispatcheradminv1.LoopCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetLoopId(), "loop_id"); err != nil {
+		return nil, err
+	}
 	result, err := s.commands.StartLoop(ctx, req.GetCommandId(), req.GetLoopId())
 	if err != nil {
 		return nil, err
@@ -36,6 +43,9 @@ func (s *Server) StartLoop(ctx context.Context, req *dispatcheradminv1.LoopComma
 }
 
 func (s *Server) PauseLoop(ctx context.Context, req *dispatcheradminv1.LoopCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetLoopId(), "loop_id"); err != nil {
+		return nil, err
+	}
 	result, err := s.commands.PauseLoop(ctx, req.GetCommandId(), req.GetLoopId())
 	if err != nil {
 		return nil, err
@@ -44,6 +54,9 @@ func (s *Server) PauseLoop(ctx context.Context, req *dispatcheradminv1.LoopComma
 }
 
 func (s *Server) ResumeLoop(ctx context.Context, req *dispatcheradminv1.LoopCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetLoopId(), "loop_id"); err != nil {
+		return nil, err
+	}
 	result, err := s.commands.ResumeLoop(ctx, req.GetCommandId(), req.GetLoopId())
 	if err != nil {
 		return nil, err
@@ -52,6 +65,9 @@ func (s *Server) ResumeLoop(ctx context.Context, req *dispatcheradminv1.LoopComm
 }
 
 func (s *Server) StopLoop(ctx context.Context, req *dispatcheradminv1.LoopCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetLoopId(), "loop_id"); err != nil {
+		return nil, err
+	}
 	result, err := s.commands.StopLoop(ctx, req.GetCommandId(), req.GetLoopId())
 	if err != nil {
 		return nil, err
@@ -60,6 +76,9 @@ func (s *Server) StopLoop(ctx context.Context, req *dispatcheradminv1.LoopComman
 }
 
 func (s *Server) ConfirmLoop(ctx context.Context, req *dispatcheradminv1.ConfirmLoopRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetLoopId(), "loop_id"); err != nil {
+		return nil, err
+	}
 	result, err := s.commands.ConfirmLoop(ctx, req.GetCommandId(), req.GetLoopId(), req.GetForce())
 	if err != nil {
 		return nil, err
@@ -68,6 +87,9 @@ func (s *Server) ConfirmLoop(ctx context.Context, req *dispatcheradminv1.Confirm
 }
 
 func (s *Server) StopRound(ctx context.Context, req *dispatcheradminv1.RoundCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetRoundId(), "round_id"); err != nil {
+		return nil, err
+	}
 	result, err := s.commands.StopRound(ctx, req.GetCommandId(), req.GetRoundId(), req.GetReason())
 	if err != nil {
 		return nil, err
@@ -76,6 +98,9 @@ func (s *Server) StopRound(ctx context.Context, req *dispatcheradminv1.RoundComm
 }
 
 func (s *Server) StopStep(ctx context.Context, req *dispatcheradminv1.StepCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetStepId(), "step_id"); err != nil {
+		return nil, err
+	}
 	result, err := s.commands.StopStep(ctx, req.GetCommandId(), req.GetStepId(), req.GetReason())
 	if err != nil {
 		return nil, err
@@ -84,6 +109,11 @@ func (s *Server) StopStep(ctx context.Context, req *dispatcheradminv1.StepComman
 }
 
 func (s *Server) TriggerDispatch(ctx context.Context, req *dispatcheradminv1.TriggerDispatchRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if strings.TrimSpace(req.GetStepId()) != "" {
+		if err := validateUUIDField(req.GetStepId(), "step_id"); err != nil {
+			return nil, err
+		}
+	}
 	result, err := s.commands.TriggerDispatch(ctx, req.GetCommandId(), req.GetStepId())
 	if err != nil {
 		return nil, err
@@ -149,4 +179,15 @@ func convertExecutor(item dispatch.ExecutorSnapshot) *dispatcheradminv1.Executor
 		row.LastSeenAt = item.LastSeen.Format(time.RFC3339)
 	}
 	return row
+}
+
+func validateUUIDField(raw string, field string) error {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return status.Errorf(codes.InvalidArgument, "%s is required", field)
+	}
+	if _, err := uuid.Parse(value); err != nil {
+		return status.Errorf(codes.InvalidArgument, "invalid %s: %v", field, err)
+	}
+	return nil
 }

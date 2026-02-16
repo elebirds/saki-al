@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -29,8 +30,8 @@ SET status = 'SENDING',
 FROM picked
 WHERE o.id = picked.id
 RETURNING
-  o.id::text AS id,
-  o.step_id::text AS step_id,
+  o.id AS id,
+  o.step_id AS step_id,
   o.executor_id,
   o.request_id,
   o.payload,
@@ -38,8 +39,8 @@ RETURNING
 `
 
 type ClaimDispatchOutboxDueRow struct {
-	ID           string
-	StepID       string
+	ID           uuid.UUID
+	StepID       uuid.UUID
 	ExecutorID   string
 	RequestID    string
 	Payload      []byte
@@ -116,8 +117,8 @@ ON CONFLICT (request_id) DO NOTHING
 `
 
 type InsertDispatchOutboxParams struct {
-	OutboxID   pgtype.UUID
-	StepID     pgtype.UUID
+	OutboxID   uuid.UUID
+	StepID     uuid.UUID
 	ExecutorID string
 	RequestID  string
 	Payload    []byte
@@ -138,7 +139,7 @@ func (q *Queries) InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOu
 }
 
 const listOrphanDispatchingStepIDs = `-- name: ListOrphanDispatchingStepIDs :many
-SELECT s.id::text AS id
+SELECT s.id AS id
 FROM step s
 WHERE s.state = 'DISPATCHING'::stepstatus
   AND s.updated_at < $1
@@ -157,15 +158,15 @@ type ListOrphanDispatchingStepIDsParams struct {
 	LimitCount int32
 }
 
-func (q *Queries) ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]string, error) {
+func (q *Queries) ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listOrphanDispatchingStepIDs, arg.Cutoff, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []uuid.UUID
 	for rows.Next() {
-		var id string
+		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -191,7 +192,7 @@ WHERE id = $3::uuid
 type MarkDispatchOutboxRetryParams struct {
 	NextAttemptAt pgtype.Timestamp
 	LastError     pgtype.Text
-	OutboxID      pgtype.UUID
+	OutboxID      uuid.UUID
 }
 
 func (q *Queries) MarkDispatchOutboxRetry(ctx context.Context, arg MarkDispatchOutboxRetryParams) (int64, error) {
@@ -212,7 +213,7 @@ WHERE id = $1::uuid
   AND status = 'SENDING'
 `
 
-func (q *Queries) MarkDispatchOutboxSent(ctx context.Context, outboxID pgtype.UUID) (int64, error) {
+func (q *Queries) MarkDispatchOutboxSent(ctx context.Context, outboxID uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, markDispatchOutboxSent, outboxID)
 	if err != nil {
 		return 0, err

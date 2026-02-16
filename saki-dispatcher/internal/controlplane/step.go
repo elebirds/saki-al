@@ -1,0 +1,1214 @@
+package controlplane
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"google.golang.org/protobuf/encoding/protojson"
+
+	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
+	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
+	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
+)
+
+func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
+	if !s.dbEnabled() {
+		return 0, nil
+	}
+	if s.dispatchLockKey != 0 {
+		conn, err := s.pool.Acquire(ctx)
+		if err != nil {
+			return 0, err
+		}
+		defer conn.Release()
+		connQueries := db.New(conn.Conn())
+
+		locked, err := connQueries.TryDispatchAdvisoryLock(ctx, s.dispatchLockKey)
+		if err != nil {
+			return 0, err
+		}
+		if !locked {
+			return 0, nil
+		}
+		defer func() {
+			if _, err := connQueries.ReleaseDispatchAdvisoryLock(context.Background(), s.dispatchLockKey); err != nil {
+				s.logger.Warn().Err(err).Msg("release dispatch advisory lock failed")
+			}
+		}()
+	}
+
+	if err := s.recoverDispatchOutbox(ctx, max(64, limit*2)); err != nil {
+		return 0, err
+	}
+
+	claimed := 0
+	for _, queuedStepID := range s.dispatcher.DrainQueuedStepIDs() {
+		stepID, err := parseUUID(queuedStepID)
+		if err != nil {
+			continue
+		}
+		dispatched, err := s.dispatchStepByID(ctx, stepID)
+		if err != nil {
+			return claimed, err
+		}
+		if dispatched {
+			claimed++
+		}
+	}
+
+	if _, err := s.promotePendingStepsToReady(ctx, max(64, limit*2)); err != nil {
+		return claimed, err
+	}
+	stepIDs, err := s.listReadyStepIDs(ctx, limit)
+	if err != nil {
+		return claimed, err
+	}
+	for _, stepID := range stepIDs {
+		dispatched, err := s.dispatchStepByID(ctx, stepID)
+		if err != nil {
+			return claimed, err
+		}
+		if dispatched {
+			claimed++
+		}
+	}
+
+	sent, err := s.dispatchOutboxBatch(ctx, max(64, limit*2))
+	if err != nil {
+		return claimed, err
+	}
+	if sent > 0 {
+		s.logger.Debug().Int("claimed", claimed).Int("sent", sent).Msg("dispatch outbox drained")
+	}
+	return claimed + sent, nil
+}
+
+func (s *Service) promotePendingStepsToReady(ctx context.Context, limit int) (int, error) {
+	stepIDs, err := s.listPendingStepIDs(ctx, limit)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, stepID := range stepIDs {
+		promoted, err := s.promotePendingStepIfReady(ctx, stepID)
+		if err != nil {
+			return count, err
+		}
+		if promoted {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *Service) promotePendingStepIfReady(ctx context.Context, stepID uuid.UUID) (bool, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	stepPayload, ok, err := s.getStepPayloadByIDTx(ctx, tx, stepID)
+	if err != nil {
+		return false, err
+	}
+	if !ok || stepPayload.Status != stepPending {
+		return false, tx.Commit(ctx)
+	}
+	loopStatus, err := s.qtx(tx).GetLoopStatus(ctx, stepPayload.LoopID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, tx.Commit(ctx)
+		}
+		return false, err
+	}
+	if loopStatus != db.LoopstatusRUNNING {
+		return false, tx.Commit(ctx)
+	}
+	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)
+	if err != nil {
+		return false, err
+	}
+	if !depsOK {
+		return false, tx.Commit(ctx)
+	}
+	updated, err := s.promoteStepToReadyTx(ctx, tx, stepPayload.StepID)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return updated, nil
+}
+
+func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	stepPayload, ok, err := s.getStepPayloadByIDTx(ctx, tx, stepID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, tx.Commit(ctx)
+	}
+
+	if stepPayload.Status == stepPending {
+		loopStatus, err := s.qtx(tx).GetLoopStatus(ctx, stepPayload.LoopID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return false, tx.Commit(ctx)
+			}
+			return false, err
+		}
+		if loopStatus != db.LoopstatusRUNNING {
+			return false, tx.Commit(ctx)
+		}
+		depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)
+		if err != nil {
+			return false, err
+		}
+		if !depsOK {
+			return false, tx.Commit(ctx)
+		}
+		promoted, err := s.promoteStepToReadyTx(ctx, tx, stepPayload.StepID)
+		if err != nil {
+			return false, err
+		}
+		if !promoted {
+			return false, tx.Commit(ctx)
+		}
+		stepPayload.Status = stepReady
+	}
+
+	if stepPayload.Status != stepReady {
+		return false, tx.Commit(ctx)
+	}
+	if isOrchestratorDispatchKind(stepPayload.DispatchKind) {
+		executed, err := s.executeOrchestratorStepTx(ctx, tx, stepPayload)
+		if err != nil {
+			return false, err
+		}
+		return executed, tx.Commit(ctx)
+	}
+
+	executorID, found := s.dispatcher.PickExecutor(stepPayload.PluginID)
+	if !found {
+		return false, tx.Commit(ctx)
+	}
+	requestID := uuid.NewString()
+	updated, err := s.markStepDispatchingTx(ctx, tx, stepPayload.StepID, executorID, requestID)
+	if err != nil {
+		return false, err
+	}
+	if !updated {
+		return false, tx.Commit(ctx)
+	}
+
+	inputCommitID := ""
+	if stepPayload.InputCommitID != nil {
+		inputCommitID = stepPayload.InputCommitID.String()
+	}
+	dependsOnStepIDs := make([]string, 0, len(stepPayload.DependsOnStepIDs))
+	for _, item := range stepPayload.DependsOnStepIDs {
+		dependsOnStepIDs = append(dependsOnStepIDs, item.String())
+	}
+	message := &runtimecontrolv1.StepPayload{
+		StepId:           stepPayload.StepID.String(),
+		RoundId:          stepPayload.RoundID.String(),
+		LoopId:           stepPayload.LoopID.String(),
+		ProjectId:        stepPayload.ProjectID.String(),
+		InputCommitId:    inputCommitID,
+		StepType:         toRuntimeStepType(stepPayload.StepType),
+		DispatchKind:     toRuntimeStepDispatchKind(stepPayload.DispatchKind),
+		PluginId:         stepPayload.PluginID,
+		Mode:             toRuntimeLoopMode(stepPayload.Mode),
+		QueryStrategy:    stepPayload.QueryStrategy,
+		ResolvedParams:   stepPayload.Params,
+		Resources:        stepPayload.Resources,
+		RoundIndex:       int32(stepPayload.RoundIndex),
+		Attempt:          int32(stepPayload.Attempt),
+		DependsOnStepIds: dependsOnStepIDs,
+	}
+	payloadRaw, err := protojson.Marshal(message)
+	if err != nil {
+		return false, err
+	}
+	outboxID := uuid.New()
+	inserted, err := s.qtx(tx).InsertDispatchOutbox(ctx, db.InsertDispatchOutboxParams{
+		OutboxID:   outboxID,
+		StepID:     stepPayload.StepID,
+		ExecutorID: executorID,
+		RequestID:  requestID,
+		Payload:    payloadRaw,
+	})
+	if err != nil {
+		return false, err
+	}
+	if inserted == 0 {
+		return false, tx.Commit(ctx)
+	}
+	return true, tx.Commit(ctx)
+}
+
+func isOrchestratorStepType(stepType db.Steptype) bool {
+	switch stepType {
+	case db.SteptypeSELECT:
+		return true
+	case db.SteptypeACTIVATESAMPLES:
+		return true
+	case db.SteptypeADVANCEBRANCH:
+		return true
+	default:
+		return false
+	}
+}
+
+func isOrchestratorDispatchKind(dispatchKind db.Stepdispatchkind) bool {
+	return dispatchKind == db.StepdispatchkindORCHESTRATOR
+}
+
+func (s *Service) executeOrchestratorStepTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepPayload stepDispatchPayload,
+) (bool, error) {
+	started, err := s.qtx(tx).MarkOrchestratorStepRunning(ctx, stepPayload.StepID)
+	if err != nil {
+		return false, err
+	}
+	if started == 0 {
+		return false, nil
+	}
+
+	resultStatus := stepSucceeded
+	lastError := ""
+	var resultCommitID *uuid.UUID
+	if err := s.runOrchestratorStepTx(ctx, tx, stepPayload, &resultCommitID); err != nil {
+		resultStatus = stepFailed
+		lastError = err.Error()
+	}
+
+	affected, err := s.qtx(tx).UpdateStepExecutionResultGuarded(ctx, db.UpdateStepExecutionResultGuardedParams{
+		State:          resultStatus,
+		LastError:      toNullablePGText(lastError),
+		OutputCommitID: resultCommitID,
+		StepID:         stepPayload.StepID,
+		FromState:      db.StepstatusRUNNING,
+	})
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+
+	if resultCommitID != nil {
+		if err := s.qtx(tx).UpdateRoundOutputCommit(ctx, db.UpdateRoundOutputCommitParams{
+			OutputCommitID: resultCommitID,
+			RoundID:        stepPayload.RoundID,
+		}); err != nil {
+			return false, err
+		}
+	}
+
+	if _, err := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Service) runOrchestratorStepTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepPayload stepDispatchPayload,
+	resultCommitID **uuid.UUID,
+) error {
+	switch stepPayload.StepType {
+	case db.SteptypeSELECT:
+		return s.runSelectTopKTx(ctx, tx, stepPayload)
+	case db.SteptypeACTIVATESAMPLES:
+		return s.runActivateSamplesTx(ctx, tx, stepPayload, resultCommitID)
+	case db.SteptypeADVANCEBRANCH:
+		return s.runAdvanceBranchTx(ctx, tx, stepPayload, resultCommitID)
+	default:
+		return nil
+	}
+}
+
+func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload stepDispatchPayload) error {
+	queryBatchRaw, err := s.qtx(tx).GetLoopQueryBatchSize(ctx, stepPayload.LoopID)
+	if err != nil {
+		return err
+	}
+	queryBatch := int(queryBatchRaw)
+	if queryBatch <= 0 {
+		queryBatch = 1
+	}
+
+	scoreStepID, err := s.qtx(tx).GetSucceededScoreStepIDByRound(ctx, stepPayload.RoundID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("score step not ready for select step %s", stepPayload.StepID)
+		}
+		return err
+	}
+	rows, err := s.qtx(tx).ListStepCandidatesByStepID(ctx, db.ListStepCandidatesByStepIDParams{
+		StepID:     scoreStepID,
+		LimitCount: int32(queryBatch),
+	})
+	if err != nil {
+		return err
+	}
+
+	type candidateRow struct {
+		sampleID       uuid.UUID
+		score          float64
+		reasonJSON     []byte
+		predictionJSON []byte
+	}
+	candidates := make([]candidateRow, 0, queryBatch)
+	for _, row := range rows {
+		candidates = append(candidates, candidateRow{
+			sampleID:       row.SampleID,
+			score:          row.Score,
+			reasonJSON:     row.ReasonJson,
+			predictionJSON: row.PredictionJson,
+		})
+	}
+	if err := s.qtx(tx).DeleteStepCandidatesByStepID(ctx, stepPayload.StepID); err != nil {
+		return err
+	}
+	copyRows := make([]db.CopyStepCandidateItemsParams, 0, len(candidates))
+	now := toPGTimestamp(time.Now().UTC())
+	for idx, item := range candidates {
+		copyRows = append(copyRows, db.CopyStepCandidateItemsParams{
+			ID:                 uuid.New(),
+			StepID:             stepPayload.StepID,
+			SampleID:           item.sampleID,
+			Rank:               int32(idx + 1),
+			Score:              item.score,
+			Reason:             item.reasonJSON,
+			PredictionSnapshot: item.predictionJSON,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		})
+	}
+	if len(copyRows) > 0 {
+		if _, err := s.qtx(tx).CopyStepCandidateItems(ctx, copyRows); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) runActivateSamplesTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepPayload stepDispatchPayload,
+	resultCommitID **uuid.UUID,
+) error {
+	if s.domainClient == nil || !s.domainClient.Enabled() {
+		return nil
+	}
+
+	var (
+		projectID     string
+		branchID      string
+		queryStrategy string
+		globalConfig  []byte
+		queryBatch    int
+	)
+	loopConfig, err := s.qtx(tx).GetLoopRuntimeConfig(ctx, stepPayload.LoopID)
+	if err != nil {
+		return err
+	}
+	projectID = loopConfig.ProjectID.String()
+	branchID = loopConfig.BranchID.String()
+	queryStrategy = loopConfig.QueryStrategy
+	globalConfig = loopConfig.GlobalConfig
+	queryBatch = int(loopConfig.QueryBatchSize)
+
+	oracleCommitID := extractOracleCommitID(globalConfig)
+	if oracleCommitID == "" {
+		return nil
+	}
+
+	sourceCommitID := ""
+	if stepPayload.InputCommitID != nil {
+		sourceCommitID = stepPayload.InputCommitID.String()
+	}
+	if sourceCommitID == "" {
+		headCommitID, branchProjectID, err := s.resolveBranchHead(ctx, loopConfig.BranchID)
+		if err != nil {
+			return err
+		}
+		if headCommitID != nil {
+			sourceCommitID = headCommitID.String()
+		}
+		if branchProjectID != nil {
+			projectID = branchProjectID.String()
+		}
+	}
+
+	commandID := activationCommandID(stepPayload)
+	response, err := s.domainClient.ActivateSamples(ctx, &runtimedomainv1.ActivateSamplesRequest{
+		CommandId:      commandID,
+		ProjectId:      projectID,
+		BranchId:       branchID,
+		OracleCommitId: oracleCommitID,
+		SourceCommitId: sourceCommitID,
+		LoopId:         stepPayload.LoopID.String(),
+		RoundIndex:     int32(stepPayload.RoundIndex),
+		QueryStrategy:  queryStrategy,
+		Topk:           int32(queryBatch),
+	})
+	if err != nil {
+		return err
+	}
+	commitID := strings.TrimSpace(response.GetCommitId())
+	if commitID != "" {
+		if resultCommitID != nil {
+			parsedID, parseErr := parseUUID(commitID)
+			if parseErr != nil {
+				return parseErr
+			}
+			*resultCommitID = &parsedID
+		}
+	}
+	return nil
+}
+
+func (s *Service) runAdvanceBranchTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepPayload stepDispatchPayload,
+	resultCommitID **uuid.UUID,
+) error {
+	if s.domainClient == nil || !s.domainClient.Enabled() {
+		return nil
+	}
+
+	branchID, err := s.qtx(tx).GetLoopBranchID(ctx, stepPayload.LoopID)
+	if err != nil {
+		return err
+	}
+	if branchID == uuid.Nil {
+		return fmt.Errorf("loop %s branch_id is empty", stepPayload.LoopID)
+	}
+
+	activateCommitID, err := s.qtx(tx).GetLatestActivateOutputCommitByRound(ctx, stepPayload.RoundID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("activate_samples output commit not found for round %s", stepPayload.RoundID)
+		}
+		return err
+	}
+	if activateCommitID == nil {
+		return fmt.Errorf("activate_samples output commit is empty for round %s", stepPayload.RoundID)
+	}
+
+	commandID := advanceBranchCommandID(stepPayload, *activateCommitID)
+	response, err := s.domainClient.AdvanceBranchHead(
+		ctx,
+		commandID,
+		branchID.String(),
+		activateCommitID.String(),
+		fmt.Sprintf("loop=%s round=%d advance_branch_step=%s", stepPayload.LoopID, stepPayload.RoundIndex, stepPayload.StepID),
+	)
+	if err != nil {
+		return err
+	}
+	if !response.GetAdvanced() {
+		return fmt.Errorf("advance branch head rejected branch=%s commit=%s", branchID, activateCommitID)
+	}
+	if resultCommitID != nil {
+		*resultCommitID = activateCommitID
+	}
+	return nil
+}
+
+func (s *Service) OnStepEvent(ctx context.Context, event *runtimecontrolv1.StepEvent) error {
+	if !s.dbEnabled() || event == nil {
+		return nil
+	}
+	stepID, err := parseUUID(event.GetStepId())
+	if err != nil {
+		return nil
+	}
+
+	eventType, eventPayload, statusValue := decodeStepEvent(event)
+	if eventType == "" {
+		return nil
+	}
+	payloadJSON, err := marshalJSON(eventPayload)
+	if err != nil {
+		return err
+	}
+	eventTS := stepEventTime(event.GetTs())
+
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if inserted, err := s.insertStepEventTx(
+		ctx,
+		tx,
+		stepID,
+		event.GetSeq(),
+		eventTS,
+		eventType,
+		payloadJSON,
+		strings.TrimSpace(event.GetRequestId()),
+	); err != nil {
+		return err
+	} else if !inserted {
+		// Duplicate event by (step_id, seq), skip side effects.
+		return tx.Commit(ctx)
+	}
+
+	switch eventType {
+	case "status":
+		targetState := statusValue
+		affected, err := s.updateStepStatusFromEventGuardedTx(
+			ctx,
+			tx,
+			stepID,
+			targetState,
+			strings.TrimSpace(event.GetStatusEvent().GetReason()),
+		)
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return fmt.Errorf("invalid step transition from runtime event: step=%s target=%s", stepID, targetState)
+		}
+
+	case "metric":
+		metricPayload := event.GetMetricEvent()
+		if metricPayload != nil {
+			if err := s.insertMetricPointsTx(
+				ctx,
+				tx,
+				stepID,
+				int(metricPayload.GetStep()),
+				ptrInt(int(metricPayload.GetEpoch())),
+				metricPayload.GetMetrics(),
+				eventTS,
+			); err != nil {
+				return err
+			}
+		}
+
+	case "artifact":
+		artifactPayload := event.GetArtifactEvent()
+		if artifactPayload != nil {
+			if err := s.mergeArtifactIntoStepTx(ctx, tx, stepID, artifactPayload.GetArtifact()); err != nil {
+				return err
+			}
+		}
+	}
+
+	roundID, err := s.findRoundIDByStep(ctx, tx, stepID)
+	if err != nil {
+		return err
+	}
+	if roundID != nil {
+		if _, err := s.refreshRoundAggregateTx(ctx, tx, *roundID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Service) OnStepResult(ctx context.Context, result *runtimecontrolv1.StepResult) error {
+	if !s.dbEnabled() || result == nil {
+		return nil
+	}
+	stepID, err := parseUUID(result.GetStepId())
+	if err != nil {
+		return nil
+	}
+	targetState := runtimeStatusToStepStatus(result.GetStatus())
+	if targetState == "" {
+		targetState = stepFailed
+	}
+
+	metricsJSON, err := marshalJSON(result.GetMetrics())
+	if err != nil {
+		return err
+	}
+	artifactsJSON, err := marshalArtifacts(result.GetArtifacts())
+	if err != nil {
+		return err
+	}
+
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	affected, err := s.updateStepResultGuardedTx(ctx, tx, stepID, targetState, []byte(metricsJSON), []byte(artifactsJSON), strings.TrimSpace(result.GetErrorMessage()))
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("invalid step result transition: step=%s target=%s", stepID, targetState)
+	}
+
+	if err := s.replaceStepCandidatesTx(ctx, tx, stepID, result.GetCandidates()); err != nil {
+		return err
+	}
+	if err := s.insertMetricPointsTx(ctx, tx, stepID, 0, nil, result.GetMetrics(), time.Now().UTC()); err != nil {
+		return err
+	}
+
+	roundID, err := s.findRoundIDByStep(ctx, tx, stepID)
+	if err != nil {
+		return err
+	}
+	if roundID != nil {
+		if _, err := s.refreshRoundAggregateTx(ctx, tx, *roundID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Service) updateStepStatusFromEventGuardedTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	target db.Stepstatus,
+	reason string,
+) (int64, error) {
+	for _, fromState := range stepFromCandidatesForTarget(target) {
+		if !canStepTransition(fromState, target) {
+			continue
+		}
+		affected, err := s.qtx(tx).UpdateStepStatusFromEventGuarded(ctx, db.UpdateStepStatusFromEventGuardedParams{
+			State:     target,
+			Reason:    toNullablePGText(reason),
+			StepID:    stepID,
+			FromState: fromState,
+		})
+		if err != nil {
+			return 0, err
+		}
+		if affected > 0 {
+			return affected, nil
+		}
+	}
+	current, err := s.qtx(tx).GetStepStateForUpdate(ctx, stepID)
+	if err != nil {
+		return 0, err
+	}
+	if current == target {
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func (s *Service) updateStepResultGuardedTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	target db.Stepstatus,
+	metrics []byte,
+	artifacts []byte,
+	errorMessage string,
+) (int64, error) {
+	for _, fromState := range stepFromCandidatesForTarget(target) {
+		if !canStepTransition(fromState, target) {
+			continue
+		}
+		affected, err := s.qtx(tx).UpdateStepResultGuarded(ctx, db.UpdateStepResultGuardedParams{
+			State:        target,
+			Metrics:      metrics,
+			Artifacts:    artifacts,
+			ErrorMessage: toNullablePGText(errorMessage),
+			StepID:       stepID,
+			FromState:    fromState,
+		})
+		if err != nil {
+			return 0, err
+		}
+		if affected > 0 {
+			return affected, nil
+		}
+	}
+	current, err := s.qtx(tx).GetStepStateForUpdate(ctx, stepID)
+	if err != nil {
+		return 0, err
+	}
+	if current == target {
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func (s *Service) listPendingStepIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	return s.queries.ListPendingStepIDs(ctx, int32(max(1, limit)))
+}
+
+func (s *Service) listReadyStepIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	return s.queries.ListReadyStepIDsForUpdateSkipLocked(ctx, int32(max(1, limit)))
+}
+
+func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, dependencyIDs []uuid.UUID) (bool, error) {
+	if len(dependencyIDs) == 0 {
+		return true, nil
+	}
+	states, err := s.qtx(tx).GetDependencyStatesByIDs(ctx, dependencyIDs)
+	if err != nil {
+		return false, err
+	}
+	for _, state := range states {
+		if state != db.StepstatusSUCCEEDED {
+			return false, nil
+		}
+	}
+	return len(states) == len(dependencyIDs), nil
+}
+
+func (s *Service) markStepDispatchingTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	executorID string,
+	requestID string,
+) (bool, error) {
+	updated, err := s.qtx(tx).MarkStepDispatching(ctx, db.MarkStepDispatchingParams{
+		AssignedExecutorID: toPGText(executorID),
+		DispatchRequestID:  toPGText(requestID),
+		StepID:             stepID,
+	})
+	if err != nil {
+		return false, err
+	}
+	return updated > 0, nil
+}
+
+func (s *Service) promoteStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (bool, error) {
+	updated, err := s.qtx(tx).PromoteStepToReady(ctx, stepID)
+	if err != nil {
+		return false, err
+	}
+	return updated > 0, nil
+}
+
+func (s *Service) findRoundIDByStep(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (*uuid.UUID, error) {
+	roundID, err := s.qtx(tx).FindRoundIDByStep(ctx, stepID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &roundID, nil
+}
+
+func (s *Service) getStepPayloadByIDTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (stepDispatchPayload, bool, error) {
+	record, err := s.qtx(tx).GetStepPayloadByIDForUpdate(ctx, stepID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return stepDispatchPayload{}, false, nil
+		}
+		return stepDispatchPayload{}, false, err
+	}
+	row, err := mapStepPayload(record)
+	if err != nil {
+		return stepDispatchPayload{}, false, err
+	}
+	return row, true, nil
+}
+
+func (s *Service) insertStepEventTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	seq int64,
+	ts time.Time,
+	eventType string,
+	payloadJSON string,
+	requestID string,
+) (bool, error) {
+	affected, err := s.qtx(tx).InsertStepEvent(ctx, db.InsertStepEventParams{
+		EventID:   uuid.New(),
+		StepID:    stepID,
+		Seq:       int32(seq),
+		Ts:        toPGTimestamp(ts),
+		EventType: eventType,
+		Payload:   []byte(payloadJSON),
+		RequestID: toNullablePGText(requestID),
+	})
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
+func (s *Service) issueCancelAttemptTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	attempt int,
+	reason string,
+) (bool, error) {
+	requestID := uuid.New()
+	commandID := cancelAttemptCommandID(stepID, attempt)
+	inserted, err := s.insertCommandLogTx(ctx, tx, requestID, commandID, "cancel_attempt", stepID.String())
+	if err != nil {
+		return false, err
+	}
+	if !inserted {
+		return false, nil
+	}
+
+	stopRequestID, accepted := s.dispatcher.StopStep(stepID.String(), reason)
+	detail := fmt.Sprintf("cancel attempt issued, accepted=%t, stop_request_id=%s", accepted, strings.TrimSpace(stopRequestID))
+	if err := s.qtx(tx).UpdateCommandLogStatusDetail(ctx, db.UpdateCommandLogStatusDetailParams{
+		CommandID: commandID,
+		Status:    "applied",
+		Detail:    detail,
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Service) cancelStepIDsTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepIDs []uuid.UUID,
+	reason string,
+) error {
+	if len(stepIDs) == 0 {
+		return nil
+	}
+	return s.qtx(tx).CancelStepsByIDs(ctx, db.CancelStepsByIDsParams{
+		LastError: toPGText(reason),
+		StepIds:   stepIDs,
+	})
+}
+
+func (s *Service) loopHasActiveStepsTx(ctx context.Context, tx pgx.Tx, loopID uuid.UUID) (bool, error) {
+	count, err := s.qtx(tx).CountLoopActiveSteps(ctx, loopID)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (s *Service) insertMetricPointsTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	step int,
+	epoch *int,
+	metrics map[string]float64,
+	ts time.Time,
+) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+	now := toPGTimestamp(time.Now().UTC())
+	rows := make([]db.CopyStepMetricPointsParams, 0, len(metrics))
+	for metricName, metricValue := range metrics {
+		cleanMetricName := strings.TrimSpace(metricName)
+		if cleanMetricName == "" {
+			continue
+		}
+		rows = append(rows, db.CopyStepMetricPointsParams{
+			ID:          uuid.New(),
+			StepID:      stepID,
+			Step:        int32(step),
+			Epoch:       toPGInt4(epoch),
+			MetricName:  cleanMetricName,
+			MetricValue: metricValue,
+			Ts:          toPGTimestamp(ts),
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if _, err := s.qtx(tx).CopyStepMetricPoints(ctx, rows); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) replaceStepCandidatesTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	candidates []*runtimecontrolv1.QueryCandidate,
+) error {
+	if err := s.qtx(tx).DeleteStepCandidatesByStepID(ctx, stepID); err != nil {
+		return err
+	}
+	now := toPGTimestamp(time.Now().UTC())
+	rows := make([]db.CopyStepCandidateItemsParams, 0, len(candidates))
+	for idx, item := range candidates {
+		sampleIDText := strings.TrimSpace(item.GetSampleId())
+		if sampleIDText == "" {
+			continue
+		}
+		parsedSampleID, err := parseUUID(sampleIDText)
+		if err != nil {
+			continue
+		}
+		reasonJSON, err := marshalJSON(structToMap(item.GetReason()))
+		if err != nil {
+			return err
+		}
+		rows = append(rows, db.CopyStepCandidateItemsParams{
+			ID:                 uuid.New(),
+			StepID:             stepID,
+			SampleID:           parsedSampleID,
+			Rank:               int32(idx + 1),
+			Score:              item.GetScore(),
+			Reason:             []byte(reasonJSON),
+			PredictionSnapshot: []byte(`{}`),
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		})
+	}
+	if len(rows) > 0 {
+		if _, err := s.qtx(tx).CopyStepCandidateItems(ctx, rows); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) mergeArtifactIntoStepTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	artifact *runtimecontrolv1.ArtifactItem,
+) error {
+	if artifact == nil {
+		return nil
+	}
+	artifactName := strings.TrimSpace(artifact.GetName())
+	if artifactName == "" {
+		return nil
+	}
+
+	rawArtifacts, err := s.qtx(tx).GetStepArtifactsForUpdate(ctx, stepID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("step not found: %s", stepID)
+		}
+		return err
+	}
+	artifacts, err := parseJSONObject(rawArtifacts)
+	if err != nil {
+		return err
+	}
+	artifacts[artifactName] = map[string]any{
+		"kind": strings.TrimSpace(artifact.GetKind()),
+		"uri":  strings.TrimSpace(artifact.GetUri()),
+		"meta": structToMap(artifact.GetMeta()),
+	}
+	artifactsJSON, err := marshalJSON(artifacts)
+	if err != nil {
+		return err
+	}
+	return s.qtx(tx).UpdateStepArtifacts(ctx, db.UpdateStepArtifactsParams{
+		Artifacts: []byte(artifactsJSON),
+		StepID:    stepID,
+	})
+}
+
+func (s *Service) dispatchOutboxBatch(ctx context.Context, limit int) (int, error) {
+	if !s.dbEnabled() {
+		return 0, nil
+	}
+	rows, err := s.queries.ClaimDispatchOutboxDue(ctx, int32(max(1, limit)))
+	if err != nil {
+		return 0, err
+	}
+	sent := 0
+	for _, row := range rows {
+		payload := &runtimecontrolv1.StepPayload{}
+		if err := protojson.Unmarshal(row.Payload, payload); err != nil {
+			nextAt := toPGTimestamp(time.Now().UTC().Add(dispatchOutboxRetryBackoff(row.AttemptCount)))
+			_, retryErr := s.queries.MarkDispatchOutboxRetry(ctx, db.MarkDispatchOutboxRetryParams{
+				NextAttemptAt: nextAt,
+				LastError:     toNullablePGText(fmt.Sprintf("invalid outbox payload: %v", err)),
+				OutboxID:      row.ID,
+			})
+			if retryErr != nil {
+				return sent, retryErr
+			}
+			continue
+		}
+
+		if s.dispatcher.DispatchStep(row.ExecutorID, row.RequestID, payload) {
+			affected, err := s.queries.MarkDispatchOutboxSent(ctx, row.ID)
+			if err != nil {
+				return sent, err
+			}
+			if affected > 0 {
+				sent++
+			}
+			continue
+		}
+
+		nextAt := toPGTimestamp(time.Now().UTC().Add(dispatchOutboxRetryBackoff(row.AttemptCount)))
+		_, err = s.queries.MarkDispatchOutboxRetry(ctx, db.MarkDispatchOutboxRetryParams{
+			NextAttemptAt: nextAt,
+			LastError:     toNullablePGText("executor unavailable or queue full"),
+			OutboxID:      row.ID,
+		})
+		if err != nil {
+			return sent, err
+		}
+	}
+	return sent, nil
+}
+
+func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
+	if !s.dbEnabled() {
+		return nil
+	}
+	staleSendingCutoff := toPGTimestamp(time.Now().UTC().Add(-30 * time.Second))
+	if _, err := s.queries.ReleaseStaleSendingOutbox(ctx, staleSendingCutoff); err != nil {
+		return err
+	}
+
+	orphanCutoff := toPGTimestamp(time.Now().UTC().Add(-2 * time.Minute))
+	stepIDs, err := s.queries.ListOrphanDispatchingStepIDs(ctx, db.ListOrphanDispatchingStepIDsParams{
+		Cutoff:     orphanCutoff,
+		LimitCount: int32(max(1, limit)),
+	})
+	if err != nil {
+		return err
+	}
+	for _, stepID := range stepIDs {
+		_, err = s.queries.RecoverStaleDispatchingStepToReady(ctx, db.RecoverStaleDispatchingStepToReadyParams{
+			LastError: toPGText("dispatch outbox orphan recovered"),
+			StepID:    stepID,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	cleanupCutoff := toPGTimestamp(time.Now().UTC().Add(-24 * time.Hour))
+	if _, err := s.queries.DeleteSentDispatchOutboxBefore(ctx, cleanupCutoff); err != nil {
+		return err
+	}
+	return nil
+}
+
+func dispatchOutboxRetryBackoff(attempt int32) time.Duration {
+	if attempt <= 1 {
+		return time.Second
+	}
+	seconds := 1 << minInt(6, int(attempt)-1)
+	if seconds > 60 {
+		seconds = 60
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontrolv1.Register) error {
+	if !s.dbEnabled() || register == nil {
+		return nil
+	}
+	executorID := strings.TrimSpace(register.GetExecutorId())
+	if executorID == "" {
+		return nil
+	}
+	version := strings.TrimSpace(register.GetVersion())
+
+	pluginPayloadJSON, err := marshalJSON(map[string]any{
+		"plugins": pluginCapabilitiesToMaps(register.GetPlugins()),
+	})
+	if err != nil {
+		return err
+	}
+	resourcesJSON, err := marshalJSON(resourceSummaryToMap(register.GetResources()))
+	if err != nil {
+		return err
+	}
+
+	return s.queries.UpsertRuntimeExecutorOnRegister(ctx, db.UpsertRuntimeExecutorOnRegisterParams{
+		ExecutorRowID: uuid.New(),
+		ExecutorID:    executorID,
+		Version:       version,
+		PluginIds:     []byte(pluginPayloadJSON),
+		Resources:     []byte(resourcesJSON),
+	})
+}
+
+func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecontrolv1.Heartbeat) error {
+	if !s.dbEnabled() || heartbeat == nil {
+		return nil
+	}
+	executorID := strings.TrimSpace(heartbeat.GetExecutorId())
+	if executorID == "" {
+		return nil
+	}
+
+	status := "idle"
+	if heartbeat.GetBusy() {
+		status = "busy"
+	}
+	currentStepID := strings.TrimSpace(heartbeat.GetCurrentStepId())
+	currentStepUUID, err := parseNullableUUID(currentStepID)
+	if err != nil {
+		return err
+	}
+	resourcesJSON, err := marshalJSON(resourceSummaryToMap(heartbeat.GetResources()))
+	if err != nil {
+		return err
+	}
+
+	return s.queries.UpsertRuntimeExecutorOnHeartbeat(ctx, db.UpsertRuntimeExecutorOnHeartbeatParams{
+		ExecutorRowID: uuid.New(),
+		ExecutorID:    executorID,
+		Status:        status,
+		CurrentStepID: currentStepUUID,
+		Resources:     []byte(resourcesJSON),
+	})
+}
+
+func (s *Service) OnExecutorDisconnected(ctx context.Context, executorID string, reason string) error {
+	if !s.dbEnabled() {
+		return nil
+	}
+	executorID = strings.TrimSpace(executorID)
+	if executorID == "" {
+		return nil
+	}
+
+	return s.queries.UpdateRuntimeExecutorDisconnected(ctx, db.UpdateRuntimeExecutorDisconnectedParams{
+		Reason:     toNullablePGText(reason),
+		ExecutorID: executorID,
+	})
+}

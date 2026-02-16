@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -28,8 +29,8 @@ ON CONFLICT (step_id, seq) DO NOTHING
 `
 
 type InsertStepEventParams struct {
-	EventID   pgtype.UUID
-	StepID    pgtype.UUID
+	EventID   uuid.UUID
+	StepID    uuid.UUID
 	Seq       int32
 	Ts        pgtype.Timestamp
 	EventType string

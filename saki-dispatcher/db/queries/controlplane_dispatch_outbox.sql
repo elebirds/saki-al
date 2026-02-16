@@ -42,8 +42,8 @@ SET status = 'SENDING',
 FROM picked
 WHERE o.id = picked.id
 RETURNING
-  o.id::text AS id,
-  o.step_id::text AS step_id,
+  o.id AS id,
+  o.step_id AS step_id,
   o.executor_id,
   o.request_id,
   o.payload,
@@ -80,7 +80,7 @@ WHERE status = 'SENDING'
   AND locked_at < sqlc.arg(cutoff);
 
 -- name: ListOrphanDispatchingStepIDs :many
-SELECT s.id::text AS id
+SELECT s.id AS id
 FROM step s
 WHERE s.state = 'DISPATCHING'::stepstatus
   AND s.updated_at < sqlc.arg(cutoff)

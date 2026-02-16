@@ -35,7 +35,7 @@ INSERT INTO runtime_executor(
   '',
   sqlc.arg(status),
   TRUE,
-  sqlc.narg(current_step_id)::text,
+  sqlc.narg(current_step_id)::uuid,
   '{}'::jsonb,
   sqlc.arg(resources)::jsonb,
   now(),

@@ -16,6 +16,8 @@ type Config struct {
 	InternalToken string `env:"INTERNAL_TOKEN" envDefault:"dev-secret"`
 	LogLevel      string `env:"LOG_LEVEL" envDefault:"info"`
 
+	EnableStdinCommands bool `env:"ENABLE_STDIN_COMMANDS" envDefault:"true"`
+
 	HeartbeatTimeoutSec        int   `env:"RUNTIME_HEARTBEAT_TIMEOUT_SEC" envDefault:"30"`
 	DispatchIntervalSec        int   `env:"DISPATCH_SCAN_INTERVAL_SEC" envDefault:"3"`
 	SimulationRoundCooldownSec int   `env:"SIMULATION_ROUND_COOLDOWN_SEC" envDefault:"5"`

@@ -148,6 +148,18 @@ func run() error {
 		}
 	}()
 
+	if cfg.EnableStdinCommands {
+		startStdinCommandLoop(
+			ctx,
+			stop,
+			domainClient,
+			dispatcher,
+			logger.With().Str("module", "stdin_cmd").Logger(),
+		)
+	} else {
+		logger.Info().Msg("stdin 命令台未启用")
+	}
+
 	<-ctx.Done()
 	logger.Info().Msg("收到退出信号，开始优雅停机")
 	stopGRPCWithTimeout("runtime", runtimeGRPC, 5*time.Second, logger)

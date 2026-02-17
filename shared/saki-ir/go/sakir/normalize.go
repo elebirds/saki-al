@@ -7,8 +7,20 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// EPS 是几何宽高的最小严格下界，width/height 必须 > EPS。
+//
+// Spec: docs/IR_SPEC.md#6-obb-normalization
+// Spec: docs/IR_SPEC.md#8-invalid-values
 const EPS float32 = 1e-6
 
+// Normalize 原地（in-place）规范化 batch 中的 annotation 几何。
+//
+// 该函数会修改输入对象：
+// - 校验并规范化 Rect/OBB
+// - OBB 按 v1 规则执行 swap + angle normalize
+//
+// Spec: docs/IR_SPEC.md#6-obb-normalization
+// Spec: docs/IR_SPEC.md#8-invalid-values
 func Normalize(batch *annotationirv1.DataBatchIR) error {
 	if batch == nil {
 		return newError(ErrIRSchema, "batch is nil")
@@ -46,6 +58,11 @@ func Normalize(batch *annotationirv1.DataBatchIR) error {
 	return nil
 }
 
+// Validate 校验 batch 且不修改输入对象。
+//
+// 实现方式为 clone 后调用 Normalize，因此任何规范化副作用都不会回写到原输入。
+//
+// Spec: docs/IR_SPEC.md#8-invalid-values
 func Validate(batch *annotationirv1.DataBatchIR) error {
 	if batch == nil {
 		return newError(ErrIRSchema, "batch is nil")
@@ -59,6 +76,7 @@ func Validate(batch *annotationirv1.DataBatchIR) error {
 }
 
 func normalizeRect(rect *annotationirv1.RectGeometry, idx int) error {
+	// Spec: docs/IR_SPEC.md#4-rect-semantics
 	if rect == nil {
 		return newError(ErrIRGeometry, "annotation[%d] rect is nil", idx)
 	}
@@ -72,6 +90,7 @@ func normalizeRect(rect *annotationirv1.RectGeometry, idx int) error {
 }
 
 func normalizeObb(obb *annotationirv1.ObbGeometry, idx int) error {
+	// Spec: docs/IR_SPEC.md#6-obb-normalization
 	if obb == nil {
 		return newError(ErrIRGeometry, "annotation[%d] obb is nil", idx)
 	}

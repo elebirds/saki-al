@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""saki-ir 编解码公共 API。
+
+Spec: docs/IR_SPEC.md#9-encoded-payload
+"""
+
 from collections.abc import Iterator
 from threading import Lock
 
@@ -25,6 +30,7 @@ _zstd_compressors: dict[int, object] = {}
 
 
 def _normalize_encode_params(compression_threshold: int, zstd_level: int) -> tuple[int, int]:
+    # Spec: docs/IR_SPEC.md#9-encoded-payload
     if compression_threshold < 0:
         compression_threshold = 0
     if zstd_level == 0:
@@ -35,6 +41,7 @@ def _normalize_encode_params(compression_threshold: int, zstd_level: int) -> tup
 
 
 def _get_zstd_compressor(level: int):
+    # Spec: docs/IR_SPEC.md#9-encoded-payload
     if _zstd is None:
         raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, "未安装 zstandard，无法使用 ZSTD 压缩")
     with _zstd_cache_lock:
@@ -51,6 +58,7 @@ def _compress_zstd(data: bytes, level: int) -> bytes:
 
 
 def _decompress_zstd(data: bytes) -> bytes:
+    # Spec: docs/IR_SPEC.md#9-encoded-payload
     if _zstd is None:
         raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, "未安装 zstandard，无法使用 ZSTD 解压")
     decompressor = _zstd.ZstdDecompressor()
@@ -58,7 +66,17 @@ def _decompress_zstd(data: bytes) -> bytes:
 
 
 def decompress_raw(encoded: annotationirv1.EncodedPayload) -> bytes:
-    """按 header.compression 解压到 payload_raw，不校验 checksum、不 decode。"""
+    """按 header.compression 获取 `payload_raw`。
+
+    该函数只做「压缩层」处理：
+    - `NONE`：直接返回 `payload` bytes
+    - `ZSTD`：返回解压后的 bytes
+
+    不会做 checksum 校验，也不会反序列化 `DataBatchIR`。
+
+    Spec: docs/IR_SPEC.md#9-encoded-payload
+    Spec: docs/IR_SPEC.md#10-header-only-behavior
+    """
 
     header = read_header(encoded)
     payload = bytes(encoded.payload)
@@ -70,6 +88,8 @@ def decompress_raw(encoded: annotationirv1.EncodedPayload) -> bytes:
 
 
 def _verify_checksum(header: annotationirv1.PayloadHeader, payload_raw: bytes) -> None:
+    # Spec: docs/IR_SPEC.md#9-encoded-payload
+    # checksum 覆盖范围固定为“未压缩 payload_raw bytes”。
     if header.checksum_algo != annotationirv1.PAYLOAD_CHECKSUM_ALGO_CRC32C:
         raise IRError(ERR_IR_SCHEMA, f"不支持的 checksum_algo: {header.checksum_algo}")
 
@@ -82,7 +102,17 @@ def _verify_checksum(header: annotationirv1.PayloadHeader, payload_raw: bytes) -
 
 
 def verify_checksum(encoded: annotationirv1.EncodedPayload) -> None:
-    """仅做 checksum 校验（会解压），不反序列化 DataBatchIR。"""
+    """仅执行 checksum 校验，不反序列化 DataBatchIR。
+
+    行为：
+    - 按 compression 解压到 `payload_raw`
+    - 计算并校验 `CRC32C(payload_raw)`
+
+    本函数不会调用 protobuf Parse/Unmarshal。
+
+    Spec: docs/IR_SPEC.md#9-encoded-payload
+    Spec: docs/IR_SPEC.md#10-header-only-behavior
+    """
 
     header = read_header(encoded)
     payload_raw = decompress_raw(encoded)
@@ -109,6 +139,19 @@ def encode_payload(
     compression_threshold: int = 32768,
     zstd_level: int = 3,
 ) -> annotationirv1.EncodedPayload:
+    """将 `DataBatchIR` 编码为 `EncodedPayload`。
+
+    该函数不会原地修改输入 `batch`，但会先调用 `validate_ir(batch)` 校验。
+    编码流程：
+    1. `payload_raw = batch.SerializeToString()`
+    2. `checksum = CRC32C(payload_raw)`（覆盖未压缩 bytes）
+    3. 按阈值选择 `NONE/ZSTD`
+    4. 填充 header 与 stats
+
+    Spec: docs/IR_SPEC.md#9-encoded-payload
+    """
+
+    # Spec: docs/IR_SPEC.md#9-encoded-payload
     compression_threshold, zstd_level = _normalize_encode_params(compression_threshold, zstd_level)
     validate_ir(batch)
 
@@ -142,6 +185,17 @@ def decode_payload(
     *,
     normalize_output: bool = True,
 ) -> annotationirv1.DataBatchIR:
+    """从 `EncodedPayload` 解码出 `DataBatchIR`。
+
+    参数：
+    - `normalize_output=True`：解码后执行 `normalize_ir`（默认）
+    - `normalize_output=False`：返回 payload 中的原始几何表示，不做规范化
+
+    该函数会执行 checksum 校验；checksum 覆盖范围是未压缩 `payload_raw`。
+
+    Spec: docs/IR_SPEC.md#9-encoded-payload
+    """
+
     header = read_header(encoded)
 
     if header.schema != annotationirv1.PAYLOAD_SCHEMA_DATA_BATCH_IR:
@@ -149,6 +203,7 @@ def decode_payload(
     if header.schema_version != 1:
         raise IRError(ERR_IR_SCHEMA, f"不支持的 schema_version: {header.schema_version}")
 
+    # Spec: docs/IR_SPEC.md#9-encoded-payload
     payload_raw = decompress_raw(encoded)
     _verify_checksum(header, payload_raw)
 
@@ -166,6 +221,13 @@ def decode_payload(
 
 
 def read_header(encoded: annotationirv1.EncodedPayload | None) -> annotationirv1.PayloadHeader:
+    """读取 header 副本，不触发解压/解码。
+
+    返回值是 `PayloadHeader` 的 copy，调用方修改返回对象不会影响原始 payload。
+
+    Spec: docs/IR_SPEC.md#10-header-only-behavior
+    """
+
     if encoded is None or not encoded.HasField("header"):
         raise IRError(ERR_IR_SCHEMA, "encoded.header 缺失")
     header = annotationirv1.PayloadHeader()
@@ -174,5 +236,7 @@ def read_header(encoded: annotationirv1.EncodedPayload | None) -> annotationirv1
 
 
 def iter_items(batch: annotationirv1.DataBatchIR) -> Iterator[annotationirv1.DataItemIR]:
+    """按原始顺序迭代 `DataBatchIR.items`。"""
+
     for item in batch.items:
         yield item

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""saki-ir 几何规范化与校验。
+
+Spec: docs/IR_SPEC.md#6-obb-normalization
+Spec: docs/IR_SPEC.md#8-invalid-values
+"""
+
 import math
 
 from saki_ir.errors import ERR_IR_GEOMETRY, ERR_IR_SCHEMA, IRError
@@ -13,6 +19,8 @@ def _is_finite(*values: float) -> bool:
 
 
 def _normalize_angle_deg_cw(angle_deg_cw: float) -> float:
+    # Spec: docs/IR_SPEC.md#6-obb-normalization
+    # 角度必须落在 [-180, 180)，且 180 映射到 -180。
     angle = (float(angle_deg_cw) + 180.0) % 360.0 - 180.0
     # 统一把 180 归到 -180，满足 [-180, 180)
     if angle >= 180.0:
@@ -21,6 +29,7 @@ def _normalize_angle_deg_cw(angle_deg_cw: float) -> float:
 
 
 def _normalize_rect(rect: annotationirv1.RectGeometry, idx: int) -> None:
+    # Spec: docs/IR_SPEC.md#4-rect-semantics
     if not _is_finite(rect.x, rect.y, rect.width, rect.height):
         raise IRError(ERR_IR_GEOMETRY, f"annotation[{idx}] rect 含 NaN/Inf")
     if rect.width <= EPS or rect.height <= EPS:
@@ -28,6 +37,7 @@ def _normalize_rect(rect: annotationirv1.RectGeometry, idx: int) -> None:
 
 
 def _normalize_obb(obb: annotationirv1.ObbGeometry, idx: int) -> None:
+    # Spec: docs/IR_SPEC.md#6-obb-normalization
     if not _is_finite(obb.cx, obb.cy, obb.width, obb.height, obb.angle_deg_cw):
         raise IRError(ERR_IR_GEOMETRY, f"annotation[{idx}] obb 含 NaN/Inf")
     if obb.width <= EPS or obb.height <= EPS:
@@ -41,6 +51,7 @@ def _normalize_obb(obb: annotationirv1.ObbGeometry, idx: int) -> None:
 
 
 def _validate_confidence(confidence: float, idx: int) -> None:
+    # Spec: docs/IR_SPEC.md#8-invalid-values
     if not _is_finite(confidence):
         raise IRError(ERR_IR_SCHEMA, f"annotation[{idx}] confidence 含 NaN/Inf")
     if confidence < 0.0 or confidence > 1.0:
@@ -48,7 +59,16 @@ def _validate_confidence(confidence: float, idx: int) -> None:
 
 
 def normalize_ir(batch: annotationirv1.DataBatchIR) -> annotationirv1.DataBatchIR:
-    """原地规范化 batch 并返回同一个对象。"""
+    """原地规范化 `DataBatchIR` 并返回同一个对象。
+
+    行为约束：
+    - 仅处理 `annotation` item 的几何/置信度
+    - 发生非法值时抛出 `IRError`
+    - 该函数会修改输入对象（in-place）
+
+    Spec: docs/IR_SPEC.md#6-obb-normalization
+    Spec: docs/IR_SPEC.md#8-invalid-values
+    """
 
     if batch is None:
         raise IRError(ERR_IR_SCHEMA, "batch 不能为空")
@@ -76,7 +96,12 @@ def normalize_ir(batch: annotationirv1.DataBatchIR) -> annotationirv1.DataBatchI
 
 
 def validate_ir(batch: annotationirv1.DataBatchIR) -> None:
-    """校验 batch，不修改输入。"""
+    """校验 `DataBatchIR`，不修改输入。
+
+    实现方式为 clone 后执行 `normalize_ir`，因此任何校验副作用都不会回写到原对象。
+
+    Spec: docs/IR_SPEC.md#8-invalid-values
+    """
 
     if batch is None:
         raise IRError(ERR_IR_SCHEMA, "batch 不能为空")

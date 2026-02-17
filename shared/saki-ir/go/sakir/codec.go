@@ -24,10 +24,20 @@ var (
 	}
 )
 
+// checksumCRC32C 计算 CRC32C(Castagnoli)。
 func checksumCRC32C(data []byte) uint32 {
 	return crc32.Checksum(data, crc32cTable)
 }
 
+// Encode 将 DataBatchIR 编码为 EncodedPayload。
+//
+// 行为语义：
+// - 不会原地修改输入 batch
+// - 会先调用 Validate(batch)
+// - checksum 覆盖范围是“未压缩 payloadRaw”
+// - 压缩策略由 threshold/level 控制（v1 默认建议 threshold=32768, level=3）
+//
+// Spec: docs/IR_SPEC.md#9-encoded-payload
 func Encode(batch *annotationirv1.DataBatchIR, threshold int, level int) (*annotationirv1.EncodedPayload, error) {
 	if batch == nil {
 		return nil, newError(ErrIRSchema, "batch is nil")
@@ -78,6 +88,15 @@ func Encode(batch *annotationirv1.DataBatchIR, threshold int, level int) (*annot
 	return &annotationirv1.EncodedPayload{Header: header, Payload: payload}, nil
 }
 
+// Decode 将 EncodedPayload 解码为 DataBatchIR。
+//
+// 行为语义：
+// - 先按 compression 得到未压缩 payloadRaw
+// - 校验 checksum（覆盖 payloadRaw）
+// - 按 codec 反序列化（v1 仅支持 PROTOBUF）
+// - 成功反序列化后默认执行 Normalize（in-place on decoded object）
+//
+// Spec: docs/IR_SPEC.md#9-encoded-payload
 func Decode(encoded *annotationirv1.EncodedPayload) (*annotationirv1.DataBatchIR, error) {
 	if encoded == nil {
 		return nil, newError(ErrIRSchema, "encoded payload is nil")
@@ -130,6 +149,11 @@ func Decode(encoded *annotationirv1.EncodedPayload) (*annotationirv1.DataBatchIR
 	return batch, nil
 }
 
+// ReadHeader 返回 EncodedPayload 中 header 的引用（非拷贝）。
+//
+// 该函数用于 header-only 调度读取；调用方应视为只读。
+//
+// Spec: docs/IR_SPEC.md#10-header-only-behavior
 func ReadHeader(encoded *annotationirv1.EncodedPayload) *annotationirv1.PayloadHeader {
 	if encoded == nil || encoded.GetHeader() == nil {
 		return nil
@@ -139,6 +163,7 @@ func ReadHeader(encoded *annotationirv1.EncodedPayload) *annotationirv1.PayloadH
 }
 
 func decodeCompression(compression annotationirv1.PayloadCompression, payload []byte) ([]byte, error) {
+	// Spec: docs/IR_SPEC.md#9-encoded-payload
 	switch compression {
 	case annotationirv1.PayloadCompression_PAYLOAD_COMPRESSION_NONE:
 		return payload, nil
@@ -150,6 +175,7 @@ func decodeCompression(compression annotationirv1.PayloadCompression, payload []
 }
 
 func collectStats(batch *annotationirv1.DataBatchIR) *annotationirv1.PayloadStats {
+	// Spec: docs/IR_SPEC.md#9-encoded-payload
 	stats := &annotationirv1.PayloadStats{ItemCount: uint32(len(batch.GetItems()))}
 	for _, item := range batch.GetItems() {
 		switch {

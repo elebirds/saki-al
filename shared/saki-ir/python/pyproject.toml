@@ -1,0 +1,29 @@
+[project]
+name = "saki-ir"
+version = "0.1.0"
+description = "Saki IR v1 SDK"
+requires-python = ">=3.10"
+dependencies = [
+  "protobuf>=5.29.3,<6",
+  "google-crc32c>=1.6.0",
+  "zstandard>=0.23.0",
+]
+
+[project.optional-dependencies]
+dataframe = ["pandas>=2.2.0"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/saki_ir"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

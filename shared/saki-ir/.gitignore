@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Python
+python/.venv/
+python/.pytest_cache/
+python/.mypy_cache/
+python/**/__pycache__/
+python/**/*.pyc
+
+# Go
+go/bin/
+go/pkg/
+go/coverage.out
+
+# Local temp
+*.tmp

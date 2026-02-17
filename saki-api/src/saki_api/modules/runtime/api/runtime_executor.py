@@ -82,3 +82,21 @@ class RuntimePluginRead(BaseModel):
 
 class RuntimePluginCatalogResponse(BaseModel):
     items: list[RuntimePluginRead] = Field(default_factory=list)
+
+
+class RuntimeDomainStatusResponse(BaseModel):
+    configured: bool
+    enabled: bool
+    state: str
+    target: str = ""
+    consecutive_failures: int = 0
+    last_error: str = ""
+    last_connected_at: datetime | None = None
+    next_retry_at: datetime | None = None
+
+
+class RuntimeDomainCommandResponse(BaseModel):
+    command_id: str
+    request_id: str
+    status: str
+    message: str

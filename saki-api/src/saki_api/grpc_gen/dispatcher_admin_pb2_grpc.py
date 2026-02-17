@@ -89,6 +89,21 @@ class DispatcherAdminStub(object):
                 request_serializer=dispatcher__admin__pb2.ExecutorListRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.ExecutorListResponse.FromString,
                 _registered_method=True)
+        self.GetRuntimeDomainStatus = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/GetRuntimeDomainStatus',
+                request_serializer=dispatcher__admin__pb2.RuntimeDomainStatusRequest.SerializeToString,
+                response_deserializer=dispatcher__admin__pb2.RuntimeDomainStatusResponse.FromString,
+                _registered_method=True)
+        self.SetRuntimeDomainEnabled = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/SetRuntimeDomainEnabled',
+                request_serializer=dispatcher__admin__pb2.SetRuntimeDomainEnabledRequest.SerializeToString,
+                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
+                _registered_method=True)
+        self.ReconnectRuntimeDomain = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/ReconnectRuntimeDomain',
+                request_serializer=dispatcher__admin__pb2.ReconnectRuntimeDomainRequest.SerializeToString,
+                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
+                _registered_method=True)
 
 
 class DispatcherAdminServicer(object):
@@ -160,6 +175,24 @@ class DispatcherAdminServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetRuntimeDomainStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetRuntimeDomainEnabled(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReconnectRuntimeDomain(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DispatcherAdminServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -217,6 +250,21 @@ def add_DispatcherAdminServicer_to_server(servicer, server):
                     servicer.ListExecutors,
                     request_deserializer=dispatcher__admin__pb2.ExecutorListRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.ExecutorListResponse.SerializeToString,
+            ),
+            'GetRuntimeDomainStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRuntimeDomainStatus,
+                    request_deserializer=dispatcher__admin__pb2.RuntimeDomainStatusRequest.FromString,
+                    response_serializer=dispatcher__admin__pb2.RuntimeDomainStatusResponse.SerializeToString,
+            ),
+            'SetRuntimeDomainEnabled': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetRuntimeDomainEnabled,
+                    request_deserializer=dispatcher__admin__pb2.SetRuntimeDomainEnabledRequest.FromString,
+                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
+            ),
+            'ReconnectRuntimeDomain': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReconnectRuntimeDomain,
+                    request_deserializer=dispatcher__admin__pb2.ReconnectRuntimeDomainRequest.FromString,
+                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -516,6 +564,87 @@ class DispatcherAdmin(object):
             '/saki.dispatcher.admin.v1.DispatcherAdmin/ListExecutors',
             dispatcher__admin__pb2.ExecutorListRequest.SerializeToString,
             dispatcher__admin__pb2.ExecutorListResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRuntimeDomainStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/GetRuntimeDomainStatus',
+            dispatcher__admin__pb2.RuntimeDomainStatusRequest.SerializeToString,
+            dispatcher__admin__pb2.RuntimeDomainStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetRuntimeDomainEnabled(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/SetRuntimeDomainEnabled',
+            dispatcher__admin__pb2.SetRuntimeDomainEnabledRequest.SerializeToString,
+            dispatcher__admin__pb2.CommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReconnectRuntimeDomain(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/ReconnectRuntimeDomain',
+            dispatcher__admin__pb2.ReconnectRuntimeDomainRequest.SerializeToString,
+            dispatcher__admin__pb2.CommandResponse.FromString,
             options,
             channel_credentials,
             insecure,

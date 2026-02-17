@@ -13,6 +13,7 @@ import (
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
+	"github.com/elebirds/saki/saki-dispatcher/internal/runtime_domain_client"
 )
 
 func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
@@ -36,7 +37,7 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 		}
 		defer func() {
 			if _, err := connQueries.ReleaseDispatchAdvisoryLock(context.Background(), s.dispatchLockKey); err != nil {
-				s.logger.Warn().Err(err).Msg("release dispatch advisory lock failed")
+				s.logger.Warn().Err(err).Msg("释放派发 advisory 锁失败")
 			}
 		}()
 	}
@@ -63,6 +64,9 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 	if _, err := s.promotePendingStepsToReady(ctx, max(64, limit*2)); err != nil {
 		return claimed, err
 	}
+	if _, err := s.promoteRetryingStepsToReady(ctx, max(64, limit*2)); err != nil {
+		return claimed, err
+	}
 	stepIDs, err := s.listReadyStepIDs(ctx, limit)
 	if err != nil {
 		return claimed, err
@@ -82,7 +86,7 @@ func (s *Service) dispatchPending(ctx context.Context, limit int) (int, error) {
 		return claimed, err
 	}
 	if sent > 0 {
-		s.logger.Debug().Int("claimed", claimed).Int("sent", sent).Msg("dispatch outbox drained")
+		s.logger.Debug().Int("claimed", claimed).Int("sent", sent).Msg("派发 outbox 已清空")
 	}
 	return claimed + sent, nil
 }
@@ -103,6 +107,41 @@ func (s *Service) promotePendingStepsToReady(ctx context.Context, limit int) (in
 		}
 	}
 	return count, nil
+}
+
+func (s *Service) promoteRetryingStepsToReady(ctx context.Context, limit int) (int, error) {
+	stepIDs, err := s.listRetryingStepIDsDue(ctx, limit)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, stepID := range stepIDs {
+		promoted, err := s.promoteRetryingStepToReady(ctx, stepID)
+		if err != nil {
+			return count, err
+		}
+		if promoted {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *Service) promoteRetryingStepToReady(ctx context.Context, stepID uuid.UUID) (bool, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	updated, err := s.promoteRetryingStepToReadyTx(ctx, tx, stepID)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return updated, nil
 }
 
 func (s *Service) promotePendingStepIfReady(ctx context.Context, stepID uuid.UUID) (bool, error) {
@@ -293,8 +332,24 @@ func (s *Service) executeOrchestratorStepTx(
 	lastError := ""
 	var resultCommitID *uuid.UUID
 	if err := s.runOrchestratorStepTx(ctx, tx, stepPayload, &resultCommitID); err != nil {
+		lastError = strings.TrimSpace(err.Error())
+		if lastError == "" {
+			lastError = "编排步骤执行失败"
+		}
+		if runtime_domain_client.IsTransientError(err) {
+			retried, retryErr := s.markOrchestratorStepRetryingTx(ctx, tx, stepPayload.StepID, lastError)
+			if retryErr != nil {
+				return false, retryErr
+			}
+			if retried {
+				if _, refreshErr := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); refreshErr != nil {
+					return false, refreshErr
+				}
+				return true, nil
+			}
+			lastError = fmt.Sprintf("临时错误且超过最大重试次数: %s", lastError)
+		}
 		resultStatus = stepFailed
-		lastError = err.Error()
 	}
 
 	affected, err := s.qtx(tx).UpdateStepExecutionResultGuarded(ctx, db.UpdateStepExecutionResultGuardedParams{
@@ -324,6 +379,22 @@ func (s *Service) executeOrchestratorStepTx(
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *Service) markOrchestratorStepRetryingTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	reason string,
+) (bool, error) {
+	affected, err := s.qtx(tx).MarkOrchestratorStepRetrying(ctx, db.MarkOrchestratorStepRetryingParams{
+		LastError: toPGText(reason),
+		StepID:    stepID,
+	})
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 func (s *Service) runOrchestratorStepTx(
@@ -357,7 +428,7 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 	scoreStepID, err := s.qtx(tx).GetSucceededScoreStepIDByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return fmt.Errorf("score step not ready for select step %s", stepPayload.StepID)
+			return fmt.Errorf("SELECT 步骤依赖的 SCORE 结果尚未就绪: step_id=%s", stepPayload.StepID)
 		}
 		return err
 	}
@@ -417,8 +488,14 @@ func (s *Service) runActivateSamplesTx(
 	stepPayload stepDispatchPayload,
 	resultCommitID **uuid.UUID,
 ) error {
-	if s.domainClient == nil || !s.domainClient.Enabled() {
-		return nil
+	if s.domainClient == nil {
+		return fmt.Errorf("runtime_domain 客户端未初始化")
+	}
+	if !s.domainClient.Configured() {
+		return runtime_domain_client.ErrNotConfigured
+	}
+	if !s.domainClient.Enabled() {
+		return runtime_domain_client.ErrDisabled
 	}
 
 	var (
@@ -494,8 +571,14 @@ func (s *Service) runAdvanceBranchTx(
 	stepPayload stepDispatchPayload,
 	resultCommitID **uuid.UUID,
 ) error {
-	if s.domainClient == nil || !s.domainClient.Enabled() {
-		return nil
+	if s.domainClient == nil {
+		return fmt.Errorf("runtime_domain 客户端未初始化")
+	}
+	if !s.domainClient.Configured() {
+		return runtime_domain_client.ErrNotConfigured
+	}
+	if !s.domainClient.Enabled() {
+		return runtime_domain_client.ErrDisabled
 	}
 
 	branchID, err := s.qtx(tx).GetLoopBranchID(ctx, stepPayload.LoopID)
@@ -503,18 +586,18 @@ func (s *Service) runAdvanceBranchTx(
 		return err
 	}
 	if branchID == uuid.Nil {
-		return fmt.Errorf("loop %s branch_id is empty", stepPayload.LoopID)
+		return fmt.Errorf("loop 的 branch_id 为空: loop_id=%s", stepPayload.LoopID)
 	}
 
 	activateCommitID, err := s.qtx(tx).GetLatestActivateOutputCommitByRound(ctx, stepPayload.RoundID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return fmt.Errorf("activate_samples output commit not found for round %s", stepPayload.RoundID)
+			return fmt.Errorf("round 缺少 ACTIVATE_SAMPLES 输出 commit: round_id=%s", stepPayload.RoundID)
 		}
 		return err
 	}
 	if activateCommitID == nil {
-		return fmt.Errorf("activate_samples output commit is empty for round %s", stepPayload.RoundID)
+		return fmt.Errorf("ACTIVATE_SAMPLES 输出 commit 为空: round_id=%s", stepPayload.RoundID)
 	}
 
 	commandID := advanceBranchCommandID(stepPayload, *activateCommitID)
@@ -529,7 +612,14 @@ func (s *Service) runAdvanceBranchTx(
 		return err
 	}
 	if !response.GetAdvanced() {
-		return fmt.Errorf("advance branch head rejected branch=%s commit=%s", branchID, activateCommitID)
+		headCommitID := strings.TrimSpace(response.GetHeadCommitId())
+		if headCommitID == activateCommitID.String() {
+			if resultCommitID != nil {
+				*resultCommitID = activateCommitID
+			}
+			return nil
+		}
+		return fmt.Errorf("推进分支头被拒绝: branch_id=%s commit_id=%s head_commit_id=%s", branchID, activateCommitID, headCommitID)
 	}
 	if resultCommitID != nil {
 		*resultCommitID = activateCommitID
@@ -592,7 +682,7 @@ func (s *Service) OnStepEvent(ctx context.Context, event *runtimecontrolv1.StepE
 			return err
 		}
 		if affected == 0 {
-			return fmt.Errorf("invalid step transition from runtime event: step=%s target=%s", stepID, targetState)
+			return fmt.Errorf("运行时事件导致非法步骤迁移: step_id=%s target=%s", stepID, targetState)
 		}
 
 	case "metric":
@@ -665,7 +755,7 @@ func (s *Service) OnStepResult(ctx context.Context, result *runtimecontrolv1.Ste
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("invalid step result transition: step=%s target=%s", stepID, targetState)
+		return fmt.Errorf("步骤结果导致非法状态迁移: step_id=%s target=%s", stepID, targetState)
 	}
 
 	if err := s.replaceStepCandidatesTx(ctx, tx, stepID, result.GetCandidates()); err != nil {
@@ -767,6 +857,10 @@ func (s *Service) listReadyStepIDs(ctx context.Context, limit int) ([]uuid.UUID,
 	return s.queries.ListReadyStepIDsForUpdateSkipLocked(ctx, int32(max(1, limit)))
 }
 
+func (s *Service) listRetryingStepIDsDue(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	return s.queries.ListRetryingStepIDsDueForUpdateSkipLocked(ctx, int32(max(1, limit)))
+}
+
 func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, dependencyIDs []uuid.UUID) (bool, error) {
 	if len(dependencyIDs) == 0 {
 		return true, nil
@@ -803,6 +897,14 @@ func (s *Service) markStepDispatchingTx(
 
 func (s *Service) promoteStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (bool, error) {
 	updated, err := s.qtx(tx).PromoteStepToReady(ctx, stepID)
+	if err != nil {
+		return false, err
+	}
+	return updated > 0, nil
+}
+
+func (s *Service) promoteRetryingStepToReadyTx(ctx context.Context, tx pgx.Tx, stepID uuid.UUID) (bool, error) {
+	updated, err := s.qtx(tx).PromoteRetryingStepToReady(ctx, stepID)
 	if err != nil {
 		return false, err
 	}
@@ -878,7 +980,7 @@ func (s *Service) issueCancelAttemptTx(
 	}
 
 	stopRequestID, accepted := s.dispatcher.StopStep(stepID.String(), reason)
-	detail := fmt.Sprintf("cancel attempt issued, accepted=%t, stop_request_id=%s", accepted, strings.TrimSpace(stopRequestID))
+	detail := fmt.Sprintf("已发起取消尝试 accepted=%t stop_request_id=%s", accepted, strings.TrimSpace(stopRequestID))
 	if err := s.qtx(tx).UpdateCommandLogStatusDetail(ctx, db.UpdateCommandLogStatusDetailParams{
 		CommandID: commandID,
 		Status:    "applied",
@@ -1013,7 +1115,7 @@ func (s *Service) mergeArtifactIntoStepTx(
 	rawArtifacts, err := s.qtx(tx).GetStepArtifactsForUpdate(ctx, stepID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return fmt.Errorf("step not found: %s", stepID)
+			return fmt.Errorf("未找到步骤: %s", stepID)
 		}
 		return err
 	}
@@ -1051,7 +1153,7 @@ func (s *Service) dispatchOutboxBatch(ctx context.Context, limit int) (int, erro
 			nextAt := toPGTimestamp(time.Now().UTC().Add(dispatchOutboxRetryBackoff(row.AttemptCount)))
 			_, retryErr := s.queries.MarkDispatchOutboxRetry(ctx, db.MarkDispatchOutboxRetryParams{
 				NextAttemptAt: nextAt,
-				LastError:     toNullablePGText(fmt.Sprintf("invalid outbox payload: %v", err)),
+				LastError:     toNullablePGText(fmt.Sprintf("outbox 负载无效: %v", err)),
 				OutboxID:      row.ID,
 			})
 			if retryErr != nil {
@@ -1074,7 +1176,7 @@ func (s *Service) dispatchOutboxBatch(ctx context.Context, limit int) (int, erro
 		nextAt := toPGTimestamp(time.Now().UTC().Add(dispatchOutboxRetryBackoff(row.AttemptCount)))
 		_, err = s.queries.MarkDispatchOutboxRetry(ctx, db.MarkDispatchOutboxRetryParams{
 			NextAttemptAt: nextAt,
-			LastError:     toNullablePGText("executor unavailable or queue full"),
+			LastError:     toNullablePGText("executor 不可用或队列已满"),
 			OutboxID:      row.ID,
 		})
 		if err != nil {
@@ -1103,7 +1205,7 @@ func (s *Service) recoverDispatchOutbox(ctx context.Context, limit int) error {
 	}
 	for _, stepID := range stepIDs {
 		_, err = s.queries.RecoverStaleDispatchingStepToReady(ctx, db.RecoverStaleDispatchingStepToReadyParams{
-			LastError: toPGText("dispatch outbox orphan recovered"),
+			LastError: toPGText("已恢复孤儿派发记录"),
 			StepID:    stepID,
 		})
 		if err != nil {

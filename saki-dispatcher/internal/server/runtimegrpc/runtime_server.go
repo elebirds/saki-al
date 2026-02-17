@@ -44,7 +44,7 @@ func NewServer(
 func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (retErr error) {
 	var executorID string
 	peerAddr := streamPeerAddr(stream.Context())
-	s.logger.Info().Str("peer", peerAddr).Msg("runtime stream connected")
+	s.logger.Info().Str("peer", peerAddr).Msg("runtime stream 已连接")
 
 	defer func() {
 		if executorID != "" {
@@ -55,7 +55,7 @@ func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (re
 			}
 			if s.controlPlane != nil {
 				if err := s.controlPlane.OnExecutorDisconnected(context.Background(), executorID, disconnectReason); err != nil {
-					s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("persist executor disconnect failed")
+					s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("持久化 executor 断连信息失败")
 				}
 			}
 		}
@@ -64,10 +64,10 @@ func (s *Server) Stream(stream runtimecontrolv1.RuntimeControl_StreamServer) (re
 			event = event.Str("executor_id", executorID)
 		}
 		if retErr != nil {
-			event.Err(retErr).Msg("runtime stream disconnected")
+			event.Err(retErr).Msg("runtime stream 已断开")
 			return
 		}
-		event.Msg("runtime stream disconnected")
+		event.Msg("runtime stream 已断开")
 	}()
 
 	incoming := make(chan *runtimecontrolv1.RuntimeMessage, 64)
@@ -141,33 +141,33 @@ func (s *Server) handleIncoming(
 		}
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnExecutorRegister(context.Background(), register); err != nil {
-				s.logger.Warn().Err(err).Str("executor_id", session.ExecutorID).Msg("persist executor register failed")
+				s.logger.Warn().Err(err).Str("executor_id", session.ExecutorID).Msg("持久化 executor 注册信息失败")
 			}
 		}
-		s.logger.Info().Str("executor_id", session.ExecutorID).Msg("runtime executor registered")
+		s.logger.Info().Str("executor_id", session.ExecutorID).Msg("runtime executor 已注册")
 		return buildAck(
 			register.GetRequestId(),
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REGISTER,
 			runtimecontrolv1.AckReason_ACK_REASON_REGISTERED,
-			"registered",
+			"已注册",
 		), session.ExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_Heartbeat:
 		heartbeat := payload.Heartbeat
 		executorID := strings.TrimSpace(heartbeat.GetExecutorId())
 		if executorID == "" {
-			return buildError("invalid_heartbeat", "executor_id is required", heartbeat.GetRequestId(), "", runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED), "", nil
+			return buildError("invalid_heartbeat", "executor_id 不能为空", heartbeat.GetRequestId(), "", runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED), "", nil
 		}
 		if currentExecutorID != "" && currentExecutorID != executorID {
-			return buildError("executor_id_conflict", "heartbeat executor_id mismatch", heartbeat.GetRequestId(), "", runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED), "", nil
+			return buildError("executor_id_conflict", "heartbeat executor_id 不一致", heartbeat.GetRequestId(), "", runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED), "", nil
 		}
 		if err := s.dispatcher.HandleHeartbeat(heartbeat); err != nil {
 			return buildError("invalid_heartbeat", err.Error(), heartbeat.GetRequestId(), "", runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED), "", nil
 		}
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnExecutorHeartbeat(context.Background(), heartbeat); err != nil {
-				s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("persist executor heartbeat failed")
+				s.logger.Warn().Err(err).Str("executor_id", executorID).Msg("持久化 executor 心跳失败")
 			}
 		}
 		return buildAck(
@@ -175,7 +175,7 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"heartbeat accepted",
+			"心跳已接收",
 		), executorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_Ack:
@@ -187,7 +187,7 @@ func (s *Server) handleIncoming(
 		stepID := resolveStepID(event.GetStepId())
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnStepEvent(context.Background(), event); err != nil {
-				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_event failed")
+				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("持久化 step_event 失败")
 			}
 		}
 		return buildAck(
@@ -195,7 +195,7 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"step_event accepted",
+			"step_event 已接收",
 		), currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_StepResult:
@@ -203,7 +203,7 @@ func (s *Server) handleIncoming(
 		stepID := resolveStepID(result.GetStepId())
 		if s.controlPlane != nil {
 			if err := s.controlPlane.OnStepResult(context.Background(), result); err != nil {
-				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("persist step_result failed")
+				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("持久化 step_result 失败")
 			}
 		}
 		return buildAck(
@@ -211,7 +211,7 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"step_result accepted",
+			"step_result 已接收",
 		), currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_DataRequest:
@@ -220,7 +220,7 @@ func (s *Server) handleIncoming(
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return buildError(
 				"not_implemented",
-				"runtime_domain QueryData is not configured",
+				"runtime_domain QueryData 未配置",
 				request.GetRequestId(),
 				stepID,
 				request.GetQueryType(),
@@ -240,10 +240,10 @@ func (s *Server) handleIncoming(
 				Err(err).
 				Str("step_id", stepID).
 				Str("request_id", request.GetRequestId()).
-				Msg("runtime domain QueryData failed")
+				Msg("调用 runtime_domain QueryData 失败")
 			return buildError(
 				"data_query_failed",
-				"data query failed",
+				"数据查询失败",
 				request.GetRequestId(),
 				stepID,
 				request.GetQueryType(),
@@ -261,7 +261,7 @@ func (s *Server) handleIncoming(
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return buildError(
 				"not_implemented",
-				"runtime_domain CreateUploadTicket is not configured",
+				"runtime_domain CreateUploadTicket 未配置",
 				request.GetRequestId(),
 				stepID,
 				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
@@ -278,10 +278,10 @@ func (s *Server) handleIncoming(
 				Err(err).
 				Str("step_id", stepID).
 				Str("request_id", request.GetRequestId()).
-				Msg("runtime domain CreateUploadTicket failed")
+				Msg("调用 runtime_domain CreateUploadTicket 失败")
 			return buildError(
 				"upload_ticket_failed",
-				"upload ticket failed",
+				"上传凭证创建失败",
 				request.GetRequestId(),
 				stepID,
 				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
@@ -307,13 +307,13 @@ func (s *Server) handleIncoming(
 			Str("request_id", errPayload.GetRequestId()).
 			Str("code", errPayload.GetCode()).
 			Str("message", errPayload.GetMessage()).
-			Msg("runtime error reported by executor")
+			Msg("executor 上报运行时错误")
 		return nil, currentExecutorID, nil
 
 	default:
 		return buildError(
 			"unknown_payload",
-			fmt.Sprintf("unsupported payload type: %T", payload),
+			fmt.Sprintf("不支持的 payload 类型: %T", payload),
 			"",
 			"",
 			runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,

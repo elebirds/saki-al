@@ -467,7 +467,7 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 					Str("loop_id", loop.ID.String()).
 					Str("step_id", stepID.String()).
 					Dur("force_after", s.stopForceCancelAfter).
-					Msg("force cancel step in stopping loop after timeout")
+					Msg("STOPPING 超时后强制取消步骤")
 			}
 		}
 		if hasInflightRunning {
@@ -515,7 +515,7 @@ func (s *Service) Tick(ctx context.Context) error {
 	}
 	for _, loopID := range loopIDs {
 		if err := s.processLoop(ctx, loopID); err != nil {
-			s.logger.Warn().Str("loop_id", loopID.String()).Err(err).Msg("process loop failed")
+			s.logger.Warn().Str("loop_id", loopID.String()).Err(err).Msg("处理 loop 失败")
 		}
 	}
 	_, err = s.dispatchPending(ctx, 256)
@@ -554,7 +554,7 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 	}
 	sourceCommitID, projectIDFromBranch, err := s.resolveBranchHead(ctx, loop.BranchID)
 	if err != nil {
-		s.logger.Warn().Err(err).Str("loop_id", loop.ID.String()).Msg("resolve branch head failed, continue with empty source commit")
+		s.logger.Warn().Err(err).Str("loop_id", loop.ID.String()).Msg("解析分支头失败，继续使用空 source commit")
 	}
 	projectID := loop.ProjectID
 	if projectIDFromBranch != nil {
@@ -720,7 +720,7 @@ func (s *Service) updateLoopStatus(ctx context.Context, tx pgx.Tx, loopID uuid.U
 	}
 	target := status
 	if !canLoopTransition(currentStatus, target) {
-		return fmt.Errorf("invalid loop transition: %s -> %s", currentStatus, target)
+		return fmt.Errorf("非法 loop 状态迁移: %s -> %s", currentStatus, target)
 	}
 	affected, err := s.qtx(tx).UpdateLoopStatusGuarded(ctx, db.UpdateLoopStatusGuardedParams{
 		Status:     target,
@@ -731,7 +731,7 @@ func (s *Service) updateLoopStatus(ctx context.Context, tx pgx.Tx, loopID uuid.U
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("loop transition conflict: %s -> %s", currentStatus, target)
+		return fmt.Errorf("loop 状态迁移冲突: %s -> %s", currentStatus, target)
 	}
 	return nil
 }
@@ -751,7 +751,7 @@ func (s *Service) updateLoopState(
 	}
 	target := status
 	if !canLoopTransition(currentStatus, target) {
-		return fmt.Errorf("invalid loop transition: %s -> %s", currentStatus, target)
+		return fmt.Errorf("非法 loop 状态迁移: %s -> %s", currentStatus, target)
 	}
 	affected, err := s.qtx(tx).UpdateLoopStateGuarded(ctx, db.UpdateLoopStateGuardedParams{
 		Status:                target,
@@ -765,7 +765,7 @@ func (s *Service) updateLoopState(
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("loop state transition conflict: %s -> %s", currentStatus, target)
+		return fmt.Errorf("loop 状态写入冲突: %s -> %s", currentStatus, target)
 	}
 	return nil
 }
@@ -889,7 +889,7 @@ func (s *Service) maybeCleanupPredictionRows(ctx context.Context) {
 	cutoff := now.AddDate(0, 0, -s.predictionTTLDays)
 	candidateRows, eventRows, metricRows, err := s.cleanupPredictionRows(ctx, cutoff, s.predictionTTLKeepRounds)
 	if err != nil {
-		s.logger.Warn().Err(err).Time("cutoff", cutoff).Msg("cleanup prediction rows failed")
+		s.logger.Warn().Err(err).Time("cutoff", cutoff).Msg("清理预测数据失败")
 		return
 	}
 	if candidateRows == 0 && eventRows == 0 && metricRows == 0 {
@@ -901,7 +901,7 @@ func (s *Service) maybeCleanupPredictionRows(ctx context.Context) {
 		Int64("metric_rows", metricRows).
 		Int("ttl_days", s.predictionTTLDays).
 		Int("keep_rounds", s.predictionTTLKeepRounds).
-		Msg("cleanup prediction rows completed")
+		Msg("预测数据清理完成")
 }
 
 func (s *Service) cleanupPredictionRows(ctx context.Context, cutoff time.Time, keepRounds int) (int64, int64, int64, error) {

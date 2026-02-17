@@ -769,6 +769,238 @@ func (x *ExecutorListResponse) GetItems() []*ExecutorRead {
 	return nil
 }
 
+type RuntimeDomainStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RuntimeDomainStatusRequest) Reset() {
+	*x = RuntimeDomainStatusRequest{}
+	mi := &file_dispatcher_admin_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RuntimeDomainStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RuntimeDomainStatusRequest) ProtoMessage() {}
+
+func (x *RuntimeDomainStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dispatcher_admin_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RuntimeDomainStatusRequest.ProtoReflect.Descriptor instead.
+func (*RuntimeDomainStatusRequest) Descriptor() ([]byte, []int) {
+	return file_dispatcher_admin_proto_rawDescGZIP(), []int{13}
+}
+
+type RuntimeDomainStatusResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Configured          bool                   `protobuf:"varint,1,opt,name=configured,proto3" json:"configured,omitempty"`
+	Enabled             bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	State               string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	Target              string                 `protobuf:"bytes,4,opt,name=target,proto3" json:"target,omitempty"`
+	ConsecutiveFailures int64                  `protobuf:"varint,5,opt,name=consecutive_failures,json=consecutiveFailures,proto3" json:"consecutive_failures,omitempty"`
+	LastError           string                 `protobuf:"bytes,6,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	LastConnectedAt     string                 `protobuf:"bytes,7,opt,name=last_connected_at,json=lastConnectedAt,proto3" json:"last_connected_at,omitempty"`
+	NextRetryAt         string                 `protobuf:"bytes,8,opt,name=next_retry_at,json=nextRetryAt,proto3" json:"next_retry_at,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *RuntimeDomainStatusResponse) Reset() {
+	*x = RuntimeDomainStatusResponse{}
+	mi := &file_dispatcher_admin_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RuntimeDomainStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RuntimeDomainStatusResponse) ProtoMessage() {}
+
+func (x *RuntimeDomainStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dispatcher_admin_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RuntimeDomainStatusResponse.ProtoReflect.Descriptor instead.
+func (*RuntimeDomainStatusResponse) Descriptor() ([]byte, []int) {
+	return file_dispatcher_admin_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *RuntimeDomainStatusResponse) GetConfigured() bool {
+	if x != nil {
+		return x.Configured
+	}
+	return false
+}
+
+func (x *RuntimeDomainStatusResponse) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *RuntimeDomainStatusResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *RuntimeDomainStatusResponse) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *RuntimeDomainStatusResponse) GetConsecutiveFailures() int64 {
+	if x != nil {
+		return x.ConsecutiveFailures
+	}
+	return 0
+}
+
+func (x *RuntimeDomainStatusResponse) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+func (x *RuntimeDomainStatusResponse) GetLastConnectedAt() string {
+	if x != nil {
+		return x.LastConnectedAt
+	}
+	return ""
+}
+
+func (x *RuntimeDomainStatusResponse) GetNextRetryAt() string {
+	if x != nil {
+		return x.NextRetryAt
+	}
+	return ""
+}
+
+type SetRuntimeDomainEnabledRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	Enabled       bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetRuntimeDomainEnabledRequest) Reset() {
+	*x = SetRuntimeDomainEnabledRequest{}
+	mi := &file_dispatcher_admin_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetRuntimeDomainEnabledRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetRuntimeDomainEnabledRequest) ProtoMessage() {}
+
+func (x *SetRuntimeDomainEnabledRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dispatcher_admin_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetRuntimeDomainEnabledRequest.ProtoReflect.Descriptor instead.
+func (*SetRuntimeDomainEnabledRequest) Descriptor() ([]byte, []int) {
+	return file_dispatcher_admin_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SetRuntimeDomainEnabledRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *SetRuntimeDomainEnabledRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+type ReconnectRuntimeDomainRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReconnectRuntimeDomainRequest) Reset() {
+	*x = ReconnectRuntimeDomainRequest{}
+	mi := &file_dispatcher_admin_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconnectRuntimeDomainRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconnectRuntimeDomainRequest) ProtoMessage() {}
+
+func (x *ReconnectRuntimeDomainRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dispatcher_admin_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconnectRuntimeDomainRequest.ProtoReflect.Descriptor instead.
+func (*ReconnectRuntimeDomainRequest) Descriptor() ([]byte, []int) {
+	return file_dispatcher_admin_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ReconnectRuntimeDomainRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
 var File_dispatcher_admin_proto protoreflect.FileDescriptor
 
 const file_dispatcher_admin_proto_rawDesc = "" +
@@ -832,7 +1064,27 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\x14ExecutorReadResponse\x12:\n" +
 	"\x04item\x18\x01 \x01(\v2&.saki.dispatcher.admin.v1.ExecutorReadR\x04item\"T\n" +
 	"\x14ExecutorListResponse\x12<\n" +
-	"\x05items\x18\x01 \x03(\v2&.saki.dispatcher.admin.v1.ExecutorReadR\x05items2\xa3\t\n" +
+	"\x05items\x18\x01 \x03(\v2&.saki.dispatcher.admin.v1.ExecutorReadR\x05items\"\x1c\n" +
+	"\x1aRuntimeDomainStatusRequest\"\xa7\x02\n" +
+	"\x1bRuntimeDomainStatusResponse\x12\x1e\n" +
+	"\n" +
+	"configured\x18\x01 \x01(\bR\n" +
+	"configured\x12\x18\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12\x16\n" +
+	"\x06target\x18\x04 \x01(\tR\x06target\x121\n" +
+	"\x14consecutive_failures\x18\x05 \x01(\x03R\x13consecutiveFailures\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\x06 \x01(\tR\tlastError\x12*\n" +
+	"\x11last_connected_at\x18\a \x01(\tR\x0flastConnectedAt\x12\"\n" +
+	"\rnext_retry_at\x18\b \x01(\tR\vnextRetryAt\"Y\n" +
+	"\x1eSetRuntimeDomainEnabledRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x18\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\">\n" +
+	"\x1dReconnectRuntimeDomainRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId2\xa9\f\n" +
 	"\x0fDispatcherAdmin\x12d\n" +
 	"\tStartLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12d\n" +
 	"\tPauseLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12e\n" +
@@ -845,7 +1097,10 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\x0fTriggerDispatch\x120.saki.dispatcher.admin.v1.TriggerDispatchRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12v\n" +
 	"\x11GetRuntimeSummary\x12/.saki.dispatcher.admin.v1.RuntimeSummaryRequest\x1a0.saki.dispatcher.admin.v1.RuntimeSummaryResponse\x12l\n" +
 	"\vGetExecutor\x12-.saki.dispatcher.admin.v1.ExecutorReadRequest\x1a..saki.dispatcher.admin.v1.ExecutorReadResponse\x12n\n" +
-	"\rListExecutors\x12-.saki.dispatcher.admin.v1.ExecutorListRequest\x1a..saki.dispatcher.admin.v1.ExecutorListResponseB[ZYgithub.com/elebirds/saki/saki-dispatcher/internal/gen/dispatcheradminv1;dispatcheradminv1b\x06proto3"
+	"\rListExecutors\x12-.saki.dispatcher.admin.v1.ExecutorListRequest\x1a..saki.dispatcher.admin.v1.ExecutorListResponse\x12\x85\x01\n" +
+	"\x16GetRuntimeDomainStatus\x124.saki.dispatcher.admin.v1.RuntimeDomainStatusRequest\x1a5.saki.dispatcher.admin.v1.RuntimeDomainStatusResponse\x12~\n" +
+	"\x17SetRuntimeDomainEnabled\x128.saki.dispatcher.admin.v1.SetRuntimeDomainEnabledRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12|\n" +
+	"\x16ReconnectRuntimeDomain\x127.saki.dispatcher.admin.v1.ReconnectRuntimeDomainRequest\x1a).saki.dispatcher.admin.v1.CommandResponseB[ZYgithub.com/elebirds/saki/saki-dispatcher/internal/gen/dispatcheradminv1;dispatcheradminv1b\x06proto3"
 
 var (
 	file_dispatcher_admin_proto_rawDescOnce sync.Once
@@ -859,21 +1114,25 @@ func file_dispatcher_admin_proto_rawDescGZIP() []byte {
 	return file_dispatcher_admin_proto_rawDescData
 }
 
-var file_dispatcher_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_dispatcher_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_dispatcher_admin_proto_goTypes = []any{
-	(*LoopCommandRequest)(nil),     // 0: saki.dispatcher.admin.v1.LoopCommandRequest
-	(*ConfirmLoopRequest)(nil),     // 1: saki.dispatcher.admin.v1.ConfirmLoopRequest
-	(*RoundCommandRequest)(nil),    // 2: saki.dispatcher.admin.v1.RoundCommandRequest
-	(*StepCommandRequest)(nil),     // 3: saki.dispatcher.admin.v1.StepCommandRequest
-	(*TriggerDispatchRequest)(nil), // 4: saki.dispatcher.admin.v1.TriggerDispatchRequest
-	(*CommandResponse)(nil),        // 5: saki.dispatcher.admin.v1.CommandResponse
-	(*RuntimeSummaryRequest)(nil),  // 6: saki.dispatcher.admin.v1.RuntimeSummaryRequest
-	(*RuntimeSummaryResponse)(nil), // 7: saki.dispatcher.admin.v1.RuntimeSummaryResponse
-	(*ExecutorReadRequest)(nil),    // 8: saki.dispatcher.admin.v1.ExecutorReadRequest
-	(*ExecutorListRequest)(nil),    // 9: saki.dispatcher.admin.v1.ExecutorListRequest
-	(*ExecutorRead)(nil),           // 10: saki.dispatcher.admin.v1.ExecutorRead
-	(*ExecutorReadResponse)(nil),   // 11: saki.dispatcher.admin.v1.ExecutorReadResponse
-	(*ExecutorListResponse)(nil),   // 12: saki.dispatcher.admin.v1.ExecutorListResponse
+	(*LoopCommandRequest)(nil),             // 0: saki.dispatcher.admin.v1.LoopCommandRequest
+	(*ConfirmLoopRequest)(nil),             // 1: saki.dispatcher.admin.v1.ConfirmLoopRequest
+	(*RoundCommandRequest)(nil),            // 2: saki.dispatcher.admin.v1.RoundCommandRequest
+	(*StepCommandRequest)(nil),             // 3: saki.dispatcher.admin.v1.StepCommandRequest
+	(*TriggerDispatchRequest)(nil),         // 4: saki.dispatcher.admin.v1.TriggerDispatchRequest
+	(*CommandResponse)(nil),                // 5: saki.dispatcher.admin.v1.CommandResponse
+	(*RuntimeSummaryRequest)(nil),          // 6: saki.dispatcher.admin.v1.RuntimeSummaryRequest
+	(*RuntimeSummaryResponse)(nil),         // 7: saki.dispatcher.admin.v1.RuntimeSummaryResponse
+	(*ExecutorReadRequest)(nil),            // 8: saki.dispatcher.admin.v1.ExecutorReadRequest
+	(*ExecutorListRequest)(nil),            // 9: saki.dispatcher.admin.v1.ExecutorListRequest
+	(*ExecutorRead)(nil),                   // 10: saki.dispatcher.admin.v1.ExecutorRead
+	(*ExecutorReadResponse)(nil),           // 11: saki.dispatcher.admin.v1.ExecutorReadResponse
+	(*ExecutorListResponse)(nil),           // 12: saki.dispatcher.admin.v1.ExecutorListResponse
+	(*RuntimeDomainStatusRequest)(nil),     // 13: saki.dispatcher.admin.v1.RuntimeDomainStatusRequest
+	(*RuntimeDomainStatusResponse)(nil),    // 14: saki.dispatcher.admin.v1.RuntimeDomainStatusResponse
+	(*SetRuntimeDomainEnabledRequest)(nil), // 15: saki.dispatcher.admin.v1.SetRuntimeDomainEnabledRequest
+	(*ReconnectRuntimeDomainRequest)(nil),  // 16: saki.dispatcher.admin.v1.ReconnectRuntimeDomainRequest
 }
 var file_dispatcher_admin_proto_depIdxs = []int32{
 	10, // 0: saki.dispatcher.admin.v1.ExecutorReadResponse.item:type_name -> saki.dispatcher.admin.v1.ExecutorRead
@@ -889,19 +1148,25 @@ var file_dispatcher_admin_proto_depIdxs = []int32{
 	6,  // 10: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:input_type -> saki.dispatcher.admin.v1.RuntimeSummaryRequest
 	8,  // 11: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:input_type -> saki.dispatcher.admin.v1.ExecutorReadRequest
 	9,  // 12: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:input_type -> saki.dispatcher.admin.v1.ExecutorListRequest
-	5,  // 13: saki.dispatcher.admin.v1.DispatcherAdmin.StartLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 14: saki.dispatcher.admin.v1.DispatcherAdmin.PauseLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 15: saki.dispatcher.admin.v1.DispatcherAdmin.ResumeLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 16: saki.dispatcher.admin.v1.DispatcherAdmin.StopLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 17: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 18: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 19: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 20: saki.dispatcher.admin.v1.DispatcherAdmin.TriggerDispatch:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	7,  // 21: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:output_type -> saki.dispatcher.admin.v1.RuntimeSummaryResponse
-	11, // 22: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:output_type -> saki.dispatcher.admin.v1.ExecutorReadResponse
-	12, // 23: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:output_type -> saki.dispatcher.admin.v1.ExecutorListResponse
-	13, // [13:24] is the sub-list for method output_type
-	2,  // [2:13] is the sub-list for method input_type
+	13, // 13: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeDomainStatus:input_type -> saki.dispatcher.admin.v1.RuntimeDomainStatusRequest
+	15, // 14: saki.dispatcher.admin.v1.DispatcherAdmin.SetRuntimeDomainEnabled:input_type -> saki.dispatcher.admin.v1.SetRuntimeDomainEnabledRequest
+	16, // 15: saki.dispatcher.admin.v1.DispatcherAdmin.ReconnectRuntimeDomain:input_type -> saki.dispatcher.admin.v1.ReconnectRuntimeDomainRequest
+	5,  // 16: saki.dispatcher.admin.v1.DispatcherAdmin.StartLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 17: saki.dispatcher.admin.v1.DispatcherAdmin.PauseLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 18: saki.dispatcher.admin.v1.DispatcherAdmin.ResumeLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 19: saki.dispatcher.admin.v1.DispatcherAdmin.StopLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 20: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 21: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 22: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 23: saki.dispatcher.admin.v1.DispatcherAdmin.TriggerDispatch:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	7,  // 24: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:output_type -> saki.dispatcher.admin.v1.RuntimeSummaryResponse
+	11, // 25: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:output_type -> saki.dispatcher.admin.v1.ExecutorReadResponse
+	12, // 26: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:output_type -> saki.dispatcher.admin.v1.ExecutorListResponse
+	14, // 27: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeDomainStatus:output_type -> saki.dispatcher.admin.v1.RuntimeDomainStatusResponse
+	5,  // 28: saki.dispatcher.admin.v1.DispatcherAdmin.SetRuntimeDomainEnabled:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 29: saki.dispatcher.admin.v1.DispatcherAdmin.ReconnectRuntimeDomain:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	16, // [16:30] is the sub-list for method output_type
+	2,  // [2:16] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -918,7 +1183,7 @@ func file_dispatcher_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dispatcher_admin_proto_rawDesc), len(file_dispatcher_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -19,17 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DispatcherAdmin_StartLoop_FullMethodName         = "/saki.dispatcher.admin.v1.DispatcherAdmin/StartLoop"
-	DispatcherAdmin_PauseLoop_FullMethodName         = "/saki.dispatcher.admin.v1.DispatcherAdmin/PauseLoop"
-	DispatcherAdmin_ResumeLoop_FullMethodName        = "/saki.dispatcher.admin.v1.DispatcherAdmin/ResumeLoop"
-	DispatcherAdmin_StopLoop_FullMethodName          = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopLoop"
-	DispatcherAdmin_ConfirmLoop_FullMethodName       = "/saki.dispatcher.admin.v1.DispatcherAdmin/ConfirmLoop"
-	DispatcherAdmin_StopRound_FullMethodName         = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopRound"
-	DispatcherAdmin_StopStep_FullMethodName          = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep"
-	DispatcherAdmin_TriggerDispatch_FullMethodName   = "/saki.dispatcher.admin.v1.DispatcherAdmin/TriggerDispatch"
-	DispatcherAdmin_GetRuntimeSummary_FullMethodName = "/saki.dispatcher.admin.v1.DispatcherAdmin/GetRuntimeSummary"
-	DispatcherAdmin_GetExecutor_FullMethodName       = "/saki.dispatcher.admin.v1.DispatcherAdmin/GetExecutor"
-	DispatcherAdmin_ListExecutors_FullMethodName     = "/saki.dispatcher.admin.v1.DispatcherAdmin/ListExecutors"
+	DispatcherAdmin_StartLoop_FullMethodName               = "/saki.dispatcher.admin.v1.DispatcherAdmin/StartLoop"
+	DispatcherAdmin_PauseLoop_FullMethodName               = "/saki.dispatcher.admin.v1.DispatcherAdmin/PauseLoop"
+	DispatcherAdmin_ResumeLoop_FullMethodName              = "/saki.dispatcher.admin.v1.DispatcherAdmin/ResumeLoop"
+	DispatcherAdmin_StopLoop_FullMethodName                = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopLoop"
+	DispatcherAdmin_ConfirmLoop_FullMethodName             = "/saki.dispatcher.admin.v1.DispatcherAdmin/ConfirmLoop"
+	DispatcherAdmin_StopRound_FullMethodName               = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopRound"
+	DispatcherAdmin_StopStep_FullMethodName                = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep"
+	DispatcherAdmin_TriggerDispatch_FullMethodName         = "/saki.dispatcher.admin.v1.DispatcherAdmin/TriggerDispatch"
+	DispatcherAdmin_GetRuntimeSummary_FullMethodName       = "/saki.dispatcher.admin.v1.DispatcherAdmin/GetRuntimeSummary"
+	DispatcherAdmin_GetExecutor_FullMethodName             = "/saki.dispatcher.admin.v1.DispatcherAdmin/GetExecutor"
+	DispatcherAdmin_ListExecutors_FullMethodName           = "/saki.dispatcher.admin.v1.DispatcherAdmin/ListExecutors"
+	DispatcherAdmin_GetRuntimeDomainStatus_FullMethodName  = "/saki.dispatcher.admin.v1.DispatcherAdmin/GetRuntimeDomainStatus"
+	DispatcherAdmin_SetRuntimeDomainEnabled_FullMethodName = "/saki.dispatcher.admin.v1.DispatcherAdmin/SetRuntimeDomainEnabled"
+	DispatcherAdmin_ReconnectRuntimeDomain_FullMethodName  = "/saki.dispatcher.admin.v1.DispatcherAdmin/ReconnectRuntimeDomain"
 )
 
 // DispatcherAdminClient is the client API for DispatcherAdmin service.
@@ -47,6 +50,9 @@ type DispatcherAdminClient interface {
 	GetRuntimeSummary(ctx context.Context, in *RuntimeSummaryRequest, opts ...grpc.CallOption) (*RuntimeSummaryResponse, error)
 	GetExecutor(ctx context.Context, in *ExecutorReadRequest, opts ...grpc.CallOption) (*ExecutorReadResponse, error)
 	ListExecutors(ctx context.Context, in *ExecutorListRequest, opts ...grpc.CallOption) (*ExecutorListResponse, error)
+	GetRuntimeDomainStatus(ctx context.Context, in *RuntimeDomainStatusRequest, opts ...grpc.CallOption) (*RuntimeDomainStatusResponse, error)
+	SetRuntimeDomainEnabled(ctx context.Context, in *SetRuntimeDomainEnabledRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	ReconnectRuntimeDomain(ctx context.Context, in *ReconnectRuntimeDomainRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 }
 
 type dispatcherAdminClient struct {
@@ -167,6 +173,36 @@ func (c *dispatcherAdminClient) ListExecutors(ctx context.Context, in *ExecutorL
 	return out, nil
 }
 
+func (c *dispatcherAdminClient) GetRuntimeDomainStatus(ctx context.Context, in *RuntimeDomainStatusRequest, opts ...grpc.CallOption) (*RuntimeDomainStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RuntimeDomainStatusResponse)
+	err := c.cc.Invoke(ctx, DispatcherAdmin_GetRuntimeDomainStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dispatcherAdminClient) SetRuntimeDomainEnabled(ctx context.Context, in *SetRuntimeDomainEnabledRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DispatcherAdmin_SetRuntimeDomainEnabled_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dispatcherAdminClient) ReconnectRuntimeDomain(ctx context.Context, in *ReconnectRuntimeDomainRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DispatcherAdmin_ReconnectRuntimeDomain_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DispatcherAdminServer is the server API for DispatcherAdmin service.
 // All implementations must embed UnimplementedDispatcherAdminServer
 // for forward compatibility.
@@ -182,6 +218,9 @@ type DispatcherAdminServer interface {
 	GetRuntimeSummary(context.Context, *RuntimeSummaryRequest) (*RuntimeSummaryResponse, error)
 	GetExecutor(context.Context, *ExecutorReadRequest) (*ExecutorReadResponse, error)
 	ListExecutors(context.Context, *ExecutorListRequest) (*ExecutorListResponse, error)
+	GetRuntimeDomainStatus(context.Context, *RuntimeDomainStatusRequest) (*RuntimeDomainStatusResponse, error)
+	SetRuntimeDomainEnabled(context.Context, *SetRuntimeDomainEnabledRequest) (*CommandResponse, error)
+	ReconnectRuntimeDomain(context.Context, *ReconnectRuntimeDomainRequest) (*CommandResponse, error)
 	mustEmbedUnimplementedDispatcherAdminServer()
 }
 
@@ -224,6 +263,15 @@ func (UnimplementedDispatcherAdminServer) GetExecutor(context.Context, *Executor
 }
 func (UnimplementedDispatcherAdminServer) ListExecutors(context.Context, *ExecutorListRequest) (*ExecutorListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListExecutors not implemented")
+}
+func (UnimplementedDispatcherAdminServer) GetRuntimeDomainStatus(context.Context, *RuntimeDomainStatusRequest) (*RuntimeDomainStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRuntimeDomainStatus not implemented")
+}
+func (UnimplementedDispatcherAdminServer) SetRuntimeDomainEnabled(context.Context, *SetRuntimeDomainEnabledRequest) (*CommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetRuntimeDomainEnabled not implemented")
+}
+func (UnimplementedDispatcherAdminServer) ReconnectRuntimeDomain(context.Context, *ReconnectRuntimeDomainRequest) (*CommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReconnectRuntimeDomain not implemented")
 }
 func (UnimplementedDispatcherAdminServer) mustEmbedUnimplementedDispatcherAdminServer() {}
 func (UnimplementedDispatcherAdminServer) testEmbeddedByValue()                         {}
@@ -444,6 +492,60 @@ func _DispatcherAdmin_ListExecutors_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DispatcherAdmin_GetRuntimeDomainStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RuntimeDomainStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherAdminServer).GetRuntimeDomainStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DispatcherAdmin_GetRuntimeDomainStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherAdminServer).GetRuntimeDomainStatus(ctx, req.(*RuntimeDomainStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DispatcherAdmin_SetRuntimeDomainEnabled_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetRuntimeDomainEnabledRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherAdminServer).SetRuntimeDomainEnabled(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DispatcherAdmin_SetRuntimeDomainEnabled_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherAdminServer).SetRuntimeDomainEnabled(ctx, req.(*SetRuntimeDomainEnabledRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DispatcherAdmin_ReconnectRuntimeDomain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReconnectRuntimeDomainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherAdminServer).ReconnectRuntimeDomain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DispatcherAdmin_ReconnectRuntimeDomain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherAdminServer).ReconnectRuntimeDomain(ctx, req.(*ReconnectRuntimeDomainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DispatcherAdmin_ServiceDesc is the grpc.ServiceDesc for DispatcherAdmin service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -494,6 +596,18 @@ var DispatcherAdmin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListExecutors",
 			Handler:    _DispatcherAdmin_ListExecutors_Handler,
+		},
+		{
+			MethodName: "GetRuntimeDomainStatus",
+			Handler:    _DispatcherAdmin_GetRuntimeDomainStatus_Handler,
+		},
+		{
+			MethodName: "SetRuntimeDomainEnabled",
+			Handler:    _DispatcherAdmin_SetRuntimeDomainEnabled_Handler,
+		},
+		{
+			MethodName: "ReconnectRuntimeDomain",
+			Handler:    _DispatcherAdmin_ReconnectRuntimeDomain_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

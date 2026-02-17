@@ -8,11 +8,13 @@ from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.app.deps import get_runtime_observability_service
-from saki_api.core.exceptions import ForbiddenAppException
+from saki_api.core.exceptions import ForbiddenAppException, InternalServerErrorAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.access.service.permission_checker import PermissionChecker
 from saki_api.modules.runtime.api.runtime_executor import (
+    RuntimeDomainCommandResponse,
+    RuntimeDomainStatusResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsRange,
@@ -44,6 +46,15 @@ async def _ensure_runtime_read_permission(session: AsyncSession, current_user_id
         return
 
     raise ForbiddenAppException("Permission denied: runtime:read")
+
+
+async def _ensure_runtime_manage_permission(session: AsyncSession, current_user_id: uuid.UUID) -> None:
+    checker = PermissionChecker(session)
+    if await checker.check(user_id=current_user_id, permission=Permissions.ROUND_MANAGE_ALL):
+        return
+    if await checker.check(user_id=current_user_id, permission=Permissions.LOOP_MANAGE_ALL):
+        return
+    raise ForbiddenAppException("Permission denied: runtime:manage")
 
 
 def _resolve_runtime_observability_service(
@@ -121,3 +132,76 @@ async def list_runtime_plugins(
         runtime_observability_service=runtime_observability_service,
     )
     return await service.list_plugins()
+
+
+@router.get("/runtime/domain/status", response_model=RuntimeDomainStatusResponse)
+async def get_runtime_domain_status(
+        session: AsyncSession = Depends(get_session),
+        runtime_observability_service: RuntimeObservabilityService | object = Depends(
+            get_runtime_observability_service
+        ),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_manage_permission(session, current_user_id)
+    service = _resolve_runtime_observability_service(
+        session=session,
+        runtime_observability_service=runtime_observability_service,
+    )
+    return await service.get_runtime_domain_status()
+
+
+@router.post("/runtime/domain:connect", response_model=RuntimeDomainCommandResponse)
+async def connect_runtime_domain(
+        session: AsyncSession = Depends(get_session),
+        runtime_observability_service: RuntimeObservabilityService | object = Depends(
+            get_runtime_observability_service
+        ),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_manage_permission(session, current_user_id)
+    service = _resolve_runtime_observability_service(
+        session=session,
+        runtime_observability_service=runtime_observability_service,
+    )
+    try:
+        return await service.set_runtime_domain_enabled(True)
+    except RuntimeError as exc:
+        raise InternalServerErrorAppException(str(exc)) from exc
+
+
+@router.post("/runtime/domain:disconnect", response_model=RuntimeDomainCommandResponse)
+async def disconnect_runtime_domain(
+        session: AsyncSession = Depends(get_session),
+        runtime_observability_service: RuntimeObservabilityService | object = Depends(
+            get_runtime_observability_service
+        ),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_manage_permission(session, current_user_id)
+    service = _resolve_runtime_observability_service(
+        session=session,
+        runtime_observability_service=runtime_observability_service,
+    )
+    try:
+        return await service.set_runtime_domain_enabled(False)
+    except RuntimeError as exc:
+        raise InternalServerErrorAppException(str(exc)) from exc
+
+
+@router.post("/runtime/domain:reconnect", response_model=RuntimeDomainCommandResponse)
+async def reconnect_runtime_domain(
+        session: AsyncSession = Depends(get_session),
+        runtime_observability_service: RuntimeObservabilityService | object = Depends(
+            get_runtime_observability_service
+        ),
+        current_user_id=Depends(get_current_user_id),
+):
+    await _ensure_runtime_manage_permission(session, current_user_id)
+    service = _resolve_runtime_observability_service(
+        session=session,
+        runtime_observability_service=runtime_observability_service,
+    )
+    try:
+        return await service.reconnect_runtime_domain()
+    except RuntimeError as exc:
+        raise InternalServerErrorAppException(str(exc)) from exc

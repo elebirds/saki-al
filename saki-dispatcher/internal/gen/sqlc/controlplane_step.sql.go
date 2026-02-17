@@ -409,6 +409,48 @@ func (q *Queries) ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limit
 	return items, nil
 }
 
+const listRetryingStepIDsDueForUpdateSkipLocked = `-- name: ListRetryingStepIDsDueForUpdateSkipLocked :many
+SELECT s.id AS id
+FROM step s
+JOIN round r ON r.id = s.round_id
+JOIN loop l ON l.id = r.loop_id
+WHERE s.state = 'RETRYING'::stepstatus
+  AND l.status = 'RUNNING'::loopstatus
+  AND s.updated_at <= now() - (
+    CASE
+      WHEN s.attempt <= 1 THEN interval '1 second'
+      WHEN s.attempt = 2 THEN interval '2 seconds'
+      WHEN s.attempt = 3 THEN interval '4 seconds'
+      WHEN s.attempt = 4 THEN interval '8 seconds'
+      WHEN s.attempt = 5 THEN interval '16 seconds'
+      ELSE interval '30 seconds'
+    END
+  )
+ORDER BY s.updated_at ASC
+LIMIT $1
+FOR UPDATE OF s SKIP LOCKED
+`
+
+func (q *Queries) ListRetryingStepIDsDueForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listRetryingStepIDsDueForUpdateSkipLocked, limitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStepCandidatesByStepID = `-- name: ListStepCandidatesByStepID :many
 SELECT
   sample_id AS sample_id,
@@ -461,6 +503,31 @@ func (q *Queries) ListStepCandidatesByStepID(ctx context.Context, arg ListStepCa
 	return items, nil
 }
 
+const markOrchestratorStepRetrying = `-- name: MarkOrchestratorStepRetrying :execrows
+UPDATE step
+SET state = 'RETRYING'::stepstatus,
+    attempt = attempt + 1,
+    last_error = $1,
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = $2::uuid
+  AND state = 'RUNNING'::stepstatus
+  AND attempt < max_attempts
+`
+
+type MarkOrchestratorStepRetryingParams struct {
+	LastError pgtype.Text
+	StepID    uuid.UUID
+}
+
+func (q *Queries) MarkOrchestratorStepRetrying(ctx context.Context, arg MarkOrchestratorStepRetryingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markOrchestratorStepRetrying, arg.LastError, arg.StepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const markOrchestratorStepRunning = `-- name: MarkOrchestratorStepRunning :execrows
 UPDATE step
 SET state = 'RUNNING'::stepstatus,
@@ -498,6 +565,23 @@ type MarkStepDispatchingParams struct {
 
 func (q *Queries) MarkStepDispatching(ctx context.Context, arg MarkStepDispatchingParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markStepDispatching, arg.AssignedExecutorID, arg.DispatchRequestID, arg.StepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const promoteRetryingStepToReady = `-- name: PromoteRetryingStepToReady :execrows
+UPDATE step
+SET state = 'READY'::stepstatus,
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = $1::uuid
+  AND state = 'RETRYING'::stepstatus
+`
+
+func (q *Queries) PromoteRetryingStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, promoteRetryingStepToReady, stepID)
 	if err != nil {
 		return 0, err
 	}
@@ -551,7 +635,7 @@ UPDATE step
 SET state = 'READY'::stepstatus,
     assigned_executor_id = NULL,
     dispatch_request_id = NULL,
-    last_error = 'dispatcher queue full',
+    last_error = '派发队列已满',
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = $1::uuid
@@ -605,7 +689,11 @@ UPDATE step
 SET state = $1::stepstatus,
     last_error = $2::text,
     output_commit_id = $3::uuid,
-    ended_at = COALESCE(ended_at, now()),
+    ended_at = CASE
+      WHEN $1::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus)
+      THEN COALESCE(ended_at, now())
+      ELSE ended_at
+    END,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = $4::uuid

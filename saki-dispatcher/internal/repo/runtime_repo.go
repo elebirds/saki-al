@@ -19,7 +19,7 @@ func NewRuntimeRepo(ctx context.Context, databaseURL string) (*RuntimeRepo, erro
 	}
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse database url: %w", err)
+		return nil, fmt.Errorf("解析数据库地址失败: %w", err)
 	}
 	cfg.MaxConns = 20
 	cfg.MinConns = 2
@@ -27,11 +27,11 @@ func NewRuntimeRepo(ctx context.Context, databaseURL string) (*RuntimeRepo, erro
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("create pool: %w", err)
+		return nil, fmt.Errorf("创建数据库连接池失败: %w", err)
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("ping database: %w", err)
+		return nil, fmt.Errorf("数据库连通性检查失败: %w", err)
 	}
 	return &RuntimeRepo{pool: pool}, nil
 }

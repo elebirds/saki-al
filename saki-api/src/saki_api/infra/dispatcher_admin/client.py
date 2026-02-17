@@ -173,3 +173,37 @@ class DispatcherAdminClient:
             timeout=self.timeout_sec,
             metadata=self._metadata(),
         )
+
+    async def get_runtime_domain_status(self) -> pb.RuntimeDomainStatusResponse:
+        stub = await self._get_stub()
+        return await stub.GetRuntimeDomainStatus(
+            pb.RuntimeDomainStatusRequest(),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )
+
+    async def set_runtime_domain_enabled(
+            self,
+            enabled: bool,
+            *,
+            command_id: str | None = None,
+    ) -> pb.CommandResponse:
+        stub = await self._get_stub()
+        return await stub.SetRuntimeDomainEnabled(
+            pb.SetRuntimeDomainEnabledRequest(
+                command_id=command_id or str(uuid.uuid4()),
+                enabled=bool(enabled),
+            ),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )
+
+    async def reconnect_runtime_domain(self, *, command_id: str | None = None) -> pb.CommandResponse:
+        stub = await self._get_stub()
+        return await stub.ReconnectRuntimeDomain(
+            pb.ReconnectRuntimeDomainRequest(
+                command_id=command_id or str(uuid.uuid4()),
+            ),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )

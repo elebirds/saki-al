@@ -26,7 +26,7 @@ func (s *Service) withCommand(
 		return CommandResult{
 			CommandID: commandID,
 			Status:    "failed",
-			Message:   "database is not configured",
+			Message:   "数据库未配置",
 			RequestID: uuid.NewString(),
 		}, nil
 	}
@@ -123,7 +123,7 @@ func (s *Service) persistCommandFailure(
 	}
 	detail := strings.TrimSpace(actionErr.Error())
 	if detail == "" {
-		detail = "command failed"
+		detail = "命令执行失败"
 	}
 	if err := s.qtx(tx).UpdateCommandLogStatusDetail(ctx, db.UpdateCommandLogStatusDetailParams{
 		CommandID: commandID,

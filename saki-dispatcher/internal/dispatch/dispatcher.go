@@ -79,7 +79,7 @@ func NewDispatcher() *Dispatcher {
 func (d *Dispatcher) RegisterExecutor(register *runtimecontrolv1.Register) (*ExecutorSession, error) {
 	executorID := strings.TrimSpace(register.GetExecutorId())
 	if executorID == "" {
-		return nil, fmt.Errorf("executor_id is required")
+		return nil, fmt.Errorf("executor_id 不能为空")
 	}
 
 	pluginIDs := make([]string, 0, len(register.GetPlugins()))
@@ -140,7 +140,7 @@ func (d *Dispatcher) UnregisterExecutor(executorID string) {
 func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) error {
 	executorID := strings.TrimSpace(heartbeat.GetExecutorId())
 	if executorID == "" {
-		return fmt.Errorf("executor_id is required")
+		return fmt.Errorf("executor_id 不能为空")
 	}
 
 	d.mu.Lock()
@@ -148,7 +148,7 @@ func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) erro
 
 	session := d.sessions[executorID]
 	if session == nil {
-		return fmt.Errorf("executor not registered: %s", executorID)
+		return fmt.Errorf("executor 尚未注册: %s", executorID)
 	}
 	session.Busy = heartbeat.GetBusy()
 	currentStepID := strings.TrimSpace(heartbeat.GetCurrentStepId())
@@ -285,7 +285,7 @@ func (d *Dispatcher) StopStep(stepID string, reason string) (string, bool) {
 	requestID := uuid.NewString()
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		reason = "user requested stop"
+		reason = "用户请求停止"
 	}
 
 	d.mu.Lock()

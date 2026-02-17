@@ -849,6 +849,9 @@ Round 模板：
 8. `GetRuntimeSummary`
 9. `ListExecutors`
 10. `TriggerDispatch`
+11. `GetRuntimeDomainStatus`
+12. `SetRuntimeDomainEnabled`
+13. `ReconnectRuntimeDomain`
 
 ### 12.2 dispatcher -> api（runtime_domain）
 
@@ -856,6 +859,18 @@ Round 模板：
 2. `CountNewLabelsSinceCommit`
 3. `ActivateSamples`（建议新增）
 4. `AdvanceBranchHead`
+
+### 12.3 runtime_domain 连接管理（dispatcher 内部）
+
+1. dispatcher 对 runtime_domain 采用后台连接状态机：`disabled -> connecting -> ready -> backoff`。
+2. 初始退避 1 秒，失败后指数退避到 30 秒上限，并增加抖动（jitter）避免同频重连。
+3. `ACTIVATE_SAMPLES/ADVANCE_BRANCH` 的临时错误（网络抖动、超时、Unavailable）进入 `RETRYING`，后续自动回到 `READY` 重试。
+4. `RUNTIME_DOMAIN_TARGET` 未配置时，相关 ORCHESTRATOR Step 明确失败，不允许静默跳过。
+5. 运维入口统一通过 `DispatcherAdmin` + API HTTP：
+- `GET /runtime/domain/status`
+- `POST /runtime/domain:connect`
+- `POST /runtime/domain:disconnect`
+- `POST /runtime/domain:reconnect`
 
 ---
 

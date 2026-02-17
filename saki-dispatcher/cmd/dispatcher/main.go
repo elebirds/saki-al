@@ -32,7 +32,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		log.Error().Err(err).Msg("dispatcher exited with error")
+		log.Error().Err(err).Msg("dispatcher 异常退出")
 		os.Exit(1)
 	}
 }
@@ -55,28 +55,25 @@ func run() error {
 	}
 	if repository != nil {
 		defer repository.Close()
-		logger.Info().Msg("database connection ready")
+		logger.Info().Msg("数据库连接已就绪")
 	} else {
-		logger.Warn().Msg("DATABASE_URL is empty: runtime persistence is not enabled yet")
+		logger.Warn().Msg("DATABASE_URL 为空，运行时持久化未启用")
 	}
 
 	domainClient := runtime_domain_client.New(cfg.RuntimeDomainTarget, cfg.RuntimeDomainToken, 5)
-	if domainClient.Enabled() {
-		logger.Info().Str("target", cfg.RuntimeDomainTarget).Msg("connecting runtime_domain")
-		if err := domainClient.Connect(ctx); err != nil {
-			return err
-		}
-		logger.Info().Str("target", cfg.RuntimeDomainTarget).Msg("runtime_domain connected")
+	if domainClient.Configured() {
+		domainClient.Start(ctx)
+		logger.Info().Str("target", cfg.RuntimeDomainTarget).Msg("runtime_domain 连接管理器已启动")
 	} else {
-		logger.Warn().Msg("RUNTIME_DOMAIN_TARGET is empty: runtime_domain bridge is disabled")
+		logger.Warn().Msg("RUNTIME_DOMAIN_TARGET 为空，runtime_domain 桥接未启用")
 	}
 	defer func() {
 		if err := domainClient.Close(); err != nil {
-			logger.Warn().Err(err).Str("target", cfg.RuntimeDomainTarget).Msg("runtime_domain disconnect failed")
+			logger.Warn().Err(err).Str("target", cfg.RuntimeDomainTarget).Msg("关闭 runtime_domain 连接失败")
 			return
 		}
-		if domainClient.Enabled() {
-			logger.Info().Str("target", cfg.RuntimeDomainTarget).Msg("runtime_domain disconnected")
+		if domainClient.Configured() {
+			logger.Info().Str("target", cfg.RuntimeDomainTarget).Msg("runtime_domain 连接已关闭")
 		}
 	}()
 
@@ -98,15 +95,15 @@ func run() error {
 		domainClient,
 		logger.With().Str("grpc", "runtime").Logger(),
 	)
-	adminServer := admingrpc.NewServer(dispatcher, controlPlane, logger.With().Str("grpc", "admin").Logger())
+	adminServer := admingrpc.NewServer(dispatcher, controlPlane, domainClient, logger.With().Str("grpc", "admin").Logger())
 
 	runtimeLis, err := net.Listen("tcp", cfg.RuntimeGRPCBind)
 	if err != nil {
-		return fmt.Errorf("listen runtime grpc: %w", err)
+		return fmt.Errorf("监听 runtime gRPC 端口失败: %w", err)
 	}
 	adminLis, err := net.Listen("tcp", cfg.AdminGRPCBind)
 	if err != nil {
-		return fmt.Errorf("listen admin grpc: %w", err)
+		return fmt.Errorf("监听 admin gRPC 端口失败: %w", err)
 	}
 
 	runtimeGRPC := grpc.NewServer(
@@ -137,22 +134,22 @@ func run() error {
 	go orch.Run(ctx)
 
 	go func() {
-		logger.Info().Str("bind", cfg.RuntimeGRPCBind).Msg("runtime grpc server started")
+		logger.Info().Str("bind", cfg.RuntimeGRPCBind).Msg("runtime gRPC 服务已启动")
 		if serveErr := runtimeGRPC.Serve(runtimeLis); serveErr != nil {
-			logger.Error().Err(serveErr).Msg("runtime grpc server stopped with error")
+			logger.Error().Err(serveErr).Msg("runtime gRPC 服务异常停止")
 			stop()
 		}
 	}()
 	go func() {
-		logger.Info().Str("bind", cfg.AdminGRPCBind).Msg("admin grpc server started")
+		logger.Info().Str("bind", cfg.AdminGRPCBind).Msg("admin gRPC 服务已启动")
 		if serveErr := adminGRPC.Serve(adminLis); serveErr != nil {
-			logger.Error().Err(serveErr).Msg("admin grpc server stopped with error")
+			logger.Error().Err(serveErr).Msg("admin gRPC 服务异常停止")
 			stop()
 		}
 	}()
 
 	<-ctx.Done()
-	logger.Info().Msg("shutdown signal received")
+	logger.Info().Msg("收到退出信号，开始优雅停机")
 	stopGRPCWithTimeout("runtime", runtimeGRPC, 5*time.Second, logger)
 	stopGRPCWithTimeout("admin", adminGRPC, 5*time.Second, logger)
 	return nil
@@ -171,15 +168,15 @@ func stopGRPCWithTimeout(name string, server *grpc.Server, timeout time.Duration
 
 	select {
 	case <-done:
-		logger.Info().Str("grpc", name).Msg("grpc server stopped gracefully")
+		logger.Info().Str("grpc", name).Msg("gRPC 服务已优雅停止")
 	case <-time.After(timeout):
 		logger.Warn().
 			Str("grpc", name).
 			Dur("timeout", timeout).
-			Msg("grpc graceful stop timed out, forcing stop")
+			Msg("gRPC 优雅停止超时，执行强制停止")
 		server.Stop()
 		<-done
-		logger.Info().Str("grpc", name).Msg("grpc server force-stopped")
+		logger.Info().Str("grpc", name).Msg("gRPC 服务已强制停止")
 	}
 }
 
@@ -199,7 +196,7 @@ func unaryAuthInterceptor(token string) grpc.UnaryServerInterceptor {
 			return handler(ctx, req)
 		}
 		if !validateToken(ctx, token) {
-			return nil, status.Error(codes.Unauthenticated, "invalid internal token")
+			return nil, status.Error(codes.Unauthenticated, "内部令牌无效")
 		}
 		return handler(ctx, req)
 	}
@@ -212,7 +209,7 @@ func streamAuthInterceptor(token string) grpc.StreamServerInterceptor {
 			return handler(srv, stream)
 		}
 		if !validateToken(stream.Context(), token) {
-			return status.Error(codes.Unauthenticated, "invalid internal token")
+			return status.Error(codes.Unauthenticated, "内部令牌无效")
 		}
 		return handler(srv, stream)
 	}

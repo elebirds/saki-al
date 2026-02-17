@@ -95,7 +95,7 @@ func (s *Service) dbEnabled() bool {
 
 func (s *Service) beginTx(ctx context.Context) (pgx.Tx, error) {
 	if !s.dbEnabled() {
-		return nil, fmt.Errorf("database is not configured")
+		return nil, fmt.Errorf("数据库未配置")
 	}
 	return s.pool.Begin(ctx)
 }

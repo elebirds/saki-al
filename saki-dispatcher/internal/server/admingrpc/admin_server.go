@@ -13,6 +13,7 @@ import (
 	"github.com/elebirds/saki/saki-dispatcher/internal/controlplane"
 	"github.com/elebirds/saki/saki-dispatcher/internal/dispatch"
 	dispatcheradminv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/dispatcheradminv1"
+	"github.com/elebirds/saki/saki-dispatcher/internal/runtime_domain_client"
 )
 
 type Server struct {
@@ -20,13 +21,20 @@ type Server struct {
 
 	dispatcher *dispatch.Dispatcher
 	commands   *controlplane.Service
+	domain     *runtime_domain_client.Client
 	logger     zerolog.Logger
 }
 
-func NewServer(dispatcher *dispatch.Dispatcher, commands *controlplane.Service, logger zerolog.Logger) *Server {
+func NewServer(
+	dispatcher *dispatch.Dispatcher,
+	commands *controlplane.Service,
+	domain *runtime_domain_client.Client,
+	logger zerolog.Logger,
+) *Server {
 	return &Server{
 		dispatcher: dispatcher,
 		commands:   commands,
+		domain:     domain,
 		logger:     logger,
 	}
 }
@@ -155,6 +163,70 @@ func (s *Server) ListExecutors(_ context.Context, _ *dispatcheradminv1.ExecutorL
 	return &dispatcheradminv1.ExecutorListResponse{Items: items}, nil
 }
 
+func (s *Server) GetRuntimeDomainStatus(
+	_ context.Context,
+	_ *dispatcheradminv1.RuntimeDomainStatusRequest,
+) (*dispatcheradminv1.RuntimeDomainStatusResponse, error) {
+	if s.domain == nil {
+		return &dispatcheradminv1.RuntimeDomainStatusResponse{
+			Configured: false,
+			Enabled:    false,
+			State:      runtime_domain_client.StateDisabled,
+			LastError:  "runtime_domain 客户端不可用",
+		}, nil
+	}
+	statusSnapshot := s.domain.Status()
+	response := &dispatcheradminv1.RuntimeDomainStatusResponse{
+		Configured:          statusSnapshot.Configured,
+		Enabled:             statusSnapshot.Enabled,
+		State:               statusSnapshot.State,
+		Target:              statusSnapshot.Target,
+		ConsecutiveFailures: statusSnapshot.ConsecutiveFailures,
+		LastError:           statusSnapshot.LastError,
+	}
+	if !statusSnapshot.LastConnectedAt.IsZero() {
+		response.LastConnectedAt = statusSnapshot.LastConnectedAt.Format(time.RFC3339)
+	}
+	if !statusSnapshot.NextRetryAt.IsZero() {
+		response.NextRetryAt = statusSnapshot.NextRetryAt.Format(time.RFC3339)
+	}
+	return response, nil
+}
+
+func (s *Server) SetRuntimeDomainEnabled(
+	_ context.Context,
+	req *dispatcheradminv1.SetRuntimeDomainEnabledRequest,
+) (*dispatcheradminv1.CommandResponse, error) {
+	commandID := normalizeCommandID(req.GetCommandId())
+	if s.domain == nil {
+		return buildRuntimeDomainCommandResponse(commandID, "failed", "runtime_domain 客户端不可用"), nil
+	}
+	if req.GetEnabled() {
+		if err := s.domain.Enable(); err != nil {
+			return buildRuntimeDomainCommandResponse(commandID, "failed", err.Error()), nil
+		}
+		return buildRuntimeDomainCommandResponse(commandID, "applied", "runtime_domain 已启用"), nil
+	}
+	if err := s.domain.Disable(); err != nil {
+		return buildRuntimeDomainCommandResponse(commandID, "failed", err.Error()), nil
+	}
+	return buildRuntimeDomainCommandResponse(commandID, "applied", "runtime_domain 已停用"), nil
+}
+
+func (s *Server) ReconnectRuntimeDomain(
+	_ context.Context,
+	req *dispatcheradminv1.ReconnectRuntimeDomainRequest,
+) (*dispatcheradminv1.CommandResponse, error) {
+	commandID := normalizeCommandID(req.GetCommandId())
+	if s.domain == nil {
+		return buildRuntimeDomainCommandResponse(commandID, "failed", "runtime_domain 客户端不可用"), nil
+	}
+	if err := s.domain.Reconnect(); err != nil {
+		return buildRuntimeDomainCommandResponse(commandID, "failed", err.Error()), nil
+	}
+	return buildRuntimeDomainCommandResponse(commandID, "applied", "runtime_domain 已触发重连"), nil
+}
+
 func convertCommandResult(result controlplane.CommandResult) *dispatcheradminv1.CommandResponse {
 	return &dispatcheradminv1.CommandResponse{
 		CommandId: result.CommandID,
@@ -184,10 +256,27 @@ func convertExecutor(item dispatch.ExecutorSnapshot) *dispatcheradminv1.Executor
 func validateUUIDField(raw string, field string) error {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return status.Errorf(codes.InvalidArgument, "%s is required", field)
+		return status.Errorf(codes.InvalidArgument, "%s 不能为空", field)
 	}
 	if _, err := uuid.Parse(value); err != nil {
-		return status.Errorf(codes.InvalidArgument, "invalid %s: %v", field, err)
+		return status.Errorf(codes.InvalidArgument, "%s 不是合法 UUID: %v", field, err)
 	}
 	return nil
+}
+
+func normalizeCommandID(commandID string) string {
+	commandID = strings.TrimSpace(commandID)
+	if commandID == "" {
+		return uuid.NewString()
+	}
+	return commandID
+}
+
+func buildRuntimeDomainCommandResponse(commandID, status, message string) *dispatcheradminv1.CommandResponse {
+	return &dispatcheradminv1.CommandResponse{
+		CommandId: commandID,
+		Status:    strings.TrimSpace(status),
+		Message:   strings.TrimSpace(message),
+		RequestId: uuid.NewString(),
+	}
 }

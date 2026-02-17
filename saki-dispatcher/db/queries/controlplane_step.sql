@@ -19,6 +19,27 @@ ORDER BY s.created_at ASC
 LIMIT sqlc.arg(limit_count)
 FOR UPDATE OF s SKIP LOCKED;
 
+-- name: ListRetryingStepIDsDueForUpdateSkipLocked :many
+SELECT s.id AS id
+FROM step s
+JOIN round r ON r.id = s.round_id
+JOIN loop l ON l.id = r.loop_id
+WHERE s.state = 'RETRYING'::stepstatus
+  AND l.status = 'RUNNING'::loopstatus
+  AND s.updated_at <= now() - (
+    CASE
+      WHEN s.attempt <= 1 THEN interval '1 second'
+      WHEN s.attempt = 2 THEN interval '2 seconds'
+      WHEN s.attempt = 3 THEN interval '4 seconds'
+      WHEN s.attempt = 4 THEN interval '8 seconds'
+      WHEN s.attempt = 5 THEN interval '16 seconds'
+      ELSE interval '30 seconds'
+    END
+  )
+ORDER BY s.updated_at ASC
+LIMIT sqlc.arg(limit_count)
+FOR UPDATE OF s SKIP LOCKED;
+
 -- name: GetStepPayloadByIDForUpdate :one
 SELECT
   t.id AS step_id,
@@ -58,6 +79,14 @@ SET state = 'READY'::stepstatus,
 WHERE id = sqlc.arg(step_id)::uuid
   AND state = 'PENDING'::stepstatus;
 
+-- name: PromoteRetryingStepToReady :execrows
+UPDATE step
+SET state = 'READY'::stepstatus,
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = 'RETRYING'::stepstatus;
+
 -- name: MarkStepDispatching :execrows
 UPDATE step
 SET state = 'DISPATCHING'::stepstatus,
@@ -73,7 +102,7 @@ UPDATE step
 SET state = 'READY'::stepstatus,
     assigned_executor_id = NULL,
     dispatch_request_id = NULL,
-    last_error = 'dispatcher queue full',
+    last_error = '派发队列已满',
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid
@@ -99,12 +128,27 @@ SET state = 'RUNNING'::stepstatus,
 WHERE id = sqlc.arg(step_id)::uuid
   AND state = 'READY'::stepstatus;
 
+-- name: MarkOrchestratorStepRetrying :execrows
+UPDATE step
+SET state = 'RETRYING'::stepstatus,
+    attempt = attempt + 1,
+    last_error = sqlc.arg(last_error),
+    state_version = state_version + 1,
+    updated_at = now()
+WHERE id = sqlc.arg(step_id)::uuid
+  AND state = 'RUNNING'::stepstatus
+  AND attempt < max_attempts;
+
 -- name: UpdateStepExecutionResultGuarded :execrows
 UPDATE step
 SET state = sqlc.arg(state)::stepstatus,
     last_error = sqlc.narg(last_error)::text,
     output_commit_id = sqlc.narg(output_commit_id)::uuid,
-    ended_at = COALESCE(ended_at, now()),
+    ended_at = CASE
+      WHEN sqlc.arg(state)::stepstatus IN ('SUCCEEDED'::stepstatus, 'FAILED'::stepstatus, 'CANCELLED'::stepstatus, 'SKIPPED'::stepstatus)
+      THEN COALESCE(ended_at, now())
+      ELSE ended_at
+    END,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid

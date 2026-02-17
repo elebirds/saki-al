@@ -13,6 +13,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.exceptions import NotFoundAppException
 from saki_api.infra.dispatcher_admin.client import DispatcherAdminClient
 from saki_api.modules.runtime.api.runtime_executor import (
+    RuntimeDomainCommandResponse,
+    RuntimeDomainStatusResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
     RuntimeExecutorStatsPoint,
@@ -65,6 +67,12 @@ class RuntimeObservabilityService:
             return datetime.fromisoformat(value)
         except Exception:
             return None
+
+    def _require_dispatcher_admin(self) -> DispatcherAdminClient:
+        client = self.dispatcher_admin_client
+        if client is None or not client.enabled:
+            raise RuntimeError("dispatcher_admin 未配置")
+        return client
 
     async def _get_dispatcher_summary_snapshot(self) -> dict[str, Any]:
         if not self._dispatcher_admin_enabled:
@@ -274,3 +282,51 @@ class RuntimeObservabilityService:
         executors = await self._list_executors_ordered()
         items = [RuntimePluginRead(**asdict(item)) for item in aggregate_runtime_plugins(executors)]
         return RuntimePluginCatalogResponse(items=items)
+
+    async def get_runtime_domain_status(self) -> RuntimeDomainStatusResponse:
+        if not self._dispatcher_admin_enabled:
+            return RuntimeDomainStatusResponse(
+                configured=False,
+                enabled=False,
+                state="disabled",
+            )
+
+        try:
+            response = await self.dispatcher_admin_client.get_runtime_domain_status()  # type: ignore[union-attr]
+            return RuntimeDomainStatusResponse(
+                configured=bool(response.configured),
+                enabled=bool(response.enabled),
+                state=str(response.state or "").strip(),
+                target=str(response.target or "").strip(),
+                consecutive_failures=int(response.consecutive_failures),
+                last_error=str(response.last_error or "").strip(),
+                last_connected_at=self._parse_optional_datetime(response.last_connected_at),
+                next_retry_at=self._parse_optional_datetime(response.next_retry_at),
+            )
+        except Exception as exc:
+            return RuntimeDomainStatusResponse(
+                configured=True,
+                enabled=False,
+                state="error",
+                last_error=str(exc),
+            )
+
+    async def set_runtime_domain_enabled(self, enabled: bool) -> RuntimeDomainCommandResponse:
+        client = self._require_dispatcher_admin()
+        response = await client.set_runtime_domain_enabled(bool(enabled))
+        return RuntimeDomainCommandResponse(
+            command_id=str(response.command_id or "").strip(),
+            request_id=str(response.request_id or "").strip(),
+            status=str(response.status or "").strip(),
+            message=str(response.message or "").strip(),
+        )
+
+    async def reconnect_runtime_domain(self) -> RuntimeDomainCommandResponse:
+        client = self._require_dispatcher_admin()
+        response = await client.reconnect_runtime_domain()
+        return RuntimeDomainCommandResponse(
+            command_id=str(response.command_id or "").strip(),
+            request_id=str(response.request_id or "").strip(),
+            status=str(response.status or "").strip(),
+            message=str(response.message or "").strip(),
+        )

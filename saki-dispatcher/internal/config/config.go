@@ -32,7 +32,7 @@ type Config struct {
 func Load() (Config, error) {
 	cfg := Config{}
 	if err := env.Parse(&cfg); err != nil {
-		return Config{}, fmt.Errorf("parse env: %w", err)
+		return Config{}, fmt.Errorf("解析环境变量失败: %w", err)
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -42,31 +42,31 @@ func Load() (Config, error) {
 
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.RuntimeGRPCBind) == "" {
-		return fmt.Errorf("RUNTIME_GRPC_BIND is required")
+		return fmt.Errorf("RUNTIME_GRPC_BIND 不能为空")
 	}
 	if strings.TrimSpace(c.AdminGRPCBind) == "" {
-		return fmt.Errorf("ADMIN_GRPC_BIND is required")
+		return fmt.Errorf("ADMIN_GRPC_BIND 不能为空")
 	}
 	if c.HeartbeatTimeoutSec <= 0 {
-		return fmt.Errorf("RUNTIME_HEARTBEAT_TIMEOUT_SEC must be > 0")
+		return fmt.Errorf("RUNTIME_HEARTBEAT_TIMEOUT_SEC 必须大于 0")
 	}
 	if c.AssignAckTimeoutSec <= 0 {
-		return fmt.Errorf("ASSIGN_ACK_TIMEOUT_SEC must be > 0")
+		return fmt.Errorf("ASSIGN_ACK_TIMEOUT_SEC 必须大于 0")
 	}
 	if c.DispatchIntervalSec <= 0 {
-		return fmt.Errorf("DISPATCH_SCAN_INTERVAL_SEC must be > 0")
+		return fmt.Errorf("DISPATCH_SCAN_INTERVAL_SEC 必须大于 0")
 	}
 	if c.SimulationRoundCooldownSec < 0 {
-		return fmt.Errorf("SIMULATION_ROUND_COOLDOWN_SEC must be >= 0")
+		return fmt.Errorf("SIMULATION_ROUND_COOLDOWN_SEC 必须大于等于 0")
 	}
 	if c.StoppingForceCancelSec < 0 {
-		return fmt.Errorf("STOPPING_FORCE_CANCEL_SEC must be >= 0")
+		return fmt.Errorf("STOPPING_FORCE_CANCEL_SEC 必须大于等于 0")
 	}
 	if c.PredictionTTLDays < 0 {
-		return fmt.Errorf("PREDICTION_TTL_DAYS must be >= 0")
+		return fmt.Errorf("PREDICTION_TTL_DAYS 必须大于等于 0")
 	}
 	if c.PredictionTTLKeepRounds < 0 {
-		return fmt.Errorf("PREDICTION_TTL_KEEP_ROUNDS must be >= 0")
+		return fmt.Errorf("PREDICTION_TTL_KEEP_ROUNDS 必须大于等于 0")
 	}
 	return nil
 }

@@ -144,3 +144,9 @@ Dispatcher 只读取 `header.stats` 做调度。SDK 提供 `ReadHeader`，可在
 - `Encode(*DataBatchIR, threshold, level) (*EncodedPayload, error)`
 - `Decode(*EncodedPayload) (*DataBatchIR, error)`
 - `ReadHeader(*EncodedPayload) *PayloadHeader`
+
+## 9. View/Wrapper 使用建议
+- View/Wrapper 不引入新模型，proto message 仍是唯一真相。
+- 默认无副作用：除显式 `*_inplace` 命名外，View 方法不应修改底层 message。
+- Dispatcher 建议只使用 `EncodedPayloadView.Header().Stats()` 做调度。
+- Executor 建议使用 `EncodedPayloadView.Decode()` 获取 `DataBatchIR`。

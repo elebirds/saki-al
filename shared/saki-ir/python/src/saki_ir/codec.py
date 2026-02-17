@@ -22,7 +22,6 @@ except ImportError:  # pragma: no cover
 
 _zstd_cache_lock = Lock()
 _zstd_compressors: dict[int, object] = {}
-_zstd_decompressor: object | None = None
 
 
 def _normalize_encode_params(compression_threshold: int, zstd_level: int) -> tuple[int, int]:
@@ -46,24 +45,48 @@ def _get_zstd_compressor(level: int):
     return compressor
 
 
-def _get_zstd_decompressor():
-    if _zstd is None:
-        raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, "未安装 zstandard，无法使用 ZSTD 解压")
-    global _zstd_decompressor
-    with _zstd_cache_lock:
-        if _zstd_decompressor is None:
-            _zstd_decompressor = _zstd.ZstdDecompressor()
-    return _zstd_decompressor
-
-
 def _compress_zstd(data: bytes, level: int) -> bytes:
     compressor = _get_zstd_compressor(level)
     return compressor.compress(data)
 
 
 def _decompress_zstd(data: bytes) -> bytes:
-    decompressor = _get_zstd_decompressor()
+    if _zstd is None:
+        raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, "未安装 zstandard，无法使用 ZSTD 解压")
+    decompressor = _zstd.ZstdDecompressor()
     return decompressor.decompress(data)
+
+
+def decompress_raw(encoded: annotationirv1.EncodedPayload) -> bytes:
+    """按 header.compression 解压到 payload_raw，不校验 checksum、不 decode。"""
+
+    header = read_header(encoded)
+    payload = bytes(encoded.payload)
+    if header.compression == annotationirv1.PAYLOAD_COMPRESSION_NONE:
+        return payload
+    if header.compression == annotationirv1.PAYLOAD_COMPRESSION_ZSTD:
+        return _decompress_zstd(payload)
+    raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, f"不支持的 compression: {header.compression}")
+
+
+def _verify_checksum(header: annotationirv1.PayloadHeader, payload_raw: bytes) -> None:
+    if header.checksum_algo != annotationirv1.PAYLOAD_CHECKSUM_ALGO_CRC32C:
+        raise IRError(ERR_IR_SCHEMA, f"不支持的 checksum_algo: {header.checksum_algo}")
+
+    actual = checksum_crc32c(payload_raw)
+    if actual != header.checksum:
+        raise IRError(
+            ERR_IR_CHECKSUM_MISMATCH,
+            f"checksum 不匹配: expected={header.checksum}, actual={actual}",
+        )
+
+
+def verify_checksum(encoded: annotationirv1.EncodedPayload) -> None:
+    """仅做 checksum 校验（会解压），不反序列化 DataBatchIR。"""
+
+    header = read_header(encoded)
+    payload_raw = decompress_raw(encoded)
+    _verify_checksum(header, payload_raw)
 
 
 def _collect_stats(batch: annotationirv1.DataBatchIR) -> annotationirv1.PayloadStats:
@@ -114,7 +137,11 @@ def encode_payload(
     return annotationirv1.EncodedPayload(header=header, payload=payload)
 
 
-def decode_payload(encoded: annotationirv1.EncodedPayload) -> annotationirv1.DataBatchIR:
+def decode_payload(
+    encoded: annotationirv1.EncodedPayload,
+    *,
+    normalize_output: bool = True,
+) -> annotationirv1.DataBatchIR:
     header = read_header(encoded)
 
     if header.schema != annotationirv1.PAYLOAD_SCHEMA_DATA_BATCH_IR:
@@ -122,23 +149,8 @@ def decode_payload(encoded: annotationirv1.EncodedPayload) -> annotationirv1.Dat
     if header.schema_version != 1:
         raise IRError(ERR_IR_SCHEMA, f"不支持的 schema_version: {header.schema_version}")
 
-    payload = bytes(encoded.payload)
-    if header.compression == annotationirv1.PAYLOAD_COMPRESSION_NONE:
-        payload_raw = payload
-    elif header.compression == annotationirv1.PAYLOAD_COMPRESSION_ZSTD:
-        payload_raw = _decompress_zstd(payload)
-    else:
-        raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, f"不支持的 compression: {header.compression}")
-
-    if header.checksum_algo == annotationirv1.PAYLOAD_CHECKSUM_ALGO_CRC32C:
-        actual = checksum_crc32c(payload_raw)
-        if actual != header.checksum:
-            raise IRError(
-                ERR_IR_CHECKSUM_MISMATCH,
-                f"checksum 不匹配: expected={header.checksum}, actual={actual}",
-            )
-    else:
-        raise IRError(ERR_IR_SCHEMA, f"不支持的 checksum_algo: {header.checksum_algo}")
+    payload_raw = decompress_raw(encoded)
+    _verify_checksum(header, payload_raw)
 
     batch = annotationirv1.DataBatchIR()
     if header.codec == annotationirv1.PAYLOAD_CODEC_PROTOBUF:
@@ -148,7 +160,8 @@ def decode_payload(encoded: annotationirv1.EncodedPayload) -> annotationirv1.Dat
     else:
         raise IRError(ERR_IR_CODEC_UNSUPPORTED, f"不支持的 codec: {header.codec}")
 
-    normalize_ir(batch)
+    if normalize_output:
+        normalize_ir(batch)
     return batch
 
 

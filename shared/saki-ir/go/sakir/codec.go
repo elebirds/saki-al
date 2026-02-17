@@ -134,7 +134,7 @@ func ReadHeader(encoded *annotationirv1.EncodedPayload) *annotationirv1.PayloadH
 	if encoded == nil || encoded.GetHeader() == nil {
 		return nil
 	}
-	// 只读访问：不做 clone，避免额外分配。
+	// 语义固定为返回引用（非拷贝）。
 	return encoded.GetHeader()
 }
 

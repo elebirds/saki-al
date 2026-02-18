@@ -11,6 +11,7 @@ from typing import Any
 from saki_ir.convert.base import (
     ERR_CONVERT_IO,
     ERR_CONVERT_SCHEMA,
+    ERR_CONVERT_UNSUPPORTED,
     ConversionContext,
     ConversionReport,
     build_batch,
@@ -22,6 +23,7 @@ from saki_ir.convert.base import (
     struct_to_dict,
 )
 from saki_ir.convert.yolo_det import ir_to_yolo_txt, yolo_txt_to_ir
+from saki_ir.convert.yolo_obb import ir_to_yolo_obb_txt, yolo_obb_txt_to_ir
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as annotationirv1
 
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -89,15 +91,35 @@ def load_yolo_dataset(
         if ctx.read_images:
             image_w, image_h = _read_image_size(image_path=image_path, ctx=ctx, report=report)
 
-        per = yolo_txt_to_ir(
-            txt_text,
-            image_w=image_w,
-            image_h=image_h,
-            class_names=class_names,
-            image_relpath=rel_from_root,
-            ctx=inner_ctx,
-            report=report,
-        )
+        if ctx.yolo_label_format == "det":
+            per = yolo_txt_to_ir(
+                txt_text,
+                image_w=image_w,
+                image_h=image_h,
+                class_names=class_names,
+                image_relpath=rel_from_root,
+                ctx=inner_ctx,
+                report=report,
+            )
+        elif ctx.yolo_label_format in ("obb_rbox", "obb_poly8"):
+            per = yolo_obb_txt_to_ir(
+                txt_text,
+                image_w=image_w,
+                image_h=image_h,
+                class_names=class_names,
+                image_relpath=rel_from_root,
+                ctx=inner_ctx,
+                report=report,
+            )
+        else:
+            fail_or_report(
+                ctx=ctx,
+                report=report,
+                code=ERR_CONVERT_UNSUPPORTED,
+                message=f"不支持的 yolo_label_format: {ctx.yolo_label_format}",
+                source_ref="ctx.yolo_label_format",
+            )
+            continue
 
         _, per_samples, per_annotations = split_batch(per, ctx=ctx, report=report, source_ref=f"{rel_from_root}:items")
         sample = require_single_sample(
@@ -191,17 +213,60 @@ def save_yolo_dataset(
             [sample],
             sample_annotations,
         )
-        txt = ir_to_yolo_txt(
-            sub,
-            image_w=int(sample.width),
-            image_h=int(sample.height),
-            class_to_index=class_to_index,
-            ctx=ctx,
-            report=report,
-        )
+        if ctx.yolo_label_format == "det":
+            txt = ir_to_yolo_txt(
+                sub,
+                image_w=int(sample.width),
+                image_h=int(sample.height),
+                class_to_index=class_to_index,
+                ctx=ctx,
+                report=report,
+            )
+        elif ctx.yolo_label_format == "obb_rbox":
+            txt = ir_to_yolo_obb_txt(
+                sub,
+                image_w=int(sample.width),
+                image_h=int(sample.height),
+                class_to_index=class_to_index,
+                fmt="rbox",
+                angle_unit=_resolve_export_angle_unit(ctx.yolo_obb_angle_unit),
+                ctx=ctx,
+                report=report,
+            )
+        elif ctx.yolo_label_format == "obb_poly8":
+            txt = ir_to_yolo_obb_txt(
+                sub,
+                image_w=int(sample.width),
+                image_h=int(sample.height),
+                class_to_index=class_to_index,
+                fmt="poly8",
+                angle_unit=_resolve_export_angle_unit(ctx.yolo_obb_angle_unit),
+                ctx=ctx,
+                report=report,
+            )
+        else:
+            fail_or_report(
+                ctx=ctx,
+                report=report,
+                code=ERR_CONVERT_UNSUPPORTED,
+                message=f"不支持的 yolo_label_format: {ctx.yolo_label_format}",
+                source_ref="ctx.yolo_label_format",
+            )
+            continue
 
         # 有标注但导出为空，视为导出失败（strict=False 时跳过当前文件）。
         if not txt and sample_annotations:
+            fail_or_report(
+                ctx=ctx,
+                report=report,
+                code=ERR_CONVERT_UNSUPPORTED,
+                message="sample 含标注但导出结果为空",
+                source_ref=f"sample:{sample.id}",
+            )
+            if not ctx.yolo_write_empty_label_files:
+                continue
+
+        if not txt and not ctx.yolo_write_empty_label_files:
             continue
 
         txt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -480,3 +545,9 @@ def _build_class_to_index(
             next_idx += 1
 
     return out
+
+
+def _resolve_export_angle_unit(unit: str) -> str:
+    if unit in ("deg", "rad"):
+        return unit
+    return "deg"

@@ -220,6 +220,36 @@ def test_yolo_save_writes_empty_file_for_negative_sample(tmp_path: Path) -> None
     assert txt.read_text(encoding="utf-8") == ""
 
 
+def test_yolo_save_can_disable_empty_label_file_and_report_export_failure(tmp_path: Path) -> None:
+    batch = ir.DataBatchIR(
+        items=[
+            ir.DataItemIR(sample=ir.SampleRecord(id="s1", width=640, height=480)),
+            ir.DataItemIR(
+                annotation=ir.AnnotationRecord(
+                    id="a1",
+                    sample_id="s1",
+                    label_id="missing-label",
+                    confidence=1.0,
+                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=20.0, cy=20.0, width=10.0, height=5.0, angle_deg_cw=15.0)),
+                )
+            ),
+        ]
+    )
+
+    report = ConversionReport()
+    root = tmp_path / "yolo_no_empty"
+    save_yolo_dataset(
+        batch,
+        root,
+        "train",
+        ctx=ConversionContext(strict=False, yolo_write_empty_label_files=False),
+        report=report,
+    )
+
+    assert report.errors
+    assert not list((root / "labels" / "train").rglob("*.txt"))
+
+
 def test_yolo_load_yaml_fallback_without_pyyaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "yolo_fallback"
     (root / "images" / "train").mkdir(parents=True)

@@ -9,7 +9,9 @@ from saki_ir.convert import (
     ir_to_coco,
     ir_to_voc_xml,
     ir_to_yolo_txt,
+    ir_to_yolo_obb_txt,
     voc_xml_to_ir,
+    yolo_obb_txt_to_ir,
     yolo_txt_to_ir,
 )
 from saki_ir.convert.io import (
@@ -61,6 +63,8 @@ __all__ = [
     "ir_to_voc_xml",
     "yolo_txt_to_ir",
     "ir_to_yolo_txt",
+    "yolo_obb_txt_to_ir",
+    "ir_to_yolo_obb_txt",
     "load_coco_dataset",
     "save_coco_dataset",
     "load_voc_dataset",

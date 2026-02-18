@@ -23,6 +23,7 @@ from saki_ir.convert.base import (
 from saki_ir.convert.coco_det import coco_to_ir, ir_to_coco
 from saki_ir.convert.voc_det import ir_to_voc_xml, voc_xml_to_ir
 from saki_ir.convert.yolo_det import ir_to_yolo_txt, yolo_txt_to_ir
+from saki_ir.convert.yolo_obb import ir_to_yolo_obb_txt, yolo_obb_txt_to_ir
 
 __all__ = [
     "ERR_CONVERT_SCHEMA",
@@ -49,4 +50,6 @@ __all__ = [
     "ir_to_voc_xml",
     "yolo_txt_to_ir",
     "ir_to_yolo_txt",
+    "yolo_obb_txt_to_ir",
+    "ir_to_yolo_obb_txt",
 ]

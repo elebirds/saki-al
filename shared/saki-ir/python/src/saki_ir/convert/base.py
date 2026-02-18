@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Any
+from typing import Any, Literal
 import warnings
 from uuid import uuid4
 
@@ -73,6 +73,9 @@ class ConversionContext:
     # YOLO
     yolo_is_normalized: bool = True
     yolo_float_precision: int = 6
+    yolo_label_format: Literal["det", "obb_rbox", "obb_poly8"] = "det"
+    yolo_obb_angle_unit: Literal["deg", "rad", "auto"] = "auto"
+    yolo_write_empty_label_files: bool = True
 
     # VOC
     voc_coord_base: int = 0  # 0 or 1

@@ -28,6 +28,13 @@ class TypeInfo(BaseModel):
     label: str
     description: str
     color: str
+    enabled: bool = True
+    allowed_annotation_types: list[str] = Field(default_factory=list)
+    must_annotation_types: list[str] = Field(default_factory=list)
+    banned_annotation_types: list[str] = Field(default_factory=list)
+    # Backward compatible fields (deprecated)
+    annotation_types: list[str] = Field(default_factory=list)
+    default_annotation_types: list[str] = Field(default_factory=list)
 
 
 class AvailableTypesResponse(BaseModel):

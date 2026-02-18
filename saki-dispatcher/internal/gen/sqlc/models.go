@@ -1015,14 +1015,15 @@ type Model struct {
 }
 
 type Project struct {
-	ID          uuid.UUID
-	CreatedAt   pgtype.Timestamp
-	UpdatedAt   pgtype.Timestamp
-	Name        string
-	Description pgtype.Text
-	TaskType    Tasktype
-	Status      Projectstatus
-	Config      []byte
+	ID                     uuid.UUID
+	CreatedAt              pgtype.Timestamp
+	UpdatedAt              pgtype.Timestamp
+	Name                   string
+	Description            pgtype.Text
+	TaskType               Tasktype
+	EnabledAnnotationTypes []byte
+	Status                 Projectstatus
+	Config                 []byte
 }
 
 type ProjectDataset struct {

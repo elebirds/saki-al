@@ -12,6 +12,7 @@ from saki_api.infra.db.transaction import transactional
 from saki_api.modules.annotation.api.annotation import AnnotationCreate
 from saki_api.modules.annotation.domain.annotation import Annotation
 from saki_api.modules.annotation.domain.ir_geometry_codec import normalize_annotation_payload
+from saki_api.modules.project.domain.annotation_policy import assert_annotation_type_enabled
 from saki_api.modules.annotation.repo.annotation import AnnotationRepository
 from saki_api.modules.project.contracts import ProjectReadGateway
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
@@ -81,6 +82,10 @@ class AnnotationService(CrudServiceBase[Annotation, AnnotationRepository, Annota
             attrs_payload=schema.attrs,
             confidence=float(schema.confidence),
             source=schema.source,
+        )
+        assert_annotation_type_enabled(
+            project_enabled_types=project.enabled_annotation_types or [],
+            ann_type=ann_type,
         )
         schema.type = ann_type
         schema.geometry = geometry

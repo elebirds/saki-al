@@ -20,6 +20,7 @@ from saki_api.modules.annotation.domain.ir_geometry_codec import (
 from saki_api.modules.annotation.repo.annotation import AnnotationRepository
 from saki_api.modules.annotation.repo.draft import AnnotationDraftRepository
 from saki_api.modules.annotation.service.working import AnnotationWorkingService
+from saki_api.modules.project.domain.annotation_policy import assert_annotation_type_enabled
 from saki_api.modules.project.contracts import ProjectReadGateway
 from saki_api.modules.shared.modeling.enums import AnnotationSource, AnnotationType
 
@@ -55,7 +56,12 @@ class AnnotationSyncService:
         cleaned.pop("parentId", None)
         return cleaned
 
-    def _ensure_item_ids(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _ensure_item_ids(
+            self,
+            item: Dict[str, Any],
+            *,
+            project_enabled_types: list[AnnotationType | str] | None = None,
+    ) -> Dict[str, Any]:
         group_id = item.get("group_id") or item.get("groupId")
         lineage_id = item.get("lineage_id") or item.get("lineageId")
         item_id = item.get("id") or lineage_id or group_id
@@ -76,6 +82,11 @@ class AnnotationSyncService:
             confidence=confidence,
             source=source,
         )
+        if project_enabled_types is not None:
+            assert_annotation_type_enabled(
+                project_enabled_types=project_enabled_types,
+                ann_type=ann_type,
+            )
         item["type"] = ann_type.value
         item["source"] = normalize_annotation_source(source).value
         item["geometry"] = geometry
@@ -90,6 +101,7 @@ class AnnotationSyncService:
             user_id: uuid.UUID,
             group_id: str,
             data: Dict[str, Any],
+            project_enabled_types: list[AnnotationType | str],
     ) -> Dict[str, Any]:
         label_id = data.get("label_id") or data.get("labelId")
         if not label_id:
@@ -107,6 +119,10 @@ class AnnotationSyncService:
             attrs_payload=self._strip_parent_from_attrs(data.get("attrs") or {}),
             confidence=confidence,
             source=source,
+        )
+        assert_annotation_type_enabled(
+            project_enabled_types=project_enabled_types,
+            ann_type=ann_type,
         )
 
         return {
@@ -132,6 +148,7 @@ class AnnotationSyncService:
             sample_id: uuid.UUID,
             user_id: uuid.UUID,
             generated: Dict[str, Any],
+            project_enabled_types: list[AnnotationType | str],
             parent_group_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         attrs_input = self._strip_parent_from_attrs(generated.get("attrs") or {})
@@ -153,6 +170,10 @@ class AnnotationSyncService:
             attrs_payload=attrs_input,
             confidence=confidence,
             source=source,
+        )
+        assert_annotation_type_enabled(
+            project_enabled_types=project_enabled_types,
+            ann_type=ann_type,
         )
 
         return {
@@ -409,6 +430,7 @@ class AnnotationSyncService:
             project_id: uuid.UUID,
             sample_id: uuid.UUID,
             user_id: uuid.UUID,
+            project_enabled_types: list[AnnotationType | str],
             items_by_id: Dict[str, Dict[str, Any]],
             delete_keys: List[str],
             upserts: Dict[str, str],
@@ -425,6 +447,7 @@ class AnnotationSyncService:
             user_id=user_id,
             group_id=group_id,
             data=action_payload,
+            project_enabled_types=project_enabled_types,
         )
 
         if action_type == "update":
@@ -473,6 +496,7 @@ class AnnotationSyncService:
                 sample_id=sample_id,
                 user_id=user_id,
                 generated=gen,
+                project_enabled_types=project_enabled_types,
                 parent_group_id=group_id,
             )
             gen_item_id = gen_item.get("id")
@@ -494,6 +518,11 @@ class AnnotationSyncService:
             sync_handler,
             context,
     ) -> Dict[str, Any]:
+        project = await self.project_gateway.get_project(project_id)
+        if not project:
+            raise BadRequestAppException(f"Project {project_id} not found")
+        project_enabled_types = list(project.enabled_annotation_types or [])
+
         annotations = current_snapshot.get("annotations") or []
         items_by_id = self._index_snapshot_annotations(annotations)
         delete_keys: List[str] = []
@@ -522,6 +551,7 @@ class AnnotationSyncService:
                 project_id=project_id,
                 sample_id=sample_id,
                 user_id=user_id,
+                project_enabled_types=project_enabled_types,
                 items_by_id=items_by_id,
                 delete_keys=delete_keys,
                 upserts=upserts,

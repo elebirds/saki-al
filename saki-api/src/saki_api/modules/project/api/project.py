@@ -5,9 +5,9 @@ Project Schemas for API requests and responses.
 import uuid
 from typing import Any
 
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
-from saki_api.modules.shared.modeling.enums import TaskType, ProjectStatus
+from saki_api.modules.shared.modeling.enums import AnnotationType, TaskType, ProjectStatus
 
 
 class ProjectBase(SQLModel):
@@ -17,8 +17,11 @@ class ProjectBase(SQLModel):
     name: str
     description: str | None = None
     task_type: TaskType = TaskType.DETECTION
+    enabled_annotation_types: list[AnnotationType] = Field(
+        default_factory=lambda: [AnnotationType.RECT, AnnotationType.OBB]
+    )
     status: ProjectStatus = ProjectStatus.ACTIVE
-    config: dict[str, Any] = {}
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProjectCreate(SQLModel):
@@ -28,8 +31,9 @@ class ProjectCreate(SQLModel):
     name: str
     description: str | None = None
     task_type: TaskType = TaskType.DETECTION
-    config: dict[str, Any] = {}
-    dataset_ids: list[uuid.UUID] = []  # Datasets to link on creation
+    enabled_annotation_types: list[AnnotationType]
+    config: dict[str, Any] = Field(default_factory=dict)
+    dataset_ids: list[uuid.UUID] = Field(default_factory=list)  # Datasets to link on creation
 
 
 class ProjectForkCreate(SQLModel):

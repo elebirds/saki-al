@@ -5,7 +5,7 @@ from sqlalchemy import Column
 from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin, OPT_JSON
-from saki_api.modules.shared.modeling.enums import TaskType, ProjectStatus
+from saki_api.modules.shared.modeling.enums import TaskType, ProjectStatus, AnnotationType
 
 if TYPE_CHECKING:
     from saki_api.modules.storage.domain.dataset import Dataset
@@ -37,6 +37,11 @@ class ProjectBase(SQLModel):
     description: str | None = Field(default=None, description="Description of the project.")
     # Task type - determines ML model type (classification, detection, etc.)
     task_type: TaskType = Field(default=TaskType.DETECTION, description="Type of ML task for active learning.")
+    enabled_annotation_types: List[AnnotationType] = Field(
+        default_factory=lambda: [AnnotationType.RECT, AnnotationType.OBB],
+        sa_column=Column(OPT_JSON),
+        description="Enabled annotation types for the project (immutable after creation).",
+    )
     status: ProjectStatus = Field(default=ProjectStatus.ACTIVE, description="Current status of the project.")
 
     # 配置字段

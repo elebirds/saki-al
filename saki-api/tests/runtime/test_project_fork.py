@@ -104,6 +104,7 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
             source_project = await service.initialize_project(
                 name="source-project",
                 task_type=TaskType.DETECTION,
+                enabled_annotation_types=[AnnotationType.RECT, AnnotationType.OBB],
                 dataset_ids=[dataset.id],
                 user_id=source_user.id,
                 description="source desc",

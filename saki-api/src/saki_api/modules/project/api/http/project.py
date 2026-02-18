@@ -60,6 +60,7 @@ async def create_project(
     project = await project_service.initialize_project(
         name=project_in.name,
         task_type=project_in.task_type,
+        enabled_annotation_types=project_in.enabled_annotation_types,
         dataset_ids=project_in.dataset_ids,
         user_id=current_user_id,
         description=project_in.description,
@@ -99,6 +100,7 @@ async def list_projects(
             "name": project.name,
             "description": project.description,
             "task_type": project.task_type,
+            "enabled_annotation_types": project.enabled_annotation_types,
             "status": project.status,
             "config": project.config,
             "created_at": project.created_at,

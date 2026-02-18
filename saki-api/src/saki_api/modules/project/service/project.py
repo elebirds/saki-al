@@ -43,6 +43,11 @@ from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.label import Label
+from saki_api.modules.project.domain.annotation_policy import (
+    assert_annotation_type_enabled,
+    validate_dataset_link_compatibility,
+    validate_project_creation_policy,
+)
 from saki_api.modules.project.domain.project import Project, ProjectDataset
 from saki_api.modules.project.repo import ProjectRepository
 from saki_api.modules.project.repo.branch import BranchRepository
@@ -62,6 +67,7 @@ from saki_api.modules.shared.modeling.enums import (
     AuthorType,
     CommitSampleReviewState,
     ProjectStatus,
+    TaskType,
 )
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
@@ -119,7 +125,8 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
     async def initialize_project(
             self,
             name: str,
-            task_type: str,
+            task_type: TaskType | str,
+            enabled_annotation_types: List[AnnotationType | str],
             dataset_ids: List[uuid.UUID],
             user_id: uuid.UUID,
             description: str | None = None,
@@ -138,6 +145,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         Args:
             name: Project name
             task_type: ML task type (classification, detection, etc.)
+            enabled_annotation_types: Enabled annotation types (immutable policy)
             dataset_ids: List of dataset IDs to link
             user_id: Creator user ID
             description: Optional description
@@ -148,6 +156,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         """
         # 1. Verify datasets exist
         dataset_type = None
+        dataset_types: list[str] = []
         for dataset_id in dataset_ids:
             dataset = await self.dataset_repo.get_by_id(dataset_id)
             if not dataset:
@@ -159,12 +168,20 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
                 raise BadRequestAppException(
                     "All datasets linked to a project must share the same type"
                 )
+            dataset_types.append(dataset.type)
+
+        normalized_enabled_types = validate_project_creation_policy(
+            task_type=task_type,
+            enabled_types=enabled_annotation_types,
+            dataset_types=dataset_types,
+        )
 
         # 2. Create Project
         project_data = {
             "name": name,
             "description": description,
             "task_type": task_type,
+            "enabled_annotation_types": [item.value for item in normalized_enabled_types],
             "config": config or {},
         }
         project = Project(**project_data)
@@ -422,6 +439,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             name=fork_name,
             description=payload.description if payload.description is not None else source_project.description,
             task_type=source_project.task_type,
+            enabled_annotation_types=list(source_project.enabled_annotation_types or []),
             status=ProjectStatus.ACTIVE,
             config=cloned_config,
         )
@@ -550,7 +568,8 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             List of created ProjectDataset links
         """
         # Verify project exists
-        await self.get_by_id_or_raise(project_id)
+        project = await self.get_by_id_or_raise(project_id)
+        project_enabled_types = list(project.enabled_annotation_types or [])
 
         # Verify datasets exist
         new_dataset_type = None
@@ -559,6 +578,10 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             if not dataset:
                 raise NotFoundAppException(f"Dataset {dataset_id} not found")
             await self._ensure_dataset_link_permission(actor_user_id=actor_user_id, dataset_id=dataset_id)
+            validate_dataset_link_compatibility(
+                project_enabled_types=project_enabled_types,
+                dataset_type=dataset.type,
+            )
             if new_dataset_type is None:
                 new_dataset_type = dataset.type
             elif dataset.type != new_dataset_type:
@@ -1099,7 +1122,13 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         return str(value)
 
     @classmethod
-    def _normalize_annotation_item(cls, item: dict) -> dict:
+    def _normalize_annotation_item(
+            cls,
+            item: dict,
+            *,
+            project_enabled_types: Sequence[AnnotationType | str] | None = None,
+            enforce_enabled: bool = True,
+    ) -> dict:
         label_id = cls._normalize_annotation_scalar(item.get("label_id"))
         if not label_id:
             raise BadRequestAppException("annotation label_id is required")
@@ -1113,6 +1142,11 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             confidence=confidence,
             source=ann_source,
         )
+        if enforce_enabled and project_enabled_types is not None:
+            assert_annotation_type_enabled(
+                project_enabled_types=project_enabled_types,
+                ann_type=ann_type,
+            )
         return {
             "group_id": cls._normalize_annotation_scalar(item.get("group_id") or item.get("groupId")),
             "lineage_id": cls._normalize_annotation_scalar(item.get("lineage_id") or item.get("lineageId")),
@@ -1127,8 +1161,18 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         }
 
     @classmethod
-    def _is_same_annotation_item(cls, change_item: dict, existing: Annotation) -> bool:
-        change_norm = cls._normalize_annotation_item(change_item)
+    def _is_same_annotation_item(
+            cls,
+            change_item: dict,
+            existing: Annotation,
+            *,
+            project_enabled_types: Sequence[AnnotationType | str] | None = None,
+    ) -> bool:
+        change_norm = cls._normalize_annotation_item(
+            change_item,
+            project_enabled_types=project_enabled_types,
+            enforce_enabled=True,
+        )
         existing_norm = cls._normalize_annotation_item({
             "group_id": existing.group_id,
             "lineage_id": existing.lineage_id,
@@ -1140,7 +1184,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             "attrs": existing.attrs,
             "confidence": existing.confidence,
             "annotator_id": existing.annotator_id,
-        })
+        }, enforce_enabled=False)
         return json.dumps(change_norm, sort_keys=True) == json.dumps(existing_norm, sort_keys=True)
 
     def _group_annotation_changes(
@@ -1197,6 +1241,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             draft_by_sample: dict[uuid.UUID, list[dict]],
             existing_by_sample: dict[uuid.UUID, list[Annotation]],
             touched_sample_ids: Set[uuid.UUID],
+            project_enabled_types: Sequence[AnnotationType | str],
     ) -> tuple[list[Annotation], list[tuple[uuid.UUID, uuid.UUID]]]:
         new_annotations: list[Annotation] = []
         camap_mappings: list[tuple[uuid.UUID, uuid.UUID]] = []
@@ -1209,10 +1254,18 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             }
 
             for item in draft_items:
-                normalized_item = self._normalize_annotation_item(item)
+                normalized_item = self._normalize_annotation_item(
+                    item,
+                    project_enabled_types=project_enabled_types,
+                    enforce_enabled=True,
+                )
                 lineage_id = str(normalized_item.get("lineage_id"))
                 existing_ann = existing_by_lineage.get(lineage_id)
-                if existing_ann and self._is_same_annotation_item(normalized_item, existing_ann):
+                if existing_ann and self._is_same_annotation_item(
+                        normalized_item,
+                        existing_ann,
+                        project_enabled_types=project_enabled_types,
+                ):
                     camap_mappings.append((sample_id, existing_ann.id))
                     continue
 
@@ -1373,6 +1426,9 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         Returns:
             Created Commit
         """
+        project = await self.get_by_id_or_raise(project_id)
+        project_enabled_types = list(project.enabled_annotation_types or [])
+
         branch_repo = BranchRepository(self.session)
         branch = await branch_repo.get_by_name(project_id, branch_name)
         if not branch:
@@ -1397,6 +1453,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             draft_by_sample=draft_by_sample,
             existing_by_sample=existing_by_sample,
             touched_sample_ids=touched_sample_set,
+            project_enabled_types=project_enabled_types,
         )
         await self._append_new_annotation_mappings(
             new_annotations=new_annotations,

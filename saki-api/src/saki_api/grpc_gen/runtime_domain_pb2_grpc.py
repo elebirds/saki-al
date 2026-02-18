@@ -54,7 +54,7 @@ class RuntimeDomainStub(object):
                 request_serializer=runtime__domain__pb2.AdvanceBranchHeadRequest.SerializeToString,
                 response_deserializer=runtime__domain__pb2.AdvanceBranchHeadResponse.FromString,
                 _registered_method=True)
-        self.QueryData = channel.unary_unary(
+        self.QueryData = channel.unary_stream(
                 '/saki.runtime.domain.v1.RuntimeDomain/QueryData',
                 request_serializer=runtime__domain__pb2.DataRequest.SerializeToString,
                 response_deserializer=runtime__domain__pb2.DataResponse.FromString,
@@ -128,7 +128,7 @@ def add_RuntimeDomainServicer_to_server(servicer, server):
                     request_deserializer=runtime__domain__pb2.AdvanceBranchHeadRequest.FromString,
                     response_serializer=runtime__domain__pb2.AdvanceBranchHeadResponse.SerializeToString,
             ),
-            'QueryData': grpc.unary_unary_rpc_method_handler(
+            'QueryData': grpc.unary_stream_rpc_method_handler(
                     servicer.QueryData,
                     request_deserializer=runtime__domain__pb2.DataRequest.FromString,
                     response_serializer=runtime__domain__pb2.DataResponse.SerializeToString,
@@ -268,7 +268,7 @@ class RuntimeDomain(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/saki.runtime.domain.v1.RuntimeDomain/QueryData',

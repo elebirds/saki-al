@@ -71,6 +71,7 @@ import {
 } from '../../types';
 import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
+import {hydrateAnnotationRead, hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {enforceHttps, hashPassword} from '../../utils/security';
 
 // ============================================================================
@@ -1209,7 +1210,7 @@ export class RealApiService implements ApiService {
                 },
             }
         );
-        return response.data;
+        return (response.data || []).map((item) => hydrateAnnotationRead(item));
     }
 
     async getWorkingAnnotations(
@@ -1225,7 +1226,7 @@ export class RealApiService implements ApiService {
                 },
             }
         );
-        return response.data;
+        return hydrateDraftPayload(response.data);
     }
 
     async upsertWorkingAnnotations(
@@ -1272,7 +1273,10 @@ export class RealApiService implements ApiService {
                 },
             }
         );
-        return response.data;
+        return (response.data || []).map((item) => ({
+            ...item,
+            payload: hydrateDraftPayload(item.payload) || {annotations: [], meta: {}},
+        }));
     }
 
     async commitAnnotationDrafts(
@@ -1295,7 +1299,10 @@ export class RealApiService implements ApiService {
             `/annotations/projects/${projectId}/samples/${sampleId}/sync`,
             payload
         );
-        return response.data;
+        return {
+            ...response.data,
+            payload: hydrateDraftPayload(response.data?.payload) || {annotations: [], meta: {}},
+        };
     }
 
     // ==========================================================================

@@ -1,6 +1,6 @@
-"""
-Annotation Sync Service - Full snapshot + incremental sync pipeline.
-"""
+"""Annotation Sync Service - Full snapshot + incremental sync pipeline."""
+
+from __future__ import annotations
 
 import json
 import uuid
@@ -11,18 +11,21 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.core.config import settings
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.cache.redis import get_redis_client
-from saki_api.modules.annotation.domain.coordinate_converter import convert_annotation_data_to_backend
+from saki_api.modules.annotation.domain.ir_geometry_codec import (
+    normalize_annotation_payload,
+    normalize_annotation_source,
+    normalize_annotation_type,
+    normalize_attrs,
+)
 from saki_api.modules.annotation.repo.annotation import AnnotationRepository
 from saki_api.modules.annotation.repo.draft import AnnotationDraftRepository
 from saki_api.modules.annotation.service.working import AnnotationWorkingService
 from saki_api.modules.project.contracts import ProjectReadGateway
-from saki_api.modules.shared.modeling.enums import AnnotationType, AnnotationSource
+from saki_api.modules.shared.modeling.enums import AnnotationSource, AnnotationType
 
 
 class AnnotationSyncService:
-    """
-    Service for full snapshot sync with Redis auto-promotion.
-    """
+    """Service for full snapshot sync with Redis auto-promotion."""
 
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -41,15 +44,13 @@ class AnnotationSyncService:
     def _coerce_annotation_type(value: Any) -> Optional[AnnotationType]:
         if value is None:
             return None
-        if isinstance(value, AnnotationType):
-            return value
-        return AnnotationType(str(value))
+        return normalize_annotation_type(value)
 
     @staticmethod
-    def _strip_parent_from_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
-        if not extra:
+    def _strip_parent_from_attrs(attrs: Dict[str, Any]) -> Dict[str, Any]:
+        if not attrs:
             return {}
-        cleaned = dict(extra)
+        cleaned = dict(attrs)
         cleaned.pop("parent_id", None)
         cleaned.pop("parentId", None)
         return cleaned
@@ -66,7 +67,20 @@ class AnnotationSyncService:
         if item_id:
             item["id"] = str(item_id)
 
-        item["extra"] = self._strip_parent_from_extra(item.get("extra") or {})
+        source = item.get("source") or AnnotationSource.MANUAL.value
+        confidence = float(item.get("confidence") or 1.0)
+        ann_type, geometry, attrs = normalize_annotation_payload(
+            annotation_type=item.get("type") or AnnotationType.RECT.value,
+            geometry_payload=item.get("geometry") or {},
+            attrs_payload=self._strip_parent_from_attrs(normalize_attrs(item.get("attrs"))),
+            confidence=confidence,
+            source=source,
+        )
+        item["type"] = ann_type.value
+        item["source"] = normalize_annotation_source(source).value
+        item["geometry"] = geometry
+        item["attrs"] = attrs
+        item["confidence"] = confidence
         return item
 
     def _build_item_from_action(
@@ -83,10 +97,18 @@ class AnnotationSyncService:
         lineage_id = data.get("lineage_id") or data.get("lineageId")
         if not lineage_id:
             raise BadRequestAppException("lineage_id is required for sync actions")
-        extra = self._strip_parent_from_extra(data.get("extra") or {})
+
         item_id = data.get("id") or lineage_id
-        annotation_type = str(data.get("type") or AnnotationType.RECT.value)
-        converted_data = convert_annotation_data_to_backend(annotation_type, data.get("data") or {})
+        source = data.get("source") or AnnotationSource.MANUAL.value
+        confidence = float(data.get("confidence") or 1.0)
+        ann_type, geometry, attrs = normalize_annotation_payload(
+            annotation_type=data.get("type") or AnnotationType.RECT.value,
+            geometry_payload=data.get("geometry") or {},
+            attrs_payload=self._strip_parent_from_attrs(data.get("attrs") or {}),
+            confidence=confidence,
+            source=source,
+        )
+
         return {
             "id": str(item_id),
             "project_id": str(data.get("project_id") or project_id),
@@ -96,11 +118,11 @@ class AnnotationSyncService:
             "lineage_id": str(lineage_id),
             "parent_id": str(data.get("parent_id")) if data.get("parent_id") else None,
             "view_role": data.get("view_role") or data.get("viewRole") or "main",
-            "type": annotation_type,
-            "source": str(data.get("source") or AnnotationSource.MANUAL.value),
-            "data": converted_data,
-            "extra": extra,
-            "confidence": float(data.get("confidence") or 1.0),
+            "type": ann_type.value,
+            "source": normalize_annotation_source(source).value,
+            "geometry": geometry,
+            "attrs": attrs,
+            "confidence": confidence,
             "annotator_id": str(data.get("annotator_id") or data.get("annotatorId") or user_id),
         }
 
@@ -112,27 +134,41 @@ class AnnotationSyncService:
             generated: Dict[str, Any],
             parent_group_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        extra = self._strip_parent_from_extra(generated.get("extra") or {})
+        attrs_input = self._strip_parent_from_attrs(generated.get("attrs") or {})
         lineage_id = generated.get("lineage_id") or generated.get("lineageId") or generated.get("id") or str(
             uuid.uuid4())
         item_id = generated.get("id") or str(uuid.uuid4())
         group_id = generated.get("group_id") or generated.get("groupId") or parent_group_id
+        label_id = generated.get("label_id") or generated.get("labelId")
         if not group_id:
             raise BadRequestAppException("group_id is required for generated annotations")
+        if not label_id:
+            raise BadRequestAppException("label_id is required for generated annotations")
+
+        source = generated.get("source") or AnnotationSource.SYSTEM.value
+        confidence = float(generated.get("confidence") or 1.0)
+        ann_type, geometry, attrs = normalize_annotation_payload(
+            annotation_type=generated.get("type") or AnnotationType.RECT.value,
+            geometry_payload=generated.get("geometry") or {},
+            attrs_payload=attrs_input,
+            confidence=confidence,
+            source=source,
+        )
+
         return {
             "id": str(item_id),
             "project_id": str(project_id),
             "sample_id": str(sample_id),
-            "label_id": str(generated.get("label_id") or generated.get("labelId")),
+            "label_id": str(label_id),
             "group_id": str(group_id),
             "lineage_id": str(lineage_id),
             "parent_id": str(generated.get("parent_id")) if generated.get("parent_id") else None,
-            "view_role": generated.get("view_role") or generated.get("viewRole") or extra.get("view") or "main",
-            "type": str(generated.get("type") or AnnotationType.RECT.value),
-            "source": str(generated.get("source") or AnnotationSource.SYSTEM.value),
-            "data": generated.get("data") or {},
-            "extra": extra,
-            "confidence": float(generated.get("confidence") or 1.0),
+            "view_role": generated.get("view_role") or generated.get("viewRole") or attrs.get("view") or "main",
+            "type": ann_type.value,
+            "source": normalize_annotation_source(source).value,
+            "geometry": geometry,
+            "attrs": attrs,
+            "confidence": confidence,
             "annotator_id": str(generated.get("annotator_id") or generated.get("annotatorId") or user_id),
         }
 
@@ -204,8 +240,8 @@ class AnnotationSyncService:
                     "view_role": ann.view_role,
                     "type": str(ann.type.value if hasattr(ann.type, "value") else ann.type),
                     "source": str(ann.source.value if hasattr(ann.source, "value") else ann.source),
-                    "data": ann.data or {},
-                    "extra": ann.extra or {},
+                    "geometry": ann.geometry or {},
+                    "attrs": ann.attrs or {},
                     "confidence": ann.confidence,
                     "annotator_id": str(ann.annotator_id) if ann.annotator_id else None,
                 })
@@ -342,10 +378,10 @@ class AnnotationSyncService:
             group_id=group_id,
             delete_keys=delete_keys,
         )
-        extra = (existing or {}).get("extra") or {}
+        attrs = (existing or {}).get("attrs") or {}
         result = sync_handler.on_annotation_delete(
             annotation_id=group_id,
-            extra=extra,
+            attrs=attrs,
             context=context,
         )
         if result.generated:
@@ -379,8 +415,8 @@ class AnnotationSyncService:
             sync_handler,
             context,
     ) -> None:
-        data = action.get("data") or {}
-        if not data:
+        action_payload = action.get("data") or {}
+        if not action_payload:
             raise BadRequestAppException("Action data is required for add/update")
 
         item = self._build_item_from_action(
@@ -388,7 +424,7 @@ class AnnotationSyncService:
             sample_id=sample_id,
             user_id=user_id,
             group_id=group_id,
-            data=data,
+            data=action_payload,
         )
 
         if action_type == "update":
@@ -400,15 +436,15 @@ class AnnotationSyncService:
 
         ann_type = self._coerce_annotation_type(item.get("type"))
         label_id = item.get("label_id")
-        extra = item.get("extra") or {}
-        geometry = item.get("data") or {}
+        attrs = item.get("attrs") or {}
+        geometry = item.get("geometry") or {}
         if action_type == "add":
             result = sync_handler.on_annotation_create(
                 annotation_id=group_id,
                 label_id=str(label_id),
                 ann_type=ann_type,
-                data=geometry,
-                extra=extra,
+                geometry=geometry,
+                attrs=attrs,
                 context=context,
             )
         else:
@@ -416,8 +452,8 @@ class AnnotationSyncService:
                 annotation_id=group_id,
                 label_id=str(label_id) if label_id else None,
                 ann_type=ann_type,
-                data=geometry,
-                extra=extra,
+                geometry=geometry,
+                attrs=attrs,
                 context=context,
             )
 

@@ -18,11 +18,9 @@ def _is_finite(*values: float) -> bool:
     return all(math.isfinite(float(v)) for v in values)
 
 
-def _normalize_angle_deg_cw(angle_deg_cw: float) -> float:
+def _normalize_angle_deg_ccw(angle_deg_ccw: float) -> float:
     # Spec: docs/IR_SPEC.md#6-obb-normalization
-    # 角度必须落在 [-180, 180)，且 180 映射到 -180。
-    angle = (float(angle_deg_cw) + 180.0) % 360.0 - 180.0
-    # 统一把 180 归到 -180，满足 [-180, 180)
+    angle = (float(angle_deg_ccw) + 180.0) % 360.0 - 180.0
     if angle >= 180.0:
         angle -= 360.0
     return angle
@@ -38,16 +36,16 @@ def _normalize_rect(rect: annotationirv1.RectGeometry, idx: int) -> None:
 
 def _normalize_obb(obb: annotationirv1.ObbGeometry, idx: int) -> None:
     # Spec: docs/IR_SPEC.md#6-obb-normalization
-    if not _is_finite(obb.cx, obb.cy, obb.width, obb.height, obb.angle_deg_cw):
+    if not _is_finite(obb.cx, obb.cy, obb.width, obb.height, obb.angle_deg_ccw):
         raise IRError(ERR_IR_GEOMETRY, f"annotation[{idx}] obb 含 NaN/Inf")
     if obb.width <= EPS or obb.height <= EPS:
         raise IRError(ERR_IR_GEOMETRY, f"annotation[{idx}] obb width/height 必须 > {EPS}")
 
     if obb.width < obb.height:
         obb.width, obb.height = obb.height, obb.width
-        obb.angle_deg_cw = float(obb.angle_deg_cw) + 90.0
+        obb.angle_deg_ccw = float(obb.angle_deg_ccw) + 90.0
 
-    obb.angle_deg_cw = _normalize_angle_deg_cw(obb.angle_deg_cw)
+    obb.angle_deg_ccw = _normalize_angle_deg_ccw(obb.angle_deg_ccw)
 
 
 def _validate_confidence(confidence: float, idx: int) -> None:

@@ -643,7 +643,9 @@ const ProjectCommitDetail: React.FC = () => {
                                                 {t('project.commitDetail.annotationId', {id: annotation.id})}
                                             </div>
                                             <div className="rounded-md border border-github-border bg-github-base p-2 text-xs text-github-muted">
-                                                <pre className="whitespace-pre-wrap">{JSON.stringify(annotation.data, null, 2)}</pre>
+                                                <pre className="whitespace-pre-wrap">
+                                                    {JSON.stringify(annotation.geometry ?? {}, null, 2)}
+                                                </pre>
                                             </div>
                                         </>
                                     )

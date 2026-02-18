@@ -24,8 +24,8 @@ class AnnotationDraftItem(SQLModel):
     view_role: str = "main"
     type: AnnotationType = AnnotationType.RECT
     source: AnnotationSource = AnnotationSource.MANUAL
-    data: dict[str, Any] = Field(default_factory=dict)
-    extra: dict[str, Any] = Field(default_factory=dict)
+    geometry: dict[str, Any] = Field(default_factory=dict)
+    attrs: dict[str, Any] = Field(default_factory=dict)
     confidence: float = 1.0
     annotator_id: Optional[uuid.UUID] = None
     parent_id: Optional[uuid.UUID] = None

@@ -38,8 +38,8 @@ class NoOpSyncHandler(BaseAnnotationSyncHandler):
             annotation_id: str,
             label_id: str,
             ann_type: AnnotationType,
-            data: Dict[str, Any],
-            extra: Dict[str, Any],
+            geometry: Dict[str, Any],
+            attrs: Dict[str, Any],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -60,8 +60,8 @@ class NoOpSyncHandler(BaseAnnotationSyncHandler):
             annotation_id: str,
             label_id: Optional[str],
             ann_type: Optional[AnnotationType],
-            data: Optional[Dict[str, Any]],
-            extra: Optional[Dict[str, Any]],
+            geometry: Optional[Dict[str, Any]],
+            attrs: Optional[Dict[str, Any]],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -80,7 +80,7 @@ class NoOpSyncHandler(BaseAnnotationSyncHandler):
     def on_annotation_delete(
             self,
             annotation_id: str,
-            extra: Dict[str, Any],
+            attrs: Dict[str, Any],
             context: AnnotationContext,
     ) -> SyncResult:
         """

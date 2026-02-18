@@ -17,6 +17,12 @@ import {
 import {UseAnnotationStateReturn} from './useAnnotationState';
 import {annotationToDual, isGeneratedAnnotation,} from '../../utils/fedoAnnotations';
 import {VIEW_L_OMEGAD, VIEW_TIME_ENERGY} from '../../components/annotation/DualCanvasArea';
+import {
+    attrsFromAnnotationLike,
+    canvasDataToGeometry,
+    geometryToCanvasData,
+    resolveAnnotationView,
+} from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
 
 export interface UseFedoAnnotationsOptions {
@@ -132,9 +138,9 @@ export function useFedoAnnotations(
                 labelColor: dual.labelColor,
                 type: dual.primary.type as AnnotationType,
                 source: 'manual',
-                data: dual.primary.bbox,
                 annotatorId: dual.annotatorId,
-                extra: {
+                geometry: canvasDataToGeometry(dual.primary.type as AnnotationType, dual.primary.bbox as Record<string, any>),
+                attrs: {
                     view: annotationViews.get(dual.id) || VIEW_TIME_ENERGY,
                 },
             });
@@ -192,8 +198,8 @@ export function useFedoAnnotations(
             viewRole: annotation.viewRole || 'main',
             type: annotation.type,
             source: annotation.source || 'manual',
-            data: annotation.data,
-            extra: annotation.extra || {},
+            geometry: annotation.geometry,
+            attrs: attrsFromAnnotationLike(annotation),
             confidence: annotation.confidence ?? 1,
             annotatorId: annotation.annotatorId ?? currentUserId ?? null,
         };
@@ -225,9 +231,9 @@ export function useFedoAnnotations(
             const groupId = getGroupId(ann);
             const relatedGenerated = groupId ? generatedByGroup.get(groupId) || [] : [];
             const regions: MappedRegion[] = relatedGenerated
-                .filter(gen => gen.extra?.view === VIEW_L_OMEGAD)
+                .filter(gen => resolveAnnotationView(gen) === VIEW_L_OMEGAD)
                 .map((gen, index) => {
-                    const data = gen.data || {};
+                    const data = geometryToCanvasData(gen.type, gen.geometry);
                     const bbox = {
                         x: data.x || 0,
                         y: data.y || 0,
@@ -255,7 +261,7 @@ export function useFedoAnnotations(
 
         const views = new Map<string, string>();
         mainAnnotations.forEach((ann) => {
-            const view = ann.extra?.view || VIEW_TIME_ENERGY;
+            const view = resolveAnnotationView(ann) || VIEW_TIME_ENERGY;
             views.set(ann.id, view);
         });
         setAnnotationViews(views);
@@ -335,14 +341,8 @@ export function useFedoAnnotations(
             viewRole: 'main',
             type: event.type,
             source: 'manual',
-            data: {
-                x: event.bbox.x,
-                y: event.bbox.y,
-                width: event.bbox.width,
-                height: event.bbox.height,
-                rotation: event.bbox.rotation,
-            },
-            extra: {view},
+            geometry: canvasDataToGeometry(event.type, event.bbox as Record<string, any>),
+            attrs: {view},
             annotatorId: currentUserId,
         };
 
@@ -364,27 +364,28 @@ export function useFedoAnnotations(
 
         const dual = annotationState.annotations.find(d => d.id === updatedAnn.id);
         if (dual) {
+            const updatedData = geometryToCanvasData(updatedAnn.type, updatedAnn.geometry);
             const updatedDual: DualViewAnnotation = {
                 ...dual,
                 primary: {
                     type: updatedAnn.type as 'rect' | 'obb',
                     bbox: {
-                        x: updatedAnn.data.x,
-                        y: updatedAnn.data.y,
-                        width: updatedAnn.data.width,
-                        height: updatedAnn.data.height,
-                        rotation: updatedAnn.data.rotation,
+                        x: updatedData.x,
+                        y: updatedData.y,
+                        width: updatedData.width,
+                        height: updatedData.height,
+                        rotation: updatedData.rotation,
                     },
                 },
             };
             annotationState.handleAnnotationUpdate(updatedDual);
         }
-        const view = updatedAnn.extra?.view || annotationViews.get(updatedAnn.id) || VIEW_TIME_ENERGY;
+        const view = resolveAnnotationView(updatedAnn) || annotationViews.get(updatedAnn.id) || VIEW_TIME_ENERGY;
         const updatedWithView: Annotation = {
             ...updatedAnn,
             groupId: updatedAnn.groupId || updatedAnn.id,
             lineageId: updatedAnn.lineageId || updatedAnn.id,
-            extra: {...updatedAnn.extra, view},
+            attrs: {...attrsFromAnnotationLike(updatedAnn), view},
         };
         await triggerSync([{
             type: 'update',

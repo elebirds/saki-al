@@ -134,7 +134,8 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
                 project_id=source_project.id,
                 group_id=uuid.uuid4(),
                 lineage_id=uuid.uuid4(),
-                data={"x": 1},
+                geometry={"rect": {"x": 1, "y": 1, "width": 10, "height": 10}},
+                attrs={},
                 source=AnnotationSource.MANUAL,
                 type=AnnotationType.RECT,
             )
@@ -148,7 +149,8 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
                 group_id=ann1.group_id,
                 lineage_id=ann1.lineage_id,
                 parent_id=ann1.id,
-                data={"x": 2},
+                geometry={"rect": {"x": 2, "y": 1, "width": 10, "height": 10}},
+                attrs={},
                 source=AnnotationSource.MANUAL,
                 type=AnnotationType.RECT,
             )
@@ -246,7 +248,10 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
             await session.exec(select(Annotation).where(Annotation.project_id == forked_project.id))
         ).all()
         assert len(source_annotations) == len(fork_annotations) == 2
-        fork_ann_by_x = {int(item.data.get("x")): item for item in fork_annotations}
+        fork_ann_by_x = {
+            int((item.geometry or {}).get("rect", {}).get("x")): item
+            for item in fork_annotations
+        }
         assert fork_ann_by_x[2].parent_id == fork_ann_by_x[1].id
         assert fork_ann_by_x[1].label_id == fork_labels[0].id
 

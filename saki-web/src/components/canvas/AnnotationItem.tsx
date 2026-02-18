@@ -2,8 +2,9 @@ import {FC, Fragment, useMemo} from 'react';
 import {Rect, Text as KonvaText} from 'react-konva';
 import Konva from 'konva';
 import {Annotation} from '../../types';
+import {canvasDataToGeometry, geometryToCanvasData} from '../../utils/annotationGeometry';
 
-// Helper to extract bbox from Annotation.data
+// Helper to extract bbox from Annotation.geometry
 interface BBox {
     x: number;
     y: number;
@@ -13,7 +14,7 @@ interface BBox {
 }
 
 function getBBox(ann: Annotation): BBox {
-    const data = ann.data || {};
+    const data = geometryToCanvasData(ann.type, ann.geometry);
     return {
         x: data.x || 0,
         y: data.y || 0,
@@ -49,7 +50,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
                                                      onUpdate,
                                                      canEdit = true,
                                                  }) => {
-    // Extract bbox from data field
+    // Extract bbox from geometry field
     const bbox = useMemo(() => getBBox(ann), [ann]);
     const color = ann.labelColor || '#ff0000';
     const label = ann.labelName || '';
@@ -86,27 +87,29 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
             height = Math.abs(height);
         }
 
+        const nextData = {
+            x,
+            y,
+            width: Math.max(5, width),
+            height: Math.max(5, height),
+            rotation,
+        };
         onUpdate({
             ...ann,
-            data: {
-                x,
-                y,
-                width: Math.max(5, width),
-                height: Math.max(5, height),
-                rotation,
-            }
+            geometry: canvasDataToGeometry(ann.type, nextData),
         });
     };
 
     const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
         const node = e.target;
+        const nextData = {
+            ...bbox,
+            x: node.x(),
+            y: node.y(),
+        };
         onUpdate({
             ...ann,
-            data: {
-                ...ann.data,
-                x: node.x(),
-                y: node.y(),
-            }
+            geometry: canvasDataToGeometry(ann.type, nextData),
         });
     };
 

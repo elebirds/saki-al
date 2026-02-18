@@ -40,11 +40,14 @@
 - center -> TL：`x = cx - width / 2`，`y = cy - height / 2`
 
 <a id="5-obb-semantics"></a>
-## 5. OBB 语义（Center + angle_deg_cw）
-`ObbGeometry{cx, cy, width, height, angle_deg_cw}` 语义固定为：
+## 5. OBB 语义（Center + angle_deg_ccw）
+`ObbGeometry{cx, cy, width, height, angle_deg_ccw}` 语义固定为：
 - `cx, cy`：中心点
 - `width, height`：宽高
-- `angle_deg_cw`：从 **+x 轴** 顺时针旋转到 OBB 的 **width 边方向**（单位：度）
+- `angle_deg_ccw`：从 **+x 轴** 逆时针旋转到 OBB 的 **width 边方向**（单位：度）
+  - 坐标系仍是屏幕坐标（`x` 向右，`y` 向下）
+  - 因此 `angle_deg_ccw = 0` 时 width 方向朝 `+x`
+  - `angle_deg_ccw = +90` 时 width 方向朝 `+y`（向下）
 
 合法性：
 - `width > EPS`
@@ -54,7 +57,7 @@
 <a id="6-obb-normalization"></a>
 ## 6. OBB 规范化规则（必须严格一致）
 输入 OBB 规范化步骤：
-1. 若 `width < height`：交换 `width`/`height`，并执行 `angle_deg_cw += 90`
+1. 若 `width < height`：交换 `width`/`height`，并执行 `angle_deg_ccw += 90`
 2. 将角度归一化到 `[-180, 180)`
 3. 若结果为 `180`，必须映射到 `-180`
 
@@ -64,12 +67,29 @@
 <a id="7-vertices-and-aabb"></a>
 ## 7. 顶点与 AABB 定义
 ### 7.1 顶点顺序（Rect/OBB）
-`RectToVertices` / `ObbToVertices` 返回 4 个点，顺序固定为：`TL, TR, BR, BL`。
+本规范区分两套顶点顺序：
+
+1. **局部角点顺序（local corner order）**
+   - API：`ObbToVerticesLocal` / `obb_to_vertices_local`
+   - 返回顺序：`TL, TR, BR, BL`
+   - 角点定义来自局部坐标 `(u,v)`：
+     - `(-w/2,-h/2), (+w/2,-h/2), (+w/2,+h/2), (-w/2,+h/2)`
+   - 该顺序不是屏幕排序，不得按“最左上点”重排。
+
+2. **屏幕排序角点（screen-sorted order）**
+   - API：`ObbToVerticesScreen` / `obb_to_vertices_screen`
+   - 返回顺序：`TL, TR, BR, BL`
+   - 排序规则：先按 `y`（小在上），`y` 接近时按 `x`（小在左）
+   - 用于 UI 渲染、poly8 导出等需要稳定屏幕顺序的场景。
+
+Rect 顶点统一为屏幕顺序：
+- API：`RectToVerticesScreen` / `rect_to_vertices_screen`
+- 返回顺序：`TL, TR, BR, BL`
 
 重要区分：
-- 对 OBB，`TL/TR/BR/BL` 指的是**局部角点顺序（local corner order）**。
-- 这不是“按屏幕坐标排序后的最左上/最右上/...”结果。
-- 禁止为“看起来是左上角”而重排 OBB 顶点顺序。
+- OBB 的 local `TL/TR/BR/BL` 与 screen `TL/TR/BR/BL` 不是同一语义。
+- 反例：`angle=30°` 时，local `TL` 不一定是屏幕最左上点。
+- 若把 local 角点误当 screen 角点，会导致双视图映射、拟合与导出结果系统偏角。
 
 ### 7.2 AABBRectTL
 `AABBRectTL` 定义为：
@@ -98,9 +118,9 @@
 - `MSGPACK` 枚举保留，但 v1 必须返回“未实现”错误
 
 ### 9.2 checksum（覆盖范围）
-- `checksum = CRC32C(payload_raw)`
+- `checksum = CRC32C(payload)`
 - 算法：Castagnoli
-- 覆盖范围是**未压缩** `payload_raw`，不是压缩后 payload
+- 覆盖范围是 `EncodedPayload.payload`（压缩后 bytes；`compression=NONE` 时即原始 bytes）
 
 ### 9.3 压缩
 - 支持 `NONE` / `ZSTD`
@@ -111,7 +131,7 @@
 
 ### 9.4 Header 字段固定约束
 - `schema = DATA_BATCH_IR`
-- `schema_version = 1`
+- `schema_version = 2`
 - `checksum_algo = CRC32C`
 
 ### 9.5 Stats 字段语义
@@ -123,15 +143,15 @@
 - `uncompressed_size`：压缩前 `payload_raw` 字节长度
 
 ### 9.6 解码
-- 先读 header，再按 compression 得到 `payload_raw`
-- 校验 CRC32C（覆盖 `payload_raw`）
+- 先读 header，校验 CRC32C（覆盖 `payload`）
+- 按 compression 解压得到 `payload_raw`
 - 按 codec 反序列化
 - 可选执行 normalize（SDK 提供开关）
 
 <a id="10-header-only-behavior"></a>
 ## 10. Header-only 行为
 - Dispatcher 只依赖 `header.stats` 调度时，必须不解压、不解码 payload bytes。
-- `verify checksum` 需要解压到 `payload_raw`，但不需要 decode 成 `DataBatchIR`。
+- `verify checksum` 仅校验 `payload`，不需要解压、不需要 decode 成 `DataBatchIR`。
 - SDK 语义约定：
   - Go `ReadHeader` 返回 header 引用（只读约定）。
   - Python `read_header` 返回 header 副本（copy）。
@@ -161,7 +181,7 @@
 
 该 batch 编码时：
 - `payload_raw` 是上述 `DataBatchIR` 的 protobuf bytes
-- `checksum` 对 `payload_raw` 计算 CRC32C
+- `checksum` 对 `payload` 计算 CRC32C（`compression=NONE` 时 `payload == payload_raw`）
 - `stats.item_count=3`，`stats.annotation_count=1`，`stats.sample_count=1`，`stats.label_count=1`
 
 <a id="13-view-wrapper-guidance"></a>

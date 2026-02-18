@@ -20,7 +20,7 @@ from saki_executor.plugins.registry import PluginRegistry
 from saki_executor.sdk.reporter import StepReporter
 
 SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
-RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage]]
+RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage | list[pb.RuntimeMessage]]]
 HttpClientFactory = Callable[..., Any]
 
 

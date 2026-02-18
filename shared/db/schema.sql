@@ -299,8 +299,8 @@ CREATE TABLE public.annotation (
     parent_id uuid,
     type public.annotationtype NOT NULL,
     source public.annotationsource NOT NULL,
-    data jsonb,
-    extra jsonb,
+    geometry jsonb,
+    attrs jsonb,
     confidence double precision NOT NULL,
     annotator_id uuid
 );

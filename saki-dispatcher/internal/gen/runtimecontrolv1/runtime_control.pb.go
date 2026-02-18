@@ -1866,16 +1866,18 @@ func (x *StepResult) GetErrorMessage() string {
 }
 
 type DataRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	QueryType     RuntimeQueryType       `protobuf:"varint,3,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	CommitId      string                 `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
-	Cursor        string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Limit         int32                  `protobuf:"varint,7,opt,name=limit,proto3" json:"limit,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	RequestId            string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StepId               string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	QueryType            RuntimeQueryType       `protobuf:"varint,3,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
+	ProjectId            string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	CommitId             string                 `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
+	Cursor               string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Limit                int32                  `protobuf:"varint,7,opt,name=limit,proto3" json:"limit,omitempty"`
+	PreferredChunkBytes  int32                  `protobuf:"varint,8,opt,name=preferred_chunk_bytes,json=preferredChunkBytes,proto3" json:"preferred_chunk_bytes,omitempty"`
+	MaxUncompressedBytes uint64                 `protobuf:"varint,9,opt,name=max_uncompressed_bytes,json=maxUncompressedBytes,proto3" json:"max_uncompressed_bytes,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *DataRequest) Reset() {
@@ -1953,6 +1955,20 @@ func (x *DataRequest) GetCursor() string {
 func (x *DataRequest) GetLimit() int32 {
 	if x != nil {
 		return x.Limit
+	}
+	return 0
+}
+
+func (x *DataRequest) GetPreferredChunkBytes() int32 {
+	if x != nil {
+		return x.PreferredChunkBytes
+	}
+	return 0
+}
+
+func (x *DataRequest) GetMaxUncompressedBytes() uint64 {
+	if x != nil {
+		return x.MaxUncompressedBytes
 	}
 	return 0
 }
@@ -2292,15 +2308,23 @@ func (*DataItem_SampleItem) isDataItem_Item() {}
 func (*DataItem_AnnotationItem) isDataItem_Item() {}
 
 type DataResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	ReplyTo       string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	QueryType     RuntimeQueryType       `protobuf:"varint,4,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
-	Items         []*DataItem            `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
-	NextCursor    string                 `protobuf:"bytes,6,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	RequestId             string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	ReplyTo               string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
+	StepId                string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	QueryType             RuntimeQueryType       `protobuf:"varint,4,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
+	PayloadId             string                 `protobuf:"bytes,5,opt,name=payload_id,json=payloadId,proto3" json:"payload_id,omitempty"`
+	ChunkIndex            uint32                 `protobuf:"varint,6,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
+	ChunkCount            uint32                 `protobuf:"varint,7,opt,name=chunk_count,json=chunkCount,proto3" json:"chunk_count,omitempty"`
+	HeaderProto           []byte                 `protobuf:"bytes,8,opt,name=header_proto,json=headerProto,proto3" json:"header_proto,omitempty"`
+	PayloadChunk          []byte                 `protobuf:"bytes,9,opt,name=payload_chunk,json=payloadChunk,proto3" json:"payload_chunk,omitempty"`
+	PayloadTotalSize      uint64                 `protobuf:"varint,10,opt,name=payload_total_size,json=payloadTotalSize,proto3" json:"payload_total_size,omitempty"`
+	PayloadChecksumCrc32C uint32                 `protobuf:"varint,11,opt,name=payload_checksum_crc32c,json=payloadChecksumCrc32c,proto3" json:"payload_checksum_crc32c,omitempty"`
+	ChunkChecksumCrc32C   uint32                 `protobuf:"varint,12,opt,name=chunk_checksum_crc32c,json=chunkChecksumCrc32c,proto3" json:"chunk_checksum_crc32c,omitempty"`
+	NextCursor            string                 `protobuf:"bytes,13,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	IsLastChunk           bool                   `protobuf:"varint,14,opt,name=is_last_chunk,json=isLastChunk,proto3" json:"is_last_chunk,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *DataResponse) Reset() {
@@ -2361,11 +2385,60 @@ func (x *DataResponse) GetQueryType() RuntimeQueryType {
 	return RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED
 }
 
-func (x *DataResponse) GetItems() []*DataItem {
+func (x *DataResponse) GetPayloadId() string {
 	if x != nil {
-		return x.Items
+		return x.PayloadId
+	}
+	return ""
+}
+
+func (x *DataResponse) GetChunkIndex() uint32 {
+	if x != nil {
+		return x.ChunkIndex
+	}
+	return 0
+}
+
+func (x *DataResponse) GetChunkCount() uint32 {
+	if x != nil {
+		return x.ChunkCount
+	}
+	return 0
+}
+
+func (x *DataResponse) GetHeaderProto() []byte {
+	if x != nil {
+		return x.HeaderProto
 	}
 	return nil
+}
+
+func (x *DataResponse) GetPayloadChunk() []byte {
+	if x != nil {
+		return x.PayloadChunk
+	}
+	return nil
+}
+
+func (x *DataResponse) GetPayloadTotalSize() uint64 {
+	if x != nil {
+		return x.PayloadTotalSize
+	}
+	return 0
+}
+
+func (x *DataResponse) GetPayloadChecksumCrc32C() uint32 {
+	if x != nil {
+		return x.PayloadChecksumCrc32C
+	}
+	return 0
+}
+
+func (x *DataResponse) GetChunkChecksumCrc32C() uint32 {
+	if x != nil {
+		return x.ChunkChecksumCrc32C
+	}
+	return 0
 }
 
 func (x *DataResponse) GetNextCursor() string {
@@ -2373,6 +2446,13 @@ func (x *DataResponse) GetNextCursor() string {
 		return x.NextCursor
 	}
 	return ""
+}
+
+func (x *DataResponse) GetIsLastChunk() bool {
+	if x != nil {
+		return x.IsLastChunk
+	}
+	return false
 }
 
 type UploadTicketRequest struct {
@@ -3082,7 +3162,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x1a:\n" +
 	"\fMetricsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xf1\x01\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xdb\x02\n" +
 	"\vDataRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
@@ -3093,7 +3173,9 @@ const file_runtime_control_proto_rawDesc = "" +
 	"project_id\x18\x04 \x01(\tR\tprojectId\x12\x1b\n" +
 	"\tcommit_id\x18\x05 \x01(\tR\bcommitId\x12\x16\n" +
 	"\x06cursor\x18\x06 \x01(\tR\x06cursor\x12\x14\n" +
-	"\x05limit\x18\a \x01(\x05R\x05limit\"E\n" +
+	"\x05limit\x18\a \x01(\x05R\x05limit\x122\n" +
+	"\x15preferred_chunk_bytes\x18\b \x01(\x05R\x13preferredChunkBytes\x124\n" +
+	"\x16max_uncompressed_bytes\x18\t \x01(\x04R\x14maxUncompressedBytes\"E\n" +
 	"\tLabelItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -3124,17 +3206,29 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\vsample_item\x18\x02 \x01(\v2\x1b.saki.runtime.v1.SampleItemH\x00R\n" +
 	"sampleItem\x12J\n" +
 	"\x0fannotation_item\x18\x03 \x01(\v2\x1f.saki.runtime.v1.AnnotationItemH\x00R\x0eannotationItemB\x06\n" +
-	"\x04item\"\xf5\x01\n" +
+	"\x04item\"\xab\x04\n" +
 	"\fDataResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
 	"\breply_to\x18\x02 \x01(\tR\areplyTo\x12\x17\n" +
 	"\astep_id\x18\x03 \x01(\tR\x06stepId\x12@\n" +
 	"\n" +
-	"query_type\x18\x04 \x01(\x0e2!.saki.runtime.v1.RuntimeQueryTypeR\tqueryType\x12/\n" +
-	"\x05items\x18\x05 \x03(\v2\x19.saki.runtime.v1.DataItemR\x05items\x12\x1f\n" +
-	"\vnext_cursor\x18\x06 \x01(\tR\n" +
-	"nextCursor\"\x95\x01\n" +
+	"query_type\x18\x04 \x01(\x0e2!.saki.runtime.v1.RuntimeQueryTypeR\tqueryType\x12\x1d\n" +
+	"\n" +
+	"payload_id\x18\x05 \x01(\tR\tpayloadId\x12\x1f\n" +
+	"\vchunk_index\x18\x06 \x01(\rR\n" +
+	"chunkIndex\x12\x1f\n" +
+	"\vchunk_count\x18\a \x01(\rR\n" +
+	"chunkCount\x12!\n" +
+	"\fheader_proto\x18\b \x01(\fR\vheaderProto\x12#\n" +
+	"\rpayload_chunk\x18\t \x01(\fR\fpayloadChunk\x12,\n" +
+	"\x12payload_total_size\x18\n" +
+	" \x01(\x04R\x10payloadTotalSize\x126\n" +
+	"\x17payload_checksum_crc32c\x18\v \x01(\rR\x15payloadChecksumCrc32c\x122\n" +
+	"\x15chunk_checksum_crc32c\x18\f \x01(\rR\x13chunkChecksumCrc32c\x12\x1f\n" +
+	"\vnext_cursor\x18\r \x01(\tR\n" +
+	"nextCursor\x12\"\n" +
+	"\ris_last_chunk\x18\x0e \x01(\bR\visLastChunk\"\x95\x01\n" +
 	"\x13UploadTicketRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
@@ -3354,31 +3448,30 @@ var file_runtime_control_proto_depIdxs = []int32{
 	28, // 32: saki.runtime.v1.DataItem.sample_item:type_name -> saki.runtime.v1.SampleItem
 	29, // 33: saki.runtime.v1.DataItem.annotation_item:type_name -> saki.runtime.v1.AnnotationItem
 	7,  // 34: saki.runtime.v1.DataResponse.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	30, // 35: saki.runtime.v1.DataResponse.items:type_name -> saki.runtime.v1.DataItem
-	39, // 36: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
-	1,  // 37: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
-	2,  // 38: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
-	3,  // 39: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
-	7,  // 40: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	12, // 41: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
-	13, // 42: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
-	15, // 43: saki.runtime.v1.RuntimeMessage.assign_step:type_name -> saki.runtime.v1.AssignStep
-	16, // 44: saki.runtime.v1.RuntimeMessage.stop_step:type_name -> saki.runtime.v1.StopStep
-	23, // 45: saki.runtime.v1.RuntimeMessage.step_event:type_name -> saki.runtime.v1.StepEvent
-	25, // 46: saki.runtime.v1.RuntimeMessage.step_result:type_name -> saki.runtime.v1.StepResult
-	26, // 47: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
-	31, // 48: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
-	32, // 49: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
-	33, // 50: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
-	34, // 51: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
-	35, // 52: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
-	36, // 53: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
-	36, // 54: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
-	54, // [54:55] is the sub-list for method output_type
-	53, // [53:54] is the sub-list for method input_type
-	53, // [53:53] is the sub-list for extension type_name
-	53, // [53:53] is the sub-list for extension extendee
-	0,  // [0:53] is the sub-list for field type_name
+	39, // 35: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
+	1,  // 36: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
+	2,  // 37: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
+	3,  // 38: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
+	7,  // 39: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	12, // 40: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
+	13, // 41: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
+	15, // 42: saki.runtime.v1.RuntimeMessage.assign_step:type_name -> saki.runtime.v1.AssignStep
+	16, // 43: saki.runtime.v1.RuntimeMessage.stop_step:type_name -> saki.runtime.v1.StopStep
+	23, // 44: saki.runtime.v1.RuntimeMessage.step_event:type_name -> saki.runtime.v1.StepEvent
+	25, // 45: saki.runtime.v1.RuntimeMessage.step_result:type_name -> saki.runtime.v1.StepResult
+	26, // 46: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
+	31, // 47: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
+	32, // 48: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
+	33, // 49: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
+	34, // 50: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
+	35, // 51: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
+	36, // 52: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
+	36, // 53: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
+	53, // [53:54] is the sub-list for method output_type
+	52, // [52:53] is the sub-list for method input_type
+	52, // [52:52] is the sub-list for extension type_name
+	52, // [52:52] is the sub-list for extension extendee
+	0,  // [0:52] is the sub-list for field type_name
 }
 
 func init() { file_runtime_control_proto_init() }

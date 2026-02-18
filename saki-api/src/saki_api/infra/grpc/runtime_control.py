@@ -48,34 +48,6 @@ def _build_activation_key(loop_id: uuid.UUID, round_index: int, sample_ids: list
     return f"{loop_id}:{int(round_index)}:{digest}"
 
 
-def _to_domain_data_item(item: pb.DataItem) -> domain_pb.DataItem:
-    target = domain_pb.DataItem()
-    item_type = item.WhichOneof("item")
-    if item_type == "label_item":
-        target.label_item.id = str(item.label_item.id or "")
-        target.label_item.name = str(item.label_item.name or "")
-        target.label_item.color = str(item.label_item.color or "")
-        return target
-    if item_type == "sample_item":
-        target.sample_item.id = str(item.sample_item.id or "")
-        target.sample_item.asset_hash = str(item.sample_item.asset_hash or "")
-        target.sample_item.download_url = str(item.sample_item.download_url or "")
-        target.sample_item.width = int(item.sample_item.width or 0)
-        target.sample_item.height = int(item.sample_item.height or 0)
-        target.sample_item.meta.CopyFrom(item.sample_item.meta)
-        return target
-    if item_type == "annotation_item":
-        target.annotation_item.id = str(item.annotation_item.id or "")
-        target.annotation_item.sample_id = str(item.annotation_item.sample_id or "")
-        target.annotation_item.category_id = str(item.annotation_item.category_id or "")
-        target.annotation_item.bbox_xywh.extend([float(v) for v in item.annotation_item.bbox_xywh])
-        target.annotation_item.obb.CopyFrom(item.annotation_item.obb)
-        target.annotation_item.source = str(item.annotation_item.source or "")
-        target.annotation_item.confidence = float(item.annotation_item.confidence or 0.0)
-        return target
-    return target
-
-
 def _to_domain_data_response(response: pb.DataResponse) -> domain_pb.DataResponse:
     step_id = _resolve_step_id(response.step_id)
     return domain_pb.DataResponse(
@@ -83,8 +55,16 @@ def _to_domain_data_response(response: pb.DataResponse) -> domain_pb.DataRespons
         reply_to=str(response.reply_to or ""),
         step_id=step_id,
         query_type=int(response.query_type),
-        items=[_to_domain_data_item(item) for item in response.items],
+        payload_id=str(response.payload_id or ""),
+        chunk_index=int(response.chunk_index),
+        chunk_count=int(response.chunk_count),
+        header_proto=bytes(response.header_proto),
+        payload_chunk=bytes(response.payload_chunk),
+        payload_total_size=int(response.payload_total_size),
+        payload_checksum_crc32c=int(response.payload_checksum_crc32c),
+        chunk_checksum_crc32c=int(response.chunk_checksum_crc32c),
         next_cursor=str(response.next_cursor or ""),
+        is_last_chunk=bool(response.is_last_chunk),
     )
 
 
@@ -415,7 +395,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
 
     async def QueryData(self, request, context):  # noqa: N802
         step_id = _resolve_step_id(request.step_id)
-        response_message = await self._runtime_ingress.handle_data_request(
+        response_messages = await self._runtime_ingress.handle_data_request(
             pb.DataRequest(
                 request_id=str(request.request_id or ""),
                 step_id=step_id,
@@ -424,33 +404,22 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 commit_id=str(request.commit_id or ""),
                 cursor=str(request.cursor or ""),
                 limit=int(request.limit or 0),
+                preferred_chunk_bytes=int(request.preferred_chunk_bytes or 0),
+                max_uncompressed_bytes=int(request.max_uncompressed_bytes or 0),
             )
         )
-        payload_type = response_message.WhichOneof("payload")
-        if payload_type == "error":
-            error_payload = response_message.error
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(error_payload.reason or error_payload.message or "query data failed"))
-            return domain_pb.DataResponse(
-                request_id=str(request.request_id or ""),
-                reply_to=str(request.request_id or ""),
-                step_id=step_id,
-                query_type=int(request.query_type),
-                items=[],
-                next_cursor="",
-            )
-        if payload_type != "data_response":
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("runtime ingress returned unexpected payload")
-            return domain_pb.DataResponse(
-                request_id=str(request.request_id or ""),
-                reply_to=str(request.request_id or ""),
-                step_id=step_id,
-                query_type=int(request.query_type),
-                items=[],
-                next_cursor="",
-            )
-        return _to_domain_data_response(response_message.data_response)
+        for response_message in response_messages:
+            payload_type = response_message.WhichOneof("payload")
+            if payload_type == "error":
+                error_payload = response_message.error
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details(str(error_payload.reason or error_payload.message or "query data failed"))
+                return
+            if payload_type != "data_response":
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details("runtime ingress returned unexpected payload")
+                return
+            yield _to_domain_data_response(response_message.data_response)
 
     async def CreateUploadTicket(self, request, context):  # noqa: N802
         step_id = _resolve_step_id(request.step_id)

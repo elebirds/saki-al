@@ -11,6 +11,7 @@
 import {forwardRef, useImperativeHandle, useMemo, useRef} from 'react';
 import {AnnotationCanvas, AnnotationCanvasRef} from '../canvas';
 import {Annotation, MappedRegion} from '../../types';
+import {resolveAnnotationView} from '../../utils/annotationGeometry';
 
 // FEDO view 标识符
 export const VIEW_TIME_ENERGY = 'time-energy';
@@ -71,11 +72,14 @@ export const DualCanvasArea = forwardRef<DualCanvasAreaRef, DualCanvasAreaProps>
 
     // 根据 view 过滤标注，分别显示在对应的画布上
     const timeEnergyAnnotations = useMemo(() => {
-        return annotations.filter(ann => ann.extra?.view === VIEW_TIME_ENERGY);
+        return annotations.filter((ann) => {
+            const view = resolveAnnotationView(ann) || VIEW_TIME_ENERGY;
+            return view === VIEW_TIME_ENERGY;
+        });
     }, [annotations]);
 
     const lOmegadAnnotations = useMemo(() => {
-        return annotations.filter(ann => ann.extra?.view === VIEW_L_OMEGAD);
+        return annotations.filter((ann) => resolveAnnotationView(ann) === VIEW_L_OMEGAD);
     }, [annotations]);
 
     // 为 Time-Energy 画布创建标注时的回调

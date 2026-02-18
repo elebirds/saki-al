@@ -61,28 +61,27 @@ class AnnotationBase(SQLModel):
     )
 
     # 数据描述字段
-    # 标注类型：几何形状类型，决定 data 如何解析
+    # 标注类型：几何形状类型，决定 geometry.oneof 语义
     type: AnnotationType = Field(default=AnnotationType.RECT, index=True,
-                                 description="Geometric type of the annotation (rect, obb, polygon, etc.)")
+                                 description="Geometric type of the annotation (v1 supports rect/obb).")
     # 标注来源
     source: AnnotationSource = Field(default=AnnotationSource.MANUAL, index=True,
                                      description="Source of annotation (MANUAL, MODEL, SYSTEM).")
 
     # 数据存储字段
-    # 标注数据
-    # For RECT: {x, y, width, height}
-    # For OBB: {cx, cy, width, height, rotation}
-    # For POLYGON/POLYLINE: {points: [[x1,y1], [x2,y2], ...]}
-    data: Dict[str, Any] = Field(
+    # 标注几何（saki-ir Geometry ProtoJSON）
+    # For RECT: {"rect":{"x","y","width","height"}}
+    # For OBB: {"obb":{"cx","cy","width","height","angle_deg_ccw"}}
+    geometry: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(OPT_JSON),
-        description="The annotation geometry data."
+        description="Annotation geometry as saki-ir Geometry ProtoJSON."
     )
-    # 扩展数据 (FEDO dual-view mapping, etc.)
-    extra: Dict[str, Any] = Field(
+    # 扩展属性 (FEDO dual-view mapping, etc.)
+    attrs: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(OPT_JSON),
-        description="System-specific extra data (FEDO mapping info, etc.)."
+        description="System-specific attrs data (FEDO mapping info, etc.)."
     )
     # 置信度分数
     confidence: float = Field(default=1.0, index=True, description="Confidence score of the annotation (0.0 to 1.0).",

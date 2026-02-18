@@ -5,7 +5,7 @@ Annotation Schemas for API requests and responses.
 import uuid
 from typing import Any
 
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 from saki_api.modules.shared.modeling.enums import AnnotationType, AnnotationSource
 
@@ -22,8 +22,8 @@ class AnnotationBase(SQLModel):
     view_role: str = "main"
     type: AnnotationType = AnnotationType.RECT
     source: AnnotationSource = AnnotationSource.MANUAL
-    data: dict[str, Any] = {}
-    extra: dict[str, Any] = {}
+    geometry: dict[str, Any] = Field(default_factory=dict)
+    attrs: dict[str, Any] = Field(default_factory=dict)
     confidence: float = 1.0
     annotator_id: uuid.UUID | None = None
 
@@ -68,7 +68,7 @@ class AnnotationHistoryItem(SQLModel):
     source: AnnotationSource
     confidence: float
     created_at: Any
-    data: dict[str, Any] = {}
+    geometry: dict[str, Any] = Field(default_factory=dict)
 
 
 class AnnotationBatchCreate(SQLModel):

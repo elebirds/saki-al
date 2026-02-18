@@ -6,6 +6,7 @@ Spec: docs/IR_SPEC.md#9-encoded-payload
 """
 
 from collections.abc import Iterator
+import io
 from threading import Lock
 
 from saki_ir.crc32c import checksum_crc32c
@@ -57,15 +58,37 @@ def _compress_zstd(data: bytes, level: int) -> bytes:
     return compressor.compress(data)
 
 
-def _decompress_zstd(data: bytes) -> bytes:
+def _decompress_zstd(data: bytes, *, max_uncompressed_size: int | None = None) -> bytes:
     # Spec: docs/IR_SPEC.md#9-encoded-payload
     if _zstd is None:
         raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, "未安装 zstandard，无法使用 ZSTD 解压")
+    if max_uncompressed_size is not None and max_uncompressed_size < 0:
+        raise IRError(ERR_IR_SCHEMA, "max_uncompressed_size 必须 >= 0")
+
+    # 使用流式解压并在输出阶段强制上限，不信任 header.uncompressed_size。
     decompressor = _zstd.ZstdDecompressor()
-    return decompressor.decompress(data)
+    with decompressor.stream_reader(io.BytesIO(data)) as reader:
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = reader.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if max_uncompressed_size is not None and total > max_uncompressed_size:
+                raise IRError(
+                    ERR_IR_COMPRESSION_UNSUPPORTED,
+                    f"解压后数据超过上限: {total} > {max_uncompressed_size}",
+                )
+            chunks.append(chunk)
+    return b"".join(chunks)
 
 
-def decompress_raw(encoded: annotationirv1.EncodedPayload) -> bytes:
+def decompress_raw(
+    encoded: annotationirv1.EncodedPayload,
+    *,
+    max_uncompressed_size: int | None = None,
+) -> bytes:
     """按 header.compression 获取 `payload_raw`。
 
     该函数只做「压缩层」处理：
@@ -81,19 +104,24 @@ def decompress_raw(encoded: annotationirv1.EncodedPayload) -> bytes:
     header = read_header(encoded)
     payload = bytes(encoded.payload)
     if header.compression == annotationirv1.PAYLOAD_COMPRESSION_NONE:
+        if max_uncompressed_size is not None and len(payload) > max_uncompressed_size:
+            raise IRError(
+                ERR_IR_COMPRESSION_UNSUPPORTED,
+                f"未压缩 payload 超过上限: {len(payload)} > {max_uncompressed_size}",
+            )
         return payload
     if header.compression == annotationirv1.PAYLOAD_COMPRESSION_ZSTD:
-        return _decompress_zstd(payload)
+        return _decompress_zstd(payload, max_uncompressed_size=max_uncompressed_size)
     raise IRError(ERR_IR_COMPRESSION_UNSUPPORTED, f"不支持的 compression: {header.compression}")
 
 
-def _verify_checksum(header: annotationirv1.PayloadHeader, payload_raw: bytes) -> None:
+def _verify_checksum(header: annotationirv1.PayloadHeader, payload_encoded: bytes) -> None:
     # Spec: docs/IR_SPEC.md#9-encoded-payload
-    # checksum 覆盖范围固定为“未压缩 payload_raw bytes”。
+    # checksum 覆盖范围固定为“压缩后 payload bytes（encoded payload bytes）”。
     if header.checksum_algo != annotationirv1.PAYLOAD_CHECKSUM_ALGO_CRC32C:
         raise IRError(ERR_IR_SCHEMA, f"不支持的 checksum_algo: {header.checksum_algo}")
 
-    actual = checksum_crc32c(payload_raw)
+    actual = checksum_crc32c(payload_encoded)
     if actual != header.checksum:
         raise IRError(
             ERR_IR_CHECKSUM_MISMATCH,
@@ -105,18 +133,17 @@ def verify_checksum(encoded: annotationirv1.EncodedPayload) -> None:
     """仅执行 checksum 校验，不反序列化 DataBatchIR。
 
     行为：
-    - 按 compression 解压到 `payload_raw`
-    - 计算并校验 `CRC32C(payload_raw)`
+    - 直接对 `encoded.payload` 计算并校验 `CRC32C(payload)`
 
-    本函数不会调用 protobuf Parse/Unmarshal。
+    本函数不会解压，也不会调用 protobuf Parse/Unmarshal。
 
     Spec: docs/IR_SPEC.md#9-encoded-payload
     Spec: docs/IR_SPEC.md#10-header-only-behavior
     """
 
     header = read_header(encoded)
-    payload_raw = decompress_raw(encoded)
-    _verify_checksum(header, payload_raw)
+    payload_encoded = bytes(encoded.payload)
+    _verify_checksum(header, payload_encoded)
 
 
 def _collect_stats(batch: annotationirv1.DataBatchIR) -> annotationirv1.PayloadStats:
@@ -156,13 +183,12 @@ def encode_payload(
     validate_ir(batch)
 
     payload_raw = batch.SerializeToString()
-    checksum = checksum_crc32c(payload_raw)
-
     compression = annotationirv1.PAYLOAD_COMPRESSION_NONE
     payload = payload_raw
     if len(payload_raw) >= compression_threshold:
         payload = _compress_zstd(payload_raw, level=zstd_level)
         compression = annotationirv1.PAYLOAD_COMPRESSION_ZSTD
+    checksum = checksum_crc32c(payload)
 
     stats = _collect_stats(batch)
     stats.payload_size = int(len(payload))
@@ -170,7 +196,7 @@ def encode_payload(
 
     header = annotationirv1.PayloadHeader(
         schema=annotationirv1.PAYLOAD_SCHEMA_DATA_BATCH_IR,
-        schema_version=1,
+        schema_version=2,
         codec=annotationirv1.PAYLOAD_CODEC_PROTOBUF,
         compression=compression,
         checksum_algo=annotationirv1.PAYLOAD_CHECKSUM_ALGO_CRC32C,
@@ -184,6 +210,7 @@ def decode_payload(
     encoded: annotationirv1.EncodedPayload,
     *,
     normalize_output: bool = True,
+    max_uncompressed_size: int = 64 * 1024 * 1024,
 ) -> annotationirv1.DataBatchIR:
     """从 `EncodedPayload` 解码出 `DataBatchIR`。
 
@@ -200,12 +227,13 @@ def decode_payload(
 
     if header.schema != annotationirv1.PAYLOAD_SCHEMA_DATA_BATCH_IR:
         raise IRError(ERR_IR_SCHEMA, f"不支持的 schema: {header.schema}")
-    if header.schema_version != 1:
+    if header.schema_version != 2:
         raise IRError(ERR_IR_SCHEMA, f"不支持的 schema_version: {header.schema_version}")
 
     # Spec: docs/IR_SPEC.md#9-encoded-payload
-    payload_raw = decompress_raw(encoded)
-    _verify_checksum(header, payload_raw)
+    payload_encoded = bytes(encoded.payload)
+    _verify_checksum(header, payload_encoded)
+    payload_raw = decompress_raw(encoded, max_uncompressed_size=max_uncompressed_size)
 
     batch = annotationirv1.DataBatchIR()
     if header.codec == annotationirv1.PAYLOAD_CODEC_PROTOBUF:

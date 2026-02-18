@@ -54,7 +54,7 @@
 
 - [x] **Test name**: Checksum mismatch detection
   - **Spec reference**: `IR_SPEC.md#9-encoded-payload`, `IR_SPEC.md#11-error-code-contract`
-  - **What to assert**: 篡改 checksum 后解码失败并返回 checksum mismatch。
+  - **What to assert**: 篡改 `payload` 或 `header.checksum` 后解码失败并返回 checksum mismatch。
   - **Where implemented**:
     - Python: `python/tests/test_ir.py::test_checksum_mismatch`
     - Go: `go/sakir/codec_test.go::TestChecksumMismatch`
@@ -75,7 +75,7 @@
 
 - [x] **Test name**: Cross-language CRC32C vector
   - **Spec reference**: `IR_SPEC.md#9-encoded-payload`
-  - **What to assert**: 对同一 `payload_raw`，Python/Go CRC32C 结果一致。
+  - **What to assert**: 对同一字节序列，Python/Go CRC32C 结果一致（用于 encoded payload 校验实现一致性）。
   - **Where implemented**:
     - Python: `python/tests/test_ir.py::test_cross_language_crc32c_vector`
     - Go: `go/sakir/codec_test.go::TestCrossLanguageCRC32CVector`
@@ -93,6 +93,20 @@
   - **Where implemented**:
     - Python: `python/tests/test_ir.py::test_obb_vertices_direction_zero_angle`
     - Go: `go/sakir/normalize_test.go::TestOBBVerticesDirectionForZeroAngle`
+
+- [x] **Test name**: OBB positive-90 direction in screen-CCW
+  - **Spec reference**: `IR_SPEC.md#5-obb-semantics`, `IR_SPEC.md#7-vertices-and-aabb`
+  - **What to assert**: `angle=+90` 时 local width 边方向朝 `+y`（向下）。
+  - **Where implemented**:
+    - Python: `python/tests/test_ir.py::test_obb_vertices_direction_positive_90_ccw`
+    - Go: `go/sakir/normalize_test.go::TestOBBVerticesDirectionForPositive90CCW`
+
+- [x] **Test name**: OBB screen-sorted vertices order
+  - **Spec reference**: `IR_SPEC.md#7-vertices-and-aabb`
+  - **What to assert**: screen 顶点顺序稳定为 `TL,TR,BR,BL`，满足上方点在前、左侧点在前。
+  - **Where implemented**:
+    - Python: `python/tests/test_ir.py::test_obb_vertices_screen_order`
+    - Go: `go/sakir/normalize_test.go::TestOBBVerticesScreenOrder`
 
 - [x] **Test name**: View verify checksum does not decode
   - **Spec reference**: `IR_SPEC.md#10-header-only-behavior`, `IR_SPEC.md#13-view-wrapper-guidance`

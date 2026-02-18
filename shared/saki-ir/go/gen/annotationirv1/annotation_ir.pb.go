@@ -341,7 +341,7 @@ type ObbGeometry struct {
 	Cy            float32                `protobuf:"fixed32,2,opt,name=cy,proto3" json:"cy,omitempty"`
 	Width         float32                `protobuf:"fixed32,3,opt,name=width,proto3" json:"width,omitempty"`
 	Height        float32                `protobuf:"fixed32,4,opt,name=height,proto3" json:"height,omitempty"`
-	AngleDegCw    float32                `protobuf:"fixed32,5,opt,name=angle_deg_cw,json=angleDegCw,proto3" json:"angle_deg_cw,omitempty"`
+	AngleDegCcw   float32                `protobuf:"fixed32,5,opt,name=angle_deg_ccw,json=angleDegCcw,proto3" json:"angle_deg_ccw,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -404,9 +404,9 @@ func (x *ObbGeometry) GetHeight() float32 {
 	return 0
 }
 
-func (x *ObbGeometry) GetAngleDegCw() float32 {
+func (x *ObbGeometry) GetAngleDegCcw() float32 {
 	if x != nil {
-		return x.AngleDegCw
+		return x.AngleDegCcw
 	}
 	return 0
 }
@@ -962,7 +962,7 @@ type PayloadHeader struct {
 	Codec         PayloadCodec           `protobuf:"varint,3,opt,name=codec,proto3,enum=saki.ir.v1.PayloadCodec" json:"codec,omitempty"`
 	Compression   PayloadCompression     `protobuf:"varint,4,opt,name=compression,proto3,enum=saki.ir.v1.PayloadCompression" json:"compression,omitempty"`
 	ChecksumAlgo  PayloadChecksumAlgo    `protobuf:"varint,5,opt,name=checksum_algo,json=checksumAlgo,proto3,enum=saki.ir.v1.PayloadChecksumAlgo" json:"checksum_algo,omitempty"`
-	Checksum      uint32                 `protobuf:"varint,6,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum      uint32                 `protobuf:"varint,6,opt,name=checksum,proto3" json:"checksum,omitempty"` // CRC32C over compressed `payload` bytes (encoded payload bytes)
 	Stats         *PayloadStats          `protobuf:"bytes,7,opt,name=stats,proto3" json:"stats,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1109,14 +1109,13 @@ const file_saki_ir_v1_annotation_ir_proto_rawDesc = "" +
 	"\x01x\x18\x01 \x01(\x02R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x02R\x01y\x12\x14\n" +
 	"\x05width\x18\x03 \x01(\x02R\x05width\x12\x16\n" +
-	"\x06height\x18\x04 \x01(\x02R\x06height\"}\n" +
+	"\x06height\x18\x04 \x01(\x02R\x06height\"\x7f\n" +
 	"\vObbGeometry\x12\x0e\n" +
 	"\x02cx\x18\x01 \x01(\x02R\x02cx\x12\x0e\n" +
 	"\x02cy\x18\x02 \x01(\x02R\x02cy\x12\x14\n" +
 	"\x05width\x18\x03 \x01(\x02R\x05width\x12\x16\n" +
-	"\x06height\x18\x04 \x01(\x02R\x06height\x12 \n" +
-	"\fangle_deg_cw\x18\x05 \x01(\x02R\n" +
-	"angleDegCw\"p\n" +
+	"\x06height\x18\x04 \x01(\x02R\x06height\x12\"\n" +
+	"\rangle_deg_ccw\x18\x05 \x01(\x02R\vangleDegCcw\"p\n" +
 	"\bGeometry\x12.\n" +
 	"\x04rect\x18\x01 \x01(\v2\x18.saki.ir.v1.RectGeometryH\x00R\x04rect\x12+\n" +
 	"\x03obb\x18\x02 \x01(\v2\x17.saki.ir.v1.ObbGeometryH\x00R\x03obbB\a\n" +

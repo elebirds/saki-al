@@ -25,7 +25,7 @@ func TestEncodedPayloadViewVerifyChecksumNoDecode(t *testing.T) {
 	raw := []byte{0x10, 0x20, 0x30, 0x40, 0x50}
 	header := &annotationirv1.PayloadHeader{
 		Schema:        annotationirv1.PayloadSchema_PAYLOAD_SCHEMA_DATA_BATCH_IR,
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		Codec:         annotationirv1.PayloadCodec_PAYLOAD_CODEC_MSGPACK,
 		Compression:   annotationirv1.PayloadCompression_PAYLOAD_COMPRESSION_NONE,
 		ChecksumAlgo:  annotationirv1.PayloadChecksumAlgo_PAYLOAD_CHECKSUM_ALGO_CRC32C,
@@ -54,11 +54,11 @@ func TestGeometryViewAABBCoversVertices(t *testing.T) {
 		G: &annotationirv1.Geometry{
 			Shape: &annotationirv1.Geometry_Obb{
 				Obb: &annotationirv1.ObbGeometry{
-					Cx:         100,
-					Cy:         50,
-					Width:      6,
-					Height:     2,
-					AngleDegCw: 30,
+					Cx:          100,
+					Cy:          50,
+					Width:       6,
+					Height:      2,
+					AngleDegCcw: 30,
 				},
 			},
 		},

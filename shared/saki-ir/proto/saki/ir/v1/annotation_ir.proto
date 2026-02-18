@@ -18,7 +18,7 @@ message ObbGeometry {
   float cy = 2;
   float width = 3;
   float height = 4;
-  float angle_deg_cw = 5;
+  float angle_deg_ccw = 5;
 }
 
 message Geometry {
@@ -110,7 +110,7 @@ message PayloadHeader {
   PayloadCodec codec = 3;
   PayloadCompression compression = 4;
   PayloadChecksumAlgo checksum_algo = 5;
-  uint32 checksum = 6;
+  uint32 checksum = 6; // CRC32C over compressed `payload` bytes (encoded payload bytes)
   PayloadStats stats = 7;
 }
 

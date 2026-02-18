@@ -11,13 +11,13 @@ import (
 
 func TestNormalizeOBBGoldenCases(t *testing.T) {
 	cases := []struct {
-		name          string
-		w             float32
-		h             float32
-		angle         float32
-		expectW       float32
-		expectH       float32
-		expectAngleCw float32
+		name           string
+		w              float32
+		h              float32
+		angle          float32
+		expectW        float32
+		expectH        float32
+		expectAngleCCW float32
 	}{
 		{"no-swap", 4, 2, 0, 4, 2, 0},
 		{"swap-90", 2, 4, 0, 4, 2, 90},
@@ -38,7 +38,7 @@ func TestNormalizeOBBGoldenCases(t *testing.T) {
 			obb := batch.GetItems()[0].GetAnnotation().GetGeometry().GetObb()
 			assertAlmostEqual(t, obb.GetWidth(), tc.expectW)
 			assertAlmostEqual(t, obb.GetHeight(), tc.expectH)
-			assertAlmostEqual(t, obb.GetAngleDegCw(), tc.expectAngleCw)
+			assertAlmostEqual(t, obb.GetAngleDegCcw(), tc.expectAngleCCW)
 		})
 	}
 }
@@ -67,12 +67,12 @@ func TestConfidenceInvalidCases(t *testing.T) {
 
 func TestValidateDoesNotModifyInput(t *testing.T) {
 	batch := makeOBBBatch(2, 4, 15, 0.4)
-	before := batch.GetItems()[0].GetAnnotation().GetGeometry().GetObb().GetAngleDegCw()
+	before := batch.GetItems()[0].GetAnnotation().GetGeometry().GetObb().GetAngleDegCcw()
 
 	if err := Validate(batch); err != nil {
 		t.Fatalf("Validate failed: %v", err)
 	}
-	after := batch.GetItems()[0].GetAnnotation().GetGeometry().GetObb().GetAngleDegCw()
+	after := batch.GetItems()[0].GetAnnotation().GetGeometry().GetObb().GetAngleDegCcw()
 	if before != after {
 		t.Fatalf("Validate modified input: before=%v after=%v", before, after)
 	}
@@ -81,26 +81,26 @@ func TestValidateDoesNotModifyInput(t *testing.T) {
 func TestOBBVerticesInvariantAfterNormalize(t *testing.T) {
 	batch := makeOBBBatch(2, 8, 35, 0.8)
 	obbBefore := batch.GetItems()[0].GetAnnotation().GetGeometry().GetObb()
-	verticesBefore := ObbToVertices(obbBefore)
+	verticesBefore := ObbToVerticesLocal(obbBefore)
 
 	if err := Normalize(batch); err != nil {
 		t.Fatalf("Normalize failed: %v", err)
 	}
 
 	obbAfter := batch.GetItems()[0].GetAnnotation().GetGeometry().GetObb()
-	verticesAfter := ObbToVertices(obbAfter)
+	verticesAfter := ObbToVerticesLocal(obbAfter)
 	assertVertexSetEqual(t, verticesBefore, verticesAfter, 1e-4)
 }
 
 func TestOBBVerticesDirectionForZeroAngle(t *testing.T) {
 	obb := &annotationirv1.ObbGeometry{
-		Cx:         10,
-		Cy:         10,
-		Width:      6,
-		Height:     2,
-		AngleDegCw: 0,
+		Cx:          10,
+		Cy:          10,
+		Width:       6,
+		Height:      2,
+		AngleDegCcw: 0,
 	}
-	vertices := ObbToVertices(obb)
+	vertices := ObbToVerticesLocal(obb)
 	tl := vertices[0]
 	tr := vertices[1]
 	br := vertices[2]
@@ -113,6 +113,55 @@ func TestOBBVerticesDirectionForZeroAngle(t *testing.T) {
 	}
 	if !(br.Y > tr.Y) {
 		t.Fatalf("expected height edge along +y, got TR=%v BR=%v", tr, br)
+	}
+}
+
+func TestOBBVerticesDirectionForPositive90CCW(t *testing.T) {
+	obb := &annotationirv1.ObbGeometry{
+		Cx:          0,
+		Cy:          0,
+		Width:       2,
+		Height:      1,
+		AngleDegCcw: 90,
+	}
+	vertices := ObbToVerticesLocal(obb)
+	tl := vertices[0]
+	tr := vertices[1]
+	dx := float64(tr.X - tl.X)
+	dy := float64(tr.Y - tl.Y)
+	if math.Abs(dx-0.0) > 1e-5 {
+		t.Fatalf("expected dx ~= 0, got %f", dx)
+	}
+	if math.Abs(dy-2.0) > 1e-5 {
+		t.Fatalf("expected dy ~= 2, got %f", dy)
+	}
+}
+
+func TestOBBVerticesScreenOrder(t *testing.T) {
+	obb := &annotationirv1.ObbGeometry{
+		Cx:          10,
+		Cy:          10,
+		Width:       6,
+		Height:      2,
+		AngleDegCcw: 30,
+	}
+	vertices := ObbToVerticesScreen(obb)
+	tl := vertices[0]
+	tr := vertices[1]
+	br := vertices[2]
+	bl := vertices[3]
+
+	if !(tl.X <= tr.X+1e-5) {
+		t.Fatalf("expected TL at left of TR: TL=%v TR=%v", tl, tr)
+	}
+	if !(bl.X <= br.X+1e-5) {
+		t.Fatalf("expected BL at left of BR: BL=%v BR=%v", bl, br)
+	}
+	if !(tl.Y <= bl.Y+1e-5) {
+		t.Fatalf("expected TL above BL: TL=%v BL=%v", tl, bl)
+	}
+	if !(tr.Y <= br.Y+1e-5) {
+		t.Fatalf("expected TR above BR: TR=%v BR=%v", tr, br)
 	}
 }
 
@@ -129,11 +178,11 @@ func makeOBBBatch(w, h, angle, confidence float32) *annotationirv1.DataBatchIR {
 						Geometry: &annotationirv1.Geometry{
 							Shape: &annotationirv1.Geometry_Obb{
 								Obb: &annotationirv1.ObbGeometry{
-									Cx:         100,
-									Cy:         50,
-									Width:      w,
-									Height:     h,
-									AngleDegCw: angle,
+									Cx:          100,
+									Cy:          50,
+									Width:       w,
+									Height:      h,
+									AngleDegCcw: angle,
 								},
 							},
 						},

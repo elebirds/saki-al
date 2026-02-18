@@ -24,6 +24,14 @@ from saki_ir.convert.io import (
 )
 from saki_ir.dataframe import to_dataframe
 from saki_ir.normalize import normalize_ir, validate_ir
+from saki_ir.transport import (
+    ChunkAssembler,
+    CompletedPayloadCache,
+    PayloadChunk,
+    parse_header,
+    serialize_header,
+    split_encoded_payload,
+)
 from saki_ir.view import AnnotationView, BatchView, EncodedPayloadView, GeometryView, ObbView, RectView
 from saki_ir.proto.saki.ir.v1.annotation_ir_pb2 import (  # noqa: F401
     AnnotationRecord,
@@ -54,6 +62,12 @@ __all__ = [
     "read_header",
     "iter_items",
     "to_dataframe",
+    "serialize_header",
+    "parse_header",
+    "split_encoded_payload",
+    "PayloadChunk",
+    "ChunkAssembler",
+    "CompletedPayloadCache",
     "ConversionContext",
     "ConversionError",
     "ConversionReport",

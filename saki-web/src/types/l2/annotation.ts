@@ -41,6 +41,27 @@ export interface MappedRegion {
 export type AnnotationType = 'rect' | 'obb' | 'polygon' | 'polyline' | 'point' | 'keypoints';
 export type AnnotationSource = 'manual' | 'auto' | 'model' | 'system' | 'imported' | 'fedo_mapping';
 
+export interface RectGeometry {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+export interface ObbGeometry {
+    cx: number;
+    cy: number;
+    width: number;
+    height: number;
+    angleDegCcw?: number;
+    angle_deg_ccw?: number;
+}
+
+export interface AnnotationGeometry {
+    rect?: RectGeometry;
+    obb?: ObbGeometry;
+}
+
 // ============================================================================
 // Annotation - Core annotation model
 // ============================================================================
@@ -58,8 +79,8 @@ export interface Annotation {
     viewRole?: string;
     type: AnnotationType;
     source?: AnnotationSource;
-    data: Record<string, any>;  // Geometry data (bbox, points, etc.)
-    extra?: Record<string, any>;  // System-specific (e.g., view for FEDO)
+    geometry: AnnotationGeometry;
+    attrs?: Record<string, any>;
     confidence?: number;
     annotatorId?: string | null;  // ID of the user who created the annotation
 }
@@ -79,8 +100,8 @@ export interface AnnotationRead {
     viewRole: string;
     type: AnnotationType;
     source: AnnotationSource;
-    data: Record<string, any>;
-    extra?: Record<string, any>;
+    geometry: AnnotationGeometry;
+    attrs?: Record<string, any>;
     confidence: number;
     annotatorId?: string | null;
     createdAt: string;
@@ -98,8 +119,8 @@ export interface AnnotationDraftItem {
     viewRole?: string;
     type: AnnotationType;
     source?: AnnotationSource;
-    data: Record<string, any>;
-    extra?: Record<string, any>;
+    geometry: AnnotationGeometry;
+    attrs?: Record<string, any>;
     confidence?: number;
     annotatorId?: string | null;
 }

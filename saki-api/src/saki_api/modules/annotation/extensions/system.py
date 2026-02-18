@@ -97,8 +97,8 @@ class AnnotationSystemFacade:
             annotation_id: str,
             label_id: str,
             ann_type: AnnotationType,
-            data: Dict[str, Any],
-            extra: Dict[str, Any],
+            geometry: Dict[str, Any],
+            attrs: Dict[str, Any],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -110,15 +110,15 @@ class AnnotationSystemFacade:
             annotation_id: ID of the new annotation
             label_id: Label ID
             ann_type: Annotation type
-            data: Geometry data
-            extra: System-specific extra data
+            geometry: Geometry ProtoJSON data
+            attrs: System-specific attrs data
             context: Annotation context
 
         Returns:
             SyncResult with any generated annotations
         """
         return self.sync_handler.on_annotation_create(
-            annotation_id, label_id, ann_type, data, extra, context
+            annotation_id, label_id, ann_type, geometry, attrs, context
         )
 
     def on_annotation_update(
@@ -126,8 +126,8 @@ class AnnotationSystemFacade:
             annotation_id: str,
             label_id: Optional[str],
             ann_type: Optional[AnnotationType],
-            data: Optional[Dict[str, Any]],
-            extra: Optional[Dict[str, Any]],
+            geometry: Optional[Dict[str, Any]],
+            attrs: Optional[Dict[str, Any]],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -139,21 +139,21 @@ class AnnotationSystemFacade:
             annotation_id: ID of the annotation being updated
             label_id: New label ID
             ann_type: New annotation type
-            data: New geometry data
-            extra: New extra data
+            geometry: New geometry data
+            attrs: New attrs data
             context: Annotation context
 
         Returns:
             SyncResult with any generated annotations
         """
         return self.sync_handler.on_annotation_update(
-            annotation_id, label_id, ann_type, data, extra, context
+            annotation_id, label_id, ann_type, geometry, attrs, context
         )
 
     def on_annotation_delete(
             self,
             annotation_id: str,
-            extra: Dict[str, Any],
+            attrs: Dict[str, Any],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -163,13 +163,13 @@ class AnnotationSystemFacade:
 
         Args:
             annotation_id: ID of the annotation being deleted
-            extra: Extra data from the annotation
+            attrs: Attrs data from the annotation
             context: Annotation context
 
         Returns:
             SyncResult with any child annotations to delete
         """
-        return self.sync_handler.on_annotation_delete(annotation_id, extra, context)
+        return self.sync_handler.on_annotation_delete(annotation_id, attrs, context)
 
     # ==================== Utility Methods ====================
 

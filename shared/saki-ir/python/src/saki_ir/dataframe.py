@@ -29,7 +29,7 @@ def _to_annotation_rows(batch: annotationirv1.DataBatchIR) -> tuple[list[dict[st
         "obb_cy",
         "obb_w",
         "obb_h",
-        "obb_angle_deg_cw",
+        "obb_angle_deg_ccw",
     ]
     rows: list[dict[str, object]] = []
 
@@ -53,7 +53,7 @@ def _to_annotation_rows(batch: annotationirv1.DataBatchIR) -> tuple[list[dict[st
             "obb_cy": None,
             "obb_w": None,
             "obb_h": None,
-            "obb_angle_deg_cw": None,
+            "obb_angle_deg_ccw": None,
         }
 
         if ann.HasField("geometry"):
@@ -71,7 +71,7 @@ def _to_annotation_rows(batch: annotationirv1.DataBatchIR) -> tuple[list[dict[st
                 row["obb_cy"] = float(obb.cy)
                 row["obb_w"] = float(obb.width)
                 row["obb_h"] = float(obb.height)
-                row["obb_angle_deg_cw"] = float(obb.angle_deg_cw)
+                row["obb_angle_deg_ccw"] = float(obb.angle_deg_ccw)
 
         rows.append(row)
 

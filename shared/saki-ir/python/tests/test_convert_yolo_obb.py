@@ -39,7 +39,7 @@ def test_yolo_obb_rbox_normalized_deg_roundtrip() -> None:
     assert obb.cy == pytest.approx(240.0, abs=1e-6)
     assert obb.width == pytest.approx(128.0, abs=1e-6)
     assert obb.height == pytest.approx(48.0, abs=1e-6)
-    assert obb.angle_deg_cw == pytest.approx(30.0, abs=1e-6)
+    assert obb.angle_deg_ccw == pytest.approx(30.0, abs=1e-6)
 
     out = ir_to_yolo_obb_txt(
         batch,
@@ -71,7 +71,7 @@ def test_yolo_obb_angle_auto_infers_degree_for_common_degree_values() -> None:
         ctx=ctx,
     )
     obb = _items_by_kind(batch, "annotation")[0].annotation.geometry.obb
-    assert obb.angle_deg_cw == pytest.approx(30.0, abs=1e-6)
+    assert obb.angle_deg_ccw == pytest.approx(30.0, abs=1e-6)
 
 
 def test_yolo_obb_poly8_normalized_roundtrip() -> None:
@@ -178,7 +178,7 @@ def test_yolo_obb_dataset_io_entry_switch(tmp_path: Path) -> None:
                     sample_id="s1",
                     label_id="l1",
                     confidence=1.0,
-                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=200.0, cy=120.0, width=80.0, height=40.0, angle_deg_cw=25.0)),
+                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=200.0, cy=120.0, width=80.0, height=40.0, angle_deg_ccw=25.0)),
                 )
             ),
         ]
@@ -228,4 +228,4 @@ def test_yolo_obb_dataset_io_entry_switch(tmp_path: Path) -> None:
     assert obb.cy == pytest.approx(120.0, abs=1e-3)
     assert obb.width == pytest.approx(80.0, abs=1e-3)
     assert obb.height == pytest.approx(40.0, abs=1e-3)
-    assert obb.angle_deg_cw == pytest.approx(25.0, abs=1e-3)
+    assert obb.angle_deg_ccw == pytest.approx(25.0, abs=1e-3)

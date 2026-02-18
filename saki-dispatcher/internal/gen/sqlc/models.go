@@ -843,8 +843,8 @@ type Annotation struct {
 	ParentID    *uuid.UUID
 	Type        Annotationtype
 	Source      Annotationsource
-	Data        []byte
-	Extra       []byte
+	Geometry    []byte
+	Attrs       []byte
 	Confidence  float64
 	AnnotatorID *uuid.UUID
 }

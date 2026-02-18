@@ -95,8 +95,8 @@ class BaseAnnotationSyncHandler(ABC):
             annotation_id: str,
             label_id: str,
             ann_type: AnnotationType,
-            data: Dict[str, Any],
-            extra: Dict[str, Any],
+            geometry: Dict[str, Any],
+            attrs: Dict[str, Any],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -109,8 +109,8 @@ class BaseAnnotationSyncHandler(ABC):
             annotation_id: ID of the new annotation
             label_id: Label ID
             ann_type: Annotation type (rect, obb, polygon, etc.)
-            data: Geometry data
-            extra: System-specific extra data
+            geometry: Geometry ProtoJSON data
+            attrs: System-specific attrs data
             context: Annotation context
 
         Returns:
@@ -124,8 +124,8 @@ class BaseAnnotationSyncHandler(ABC):
             annotation_id: str,
             label_id: Optional[str],
             ann_type: Optional[AnnotationType],
-            data: Optional[Dict[str, Any]],
-            extra: Optional[Dict[str, Any]],
+            geometry: Optional[Dict[str, Any]],
+            attrs: Optional[Dict[str, Any]],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -138,8 +138,8 @@ class BaseAnnotationSyncHandler(ABC):
             annotation_id: ID of the annotation being updated
             label_id: New label ID (None if not changed)
             ann_type: New annotation type (None if not changed)
-            data: New geometry data (None if not changed)
-            extra: New extra data (None if not changed)
+            geometry: New geometry data (None if not changed)
+            attrs: New attrs data (None if not changed)
             context: Annotation context
 
         Returns:
@@ -151,7 +151,7 @@ class BaseAnnotationSyncHandler(ABC):
     def on_annotation_delete(
             self,
             annotation_id: str,
-            extra: Dict[str, Any],
+            attrs: Dict[str, Any],
             context: AnnotationContext,
     ) -> SyncResult:
         """
@@ -161,7 +161,7 @@ class BaseAnnotationSyncHandler(ABC):
 
         Args:
             annotation_id: ID of the annotation being deleted
-            extra: Extra data from the annotation
+            attrs: Attrs data from the annotation
             context: Annotation context
 
         Returns:

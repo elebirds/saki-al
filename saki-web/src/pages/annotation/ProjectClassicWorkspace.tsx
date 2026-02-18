@@ -19,6 +19,11 @@ import {useAnnotationShortcuts, useAnnotationState, useAnnotationSync, useWorksp
 import {useProjectSampleList} from '../../hooks/project/useProjectSampleList';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import {canModifyAnnotation} from '../../store/permissionStore';
+import {
+    attrsFromAnnotationLike,
+    canvasDataToGeometry,
+    hydrateDraftPayload,
+} from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
 
 export interface ProjectClassicWorkspaceProps {
@@ -114,8 +119,8 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         viewRole: annotation.viewRole || 'main',
         type: annotation.type,
         source: annotation.source || 'manual',
-        data: annotation.data,
-        extra: annotation.extra || {},
+        geometry: annotation.geometry,
+        attrs: attrsFromAnnotationLike(annotation),
         confidence: annotation.confidence ?? 1,
         annotatorId: annotation.annotatorId ?? user?.id ?? null,
     }), [projectId, currentSample?.id, user?.id]);
@@ -190,14 +195,15 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     }, [pendingIndex, samples, searchParams, setSearchParams]);
 
     const applyDraftPayload = useCallback((payload: AnnotationDraftPayload | null) => {
-        if (!payload || payload.annotations.length === 0) {
+        const normalized = hydrateDraftPayload(payload);
+        if (!normalized || normalized.annotations.length === 0) {
             setAnnotations([]);
             setHistory([[]]);
             setHistoryIndex(0);
             setSelectedId(null);
             return;
         }
-        const mapped = payload.annotations.map((item) => {
+        const mapped = normalized.annotations.map((item) => {
             const groupId = item.groupId || generateUUID();
             const lineageId = item.lineageId || generateUUID();
             const itemId = item.id || lineageId;
@@ -215,8 +221,8 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
                 viewRole: item.viewRole,
                 type: item.type,
                 source: item.source,
-                data: item.data,
-                extra: item.extra,
+                geometry: item.geometry,
+                attrs: item.attrs || {},
                 confidence: item.confidence,
                 annotatorId: item.annotatorId,
             } as Annotation;
@@ -295,14 +301,8 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
             labelColor: annotationState.selectedLabel.color,
             type: event.type,
             source: 'manual',
-            data: {
-                x: event.bbox.x,
-                y: event.bbox.y,
-                width: event.bbox.width,
-                height: event.bbox.height,
-                rotation: event.bbox.rotation,
-            },
-            extra: {},
+            geometry: canvasDataToGeometry(event.type, event.bbox as Record<string, any>),
+            attrs: {},
             confidence: 1,
             annotatorId: user?.id,
         };

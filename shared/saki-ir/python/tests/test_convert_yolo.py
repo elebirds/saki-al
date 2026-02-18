@@ -230,7 +230,7 @@ def test_yolo_save_can_disable_empty_label_file_and_report_export_failure(tmp_pa
                     sample_id="s1",
                     label_id="missing-label",
                     confidence=1.0,
-                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=20.0, cy=20.0, width=10.0, height=5.0, angle_deg_cw=15.0)),
+                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=20.0, cy=20.0, width=10.0, height=5.0, angle_deg_ccw=15.0)),
                 )
             ),
         ]

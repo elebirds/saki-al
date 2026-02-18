@@ -105,7 +105,7 @@ def generate_pure_image(
         # 使用 flat 模式配合 edges，实现像素级对齐
         ax.pcolormesh(T_edge, E_edge, Flux.T, norm=norm, cmap=cmap, shading='flat')
         ax.set_yscale('log')
-    elif view == FedoView.L_WD:
+    elif view == FedoView.L_OMEGAD:
         # L vs ωd view with curvilinear grid
         L_grid = np.tile(L, (len(E), 1))  # (M, N)
         Wd_grid = Wd.T  # (M, N)
@@ -192,7 +192,7 @@ def generate_views(
         te_path
     )
     save_fig_to_file(
-        generate_pure_image(data, FedoView.L_WD, **kwargs),
+        generate_pure_image(data, FedoView.L_OMEGAD, **kwargs),
         lwd_path
     )
 
@@ -210,6 +210,6 @@ def generate_views_bytes(
         data, FedoView.TIME_ENERGY, **kwargs
     ))
     lwd_bytes = save_fig_to_bytes(generate_pure_image(
-        data, FedoView.L_WD, **kwargs
+        data, FedoView.L_OMEGAD, **kwargs
     ))
     return te_bytes, lwd_bytes

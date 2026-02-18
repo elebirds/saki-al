@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Saki IR v1 SDK"
 requires-python = ">=3.10"
 dependencies = [
-  "protobuf>=5.29.3,<6",
+  "protobuf>=6.31.1,<7",
   "google-crc32c>=1.6.0",
   "zstandard>=0.23.0",
 ]

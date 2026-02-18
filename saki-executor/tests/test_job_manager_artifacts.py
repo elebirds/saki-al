@@ -12,6 +12,7 @@ from saki_executor.steps.services.artifact_uploader import ArtifactUploader
 import saki_executor.steps.services.artifact_uploader as uploader_module
 from saki_executor.plugins.base import ExecutorPlugin, TrainArtifact, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
+from runtime_data_test_helper import build_data_response_message
 
 
 class _ArtifactPlugin(ExecutorPlugin):
@@ -126,15 +127,12 @@ def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
         payload_type = message.WhichOneof("payload")
         if payload_type == "data_request":
             request = message.data_request
-            return pb.RuntimeMessage(
-                data_response=pb.DataResponse(
-                    request_id=f"resp-{request.request_id}",
-                    reply_to=request.request_id,
-                    step_id=request.step_id,
-                    query_type=request.query_type,
-                    items=_mock_data_items(request.query_type),
-                    next_cursor="",
-                )
+            return build_data_response_message(
+                request_id=f"resp-{request.request_id}",
+                reply_to=request.request_id,
+                step_id=request.step_id,
+                query_type=request.query_type,
+                items=_mock_data_items(request.query_type),
             )
         if payload_type == "upload_ticket_request":
             req = message.upload_ticket_request

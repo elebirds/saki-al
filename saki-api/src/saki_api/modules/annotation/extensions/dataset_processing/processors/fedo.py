@@ -19,6 +19,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.config import settings
 from saki_api.modules.annotation.extensions.data_formats.fedo.config import FedoConfig, get_fedo_config
+from saki_api.modules.annotation.extensions.data_formats.fedo.enum import FedoView
 # FEDO data processing utilities
 from saki_api.modules.annotation.extensions.data_formats.fedo.processor import FedoProcessor, FedoData
 from saki_api.modules.annotation.extensions.dataset_processing.base import (
@@ -236,7 +237,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             meta_info={
                 "generated": True,
                 "type": "fedo_visualization",
-                "view": "time-energy",
+                "view": FedoView.TIME_ENERGY.value,
             },
         )
         l_omegad_asset = await self._upload_generated_bytes(
@@ -246,7 +247,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             meta_info={
                 "generated": True,
                 "type": "fedo_visualization",
-                "view": "L-omegad",
+                "view": FedoView.L_OMEGAD.value,
             },
         )
         lookup_asset = await self._upload_generated_bytes(

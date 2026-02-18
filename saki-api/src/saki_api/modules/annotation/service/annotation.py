@@ -11,8 +11,7 @@ from saki_api.core.exceptions import NotFoundAppException, BadRequestAppExceptio
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.annotation.api.annotation import AnnotationCreate
 from saki_api.modules.annotation.domain.annotation import Annotation
-from saki_api.modules.annotation.domain.coordinate_converter import convert_annotation_data_to_backend, \
-    convert_annotation_data_to_frontend
+from saki_api.modules.annotation.domain.ir_geometry_codec import normalize_annotation_payload
 from saki_api.modules.annotation.repo.annotation import AnnotationRepository
 from saki_api.modules.project.contracts import ProjectReadGateway
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
@@ -76,8 +75,16 @@ class AnnotationService(CrudServiceBase[Annotation, AnnotationRepository, Annota
             if not parent:
                 raise NotFoundAppException(f"Parent annotation {schema.parent_id} not found")
 
-        annotation_type = schema.type.value if hasattr(schema.type, "value") else str(schema.type)
-        schema.data = convert_annotation_data_to_backend(annotation_type, schema.data)
+        ann_type, geometry, attrs = normalize_annotation_payload(
+            annotation_type=schema.type,
+            geometry_payload=schema.geometry,
+            attrs_payload=schema.attrs,
+            confidence=float(schema.confidence),
+            source=schema.source,
+        )
+        schema.type = ann_type
+        schema.geometry = geometry
+        schema.attrs = attrs
 
         return await self.create(schema.model_dump())
 
@@ -149,10 +156,7 @@ class AnnotationService(CrudServiceBase[Annotation, AnnotationRepository, Annota
                 source=a.source,
                 confidence=a.confidence,
                 created_at=a.created_at,
-                data=convert_annotation_data_to_frontend(
-                    a.type.value if hasattr(a.type, "value") else str(a.type),
-                    a.data,
-                ),
+                geometry=a.geometry or {},
             )
             for a in annotations
         ]

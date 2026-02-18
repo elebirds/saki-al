@@ -9,6 +9,7 @@ from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.base import ExecutorPlugin, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
+from runtime_data_test_helper import build_data_response_message
 
 
 class _ModeAwarePlugin(ExecutorPlugin):
@@ -114,26 +115,6 @@ def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> StepManager:
     return manager
 
 
-def _build_data_response_message(
-        *,
-        request_id: str,
-        reply_to: str,
-        step_id: str,
-        query_type: int,
-        items: list[pb.DataItem],
-) -> pb.RuntimeMessage:
-    return pb.RuntimeMessage(
-        data_response=pb.DataResponse(
-            request_id=request_id,
-            reply_to=reply_to,
-            step_id=step_id,
-            query_type=query_type,
-            items=items,
-            next_cursor="",
-        )
-    )
-
-
 def _mock_data_items(query_type: int) -> list[pb.DataItem]:
     if query_type == pb.SAMPLES:
         return [
@@ -168,7 +149,7 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
         payload_type = message.WhichOneof("payload")
         assert payload_type == "data_request"
         request = message.data_request
-        return _build_data_response_message(
+        return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
             step_id=request.step_id,
@@ -219,7 +200,7 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
         payload_type = message.WhichOneof("payload")
         assert payload_type == "data_request"
         request = message.data_request
-        return _build_data_response_message(
+        return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
             step_id=request.step_id,
@@ -288,17 +269,17 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
                 ]
                 next_cursor = ""
             return pb.RuntimeMessage(
-                data_response=pb.DataResponse(
+                data_response=build_data_response_message(
                     request_id=f"resp-{request.request_id}",
                     reply_to=request.request_id,
                     step_id=request.step_id,
                     query_type=request.query_type,
                     items=items,
                     next_cursor=next_cursor,
-                )
+                ).data_response
             )
 
-        return _build_data_response_message(
+        return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
             step_id=request.step_id,
@@ -350,7 +331,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
         payload_type = message.WhichOneof("payload")
         assert payload_type == "data_request"
         request = message.data_request
-        return _build_data_response_message(
+        return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
             step_id=request.step_id,

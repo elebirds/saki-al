@@ -76,7 +76,6 @@ func Validate(batch *annotationirv1.DataBatchIR) error {
 }
 
 func normalizeRect(rect *annotationirv1.RectGeometry, idx int) error {
-	// Spec: docs/IR_SPEC.md#4-rect-semantics
 	if rect == nil {
 		return newError(ErrIRGeometry, "annotation[%d] rect is nil", idx)
 	}
@@ -90,11 +89,10 @@ func normalizeRect(rect *annotationirv1.RectGeometry, idx int) error {
 }
 
 func normalizeObb(obb *annotationirv1.ObbGeometry, idx int) error {
-	// Spec: docs/IR_SPEC.md#6-obb-normalization
 	if obb == nil {
 		return newError(ErrIRGeometry, "annotation[%d] obb is nil", idx)
 	}
-	if !isFinite(float64(obb.GetCx()), float64(obb.GetCy()), float64(obb.GetWidth()), float64(obb.GetHeight()), float64(obb.GetAngleDegCw())) {
+	if !isFinite(float64(obb.GetCx()), float64(obb.GetCy()), float64(obb.GetWidth()), float64(obb.GetHeight()), float64(obb.GetAngleDegCcw())) {
 		return newError(ErrIRGeometry, "annotation[%d] obb has NaN/Inf", idx)
 	}
 	if obb.GetWidth() <= EPS || obb.GetHeight() <= EPS {
@@ -105,10 +103,10 @@ func normalizeObb(obb *annotationirv1.ObbGeometry, idx int) error {
 		w := obb.GetWidth()
 		obb.Width = obb.GetHeight()
 		obb.Height = w
-		obb.AngleDegCw = obb.GetAngleDegCw() + 90.0
+		obb.AngleDegCcw = obb.GetAngleDegCcw() + 90.0
 	}
 
-	obb.AngleDegCw = normalizeAngleDegCW(obb.GetAngleDegCw())
+	obb.AngleDegCcw = normalizeAngleDegCCW(obb.GetAngleDegCcw())
 	return nil
 }
 
@@ -122,7 +120,7 @@ func validateConfidence(confidence float32, idx int) error {
 	return nil
 }
 
-func normalizeAngleDegCW(angle float32) float32 {
+func normalizeAngleDegCCW(angle float32) float32 {
 	n := math.Mod(float64(angle)+180.0, 360.0)
 	if n < 0 {
 		n += 360.0

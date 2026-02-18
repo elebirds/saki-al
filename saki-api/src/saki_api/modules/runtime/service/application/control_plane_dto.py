@@ -16,6 +16,8 @@ class RuntimeDataRequestDTO:
     commit_id: uuid.UUID
     limit: int
     offset: int
+    preferred_chunk_bytes: int
+    max_uncompressed_bytes: int
 
 
 @dataclass(slots=True)

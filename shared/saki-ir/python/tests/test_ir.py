@@ -14,7 +14,7 @@ from saki_ir.errors import (
     ERR_IR_SCHEMA,
     IRError,
 )
-from saki_ir.geom import obb_to_vertices
+from saki_ir.geom import obb_to_vertices_local, obb_to_vertices_screen
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as ir
 
 
@@ -28,7 +28,7 @@ def _make_obb_annotation(width: float, height: float, angle: float, confidence: 
                     label_id="label-1",
                     confidence=confidence,
                     geometry=ir.Geometry(
-                        obb=ir.ObbGeometry(cx=100.0, cy=50.0, width=width, height=height, angle_deg_cw=angle)
+                        obb=ir.ObbGeometry(cx=100.0, cy=50.0, width=width, height=height, angle_deg_ccw=angle)
                     ),
                 )
             )
@@ -89,7 +89,7 @@ def test_obb_normalize_golden_cases() -> None:
         obb = batch.items[0].annotation.geometry.obb
         assert obb.width == pytest.approx(exp_w, abs=1e-6)
         assert obb.height == pytest.approx(exp_h, abs=1e-6)
-        assert obb.angle_deg_cw == pytest.approx(exp_angle, abs=1e-6)
+        assert obb.angle_deg_ccw == pytest.approx(exp_angle, abs=1e-6)
 
 
 def test_rect_invalid_cases() -> None:
@@ -228,7 +228,7 @@ def test_to_dataframe_annotation_schema() -> None:
             "obb_cy",
             "obb_w",
             "obb_h",
-            "obb_angle_deg_cw",
+            "obb_angle_deg_ccw",
         ]
     ).issubset(df.columns)
     assert len(df) == 1
@@ -237,16 +237,16 @@ def test_to_dataframe_annotation_schema() -> None:
 def test_normalize_angle_range() -> None:
     batch = _make_obb_annotation(4.0, 2.0, -540.0)
     normalize_ir(batch)
-    angle = batch.items[0].annotation.geometry.obb.angle_deg_cw
+    angle = batch.items[0].annotation.geometry.obb.angle_deg_ccw
     assert -180.0 <= angle < 180.0
     assert math.isfinite(angle)
 
 
 def test_obb_vertices_invariant_after_normalize() -> None:
     batch = _make_obb_annotation(2.0, 8.0, 35.0)
-    before = obb_to_vertices(batch.items[0].annotation.geometry.obb)
+    before = obb_to_vertices_local(batch.items[0].annotation.geometry.obb)
     normalize_ir(batch)
-    after = obb_to_vertices(batch.items[0].annotation.geometry.obb)
+    after = obb_to_vertices_local(batch.items[0].annotation.geometry.obb)
 
     def _sorted(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
         return sorted((round(x, 4), round(y, 4)) for x, y in points)
@@ -255,8 +255,41 @@ def test_obb_vertices_invariant_after_normalize() -> None:
 
 
 def test_obb_vertices_direction_zero_angle() -> None:
-    obb = ir.ObbGeometry(cx=10.0, cy=10.0, width=6.0, height=2.0, angle_deg_cw=0.0)
-    tl, tr, br, _ = obb_to_vertices(obb)
+    obb = ir.ObbGeometry(cx=10.0, cy=10.0, width=6.0, height=2.0, angle_deg_ccw=0.0)
+    tl, tr, br, _ = obb_to_vertices_local(obb)
     assert tr[0] > tl[0]
     assert tr[1] == pytest.approx(tl[1], abs=1e-6)
     assert br[1] > tr[1]
+
+
+def test_obb_vertices_direction_positive_90_ccw() -> None:
+    obb = ir.ObbGeometry(cx=0.0, cy=0.0, width=2.0, height=1.0, angle_deg_ccw=90.0)
+    tl, tr, _, _ = obb_to_vertices_local(obb)
+    dx = tr[0] - tl[0]
+    dy = tr[1] - tl[1]
+    assert dx == pytest.approx(0.0, abs=1e-6)
+    assert dy > 0.0
+    assert dy == pytest.approx(2.0, abs=1e-6)
+
+
+def test_obb_vertices_local_order_stable() -> None:
+    obb_a = ir.ObbGeometry(cx=10.0, cy=10.0, width=6.0, height=2.0, angle_deg_ccw=0.0)
+    obb_b = ir.ObbGeometry(cx=10.0, cy=10.0, width=6.0, height=2.0, angle_deg_ccw=30.0)
+    va = obb_to_vertices_local(obb_a)
+    vb = obb_to_vertices_local(obb_b)
+    assert va[0][0] < va[1][0] and va[0][1] <= va[3][1]
+    assert vb[0] != vb[1] != vb[2] != vb[3]
+
+
+def test_obb_vertices_screen_order() -> None:
+    obb = ir.ObbGeometry(cx=10.0, cy=10.0, width=6.0, height=2.0, angle_deg_ccw=30.0)
+    local = obb_to_vertices_local(obb)
+    tl, tr, br, bl = obb_to_vertices_screen(obb)
+
+    top2 = sorted(local, key=lambda p: (p[1], p[0]))[:2]
+    bottom2 = sorted(local, key=lambda p: (p[1], p[0]))[2:]
+
+    assert {tl, tr} == set(top2)
+    assert {bl, br} == set(bottom2)
+    assert tl[0] <= tr[0] + 1e-6
+    assert bl[0] <= br[0] + 1e-6

@@ -11,6 +11,9 @@ from typing import Any, Dict, Optional, Tuple
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_MAPPING_TIME_GAP_THRESHOLD = 50
+
+
 class FedoConfig(BaseSettings):
     """
     FEDO processing configuration.
@@ -26,11 +29,15 @@ class FedoConfig(BaseSettings):
     cmap: str = "jet"
     l_xlim: Optional[Tuple[float, float]] = None
     wd_ylim: Optional[Tuple[float, float]] = None
+    mapping_time_gap_threshold: int = DEFAULT_MAPPING_TIME_GAP_THRESHOLD
 
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=".env",
         env_prefix="fedo.",
+        # The project-level .env contains many non-FEDO keys (DATABASE_URL, etc.).
+        # FedoConfig must ignore unrelated keys instead of failing validation.
+        extra="ignore",
     )
 
     def to_prefixed_dict(self, prefix: str = "fedo.") -> Dict[str, Any]:

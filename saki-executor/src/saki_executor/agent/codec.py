@@ -348,6 +348,8 @@ def build_data_request_message(
     commit_id: str,
     cursor: str | None,
     limit: int,
+    preferred_chunk_bytes: int = 0,
+    max_uncompressed_bytes: int = 0,
 ) -> pb.RuntimeMessage:
     step_id = str(step_id)
     return pb.RuntimeMessage(
@@ -359,6 +361,8 @@ def build_data_request_message(
             commit_id=commit_id,
             cursor=str(cursor or ""),
             limit=int(limit),
+            preferred_chunk_bytes=int(preferred_chunk_bytes),
+            max_uncompressed_bytes=int(max_uncompressed_bytes),
         )
     )
 
@@ -521,45 +525,21 @@ def parse_assign_step(assign_step: pb.AssignStep) -> dict[str, Any]:
 
 def parse_data_response(data_response: pb.DataResponse) -> dict[str, Any]:
     step_id = _resolve_step_id(data_response.step_id)
-    items: list[dict[str, Any]] = []
-    for item in data_response.items:
-        item_type = item.WhichOneof("item")
-        if item_type == "label_item":
-            label = item.label_item
-            items.append({"id": label.id, "name": label.name, "color": label.color})
-        elif item_type == "sample_item":
-            sample = item.sample_item
-            items.append(
-                {
-                    "id": sample.id,
-                    "asset_hash": sample.asset_hash,
-                    "download_url": sample.download_url,
-                    "width": int(sample.width),
-                    "height": int(sample.height),
-                    "meta": struct_to_dict(sample.meta),
-                }
-            )
-        elif item_type == "annotation_item":
-            ann = item.annotation_item
-            obb = struct_to_dict(ann.obb)
-            items.append(
-                {
-                    "id": ann.id,
-                    "sample_id": ann.sample_id,
-                    "category_id": ann.category_id,
-                    "bbox_xywh": [float(v) for v in ann.bbox_xywh],
-                    "obb": obb or None,
-                    "source": ann.source,
-                    "confidence": float(ann.confidence),
-                }
-            )
     return {
         "request_id": data_response.request_id,
         "reply_to": data_response.reply_to,
         "step_id": step_id,
         "query_type": query_type_to_text(data_response.query_type),
-        "items": items,
+        "payload_id": data_response.payload_id,
+        "chunk_index": int(data_response.chunk_index),
+        "chunk_count": int(data_response.chunk_count),
+        "header_proto": bytes(data_response.header_proto),
+        "payload_chunk": bytes(data_response.payload_chunk),
+        "payload_total_size": int(data_response.payload_total_size),
+        "payload_checksum_crc32c": int(data_response.payload_checksum_crc32c),
+        "chunk_checksum_crc32c": int(data_response.chunk_checksum_crc32c),
         "next_cursor": data_response.next_cursor or None,
+        "is_last_chunk": bool(data_response.is_last_chunk),
     }
 
 

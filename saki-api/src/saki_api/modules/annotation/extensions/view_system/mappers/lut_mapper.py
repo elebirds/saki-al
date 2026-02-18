@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
+from saki_api.modules.annotation.extensions.data_formats.fedo.enum import FedoView
 from saki_api.modules.annotation.extensions.data_formats.fedo.lookup import LookupTable
 from saki_api.modules.annotation.extensions.view_system.base import BaseViewMapper
 
@@ -26,8 +27,8 @@ class LUTViewMapper(BaseViewMapper):
     """
 
     # View identifiers
-    VIEW_TIME_ENERGY = "time-energy"
-    VIEW_L_OMEGAD = "L-omegad"
+    VIEW_TIME_ENERGY = FedoView.TIME_ENERGY.value
+    VIEW_L_OMEGAD = FedoView.L_OMEGAD.value
 
     def __init__(self, lookup_table: LookupTable):
         """
@@ -177,7 +178,13 @@ class LUTViewMapper(BaseViewMapper):
 
     # ==================== BaseViewMapper Interface ====================
 
-    def pixel_to_physical(self, x: float, y: float, view: str = "time-energy", **kwargs) -> Tuple[float, float]:
+    def pixel_to_physical(
+            self,
+            x: float,
+            y: float,
+            view: str = FedoView.TIME_ENERGY.value,
+            **kwargs
+    ) -> Tuple[float, float]:
         """
         Convert pixel coordinates to physical coordinates.
 
@@ -193,17 +200,23 @@ class LUTViewMapper(BaseViewMapper):
         image_width = kwargs.get("image_width", self.lookup.n_time)
         image_height = kwargs.get("image_height", self.lookup.n_energy)
 
-        if view == self.VIEW_TIME_ENERGY:
+        view_key = FedoView.parse(view).value
+        if view_key == self.VIEW_TIME_ENERGY:
             return self.pixel_to_physical_te(x, y, image_width, image_height)
-        elif view == self.VIEW_L_OMEGAD:
+        elif view_key == self.VIEW_L_OMEGAD:
             l_xlim = kwargs.get("l_xlim", (1.2, 1.9))
             wd_ylim = kwargs.get("wd_ylim", (0.0, 4.0))
             return self.pixel_to_physical_lwd(x, y, image_width, image_height, l_xlim, wd_ylim)
         else:
             raise ValueError(f"Unknown view: {view}")
 
-    def physical_to_pixel(self, phys_x: float, phys_y: float, view: str = "time-energy", **kwargs) -> Tuple[
-        float, float]:
+    def physical_to_pixel(
+            self,
+            phys_x: float,
+            phys_y: float,
+            view: str = FedoView.TIME_ENERGY.value,
+            **kwargs
+    ) -> Tuple[float, float]:
         """
         Convert physical coordinates to pixel coordinates.
 
@@ -219,9 +232,10 @@ class LUTViewMapper(BaseViewMapper):
         image_width = kwargs.get("image_width", self.lookup.n_time)
         image_height = kwargs.get("image_height", self.lookup.n_energy)
 
-        if view == self.VIEW_TIME_ENERGY:
+        view_key = FedoView.parse(view).value
+        if view_key == self.VIEW_TIME_ENERGY:
             return self.physical_to_pixel_te(phys_x, phys_y, image_width, image_height)
-        elif view == self.VIEW_L_OMEGAD:
+        elif view_key == self.VIEW_L_OMEGAD:
             l_xlim = kwargs.get("l_xlim", (1.2, 1.9))
             wd_ylim = kwargs.get("wd_ylim", (0.0, 4.0))
             return self.physical_to_pixel_lwd(phys_x, phys_y, image_width, image_height, l_xlim, wd_ylim)

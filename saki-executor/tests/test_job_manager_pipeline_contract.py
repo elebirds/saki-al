@@ -8,6 +8,7 @@ from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, StepExecutionRequest
 from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
+from runtime_data_test_helper import build_data_response_message
 
 
 def _build_manager(tmp_path: Path) -> StepManager:
@@ -75,15 +76,12 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
         payload_type = message.WhichOneof("payload")
         if payload_type == "data_request":
             req = message.data_request
-            return pb.RuntimeMessage(
-                data_response=pb.DataResponse(
-                    request_id=f"resp-{req.request_id}",
-                    reply_to=req.request_id,
-                    step_id=req.step_id,
-                    query_type=req.query_type,
-                    items=[pb.DataItem(sample_item=pb.SampleItem(id="sample-1"))],
-                    next_cursor="",
-                )
+            return build_data_response_message(
+                request_id=f"resp-{req.request_id}",
+                reply_to=req.request_id,
+                step_id=req.step_id,
+                query_type=req.query_type,
+                items=[pb.DataItem(sample_item=pb.SampleItem(id="sample-1"))],
             )
         if payload_type == "upload_ticket_request":
             req = message.upload_ticket_request

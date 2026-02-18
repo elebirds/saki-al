@@ -246,16 +246,16 @@ class GeometryView:
     def vertices(self) -> list[tuple[float, float]]:
         """返回 4 顶点。
 
-        rect/obb 都返回 `TL, TR, BR, BL`。其中 OBB 的 TL/TR/BR/BL 是局部角点顺序，
-        不是按屏幕坐标排序。
+        rect 返回屏幕 `TL, TR, BR, BL`。
+        obb 返回局部角点顺序 `TL, TR, BR, BL`（非屏幕排序）。
         """
 
         # Spec: docs/IR_SPEC.md#7-vertices-and-aabb
         kind = self.kind()
         if kind == "rect":
-            return geom.rect_to_vertices(self._geom.rect)
+            return geom.rect_to_vertices_screen(self._geom.rect)
         if kind == "obb":
-            return geom.obb_to_vertices(self._geom.obb)
+            return geom.obb_to_vertices_local(self._geom.obb)
         raise IRError(ERR_IR_GEOMETRY, "geometry.shape 缺失")
 
     def aabb_rect_tl(self) -> tuple[float, float, float, float]:
@@ -299,7 +299,7 @@ class RectView:
     def vertices(self) -> list[tuple[float, float]]:
         """返回顶点 `TL, TR, BR, BL`。"""
 
-        return geom.rect_to_vertices(self._rect)
+        return geom.rect_to_vertices_screen(self._rect)
 
 
 class ObbView:
@@ -311,17 +311,17 @@ class ObbView:
         self._obb = obb
 
     def center(self) -> tuple[float, float, float, float, float]:
-        """返回 `(cx, cy, w, h, angle_deg_cw)`。"""
+        """返回 `(cx, cy, w, h, angle_deg_ccw)`。"""
 
         return (
             float(self._obb.cx),
             float(self._obb.cy),
             float(self._obb.width),
             float(self._obb.height),
-            float(self._obb.angle_deg_cw),
+            float(self._obb.angle_deg_ccw),
         )
 
     def vertices(self) -> list[tuple[float, float]]:
         """返回 OBB 顶点 `TL, TR, BR, BL`（局部角点顺序）。"""
 
-        return geom.obb_to_vertices(self._obb)
+        return geom.obb_to_vertices_local(self._obb)

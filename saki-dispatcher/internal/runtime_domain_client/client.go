@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"strings"
 	"sync"
@@ -326,16 +327,34 @@ func (c *Client) AdvanceBranchHead(
 func (c *Client) QueryData(
 	ctx context.Context,
 	req *runtimedomainv1.DataRequest,
-) (*runtimedomainv1.DataResponse, error) {
+) ([]*runtimedomainv1.DataResponse, error) {
 	client, token, timeout, err := c.clientForCall()
 	if err != nil {
 		return nil, err
 	}
 	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
 	defer cancel()
-	resp, callErr := client.QueryData(callCtx, req)
-	c.handleCallError(callErr)
-	return resp, callErr
+
+	stream, callErr := client.QueryData(callCtx, req)
+	if callErr != nil {
+		c.handleCallError(callErr)
+		return nil, callErr
+	}
+
+	responses := make([]*runtimedomainv1.DataResponse, 0, 1)
+	for {
+		resp, recvErr := stream.Recv()
+		if recvErr == io.EOF {
+			break
+		}
+		if recvErr != nil {
+			c.handleCallError(recvErr)
+			return nil, recvErr
+		}
+		responses = append(responses, resp)
+	}
+	c.handleCallError(nil)
+	return responses, nil
 }
 
 func (c *Client) CreateUploadTicket(

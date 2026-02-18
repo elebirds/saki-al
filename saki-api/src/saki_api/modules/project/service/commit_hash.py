@@ -42,7 +42,8 @@ async def build_snapshot_signature(session: AsyncSession, commit_id: uuid.UUID) 
             Annotation.type,
             Annotation.source,
             Annotation.confidence,
-            Annotation.data,
+            Annotation.geometry,
+            Annotation.attrs,
             Label.name,
         )
         .join(Annotation, Annotation.id == CommitAnnotationMap.annotation_id)
@@ -60,7 +61,8 @@ async def build_snapshot_signature(session: AsyncSession, commit_id: uuid.UUID) 
             ann_type,
             ann_source,
             confidence,
-            ann_data,
+            ann_geometry,
+            ann_attrs,
             label_name,
         ) = row
         snapshot_items.append(
@@ -73,7 +75,8 @@ async def build_snapshot_signature(session: AsyncSession, commit_id: uuid.UUID) 
                 "source": str(ann_source),
                 "confidence": float(confidence),
                 "label_name": str(label_name),
-                "data": ann_data or {},
+                "geometry": ann_geometry or {},
+                "attrs": ann_attrs or {},
             }
         )
 
@@ -86,7 +89,8 @@ async def build_snapshot_signature(session: AsyncSession, commit_id: uuid.UUID) 
             item["type"],
             item["label_name"],
             item["source"],
-            _canonical_json(item["data"]),
+            _canonical_json(item["geometry"]),
+            _canonical_json(item["attrs"]),
             item["confidence"],
         )
     )

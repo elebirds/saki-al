@@ -25,7 +25,8 @@ class AgentClient:
         self.step_manager = step_manager
 
         self._outbox: asyncio.Queue[pb.RuntimeMessage] = asyncio.Queue()
-        self._pending: dict[str, asyncio.Future[pb.RuntimeMessage]] = {}
+        self._pending: dict[str, asyncio.Future[pb.RuntimeMessage | list[pb.RuntimeMessage]]] = {}
+        self._pending_data_chunks: dict[str, list[pb.RuntimeMessage]] = {}
 
         self._running = False
         self._connected = False
@@ -41,7 +42,11 @@ class AgentClient:
             raise TypeError("send_message only accepts RuntimeMessage")
         await self._outbox.put(message)
 
-    async def request_message(self, message: pb.RuntimeMessage, timeout_sec: int = 60) -> pb.RuntimeMessage:
+    async def request_message(
+        self,
+        message: pb.RuntimeMessage,
+        timeout_sec: int = 60,
+    ) -> pb.RuntimeMessage | list[pb.RuntimeMessage]:
         if not isinstance(message, pb.RuntimeMessage):
             raise TypeError("request_message only accepts RuntimeMessage")
 
@@ -51,12 +56,19 @@ class AgentClient:
             runtime_codec.set_message_request_id(message, request_id)
 
         loop = asyncio.get_running_loop()
-        future: asyncio.Future[pb.RuntimeMessage] = loop.create_future()
+        future: asyncio.Future[pb.RuntimeMessage | list[pb.RuntimeMessage]] = loop.create_future()
         self._pending[request_id] = future
         await self.send_message(message)
 
         try:
             result = await asyncio.wait_for(future, timeout=timeout_sec)
+            if isinstance(result, list):
+                if result:
+                    first = result[0]
+                    if first.WhichOneof("payload") == "error":
+                        parsed = runtime_codec.parse_error(first.error)
+                        raise RuntimeError(str(parsed.get("error") or parsed.get("message") or "runtime error"))
+                return result
             payload_type = result.WhichOneof("payload")
             if payload_type == "error":
                 parsed = runtime_codec.parse_error(result.error)
@@ -64,6 +76,7 @@ class AgentClient:
             return result
         finally:
             self._pending.pop(request_id, None)
+            self._pending_data_chunks.pop(request_id, None)
 
     def transport_snapshot(self) -> dict[str, Any]:
         return {
@@ -194,6 +207,7 @@ class AgentClient:
             if not future.done():
                 future.set_exception(RuntimeError(reason))
         self._pending.clear()
+        self._pending_data_chunks.clear()
 
     async def _handle_incoming(self, message: pb.RuntimeMessage) -> None:
         payload_type = message.WhichOneof("payload")
@@ -202,7 +216,16 @@ class AgentClient:
             reply_to = str(message.data_response.reply_to or "")
             future = self._pending.get(reply_to)
             if future and not future.done():
-                future.set_result(message)
+                response = message.data_response
+                is_chunked = bool(response.payload_id) or int(response.chunk_count) > 0
+                if is_chunked:
+                    chunks = self._pending_data_chunks.setdefault(reply_to, [])
+                    chunks.append(message)
+                    if response.is_last_chunk:
+                        final_chunks = self._pending_data_chunks.pop(reply_to, [])
+                        future.set_result(final_chunks or [message])
+                else:
+                    future.set_result(message)
             logger.debug("收到响应 type=data_response reply_to={}", reply_to)
             return
 

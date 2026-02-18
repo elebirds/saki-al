@@ -7,9 +7,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Callable
 
+from google.protobuf.json_format import ParseDict
 from loguru import logger
 from sqlmodel import select
 
+from saki_ir.codec import encode_payload
+from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
+from saki_ir.transport import DEFAULT_CHUNK_BYTES, split_encoded_payload
 from saki_api.core.config import settings
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.infra.db.session import SessionLocal
@@ -43,6 +47,11 @@ class _InvalidRuntimeRequest(Exception):
     reason: str
 
 
+_MIN_CHUNK_BYTES = 64 * 1024
+_SERVER_MAX_CHUNK_BYTES = 1024 * 1024
+_DEFAULT_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
+
+
 class RuntimeControlIngressService:
     """Domain-facing handler for runtime-control ingress payloads."""
 
@@ -64,21 +73,23 @@ class RuntimeControlIngressService:
             self._storage = get_storage_provider()
         return self._storage
 
-    async def handle_data_request(self, message: pb.DataRequest) -> pb.RuntimeMessage:
+    async def handle_data_request(self, message: pb.DataRequest) -> list[pb.RuntimeMessage]:
         try:
             request = self._decode_data_request(message)
         except _InvalidRuntimeRequest as exc:
-            return runtime_codec.build_error_message(
-                code="invalid_data_request",
-                message=exc.message,
-                reply_to=str(message.request_id or ""),
-                step_id=str(message.step_id or ""),
-                query_type=int(message.query_type),
-                reason=exc.reason,
-            )
+            return [
+                runtime_codec.build_error_message(
+                    code="invalid_data_request",
+                    message=exc.message,
+                    reply_to=str(message.request_id or ""),
+                    step_id=str(message.step_id or ""),
+                    query_type=int(message.query_type),
+                    reason=exc.reason,
+                )
+            ]
 
         try:
-            items, next_cursor = await self._query_data_items(
+            batch, next_cursor = await self._query_data_batch(
                 query_type=request.query_type,
                 project_id=request.project_id,
                 commit_id=request.commit_id,
@@ -92,25 +103,45 @@ class RuntimeControlIngressService:
                 request.step_id,
                 exc,
             )
-            return runtime_codec.build_error_message(
-                code="data_query_failed",
-                message="data query failed",
-                reply_to=request.request_id,
-                step_id=request.step_id,
-                query_type=request.query_type,
-                reason=str(exc),
-            )
+            return [
+                runtime_codec.build_error_message(
+                    code="data_query_failed",
+                    message="data query failed",
+                    reply_to=request.request_id,
+                    step_id=request.step_id,
+                    query_type=request.query_type,
+                    reason=str(exc),
+                )
+            ]
 
-        return pb.RuntimeMessage(
-            data_response=pb.DataResponse(
-                request_id=str(uuid.uuid4()),
-                reply_to=request.request_id,
-                step_id=request.step_id,
-                query_type=request.query_type,
-                items=items,
-                next_cursor=next_cursor or "",
+        encoded = encode_payload(batch)
+        chunk_bytes = self._effective_chunk_bytes(request.preferred_chunk_bytes)
+        chunks = split_encoded_payload(encoded, chunk_bytes=chunk_bytes)
+
+        responses: list[pb.RuntimeMessage] = []
+        for chunk in chunks:
+            is_last = bool(chunk["is_last_chunk"])
+            responses.append(
+                pb.RuntimeMessage(
+                    data_response=pb.DataResponse(
+                        request_id=str(uuid.uuid4()),
+                        reply_to=request.request_id,
+                        step_id=request.step_id,
+                        query_type=request.query_type,
+                        payload_id=chunk["payload_id"],
+                        chunk_index=chunk["chunk_index"],
+                        chunk_count=chunk["chunk_count"],
+                        header_proto=chunk["header_proto"],
+                        payload_chunk=chunk["payload_chunk"],
+                        payload_total_size=chunk["payload_total_size"],
+                        payload_checksum_crc32c=chunk["payload_checksum_crc32c"],
+                        chunk_checksum_crc32c=chunk["chunk_checksum_crc32c"],
+                        next_cursor=(next_cursor or "") if is_last else "",
+                        is_last_chunk=is_last,
+                    )
+                )
             )
-        )
+        return responses
 
     async def handle_upload_ticket_request(self, message: pb.UploadTicketRequest) -> pb.RuntimeMessage:
         try:
@@ -236,6 +267,8 @@ class RuntimeControlIngressService:
             commit_id=commit_id,
             limit=max(1, min(int(message.limit or 1000), 5000)),
             offset=self._parse_cursor(message.cursor),
+            preferred_chunk_bytes=max(0, int(message.preferred_chunk_bytes or 0)),
+            max_uncompressed_bytes=max(0, int(message.max_uncompressed_bytes or _DEFAULT_MAX_UNCOMPRESSED_BYTES)),
         )
 
     def _decode_upload_ticket_request(self, message: pb.UploadTicketRequest) -> RuntimeUploadTicketRequestDTO:
@@ -255,7 +288,7 @@ class RuntimeControlIngressService:
             content_type=str(message.content_type or "application/octet-stream"),
         )
 
-    async def _query_data_items(
+    async def _query_data_batch(
             self,
             *,
             query_type: int,
@@ -263,7 +296,7 @@ class RuntimeControlIngressService:
             commit_id: uuid.UUID,
             limit: int,
             offset: int,
-    ) -> tuple[list[pb.DataItem], str | None]:
+    ) -> tuple[irpb.DataBatchIR, str | None]:
         async with self._session_local() as session:
             if query_type == pb.LABELS:
                 rows = list(
@@ -279,10 +312,16 @@ class RuntimeControlIngressService:
                 )
                 page, next_cursor = self._paginate(rows, limit=limit, offset=offset)
                 items = [
-                    pb.DataItem(label_item=pb.LabelItem(id=str(item.id), name=item.name or "", color=item.color or ""))
+                    irpb.DataItemIR(
+                        label=irpb.LabelRecord(
+                            id=str(item.id),
+                            name=item.name or "",
+                            color=item.color or "",
+                        )
+                    )
                     for item in page
                 ]
-                return items, next_cursor
+                return irpb.DataBatchIR(items=items), next_cursor
 
             if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES}:
                 dataset_ids = [
@@ -294,7 +333,7 @@ class RuntimeControlIngressService:
                     ).all()
                 ]
                 if not dataset_ids:
-                    return [], None
+                    return irpb.DataBatchIR(), None
 
                 base_stmt = select(Sample).where(Sample.dataset_id.in_(dataset_ids))
                 if query_type == pb.UNLABELED_SAMPLES:
@@ -320,7 +359,7 @@ class RuntimeControlIngressService:
                 )
                 page, next_cursor = self._paginate(rows, limit=limit, offset=offset)
 
-                items: list[pb.DataItem] = []
+                items: list[irpb.DataItemIR] = []
                 for sample in page:
                     width = int((sample.meta_info or {}).get("width") or 0)
                     height = int((sample.meta_info or {}).get("height") or 0)
@@ -338,8 +377,8 @@ class RuntimeControlIngressService:
                             except Exception:
                                 download_url = ""
                     items.append(
-                        pb.DataItem(
-                            sample_item=pb.SampleItem(
+                        irpb.DataItemIR(
+                            sample=irpb.SampleRecord(
                                 id=str(sample.id),
                                 asset_hash=asset_hash,
                                 download_url=download_url,
@@ -349,7 +388,7 @@ class RuntimeControlIngressService:
                             )
                         )
                     )
-                return items, next_cursor
+                return irpb.DataBatchIR(items=items), next_cursor
 
             if query_type == pb.ANNOTATIONS:
                 rows = list(
@@ -368,33 +407,53 @@ class RuntimeControlIngressService:
                     ).all()
                 )
                 page, next_cursor = self._paginate(rows, limit=limit, offset=offset)
-                items: list[pb.DataItem] = []
+                items: list[irpb.DataItemIR] = []
                 for ann in page:
-                    payload = dict(ann.data or {})
-                    bbox_xywh = [
-                        float(payload.get("x", 0.0)),
-                        float(payload.get("y", 0.0)),
-                        float(payload.get("width", 0.0)),
-                        float(payload.get("height", 0.0)),
-                    ]
+                    geometry = irpb.Geometry()
+                    try:
+                        ParseDict(dict(ann.geometry or {}), geometry, ignore_unknown_fields=False)
+                    except Exception as exc:
+                        raise RuntimeError(f"invalid annotation geometry id={ann.id}") from exc
+
                     items.append(
-                        pb.DataItem(
-                            annotation_item=pb.AnnotationItem(
+                        irpb.DataItemIR(
+                            annotation=irpb.AnnotationRecord(
                                 id=str(ann.id),
                                 sample_id=str(ann.sample_id),
-                                category_id=str(ann.label_id),
-                                bbox_xywh=bbox_xywh,
-                                obb=runtime_codec.dict_to_struct(
-                                    payload.get("obb") if isinstance(payload.get("obb"), dict) else {}
+                                label_id=str(ann.label_id),
+                                geometry=geometry,
+                                source=self._annotation_source_to_ir_enum(
+                                    str(ann.source.value if hasattr(ann.source, "value") else ann.source)
                                 ),
-                                source=str(ann.source.value if hasattr(ann.source, "value") else ann.source),
                                 confidence=float(ann.confidence or 0.0),
+                                attrs=runtime_codec.dict_to_struct(
+                                    ann.attrs if isinstance(ann.attrs, dict) else {}
+                                ),
                             )
                         )
                     )
-                return items, next_cursor
+                return irpb.DataBatchIR(items=items), next_cursor
 
             raise RuntimeError(f"unsupported query_type={query_type}")
+
+    @staticmethod
+    def _annotation_source_to_ir_enum(source: str) -> irpb.AnnotationSource:
+        val = (source or "").strip().lower()
+        if val == "manual":
+            return irpb.ANNOTATION_SOURCE_MANUAL
+        if val == "model":
+            return irpb.ANNOTATION_SOURCE_MODEL
+        if val == "system":
+            return irpb.ANNOTATION_SOURCE_SYSTEM
+        if val == "imported":
+            return irpb.ANNOTATION_SOURCE_IMPORTED
+        return irpb.ANNOTATION_SOURCE_UNSPECIFIED
+
+    @staticmethod
+    def _effective_chunk_bytes(preferred: int) -> int:
+        requested = int(preferred) if preferred > 0 else DEFAULT_CHUNK_BYTES
+        effective = min(requested, _SERVER_MAX_CHUNK_BYTES, DEFAULT_CHUNK_BYTES)
+        return max(_MIN_CHUNK_BYTES, effective)
 
     @staticmethod
     def _parse_uuid(raw: str | None, field_name: str) -> uuid.UUID:

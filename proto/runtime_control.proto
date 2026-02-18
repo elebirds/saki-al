@@ -231,6 +231,8 @@ message DataRequest {
   string commit_id = 5;
   string cursor = 6;
   int32 limit = 7;
+  int32 preferred_chunk_bytes = 8;
+  uint64 max_uncompressed_bytes = 9;
 }
 
 message LabelItem {
@@ -271,8 +273,16 @@ message DataResponse {
   string reply_to = 2;
   string step_id = 3;
   RuntimeQueryType query_type = 4;
-  repeated DataItem items = 5;
-  string next_cursor = 6;
+  string payload_id = 5;
+  uint32 chunk_index = 6;
+  uint32 chunk_count = 7;
+  bytes header_proto = 8;
+  bytes payload_chunk = 9;
+  uint64 payload_total_size = 10;
+  uint32 payload_checksum_crc32c = 11;
+  uint32 chunk_checksum_crc32c = 12;
+  string next_cursor = 13;
+  bool is_last_chunk = 14;
 }
 
 message UploadTicketRequest {

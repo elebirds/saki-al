@@ -60,6 +60,7 @@ def _build_metadata(
             'cmap': config.cmap,
             'l_xlim': l_xlim,
             'wd_ylim': wd_ylim,
+            'mapping_time_gap_threshold': config.mapping_time_gap_threshold,
         }
     }
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from saki_ir.geom import obb_to_vertices, rect_tl_to_center
+from saki_ir.geom import obb_to_vertices_screen, rect_tl_to_center
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as annotationirv1
 
 from .base import (
@@ -251,7 +251,7 @@ def ir_to_yolo_obb_txt(
             cy = float(obb.cy)
             w = float(obb.width)
             h = float(obb.height)
-            angle_deg = _normalize_angle_deg(float(obb.angle_deg_cw))
+            angle_deg = _normalize_angle_deg(float(obb.angle_deg_ccw))
 
             if ctx.yolo_is_normalized:
                 cx = _clamp01(cx / float(image_w))
@@ -270,7 +270,7 @@ def ir_to_yolo_obb_txt(
             )
             continue
 
-        points = obb_to_vertices(obb)
+        points = obb_to_vertices_screen(obb)
         flat: list[str] = []
         for x, y in points:
             if ctx.yolo_is_normalized:
@@ -376,7 +376,7 @@ def _parse_rbox_to_obb(
         cy=float(cy),
         width=float(w),
         height=float(h),
-        angle_deg_cw=float(angle_deg),
+        angle_deg_ccw=float(angle_deg),
     )
 
 
@@ -442,7 +442,7 @@ def _parse_poly8_to_obb(
         cy=float(cy),
         width=float(w),
         height=float(h),
-        angle_deg_cw=float(angle_deg),
+        angle_deg_ccw=float(angle_deg),
     )
 
 
@@ -468,7 +468,7 @@ def _ann_to_obb(
         obb = ann.geometry.obb
     elif shape == "rect":
         cx, cy, w, h = rect_tl_to_center(ann.geometry.rect)
-        obb = annotationirv1.ObbGeometry(cx=cx, cy=cy, width=w, height=h, angle_deg_cw=0.0)
+        obb = annotationirv1.ObbGeometry(cx=cx, cy=cy, width=w, height=h, angle_deg_ccw=0.0)
     else:
         fail_or_report(
             ctx=ctx,
@@ -479,7 +479,7 @@ def _ann_to_obb(
         )
         return None
 
-    if not is_finite(obb.cx, obb.cy, obb.width, obb.height, obb.angle_deg_cw):
+    if not is_finite(obb.cx, obb.cy, obb.width, obb.height, obb.angle_deg_ccw):
         fail_or_report(
             ctx=ctx,
             report=report,
@@ -501,7 +501,7 @@ def _ann_to_obb(
 
     out = annotationirv1.ObbGeometry()
     out.CopyFrom(obb)
-    out.angle_deg_cw = _normalize_angle_deg(float(out.angle_deg_cw))
+    out.angle_deg_ccw = _normalize_angle_deg(float(out.angle_deg_ccw))
     return out
 
 
@@ -548,7 +548,7 @@ def _poly8_to_obb(
         return None
 
     vx, vy = vecs[0]
-    angle_deg = _normalize_angle_deg(math.degrees(math.atan2(-vy, vx)))
+    angle_deg = _normalize_angle_deg(math.degrees(math.atan2(vy, vx)))
     return cx, cy, width, height, angle_deg
 
 

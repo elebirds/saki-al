@@ -27,35 +27,20 @@ from saki_api.modules.annotation.api.draft import (
     AnnotationWorkingUpsert,
 )
 from saki_api.modules.annotation.api.sync import AnnotationSyncRequest, AnnotationSyncResponse
-from saki_api.modules.annotation.domain.coordinate_converter import convert_annotation_item_to_frontend, \
-    convert_annotation_data_to_frontend
 from saki_api.modules.annotation.extensions.factory import AnnotationSystemFactory
 from saki_api.modules.annotation.extensions.sync.base import AnnotationContext
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
 
-
-def _normalize_type(annotation_type: object) -> str:
-    if hasattr(annotation_type, "value"):
-        return annotation_type.value
-    return str(annotation_type)
-
-
 def _to_annotation_read(annotation) -> AnnotationRead:
-    payload = annotation.model_dump()
-    payload["data"] = convert_annotation_data_to_frontend(
-        _normalize_type(payload.get("type")),
-        payload.get("data"),
-    )
-    return AnnotationRead.model_validate(payload)
+    return AnnotationRead.model_validate(annotation)
 
 
 def _convert_payload_to_frontend(payload: dict) -> dict:
     annotations = payload.get("annotations") or []
-    converted = [convert_annotation_item_to_frontend(item) for item in annotations]
     return {
-        "annotations": converted,
+        "annotations": annotations,
         "meta": payload.get("meta") or {},
     }
 
@@ -346,7 +331,7 @@ async def save_annotations(
         project_id: Project ID
         branch_name: Branch to save to (default: "master")
         commit_message: Commit message describing changes
-        annotations: List of annotation data dicts
+        annotations: List of annotation geometry/attrs dicts
 
     Returns:
         Created commit information

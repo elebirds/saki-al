@@ -35,7 +35,7 @@ type RuntimeDomainClient interface {
 	CountNewLabelsSinceCommit(ctx context.Context, in *CountNewLabelsSinceCommitRequest, opts ...grpc.CallOption) (*CountNewLabelsSinceCommitResponse, error)
 	ActivateSamples(ctx context.Context, in *ActivateSamplesRequest, opts ...grpc.CallOption) (*ActivateSamplesResponse, error)
 	AdvanceBranchHead(ctx context.Context, in *AdvanceBranchHeadRequest, opts ...grpc.CallOption) (*AdvanceBranchHeadResponse, error)
-	QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (*DataResponse, error)
+	QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataResponse], error)
 	CreateUploadTicket(ctx context.Context, in *UploadTicketRequest, opts ...grpc.CallOption) (*UploadTicketResponse, error)
 }
 
@@ -87,15 +87,24 @@ func (c *runtimeDomainClient) AdvanceBranchHead(ctx context.Context, in *Advance
 	return out, nil
 }
 
-func (c *runtimeDomainClient) QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (*DataResponse, error) {
+func (c *runtimeDomainClient) QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DataResponse)
-	err := c.cc.Invoke(ctx, RuntimeDomain_QueryData_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &RuntimeDomain_ServiceDesc.Streams[0], RuntimeDomain_QueryData_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[DataRequest, DataResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type RuntimeDomain_QueryDataClient = grpc.ServerStreamingClient[DataResponse]
 
 func (c *runtimeDomainClient) CreateUploadTicket(ctx context.Context, in *UploadTicketRequest, opts ...grpc.CallOption) (*UploadTicketResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -115,7 +124,7 @@ type RuntimeDomainServer interface {
 	CountNewLabelsSinceCommit(context.Context, *CountNewLabelsSinceCommitRequest) (*CountNewLabelsSinceCommitResponse, error)
 	ActivateSamples(context.Context, *ActivateSamplesRequest) (*ActivateSamplesResponse, error)
 	AdvanceBranchHead(context.Context, *AdvanceBranchHeadRequest) (*AdvanceBranchHeadResponse, error)
-	QueryData(context.Context, *DataRequest) (*DataResponse, error)
+	QueryData(*DataRequest, grpc.ServerStreamingServer[DataResponse]) error
 	CreateUploadTicket(context.Context, *UploadTicketRequest) (*UploadTicketResponse, error)
 	mustEmbedUnimplementedRuntimeDomainServer()
 }
@@ -139,8 +148,8 @@ func (UnimplementedRuntimeDomainServer) ActivateSamples(context.Context, *Activa
 func (UnimplementedRuntimeDomainServer) AdvanceBranchHead(context.Context, *AdvanceBranchHeadRequest) (*AdvanceBranchHeadResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AdvanceBranchHead not implemented")
 }
-func (UnimplementedRuntimeDomainServer) QueryData(context.Context, *DataRequest) (*DataResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method QueryData not implemented")
+func (UnimplementedRuntimeDomainServer) QueryData(*DataRequest, grpc.ServerStreamingServer[DataResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method QueryData not implemented")
 }
 func (UnimplementedRuntimeDomainServer) CreateUploadTicket(context.Context, *UploadTicketRequest) (*UploadTicketResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateUploadTicket not implemented")
@@ -238,23 +247,16 @@ func _RuntimeDomain_AdvanceBranchHead_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RuntimeDomain_QueryData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DataRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _RuntimeDomain_QueryData_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DataRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(RuntimeDomainServer).QueryData(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RuntimeDomain_QueryData_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RuntimeDomainServer).QueryData(ctx, req.(*DataRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(RuntimeDomainServer).QueryData(m, &grpc.GenericServerStream[DataRequest, DataResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type RuntimeDomain_QueryDataServer = grpc.ServerStreamingServer[DataResponse]
 
 func _RuntimeDomain_CreateUploadTicket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UploadTicketRequest)
@@ -298,14 +300,16 @@ var RuntimeDomain_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RuntimeDomain_AdvanceBranchHead_Handler,
 		},
 		{
-			MethodName: "QueryData",
-			Handler:    _RuntimeDomain_QueryData_Handler,
-		},
-		{
 			MethodName: "CreateUploadTicket",
 			Handler:    _RuntimeDomain_CreateUploadTicket_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "QueryData",
+			Handler:       _RuntimeDomain_QueryData_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "runtime_domain.proto",
 }

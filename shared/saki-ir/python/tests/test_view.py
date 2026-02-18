@@ -84,7 +84,7 @@ def test_geometry_view_vertices_and_aabb() -> None:
     assert rect_view.vertices() == [(10.0, 20.0), (110.0, 20.0), (110.0, 60.0), (10.0, 60.0)]
     assert rect_view.aabb_rect_tl() == (10.0, 20.0, 100.0, 40.0)
 
-    obb_geom = ir.Geometry(obb=ir.ObbGeometry(cx=100.0, cy=50.0, width=6.0, height=2.0, angle_deg_cw=30.0))
+    obb_geom = ir.Geometry(obb=ir.ObbGeometry(cx=100.0, cy=50.0, width=6.0, height=2.0, angle_deg_ccw=30.0))
     obb_view = GeometryView(obb_geom)
     vertices = obb_view.vertices()
     x, y, w, h = obb_view.aabb_rect_tl()
@@ -108,7 +108,7 @@ def test_batch_view_normalized_copy_no_inplace() -> None:
                     sample_id="sample-1",
                     label_id="label-1",
                     confidence=0.8,
-                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=10.0, cy=10.0, width=2.0, height=8.0, angle_deg_cw=15.0)),
+                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=10.0, cy=10.0, width=2.0, height=8.0, angle_deg_ccw=15.0)),
                 )
             )
         ]
@@ -133,7 +133,7 @@ def test_encoded_payload_view_decode_without_normalize() -> None:
                     sample_id="sample-1",
                     label_id="label-1",
                     confidence=0.8,
-                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=10.0, cy=10.0, width=2.0, height=8.0, angle_deg_cw=15.0)),
+                    geometry=ir.Geometry(obb=ir.ObbGeometry(cx=10.0, cy=10.0, width=2.0, height=8.0, angle_deg_ccw=15.0)),
                 )
             )
         ]

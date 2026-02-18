@@ -1,8 +1,10 @@
 package sakir
 
 import (
+	"bytes"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"sync"
 
 	"github.com/klauspost/compress/zstd"
@@ -24,6 +26,8 @@ var (
 	}
 )
 
+const defaultMaxUncompressedSize = 64 * 1024 * 1024
+
 // checksumCRC32C 计算 CRC32C(Castagnoli)。
 func checksumCRC32C(data []byte) uint32 {
 	return crc32.Checksum(data, crc32cTable)
@@ -34,7 +38,7 @@ func checksumCRC32C(data []byte) uint32 {
 // 行为语义：
 // - 不会原地修改输入 batch
 // - 会先调用 Validate(batch)
-// - checksum 覆盖范围是“未压缩 payloadRaw”
+// - checksum 覆盖范围是“压缩后 payload bytes”
 // - 压缩策略由 threshold/level 控制（v1 默认建议 threshold=32768, level=3）
 //
 // Spec: docs/IR_SPEC.md#9-encoded-payload
@@ -77,11 +81,11 @@ func Encode(batch *annotationirv1.DataBatchIR, threshold int, level int) (*annot
 
 	header := &annotationirv1.PayloadHeader{
 		Schema:        annotationirv1.PayloadSchema_PAYLOAD_SCHEMA_DATA_BATCH_IR,
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		Codec:         annotationirv1.PayloadCodec_PAYLOAD_CODEC_PROTOBUF,
 		Compression:   compression,
 		ChecksumAlgo:  annotationirv1.PayloadChecksumAlgo_PAYLOAD_CHECKSUM_ALGO_CRC32C,
-		Checksum:      checksumCRC32C(payloadRaw),
+		Checksum:      checksumCRC32C(payload),
 		Stats:         stats,
 	}
 
@@ -91,8 +95,8 @@ func Encode(batch *annotationirv1.DataBatchIR, threshold int, level int) (*annot
 // Decode 将 EncodedPayload 解码为 DataBatchIR。
 //
 // 行为语义：
-// - 先按 compression 得到未压缩 payloadRaw
-// - 校验 checksum（覆盖 payloadRaw）
+// - 先校验 checksum（覆盖压缩后 payload bytes）
+// - 再按 compression 得到未压缩 payloadRaw
 // - 按 codec 反序列化（v1 仅支持 PROTOBUF）
 // - 成功反序列化后默认执行 Normalize（in-place on decoded object）
 //
@@ -109,19 +113,15 @@ func Decode(encoded *annotationirv1.EncodedPayload) (*annotationirv1.DataBatchIR
 	if header.GetSchema() != annotationirv1.PayloadSchema_PAYLOAD_SCHEMA_DATA_BATCH_IR {
 		return nil, newError(ErrIRSchema, "unsupported schema: %v", header.GetSchema())
 	}
-	if header.GetSchemaVersion() != 1 {
+	if header.GetSchemaVersion() != 2 {
 		return nil, newError(ErrIRSchema, "unsupported schema_version: %d", header.GetSchemaVersion())
-	}
-
-	payloadRaw, err := decodeCompression(header.GetCompression(), encoded.GetPayload())
-	if err != nil {
-		return nil, err
 	}
 
 	if header.GetChecksumAlgo() != annotationirv1.PayloadChecksumAlgo_PAYLOAD_CHECKSUM_ALGO_CRC32C {
 		return nil, newError(ErrIRSchema, "unsupported checksum algo: %v", header.GetChecksumAlgo())
 	}
-	actual := checksumCRC32C(payloadRaw)
+	payloadEncoded := encoded.GetPayload()
+	actual := checksumCRC32C(payloadEncoded)
 	if actual != header.GetChecksum() {
 		return nil, newError(
 			ErrIRChecksumMismatch,
@@ -129,6 +129,11 @@ func Decode(encoded *annotationirv1.EncodedPayload) (*annotationirv1.DataBatchIR
 			header.GetChecksum(),
 			actual,
 		)
+	}
+
+	payloadRaw, err := decodeCompression(header.GetCompression(), payloadEncoded, defaultMaxUncompressedSize)
+	if err != nil {
+		return nil, err
 	}
 
 	batch := &annotationirv1.DataBatchIR{}
@@ -162,13 +167,16 @@ func ReadHeader(encoded *annotationirv1.EncodedPayload) *annotationirv1.PayloadH
 	return encoded.GetHeader()
 }
 
-func decodeCompression(compression annotationirv1.PayloadCompression, payload []byte) ([]byte, error) {
+func decodeCompression(compression annotationirv1.PayloadCompression, payload []byte, maxUncompressedSize int) ([]byte, error) {
 	// Spec: docs/IR_SPEC.md#9-encoded-payload
 	switch compression {
 	case annotationirv1.PayloadCompression_PAYLOAD_COMPRESSION_NONE:
+		if maxUncompressedSize > 0 && len(payload) > maxUncompressedSize {
+			return nil, newError(ErrIRCompressionUnsupported, "payload exceeds limit: %d > %d", len(payload), maxUncompressedSize)
+		}
 		return payload, nil
 	case annotationirv1.PayloadCompression_PAYLOAD_COMPRESSION_ZSTD:
-		return decompressZSTD(payload)
+		return decompressZSTD(payload, maxUncompressedSize)
 	default:
 		return nil, newError(ErrIRCompressionUnsupported, "unsupported compression: %v", compression)
 	}
@@ -198,15 +206,27 @@ func compressZSTD(raw []byte, level int) ([]byte, error) {
 	return encoder.EncodeAll(raw, make([]byte, 0, len(raw))), nil
 }
 
-func decompressZSTD(payload []byte) ([]byte, error) {
+func decompressZSTD(payload []byte, maxUncompressedSize int) ([]byte, error) {
 	decoder := decoderPool.Get().(*zstd.Decoder)
 	defer decoderPool.Put(decoder)
 
-	out, err := decoder.DecodeAll(payload, nil)
-	if err != nil {
+	if err := decoder.Reset(bytes.NewReader(payload)); err != nil {
+		return nil, newError(ErrIRCompressionUnsupported, "zstd decoder reset failed: %v", err)
+	}
+
+	limit := maxUncompressedSize
+	if limit <= 0 {
+		limit = defaultMaxUncompressedSize
+	}
+	var buf bytes.Buffer
+	n, err := io.CopyN(&buf, decoder, int64(limit)+1)
+	if err != nil && err != io.EOF {
 		return nil, newError(ErrIRCompressionUnsupported, "zstd decompress failed: %v", err)
 	}
-	return out, nil
+	if n > int64(limit) {
+		return nil, newError(ErrIRCompressionUnsupported, "decompressed payload exceeds limit: %d > %d", n, limit)
+	}
+	return buf.Bytes(), nil
 }
 
 func getEncoderPool(level int) *sync.Pool {

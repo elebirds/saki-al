@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1esaki/ir/v1/annotation_ir.proto\x12\nsaki.ir.v1\x1a\x1cgoogle/protobuf/struct.proto\"C\n\x0cRectGeometry\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\r\n\x05width\x18\x03 \x01(\x02\x12\x0e\n\x06height\x18\x04 \x01(\x02\"Z\n\x0bObbGeometry\x12\n\n\x02\x63x\x18\x01 \x01(\x02\x12\n\n\x02\x63y\x18\x02 \x01(\x02\x12\r\n\x05width\x18\x03 \x01(\x02\x12\x0e\n\x06height\x18\x04 \x01(\x02\x12\x14\n\x0c\x61ngle_deg_cw\x18\x05 \x01(\x02\"e\n\x08Geometry\x12(\n\x04rect\x18\x01 \x01(\x0b\x32\x18.saki.ir.v1.RectGeometryH\x00\x12&\n\x03obb\x18\x02 \x01(\x0b\x32\x17.saki.ir.v1.ObbGeometryH\x00\x42\x07\n\x05shape\"6\n\x0bLabelRecord\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05\x63olor\x18\x03 \x01(\t\"\x8a\x01\n\x0cSampleRecord\x12\n\n\x02id\x18\x01 \x01(\t\x12\x12\n\nasset_hash\x18\x02 \x01(\t\x12\x14\n\x0c\x64ownload_url\x18\x03 \x01(\t\x12\r\n\x05width\x18\x04 \x01(\x05\x12\x0e\n\x06height\x18\x05 \x01(\x05\x12%\n\x04meta\x18\x06 \x01(\x0b\x32\x17.google.protobuf.Struct\"\xd5\x01\n\x10\x41nnotationRecord\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\tsample_id\x18\x02 \x01(\t\x12\x10\n\x08label_id\x18\x03 \x01(\t\x12&\n\x08geometry\x18\x04 \x01(\x0b\x32\x14.saki.ir.v1.Geometry\x12,\n\x06source\x18\x05 \x01(\x0e\x32\x1c.saki.ir.v1.AnnotationSource\x12\x12\n\nconfidence\x18\x06 \x01(\x02\x12&\n\x05\x61ttrs\x18\x07 \x01(\x0b\x32\x17.google.protobuf.Struct\"\x9e\x01\n\nDataItemIR\x12(\n\x05label\x18\x01 \x01(\x0b\x32\x17.saki.ir.v1.LabelRecordH\x00\x12*\n\x06sample\x18\x02 \x01(\x0b\x32\x18.saki.ir.v1.SampleRecordH\x00\x12\x32\n\nannotation\x18\x03 \x01(\x0b\x32\x1c.saki.ir.v1.AnnotationRecordH\x00\x42\x06\n\x04item\"4\n\x0b\x44\x61taBatchIR\x12%\n\x05items\x18\x01 \x03(\x0b\x32\x16.saki.ir.v1.DataItemIR\"\x98\x01\n\x0cPayloadStats\x12\x12\n\nitem_count\x18\x01 \x01(\r\x12\x18\n\x10\x61nnotation_count\x18\x02 \x01(\r\x12\x14\n\x0csample_count\x18\x03 \x01(\r\x12\x13\n\x0blabel_count\x18\x04 \x01(\r\x12\x14\n\x0cpayload_size\x18\x05 \x01(\x04\x12\x19\n\x11uncompressed_size\x18\x06 \x01(\x04\"\xa3\x02\n\rPayloadHeader\x12)\n\x06schema\x18\x01 \x01(\x0e\x32\x19.saki.ir.v1.PayloadSchema\x12\x16\n\x0eschema_version\x18\x02 \x01(\r\x12\'\n\x05\x63odec\x18\x03 \x01(\x0e\x32\x18.saki.ir.v1.PayloadCodec\x12\x33\n\x0b\x63ompression\x18\x04 \x01(\x0e\x32\x1e.saki.ir.v1.PayloadCompression\x12\x36\n\rchecksum_algo\x18\x05 \x01(\x0e\x32\x1f.saki.ir.v1.PayloadChecksumAlgo\x12\x10\n\x08\x63hecksum\x18\x06 \x01(\r\x12\'\n\x05stats\x18\x07 \x01(\x0b\x32\x18.saki.ir.v1.PayloadStats\"L\n\x0e\x45ncodedPayload\x12)\n\x06header\x18\x01 \x01(\x0b\x32\x19.saki.ir.v1.PayloadHeader\x12\x0f\n\x07payload\x18\x02 \x01(\x0c*\xae\x01\n\x10\x41nnotationSource\x12!\n\x1d\x41NNOTATION_SOURCE_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x41NNOTATION_SOURCE_MANUAL\x10\x01\x12\x1b\n\x17\x41NNOTATION_SOURCE_MODEL\x10\x02\x12\x1c\n\x18\x41NNOTATION_SOURCE_SYSTEM\x10\x03\x12\x1e\n\x1a\x41NNOTATION_SOURCE_IMPORTED\x10\x04*Q\n\rPayloadSchema\x12\x1e\n\x1aPAYLOAD_SCHEMA_UNSPECIFIED\x10\x00\x12 \n\x1cPAYLOAD_SCHEMA_DATA_BATCH_IR\x10\x01*d\n\x0cPayloadCodec\x12\x1d\n\x19PAYLOAD_CODEC_UNSPECIFIED\x10\x00\x12\x1a\n\x16PAYLOAD_CODEC_PROTOBUF\x10\x01\x12\x19\n\x15PAYLOAD_CODEC_MSGPACK\x10\x02*u\n\x12PayloadCompression\x12#\n\x1fPAYLOAD_COMPRESSION_UNSPECIFIED\x10\x00\x12\x1c\n\x18PAYLOAD_COMPRESSION_NONE\x10\x01\x12\x1c\n\x18PAYLOAD_COMPRESSION_ZSTD\x10\x02*^\n\x13PayloadChecksumAlgo\x12%\n!PAYLOAD_CHECKSUM_ALGO_UNSPECIFIED\x10\x00\x12 \n\x1cPAYLOAD_CHECKSUM_ALGO_CRC32C\x10\x01\x42MZKgithub.com/saki-ai/saki/shared/saki-ir/go/gen/annotationirv1;annotationirv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1esaki/ir/v1/annotation_ir.proto\x12\nsaki.ir.v1\x1a\x1cgoogle/protobuf/struct.proto\"C\n\x0cRectGeometry\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\r\n\x05width\x18\x03 \x01(\x02\x12\x0e\n\x06height\x18\x04 \x01(\x02\"[\n\x0bObbGeometry\x12\n\n\x02\x63x\x18\x01 \x01(\x02\x12\n\n\x02\x63y\x18\x02 \x01(\x02\x12\r\n\x05width\x18\x03 \x01(\x02\x12\x0e\n\x06height\x18\x04 \x01(\x02\x12\x15\n\rangle_deg_ccw\x18\x05 \x01(\x02\"e\n\x08Geometry\x12(\n\x04rect\x18\x01 \x01(\x0b\x32\x18.saki.ir.v1.RectGeometryH\x00\x12&\n\x03obb\x18\x02 \x01(\x0b\x32\x17.saki.ir.v1.ObbGeometryH\x00\x42\x07\n\x05shape\"6\n\x0bLabelRecord\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05\x63olor\x18\x03 \x01(\t\"\x8a\x01\n\x0cSampleRecord\x12\n\n\x02id\x18\x01 \x01(\t\x12\x12\n\nasset_hash\x18\x02 \x01(\t\x12\x14\n\x0c\x64ownload_url\x18\x03 \x01(\t\x12\r\n\x05width\x18\x04 \x01(\x05\x12\x0e\n\x06height\x18\x05 \x01(\x05\x12%\n\x04meta\x18\x06 \x01(\x0b\x32\x17.google.protobuf.Struct\"\xd5\x01\n\x10\x41nnotationRecord\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\tsample_id\x18\x02 \x01(\t\x12\x10\n\x08label_id\x18\x03 \x01(\t\x12&\n\x08geometry\x18\x04 \x01(\x0b\x32\x14.saki.ir.v1.Geometry\x12,\n\x06source\x18\x05 \x01(\x0e\x32\x1c.saki.ir.v1.AnnotationSource\x12\x12\n\nconfidence\x18\x06 \x01(\x02\x12&\n\x05\x61ttrs\x18\x07 \x01(\x0b\x32\x17.google.protobuf.Struct\"\x9e\x01\n\nDataItemIR\x12(\n\x05label\x18\x01 \x01(\x0b\x32\x17.saki.ir.v1.LabelRecordH\x00\x12*\n\x06sample\x18\x02 \x01(\x0b\x32\x18.saki.ir.v1.SampleRecordH\x00\x12\x32\n\nannotation\x18\x03 \x01(\x0b\x32\x1c.saki.ir.v1.AnnotationRecordH\x00\x42\x06\n\x04item\"4\n\x0b\x44\x61taBatchIR\x12%\n\x05items\x18\x01 \x03(\x0b\x32\x16.saki.ir.v1.DataItemIR\"\x98\x01\n\x0cPayloadStats\x12\x12\n\nitem_count\x18\x01 \x01(\r\x12\x18\n\x10\x61nnotation_count\x18\x02 \x01(\r\x12\x14\n\x0csample_count\x18\x03 \x01(\r\x12\x13\n\x0blabel_count\x18\x04 \x01(\r\x12\x14\n\x0cpayload_size\x18\x05 \x01(\x04\x12\x19\n\x11uncompressed_size\x18\x06 \x01(\x04\"\xa3\x02\n\rPayloadHeader\x12)\n\x06schema\x18\x01 \x01(\x0e\x32\x19.saki.ir.v1.PayloadSchema\x12\x16\n\x0eschema_version\x18\x02 \x01(\r\x12\'\n\x05\x63odec\x18\x03 \x01(\x0e\x32\x18.saki.ir.v1.PayloadCodec\x12\x33\n\x0b\x63ompression\x18\x04 \x01(\x0e\x32\x1e.saki.ir.v1.PayloadCompression\x12\x36\n\rchecksum_algo\x18\x05 \x01(\x0e\x32\x1f.saki.ir.v1.PayloadChecksumAlgo\x12\x10\n\x08\x63hecksum\x18\x06 \x01(\r\x12\'\n\x05stats\x18\x07 \x01(\x0b\x32\x18.saki.ir.v1.PayloadStats\"L\n\x0e\x45ncodedPayload\x12)\n\x06header\x18\x01 \x01(\x0b\x32\x19.saki.ir.v1.PayloadHeader\x12\x0f\n\x07payload\x18\x02 \x01(\x0c*\xae\x01\n\x10\x41nnotationSource\x12!\n\x1d\x41NNOTATION_SOURCE_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x41NNOTATION_SOURCE_MANUAL\x10\x01\x12\x1b\n\x17\x41NNOTATION_SOURCE_MODEL\x10\x02\x12\x1c\n\x18\x41NNOTATION_SOURCE_SYSTEM\x10\x03\x12\x1e\n\x1a\x41NNOTATION_SOURCE_IMPORTED\x10\x04*Q\n\rPayloadSchema\x12\x1e\n\x1aPAYLOAD_SCHEMA_UNSPECIFIED\x10\x00\x12 \n\x1cPAYLOAD_SCHEMA_DATA_BATCH_IR\x10\x01*d\n\x0cPayloadCodec\x12\x1d\n\x19PAYLOAD_CODEC_UNSPECIFIED\x10\x00\x12\x1a\n\x16PAYLOAD_CODEC_PROTOBUF\x10\x01\x12\x19\n\x15PAYLOAD_CODEC_MSGPACK\x10\x02*u\n\x12PayloadCompression\x12#\n\x1fPAYLOAD_COMPRESSION_UNSPECIFIED\x10\x00\x12\x1c\n\x18PAYLOAD_COMPRESSION_NONE\x10\x01\x12\x1c\n\x18PAYLOAD_COMPRESSION_ZSTD\x10\x02*^\n\x13PayloadChecksumAlgo\x12%\n!PAYLOAD_CHECKSUM_ALGO_UNSPECIFIED\x10\x00\x12 \n\x1cPAYLOAD_CHECKSUM_ALGO_CRC32C\x10\x01\x42MZKgithub.com/saki-ai/saki/shared/saki-ir/go/gen/annotationirv1;annotationirv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,36 +33,36 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'saki.ir.v1.annotation_ir_pb
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'ZKgithub.com/saki-ai/saki/shared/saki-ir/go/gen/annotationirv1;annotationirv1'
-  _globals['_ANNOTATIONSOURCE']._serialized_start=1496
-  _globals['_ANNOTATIONSOURCE']._serialized_end=1670
-  _globals['_PAYLOADSCHEMA']._serialized_start=1672
-  _globals['_PAYLOADSCHEMA']._serialized_end=1753
-  _globals['_PAYLOADCODEC']._serialized_start=1755
-  _globals['_PAYLOADCODEC']._serialized_end=1855
-  _globals['_PAYLOADCOMPRESSION']._serialized_start=1857
-  _globals['_PAYLOADCOMPRESSION']._serialized_end=1974
-  _globals['_PAYLOADCHECKSUMALGO']._serialized_start=1976
-  _globals['_PAYLOADCHECKSUMALGO']._serialized_end=2070
+  _globals['_ANNOTATIONSOURCE']._serialized_start=1497
+  _globals['_ANNOTATIONSOURCE']._serialized_end=1671
+  _globals['_PAYLOADSCHEMA']._serialized_start=1673
+  _globals['_PAYLOADSCHEMA']._serialized_end=1754
+  _globals['_PAYLOADCODEC']._serialized_start=1756
+  _globals['_PAYLOADCODEC']._serialized_end=1856
+  _globals['_PAYLOADCOMPRESSION']._serialized_start=1858
+  _globals['_PAYLOADCOMPRESSION']._serialized_end=1975
+  _globals['_PAYLOADCHECKSUMALGO']._serialized_start=1977
+  _globals['_PAYLOADCHECKSUMALGO']._serialized_end=2071
   _globals['_RECTGEOMETRY']._serialized_start=76
   _globals['_RECTGEOMETRY']._serialized_end=143
   _globals['_OBBGEOMETRY']._serialized_start=145
-  _globals['_OBBGEOMETRY']._serialized_end=235
-  _globals['_GEOMETRY']._serialized_start=237
-  _globals['_GEOMETRY']._serialized_end=338
-  _globals['_LABELRECORD']._serialized_start=340
-  _globals['_LABELRECORD']._serialized_end=394
-  _globals['_SAMPLERECORD']._serialized_start=397
-  _globals['_SAMPLERECORD']._serialized_end=535
-  _globals['_ANNOTATIONRECORD']._serialized_start=538
-  _globals['_ANNOTATIONRECORD']._serialized_end=751
-  _globals['_DATAITEMIR']._serialized_start=754
-  _globals['_DATAITEMIR']._serialized_end=912
-  _globals['_DATABATCHIR']._serialized_start=914
-  _globals['_DATABATCHIR']._serialized_end=966
-  _globals['_PAYLOADSTATS']._serialized_start=969
-  _globals['_PAYLOADSTATS']._serialized_end=1121
-  _globals['_PAYLOADHEADER']._serialized_start=1124
-  _globals['_PAYLOADHEADER']._serialized_end=1415
-  _globals['_ENCODEDPAYLOAD']._serialized_start=1417
-  _globals['_ENCODEDPAYLOAD']._serialized_end=1493
+  _globals['_OBBGEOMETRY']._serialized_end=236
+  _globals['_GEOMETRY']._serialized_start=238
+  _globals['_GEOMETRY']._serialized_end=339
+  _globals['_LABELRECORD']._serialized_start=341
+  _globals['_LABELRECORD']._serialized_end=395
+  _globals['_SAMPLERECORD']._serialized_start=398
+  _globals['_SAMPLERECORD']._serialized_end=536
+  _globals['_ANNOTATIONRECORD']._serialized_start=539
+  _globals['_ANNOTATIONRECORD']._serialized_end=752
+  _globals['_DATAITEMIR']._serialized_start=755
+  _globals['_DATAITEMIR']._serialized_end=913
+  _globals['_DATABATCHIR']._serialized_start=915
+  _globals['_DATABATCHIR']._serialized_end=967
+  _globals['_PAYLOADSTATS']._serialized_start=970
+  _globals['_PAYLOADSTATS']._serialized_end=1122
+  _globals['_PAYLOADHEADER']._serialized_start=1125
+  _globals['_PAYLOADHEADER']._serialized_end=1416
+  _globals['_ENCODEDPAYLOAD']._serialized_start=1418
+  _globals['_ENCODEDPAYLOAD']._serialized_end=1494
 # @@protoc_insertion_point(module_scope)

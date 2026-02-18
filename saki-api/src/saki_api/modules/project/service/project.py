@@ -33,6 +33,10 @@ from saki_api.modules.annotation.contracts import AnnotationReadGateway
 from saki_api.modules.annotation.domain.annotation import Annotation
 from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.annotation.domain.draft import AnnotationDraft
+from saki_api.modules.annotation.domain.ir_geometry_codec import (
+    normalize_annotation_payload,
+    normalize_annotation_source,
+)
 from saki_api.modules.annotation.service.camap import CAMapService
 from saki_api.modules.project.api import ProjectCreate, ProjectForkCreate, ProjectUpdate
 from saki_api.modules.project.domain.branch import Branch
@@ -52,7 +56,13 @@ from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.access.domain.rbac import ResourceType, Permissions
-from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, ProjectStatus
+from saki_api.modules.shared.modeling.enums import (
+    AnnotationSource,
+    AnnotationType,
+    AuthorType,
+    CommitSampleReviewState,
+    ProjectStatus,
+)
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
 
@@ -365,8 +375,8 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
                     parent_id=annotation_id_map.get(source_annotation.parent_id),
                     type=source_annotation.type,
                     source=source_annotation.source,
-                    data=self._deep_clone_json(source_annotation.data or {}),
-                    extra=self._deep_clone_json(source_annotation.extra or {}),
+                    geometry=self._deep_clone_json(source_annotation.geometry or {}),
+                    attrs=self._deep_clone_json(source_annotation.attrs or {}),
                     confidence=source_annotation.confidence,
                     annotator_id=source_annotation.annotator_id,
                     created_at=source_annotation.created_at,
@@ -1090,18 +1100,29 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
 
     @classmethod
     def _normalize_annotation_item(cls, item: dict) -> dict:
-        ann_type = item.get("type")
-        ann_source = item.get("source")
+        label_id = cls._normalize_annotation_scalar(item.get("label_id"))
+        if not label_id:
+            raise BadRequestAppException("annotation label_id is required")
+
+        ann_source = normalize_annotation_source(item.get("source") or AnnotationSource.MANUAL.value)
+        confidence = float(item.get("confidence") or 1.0)
+        ann_type, geometry, attrs = normalize_annotation_payload(
+            annotation_type=item.get("type") or AnnotationType.RECT.value,
+            geometry_payload=item.get("geometry") or {},
+            attrs_payload=item.get("attrs") or {},
+            confidence=confidence,
+            source=ann_source,
+        )
         return {
             "group_id": cls._normalize_annotation_scalar(item.get("group_id") or item.get("groupId")),
             "lineage_id": cls._normalize_annotation_scalar(item.get("lineage_id") or item.get("lineageId")),
-            "label_id": cls._normalize_annotation_scalar(item.get("label_id")),
+            "label_id": label_id,
             "view_role": item.get("view_role") or item.get("viewRole") or "main",
-            "type": ann_type.value if hasattr(ann_type, "value") else str(ann_type),
-            "source": ann_source.value if hasattr(ann_source, "value") else str(ann_source or "manual"),
-            "data": item.get("data") or {},
-            "extra": item.get("extra") or {},
-            "confidence": float(item.get("confidence") or 1.0),
+            "type": ann_type.value,
+            "source": ann_source.value,
+            "geometry": geometry,
+            "attrs": attrs,
+            "confidence": confidence,
             "annotator_id": cls._normalize_annotation_scalar(item.get("annotator_id") or item.get("annotatorId")),
         }
 
@@ -1115,8 +1136,8 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             "view_role": existing.view_role,
             "type": existing.type,
             "source": existing.source,
-            "data": existing.data,
-            "extra": existing.extra,
+            "geometry": existing.geometry,
+            "attrs": existing.attrs,
             "confidence": existing.confidence,
             "annotator_id": existing.annotator_id,
         })
@@ -1188,26 +1209,27 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             }
 
             for item in draft_items:
-                lineage_id = str(item.get("lineage_id"))
+                normalized_item = self._normalize_annotation_item(item)
+                lineage_id = str(normalized_item.get("lineage_id"))
                 existing_ann = existing_by_lineage.get(lineage_id)
-                if existing_ann and self._is_same_annotation_item(item, existing_ann):
+                if existing_ann and self._is_same_annotation_item(normalized_item, existing_ann):
                     camap_mappings.append((sample_id, existing_ann.id))
                     continue
 
                 annotation = Annotation(
                     project_id=item.get("project_id") or project_id,
                     sample_id=sample_id,
-                    label_id=item.get("label_id"),
-                    group_id=item.get("group_id"),
-                    lineage_id=item.get("lineage_id"),
+                    label_id=normalized_item.get("label_id"),
+                    group_id=normalized_item.get("group_id"),
+                    lineage_id=normalized_item.get("lineage_id"),
                     parent_id=existing_ann.id if existing_ann else None,
-                    view_role=item.get("view_role") or "main",
-                    type=item.get("type"),
-                    source=item.get("source") or "manual",
-                    data=item.get("data") or {},
-                    extra=item.get("extra") or {},
-                    confidence=float(item.get("confidence") or 1.0),
-                    annotator_id=item.get("annotator_id") or author_id,
+                    view_role=normalized_item.get("view_role") or "main",
+                    type=normalized_item.get("type"),
+                    source=normalized_item.get("source") or "manual",
+                    geometry=normalized_item.get("geometry") or {},
+                    attrs=normalized_item.get("attrs") or {},
+                    confidence=float(normalized_item.get("confidence") or 1.0),
+                    annotator_id=normalized_item.get("annotator_id") or author_id,
                 )
                 self.session.add(annotation)
                 new_annotations.append(annotation)
@@ -1344,7 +1366,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         Args:
             project_id: Project ID
             branch_name: Branch name (e.g., "master")
-            annotation_changes: Full snapshot list of annotation data dicts
+            annotation_changes: Full snapshot list of annotation geometry/attrs dicts
             commit_message: Commit message
             author_id: User ID creating the commit
 

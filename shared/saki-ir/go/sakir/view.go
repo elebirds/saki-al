@@ -66,10 +66,10 @@ func (v EncodedPayloadView) DecompressRaw() ([]byte, error) {
 	if header == nil {
 		return nil, newError(ErrIRSchema, "header is missing")
 	}
-	return decodeCompression(header.GetCompression(), v.Encoded.GetPayload())
+	return decodeCompression(header.GetCompression(), v.Encoded.GetPayload(), defaultMaxUncompressedSize)
 }
 
-// VerifyChecksum 只校验 checksum，不执行 decode。
+// VerifyChecksum 只校验 checksum，不执行解压与 decode。
 //
 // Spec: docs/IR_SPEC.md#10-header-only-behavior
 func (v EncodedPayloadView) VerifyChecksum() error {
@@ -83,11 +83,7 @@ func (v EncodedPayloadView) VerifyChecksum() error {
 	if header.GetChecksumAlgo() != annotationirv1.PayloadChecksumAlgo_PAYLOAD_CHECKSUM_ALGO_CRC32C {
 		return newError(ErrIRSchema, "unsupported checksum algo: %v", header.GetChecksumAlgo())
 	}
-	raw, err := v.DecompressRaw()
-	if err != nil {
-		return err
-	}
-	actual := checksumCRC32C(raw)
+	actual := checksumCRC32C(v.Encoded.GetPayload())
 	if actual != header.GetChecksum() {
 		return newError(
 			ErrIRChecksumMismatch,
@@ -170,9 +166,9 @@ func (v GeometryView) Vertices() ([4]Point, error) {
 	}
 	switch shape := v.G.GetShape().(type) {
 	case *annotationirv1.Geometry_Rect:
-		return RectToVertices(shape.Rect), nil
+		return RectToVerticesScreen(shape.Rect), nil
 	case *annotationirv1.Geometry_Obb:
-		return ObbToVertices(shape.Obb), nil
+		return ObbToVerticesLocal(shape.Obb), nil
 	default:
 		return [4]Point{}, newError(ErrIRGeometry, "geometry.shape is missing")
 	}

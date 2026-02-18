@@ -20,6 +20,7 @@ import {useAnnotationShortcuts, useAnnotationState, useAnnotationSync, useWorksp
 import {useProjectSampleList} from '../../hooks/project/useProjectSampleList';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import {canModifyAnnotation} from '../../store/permissionStore';
+import {hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
 import {useFedoAnnotations} from '../../hooks/annotation/useFedoAnnotations';
 
@@ -175,10 +176,11 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     }, [pendingIndex, samples, searchParams, setSearchParams]);
 
     const mapDraftPayloadToAnnotations = useCallback((payload: AnnotationDraftPayload | null) => {
-        if (!payload || payload.annotations.length === 0) {
+        const normalized = hydrateDraftPayload(payload);
+        if (!normalized || normalized.annotations.length === 0) {
             return [];
         }
-        return payload.annotations.map((item) => {
+        return normalized.annotations.map((item) => {
             const groupId = item.groupId || generateUUID();
             const lineageId = item.lineageId || generateUUID();
             const itemId = item.id || lineageId;
@@ -196,8 +198,8 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                 viewRole: item.viewRole,
                 type: item.type,
                 source: item.source,
-                data: item.data,
-                extra: item.extra,
+                geometry: item.geometry,
+                attrs: item.attrs || {},
                 confidence: item.confidence,
                 annotatorId: item.annotatorId,
             } as Annotation;

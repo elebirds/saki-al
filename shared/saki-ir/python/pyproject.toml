@@ -11,6 +11,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dataframe = ["pandas>=2.2.0"]
+yoloio = [
+  "pillow>=10",
+  "pyyaml>=6",
+]
 
 [dependency-groups]
 dev = [

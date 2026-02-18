@@ -1,6 +1,25 @@
 from __future__ import annotations
 
 from saki_ir.codec import decode_payload, decompress_raw, encode_payload, iter_items, read_header, verify_checksum
+from saki_ir.convert import (
+    ConversionContext,
+    ConversionError,
+    ConversionReport,
+    coco_to_ir,
+    ir_to_coco,
+    ir_to_voc_xml,
+    ir_to_yolo_txt,
+    voc_xml_to_ir,
+    yolo_txt_to_ir,
+)
+from saki_ir.convert.io import (
+    load_coco_dataset,
+    load_voc_dataset,
+    load_yolo_dataset,
+    save_coco_dataset,
+    save_voc_dataset,
+    save_yolo_dataset,
+)
 from saki_ir.dataframe import to_dataframe
 from saki_ir.normalize import normalize_ir, validate_ir
 from saki_ir.view import AnnotationView, BatchView, EncodedPayloadView, GeometryView, ObbView, RectView
@@ -33,6 +52,21 @@ __all__ = [
     "read_header",
     "iter_items",
     "to_dataframe",
+    "ConversionContext",
+    "ConversionError",
+    "ConversionReport",
+    "coco_to_ir",
+    "ir_to_coco",
+    "voc_xml_to_ir",
+    "ir_to_voc_xml",
+    "yolo_txt_to_ir",
+    "ir_to_yolo_txt",
+    "load_coco_dataset",
+    "save_coco_dataset",
+    "load_voc_dataset",
+    "save_voc_dataset",
+    "load_yolo_dataset",
+    "save_yolo_dataset",
     "EncodedPayloadView",
     "BatchView",
     "AnnotationView",

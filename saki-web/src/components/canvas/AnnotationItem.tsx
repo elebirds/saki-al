@@ -1,7 +1,7 @@
 import {FC, Fragment, useMemo} from 'react';
 import {Rect, Text as KonvaText} from 'react-konva';
 import Konva from 'konva';
-import {Annotation} from '../../types';
+import {Annotation, ANNOTATION_TOOL_SELECT, ANNOTATION_TYPE_RECT, AnnotationToolType} from '../../types';
 import {canvasDataToGeometry, geometryToCanvasData} from '../../utils/annotationGeometry';
 
 // Helper to extract bbox from Annotation.geometry
@@ -31,7 +31,7 @@ interface AnnotationItemProps {
     image: HTMLImageElement | undefined;
     stageX: number;
     stageY: number;
-    currentTool: string;
+    currentTool: AnnotationToolType;
     onSelect: (id: string) => void;
     onUpdate: (annotation: Annotation) => void;
     /** 是否可以编辑此标注（基于用户权限） */
@@ -59,7 +59,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
     const isGenerated = ann.source === 'auto' || ann.source === 'system' || ann.source === 'model' || ann.source === 'fedo_mapping';
 
     // 生成的标注不能拖拽和变换，没有编辑权限的标注也不能
-    const canDrag = currentTool === 'select' && !isGenerated && canEdit;
+    const canDrag = currentTool === ANNOTATION_TOOL_SELECT && !isGenerated && canEdit;
     const canTransform = !isGenerated && canEdit;
 
     const handleTransformEnd = (e: Konva.KonvaEventObject<Event>) => {
@@ -142,8 +142,8 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
                 shadowBlur={isSelected ? 10 : 0}
                 shadowOpacity={0.6}
                 draggable={canDrag}
-                onClick={() => currentTool === 'select' && onSelect(ann.id)}
-                onTap={() => currentTool === 'select' && onSelect(ann.id)}
+                onClick={() => currentTool === ANNOTATION_TOOL_SELECT && onSelect(ann.id)}
+                onTap={() => currentTool === ANNOTATION_TOOL_SELECT && onSelect(ann.id)}
                 onDragMove={canDrag ? updateTextPosition : undefined}
                 onTransform={canTransform ? updateTextPosition : undefined}
                 onTransformEnd={canTransform ? handleTransformEnd : undefined}
@@ -158,7 +158,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
                     let x = (pos.x - stageX) / scale;
                     let y = (pos.y - stageY) / scale;
 
-                    if (ann.type === 'rect') {
+                    if (ann.type === ANNOTATION_TYPE_RECT) {
                         const w = bbox.width;
                         const h = bbox.height;
                         if (x < 0) x = 0;

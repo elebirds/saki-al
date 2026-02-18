@@ -31,6 +31,10 @@ import {useAuthStore} from '../../store/authStore'
 import {useParams, useSearchParams} from 'react-router-dom'
 import {api} from '../../services/api'
 import {useResourcePermission} from '../../hooks'
+import {
+    ANNOTATION_TYPE_OBB,
+    ANNOTATION_TYPE_RECT,
+} from '../../types'
 import type {
     Dataset,
     Project,
@@ -68,6 +72,12 @@ const ProjectSettings: React.FC = () => {
         {value: 'detection', label: t('project.settings.taskType.detection')},
         {value: 'segmentation', label: t('project.settings.taskType.segmentation')},
     ]
+
+    const resolveAnnotationTypeLabel = (type: string) => {
+        if (type === ANNOTATION_TYPE_RECT) return t('project.form.annotationTypeOptions.rect')
+        if (type === ANNOTATION_TYPE_OBB) return t('project.form.annotationTypeOptions.obb')
+        return type
+    }
 
     const {can} = useResourcePermission('project', projectId)
     const canUpdateProject = can('project:update')
@@ -634,6 +644,29 @@ const ProjectSettings: React.FC = () => {
                                 value={taskTypeOptions.find((item) => item.value === project?.taskType)?.label || project?.taskType || '-'}
                                 disabled
                             />
+                        </Form.Item>
+                        <Form.Item
+                            className="md:col-span-2"
+                            label={
+                                <div className="flex items-center gap-2">
+                                    <span>{t('project.form.annotationTypes')}</span>
+                                    <Tooltip title={t('project.form.annotationTypesHelp')}>
+                                        <Button type="text" size="small" icon={<QuestionCircleOutlined/>}/>
+                                    </Tooltip>
+                                </div>
+                            }
+                        >
+                            <div className="flex min-h-[40px] flex-wrap items-center gap-2 rounded-md border border-github-border bg-github-base px-3 py-2">
+                                {(project?.enabledAnnotationTypes || []).length > 0 ? (
+                                    (project?.enabledAnnotationTypes || []).map((item) => (
+                                        <Tag key={item} className="!m-0">
+                                            {resolveAnnotationTypeLabel(item)}
+                                        </Tag>
+                                    ))
+                                ) : (
+                                    <Text type="secondary">{t('common.placeholder')}</Text>
+                                )}
+                            </div>
                         </Form.Item>
                     </div>
                     <Form.Item name="description" label={t('project.settings.basic.description')}>

@@ -4,7 +4,15 @@
  * FEDO 标注相关的工具函数
  */
 
-import {Annotation, AnnotationType, BoundingBox, DualViewAnnotation, MappedRegion} from '../types';
+import {
+    Annotation,
+    ANNOTATION_TYPE_OBB,
+    AnnotationType,
+    BoundingBox,
+    DetectionAnnotationType,
+    DualViewAnnotation,
+    MappedRegion,
+} from '../types';
 import {VIEW_L_OMEGAD, VIEW_TIME_ENERGY} from '../components/annotation/DualCanvasArea';
 import {canvasDataToGeometry, geometryToCanvasData, resolveAnnotationView} from './annotationGeometry';
 
@@ -57,7 +65,7 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
         labelColor: ann.labelColor || '#ff0000',
         annotatorId: ann.annotatorId,
         primary: {
-            type: ann.type as 'rect' | 'obb',
+            type: ann.type as DetectionAnnotationType,
             bbox,
         },
         secondary: {
@@ -76,10 +84,10 @@ export function generatedToAnnotations(
     annotatorId?: string | null
 ): Annotation[] {
     return generated.map((gen) => {
-        const inferredType = (gen.type || 'obb') as AnnotationType;
+        const inferredType = (gen.type || ANNOTATION_TYPE_OBB) as AnnotationType;
         const data = geometryToCanvasData(inferredType, gen.geometry);
         const view = resolveAnnotationView(gen) || VIEW_L_OMEGAD;
-        const type = (gen.type || 'obb') as AnnotationType;
+        const type = (gen.type || ANNOTATION_TYPE_OBB) as AnnotationType;
         const resolvedLabelId = gen.labelId || gen.label_id || labelId;
         const resolvedLabelName = gen.labelName || gen.label_name || labelName;
         const resolvedLabelColor = gen.labelColor || gen.label_color || labelColor;
@@ -125,7 +133,7 @@ export function generatedToRegions(generated: Array<Record<string, any>>): Mappe
             return view === VIEW_L_OMEGAD;
         })
         .map((gen, index) => {
-            const type = (gen.type || 'obb') as AnnotationType;
+            const type = (gen.type || ANNOTATION_TYPE_OBB) as AnnotationType;
             const data = geometryToCanvasData(type, gen.geometry);
             const bbox = {
                 x: data.x || 0,

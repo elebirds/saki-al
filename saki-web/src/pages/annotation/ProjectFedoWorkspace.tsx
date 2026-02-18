@@ -8,6 +8,7 @@ import {
     AnnotationDraftItem,
     AnnotationDraftPayload,
     Dataset,
+    DetectionAnnotationType,
     DualViewAnnotation,
     ProjectLabel,
 } from '../../types';
@@ -23,9 +24,10 @@ import {useFedoAnnotations} from '../../hooks/annotation/useFedoAnnotations';
 
 export interface ProjectFedoWorkspaceProps {
     dataset: Dataset;
+    enabledAnnotationTypes: DetectionAnnotationType[];
 }
 
-const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) => {
+const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, enabledAnnotationTypes}) => {
     const {t} = useTranslation();
     const {projectId, datasetId} = useParams<{ projectId: string; datasetId: string }>();
     const navigate = useNavigate();
@@ -90,7 +92,10 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
 
     const currentSample = currentIndex >= 0 ? samples[currentIndex] : undefined;
 
-    const annotationState = useAnnotationState<DualViewAnnotation>({initialAnnotations: []});
+    const annotationState = useAnnotationState<DualViewAnnotation>({
+        initialAnnotations: [],
+        enabledTools: enabledAnnotationTypes,
+    });
 
     useWorkspaceCommon({labels, annotationState});
 
@@ -221,6 +226,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
         annotationState,
         t,
         hasAnyEditPermission: canAnnotate,
+        enabledAnnotationTypes,
         canEditAnnotation,
         onSyncActions: handleSyncActions,
     });
@@ -324,6 +330,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     useAnnotationShortcuts({
         currentTool: annotationState.currentTool,
         onToolChange: annotationState.setCurrentTool,
+        enabledTools: enabledAnnotationTypes,
         onNext: handleNext,
         onPrev: handlePrev,
         onSubmit: handleSubmitAndNext,
@@ -417,6 +424,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                 sampleOffset={meta.offset}
                 annotationState={annotationState}
                 selectedIds={selectedAnnotationIds}
+                enabledAnnotationTypes={enabledAnnotationTypes}
                 isSyncing={false}
                 isSyncReady
                 onBack={backToSamples}

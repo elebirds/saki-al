@@ -3,6 +3,13 @@ export interface TypeInfo {
     label: string;
     description: string;
     color: string;
+    enabled?: boolean;
+    allowedAnnotationTypes?: string[];
+    mustAnnotationTypes?: string[];
+    bannedAnnotationTypes?: string[];
+    // Backward compatible fields (deprecated)
+    annotationTypes?: string[];
+    defaultAnnotationTypes?: string[];
 }
 
 export interface AvailableTypes {

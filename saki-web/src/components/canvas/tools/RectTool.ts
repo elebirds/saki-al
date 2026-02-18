@@ -1,13 +1,14 @@
 import {BaseTool} from './BaseTool';
 import {ToolEventContext} from './types';
 import {normalizeRect} from '../../../utils/canvasUtils';
+import {ANNOTATION_TYPE_RECT} from '../../../types';
 
 /**
  * 矩形标注工具
  * 通过拖拽绘制矩形边界框
  */
 export class RectTool extends BaseTool {
-    readonly name = 'rect';
+    readonly name = ANNOTATION_TYPE_RECT;
 
     onMouseDown(ctx: ToolEventContext): void {
         this.isDrawing = true;
@@ -42,7 +43,7 @@ export class RectTool extends BaseTool {
             const normalizedRect = normalizeRect(this.drawingRect);
 
             this.completedAnnotation = {
-                type: 'rect',
+                type: ANNOTATION_TYPE_RECT,
                 bbox: normalizedRect,
             };
         }

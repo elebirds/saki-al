@@ -1,4 +1,11 @@
-import {Annotation, AnnotationType, DualViewAnnotation} from '../types';
+import {
+    Annotation,
+    ANNOTATION_TYPE_OBB,
+    ANNOTATION_TYPE_RECT,
+    AnnotationType,
+    DualViewAnnotation,
+    isDetectionAnnotationType,
+} from '../types';
 
 type SidebarAnnotation = Partial<Annotation> & Partial<DualViewAnnotation> & Record<string, any>;
 
@@ -56,12 +63,12 @@ function formatNumber(value: unknown): string {
 }
 
 export function resolveSidebarAnnotationType(annotation: SidebarAnnotation): AnnotationType | undefined {
-    if (annotation.type === 'rect' || annotation.type === 'obb') {
+    if (isDetectionAnnotationType(annotation.type)) {
         return annotation.type;
     }
-    if (annotation.geometry?.rect) return 'rect';
-    if (annotation.geometry?.obb) return 'obb';
-    if (annotation.primary?.type === 'rect' || annotation.primary?.type === 'obb') {
+    if (annotation.geometry?.rect) return ANNOTATION_TYPE_RECT;
+    if (annotation.geometry?.obb) return ANNOTATION_TYPE_OBB;
+    if (isDetectionAnnotationType(annotation.primary?.type)) {
         return annotation.primary.type;
     }
     return undefined;
@@ -88,7 +95,7 @@ export function formatSidebarGeometrySummary(annotation: SidebarAnnotation): str
     if (annotation.primary?.bbox) {
         const bbox = annotation.primary.bbox;
         const type = annotation.primary.type || annotation.type;
-        if (type === 'obb') {
+        if (type === ANNOTATION_TYPE_OBB) {
             const cx = Number(bbox.x || 0) + Number(bbox.width || 0) / 2;
             const cy = Number(bbox.y || 0) + Number(bbox.height || 0) / 2;
             return `(${formatNumber(cx)}, ${formatNumber(cy)}) ${formatNumber(bbox.width)}×${formatNumber(

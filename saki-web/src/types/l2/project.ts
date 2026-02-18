@@ -1,3 +1,5 @@
+import {AnnotationType} from './annotation';
+
 export type TaskType = 'classification' | 'detection' | 'segmentation';
 export type ProjectStatus = 'active' | 'archived';
 
@@ -6,6 +8,7 @@ export interface Project {
     name: string;
     description?: string;
     taskType: TaskType;
+    enabledAnnotationTypes: AnnotationType[];
     status: ProjectStatus;
     config?: Record<string, any>;
     createdAt: string;
@@ -21,6 +24,7 @@ export interface ProjectCreate {
     name: string;
     description?: string;
     taskType?: TaskType;
+    enabledAnnotationTypes: AnnotationType[];
     datasetIds?: string[];
     config?: Record<string, any>;
 }

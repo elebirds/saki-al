@@ -393,7 +393,19 @@
       }
     },
     "form": {
-      "dataPool": "数据池"
+      "dataPool": "数据池",
+      "taskTypeHelp": "任务类型决定标注与训练流程，项目创建后不可修改。",
+      "annotationTypes": "启用标注类型",
+      "annotationTypesHelp": "启用标注类型将决定标注界面可用工具，项目创建后不可修改。",
+      "annotationTypesRequired": "请至少选择一种标注类型",
+      "annotationTypesRequiredByDataset": "所选数据集要求启用标注类型：{{type}}",
+      "annotationTypesDisallowed": "标注类型 {{type}} 不符合当前任务/数据集策略",
+      "annotationTypesPolicyConflict": "当前任务与数据集策略冲突，没有可用的标注类型组合",
+      "singleDatasetTypeOnly": "一个项目只能选择一种类型的数据池",
+      "annotationTypeOptions": {
+        "rect": "矩形框 (Rect)",
+        "obb": "旋转框 (OBB)"
+      }
     },
     "settings": {
       "taskType": {

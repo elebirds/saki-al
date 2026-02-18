@@ -5,10 +5,19 @@
  */
 
 import {useEffect} from 'react';
+import {
+    ANNOTATION_TYPE_OBB,
+    ANNOTATION_TYPE_RECT,
+    ANNOTATION_TOOL_SELECT,
+    AnnotationToolType,
+    DEFAULT_DETECTION_ANNOTATION_TYPES,
+    DetectionAnnotationType,
+} from '../../types';
 
 export interface UseAnnotationShortcutsOptions {
-    currentTool: 'select' | 'rect' | 'obb';
-    onToolChange: (tool: 'select' | 'rect' | 'obb') => void;
+    currentTool: AnnotationToolType;
+    onToolChange: (tool: AnnotationToolType) => void;
+    enabledTools?: DetectionAnnotationType[];
     onNext: () => void;
     onPrev: () => void;
     onSubmit: () => void;
@@ -22,6 +31,7 @@ export function useAnnotationShortcuts(options: UseAnnotationShortcutsOptions): 
     const {
         currentTool,
         onToolChange,
+        enabledTools = DEFAULT_DETECTION_ANNOTATION_TYPES,
         onNext,
         onPrev,
         onSubmit,
@@ -43,13 +53,13 @@ export function useAnnotationShortcuts(options: UseAnnotationShortcutsOptions): 
 
             switch (e.key.toLowerCase()) {
                 case 'v':
-                    onToolChange('select');
+                    onToolChange(ANNOTATION_TOOL_SELECT);
                     break;
                 case 'r':
-                    onToolChange('rect');
+                    if (enabledTools.includes(ANNOTATION_TYPE_RECT)) onToolChange(ANNOTATION_TYPE_RECT);
                     break;
                 case 'o':
-                    onToolChange('obb');
+                    if (enabledTools.includes(ANNOTATION_TYPE_OBB)) onToolChange(ANNOTATION_TYPE_OBB);
                     break;
                 case 'arrowright':
                     onNext();
@@ -78,6 +88,5 @@ export function useAnnotationShortcuts(options: UseAnnotationShortcutsOptions): 
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [currentTool, onToolChange, onNext, onPrev, onSubmit, onUndo, onRedo, disabled]);
+    }, [currentTool, onToolChange, enabledTools.join(','), onNext, onPrev, onSubmit, onUndo, onRedo, disabled]);
 }
-

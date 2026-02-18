@@ -1,15 +1,25 @@
 import React, {useCallback, useEffect, useState} from 'react'
-import {Button, Card, Form, Input, message, Modal, Select, Tag, Tooltip, Typography} from 'antd'
+import {Button, Card, Checkbox, Form, Input, message, Modal, Select, Tag, Tooltip, Typography} from 'antd'
 import {useNavigate} from 'react-router-dom'
 import {useTranslation} from 'react-i18next'
-import {PlusOutlined} from '@ant-design/icons'
+import {PlusOutlined, QuestionCircleOutlined} from '@ant-design/icons'
 import {api} from '../../services/api'
 import {PaginatedList} from '../../components/common/PaginatedList'
-import {Dataset, Project, TaskType} from '../../types'
+import {
+    AnnotationType,
+    Dataset,
+    DEFAULT_DETECTION_ANNOTATION_TYPES,
+    DetectionAnnotationType,
+    Project,
+    TaskType,
+    isDetectionAnnotationType,
+} from '../../types'
 import {usePermission} from '../../hooks'
+import {useSystemCapabilities} from '../../hooks/system/useSystemCapabilities'
 
 const {Title, Text} = Typography
 const {Option} = Select
+const ALL_ANNOTATION_TYPES: DetectionAnnotationType[] = DEFAULT_DETECTION_ANNOTATION_TYPES
 
 const ProjectList: React.FC = () => {
     const {t} = useTranslation()
@@ -23,6 +33,7 @@ const ProjectList: React.FC = () => {
     const [form] = Form.useForm()
     const {can} = usePermission()
     const canCreate = can('project:create')
+    const {availableTypes} = useSystemCapabilities()
 
     const taskTypeLabel: Record<string, string> = {
         classification: t('project.settings.taskType.classification'),
@@ -57,6 +68,100 @@ const ProjectList: React.FC = () => {
         void loadDatasets(datasetQuery)
     }, [createOpen, datasetQuery, loadDatasets])
 
+    const selectedTaskType = Form.useWatch('taskType', form) as TaskType | undefined
+    const selectedDatasetIds = Form.useWatch('datasetIds', form) as string[] | undefined
+
+    const taskTypeInfoMap = new Map((availableTypes?.taskTypes || []).map((item) => [item.value, item]))
+    const datasetTypeInfoMap = new Map((availableTypes?.datasetTypes || []).map((item) => [item.value, item]))
+    const datasetById = new Map(datasets.map((item) => [item.id, item]))
+
+    const selectedDatasetTypes = Array.from(
+        new Set((selectedDatasetIds || []).map((id) => datasetById.get(id)?.type).filter(Boolean) as string[])
+    )
+
+    const selectedTaskInfo = selectedTaskType ? taskTypeInfoMap.get(selectedTaskType) : undefined
+
+    const parseConstraint = (info?: {
+        allowedAnnotationTypes?: string[]
+        mustAnnotationTypes?: string[]
+        bannedAnnotationTypes?: string[]
+        annotationTypes?: string[]
+    }) => {
+        const allowed = ((info?.allowedAnnotationTypes?.length ? info.allowedAnnotationTypes : info?.annotationTypes) || [])
+            .filter((item): item is DetectionAnnotationType => isDetectionAnnotationType(item))
+        const must = (info?.mustAnnotationTypes || [])
+            .filter((item): item is DetectionAnnotationType => isDetectionAnnotationType(item))
+        const banned = (info?.bannedAnnotationTypes || [])
+            .filter((item): item is DetectionAnnotationType => isDetectionAnnotationType(item))
+        return {allowed, must, banned}
+    }
+
+    const taskConstraint = parseConstraint(selectedTaskInfo)
+    const datasetConstraints = selectedDatasetTypes.map((datasetType) => parseConstraint(datasetTypeInfoMap.get(datasetType)))
+    const allConstraints = [taskConstraint, ...datasetConstraints]
+
+    let allowedSet = new Set<DetectionAnnotationType>(ALL_ANNOTATION_TYPES)
+    let hasAllowedConstraint = false
+    const mustSet = new Set<DetectionAnnotationType>()
+    const bannedSet = new Set<DetectionAnnotationType>()
+
+    allConstraints.forEach((constraint) => {
+        if (constraint.allowed.length > 0) {
+            const currentAllowed = new Set<DetectionAnnotationType>(constraint.allowed)
+            if (!hasAllowedConstraint) {
+                allowedSet = currentAllowed
+                hasAllowedConstraint = true
+            } else {
+                allowedSet = new Set(Array.from(allowedSet).filter((item) => currentAllowed.has(item)))
+            }
+        }
+        constraint.must.forEach((item) => mustSet.add(item))
+        constraint.banned.forEach((item) => bannedSet.add(item))
+    })
+
+    const allowedAnnotationTypes = Array.from(allowedSet).filter((item) => !bannedSet.has(item))
+    const mustAnnotationTypes = Array.from(mustSet)
+    const mandatoryAnnotationTypes = mustAnnotationTypes.filter((item) => !bannedSet.has(item))
+    const mandatoryTypeSet = new Set(mandatoryAnnotationTypes)
+    const policyConflict = mustAnnotationTypes.some((item) => !allowedAnnotationTypes.includes(item))
+
+    const taskDefaultTypes = (selectedTaskInfo?.defaultAnnotationTypes || [])
+        .filter((item): item is DetectionAnnotationType => isDetectionAnnotationType(item))
+        .filter((item) => allowedAnnotationTypes.includes(item))
+    const defaultAnnotationTypes = taskDefaultTypes.length > 0
+        ? taskDefaultTypes
+        : (mandatoryAnnotationTypes.length > 0 ? mandatoryAnnotationTypes : allowedAnnotationTypes)
+
+    const selectedDatasetType = selectedDatasetTypes[0]
+
+    useEffect(() => {
+        if (!createOpen) return
+
+        const current = (form.getFieldValue('enabledAnnotationTypes') || []) as DetectionAnnotationType[]
+        const sanitized = current.filter((type) => allowedAnnotationTypes.includes(type))
+        for (const req of mandatoryAnnotationTypes) {
+            if (!sanitized.includes(req)) {
+                sanitized.push(req)
+            }
+        }
+
+        if (sanitized.length === 0 && !policyConflict) {
+            for (const type of defaultAnnotationTypes) {
+                if (!sanitized.includes(type)) sanitized.push(type)
+            }
+        }
+
+        form.setFieldsValue({enabledAnnotationTypes: sanitized})
+    }, [
+        createOpen,
+        form,
+        selectedTaskType,
+        allowedAnnotationTypes.join(','),
+        defaultAnnotationTypes.join(','),
+        mandatoryAnnotationTypes.join(','),
+        policyConflict,
+    ])
+
     const handleCreateProject = async () => {
         try {
             const values = await form.validateFields()
@@ -65,6 +170,7 @@ const ProjectList: React.FC = () => {
                 name: values.name,
                 description: values.description,
                 taskType: values.taskType as TaskType,
+                enabledAnnotationTypes: values.enabledAnnotationTypes as AnnotationType[],
                 datasetIds: values.datasetIds || [],
             })
             message.success(t('project.list.createSuccess'))
@@ -173,7 +279,11 @@ const ProjectList: React.FC = () => {
                 okButtonProps={{loading: creating}}
                 cancelButtonProps={{disabled: creating}}
             >
-                <Form form={form} layout="vertical" initialValues={{taskType: 'detection'}}>
+                <Form
+                    form={form}
+                    layout="vertical"
+                    initialValues={{taskType: 'detection', enabledAnnotationTypes: DEFAULT_DETECTION_ANNOTATION_TYPES}}
+                >
                     <Form.Item
                         name="name"
                         label={t('project.settings.basic.projectName')}
@@ -186,26 +296,122 @@ const ProjectList: React.FC = () => {
                     </Form.Item>
                     <Form.Item
                         name="taskType"
-                        label={t('project.settings.basic.taskType')}
+                        label={(
+                            <div className="flex items-center gap-1">
+                                <span>{t('project.settings.basic.taskType')}</span>
+                                <Tooltip title={t('project.form.taskTypeHelp')}>
+                                    <QuestionCircleOutlined className="text-github-muted"/>
+                                </Tooltip>
+                            </div>
+                        )}
                         rules={[{required: true}]}
                     >
                         <Select>
-                            <Option value="classification" disabled>{taskTypeLabel.classification}</Option>
-                            <Option value="detection">{taskTypeLabel.detection}</Option>
-                            <Option value="segmentation" disabled>{taskTypeLabel.segmentation}</Option>
+                            {(availableTypes?.taskTypes || [
+                                {value: 'classification', label: taskTypeLabel.classification, enabled: false},
+                                {value: 'detection', label: taskTypeLabel.detection, enabled: true},
+                                {value: 'segmentation', label: taskTypeLabel.segmentation, enabled: false},
+                            ]).map((item) => (
+                                <Option key={item.value} value={item.value} disabled={item.enabled === false}>
+                                    {item.label}
+                                </Option>
+                            ))}
                         </Select>
                     </Form.Item>
-                    <Form.Item name="datasetIds" label={t('project.form.dataPool')}>
+                    <Form.Item
+                        name="enabledAnnotationTypes"
+                        label={(
+                            <div className="flex items-center gap-1">
+                                <span>{t('project.form.annotationTypes')}</span>
+                                <Tooltip title={t('project.form.annotationTypesHelp')}>
+                                    <QuestionCircleOutlined className="text-github-muted"/>
+                                </Tooltip>
+                            </div>
+                        )}
+                        rules={[
+                            {required: true, message: t('project.form.annotationTypesRequired')},
+                            {
+                                validator: (_, value: DetectionAnnotationType[] | undefined) => {
+                                    if (policyConflict) {
+                                        return Promise.reject(new Error(t('project.form.annotationTypesPolicyConflict')))
+                                    }
+                                    const selected = value || []
+                                    if (selected.length === 0) {
+                                        return Promise.reject(new Error(t('project.form.annotationTypesRequired')))
+                                    }
+                                    for (const item of selected) {
+                                        if (!allowedAnnotationTypes.includes(item)) {
+                                            return Promise.reject(new Error(t('project.form.annotationTypesDisallowed', {type: item})))
+                                        }
+                                    }
+                                    for (const req of mandatoryAnnotationTypes) {
+                                        if (!selected.includes(req)) {
+                                            return Promise.reject(
+                                                new Error(t('project.form.annotationTypesRequiredByDataset', {type: req}))
+                                            )
+                                        }
+                                    }
+                                    return Promise.resolve()
+                                },
+                            },
+                        ]}
+                    >
+                        <Checkbox.Group
+                            options={allowedAnnotationTypes.map((type) => ({
+                                label: t(`project.form.annotationTypeOptions.${type}`),
+                                value: type,
+                                disabled: mandatoryTypeSet.has(type),
+                            }))}
+                        />
+                    </Form.Item>
+                    <Form.Item
+                        name="datasetIds"
+                        label={t('project.form.dataPool')}
+                        rules={[
+                            {
+                                validator: (_, value: string[] | undefined) => {
+                                    const ids = value || []
+                                    const typeSet = new Set(
+                                        ids
+                                            .map((id) => datasetById.get(id)?.type)
+                                            .filter((item): item is NonNullable<Dataset['type']> => !!item)
+                                    )
+                                    if (typeSet.size > 1) {
+                                        return Promise.reject(new Error(t('project.form.singleDatasetTypeOnly')))
+                                    }
+                                    return Promise.resolve()
+                                },
+                            },
+                        ]}
+                    >
                         <Select
                             mode="multiple"
                             showSearch
                             filterOption={false}
+                            onChange={(nextIds: string[]) => {
+                                if (!nextIds.length) return
+                                const firstType = datasetById.get(nextIds[0])?.type
+                                if (!firstType) return
+                                const filteredIds = nextIds.filter((id) => {
+                                    const itemType = datasetById.get(id)?.type
+                                    return !itemType || itemType === firstType
+                                })
+                                if (filteredIds.length !== nextIds.length) {
+                                    form.setFieldsValue({datasetIds: filteredIds})
+                                    message.warning(t('project.form.singleDatasetTypeOnly'))
+                                }
+                            }}
                             onSearch={(value) => setDatasetQuery(value)}
                             placeholder={t('dataset.list.newDataset')}
                             loading={datasetsLoading}
                             options={datasets.map((dataset) => ({
                                 value: dataset.id,
                                 label: `${dataset.name} (${dataset.type})`,
+                                disabled: Boolean(
+                                    selectedDatasetType &&
+                                    dataset.type !== selectedDatasetType &&
+                                    !(selectedDatasetIds || []).includes(dataset.id)
+                                ),
                             }))}
                         />
                     </Form.Item>

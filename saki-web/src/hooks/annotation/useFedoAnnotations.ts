@@ -11,6 +11,8 @@ import {
     AnnotationDraftItem,
     AnnotationSyncActionItem,
     AnnotationType,
+    DEFAULT_DETECTION_ANNOTATION_TYPES,
+    DetectionAnnotationType,
     DualViewAnnotation,
     MappedRegion,
 } from '../../types';
@@ -38,6 +40,8 @@ export interface UseFedoAnnotationsOptions {
     t?: (key: string) => string;
     /** 权限：是否有编辑权限 */
     hasAnyEditPermission?: boolean;
+    /** 项目启用的标注类型 */
+    enabledAnnotationTypes?: DetectionAnnotationType[];
     /** 权限：是否可编辑指定标注 */
     canEditAnnotation?: (annotation: Annotation) => boolean;
     /** 可选：同步回调，返回最新完整标注列表 */
@@ -64,7 +68,7 @@ export interface UseFedoAnnotationsReturn {
     handleAnnotationSelect: (id: string | null) => void;
     /** 创建标注 */
     handleAnnotationCreate: (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
         view: string;
     }) => Promise<void>;
@@ -92,6 +96,7 @@ export function useFedoAnnotations(
         annotationState,
         t,
         hasAnyEditPermission: hasAnyEditPermissionProp = true,
+        enabledAnnotationTypes = DEFAULT_DETECTION_ANNOTATION_TYPES,
         canEditAnnotation: canEditAnnotationProp,
         onSyncActions,
     } = options;
@@ -290,10 +295,14 @@ export function useFedoAnnotations(
 
     // 创建标注
     const handleAnnotationCreate = useCallback(async (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
         view: string;
     }) => {
+        if (!enabledAnnotationTypes.includes(event.type)) {
+            if (t) message.warning(t('annotation.workspace.noEditPermission'));
+            return;
+        }
         if (!hasAnyEditPermission) {
             if (t) message.warning(t('annotation.workspace.noEditPermission'));
             return;
@@ -356,7 +365,7 @@ export function useFedoAnnotations(
             groupId: newId,
             data: buildDraftItem(baseAnnotation),
         }]);
-    }, [hasAnyEditPermission, annotationState, currentSampleId, currentUserId, t, buildDraftItem, triggerSync]);
+    }, [enabledAnnotationTypes.join(','), hasAnyEditPermission, annotationState, currentSampleId, currentUserId, t, buildDraftItem, triggerSync]);
 
     // 更新标注
     const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
@@ -373,7 +382,7 @@ export function useFedoAnnotations(
             const updatedDual: DualViewAnnotation = {
                 ...dual,
                 primary: {
-                    type: updatedAnn.type as 'rect' | 'obb',
+                    type: updatedAnn.type as DetectionAnnotationType,
                     bbox: {
                         x: updatedData.x,
                         y: updatedData.y,

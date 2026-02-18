@@ -1,11 +1,11 @@
 import {forwardRef} from 'react';
 import {Transformer} from 'react-konva';
 import Konva from 'konva';
-import {Annotation} from '../../types';
+import {Annotation, ANNOTATION_TOOL_SELECT, ANNOTATION_TYPE_OBB, ANNOTATION_TYPE_RECT, AnnotationToolType} from '../../types';
 
 interface CanvasTransformerProps {
     selectedAnnotation?: Annotation;
-    currentTool: string;
+    currentTool: AnnotationToolType;
     image?: HTMLImageElement;
     /** 是否可以编辑选中的标注（基于用户权限） */
     canEdit?: boolean;
@@ -24,19 +24,19 @@ const CanvasTransformer = forwardRef<Konva.Transformer, CanvasTransformerProps>(
         selectedAnnotation?.source === 'fedo_mapping';
 
     // 只有主标注（非生成的）且有编辑权限才能调整大小
-    const canResize = !isGenerated && currentTool === 'select' && canEdit;
+    const canResize = !isGenerated && currentTool === ANNOTATION_TOOL_SELECT && canEdit;
 
     return (
         <Transformer
             ref={ref}
-            rotateEnabled={canResize && selectedAnnotation?.type === 'obb'}
+            rotateEnabled={canResize && selectedAnnotation?.type === ANNOTATION_TYPE_OBB}
             enabledAnchors={canResize ? undefined : []} // 如果是生成的标注，禁用所有锚点（无法调整大小）
             resizeEnabled={canResize}
             keepRatio={false}
             ignoreStroke={true}
             boundBoxFunc={(_oldBox, newBox) => {
                 // 只对矩形类型应用边界约束，OBB 不限制
-                if (!image || selectedAnnotation?.type !== 'rect') return newBox;
+                if (!image || selectedAnnotation?.type !== ANNOTATION_TYPE_RECT) return newBox;
 
                 let {x, y, width, height, rotation} = newBox;
 

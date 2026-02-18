@@ -10,6 +10,7 @@ import {
     AnnotationDraftItem,
     AnnotationDraftPayload,
     Dataset,
+    DetectionAnnotationType,
     ProjectLabel,
 } from '../../types';
 import {api} from '../../services/api';
@@ -27,9 +28,10 @@ import {generateUUID} from '../../utils/uuid';
 
 export interface ProjectClassicWorkspaceProps {
     dataset: Dataset;
+    enabledAnnotationTypes: DetectionAnnotationType[];
 }
 
-const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({dataset}) => {
+const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({dataset, enabledAnnotationTypes}) => {
     const {t} = useTranslation();
     const {projectId, datasetId} = useParams<{ projectId: string; datasetId: string }>();
     const navigate = useNavigate();
@@ -92,7 +94,10 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
 
     const currentSample = currentIndex >= 0 ? samples[currentIndex] : undefined;
 
-    const annotationState = useAnnotationState<Annotation>({initialAnnotations: []});
+    const annotationState = useAnnotationState<Annotation>({
+        initialAnnotations: [],
+        enabledTools: enabledAnnotationTypes,
+    });
     const {
         setAnnotations,
         setHistory,
@@ -260,9 +265,13 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     }, [user?.id]);
 
     const handleAnnotationCreate = useCallback(async (event: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: { x: number; y: number; width: number; height: number; rotation?: number };
     }) => {
+        if (!enabledAnnotationTypes.includes(event.type)) {
+            message.warning(t('annotation.workspace.noEditPermission'));
+            return;
+        }
         if (!canAnnotate) {
             message.warning(t('annotation.workspace.noEditPermission'));
             return;
@@ -299,7 +308,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
             groupId: newId,
             data: buildDraftItem(newAnn),
         }]);
-    }, [canAnnotate, annotationState, currentSample?.id, projectId, user?.id, t, buildDraftItem, syncAndApply]);
+    }, [enabledAnnotationTypes.join(','), canAnnotate, annotationState, currentSample?.id, projectId, user?.id, t, buildDraftItem, syncAndApply]);
 
     const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
         if (!currentSample?.id) return;
@@ -404,6 +413,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     useAnnotationShortcuts({
         currentTool: annotationState.currentTool,
         onToolChange: annotationState.setCurrentTool,
+        enabledTools: enabledAnnotationTypes,
         onNext: handleNext,
         onPrev: handlePrev,
         onSubmit: handleSubmitAndNext,
@@ -435,6 +445,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
                 sampleTotal={meta.total}
                 sampleOffset={meta.offset}
                 annotationState={annotationState}
+                enabledAnnotationTypes={enabledAnnotationTypes}
                 isSyncing={false}
                 isSyncReady
                 onBack={backToSamples}

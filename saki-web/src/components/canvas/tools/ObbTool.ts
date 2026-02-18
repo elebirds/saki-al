@@ -1,6 +1,7 @@
 import {BaseTool} from './BaseTool';
 import {ToolEventContext, ToolState} from './types';
 import {calculateObbRect, finalizeObbRect} from '../../../utils/canvasUtils';
+import {ANNOTATION_TYPE_OBB} from '../../../types';
 
 type ObbStep = 'none' | 'width' | 'height';
 
@@ -12,7 +13,7 @@ type ObbStep = 'none' | 'width' | 'height';
  * 3. 移动鼠标绘制高度，第三次点击完成
  */
 export class ObbTool extends BaseTool {
-    readonly name = 'obb';
+    readonly name = ANNOTATION_TYPE_OBB;
 
     private step: ObbStep = 'none';
 
@@ -49,7 +50,7 @@ export class ObbTool extends BaseTool {
                 const finalRect = finalizeObbRect(this.drawingRect);
 
                 this.completedAnnotation = {
-                    type: 'obb',
+                    type: ANNOTATION_TYPE_OBB,
                     bbox: finalRect,
                 };
             }

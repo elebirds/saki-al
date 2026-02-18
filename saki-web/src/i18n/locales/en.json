@@ -393,7 +393,19 @@
       }
     },
     "form": {
-      "dataPool": "Data Pool"
+      "dataPool": "Data Pool",
+      "taskTypeHelp": "Task type controls annotation and training workflow. It cannot be changed after project creation.",
+      "annotationTypes": "Enabled Annotation Types",
+      "annotationTypesHelp": "Enabled annotation types determine which tools can be used in the annotation workspace. This setting cannot be changed after project creation.",
+      "annotationTypesRequired": "Select at least one annotation type",
+      "annotationTypesRequiredByDataset": "Selected dataset requires annotation type: {{type}}",
+      "annotationTypesDisallowed": "Annotation type {{type}} is disallowed by current task/dataset policy",
+      "annotationTypesPolicyConflict": "Current task/dataset policy has no valid annotation type combination",
+      "singleDatasetTypeOnly": "Only one dataset type can be selected for a project",
+      "annotationTypeOptions": {
+        "rect": "Rectangle (Rect)",
+        "obb": "Oriented Bounding Box (OBB)"
+      }
     },
     "settings": {
       "taskType": {

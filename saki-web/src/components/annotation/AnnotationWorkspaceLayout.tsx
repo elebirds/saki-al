@@ -8,7 +8,7 @@ import {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {EmptyState, LoadingState} from '../common';
 import {AnnotationSidebar, AnnotationToolbar, SampleList} from './index';
-import {Annotation, ProjectLabel, Sample} from '../../types';
+import {Annotation, DEFAULT_DETECTION_ANNOTATION_TYPES, DetectionAnnotationType, ProjectLabel, Sample} from '../../types';
 import {AccessScope, AnnotationLike, UseAnnotationStateReturn} from '../../hooks';
 
 export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
@@ -27,6 +27,7 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
     // 标注状态
     annotationState: UseAnnotationStateReturn<T>;
     selectedIds?: Set<string>;
+    enabledAnnotationTypes?: DetectionAnnotationType[];
 
     // 同步状态
     isSyncing: boolean;
@@ -75,6 +76,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                                                                         sampleOffset,
                                                                         annotationState,
                                                                         selectedIds,
+                                                                        enabledAnnotationTypes = DEFAULT_DETECTION_ANNOTATION_TYPES,
                                                                         isSyncing,
                                                                         isSyncReady,
                                                                         onSampleSelect,
@@ -144,6 +146,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                     onRedo={annotationState.redo}
                     currentTool={annotationState.currentTool}
                     onToolChange={annotationState.setCurrentTool}
+                    enabledTools={enabledAnnotationTypes}
                     onZoomIn={onZoomIn}
                     onZoomOut={onZoomOut}
                     onResetView={onResetView}

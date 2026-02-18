@@ -19,7 +19,15 @@ import {
     ZoomInOutlined,
     ZoomOutOutlined,
 } from '@ant-design/icons';
-import {ProjectLabel} from '../../types';
+import {
+    ANNOTATION_TYPE_OBB,
+    ANNOTATION_TYPE_RECT,
+    ANNOTATION_TOOL_SELECT,
+    AnnotationToolType,
+    DEFAULT_DETECTION_ANNOTATION_TYPES,
+    DetectionAnnotationType,
+    ProjectLabel,
+} from '../../types';
 
 export interface AnnotationToolbarProps {
     // Label selection
@@ -34,8 +42,9 @@ export interface AnnotationToolbarProps {
     onRedo: () => void;
 
     // Tools
-    currentTool: 'select' | 'rect' | 'obb';
-    onToolChange: (tool: 'select' | 'rect' | 'obb') => void;
+    currentTool: AnnotationToolType;
+    onToolChange: (tool: AnnotationToolType) => void;
+    enabledTools?: DetectionAnnotationType[];
 
     // Zoom controls
     onZoomIn?: () => void;
@@ -69,6 +78,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
                                                                         onRedo,
                                                                         currentTool,
                                                                         onToolChange,
+                                                                        enabledTools = DEFAULT_DETECTION_ANNOTATION_TYPES,
                                                                         onZoomIn,
                                                                         onZoomOut,
                                                                         onResetView,
@@ -138,24 +148,28 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             {/* Tool Selection */}
             <Radio.Group
                 value={currentTool}
-                onChange={(e) => onToolChange(e.target.value)}
+                onChange={(e) => onToolChange(e.target.value as AnnotationToolType)}
                 buttonStyle="solid"
             >
-                <Radio.Button value="select">
+                <Radio.Button value={ANNOTATION_TOOL_SELECT}>
                     <Tooltip title={t('annotation.workspace.tools.select')}>
                         <DragOutlined/> {t('annotation.workspace.tools.select').split('(')[0]}
                     </Tooltip>
                 </Radio.Button>
-                <Radio.Button value="rect" disabled={!hasAnyEditPermission}>
-                    <Tooltip title={hasAnyEditPermission ? t('annotation.workspace.tools.rect') : t('annotation.workspace.noEditPermission')}>
-                        <BorderOutlined/> {t('annotation.workspace.tools.rect').split('(')[0]}
-                    </Tooltip>
-                </Radio.Button>
-                <Radio.Button value="obb" disabled={!hasAnyEditPermission}>
-                    <Tooltip title={hasAnyEditPermission ? t('annotation.workspace.tools.obb') : t('annotation.workspace.noEditPermission')}>
-                        <RotateRightOutlined/> {t('annotation.workspace.tools.obb').split('(')[0]}
-                    </Tooltip>
-                </Radio.Button>
+                {enabledTools.includes(ANNOTATION_TYPE_RECT) ? (
+                    <Radio.Button value={ANNOTATION_TYPE_RECT} disabled={!hasAnyEditPermission}>
+                        <Tooltip title={hasAnyEditPermission ? t('annotation.workspace.tools.rect') : t('annotation.workspace.noEditPermission')}>
+                            <BorderOutlined/> {t('annotation.workspace.tools.rect').split('(')[0]}
+                        </Tooltip>
+                    </Radio.Button>
+                ) : null}
+                {enabledTools.includes(ANNOTATION_TYPE_OBB) ? (
+                    <Radio.Button value={ANNOTATION_TYPE_OBB} disabled={!hasAnyEditPermission}>
+                        <Tooltip title={hasAnyEditPermission ? t('annotation.workspace.tools.obb') : t('annotation.workspace.noEditPermission')}>
+                            <RotateRightOutlined/> {t('annotation.workspace.tools.obb').split('(')[0]}
+                        </Tooltip>
+                    </Radio.Button>
+                ) : null}
             </Radio.Group>
 
             <Divider type="vertical"/>

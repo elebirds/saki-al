@@ -11,7 +11,7 @@ export interface DualViewAnnotation {
     annotatorId?: string | null;  // ID of the user who created the annotation
     // Primary view (Time-Energy) - always a rect or OBB
     primary: {
-        type: 'rect' | 'obb';
+        type: DetectionAnnotationType;
         bbox: BoundingBox;
     };
     // Secondary view (L-ωd) - can be multiple polygons due to non-monotonic mapping
@@ -40,6 +40,21 @@ export interface MappedRegion {
 
 export type AnnotationType = 'rect' | 'obb' | 'polygon' | 'polyline' | 'point' | 'keypoints';
 export type AnnotationSource = 'manual' | 'auto' | 'model' | 'system' | 'imported' | 'fedo_mapping';
+
+export const ANNOTATION_TYPE_RECT = 'rect' as const;
+export const ANNOTATION_TYPE_OBB = 'obb' as const;
+
+export const DETECTION_ANNOTATION_TYPES = [ANNOTATION_TYPE_RECT, ANNOTATION_TYPE_OBB] as const;
+export type DetectionAnnotationType = (typeof DETECTION_ANNOTATION_TYPES)[number];
+
+export const DEFAULT_DETECTION_ANNOTATION_TYPES: DetectionAnnotationType[] = [...DETECTION_ANNOTATION_TYPES];
+
+export const ANNOTATION_TOOL_SELECT = 'select' as const;
+export type AnnotationToolType = typeof ANNOTATION_TOOL_SELECT | DetectionAnnotationType;
+
+export function isDetectionAnnotationType(value: unknown): value is DetectionAnnotationType {
+    return value === ANNOTATION_TYPE_RECT || value === ANNOTATION_TYPE_OBB;
+}
 
 export interface RectGeometry {
     x: number;

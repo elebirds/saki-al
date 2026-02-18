@@ -1,5 +1,12 @@
 import {centerToOrigin, originToCenter} from './canvasUtils';
-import {AnnotationDraftItem, AnnotationDraftPayload, AnnotationGeometry, AnnotationRead, AnnotationType} from '../types';
+import {
+    AnnotationDraftItem,
+    AnnotationDraftPayload,
+    AnnotationGeometry,
+    ANNOTATION_TYPE_OBB,
+    AnnotationRead,
+    AnnotationType,
+} from '../types';
 
 export interface CanvasBBoxData {
     x: number;
@@ -75,7 +82,7 @@ export function geometryToCanvasData(
         width: 0,
         height: 0,
     };
-    if (type === 'obb') {
+    if (type === ANNOTATION_TYPE_OBB) {
         empty.rotation = 0;
     }
     return empty;
@@ -84,7 +91,7 @@ export function geometryToCanvasData(
 export function canvasDataToGeometry(type: AnnotationType, data?: Record<string, any>): AnnotationGeometry {
     const bbox = normalizeBBoxData(data);
 
-    if (type === 'obb') {
+    if (type === ANNOTATION_TYPE_OBB) {
         const center = originToCenter({
             x: bbox.x,
             y: bbox.y,

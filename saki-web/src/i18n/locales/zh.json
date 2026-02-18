@@ -331,10 +331,29 @@
       "cannotDeleteOthersAnnotation": "您只能删除自己的标注",
       "readOnly": "只读",
       "annotationSource": {
+        "manual": "手动",
         "mine": "我的标注",
         "others": "他人标注",
-        "auto": "自动生成"
+        "auto": "自动生成",
+        "model": "模型",
+        "system": "系统",
+        "imported": "导入",
+        "fedoMapping": "FEDO 映射"
       },
+      "annotationShape": {
+        "rect": "矩形",
+        "obb": "旋转框"
+      },
+      "annotationView": {
+        "timeEnergy": "时能图",
+        "lOmegad": "L-ωd"
+      },
+      "annotationMeta": {
+        "id": "ID",
+        "unavailable": "几何信息不可用",
+        "mappedCount": "映射 {{count}} 框"
+      },
+      "annotationOrderHint": "排序：按空间位置（上→下，左→右）",
       "commitDrafts": "提交草稿",
       "sort": {
         "createdNewest": "创建时间（最新）",

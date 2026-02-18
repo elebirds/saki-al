@@ -331,10 +331,29 @@
       "cannotDeleteOthersAnnotation": "You can only delete your own annotations",
       "readOnly": "Read-only",
       "annotationSource": {
+        "manual": "Manual",
         "mine": "My annotation",
         "others": "Others' annotation",
-        "auto": "Auto-generated"
+        "auto": "Auto-generated",
+        "model": "Model",
+        "system": "System",
+        "imported": "Imported",
+        "fedoMapping": "FEDO Mapping"
       },
+      "annotationShape": {
+        "rect": "Rect",
+        "obb": "OBB"
+      },
+      "annotationView": {
+        "timeEnergy": "Time-Energy",
+        "lOmegad": "L-ωd"
+      },
+      "annotationMeta": {
+        "id": "ID",
+        "unavailable": "Geometry unavailable",
+        "mappedCount": "{{count}} mapped"
+      },
+      "annotationOrderHint": "Order: by spatial position (top to bottom, left to right)",
       "commitDrafts": "Commit Drafts",
       "sort": {
         "createdNewest": "Created (Newest)",

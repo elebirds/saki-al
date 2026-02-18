@@ -16,7 +16,7 @@ import {
 } from '../../types';
 import {UseAnnotationStateReturn} from './useAnnotationState';
 import {annotationToDual, isGeneratedAnnotation,} from '../../utils/fedoAnnotations';
-import {VIEW_L_OMEGAD, VIEW_TIME_ENERGY} from '../../components/annotation/DualCanvasArea';
+import {VIEW_TIME_ENERGY} from '../../components/annotation/DualCanvasArea';
 import {
     attrsFromAnnotationLike,
     canvasDataToGeometry,
@@ -142,6 +142,7 @@ export function useFedoAnnotations(
                 geometry: canvasDataToGeometry(dual.primary.type as AnnotationType, dual.primary.bbox as Record<string, any>),
                 attrs: {
                     view: annotationViews.get(dual.id) || VIEW_TIME_ENERGY,
+                    mapped_count: dual.secondary?.regions?.length ?? 0,
                 },
             });
         });
@@ -229,9 +230,13 @@ export function useFedoAnnotations(
 
         const dualAnns: DualViewAnnotation[] = mainAnnotations.map((ann) => {
             const groupId = getGroupId(ann);
+            const mainView = resolveAnnotationView(ann) || VIEW_TIME_ENERGY;
             const relatedGenerated = groupId ? generatedByGroup.get(groupId) || [] : [];
             const regions: MappedRegion[] = relatedGenerated
-                .filter(gen => resolveAnnotationView(gen) === VIEW_L_OMEGAD)
+                .filter((gen) => {
+                    const genView = resolveAnnotationView(gen);
+                    return !!genView && genView !== mainView;
+                })
                 .map((gen, index) => {
                     const data = geometryToCanvasData(gen.type, gen.geometry);
                     const bbox = {

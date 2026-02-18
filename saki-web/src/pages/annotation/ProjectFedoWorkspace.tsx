@@ -1,6 +1,4 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, Select} from 'antd';
-import {DeleteOutlined} from '@ant-design/icons';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {AnnotationWorkspaceLayout, DualCanvasArea, DualCanvasAreaRef} from '../../components/annotation';
@@ -11,7 +9,6 @@ import {
     AnnotationDraftPayload,
     Dataset,
     DualViewAnnotation,
-    ProjectBranch,
     ProjectLabel,
 } from '../../types';
 import {api} from '../../services/api';
@@ -37,7 +34,6 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     const user = useAuthStore((state) => state.user);
 
     const [labels, setLabels] = useState<ProjectLabel[]>([]);
-    const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [loadingMeta, setLoadingMeta] = useState(true);
     const [commitModalOpen, setCommitModalOpen] = useState(false);
     const [commitLoading, setCommitLoading] = useState(false);
@@ -53,11 +49,11 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     const branchName = searchParams.get('branch') || 'master';
     const q = searchParams.get('q') || '';
     const status = (searchParams.get('status') || 'all') as 'all' | 'labeled' | 'unlabeled' | 'draft';
-    const sortValue = searchParams.get('sort') || 'createdAt:desc';
     const page = Number(searchParams.get('page') || 1);
     const pageSize = Number(searchParams.get('pageSize') || 24);
     const sampleId = searchParams.get('sampleId') || '';
-    const [sortBy, sortOrder] = sortValue.split(':');
+    const sortBy = 'createdAt';
+    const sortOrder: 'asc' | 'desc' = 'desc';
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);
@@ -139,24 +135,12 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
     useEffect(() => {
         if (!projectId) return;
         setLoadingMeta(true);
-        Promise.all([
-            api.getProjectLabels(projectId),
-            api.getProjectBranches(projectId),
-        ])
-            .then(([labelData, branchData]) => {
+        api.getProjectLabels(projectId)
+            .then((labelData) => {
                 setLabels(labelData || []);
-                setBranches(branchData || []);
             })
             .finally(() => setLoadingMeta(false));
     }, [projectId]);
-
-    useEffect(() => {
-        if (branches.length === 0) return;
-        const active = branches.find((b) => b.name === branchName) || branches[0];
-        if (active.name !== branchName) {
-            updateParams({branch: active.name, page: '1'});
-        }
-    }, [branches, branchName, updateParams]);
 
     useEffect(() => {
         if (!sampleId && samples.length > 0) {
@@ -420,40 +404,6 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
 
     return (
         <div className="flex h-full flex-col gap-4">
-            <div className="flex items-center gap-3">
-                <Select
-                    value={branchName}
-                    onChange={async (value) => {
-                        await flushDraft();
-                        updateParams({branch: value, page: '1'});
-                    }}
-                    className="min-w-[160px]"
-                    loading={loadingMeta}
-                >
-                    {branches.map((branch) => (
-                        <Select.Option key={branch.id} value={branch.name}>
-                            {branch.name}
-                        </Select.Option>
-                    ))}
-                </Select>
-                <div className="flex-1"/>
-                <Select
-                    value={sortValue}
-                    onChange={async (value) => {
-                        await flushDraft();
-                        updateParams({sort: value, page: '1'});
-                    }}
-                    className="min-w-[200px]"
-                >
-                    <Select.Option value="createdAt:desc">{t('annotation.workspace.sort.createdNewest')}</Select.Option>
-                    <Select.Option value="createdAt:asc">{t('annotation.workspace.sort.createdOldest')}</Select.Option>
-                    <Select.Option value="updatedAt:desc">{t('annotation.workspace.sort.updatedNewest')}</Select.Option>
-                    <Select.Option value="updatedAt:asc">{t('annotation.workspace.sort.updatedOldest')}</Select.Option>
-                    <Select.Option value="name:asc">{t('annotation.workspace.sort.nameAZ')}</Select.Option>
-                    <Select.Option value="name:desc">{t('annotation.workspace.sort.nameZA')}</Select.Option>
-                </Select>
-            </div>
-
             <AnnotationWorkspaceLayout
                 loading={loadingMeta || samplesLoading || annotationsLoading}
                 dataset={dataset}
@@ -466,6 +416,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                 sampleTotal={meta.total}
                 sampleOffset={meta.offset}
                 annotationState={annotationState}
+                selectedIds={selectedAnnotationIds}
                 isSyncing={false}
                 isSyncReady
                 onBack={backToSamples}
@@ -518,59 +469,6 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset}) =>
                         canEditAnnotation={canEditAnnotation}
                     />
                 }
-                renderAnnotationItem={(item: Annotation, index: number) => {
-                    const isSelected = selectedAnnotationIds.has(item.id);
-                    const canEdit = canEditAnnotation(item);
-                    const isAutoGenerated = false;
-                    const isMine = item.annotatorId && item.annotatorId === user?.id;
-
-                    return (
-                        <div
-                            className={`cursor-pointer border-l-[4px] px-4 py-2 ${
-                                isSelected ? 'bg-[var(--github-selected-bg)]' : 'bg-transparent'
-                            } ${canEdit ? 'opacity-100' : 'opacity-70'}`}
-                            style={{
-                                borderLeftColor: isSelected ? item.labelColor || '#1890ff' : 'transparent',
-                            }}
-                            onClick={() => {
-                                handleAnnotationSelect(item.id);
-                                annotationState.setCurrentTool('select');
-                            }}
-                        >
-                            <div className="flex items-center justify-between gap-2">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                        <span
-                        className="inline-flex h-2.5 w-2.5 rounded-full"
-                        style={{backgroundColor: item.labelColor || '#1890ff'}}
-                    />
-                                        <span className="text-sm">{item.labelName || 'Label'}</span>
-                                        <span className="text-xs text-github-muted">#{index + 1}</span>
-                                    </div>
-                                    <div className="mt-1 text-[11px] text-github-muted">
-                                        {isAutoGenerated
-                                            ? t('annotation.workspace.annotationSource.auto')
-                                            : isMine
-                                                ? t('annotation.workspace.annotationSource.mine')
-                                                : t('annotation.workspace.annotationSource.others')}
-                                    </div>
-                                </div>
-                                {canEdit && !isAutoGenerated ? (
-                                    <Button
-                                        type="text"
-                                        danger
-                                        size="small"
-                                        icon={<DeleteOutlined/>}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteAnnotation(item.id);
-                                        }}
-                                    />
-                                ) : null}
-                            </div>
-                        </div>
-                    );
-                }}
             />
 
             <CommitModal

@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {message, Select} from 'antd';
+import {message} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {AnnotationCanvas, AnnotationCanvasRef} from '../../components/canvas';
@@ -10,7 +10,6 @@ import {
     AnnotationDraftItem,
     AnnotationDraftPayload,
     Dataset,
-    ProjectBranch,
     ProjectLabel,
 } from '../../types';
 import {api} from '../../services/api';
@@ -39,7 +38,6 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     const user = useAuthStore((state) => state.user);
 
     const [labels, setLabels] = useState<ProjectLabel[]>([]);
-    const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [loadingMeta, setLoadingMeta] = useState(true);
     const [commitModalOpen, setCommitModalOpen] = useState(false);
     const [commitLoading, setCommitLoading] = useState(false);
@@ -53,11 +51,11 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     const branchName = searchParams.get('branch') || 'master';
     const q = searchParams.get('q') || '';
     const status = (searchParams.get('status') || 'all') as 'all' | 'labeled' | 'unlabeled' | 'draft';
-    const sortValue = searchParams.get('sort') || 'createdAt:desc';
     const page = Number(searchParams.get('page') || 1);
     const pageSize = Number(searchParams.get('pageSize') || 24);
     const sampleId = searchParams.get('sampleId') || '';
-    const [sortBy, sortOrder] = sortValue.split(':');
+    const sortBy = 'createdAt';
+    const sortOrder: 'asc' | 'desc' = 'desc';
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);
@@ -158,24 +156,12 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     useEffect(() => {
         if (!projectId) return;
         setLoadingMeta(true);
-        Promise.all([
-            api.getProjectLabels(projectId),
-            api.getProjectBranches(projectId),
-        ])
-            .then(([labelData, branchData]) => {
+        api.getProjectLabels(projectId)
+            .then((labelData) => {
                 setLabels(labelData || []);
-                setBranches(branchData || []);
             })
             .finally(() => setLoadingMeta(false));
     }, [projectId]);
-
-    useEffect(() => {
-        if (branches.length === 0) return;
-        const active = branches.find((b) => b.name === branchName) || branches[0];
-        if (active.name !== branchName) {
-            updateParams({branch: active.name, page: '1'});
-        }
-    }, [branches, branchName, updateParams]);
 
     useEffect(() => {
         if (!sampleId && samples.length > 0) {
@@ -437,40 +423,6 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
 
     return (
         <div className="flex h-full flex-col gap-4">
-            <div className="flex items-center gap-3">
-                <Select
-                    value={branchName}
-                    onChange={async (value) => {
-                        await flushDraft();
-                        updateParams({branch: value, page: '1'});
-                    }}
-                    className="min-w-[160px]"
-                    loading={loadingMeta}
-                >
-                    {branches.map((branch) => (
-                        <Select.Option key={branch.id} value={branch.name}>
-                            {branch.name}
-                        </Select.Option>
-                    ))}
-                </Select>
-                <div className="flex-1"/>
-                <Select
-                    value={sortValue}
-                    onChange={async (value) => {
-                        await flushDraft();
-                        updateParams({sort: value, page: '1'});
-                    }}
-                    className="min-w-[200px]"
-                >
-                    <Select.Option value="createdAt:desc">{t('annotation.workspace.sort.createdNewest')}</Select.Option>
-                    <Select.Option value="createdAt:asc">{t('annotation.workspace.sort.createdOldest')}</Select.Option>
-                    <Select.Option value="updatedAt:desc">{t('annotation.workspace.sort.updatedNewest')}</Select.Option>
-                    <Select.Option value="updatedAt:asc">{t('annotation.workspace.sort.updatedOldest')}</Select.Option>
-                    <Select.Option value="name:asc">{t('annotation.workspace.sort.nameAZ')}</Select.Option>
-                    <Select.Option value="name:desc">{t('annotation.workspace.sort.nameZA')}</Select.Option>
-                </Select>
-            </div>
-
             <AnnotationWorkspaceLayout
                 loading={loadingMeta || samplesLoading || annotationsLoading}
                 dataset={dataset}

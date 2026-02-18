@@ -26,6 +26,7 @@ export interface AnnotationWorkspaceLayoutProps<T extends AnnotationLike> {
 
     // 标注状态
     annotationState: UseAnnotationStateReturn<T>;
+    selectedIds?: Set<string>;
 
     // 同步状态
     isSyncing: boolean;
@@ -73,6 +74,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                                                                         sampleTotal,
                                                                         sampleOffset,
                                                                         annotationState,
+                                                                        selectedIds,
                                                                         isSyncing,
                                                                         isSyncReady,
                                                                         onSampleSelect,
@@ -115,7 +117,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
     }
 
     return (
-        <div className="flex h-full bg-github-base text-github-text">
+        <div className="flex h-full bg-github-base text-github-text py-4">
             {/* Left Sidebar - Sample List */}
             <aside className="w-[250px] shrink-0">
                 <SampleList
@@ -130,7 +132,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
                 />
             </aside>
 
-            <main className="flex h-full min-w-0 flex-1 flex-col">
+            <main className="px-2 flex h-full min-w-0 flex-1 flex-col">
                 {/* Toolbar */}
                 <AnnotationToolbar
                     labels={labels}
@@ -171,6 +173,7 @@ export function AnnotationWorkspaceLayout<T extends AnnotationLike>({
             <AnnotationSidebar
                 annotations={annotationState.annotations as any[]}
                 selectedId={annotationState.selectedId}
+                selectedIds={selectedIds}
                 onAnnotationSelect={onAnnotationSelect}
                 onAnnotationDelete={onAnnotationDelete}
                 currentIndex={Math.max(0, sampleOffset + currentIndex)}

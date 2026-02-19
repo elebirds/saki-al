@@ -381,7 +381,11 @@ const ProjectSamplesAnnotations: React.FC = () => {
                                             }
                                         >
                                             <Card.Meta
-                                                title={<span className="block truncate">{sample.name}</span>}
+                                                title={
+                                                    <Tooltip title={sample.name} placement="topLeft">
+                                                        <span className="block truncate" title={sample.name}>{sample.name}</span>
+                                                    </Tooltip>
+                                                }
                                                 description={sample.remark || t('project.samples.noRemark')}
                                             />
                                             <div className="mt-3 flex flex-wrap gap-2">

@@ -318,9 +318,11 @@ const DatasetDetail: React.FC = () => {
             >
                 <Card.Meta
                     title={
-                        <span className="block truncate">
-              {item.name}
-            </span>
+                        <Tooltip title={item.name} placement="topLeft">
+                            <span className="block truncate" title={item.name}>
+                                {item.name}
+                            </span>
+                        </Tooltip>
                     }
                     description={item.remark && <span className="text-xs text-gray-500">{item.remark}</span>}
                 />

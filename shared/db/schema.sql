@@ -433,6 +433,7 @@ CREATE TABLE public.dataset (
     description character varying(2000),
     type public.datasettype NOT NULL,
     allow_duplicate_sample_names boolean NOT NULL,
+    is_public boolean NOT NULL,
     owner_id uuid NOT NULL
 );
 
@@ -2531,5 +2532,4 @@ ALTER TABLE ONLY public.user_system_role
 --
 -- PostgreSQL database dump complete
 --
-
 

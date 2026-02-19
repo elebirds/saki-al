@@ -41,6 +41,10 @@ class DatasetBase(SQLModel):
         default=True,
         description="Whether duplicate sample names are allowed within this dataset."
     )
+    is_public: bool = Field(
+        default=False,
+        description="Whether this dataset is publicly readable/linkable to all users."
+    )
 
 
 class Dataset(DatasetBase, TimestampMixin, UUIDMixin, table=True):

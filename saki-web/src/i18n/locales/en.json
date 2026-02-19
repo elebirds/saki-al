@@ -235,7 +235,13 @@
       "emptyHint": "Click the button above to create your first dataset",
       "type": "Type",
       "typeHelp": "Dataset type determines annotation workflow and model training.",
+      "visibility": "Visibility",
+      "visibilityHelp": "When public, all users can view samples and link this dataset to projects they can update.",
       "noMore": "No more content."
+    },
+    "visibility": {
+      "public": "Public",
+      "private": "Private"
     },
     "detail": {
       "openImportWorkspace": "Import Workspace",
@@ -285,6 +291,8 @@
       "datasetName": "Dataset Name",
       "nameRequired": "Please enter dataset name",
       "description": "Description",
+      "visibility": "Visibility",
+      "visibilityHelp": "When public, all users get default viewer access and can link this dataset to projects they can update.",
       "allowDuplicateSampleNames": "Allow Duplicate Sample Names",
       "allowDuplicateSampleNamesHelp": "When disabled, uploads with existing sample names are rejected for that sample.",
       "saveBasicInfo": "Save Basic Info",

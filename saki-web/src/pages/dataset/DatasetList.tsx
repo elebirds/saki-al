@@ -1,5 +1,5 @@
 import React, {useCallback, useMemo, useState} from 'react';
-import {Button, Card, Form, Input, message, Modal, Select, Tag, Tooltip, Typography} from 'antd';
+import {Button, Card, Form, Input, message, Modal, Select, Switch, Tag, Tooltip, Typography} from 'antd';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {Dataset} from '../../types';
@@ -61,9 +61,14 @@ const DatasetList: React.FC = () => {
                                 </div>
                             }
                             extra={
-                                <Tag color={getDatasetTypeColor(dataset.type)}>
-                                    {getDatasetTypeLabel(dataset.type)}
-                                </Tag>
+                                <div className="flex items-center gap-1">
+                                    <Tag color={getDatasetTypeColor(dataset.type)}>
+                                        {getDatasetTypeLabel(dataset.type)}
+                                    </Tag>
+                                    <Tag color={dataset.isPublic ? 'blue' : 'default'}>
+                                        {dataset.isPublic ? t('dataset.visibility.public') : t('dataset.visibility.private')}
+                                    </Tag>
+                                </div>
                             }
                             actions={[
                                 <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
@@ -160,7 +165,7 @@ const DatasetList: React.FC = () => {
                     form={form}
                     layout="vertical"
                     onFinish={handleCreate}
-                    initialValues={{type: 'classic'}}
+                    initialValues={{type: 'classic', isPublic: false}}
                 >
                     <Form.Item
                         name="name"
@@ -193,6 +198,17 @@ const DatasetList: React.FC = () => {
                                 </Option>
                             ))}
                         </Select>
+                    </Form.Item>
+                    <Form.Item
+                        name="isPublic"
+                        label={t('dataset.list.visibility')}
+                        valuePropName="checked"
+                        extra={t('dataset.list.visibilityHelp')}
+                    >
+                        <Switch
+                            checkedChildren={t('dataset.visibility.public')}
+                            unCheckedChildren={t('dataset.visibility.private')}
+                        />
                     </Form.Item>
                 </Form>
             </Modal>

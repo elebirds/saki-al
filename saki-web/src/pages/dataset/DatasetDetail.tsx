@@ -489,6 +489,9 @@ const DatasetDetail: React.FC = () => {
                     <Tag color={getDatasetTypeColor(dataset.type)}>
                         {getDatasetTypeLabel(dataset.type)}
                     </Tag>
+                    <Tag color={dataset.isPublic ? 'blue' : 'default'}>
+                        {dataset.isPublic ? t('dataset.visibility.public') : t('dataset.visibility.private')}
+                    </Tag>
                     {isOwner && <Tag color="gold">{t('common.owner')}</Tag>}
                     {role && !isOwner && <Tag>{role.displayName}</Tag>}
                 </div>

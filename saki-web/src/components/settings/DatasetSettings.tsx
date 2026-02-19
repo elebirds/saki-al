@@ -29,6 +29,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
             name: dataset.name,
             description: dataset.description,
             allowDuplicateSampleNames: dataset.allowDuplicateSampleNames ?? true,
+            isPublic: dataset.isPublic ?? false,
         });
     }, [dataset, form]);
 
@@ -39,6 +40,7 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
                 name: values.name,
                 description: values.description,
                 allowDuplicateSampleNames: values.allowDuplicateSampleNames,
+                isPublic: values.isPublic,
             });
             onUpdate(updated);
             message.success(t('dataset.settings.successMessage'));
@@ -88,6 +90,18 @@ const DatasetSettings: React.FC<DatasetSettingsProps> = ({dataset, onUpdate}) =>
                             <Input.TextArea
                                 placeholder={t('dataset.settings.descriptionPlaceholder')}
                                 rows={4}
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            label={t('dataset.settings.visibility')}
+                            name="isPublic"
+                            valuePropName="checked"
+                            extra={t('dataset.settings.visibilityHelp')}
+                        >
+                            <Switch
+                                checkedChildren={t('dataset.visibility.public')}
+                                unCheckedChildren={t('dataset.visibility.private')}
                             />
                         </Form.Item>
 

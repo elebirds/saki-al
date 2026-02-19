@@ -16,12 +16,14 @@ from saki_api.modules.access.api.permission import (
     ResourcePermissionsResponse,
 )
 from saki_api.modules.access.api.role import RoleReadMinimal
-from saki_api.modules.access.domain.rbac.enums import ResourceType
+from saki_api.modules.access.domain.rbac.enums import ResourceType, Permissions
 from saki_api.modules.access.repo.resource_member import ResourceMemberRepository
 from saki_api.modules.access.repo.role import RoleRepository
 from saki_api.modules.access.repo.user_system_role import UserSystemRoleRepository
 from saki_api.modules.access.service.permission import PermissionService
+from saki_api.modules.access.service.presets import DATASET_VIEWER_ROLE_ID
 from saki_api.modules.access.service.resource_owner import ResourceOwnerService
+from saki_api.modules.storage.domain.dataset import Dataset
 
 
 class PermissionQueryService:
@@ -40,6 +42,14 @@ class PermissionQueryService:
         self.permission_service = PermissionService(session)
         self.permission_repo = self.permission_service.permission_repo
         self.resource_owner_service = ResourceOwnerService(session)
+
+    @staticmethod
+    def _public_dataset_permission_set() -> set[str]:
+        return {
+            Permissions.DATASET_READ,
+            Permissions.SAMPLE_READ,
+            Permissions.DATASET_LINK_PROJECT,
+        }
 
     async def get_system_permissions(self, user_id: uuid.UUID) -> SystemPermissionsResponse:
         """
@@ -112,6 +122,15 @@ class PermissionQueryService:
         resource_permissions = await self.permission_repo.get_user_resource_permissions(
             user_id, rt, resource_id
         )
+
+        if rt == ResourceType.DATASET:
+            dataset = await self.session.get(Dataset, resource_id)
+            if dataset and dataset.is_public:
+                resource_permissions.update(self._public_dataset_permission_set())
+                if resource_role is None:
+                    public_role = await self.role_repo.get_by_id(DATASET_VIEWER_ROLE_ID)
+                    if public_role is not None:
+                        resource_role = RoleReadMinimal.model_validate(public_role)
 
         # Check if user is owner
         is_owner = await self.resource_owner_service.is_owner(rt, resource_id, user_id)

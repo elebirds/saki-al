@@ -231,11 +231,17 @@
       "descriptionPlaceholder": "输入数据集描述（可选）",
       "type": "类型",
       "typeHelp": "数据集类型决定标注方式与模型训练流程。",
+      "visibility": "可见性",
+      "visibilityHelp": "公开后，所有用户默认可查看样本并可将该数据集关联到有权限的项目。",
       "open": "打开",
       "noDescription": "暂无描述",
       "empty": "暂无数据集",
       "emptyHint": "点击上方按钮创建您的第一个数据集",
       "noMore": "没有更多内容了～"
+    },
+    "visibility": {
+      "public": "公开",
+      "private": "私有"
     },
     "detail": {
       "openImportWorkspace": "导入工作台",
@@ -285,6 +291,8 @@
       "datasetName": "数据集名称",
       "nameRequired": "请输入数据集名称",
       "description": "描述",
+      "visibility": "可见性",
+      "visibilityHelp": "公开后，所有用户默认拥有查看权限，并可将该数据集关联到有权限的项目。",
       "allowDuplicateSampleNames": "允许同名样本",
       "allowDuplicateSampleNamesHelp": "关闭后，上传时若样本名称已存在将拒绝该样本。",
       "saveBasicInfo": "保存基本信息",

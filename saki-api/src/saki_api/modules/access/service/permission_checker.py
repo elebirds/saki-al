@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from typing import Optional, Set, Any, Union
 
 from loguru import logger
+from sqlalchemy import or_
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.config import settings
@@ -23,6 +25,7 @@ from saki_api.modules.access.repo.permission import PermissionRepository
 from saki_api.modules.access.repo.resource_member import ResourceMemberRepository
 from saki_api.modules.access.repo.role import RoleRepository
 from saki_api.modules.access.repo.user_system_role import UserSystemRoleRepository
+from saki_api.modules.storage.domain.dataset import Dataset
 
 
 @dataclass
@@ -66,6 +69,26 @@ class PermissionChecker:
         self.resource_member_repo = ResourceMemberRepository(session)
         self._role_cache: dict[uuid.UUID, Role] = {}
         self._permission_cache: dict[uuid.UUID, Set[str]] = {}
+
+    @staticmethod
+    def _public_dataset_permission_set() -> set[str]:
+        """
+        Public dataset grants baseline read permissions and project-link ability.
+        """
+        return {
+            Permissions.DATASET_READ,
+            Permissions.SAMPLE_READ,
+            Permissions.DATASET_LINK_PROJECT,
+        }
+
+    async def _is_public_dataset(self, dataset_id: uuid.UUID | None) -> bool:
+        if dataset_id is None:
+            return False
+        stmt = select(Dataset.is_public).where(Dataset.id == dataset_id)
+        return bool(await self.session.scalar(stmt))
+
+    def _can_use_public_dataset_permission(self, required_perm: Permission) -> bool:
+        return required_perm.is_satisfied_by(self._public_dataset_permission_set())
 
     async def get_user_system_permissions(self, user_id: uuid.UUID) -> Set[str]:
         """
@@ -202,6 +225,14 @@ class PermissionChecker:
             except ValueError:
                 return False  # Invalid UUID format
 
+        if (
+                resource_type == ResourceType.DATASET
+                and resource_id_uuid is not None
+                and self._can_use_public_dataset_permission(required_perm)
+                and await self._is_public_dataset(resource_id_uuid)
+        ):
+            return True
+
         ctx = PermissionContext(
             user_id=user_id,
             resource_type=resource_type,
@@ -313,6 +344,12 @@ class PermissionChecker:
                 )
             return base_query
 
+        include_public_dataset = (
+            resource_type == ResourceType.DATASET
+            and hasattr(resource_model, "is_public")
+            and self._can_use_public_dataset_permission(required_perm)
+        )
+
         # 资源级访问：仅返回用户在该资源上确实具备 required_permission 的成员资源
         accessible_ids: Set[uuid.UUID] = set(
             await self.resource_member_repo.get_resource_ids_by_user_with_permission(
@@ -332,6 +369,12 @@ class PermissionChecker:
                 len(accessible_ids),
                 sample_ids,
             )
+
+        if include_public_dataset:
+            public_predicate = resource_model.is_public.is_(True)
+            if accessible_ids:
+                return base_query.where(or_(resource_model.id.in_(accessible_ids), public_predicate))
+            return base_query.where(public_predicate)
 
         if not accessible_ids:
             if settings.RBAC_DEBUG_LOG:

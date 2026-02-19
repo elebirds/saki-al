@@ -21,7 +21,7 @@ class Permission:
     Attributes:
         target: Target type (e.g., "dataset", "user", "*" for all)
         action: Action type (e.g., "read", "create", "*" for all)
-        scope: Permission scope (e.g., "all", "assigned", "self")
+        scope: Permission scope (e.g., "all", "assigned")
     """
     target: str
     action: str
@@ -151,7 +151,7 @@ class Permission:
         
         Supports wildcard matching:
         - "*" matches any target/action
-        - Scope hierarchy: all > assigned > self
+        - Scope hierarchy: all > assigned
         
         Args:
             other: Permission to match against
@@ -193,7 +193,7 @@ class Permission:
         """
         Check if the scope we have covers the required scope.
         
-        Scope hierarchy: all > assigned > self
+        Scope hierarchy: all > assigned
         
         Args:
             have_scope: The scope we have
@@ -203,9 +203,8 @@ class Permission:
             True if have_scope covers req_scope
         """
         scope_hierarchy = {
-            "all": 3,
-            "assigned": 2,
-            "self": 1,
+            "all": 2,
+            "assigned": 1,
         }
 
         have_level = scope_hierarchy.get(have_scope, 0)

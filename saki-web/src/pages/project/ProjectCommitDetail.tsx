@@ -331,21 +331,21 @@ const ProjectCommitDetail: React.FC = () => {
                 let annotationNodes: CommitTreeNode[] = []
 
                 if (isAddedSample) {
-                    mergedAnnotations = await api.getAnnotationsAtCommit(commitId, typed.sampleId)
+                    mergedAnnotations = await api.getAnnotationsAtCommit(projectId, commitId, typed.sampleId)
                     annotationNodes = mergedAnnotations.map((annotation) =>
                         buildAnnotationNode(annotation, typed.sampleId!, 'added')
                     )
                 } else if (isRemovedSample) {
                     if (commit?.parentId) {
-                        mergedAnnotations = await api.getAnnotationsAtCommit(commit.parentId, typed.sampleId)
+                        mergedAnnotations = await api.getAnnotationsAtCommit(projectId, commit.parentId, typed.sampleId)
                     }
                     annotationNodes = mergedAnnotations.map((annotation) =>
                         buildAnnotationNode(annotation, typed.sampleId!, 'removed')
                     )
                 } else {
-                    const currentAnnotations = await api.getAnnotationsAtCommit(commitId, typed.sampleId)
+                    const currentAnnotations = await api.getAnnotationsAtCommit(projectId, commitId, typed.sampleId)
                     const parentAnnotations = (commit?.parentId && removedIds.size > 0)
-                        ? await api.getAnnotationsAtCommit(commit.parentId, typed.sampleId)
+                        ? await api.getAnnotationsAtCommit(projectId, commit.parentId, typed.sampleId)
                         : []
                     const addedAnnotations = currentAnnotations.filter((annotation) => addedIds.has(annotation.id))
                     const removedAnnotations = parentAnnotations.filter((annotation) => removedIds.has(annotation.id))

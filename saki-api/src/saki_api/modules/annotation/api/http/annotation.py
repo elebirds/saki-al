@@ -10,14 +10,14 @@ from fastapi import APIRouter, Depends, Query
 
 from saki_api.app.deps import (
     AnnotationServiceDep,
-    ProjectServiceDep,
+    CommitServiceDep,
     AnnotationDraftServiceDep,
     AnnotationWorkingServiceDep,
     AnnotationSyncServiceDep,
     DatasetServiceDep,
     SampleServiceDep,
 )
-from saki_api.core.exceptions import ConflictAppException
+from saki_api.core.exceptions import BadRequestAppException, ConflictAppException
 from saki_api.modules.access.api.dependencies import get_current_user_id, require_permission
 from saki_api.modules.annotation.api.annotation import AnnotationCreate, AnnotationHistoryItem, AnnotationRead
 from saki_api.modules.annotation.api.draft import (
@@ -33,6 +33,7 @@ from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
 
+
 def _to_annotation_read(annotation) -> AnnotationRead:
     return AnnotationRead.model_validate(annotation)
 
@@ -45,13 +46,25 @@ def _convert_payload_to_frontend(payload: dict) -> dict:
     }
 
 
+async def _ensure_commit_in_project(
+        *,
+        project_id: uuid.UUID,
+        commit_id: uuid.UUID,
+        commit_service: CommitServiceDep,
+):
+    commit = await commit_service.get_by_id_or_raise(commit_id)
+    if commit.project_id != project_id:
+        raise BadRequestAppException("Commit not found in project")
+    return commit
+
+
 # =============================================================================
 # Annotation CRUD Endpoints
 # =============================================================================
 
 
 @router.get("/commits/{commit_id}/annotations", response_model=List[AnnotationRead], dependencies=[
-    Depends(require_permission(Permissions.ANNOTATION_READ))
+    Depends(require_permission(Permissions.ANNOTATION_READ_ALL))
 ])
 async def get_annotations_at_commit(
         *,
@@ -68,8 +81,28 @@ async def get_annotations_at_commit(
     return [_to_annotation_read(a) for a in annotations]
 
 
+@router.get("/projects/{project_id}/commits/{commit_id}/annotations", response_model=List[AnnotationRead], dependencies=[
+    Depends(require_permission(Permissions.ANNOTATION_READ, ResourceType.PROJECT, "project_id"))
+])
+async def get_project_annotations_at_commit(
+        *,
+        project_id: uuid.UUID,
+        commit_id: uuid.UUID,
+        sample_id: uuid.UUID | None = None,
+        annotation_service: AnnotationServiceDep,
+        commit_service: CommitServiceDep,
+):
+    await _ensure_commit_in_project(
+        project_id=project_id,
+        commit_id=commit_id,
+        commit_service=commit_service,
+    )
+    annotations = await annotation_service.get_annotations_at_commit(commit_id, sample_id)
+    return [_to_annotation_read(a) for a in annotations]
+
+
 @router.get("/samples/{sample_id}/annotations", response_model=List[AnnotationRead], dependencies=[
-    Depends(require_permission(Permissions.ANNOTATION_READ))
+    Depends(require_permission(Permissions.ANNOTATION_READ_ALL))
 ])
 async def get_sample_annotations(
         *,
@@ -101,7 +134,7 @@ async def get_project_annotations(
 
 
 @router.get("/annotations/{annotation_id}", response_model=AnnotationRead, dependencies=[
-    Depends(require_permission(Permissions.ANNOTATION_READ))
+    Depends(require_permission(Permissions.ANNOTATION_READ_ALL))
 ])
 async def get_annotation(
         *,
@@ -117,7 +150,7 @@ async def get_annotation(
 
 @router.get("/annotations/{annotation_id}/history", response_model=List[AnnotationHistoryItem],
             dependencies=[
-                Depends(require_permission(Permissions.ANNOTATION_READ))
+                Depends(require_permission(Permissions.ANNOTATION_READ_ALL))
             ])
 async def get_annotation_history(
         *,
@@ -134,7 +167,7 @@ async def get_annotation_history(
 
 
 @router.post("/annotations", response_model=AnnotationRead, dependencies=[
-    Depends(require_permission(Permissions.ANNOTATE))
+    Depends(require_permission(Permissions.ANNOTATE_ALL))
 ])
 async def create_annotation(
         *,
@@ -259,7 +292,7 @@ async def sync_annotation(
 
 
 @router.get("/lineage/{lineage_id}/annotations", response_model=List[AnnotationRead], dependencies=[
-    Depends(require_permission(Permissions.ANNOTATION_READ))
+    Depends(require_permission(Permissions.ANNOTATION_READ_ALL))
 ])
 async def get_annotations_by_lineage_id(
         *,
@@ -288,7 +321,7 @@ async def count_project_annotations(
 
 
 @router.get("/samples/{sample_id}/annotations/count", response_model=int, dependencies=[
-    Depends(require_permission(Permissions.ANNOTATION_READ))
+    Depends(require_permission(Permissions.ANNOTATION_READ_ALL))
 ])
 async def count_sample_annotations(
         *,

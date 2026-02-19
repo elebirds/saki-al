@@ -32,15 +32,13 @@ class Scope(str, Enum):
     """
     Permission scope - defines the extent of a permission.
     
-    Coverage hierarchy: all > owned > assigned > self
+    Coverage hierarchy: all > assigned
     
     - ALL: Access to all resources of this type (admin level)
     - ASSIGNED: Access to all items within assigned resources (member level)
-    - SELF: Access only to items created by the user within assigned resources
     """
     ALL = "all"
     ASSIGNED = "assigned"
-    SELF = "self"
 
 
 VALID_SCOPE_STRS = [s.value for s in Scope]
@@ -72,10 +70,9 @@ class AuditAction(str, Enum):
 # ============================================================================
 # Predefined Permission Constants (for convenience)
 # ============================================================================
-# 注意：以下权限是按照权限范围从小到大排序的，即：ALL > ASSIGNED > SELF
+# 注意：以下权限是按照权限范围从小到大排序的，即：ALL > ASSIGNED
 # ALL：全局允许，系统级权限，通常用于管理员角色
 # ASSIGNED：成员允许，通常用于数据集、项目等资源的成员
-# SELF：自己允许，通常用于标注者自己标注的标注
 # ============================================================================
 # ALL属于系统级角色的权限
 # ASSIGNED属于资源级角色的权限
@@ -125,6 +122,7 @@ class Permissions:
     USER_UPDATE = "user:update:all"  # 全局允许：修改用户信息（不包括角色信息）
     USER_DELETE = "user:delete:all"  # 全局允许：删除用户
     USER_LIST = "user:list:all"  # 全局允许：读取用户列表（用于用户选择）
+    USER_LIST_ASSIGNED = "user:list:assigned"  # 成员允许：在资源上下文读取用户列表（用于成员选择）
     USER_ROLE_READ = "user:role_read:all"  # 全局允许：查看用户角色信息
 
     # ============================================================================
@@ -169,12 +167,10 @@ class Permissions:
     # Sample - global scope
     SAMPLE_READ_ALL = "sample:read:all"  # 全局允许：读取样本信息
     SAMPLE_CREATE_ALL = "sample:create:all"  # 全局允许：新建样本（即，上传样本）
-    SAMPLE_UPDATE_ALL = "sample:update:all"  # 全局允许：更新样本（即，更新样本信息）
     SAMPLE_DELETE_ALL = "sample:delete:all"  # 全局允许：删除样本（即，删除样本）
     # Sample - assigned scope
     SAMPLE_READ = "sample:read:assigned"  # 成员允许：读取样本信息
     SAMPLE_CREATE = "sample:create:assigned"  # 成员允许：新建样本（即，上传样本）
-    SAMPLE_UPDATE = "sample:update:assigned"  # 成员允许：更新样本（即，更新样本信息）
     SAMPLE_DELETE = "sample:delete:assigned"  # 成员允许：删除样本（即，删除样本）
 
     # ============================================================================
@@ -207,15 +203,8 @@ class Permissions:
     # ============================================================================
     ANNOTATE_ALL = "annotation:create:all"  # 全局允许：创建/修改标注
     ANNOTATION_READ_ALL = "annotation:read:all"  # 全局允许：读取标注
-    ANNOTATION_DELETE_ALL = "annotation:delete:all"  # 全局允许：删除标注
     ANNOTATE = "annotation:create:assigned"  # 成员允许：创建/修改标注
     ANNOTATION_READ = "annotation:read:assigned"  # 成员允许：读取标注
-    ANNOTATION_DELETE = "annotation:delete:assigned"  # 成员允许：删除标注
-    # Annotation - self scope (reserved)
-    ANNOTATE_SELF = "annotation:create:self"  # 仅本人：创建/修改标注（预留）
-    ANNOTATION_READ_SELF = "annotation:read:self"  # 仅本人：读取标注（预留）
-    ANNOTATION_DELETE_SELF = "annotation:delete:self"  # 仅本人：删除标注（预留）
-
     # ============================================================================
     # Commit Permissions (L2 Layer)
     # ============================================================================
@@ -223,10 +212,6 @@ class Permissions:
     COMMIT_READ_ALL = "commit:read:all"  # 全局允许：读取 commit 历史
     COMMIT_CREATE = "commit:create:assigned"  # 成员允许：创建 commit（保存标注）
     COMMIT_READ = "commit:read:assigned"  # 成员允许：读取 commit 历史
-    # Commit - self scope (reserved)
-    COMMIT_CREATE_SELF = "commit:create:self"  # 仅本人：创建 commit（预留）
-    COMMIT_READ_SELF = "commit:read:self"  # 仅本人：读取 commit（预留）
-
     # ============================================================================
     # Branch Permissions (L2 Layer)
     # ============================================================================
@@ -236,9 +221,6 @@ class Permissions:
     BRANCH_MANAGE = "branch:manage:assigned"  # 成员允许：创建/删除分支
     BRANCH_READ = "branch:read:assigned"  # 成员允许：读取分支信息
     BRANCH_SWITCH = "branch:switch:assigned"  # 成员允许：切换分支（移动 HEAD 指针）
-    # Branch - self scope (reserved)
-    BRANCH_READ_SELF = "branch:read:self"  # 仅本人：读取分支信息（预留）
-
     # ============================================================================
     # Active Learning / Runtime Permissions (L3 Layer)
     # ============================================================================

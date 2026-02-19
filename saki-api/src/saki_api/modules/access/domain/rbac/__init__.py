@@ -3,7 +3,7 @@ RBAC (Role-Based Access Control) Models
 
 This module provides a comprehensive RBAC system with:
 - Dynamic role management (system and resource roles)
-- Permission scopes (all, owned, assigned, self)
+- Permission scopes (all, assigned)
 - Role inheritance
 - Audit logging
 """

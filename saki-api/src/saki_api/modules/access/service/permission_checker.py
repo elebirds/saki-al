@@ -4,7 +4,7 @@ Permission Checker Service
 Provides efficient permission checking with support for:
 - System roles and resource roles
 - Permission inheritance
-- Scope-based access control (all, owned, assigned, self)
+- Scope-based access control (all, assigned)
 """
 
 import uuid
@@ -179,10 +179,8 @@ class PermissionChecker:
             # Check if user can update a specific dataset
             await checker.check(user_id, "dataset:update", ResourceType.DATASET, dataset_id)
             
-            # Check if user has self-level annotation permission
-            # Note: This only checks if user has the permission level,
-            # checking if a specific annotation belongs to the user is done in business layer
-            await checker.check(user_id, "annotation:read:self", ResourceType.DATASET, dataset_id)
+            # Check if user has assigned-level annotation permission
+            await checker.check(user_id, "annotation:read:assigned", ResourceType.DATASET, dataset_id)
         """
         if await self.is_super_admin(user_id):
             return True

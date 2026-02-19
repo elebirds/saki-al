@@ -122,14 +122,12 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             # Sample - 样本完全访问
             Permissions.SAMPLE_READ_ALL,
             Permissions.SAMPLE_CREATE_ALL,
-            Permissions.SAMPLE_UPDATE_ALL,
             Permissions.SAMPLE_DELETE_ALL,
             # Label / Annotation / Branch / Commit / Runtime - 项目全局访问
             Permissions.LABEL_MANAGE_ALL,
             Permissions.LABEL_READ_ALL,
             Permissions.ANNOTATE_ALL,
             Permissions.ANNOTATION_READ_ALL,
-            Permissions.ANNOTATION_DELETE_ALL,
             Permissions.COMMIT_CREATE_ALL,
             Permissions.COMMIT_READ_ALL,
             Permissions.BRANCH_MANAGE_ALL,
@@ -204,10 +202,9 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
-            Permissions.SAMPLE_UPDATE,
             Permissions.SAMPLE_DELETE,
             # User list - 用于成员选择
-            Permissions.USER_LIST,
+            Permissions.USER_LIST_ASSIGNED,
         ],
         "is_supremo": True,
         "color": "red"
@@ -230,10 +227,9 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
-            Permissions.SAMPLE_UPDATE,
             Permissions.SAMPLE_DELETE,
             # User list - 用于成员选择
-            Permissions.USER_LIST,
+            Permissions.USER_LIST_ASSIGNED,
         ],
         "is_supremo": False,
         "color": "green"
@@ -269,7 +265,6 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_IMPORT,
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
-            Permissions.SAMPLE_UPDATE,
             Permissions.SAMPLE_DELETE,
         ],
         "is_supremo": False,
@@ -288,7 +283,6 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_IMPORT,
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
-            Permissions.SAMPLE_UPDATE,
         ],
         "is_supremo": False,
         "color": "cyan",
@@ -307,11 +301,11 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.PROJECT_ARCHIVE,
             Permissions.PROJECT_DELETE,
             Permissions.PROJECT_ASSIGN,
+            Permissions.USER_LIST_ASSIGNED,
             Permissions.LABEL_MANAGE,
             Permissions.LABEL_READ,
             Permissions.ANNOTATE,
             Permissions.ANNOTATION_READ,
-            Permissions.ANNOTATION_DELETE,
             Permissions.COMMIT_CREATE,
             Permissions.COMMIT_READ,
             Permissions.BRANCH_MANAGE,
@@ -340,6 +334,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.PROJECT_UPDATE,
             Permissions.PROJECT_ARCHIVE,
             Permissions.PROJECT_ASSIGN,
+            Permissions.USER_LIST_ASSIGNED,
             Permissions.LABEL_MANAGE,
             Permissions.LABEL_READ,
             Permissions.ANNOTATE,

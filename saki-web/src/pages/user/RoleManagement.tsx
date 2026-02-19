@@ -94,6 +94,12 @@ const getPermissionCategories = (
     // 资源级权限（系统角色和资源角色都可以使用，但权限范围不同）
     const resourceCategories = [
         {
+            title: t('role.management.permissionLabels.userManagement'),
+            permissions: [
+                {value: 'user:list:assigned', label: t('role.management.permissionLabels.userList')},
+            ],
+        },
+        {
             title: t('role.management.permissionLabels.datasetManagementAll'),
             permissions: [
                 {value: 'dataset:create:all', label: t('role.management.permissionLabels.datasetCreateAll')},
@@ -102,7 +108,6 @@ const getPermissionCategories = (
                 {value: 'dataset:delete:all', label: t('role.management.permissionLabels.datasetDeleteAll')},
                 {value: 'dataset:assign:all', label: t('role.management.permissionLabels.datasetAssignAll')},
                 {value: 'dataset:link_project:all', label: t('role.management.permissionLabels.datasetLinkProjectAll')},
-                {value: 'dataset:export:all', label: t('role.management.permissionLabels.datasetExportAll')},
                 {value: 'dataset:import:all', label: t('role.management.permissionLabels.datasetImportAll')},
             ],
         },
@@ -116,7 +121,6 @@ const getPermissionCategories = (
                     value: 'dataset:link_project:assigned',
                     label: t('role.management.permissionLabels.datasetLinkProjectAssigned')
                 },
-                {value: 'dataset:export:assigned', label: t('role.management.permissionLabels.datasetExportAssigned')},
                 {value: 'dataset:import:assigned', label: t('role.management.permissionLabels.datasetImportAssigned')},
             ],
         },
@@ -125,7 +129,6 @@ const getPermissionCategories = (
             permissions: [
                 {value: 'sample:read:all', label: t('role.management.permissionLabels.sampleReadAll')},
                 {value: 'sample:create:all', label: t('role.management.permissionLabels.sampleCreateAll')},
-                {value: 'sample:update:all', label: t('role.management.permissionLabels.sampleUpdateAll')},
                 {value: 'sample:delete:all', label: t('role.management.permissionLabels.sampleDeleteAll')},
             ],
         },
@@ -134,7 +137,6 @@ const getPermissionCategories = (
             permissions: [
                 {value: 'sample:read:assigned', label: t('role.management.permissionLabels.sampleReadAssigned')},
                 {value: 'sample:create:assigned', label: t('role.management.permissionLabels.sampleCreateAssigned')},
-                {value: 'sample:update:assigned', label: t('role.management.permissionLabels.sampleUpdateAssigned')},
                 {value: 'sample:delete:assigned', label: t('role.management.permissionLabels.sampleDeleteAssigned')},
             ],
         },
@@ -142,25 +144,21 @@ const getPermissionCategories = (
             title: t('role.management.permissionLabels.labelManagementAll'),
             permissions: [
                 {value: 'label:read:all', label: t('role.management.permissionLabels.labelReadAll')},
-                {value: 'label:create:all', label: t('role.management.permissionLabels.labelCreateAll')},
-                {value: 'label:update:all', label: t('role.management.permissionLabels.labelUpdateAll')},
-                {value: 'label:delete:all', label: t('role.management.permissionLabels.labelDeleteAll')},
+                {value: 'label:manage:all', label: t('role.management.permissionLabels.labelManageAll')},
             ],
         },
         {
             title: t('role.management.permissionLabels.labelManagementAssigned'),
             permissions: [
                 {value: 'label:read:assigned', label: t('role.management.permissionLabels.labelReadAssigned')},
-                {value: 'label:create:assigned', label: t('role.management.permissionLabels.labelCreateAssigned')},
-                {value: 'label:update:assigned', label: t('role.management.permissionLabels.labelUpdateAssigned')},
-                {value: 'label:delete:assigned', label: t('role.management.permissionLabels.labelDeleteAssigned')},
+                {value: 'label:manage:assigned', label: t('role.management.permissionLabels.labelManageAssigned')},
             ],
         },
         {
             title: t('role.management.permissionLabels.annotationManagementAll'),
             permissions: [
                 {value: 'annotation:read:all', label: t('role.management.permissionLabels.annotationReadAll')},
-                {value: 'annotation:modify:all', label: t('role.management.permissionLabels.annotationModifyAll')},
+                {value: 'annotation:create:all', label: t('role.management.permissionLabels.annotationModifyAll')},
             ],
         },
         {
@@ -168,16 +166,9 @@ const getPermissionCategories = (
             permissions: [
                 {value: 'annotation:read:assigned', label: t('role.management.permissionLabels.annotationReadAssigned')},
                 {
-                    value: 'annotation:modify:assigned',
+                    value: 'annotation:create:assigned',
                     label: t('role.management.permissionLabels.annotationModifyAssigned')
                 },
-            ],
-        },
-        {
-            title: t('role.management.permissionLabels.annotationManagementSelf'),
-            permissions: [
-                {value: 'annotation:read:self', label: t('role.management.permissionLabels.annotationReadSelf')},
-                {value: 'annotation:modify:self', label: t('role.management.permissionLabels.annotationModifySelf')},
             ],
         },
         {
@@ -267,10 +258,10 @@ const getPermissionCategories = (
             permissions: category.permissions.filter(p => p.value.endsWith(':all')),
         })).filter(category => category.permissions.length > 0), allowedPermissions);
     } else if (roleType === 'resource') {
-        // 资源角色：只返回资源级权限（:assigned 和 :self），不包含系统级权限
+        // 资源角色：只返回资源级权限（:assigned），不包含系统级权限
         return filterPermissionCategories(resourceCategories.map(category => ({
             ...category,
-            permissions: category.permissions.filter(p => p.value.endsWith(':assigned') || p.value.endsWith(':self')),
+            permissions: category.permissions.filter(p => p.value.endsWith(':assigned')),
         })).filter(category => category.permissions.length > 0), allowedPermissions);
     }
 

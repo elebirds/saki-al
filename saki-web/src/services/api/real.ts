@@ -1064,19 +1064,23 @@ export class RealApiService implements ApiService {
 
     async getAssetDownloadUrl(
         assetId: string,
-        expiresInHours: number = 1
+        expiresInHours: number = 1,
+        datasetId?: string,
     ): Promise<{
         assetId: string;
         downloadUrl: string;
         expiresIn: number;
         filename?: string;
     }> {
+        const endpoint = datasetId
+            ? `/assets/datasets/${datasetId}/assets/${assetId}/download-url`
+            : `/assets/${assetId}/download-url`;
         const response = await this.client.get<{
             assetId: string;
             downloadUrl: string;
             expiresIn: number;
             filename?: string;
-        }>(`/assets/${assetId}/download-url`, {params: {expires_in_hours: expiresInHours}});
+        }>(endpoint, {params: {expires_in_hours: expiresInHours}});
         return response.data;
     }
 
@@ -1103,6 +1107,7 @@ export class RealApiService implements ApiService {
     }
 
     async updateBranch(
+        projectId: string,
         branchId: string,
         payload: {
             name?: string;
@@ -1111,7 +1116,7 @@ export class RealApiService implements ApiService {
         }
     ): Promise<ProjectBranch> {
         const response = await this.client.put<ProjectBranch>(
-            `/branches/${branchId}`,
+            `/branches/projects/${projectId}/branches/${branchId}`,
             null,
             {
                 params: {
@@ -1124,8 +1129,8 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async deleteBranch(branchId: string): Promise<void> {
-        await this.client.delete(`/branches/${branchId}`);
+    async deleteBranch(projectId: string, branchId: string): Promise<void> {
+        await this.client.delete(`/branches/projects/${projectId}/branches/${branchId}`);
     }
 
     async getProjectCommits(projectId: string): Promise<CommitHistoryItem[]> {
@@ -1193,13 +1198,13 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async updateProjectLabel(labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel> {
-        const response = await this.client.put<ProjectLabel>(`/labels/${labelId}`, payload);
+    async updateProjectLabel(projectId: string, labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel> {
+        const response = await this.client.put<ProjectLabel>(`/labels/projects/${projectId}/labels/${labelId}`, payload);
         return response.data;
     }
 
-    async deleteProjectLabel(labelId: string): Promise<void> {
-        await this.client.delete(`/labels/${labelId}`);
+    async deleteProjectLabel(projectId: string, labelId: string): Promise<void> {
+        await this.client.delete(`/labels/projects/${projectId}/labels/${labelId}`);
     }
 
     async getProjectSamples(
@@ -1232,9 +1237,9 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getAnnotationsAtCommit(commitId: string, sampleId?: string): Promise<AnnotationRead[]> {
+    async getAnnotationsAtCommit(projectId: string, commitId: string, sampleId?: string): Promise<AnnotationRead[]> {
         const response = await this.client.get<AnnotationRead[]>(
-            `/annotations/commits/${commitId}/annotations`,
+            `/annotations/projects/${projectId}/commits/${commitId}/annotations`,
             {
                 params: {
                     sample_id: sampleId,
@@ -1555,16 +1560,27 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getUserList(page: number = 1, limit: number = 100, q?: string): Promise<PaginationResponse<{
+    async getUserList(
+        page: number = 1,
+        limit: number = 100,
+        q?: string,
+        resourceType?: 'dataset' | 'project',
+        resourceId?: string,
+    ): Promise<PaginationResponse<{
         id: string;
         email: string;
         fullName?: string
     }>> {
+        const params: Record<string, unknown> = {page, limit, q};
+        if (resourceType && resourceId) {
+            params.resource_type = resourceType;
+            params.resource_id = resourceId;
+        }
         const response = await this.client.get<PaginationResponse<{
             id: string;
             email: string;
             fullName?: string
-        }>>('/users/list', {params: {page, limit, q}});
+        }>>('/users/list', {params});
         return response.data;
     }
 

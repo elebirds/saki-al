@@ -51,7 +51,7 @@ const DatasetMembers: React.FC<DatasetMembersProps> = ({datasetId}) => {
     const fetchUsers = async () => {
         try {
             // Use getUserList API (requires user:list permission)
-            const data = await api.getUserList();
+            const data = await api.getUserList(1, 100, undefined, 'dataset', datasetId);
             setUsers(data.items);
         } catch (error) {
             console.error('Failed to fetch users:', error);

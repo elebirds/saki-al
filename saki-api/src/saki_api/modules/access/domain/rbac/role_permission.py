@@ -18,7 +18,7 @@ class RolePermission(RolePermissionBase, UUIDMixin, TimestampMixin, table=True):
     Role-Permission mapping table.
 
     Stores permissions assigned to each role.
-    Permission format: resource:action:scope (e.g., "dataset:read:owned")
+    Permission format: resource:action:scope (e.g., "dataset:read:assigned")
     """
     __tablename__ = "role_permission"
 

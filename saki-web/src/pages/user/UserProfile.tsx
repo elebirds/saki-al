@@ -99,8 +99,6 @@ const UserProfile: React.FC = () => {
             const scopeMap: Record<string, string> = {
                 'all': t('user.profile.permissionScope.all'),
                 'assigned': t('user.profile.permissionScope.assigned'),
-                'self': t('user.profile.permissionScope.self'),
-                'owned': t('user.profile.permissionScope.owned'),
             };
             return `${resource}:${action} (${scopeMap[scope] || scope})`;
         }

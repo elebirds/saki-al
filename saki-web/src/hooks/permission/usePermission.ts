@@ -194,7 +194,7 @@ export function useInitPermissions() {
 }
 
 /**
- * Hook for annotation permission checking with 'self' scope support.
+ * Hook for annotation permission checking.
  *
  * @example
  * const { canModify, canDelete } = useAnnotationPermission(annotation.annotatorId);
@@ -207,13 +207,13 @@ export function useAnnotationPermission(annotationCreatorId?: string) {
     const currentUser = useAuthStore((state) => state.user);
 
     const canModify = canModifyAnnotation(
-        'annotation:update:assigned',
+        'annotation:create:assigned',
         annotationCreatorId,
         currentUser?.id
     );
 
     const canDelete = canModifyAnnotation(
-        'annotation:delete:assigned',
+        'annotation:create:assigned',
         annotationCreatorId,
         currentUser?.id
     );

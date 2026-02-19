@@ -170,7 +170,7 @@ async def remove_dataset_member(
 
 
 @router.get("/{dataset_id}/available-roles", response_model=List[RoleReadMinimal], dependencies=[
-    Depends(require_permission(Permissions.DATASET_READ, ResourceType.DATASET, "dataset_id"))
+    Depends(require_permission(Permissions.DATASET_ASSIGN, ResourceType.DATASET, "dataset_id"))
 ])
 async def get_available_dataset_roles(
         *,

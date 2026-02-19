@@ -20,13 +20,12 @@ import {
 const CACHE_EXPIRATION_MS = 5 * 60 * 1000;
 
 /**
- * Scope hierarchy: all > assigned > self
+ * Scope hierarchy: all > assigned
  * Higher scope includes lower scopes
  */
 const SCOPE_HIERARCHY: Record<Scope, number> = {
-    all: 3,
-    assigned: 2,
-    self: 1,
+    all: 2,
+    assigned: 1,
 };
 
 /**
@@ -289,7 +288,7 @@ export const usePermissionStore = create<PermissionState>()(
                         if (resourceIndex) {
                             const resourceScope = findMatchingScope(resourceIndex, required);
                             if (resourceScope !== null) {
-                                // Resource permissions can only have 'assigned' or 'self' scope
+                                // Resource permissions can only have 'assigned' scope
                                 // 'all' scope is only for system permissions
                                 if (resourceScope === 'all') {
                                     // This shouldn't happen, but handle it gracefully
@@ -377,8 +376,7 @@ export const usePermissionStore = create<PermissionState>()(
 );
 
 /**
- * Helper function to check if user can perform action on annotation
- * considering the 'self' scope.
+ * Helper function to check if user can perform action on annotation.
  */
 export function canModifyAnnotation(
     permission: string,
@@ -386,18 +384,7 @@ export function canModifyAnnotation(
     currentUserId: string | null | undefined
 ): boolean {
     const store = usePermissionStore.getState();
-
-    // If no creator ID, assume it's a new annotation
-    if (!annotationCreatorId) return store.hasPermission(permission);
-
-    // Check if user has full permission (assigned scope)
-    if (store.hasPermission(permission)) return true;
-
-    // Check if user has self scope and is the creator
-    const selfPermission = permission.replace(':assigned', ':self');
-    if (store.hasPermission(selfPermission) && annotationCreatorId === currentUserId) {
-        return true;
-    }
-
-    return false;
+    void annotationCreatorId;
+    void currentUserId;
+    return store.hasPermission(permission);
 }

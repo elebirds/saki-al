@@ -13,7 +13,7 @@ import {usePermission, useResourcePermission} from '../../hooks/permission';
 
 interface AuthorizedProps {
     /**
-     * Required permission string (e.g., "dataset:create", "annotation:update:self")
+     * Required permission string (e.g., "dataset:create", "annotation:create:assigned")
      */
     permission: string;
     /**

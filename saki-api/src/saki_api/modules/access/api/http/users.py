@@ -7,9 +7,11 @@ Uses the new RBAC system for permission checking.
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.app.deps import UserServiceDep
+from saki_api.infra.db.session import get_session
 from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
 from saki_api.modules.access.api.dependencies import (
@@ -17,7 +19,8 @@ from saki_api.modules.access.api.dependencies import (
     require_permission,
 )
 from saki_api.modules.access.service.guards import AdminGuardDep
-from saki_api.modules.access.domain.rbac import Permissions
+from saki_api.modules.access.domain.rbac import Permissions, ResourceType
+from saki_api.modules.access.service.permission_checker import PermissionChecker
 from saki_api.schemas import (UserCreate, UserRead, UserUpdate, UserListItem)
 
 router = APIRouter()
@@ -56,21 +59,61 @@ async def upload_user_avatar(
 @router.get(
     "/list",
     response_model=PaginationResponse[UserListItem],
-    dependencies=[Depends(require_permission(Permissions.USER_LIST))],
     summary="List users for selection",
-    description="List users with basic info only (for member selection). Requires user:list permission."
+    description=(
+            "List users with basic info only (for member selection). "
+            "Supports system-level user:list or resource-scoped user:list with resource context."
+    )
 )
 async def list_users_simple(
         service: UserServiceDep,
         page: int = Query(1, ge=1),
         limit: int = Query(20, ge=1, le=200),
         q: str | None = Query(default=None, description="Fuzzy search by email/full name"),
+        resource_type: ResourceType | None = Query(default=None),
+        resource_id: uuid.UUID | None = Query(default=None),
+        user_id: uuid.UUID = Depends(get_current_user_id),
+        session: AsyncSession = Depends(get_session),
 ) -> PaginationResponse[UserListItem]:
     """
     List users with basic info only (for member selection).
     
-    Requires user:list permission (not full user:read).
+    Requires `user:list` permission. For resource roles, pass both
+    `resource_type` and `resource_id` so the check can be evaluated in resource scope.
     """
+    if (resource_type is None) ^ (resource_id is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="resource_type and resource_id must be provided together",
+        )
+
+    checker = PermissionChecker(session)
+    allowed = False
+    required_permission = Permissions.USER_LIST
+    if resource_type and resource_id:
+        required_permission = Permissions.USER_LIST_ASSIGNED
+        allowed = await checker.check(
+            user_id=user_id,
+            permission=required_permission,
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+        )
+    else:
+        allowed = await checker.check(
+            user_id=user_id,
+            permission=required_permission,
+        )
+
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "PERMISSION_DENIED",
+                "message": f"Permission denied: {required_permission}",
+                "required_permission": required_permission,
+            },
+        )
+
     users = await service.list_active_paginated(Pagination.from_page(page=page, limit=limit), q=q)
     return users.map(UserListItem.model_validate)
 

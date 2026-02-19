@@ -8,11 +8,24 @@ from typing import List
 from fastapi import APIRouter, Depends, Query
 
 from saki_api.app.deps import BranchServiceDep
+from saki_api.core.exceptions import BadRequestAppException
 from saki_api.modules.access.api.dependencies import require_permission
 from saki_api.modules.project.api.branch import BranchRead, BranchReadMinimal, BranchSwitch
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
+
+
+async def _ensure_branch_in_project(
+        *,
+        project_id: uuid.UUID,
+        branch_id: uuid.UUID,
+        branch_service: BranchServiceDep,
+):
+    branch = await branch_service.get_by_id_or_raise(branch_id)
+    if branch.project_id != project_id:
+        raise BadRequestAppException("Branch not found in project")
+    return branch
 
 
 # =============================================================================
@@ -59,7 +72,7 @@ async def list_branches_minimal(
 
 
 @router.get("/{branch_id}", response_model=BranchRead, dependencies=[
-    Depends(require_permission(Permissions.BRANCH_READ))
+    Depends(require_permission(Permissions.BRANCH_READ_ALL))
 ])
 async def get_branch(
         *,
@@ -70,6 +83,23 @@ async def get_branch(
     Get a branch by ID.
     """
     branch = await branch_service.get_by_id_or_raise(branch_id)
+    return BranchRead.model_validate(branch)
+
+
+@router.get("/projects/{project_id}/branches/{branch_id}", response_model=BranchRead, dependencies=[
+    Depends(require_permission(Permissions.BRANCH_READ, ResourceType.PROJECT, "project_id"))
+])
+async def get_project_branch(
+        *,
+        project_id: uuid.UUID,
+        branch_id: uuid.UUID,
+        branch_service: BranchServiceDep,
+):
+    branch = await _ensure_branch_in_project(
+        project_id=project_id,
+        branch_id=branch_id,
+        branch_service=branch_service,
+    )
     return BranchRead.model_validate(branch)
 
 
@@ -119,7 +149,7 @@ async def create_branch(
 
 
 @router.post("/{branch_id}/switch", response_model=BranchRead, dependencies=[
-    Depends(require_permission(Permissions.BRANCH_SWITCH))
+    Depends(require_permission(Permissions.BRANCH_SWITCH_ALL))
 ])
 async def switch_branch(
         *,
@@ -136,8 +166,27 @@ async def switch_branch(
     return BranchRead.model_validate(branch)
 
 
+@router.post("/projects/{project_id}/branches/{branch_id}/switch", response_model=BranchRead, dependencies=[
+    Depends(require_permission(Permissions.BRANCH_SWITCH, ResourceType.PROJECT, "project_id"))
+])
+async def switch_project_branch(
+        *,
+        project_id: uuid.UUID,
+        branch_id: uuid.UUID,
+        switch: BranchSwitch,
+        branch_service: BranchServiceDep,
+):
+    await _ensure_branch_in_project(
+        project_id=project_id,
+        branch_id=branch_id,
+        branch_service=branch_service,
+    )
+    branch = await branch_service.switch_to_commit(branch_id, switch.target_commit_id)
+    return BranchRead.model_validate(branch)
+
+
 @router.put("/{branch_id}", response_model=BranchRead, dependencies=[
-    Depends(require_permission(Permissions.BRANCH_MANAGE))
+    Depends(require_permission(Permissions.BRANCH_MANAGE_ALL))
 ])
 async def update_branch(
         *,
@@ -161,8 +210,34 @@ async def update_branch(
     return BranchRead.model_validate(branch)
 
 
+@router.put("/projects/{project_id}/branches/{branch_id}", response_model=BranchRead, dependencies=[
+    Depends(require_permission(Permissions.BRANCH_MANAGE, ResourceType.PROJECT, "project_id"))
+])
+async def update_project_branch(
+        *,
+        project_id: uuid.UUID,
+        branch_id: uuid.UUID,
+        name: str | None = Query(None, description="New branch name"),
+        description: str | None = Query(None, description="New branch description"),
+        is_protected: bool | None = Query(None, description="New protected status"),
+        branch_service: BranchServiceDep,
+):
+    await _ensure_branch_in_project(
+        project_id=project_id,
+        branch_id=branch_id,
+        branch_service=branch_service,
+    )
+    branch = await branch_service.update_branch(
+        branch_id=branch_id,
+        name=name,
+        description=description,
+        is_protected=is_protected,
+    )
+    return BranchRead.model_validate(branch)
+
+
 @router.delete("/{branch_id}", response_model=None, dependencies=[
-    Depends(require_permission(Permissions.BRANCH_MANAGE))
+    Depends(require_permission(Permissions.BRANCH_MANAGE_ALL))
 ])
 async def delete_branch(
         *,
@@ -174,4 +249,21 @@ async def delete_branch(
 
     Cannot delete protected branches.
     """
+    await branch_service.delete_branch(branch_id)
+
+
+@router.delete("/projects/{project_id}/branches/{branch_id}", response_model=None, dependencies=[
+    Depends(require_permission(Permissions.BRANCH_MANAGE, ResourceType.PROJECT, "project_id"))
+])
+async def delete_project_branch(
+        *,
+        project_id: uuid.UUID,
+        branch_id: uuid.UUID,
+        branch_service: BranchServiceDep,
+):
+    await _ensure_branch_in_project(
+        project_id=project_id,
+        branch_id=branch_id,
+        branch_service=branch_service,
+    )
     await branch_service.delete_branch(branch_id)

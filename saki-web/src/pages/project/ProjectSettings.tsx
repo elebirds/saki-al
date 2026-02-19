@@ -183,13 +183,14 @@ const ProjectSettings: React.FC = () => {
     }, [projectId, t])
 
     const loadUsers = useCallback(async (query?: string) => {
+        if (!projectId) return
         try {
-            const response = await api.getUserList(1, 50, query)
+            const response = await api.getUserList(1, 50, query, 'project', projectId)
             setUsers(response.items)
         } catch (error: any) {
             message.error(error.message || t('project.settings.loadUsersError'))
         }
-    }, [t])
+    }, [projectId, t])
 
     const loadLinkedDatasets = useCallback(async () => {
         if (!projectId) return
@@ -328,7 +329,7 @@ const ProjectSettings: React.FC = () => {
                 shortcut: values.shortcut,
             }
             if (editingLabel) {
-                await api.updateProjectLabel(editingLabel.id, payload)
+                await api.updateProjectLabel(projectId, editingLabel.id, payload)
                 message.success(t('project.settings.labelUpdated'))
             } else {
                 await api.createProjectLabel(projectId, payload as ProjectLabelCreate)
@@ -346,8 +347,9 @@ const ProjectSettings: React.FC = () => {
     }
 
     const handleDeleteLabel = async (labelId: string) => {
+        if (!projectId) return
         try {
-            await api.deleteProjectLabel(labelId)
+            await api.deleteProjectLabel(projectId, labelId)
             message.success(t('project.settings.labelDeleted'))
             loadLabels()
         } catch (error: any) {

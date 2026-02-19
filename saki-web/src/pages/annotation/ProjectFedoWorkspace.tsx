@@ -356,7 +356,7 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
         const resolveAssetUrl = async (assetId?: string) => {
             if (!assetId) return '';
             try {
-                const data = await api.getAssetDownloadUrl(assetId);
+                const data = await api.getAssetDownloadUrl(assetId, 1, datasetId);
                 return (data.downloadUrl || '') as string;
             } catch (error) {
                 return '';

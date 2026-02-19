@@ -110,7 +110,13 @@ export interface ApiService {
     // ============================================================================
     getUsers(page?: number, limit?: number): Promise<PaginationResponse<User>>;
 
-    getUserList(page?: number, limit?: number, q?: string): Promise<PaginationResponse<{
+    getUserList(
+        page?: number,
+        limit?: number,
+        q?: string,
+        resourceType?: 'dataset' | 'project',
+        resourceId?: string,
+    ): Promise<PaginationResponse<{
         id: string;
         email: string;
         fullName?: string
@@ -278,7 +284,8 @@ export interface ApiService {
 
     getAssetDownloadUrl(
         assetId: string,
-        expiresInHours?: number
+        expiresInHours?: number,
+        datasetId?: string,
     ): Promise<{
         assetId: string;
         downloadUrl: string;
@@ -296,6 +303,7 @@ export interface ApiService {
     ): Promise<ProjectBranch>;
 
     updateBranch(
+        projectId: string,
         branchId: string,
         payload: {
             name?: string;
@@ -304,7 +312,7 @@ export interface ApiService {
         }
     ): Promise<ProjectBranch>;
 
-    deleteBranch(branchId: string): Promise<void>;
+    deleteBranch(projectId: string, branchId: string): Promise<void>;
 
     getProjectCommits(projectId: string): Promise<CommitHistoryItem[]>;
 
@@ -327,9 +335,9 @@ export interface ApiService {
 
     createProjectLabel(projectId: string, payload: ProjectLabelCreate): Promise<ProjectLabel>;
 
-    updateProjectLabel(labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel>;
+    updateProjectLabel(projectId: string, labelId: string, payload: ProjectLabelUpdate): Promise<ProjectLabel>;
 
-    deleteProjectLabel(labelId: string): Promise<void>;
+    deleteProjectLabel(projectId: string, labelId: string): Promise<void>;
 
     getProjectSamples(
         projectId: string,
@@ -345,7 +353,7 @@ export interface ApiService {
         }
     ): Promise<PaginationResponse<ProjectSample>>;
 
-    getAnnotationsAtCommit(commitId: string, sampleId?: string): Promise<AnnotationRead[]>;
+    getAnnotationsAtCommit(projectId: string, commitId: string, sampleId?: string): Promise<AnnotationRead[]>;
 
     getWorkingAnnotations(projectId: string, sampleId: string, branchName?: string): Promise<AnnotationDraftPayload | null>;
 

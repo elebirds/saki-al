@@ -57,9 +57,7 @@ class RoleService(CrudServiceBase[Role, RoleRepository, RoleCreate, RoleUpdate])
     def _split_role_type_permissions(cls) -> tuple[list[str], list[str], list[str]]:
         all_permissions = sorted(cls._allowed_permission_values())
         system_permissions = [p for p in all_permissions if p.endswith(":all")]
-        resource_permissions = [
-            p for p in all_permissions if p.endswith(":assigned") or p.endswith(":self")
-        ]
+        resource_permissions = [p for p in all_permissions if p.endswith(":assigned")]
         return all_permissions, system_permissions, resource_permissions
 
     @classmethod
@@ -86,11 +84,11 @@ class RoleService(CrudServiceBase[Role, RoleRepository, RoleCreate, RoleUpdate])
             disallowed = [
                 item
                 for item in permissions
-                if not (item.endswith(":assigned") or item.endswith(":self"))
+                if not item.endswith(":assigned")
             ]
             if disallowed:
                 raise BadRequestAppException(
-                    "resource role only accepts ':assigned' or ':self' permissions"
+                    "resource role only accepts ':assigned' permissions"
                 )
 
     async def get_permission_catalog(self) -> dict[str, list[str]]:

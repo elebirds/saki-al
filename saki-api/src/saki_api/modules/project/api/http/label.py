@@ -8,11 +8,24 @@ from typing import List
 from fastapi import APIRouter, Depends
 
 from saki_api.app.deps import LabelServiceDep
+from saki_api.core.exceptions import BadRequestAppException
 from saki_api.modules.access.api.dependencies import require_permission
 from saki_api.modules.project.api.label import LabelCreate, LabelRead, LabelUpdate
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
 router = APIRouter()
+
+
+async def _ensure_label_in_project(
+        *,
+        project_id: uuid.UUID,
+        label_id: uuid.UUID,
+        label_service: LabelServiceDep,
+):
+    label = await label_service.get_by_id_or_raise(label_id)
+    if label.project_id != project_id:
+        raise BadRequestAppException("Label not found in project")
+    return label
 
 
 # =============================================================================
@@ -56,7 +69,7 @@ async def list_labels(
 
 
 @router.get("/labels/{label_id}", response_model=LabelRead, dependencies=[
-    Depends(require_permission(Permissions.LABEL_READ))
+    Depends(require_permission(Permissions.LABEL_READ_ALL))
 ])
 async def get_label(
         *,
@@ -70,8 +83,25 @@ async def get_label(
     return LabelRead.model_validate(label)
 
 
+@router.get("/projects/{project_id}/labels/{label_id}", response_model=LabelRead, dependencies=[
+    Depends(require_permission(Permissions.LABEL_READ, ResourceType.PROJECT, "project_id"))
+])
+async def get_project_label(
+        *,
+        project_id: uuid.UUID,
+        label_id: uuid.UUID,
+        label_service: LabelServiceDep,
+):
+    label = await _ensure_label_in_project(
+        project_id=project_id,
+        label_id=label_id,
+        label_service=label_service,
+    )
+    return LabelRead.model_validate(label)
+
+
 @router.put("/labels/{label_id}", response_model=LabelRead, dependencies=[
-    Depends(require_permission(Permissions.LABEL_MANAGE))
+    Depends(require_permission(Permissions.LABEL_MANAGE_ALL))
 ])
 async def update_label(
         *,
@@ -88,8 +118,27 @@ async def update_label(
     return LabelRead.model_validate(label)
 
 
+@router.put("/projects/{project_id}/labels/{label_id}", response_model=LabelRead, dependencies=[
+    Depends(require_permission(Permissions.LABEL_MANAGE, ResourceType.PROJECT, "project_id"))
+])
+async def update_project_label(
+        *,
+        project_id: uuid.UUID,
+        label_id: uuid.UUID,
+        label_in: LabelUpdate,
+        label_service: LabelServiceDep,
+):
+    await _ensure_label_in_project(
+        project_id=project_id,
+        label_id=label_id,
+        label_service=label_service,
+    )
+    label = await label_service.update_label(label_id, label_in)
+    return LabelRead.model_validate(label)
+
+
 @router.delete("/labels/{label_id}", response_model=None, dependencies=[
-    Depends(require_permission(Permissions.LABEL_MANAGE))
+    Depends(require_permission(Permissions.LABEL_MANAGE_ALL))
 ])
 async def delete_label(
         *,
@@ -102,6 +151,23 @@ async def delete_label(
     Warning: This may affect annotations that reference this label.
     """
     await label_service.get_by_id_or_raise(label_id)
+    await label_service.repository.delete(label_id)
+
+
+@router.delete("/projects/{project_id}/labels/{label_id}", response_model=None, dependencies=[
+    Depends(require_permission(Permissions.LABEL_MANAGE, ResourceType.PROJECT, "project_id"))
+])
+async def delete_project_label(
+        *,
+        project_id: uuid.UUID,
+        label_id: uuid.UUID,
+        label_service: LabelServiceDep,
+):
+    await _ensure_label_in_project(
+        project_id=project_id,
+        label_id=label_id,
+        label_service=label_service,
+    )
     await label_service.repository.delete(label_id)
 
 

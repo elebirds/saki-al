@@ -136,7 +136,7 @@ class PermissionDependency:
         Initialize the permission dependency.
         
         Args:
-            permission: Required permission (e.g., "dataset:read", "annotation:modify:self")
+            permission: Required permission (e.g., "dataset:read", "annotation:create:assigned")
             resource_type: Type of resource being accessed (string like "dataset")
             resource_id_param: URL path parameter name for resource ID
         """

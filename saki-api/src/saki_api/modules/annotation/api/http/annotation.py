@@ -302,58 +302,6 @@ async def count_sample_annotations(
 
 
 # =============================================================================
-# Batch Operations - Annotation Save Workflow
-# =============================================================================
-
-
-@router.post("/projects/{project_id}/annotations/save", response_model=dict, dependencies=[
-    Depends(require_permission(Permissions.COMMIT_CREATE, ResourceType.PROJECT, "project_id"))
-])
-async def save_annotations(
-        *,
-        project_id: uuid.UUID,
-        branch_name: str = "master",
-        commit_message: str,
-        annotations: list[dict],
-        project_service: ProjectServiceDep,
-        current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    """
-    Save annotations and create a new commit.
-
-    This is the core L2 annotation save workflow that:
-    1. Creates new Annotation records (with parent_id for modifications)
-    2. Creates a new Commit
-    3. Creates CAMap entries linking annotations to the commit
-    4. Updates the branch HEAD to the new commit
-
-    Args:
-        project_id: Project ID
-        branch_name: Branch to save to (default: "master")
-        commit_message: Commit message describing changes
-        annotations: List of annotation geometry/attrs dicts
-
-    Returns:
-        Created commit information
-    """
-    commit = await project_service.save_annotations(
-        project_id=project_id,
-        branch_name=branch_name,
-        annotation_changes=annotations,
-        commit_message=commit_message,
-        author_id=current_user_id,
-    )
-
-    return {
-        "commit_id": commit.id,
-        "message": commit.message,
-        "parent_id": commit.parent_id,
-        "stats": commit.stats,
-        "created_at": commit.created_at,
-    }
-
-
-# =============================================================================
 # Working / Draft Pipeline (Working -> Staging -> Commit)
 # =============================================================================
 

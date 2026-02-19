@@ -64,8 +64,7 @@ class LabelRepository(BaseRepository[Label]):
         stmt = select(func.coalesce(func.max(Label.sort_order), 0)).where(
             Label.project_id == project_id
         )
-        result = await self.session.exec(stmt)
-        return result.one() or 0
+        return await self.session.scalar(stmt) or 0
 
     async def name_exists(self, project_id: uuid.UUID, name: str, exclude_id: uuid.UUID | None = None) -> bool:
         """

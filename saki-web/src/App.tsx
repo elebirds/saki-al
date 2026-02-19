@@ -12,6 +12,8 @@ import ProjectSamplesAnnotations from './pages/project/ProjectSamplesAnnotations
 import ProjectInsights from './pages/project/ProjectInsights';
 import ProjectSettings from './pages/project/ProjectSettings';
 import ProjectWorkspace from './pages/project/ProjectWorkspace';
+import DatasetImportWorkspace from './pages/import/DatasetImportWorkspace';
+import ProjectImportWorkspace from './pages/import/ProjectImportWorkspace';
 import ProjectLoopOverview from './pages/project/loops/ProjectLoopOverview';
 import ProjectLoopDetail from './pages/project/loops/ProjectLoopDetail';
 import ProjectLoopRoundDetail from './pages/project/loops/ProjectLoopRoundDetail';
@@ -59,6 +61,7 @@ const App: React.FC = () => {
                                 <Route path="/" element={<DatasetList/>}/>
                                 <Route path="/datasets" element={<DatasetList/>}/>
                                 <Route path="/datasets/:id" element={<DatasetDetail/>}/>
+                                <Route path="/datasets/:id/import" element={<DatasetImportWorkspace/>}/>
                                 <Route path="/projects" element={<ProjectList/>}/>
                                 <Route path="/projects/:projectId" element={<ProjectLayout/>}>
                                     <Route index element={<ProjectOverview/>}/>
@@ -66,6 +69,7 @@ const App: React.FC = () => {
                                     <Route path="commits" element={<ProjectCommits/>}/>
                                     <Route path="commits/:commitId" element={<ProjectCommitDetail/>}/>
                                     <Route path="samples" element={<ProjectSamplesAnnotations/>}/>
+                                    <Route path="import" element={<ProjectImportWorkspace/>}/>
                                     <Route path="loops" element={<ProjectLoopOverview/>}/>
                                     <Route path="loops/:loopId" element={<ProjectLoopDetail/>}/>
                                     <Route path="loops/:loopId/rounds/:roundId" element={<ProjectLoopRoundDetail/>}/>

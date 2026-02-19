@@ -4,7 +4,7 @@ Service dependencies for FastAPI dependency injection.
 Provides factory functions to create service instances with dependencies.
 """
 
-from typing import Annotated, AsyncIterator
+from typing import TYPE_CHECKING, Annotated, AsyncIterator
 
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -20,6 +20,11 @@ from saki_api.modules.access.service.user_system_role import UserRoleService
 from saki_api.modules.storage.service.asset import AssetService
 from saki_api.modules.system.service.system import SystemService
 from saki_api.modules.system.service.system_settings import SystemSettingsService
+if TYPE_CHECKING:
+    from saki_api.modules.importing.service import ImportService
+    from saki_api.modules.importing.service.task_service import TaskService
+    from saki_api.modules.project.service.annotation_bulk import AnnotationBulkService
+    from saki_api.modules.project.service.sample_bulk import SampleBulkService
 
 
 # ============================================================================
@@ -139,6 +144,16 @@ def get_sample_service(
 SampleServiceDep = Annotated[SampleService, Depends(get_sample_service)]
 
 
+def get_sample_bulk_service(
+        session: AsyncSession = Depends(get_session),
+) -> "SampleBulkService":
+    from saki_api.modules.project.service.sample_bulk import SampleBulkService
+    return SampleBulkService(session=session)
+
+
+SampleBulkServiceDep = Annotated["SampleBulkService", Depends(get_sample_bulk_service)]
+
+
 def get_asset_service(
         session: AsyncSession = Depends(get_session),
 ) -> AssetService:
@@ -146,6 +161,30 @@ def get_asset_service(
 
 
 AssetServiceDep = Annotated[AssetService, Depends(get_asset_service)]
+
+# ============================================================================
+# Import Service Dependencies
+# ============================================================================
+
+
+def get_import_service(
+        session: AsyncSession = Depends(get_session),
+) -> "ImportService":
+    from saki_api.modules.importing.service import ImportService
+    return ImportService(session=session)
+
+
+ImportServiceDep = Annotated["ImportService", Depends(get_import_service)]
+
+
+def get_task_service(
+        session: AsyncSession = Depends(get_session),
+) -> "TaskService":
+    from saki_api.modules.importing.service.task_service import TaskService
+    return TaskService(session=session)
+
+
+TaskServiceDep = Annotated["TaskService", Depends(get_task_service)]
 
 # ============================================================================
 # Project & Label Service Dependencies (L2 Layer)
@@ -171,6 +210,16 @@ def get_label_service(
 
 
 LabelServiceDep = Annotated[LabelService, Depends(get_label_service)]
+
+
+def get_annotation_bulk_service(
+        session: AsyncSession = Depends(get_session),
+) -> "AnnotationBulkService":
+    from saki_api.modules.project.service.annotation_bulk import AnnotationBulkService
+    return AnnotationBulkService(session=session)
+
+
+AnnotationBulkServiceDep = Annotated["AnnotationBulkService", Depends(get_annotation_bulk_service)]
 
 # ============================================================================
 # Commit & Branch Service Dependencies (L2 Layer)

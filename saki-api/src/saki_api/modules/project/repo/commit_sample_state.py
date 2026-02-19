@@ -4,6 +4,7 @@ CommitSampleState repository.
 
 import uuid
 
+from sqlalchemy import delete, insert
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -42,17 +43,10 @@ class CommitSampleStateRepository:
             commit_id: uuid.UUID,
             sample_id: uuid.UUID,
     ) -> int:
-        rows = await self.session.exec(
-            select(CommitSampleState).where(
-                CommitSampleState.commit_id == commit_id,
-                CommitSampleState.sample_id == sample_id,
-            )
+        return await self.delete_commit_sample_states(
+            commit_id=commit_id,
+            sample_ids=[sample_id],
         )
-        items = list(rows.all())
-        for item in items:
-            await self.session.delete(item)
-        await self.session.flush()
-        return len(items)
 
     async def set_commit_sample_state(
             self,
@@ -62,13 +56,47 @@ class CommitSampleStateRepository:
             project_id: uuid.UUID,
             state: CommitSampleReviewState,
     ) -> None:
-        self.session.add(
-            CommitSampleState(
-                commit_id=commit_id,
-                sample_id=sample_id,
-                project_id=project_id,
-                state=state,
-            )
+        await self.set_commit_sample_states(
+            commit_id=commit_id,
+            project_id=project_id,
+            mappings=[(sample_id, state)],
         )
-        await self.session.flush()
 
+    async def delete_commit_sample_states(
+            self,
+            *,
+            commit_id: uuid.UUID,
+            sample_ids: list[uuid.UUID],
+    ) -> int:
+        unique_sample_ids = list(set(sample_ids))
+        if not unique_sample_ids:
+            return 0
+        stmt = delete(CommitSampleState).where(
+            CommitSampleState.commit_id == commit_id,
+            CommitSampleState.sample_id.in_(unique_sample_ids),
+        )
+        result = await self.session.exec(stmt)
+        await self.session.flush()
+        return int(result.rowcount or 0)
+
+    async def set_commit_sample_states(
+            self,
+            *,
+            commit_id: uuid.UUID,
+            project_id: uuid.UUID,
+            mappings: list[tuple[uuid.UUID, CommitSampleReviewState]],
+    ) -> None:
+        if not mappings:
+            return
+        deduped_mappings = list(dict.fromkeys(mappings))
+        rows = [
+            {
+                "commit_id": commit_id,
+                "sample_id": sample_id,
+                "project_id": project_id,
+                "state": state,
+            }
+            for sample_id, state in deduped_mappings
+        ]
+        await self.session.execute(insert(CommitSampleState), rows)
+        await self.session.flush()

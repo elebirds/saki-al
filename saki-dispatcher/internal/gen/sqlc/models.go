@@ -956,6 +956,41 @@ type DispatchOutbox struct {
 	LastError     pgtype.Text
 }
 
+type ImportTask struct {
+	CreatedAt       pgtype.Timestamp
+	UpdatedAt       pgtype.Timestamp
+	ID              uuid.UUID
+	Mode            string
+	ResourceType    string
+	ResourceID      uuid.UUID
+	UserID          uuid.UUID
+	Status          string
+	ProgressCurrent int32
+	ProgressTotal   int32
+	Phase           pgtype.Text
+	Payload         []byte
+	Summary         []byte
+	Error           pgtype.Text
+	StartedAt       pgtype.Timestamp
+	FinishedAt      pgtype.Timestamp
+}
+
+type ImportTaskEvent struct {
+	ID           uuid.UUID
+	TaskID       uuid.UUID
+	Seq          int32
+	Ts           pgtype.Timestamp
+	EventType    string
+	EventSubtype pgtype.Text
+	Phase        pgtype.Text
+	Message      pgtype.Text
+	Current      pgtype.Int4
+	Total        pgtype.Int4
+	ItemKey      pgtype.Text
+	Status       pgtype.Text
+	Detail       []byte
+}
+
 type Label struct {
 	ID          uuid.UUID
 	CreatedAt   pgtype.Timestamp

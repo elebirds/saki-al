@@ -183,8 +183,7 @@ class BaseRepository(Generic[ModelType]):
 
         count_stmt = self.list_statement(filters)
         count_stmt = select(func.count()).select_from(count_stmt.subquery())
-        total_result = await self.session.exec(count_stmt)
-        total = total_result.one() or 0
+        total = await self.session.scalar(count_stmt) or 0
 
         return PaginationResponse.from_items(items, total, pagination.offset, pagination.limit)
 
@@ -205,6 +204,35 @@ class BaseRepository(Generic[ModelType]):
         # 刷新以获取数据库生成的字段（如审计字段、ID等）
         await self.session.refresh(record)
         return record
+
+    async def create_many(
+            self,
+            rows: List[Dict[str, Any]],
+            *,
+            refresh: bool = False,
+    ) -> List[ModelType]:
+        """
+        Batch create records.
+
+        Args:
+            rows: List of field dictionaries
+            refresh: Whether to refresh each record after flush
+
+        Returns:
+            List of created records
+        """
+        if not rows:
+            return []
+
+        records = [self.model(**item) for item in rows]
+        self.session.add_all(records)
+        # flush 会同步对象状态到数据库内存，触发 before_insert 事件
+        await self.session.flush()
+        # 批量场景默认不 refresh，避免额外 SQL；需要时可显式开启
+        if refresh:
+            for record in records:
+                await self.session.refresh(record)
+        return records
 
     async def update(
             self,

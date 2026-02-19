@@ -7,6 +7,7 @@
     "footer": "Saki Active Learning ©2025 Created by elebird."
   },
   "common": {
+    "back": "返回",
     "networkError": "无法连接到服务器。请检查您的网络连接或稍后重试。",
     "checkingConnection": "正在检查连接...",
     "retry": "重试",
@@ -37,6 +38,7 @@
     "downloadError": "下载失败",
     "create": "创建",
     "saveChanges": "保存修改",
+    "selected": "已选",
     "placeholder": "—",
     "sample": "样本",
     "networkErrorTitle": "网络错误",
@@ -236,7 +238,7 @@
       "noMore": "没有更多内容了～"
     },
     "detail": {
-      "uploadData": "上传数据",
+      "openImportWorkspace": "导入工作台",
       "settings": "设置",
       "dataPool": "数据池",
       "noSamples": "暂无数据",
@@ -696,15 +698,6 @@
         "messagePlaceholder": "描述本次标注里程碑…"
       }
     },
-    "datasetSamples": {
-      "backToDatasets": "返回数据集",
-      "datasetFallback": "数据集",
-      "samples": "样本",
-      "emptyTitle": "暂无样本",
-      "emptyHint": "请在数据集设置中上传样本",
-      "upload": "上传数据",
-      "pagination": "第 {{page}} / {{totalPages}} 页 · 共 {{totalItems}} 条"
-    },
     "sidebar": {
       "about": "关于",
       "noDescription": "暂无描述",
@@ -749,18 +742,162 @@
       "settings": "设置"
     }
   },
-  "upload": {
-    "uploading": "上传中...",
-    "complete": "上传完成 ({{count}} 个文件)",
-    "completeWithErrors": "上传完成: {{success}} 成功, {{errors}} 失败",
-    "failed": "上传失败",
-    "cancel": "取消",
-    "close": "关闭",
-    "success": "成功",
-    "error": "失败",
-    "successCount": "{{count}} 个成功",
-    "errorCount": "{{count}} 个失败",
-    "completeMessage": "已上传 {{success}} / {{total}} 个文件"
+  "import": {
+    "dataset": {
+      "title": "数据集导入工作台"
+    },
+    "project": {
+      "entry": "导入",
+      "title": "项目导入工作台",
+      "subtitle": "将外部数据包导入到项目分支，先预检再执行，确保导入过程可追踪、可解释。",
+      "introTitle": "导入原则",
+      "introBody": "工作台遵循“逻辑分离，操作解耦”：图片导入与标注导入可独立执行；图标一体仅负责编排，不混入底层写入逻辑。",
+      "steps": {
+        "configure": "1. 配置来源与目标",
+        "dryRun": "2. 预检并确认",
+        "execute": "3. 执行并追踪"
+      },
+      "mode": {
+        "imagesOnly": "仅图片",
+        "annotationsOnly": "仅标注",
+        "associated": "图标一体",
+        "imagesOnlyDesc": "仅导入图片到目标数据集，不写入标注。",
+        "annotationsOnlyDesc": "仅导入标注到指定数据集与分支。",
+        "associatedDesc": "同一压缩包内先导入图片，再导入标注。"
+      },
+      "target": {
+        "existing": "已有数据集",
+        "new": "新建数据集"
+      },
+      "glossary": {
+        "title": "术语说明",
+        "format": "标注格式",
+        "formatCoco": "COCO：使用 JSON 描述图片与标注关系，适合通用检测数据。",
+        "formatVoc": "VOC：每张图片对应 XML 标注文件，结构清晰，常见于传统数据集。",
+        "formatYolo": "YOLO：每张图片对应 TXT 坐标文件，适合轻量检测训练流程。",
+        "branch": "分支（Branch）",
+        "branchDesc": "导入会在所选分支上生成提交。master 通常是默认主分支，但建议按团队流程选择业务分支。",
+        "dataset": "目标数据集（Dataset）",
+        "datasetDesc": "仅在目标数据集内匹配样本。未匹配到的样本会被跳过并记录原因。",
+        "strategy": "冲突策略",
+        "replaceDesc": "replace：导入样本视为完整新快照，替换该样本当前可见标注。",
+        "mergeDesc": "merge：按 lineage 合并，导入项覆盖同 lineage 的旧标注。"
+      }
+    },
+    "workspace": {
+      "configureSection": "导入配置",
+      "sourceTypeLabel": "导入来源",
+      "sourceTypeZip": "ZIP 压缩包",
+      "sourceTypeFiles": "直接选图",
+      "selectZip": "选择 ZIP 包",
+      "selectImages": "选择图片",
+      "zipHint": "支持 ZIP。建议保留原始目录结构，便于样本匹配。",
+      "directUploadNoDryRun": "直接选图模式将跳过预检并直接进入批量上传任务。",
+      "selectedImagesCount": "已选择图片：{{count}} 张",
+      "duplicatePolicyAllow": "当前数据集已开启“允许同名样本”，导入时会保留同名文件。",
+      "duplicatePolicyDedupe": "当前数据集未开启“允许同名样本”，导入时同名文件将复用已有样本。",
+      "selectedArchive": "已选择文件：{{name}}",
+      "modeLabel": "导入模式",
+      "sourceArchive": "来源压缩包",
+      "formatLabel": "标注格式",
+      "branchLabel": "提交分支",
+      "datasetLabel": "目标数据集",
+      "datasetModeLabel": "数据集模式",
+      "newDatasetName": "新建数据集名称",
+      "newDatasetDescription": "新建数据集描述",
+      "strategyLabel": "冲突策略",
+      "currentConfig": "当前配置",
+      "helpButton": "术语说明",
+      "runHint": "建议顺序：先预检，确认“待新建标签”后再执行。",
+      "dryRun": "预检（Dry Run）",
+      "execute": "开始执行",
+      "preview": "预检结果",
+      "previewEmpty": "请先执行预检以查看预检结果。",
+      "previewSummary": "摘要",
+      "execution": "执行面板",
+      "status": "状态",
+      "startedAt": "开始时间：{{time}}",
+      "elapsed": "已耗时：{{duration}}",
+      "stateIdle": "待开始",
+      "stateRunning": "执行中",
+      "stateComplete": "已完成",
+      "stateError": "执行失败",
+      "noEvents": "暂无事件",
+      "previewNoItems": "该分类暂无明细。",
+      "eventsLatest": "最近事件（最新在上，保留全部）",
+      "previewIssues": "预警 {{warnings}} 条，错误 {{errors}} 条",
+      "warnings": "预警明细",
+      "errors": "错误明细",
+      "expiresAt": "预检令牌有效期至：{{time}}",
+      "plannedNewLabels": "待新建标签",
+      "confirmCreateLabels": "我已确认按上述清单自动创建标签",
+      "dryRunSuccess": "预检完成",
+      "dryRunError": "预检失败",
+      "dryRunErrorPanelHint": "预检请求失败，请根据以下信息排查来源包结构或参数配置。",
+      "statusCodeLabel": "HTTP 状态",
+      "errorCodeLabel": "错误码",
+      "timestampLabel": "时间",
+      "rawResponseLabel": "原始响应",
+      "metaLoadError": "加载项目导入元信息失败",
+      "selectDatasetFirst": "请先选择目标数据集",
+      "newDatasetNameRequired": "请输入新建数据集名称",
+      "executeBlockedByUnsupportedType": "预检发现项目未启用的标注类型，请调整项目配置或更换导入包后再执行。",
+      "noIssuesToExport": "当前没有可导出的错误/警告",
+      "exportJson": "导出 JSON",
+      "exportCsv": "导出 CSV",
+      "strategyReplace": "冲突策略：替换",
+      "strategyMerge": "冲突策略：合并",
+      "originalMessage": "原始消息：{{message}}",
+      "summaryKey": {
+        "mode": "导入模式",
+        "project_id": "项目 ID",
+        "dataset_id": "数据集 ID",
+        "allow_duplicate_sample_names": "允许同名样本",
+        "branch_name": "分支",
+        "format": "标注格式",
+        "target_dataset_mode": "目标数据集模式",
+        "total_entries": "图片条目总数",
+        "new_samples": "新建样本数",
+        "reused_samples": "复用样本数",
+        "skipped_non_image": "跳过非图片条目",
+        "image_candidates": "图片候选数",
+        "total_annotations": "标注总数",
+        "matched_annotations": "匹配标注数",
+        "skipped_annotations": "跳过标注数",
+        "matched_samples": "匹配样本数",
+        "matched_sample_keys": "匹配样本键数",
+        "unsupported_annotations": "不支持标注数",
+        "unsupported_types": "不支持标注类型"
+      },
+      "summaryValue": {
+        "mode": {
+          "dataset_images": "数据集图片导入",
+          "project_annotations": "项目标注导入",
+          "project_associated": "项目关联导入"
+        },
+        "targetDatasetMode": {
+          "existing": "已有数据集",
+          "new": "新建数据集"
+        },
+        "format": {
+          "coco": "COCO",
+          "voc": "VOC",
+          "yolo": "YOLO"
+        }
+      },
+      "issueCode": {
+        "UNKNOWN": "未知预检问题",
+        "SAMPLE_NOT_FOUND": "在目标样本集中未找到该样本：{{path}}",
+        "SAMPLE_MATCH_BY_BASENAME": "样本通过文件名回退匹配，建议保留完整目录结构：{{path}}",
+        "CONVERT_WARNING": "格式转换预警：{{message}}",
+        "CONVERT_ERROR": "格式转换失败：{{message}}",
+        "ANNOTATION_TYPE_NOT_ENABLED": "项目未启用标注类型 {{annotationType}}（共 {{count}} 条），当前启用：{{enabledTypes}}",
+        "ZIP_SYMLINK_SKIPPED": "ZIP 中的软链接条目已跳过：{{path}}",
+        "ZIP_ENTRY_MISSING": "压缩包内缺少条目：{{path}}",
+        "ZIP_ENTRY_INVALID": "压缩包条目无效：{{path}}",
+        "LABEL_NOT_FOUND": "项目中缺少标签：{{label}}"
+      }
+    }
   },
   "role": {
     "management": {

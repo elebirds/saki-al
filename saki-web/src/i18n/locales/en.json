@@ -7,6 +7,7 @@
     "footer": "Saki Active Learning ©2025 Created by elebird."
   },
   "common": {
+    "back": "Back",
     "networkError": "Cannot connect to the server. Please check your network connection or try again later.",
     "checkingConnection": "Checking connection...",
     "retry": "Retry",
@@ -37,6 +38,7 @@
     "downloadError": "Failed to download file",
     "create": "Create",
     "saveChanges": "Save Changes",
+    "selected": "Selected",
     "placeholder": "-",
     "sample": "Sample",
     "networkErrorTitle": "Network Error",
@@ -236,7 +238,7 @@
       "noMore": "No more content."
     },
     "detail": {
-      "uploadData": "Upload Data",
+      "openImportWorkspace": "Import Workspace",
       "settings": "Settings",
       "dataPool": "Data Pool",
       "noSamples": "No data",
@@ -696,15 +698,6 @@
         "messagePlaceholder": "Describe this annotation milestone..."
       }
     },
-    "datasetSamples": {
-      "backToDatasets": "Back to datasets",
-      "datasetFallback": "Dataset",
-      "samples": "Samples",
-      "emptyTitle": "No samples yet",
-      "emptyHint": "Upload samples in dataset settings",
-      "upload": "Upload data",
-      "pagination": "Page {{page}} / {{totalPages}} · {{totalItems}} items"
-    },
     "sidebar": {
       "about": "About",
       "noDescription": "No description provided.",
@@ -749,18 +742,162 @@
       "settings": "Settings"
     }
   },
-  "upload": {
-    "uploading": "Uploading...",
-    "complete": "Upload Complete ({{count}} files)",
-    "completeWithErrors": "Upload Complete: {{success}} succeeded, {{errors}} failed",
-    "failed": "Upload Failed",
-    "cancel": "Cancel",
-    "close": "Close",
-    "success": "Success",
-    "error": "Error",
-    "successCount": "{{count}} succeeded",
-    "errorCount": "{{count}} failed",
-    "completeMessage": "Uploaded {{success}} of {{total}} files"
+  "import": {
+    "dataset": {
+      "title": "Dataset Import Workspace"
+    },
+    "project": {
+      "entry": "Import",
+      "title": "Project Import Workspace",
+      "subtitle": "Import external packages into project branches with a dry-run-first flow so every result is traceable and explainable.",
+      "introTitle": "Import Principle",
+      "introBody": "This workspace follows “logical separation, operational decoupling”: image import and annotation import run independently; associated import is orchestration only.",
+      "steps": {
+        "configure": "1. Configure Source and Target",
+        "dryRun": "2. Dry Run and Confirm",
+        "execute": "3. Execute and Trace"
+      },
+      "mode": {
+        "imagesOnly": "Images Only",
+        "annotationsOnly": "Annotations Only",
+        "associated": "Associated Import",
+        "imagesOnlyDesc": "Import images into target dataset only, without writing annotations.",
+        "annotationsOnlyDesc": "Import annotations only into the selected dataset and branch.",
+        "associatedDesc": "Use one archive to import images first, then annotations."
+      },
+      "target": {
+        "existing": "Existing Dataset",
+        "new": "Create Dataset"
+      },
+      "glossary": {
+        "title": "Glossary",
+        "format": "Annotation Format",
+        "formatCoco": "COCO: JSON-based schema describing image-annotation relations, common for detection datasets.",
+        "formatVoc": "VOC: One XML annotation file per image, clear structure and widely used in legacy datasets.",
+        "formatYolo": "YOLO: One TXT coordinate file per image, lightweight for detector training pipelines.",
+        "branch": "Branch",
+        "branchDesc": "Import writes a commit to the selected branch. master is usually default, but choose your feature branch as needed.",
+        "dataset": "Target Dataset",
+        "datasetDesc": "Sample matching is limited to the selected dataset. Unmatched samples are skipped with reasons recorded.",
+        "strategy": "Conflict Strategy",
+        "replaceDesc": "replace: treat imported sample as a full new snapshot and replace currently visible annotations.",
+        "mergeDesc": "merge: merge by lineage and let imported items overwrite existing ones with the same lineage."
+      }
+    },
+    "workspace": {
+      "configureSection": "Import Configuration",
+      "sourceTypeLabel": "Import Source",
+      "sourceTypeZip": "ZIP Archive",
+      "sourceTypeFiles": "Direct Image Select",
+      "selectZip": "Select ZIP",
+      "selectImages": "Select Images",
+      "zipHint": "ZIP only. Keep original directory structure when possible for stable sample matching.",
+      "directUploadNoDryRun": "Direct image mode skips dry run and starts bulk upload tasks immediately.",
+      "selectedImagesCount": "Selected images: {{count}}",
+      "duplicatePolicyAllow": "This dataset allows duplicate sample names; imports will keep same-name files.",
+      "duplicatePolicyDedupe": "This dataset disallows duplicate sample names; same-name files will reuse existing samples.",
+      "selectedArchive": "Selected file: {{name}}",
+      "modeLabel": "Import Mode",
+      "sourceArchive": "Source Archive",
+      "formatLabel": "Annotation Format",
+      "branchLabel": "Commit Branch",
+      "datasetLabel": "Target Dataset",
+      "datasetModeLabel": "Dataset Mode",
+      "newDatasetName": "New Dataset Name",
+      "newDatasetDescription": "New Dataset Description",
+      "strategyLabel": "Conflict Strategy",
+      "currentConfig": "Current Configuration",
+      "helpButton": "Glossary",
+      "runHint": "Recommended order: run dry run first, confirm planned new labels, then execute.",
+      "dryRun": "Dry Run",
+      "execute": "Execute",
+      "preview": "Dry Run Result",
+      "previewEmpty": "Run dry run first to view preview details.",
+      "previewSummary": "Summary",
+      "execution": "Execution Panel",
+      "status": "Status",
+      "startedAt": "Started at: {{time}}",
+      "elapsed": "Elapsed: {{duration}}",
+      "stateIdle": "Idle",
+      "stateRunning": "Running",
+      "stateComplete": "Completed",
+      "stateError": "Failed",
+      "noEvents": "No events yet",
+      "previewNoItems": "No items in this category.",
+      "eventsLatest": "Latest events (newest first, no limit)",
+      "previewIssues": "Warnings: {{warnings}}, Errors: {{errors}}",
+      "warnings": "Warning Details",
+      "errors": "Error Details",
+      "expiresAt": "Preview token expires at: {{time}}",
+      "plannedNewLabels": "Planned New Labels",
+      "confirmCreateLabels": "I confirm creating labels listed above",
+      "dryRunSuccess": "Dry run completed",
+      "dryRunError": "Dry run failed",
+      "dryRunErrorPanelHint": "Dry-run request failed. Check package structure or request parameters below.",
+      "statusCodeLabel": "HTTP Status",
+      "errorCodeLabel": "Error Code",
+      "timestampLabel": "Timestamp",
+      "rawResponseLabel": "Raw Response",
+      "metaLoadError": "Failed to load import metadata",
+      "selectDatasetFirst": "Please select a target dataset first",
+      "newDatasetNameRequired": "Please provide a name for the new dataset",
+      "executeBlockedByUnsupportedType": "Dry run found annotation types not enabled in this project. Update project policy or package before executing.",
+      "noIssuesToExport": "No warnings/errors to export",
+      "exportJson": "Export JSON",
+      "exportCsv": "Export CSV",
+      "strategyReplace": "Strategy: Replace",
+      "strategyMerge": "Strategy: Merge",
+      "originalMessage": "Original message: {{message}}",
+      "summaryKey": {
+        "mode": "Import Mode",
+        "project_id": "Project ID",
+        "dataset_id": "Dataset ID",
+        "allow_duplicate_sample_names": "Allow Duplicate Sample Names",
+        "branch_name": "Branch",
+        "format": "Format",
+        "target_dataset_mode": "Target Dataset Mode",
+        "total_entries": "Total Image Entries",
+        "new_samples": "New Samples",
+        "reused_samples": "Reused Samples",
+        "skipped_non_image": "Skipped Non-image Entries",
+        "image_candidates": "Image Candidates",
+        "total_annotations": "Total Annotations",
+        "matched_annotations": "Matched Annotations",
+        "skipped_annotations": "Skipped Annotations",
+        "matched_samples": "Matched Samples",
+        "matched_sample_keys": "Matched Sample Keys",
+        "unsupported_annotations": "Unsupported Annotations",
+        "unsupported_types": "Unsupported Annotation Types"
+      },
+      "summaryValue": {
+        "mode": {
+          "dataset_images": "Dataset Image Import",
+          "project_annotations": "Project Annotation Import",
+          "project_associated": "Project Associated Import"
+        },
+        "targetDatasetMode": {
+          "existing": "Existing Dataset",
+          "new": "New Dataset"
+        },
+        "format": {
+          "coco": "COCO",
+          "voc": "VOC",
+          "yolo": "YOLO"
+        }
+      },
+      "issueCode": {
+        "UNKNOWN": "Unknown dry-run issue",
+        "SAMPLE_NOT_FOUND": "Sample not found in target dataset: {{path}}",
+        "SAMPLE_MATCH_BY_BASENAME": "Matched by basename fallback; keep full folder structure when possible: {{path}}",
+        "CONVERT_WARNING": "Conversion warning: {{message}}",
+        "CONVERT_ERROR": "Conversion error: {{message}}",
+        "ANNOTATION_TYPE_NOT_ENABLED": "Annotation type {{annotationType}} is not enabled ({{count}} items). Enabled types: {{enabledTypes}}",
+        "ZIP_SYMLINK_SKIPPED": "Symlink entry skipped in ZIP: {{path}}",
+        "ZIP_ENTRY_MISSING": "ZIP entry missing: {{path}}",
+        "ZIP_ENTRY_INVALID": "Invalid ZIP entry: {{path}}",
+        "LABEL_NOT_FOUND": "Label not found in project: {{label}}"
+      }
+    }
   },
   "role": {
     "management": {

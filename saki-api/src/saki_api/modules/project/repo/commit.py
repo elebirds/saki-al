@@ -136,5 +136,4 @@ class CommitRepository(BaseRepository[Commit]):
         statement = select(func.count()).select_from(
             select(Commit).where(Commit.project_id == project_id).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0

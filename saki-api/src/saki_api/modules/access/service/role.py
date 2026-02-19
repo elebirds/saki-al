@@ -240,15 +240,15 @@ class RoleService(CrudServiceBase[Role, RoleRepository, RoleCreate, RoleUpdate])
         if role.is_default: raise ForbiddenAppException("Default role cannot be deleted")
 
         user_assignment_count = (
-            await self.session.exec(
+            await self.session.scalar(
                 select(func.count()).select_from(UserSystemRole).where(UserSystemRole.role_id == role_id)
             )
-        ).one() or 0
+        ) or 0
         resource_assignment_count = (
-            await self.session.exec(
+            await self.session.scalar(
                 select(func.count()).select_from(ResourceMember).where(ResourceMember.role_id == role_id)
             )
-        ).one() or 0
+        ) or 0
         if user_assignment_count or resource_assignment_count:
             raise BadRequestAppException(
                 "Role is still in use and cannot be deleted"

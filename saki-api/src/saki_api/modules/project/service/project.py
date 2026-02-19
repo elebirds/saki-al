@@ -816,10 +816,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
     ) -> tuple[list[Sample], int, Pagination]:
         pagination = Pagination.from_page(page=page, limit=limit)
         count_stmt = select(func.count()).select_from(statement.subquery())
-        total_result = await self.session.exec(count_stmt)
-        total = total_result.one() or 0
-        if isinstance(total, (list, tuple)):
-            total = total[0]
+        total = await self.session.scalar(count_stmt) or 0
 
         rows = await self.session.exec(
             statement.offset(pagination.offset).limit(pagination.limit)
@@ -1222,16 +1219,12 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             current_head_id: uuid.UUID | None,
             touched_sample_ids: Set[uuid.UUID],
     ) -> dict[uuid.UUID, list[Annotation]]:
-        existing_by_sample: dict[uuid.UUID, list[Annotation]] = {}
-        if not current_head_id:
-            return existing_by_sample
-        for sample_id in touched_sample_ids:
-            existing = await self.annotation_gateway.get_annotations_by_commit_and_sample(
-                commit_id=current_head_id,
-                sample_id=sample_id,
-            )
-            existing_by_sample[sample_id] = list(existing)
-        return existing_by_sample
+        if not current_head_id or not touched_sample_ids:
+            return {}
+        return await self.annotation_gateway.get_annotations_by_commit_and_samples(
+            commit_id=current_head_id,
+            sample_ids=list(touched_sample_ids),
+        )
 
     def _build_annotations_for_samples(
             self,
@@ -1297,7 +1290,6 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
     ) -> None:
         await self.session.flush()
         for ann in new_annotations:
-            await self.session.refresh(ann)
             camap_mappings.append((ann.sample_id, ann.id))
 
     async def _create_user_commit(
@@ -1339,11 +1331,10 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
                 project_id=project_id,
             )
 
-        for sample_id in touched_sample_ids:
-            await camap_service.camap_repo.delete_commit_sample_state(
-                commit_id=new_commit.id,
-                sample_id=sample_id,
-            )
+        await camap_service.camap_repo.delete_commit_sample_states(
+            commit_id=new_commit.id,
+            sample_ids=list(touched_sample_ids),
+        )
 
         if camap_mappings:
             await camap_service.camap_repo.set_commit_state(
@@ -1378,22 +1369,25 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             if sample_id in touched_sample_ids
         }
 
-        for sample_id in touched_sample_ids:
-            await state_repo.delete_commit_sample_state(
-                commit_id=new_commit.id,
-                sample_id=sample_id,
-            )
-            state = (
+        touched_samples = list(touched_sample_ids)
+        await state_repo.delete_commit_sample_states(
+            commit_id=new_commit.id,
+            sample_ids=touched_samples,
+        )
+        mappings = [
+            (
+                sample_id,
                 CommitSampleReviewState.LABELED
                 if sample_id in touched_with_annotations
-                else CommitSampleReviewState.EMPTY_CONFIRMED
+                else CommitSampleReviewState.EMPTY_CONFIRMED,
             )
-            await state_repo.set_commit_sample_state(
-                commit_id=new_commit.id,
-                sample_id=sample_id,
-                project_id=project_id,
-                state=state,
-            )
+            for sample_id in touched_samples
+        ]
+        await state_repo.set_commit_sample_states(
+            commit_id=new_commit.id,
+            project_id=project_id,
+            mappings=mappings,
+        )
 
     @transactional
     async def save_annotations(

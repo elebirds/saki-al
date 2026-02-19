@@ -2,7 +2,7 @@
 Sample Service - Handles business logic for sample creation and file processing.
 
 Manages sample creation workflow including:
-- File upload processing via annotation system handlers
+- File processing via annotation system handlers
 - Handler-based asset management
 - Dataset type-specific handling
 - Metadata extraction
@@ -31,11 +31,11 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
     """
     Service for managing Samples and their Assets.
     
-    Delegates upload processing to annotation system handlers:
+    Delegates file processing to annotation system handlers:
     - CLASSIC: One image file = one sample with single asset
     - FEDO: One TXT file = one sample with multiple generated assets
-    
-    Handlers manage asset upload and return asset information,
+
+    Handlers manage asset persistence and return asset information,
     which SampleService uses to build the Sample model.
     """
 
@@ -58,12 +58,12 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         facade = AnnotationSystemFactory.create_system(dataset_type, self.session)
         return facade
 
-    def _build_upload_context(
+    def _build_processing_context(
             self,
             dataset_id: uuid.UUID
     ) -> UploadContext:
         """
-        Build upload context for handler processing.
+        Build processing context for handler processing.
         
         Args:
             dataset_id: Dataset UUID
@@ -86,7 +86,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
             self,
             file: UploadFile,
             facade,
-            upload_context: UploadContext
+            process_context: UploadContext
     ):
         """
         Validate uploaded file using processor.
@@ -94,7 +94,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         Args:
             file: Uploaded file
             facade: AnnotationSystemFacade instance
-            upload_context: Upload context
+            process_context: Processing context
 
         Raises:
             BadRequestAppException: If validation fails
@@ -103,7 +103,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
 
         is_valid, error_msg = facade.dataset_processor.validate_file(
             Path(file.filename or "unknown"),
-            upload_context
+            process_context
         )
         if not is_valid:
             logger.error("文件校验失败 error={}", error_msg)
@@ -138,7 +138,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
             self,
             file: UploadFile,
             facade,
-            upload_context: UploadContext,
+            process_context: UploadContext,
             progress_callback: Optional[ProgressCallback] = None
     ):
         """
@@ -147,7 +147,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         Args:
             file: Uploaded file
             facade: AnnotationSystemFacade instance
-            upload_context: Upload context
+            process_context: Processing context
             progress_callback: Optional progress callback for streaming updates
 
         Returns:
@@ -158,7 +158,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         """
         process_result = await facade.dataset_processor.process_upload(
             file,
-            upload_context,
+            process_context,
             progress_callback=progress_callback
         )
 
@@ -200,128 +200,6 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
 
         return SampleRead.model_validate(created_sample)
 
-    async def process_upload(
-            self,
-            dataset: Dataset,
-            files: List[UploadFile]
-    ) -> List[SampleRead]:
-        """
-        Process a batch of uploaded files.
-        
-        Delegates to appropriate handler based on dataset type:
-        - CLASSIC: One file = one sample
-        - FEDO: One file = one sample (with generated assets)
-        
-        Each handler automatically loads its configuration from environment/config files.
-        
-        Args:
-            dataset: The dataset record
-            files: List of uploaded files
-            
-        Returns:
-            List of created sample records
-            
-        Raises:
-            BadRequestAppException: If upload fails
-        """
-        created_samples = []
-        logger.info(
-            "开始批量处理数据集文件 dataset_id={} dataset_type={} file_count={}",
-            dataset.id,
-            dataset.type,
-            len(files),
-        )
-
-        # Initialize facade and upload context
-        facade = self._initialize_handler(dataset.type)
-        upload_context = self._build_upload_context(dataset.id)
-
-        # Process each file
-        for file in files:
-            try:
-                logger.debug("开始处理文件 filename={}", file.filename)
-                await self._validate_sample_name_policy(dataset=dataset, filename=file.filename)
-
-                # Validate file
-                await self._validate_file(file, facade, upload_context)
-
-                # Process file via processor
-                process_result = await self._process_single_file(file, facade, upload_context)
-
-                # Create sample record
-                created_sample = await self._create_sample_from_result(dataset.id, process_result)
-                created_samples.append(created_sample)
-
-            except BadRequestAppException as e:
-                raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
-            except Exception as e:
-                logger.exception("处理文件失败 filename={} error={}", file.filename, e)
-                raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
-
-        logger.info("批量处理完成，成功创建样本数量={}", len(created_samples))
-        return created_samples
-
-    async def process_single_file_with_progress(
-            self,
-            dataset: Dataset,
-            file: UploadFile,
-            progress_callback: Optional[ProgressCallback] = None
-    ) -> SampleRead:
-        """
-        Process a single uploaded file with progress callback support.
-        
-        This method is designed for streaming upload endpoints that need
-        real-time progress updates.
-        
-        Each handler automatically loads its configuration from environment/config files.
-        
-        Args:
-            dataset: The dataset record
-            file: Uploaded file
-            progress_callback: Optional callback for progress updates
-            
-        Returns:
-            Created sample record
-            
-        Raises:
-            BadRequestAppException: If upload fails
-        """
-        logger.info(
-            "开始处理单文件 dataset_id={} dataset_type={} filename={}",
-            dataset.id,
-            dataset.type,
-            file.filename,
-        )
-
-        # Initialize facade and upload context
-        facade = self._initialize_handler(dataset.type)
-        upload_context = self._build_upload_context(dataset.id)
-
-        try:
-            await self._validate_sample_name_policy(dataset=dataset, filename=file.filename)
-
-            # Validate file
-            await self._validate_file(file, facade, upload_context)
-
-            # Process file via processor with progress callback
-            process_result = await self._process_single_file(
-                file,
-                facade,
-                upload_context,
-                progress_callback=progress_callback
-            )
-
-            # Create sample record
-            created_sample = await self._create_sample_from_result(dataset.id, process_result)
-            logger.info("单文件处理成功，样本已创建 sample_id={}", created_sample.id)
-            return created_sample
-
-        except BadRequestAppException as e:
-            raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
-        except Exception as e:
-            logger.exception("单文件处理失败 filename={} error={}", file.filename, e)
-            raise BadRequestAppException(f"Failed to process file {file.filename}: {str(e)}")
-
     @staticmethod
     def _build_progress_event(
             *,
@@ -347,7 +225,7 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
             file: UploadFile,
             index: int,
             facade,
-            upload_context: UploadContext,
+            process_context: UploadContext,
     ) -> tuple[SampleRead | None, Exception | None, list[dict[str, Any]]]:
         filename = file.filename or ""
         progress_events: list[dict[str, Any]] = []
@@ -366,11 +244,11 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         processing_error: Exception | None = None
         try:
             await self._validate_sample_name_policy(dataset=dataset, filename=filename)
-            await self._validate_file(file, facade, upload_context)
+            await self._validate_file(file, facade, process_context)
             process_result = await self._process_single_file(
                 file,
                 facade,
-                upload_context,
+                process_context,
                 progress_callback=progress_callback,
             )
             created_sample = await self._create_sample_from_result(dataset.id, process_result)
@@ -383,14 +261,14 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         return created_sample, processing_error, progress_events
 
     @staticmethod
-    def _build_file_complete_event(
+    def _build_sample_complete_event(
             *,
             index: int,
             filename: str,
             sample_id: str,
     ) -> dict[str, Any]:
         return {
-            "event": "file_complete",
+            "event": "sample_complete",
             "index": index,
             "filename": filename,
             "success": True,
@@ -398,88 +276,59 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         }
 
     @staticmethod
-    def _build_file_error_event(
+    def _build_sample_error_event(
             *,
             index: int,
             filename: str,
             error: str,
     ) -> dict[str, Any]:
         return {
-            "event": "file_error",
+            "event": "sample_error",
             "index": index,
             "filename": filename,
             "error": error,
         }
 
-    @staticmethod
-    def _build_complete_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
-        success_count = sum(1 for item in results if item.get("status") == "success")
-        error_count = len(results) - success_count
-        return {
-            "event": "complete",
-            "uploaded": success_count,
-            "errors": error_count,
-            "results": results,
-        }
-
-    async def iter_upload_progress_events(
+    async def iter_sample_process_events(
             self,
             *,
             dataset: Dataset,
             files: List[UploadFile],
+            facade=None,
+            process_context: UploadContext | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
-        Stream upload progress events for a batch of files.
+        Stream sample processing events for a batch of files.
         """
-        results: list[dict[str, Any]] = []
-        yield {"event": "start", "total": len(files)}
-
-        facade = self._initialize_handler(dataset.type)
-        upload_context = self._build_upload_context(dataset.id)
+        facade = facade or self._initialize_handler(dataset.type)
+        process_context = process_context or self._build_processing_context(dataset.id)
 
         for index, file in enumerate(files):
             filename = file.filename or ""
-            yield {"event": "file_start", "index": index, "filename": filename}
             created_sample, processing_error, progress_events = await self._process_single_file_with_collected_progress(
                 dataset=dataset,
                 file=file,
                 index=index,
                 facade=facade,
-                upload_context=upload_context,
+                process_context=process_context,
             )
 
             for event in progress_events:
                 yield event
 
             if processing_error is None and created_sample is not None:
-                results.append(
-                    {
-                        "id": str(created_sample.id),
-                        "filename": filename,
-                        "status": "success",
-                    }
-                )
-                yield self._build_file_complete_event(
+                yield self._build_sample_complete_event(
                     index=index,
                     filename=filename,
                     sample_id=str(created_sample.id),
                 )
             else:
                 error_text = str(processing_error) if processing_error is not None else "unknown error"
-                results.append(
-                    {
-                        "filename": filename,
-                        "status": "error",
-                        "error": error_text,
-                    }
-                )
-                yield self._build_file_error_event(
+                yield self._build_sample_error_event(
                     index=index,
                     filename=filename,
                     error=error_text,
                 )
-
-        yield self._build_complete_summary(results)
 
     async def get_asset_for_sample(
             self,

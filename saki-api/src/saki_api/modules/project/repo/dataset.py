@@ -75,8 +75,7 @@ class DatasetRepository(BaseRepository[Dataset]):
         items = list(items_result.all())
 
         total_stmt = select(func.count()).select_from(filtered_stmt.subquery())
-        total_result = await self.session.exec(total_stmt)
-        total = total_result.one() or 0
+        total = await self.session.scalar(total_stmt) or 0
 
         return PaginationResponse.from_items(items, total, pagination.offset, pagination.limit)
 

@@ -111,6 +111,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_DELETE_ALL,
             Permissions.DATASET_ASSIGN_ALL,
             Permissions.DATASET_LINK_PROJECT_ALL,
+            Permissions.DATASET_IMPORT_ALL,
             # Project - 项目完全访问
             Permissions.PROJECT_CREATE_ALL,
             Permissions.PROJECT_READ_ALL,
@@ -199,6 +200,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_DELETE,
             Permissions.DATASET_ASSIGN,
             Permissions.DATASET_LINK_PROJECT,
+            Permissions.DATASET_IMPORT,
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
@@ -224,6 +226,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
             Permissions.DATASET_UPDATE,
             Permissions.DATASET_ASSIGN,
             Permissions.DATASET_LINK_PROJECT,
+            Permissions.DATASET_IMPORT,
             # Sample - 样本完全控制
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
@@ -263,6 +266,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "permissions": [
             Permissions.DATASET_READ,
             Permissions.DATASET_UPDATE,
+            Permissions.DATASET_IMPORT,
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
             Permissions.SAMPLE_UPDATE,
@@ -281,6 +285,7 @@ PRESET_ROLES: List[Dict[str, Any]] = [
         "sort_order": 13,
         "permissions": [
             Permissions.DATASET_READ,
+            Permissions.DATASET_IMPORT,
             Permissions.SAMPLE_READ,
             Permissions.SAMPLE_CREATE,
             Permissions.SAMPLE_UPDATE,

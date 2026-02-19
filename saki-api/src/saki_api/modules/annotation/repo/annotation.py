@@ -3,7 +3,7 @@ Annotation Repository - Data access layer for Annotation operations.
 """
 
 import uuid
-from typing import List
+from typing import List, Dict
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -64,25 +64,33 @@ class AnnotationRepository(BaseRepository[Annotation]):
         Returns:
             List of annotations visible at this commit
         """
-        # Get annotation IDs from CAMap
-        statement = select(CommitAnnotationMap.annotation_id).where(
-            CommitAnnotationMap.commit_id == commit_id,
-            CommitAnnotationMap.sample_id == sample_id,
+        grouped = await self.get_by_commit_and_samples(
+            commit_id=commit_id,
+            sample_ids=[sample_id],
         )
-        result = await self.session.exec(statement)
-        annotation_ids = list(result.all())
+        return grouped.get(sample_id, [])
 
-        if not annotation_ids:
-            return []
-
-        # Fetch annotations by IDs
-        annotations = []
-        for ann_id in annotation_ids:
-            ann = await self.get_by_id(ann_id)
-            if ann:
-                annotations.append(ann)
-
-        return annotations
+    async def get_by_commit_and_samples(
+            self,
+            commit_id: uuid.UUID,
+            sample_ids: List[uuid.UUID],
+    ) -> Dict[uuid.UUID, List[Annotation]]:
+        unique_sample_ids = list(set(sample_ids))
+        if not unique_sample_ids:
+            return {}
+        statement = (
+            select(CommitAnnotationMap.sample_id, Annotation)
+            .join(Annotation, Annotation.id == CommitAnnotationMap.annotation_id)
+            .where(
+                CommitAnnotationMap.commit_id == commit_id,
+                CommitAnnotationMap.sample_id.in_(unique_sample_ids),
+            )
+        )
+        rows = await self.session.exec(statement)
+        grouped: Dict[uuid.UUID, List[Annotation]] = {}
+        for sample_id, ann in rows.all():
+            grouped.setdefault(sample_id, []).append(ann)
+        return grouped
 
     async def get_by_commit(
             self,
@@ -97,28 +105,13 @@ class AnnotationRepository(BaseRepository[Annotation]):
         Returns:
             List of all annotations visible at this commit
         """
-        # Get annotation IDs from CAMap
-        statement = select(
-            CommitAnnotationMap.annotation_id,
-            CommitAnnotationMap.sample_id,
-        ).where(
-            CommitAnnotationMap.commit_id == commit_id,
+        statement = (
+            select(Annotation)
+            .join(CommitAnnotationMap, CommitAnnotationMap.annotation_id == Annotation.id)
+            .where(CommitAnnotationMap.commit_id == commit_id)
         )
-        result = await self.session.exec(statement)
-        mappings = result.all()
-
-        if not mappings:
-            return []
-
-        # Fetch annotations by IDs
-        annotation_ids = [m[0] for m in mappings]
-        annotations = []
-        for ann_id in annotation_ids:
-            ann = await self.get_by_id(ann_id)
-            if ann:
-                annotations.append(ann)
-
-        return annotations
+        rows = await self.session.exec(statement)
+        return list(rows.all())
 
     async def get_history(self, annotation_id: uuid.UUID, depth: int = 100) -> List[Annotation]:
         """
@@ -190,8 +183,7 @@ class AnnotationRepository(BaseRepository[Annotation]):
         statement = select(func.count()).select_from(
             select(Annotation).where(Annotation.project_id == project_id).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0
 
     async def count_by_sample(self, sample_id: uuid.UUID) -> int:
         """
@@ -208,5 +200,4 @@ class AnnotationRepository(BaseRepository[Annotation]):
         statement = select(func.count()).select_from(
             select(Annotation).where(Annotation.sample_id == sample_id).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0

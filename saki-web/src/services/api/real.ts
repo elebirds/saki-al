@@ -67,7 +67,15 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
-    UploadProgressEvent,
+    ImportDryRunResponse,
+    ImportExecuteRequest,
+    ImportProgressEvent,
+    ImportTaskCreateResponse,
+    ImportTaskStatusResponse,
+    SampleBulkImportRequest,
+    AnnotationBulkRequest,
+    ProjectAnnotationImportDryRunRequest,
+    ProjectAssociatedImportDryRunRequest,
 } from '../../types';
 import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
@@ -366,6 +374,22 @@ function normalizeProjectModel(model: ProjectModel): ProjectModel {
     };
 }
 
+function resolveUploadFile(fileLike: unknown): File {
+    if (fileLike instanceof File) {
+        return fileLike;
+    }
+    if (fileLike && typeof fileLike === 'object') {
+        const candidate = fileLike as Record<string, unknown>;
+        if (candidate.originFileObj instanceof File) {
+            return candidate.originFileObj;
+        }
+        if (candidate.file instanceof File) {
+            return candidate.file;
+        }
+    }
+    throw new Error('Invalid upload file, please re-select the ZIP file.');
+}
+
 // ============================================================================
 // API Service Implementation
 // ============================================================================
@@ -380,9 +404,6 @@ export class RealApiService implements ApiService {
 
         this.client = axios.create({
             baseURL: this.apiBaseUrl,
-            headers: {
-                'Content-Type': 'application/json',
-            },
         });
 
         // ========================================================================
@@ -422,6 +443,16 @@ export class RealApiService implements ApiService {
         // 2. Convert request body from camelCase to snake_case
         this.client.interceptors.request.use(
             (config: InternalAxiosRequestConfig) => {
+                if (config.data instanceof FormData) {
+                    // Let browser set multipart boundary automatically.
+                    if (config.headers && typeof (config.headers as any).set === 'function') {
+                        (config.headers as any).set('Content-Type', undefined);
+                    } else if (config.headers) {
+                        delete (config.headers as any)['Content-Type'];
+                        delete (config.headers as any)['content-type'];
+                    }
+                    return config;
+                }
                 // Only convert JSON data, skip FormData and URLSearchParams
                 if (config.data &&
                     !(config.data instanceof FormData) &&
@@ -1306,6 +1337,189 @@ export class RealApiService implements ApiService {
     }
 
     // ==========================================================================
+    // Import APIs
+    // ==========================================================================
+
+    async dryRunDatasetImageImport(datasetId: string, file: File): Promise<ImportDryRunResponse> {
+        const formData = new FormData();
+        formData.append('file', resolveUploadFile(file));
+        const response = await this.client.post<ImportDryRunResponse>(
+            `/datasets/${datasetId}/imports/images:dry-run`,
+            formData,
+        );
+        return response.data;
+    }
+
+    async executeDatasetImageImport(
+        datasetId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/imports/images:execute`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async dryRunProjectAnnotationImport(
+        projectId: string,
+        payload: ProjectAnnotationImportDryRunRequest
+    ): Promise<ImportDryRunResponse> {
+        const formData = new FormData();
+        formData.append('file', resolveUploadFile(payload.file));
+        formData.append('format', payload.format);
+        formData.append('dataset_id', payload.datasetId);
+        formData.append('branch_name', payload.branchName);
+
+        const response = await this.client.post<ImportDryRunResponse>(
+            `/projects/${projectId}/imports/annotations:dry-run`,
+            formData,
+        );
+        return response.data;
+    }
+
+    async executeProjectAnnotationImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/annotations:execute`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async dryRunProjectAssociatedImport(
+        projectId: string,
+        payload: ProjectAssociatedImportDryRunRequest
+    ): Promise<ImportDryRunResponse> {
+        const formData = new FormData();
+        formData.append('file', resolveUploadFile(payload.file));
+        formData.append('format', payload.format);
+        formData.append('branch_name', payload.branchName);
+        formData.append('target_dataset_mode', payload.targetDatasetMode);
+        if (payload.targetDatasetId) formData.append('target_dataset_id', payload.targetDatasetId);
+        if (payload.newDatasetName) formData.append('new_dataset_name', payload.newDatasetName);
+        if (payload.newDatasetDescription) formData.append('new_dataset_description', payload.newDatasetDescription);
+
+        const response = await this.client.post<ImportDryRunResponse>(
+            `/projects/${projectId}/imports/associated:dry-run`,
+            formData,
+        );
+        return response.data;
+    }
+
+    async executeProjectAssociatedImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/imports/associated:execute`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async getImportTaskStatus(taskId: string): Promise<ImportTaskStatusResponse> {
+        const response = await this.client.get<ImportTaskStatusResponse>(`/imports/tasks/${taskId}`);
+        return convertKeysToCamel<ImportTaskStatusResponse>(response.data);
+    }
+
+    async streamImportTaskEvents(
+        taskId: string,
+        afterSeq: number,
+        onProgress: (event: ImportProgressEvent) => void,
+        signal?: AbortSignal
+    ): Promise<void> {
+        const token = useAuthStore.getState().token;
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const response = await fetch(
+            `${this.apiBaseUrl}/imports/tasks/${taskId}/events?after_seq=${Math.max(0, afterSeq)}`,
+            {
+                method: 'GET',
+                headers: Object.keys(headers).length > 0 ? headers : undefined,
+                signal,
+            },
+        );
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            throw new Error(errorText || `HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+            throw new Error('Response body is not readable');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+        try {
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, {stream: true});
+                const lines = buffer.split('\n');
+                for (let i = 0; i < lines.length - 1; i++) {
+                    const line = lines[i].trim();
+                    if (!line || line.startsWith(':')) continue;
+                    if (!line.startsWith('data: ')) continue;
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+                    try {
+                        const parsed = convertKeysToCamel<ImportProgressEvent>(JSON.parse(raw));
+                        onProgress(parsed);
+                    } catch (error) {
+                        console.error('Failed to parse SSE event:', raw, error);
+                    }
+                }
+                buffer = lines[lines.length - 1];
+            }
+        } finally {
+            reader.releaseLock();
+        }
+    }
+
+    async bulkUploadSamples(
+        datasetId: string,
+        files: File[],
+    ): Promise<ImportTaskCreateResponse> {
+        const formData = new FormData();
+        files.forEach((file) => {
+            formData.append('files', resolveUploadFile(file));
+        });
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/samples:bulk-upload`,
+            formData,
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async bulkImportSamples(
+        datasetId: string,
+        payload: SampleBulkImportRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/datasets/${datasetId}/samples:bulk-import`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    async bulkSaveAnnotations(
+        projectId: string,
+        payload: AnnotationBulkRequest,
+    ): Promise<ImportTaskCreateResponse> {
+        const response = await this.client.post<ImportTaskCreateResponse>(
+            `/projects/${projectId}/annotations:bulk`,
+            convertKeysToSnake(payload),
+        );
+        return convertKeysToCamel<ImportTaskCreateResponse>(response.data);
+    }
+
+    // ==========================================================================
     // Sample APIs
     // ==========================================================================
 
@@ -1334,72 +1548,6 @@ export class RealApiService implements ApiService {
 
     async deleteSample(datasetId: string, sampleId: string): Promise<void> {
         await this.client.delete(`/samples/${datasetId}/samples/${sampleId}`);
-    }
-
-    async uploadSamplesWithProgress(
-        datasetId: string,
-        files: File[],
-        onProgress: (event: UploadProgressEvent) => void,
-        signal?: AbortSignal
-    ): Promise<void> {
-        const formData = new FormData();
-        files.forEach(file => {
-            formData.append('files', file);
-        });
-
-        const token = useAuthStore.getState().token;
-        const response = await fetch(
-            `${this.apiBaseUrl}/samples/${datasetId}/stream`,
-            {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
-                signal,
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        // Parse Server-Sent Events (SSE)
-        const reader = response.body?.getReader();
-        if (!reader) {
-            throw new Error('Response body is not readable');
-        }
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        try {
-            while (true) {
-                const {done, value} = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, {stream: true});
-                const lines = buffer.split('\n');
-
-                // Process complete lines
-                for (let i = 0; i < lines.length - 1; i++) {
-                    const line = lines[i];
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            onProgress(data);
-                        } catch (e) {
-                            console.error('Failed to parse SSE event:', line, e);
-                        }
-                    }
-                }
-
-                // Keep incomplete line in buffer
-                buffer = lines[lines.length - 1];
-            }
-        } finally {
-            reader.releaseLock();
-        }
     }
 
     async getUsers(page: number = 1, limit: number = 100): Promise<PaginationResponse<User>> {

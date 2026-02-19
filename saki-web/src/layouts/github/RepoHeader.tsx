@@ -10,6 +10,7 @@ export type RepoHeaderProps = {
     avatarUrl?: string | null
     visibilityLabel?: string
     stats?: RepoStat[]
+    actions?: React.ReactNode
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -18,7 +19,7 @@ const iconMap: Record<string, React.ReactNode> = {
     派生: <ForkOutlined/>,
 }
 
-export const RepoHeader: React.FC<RepoHeaderProps> = ({title, avatarUrl, visibilityLabel, stats}) => {
+export const RepoHeader: React.FC<RepoHeaderProps> = ({title, avatarUrl, visibilityLabel, stats, actions}) => {
     const {t} = useTranslation()
     const resolvedStats = stats || [{label: t('layout.repoHeader.stats.fork'), count: 0}]
     const resolvedVisibilityLabel = visibilityLabel || t('layout.repoHeader.private')
@@ -41,6 +42,7 @@ export const RepoHeader: React.FC<RepoHeaderProps> = ({title, avatarUrl, visibil
             </div>
 
             <div className="flex items-center gap-2">
+                {actions}
                 {resolvedStats.map((stat) => {
                     const menuItems: MenuProps['items'] = stat.menuItems || [
                         {

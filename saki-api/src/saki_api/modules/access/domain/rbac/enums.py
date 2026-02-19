@@ -154,12 +154,14 @@ class Permissions:
     DATASET_DELETE_ALL = "dataset:delete:all"  # 全局允许：删除数据集
     DATASET_ASSIGN_ALL = "dataset:assign:all"  # 全局允许：管理数据集成员和权限
     DATASET_LINK_PROJECT_ALL = "dataset:link_project:all"  # 全局允许：关联/解除关联项目
+    DATASET_IMPORT_ALL = "dataset:import:all"  # 全局允许：导入数据集内容
     # Dataset - assigned scope
     DATASET_READ = "dataset:read:assigned"  # 成员允许：读取数据集信息
     DATASET_UPDATE = "dataset:update:assigned"  # 成员允许：修改数据集信息
     DATASET_DELETE = "dataset:delete:assigned"  # 成员允许：删除数据集（应该永远不分配此权限）
     DATASET_ASSIGN = "dataset:assign:assigned"  # 成员允许：管理数据集成员和权限
     DATASET_LINK_PROJECT = "dataset:link_project:assigned"  # 成员允许：关联/解除关联项目
+    DATASET_IMPORT = "dataset:import:assigned"  # 成员允许：导入数据集内容
 
     # ============================================================================
     # Sample Permissions

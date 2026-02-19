@@ -68,7 +68,6 @@ class UserRepository(BaseRepository[User]):
 
         # Total
         count_stmt = select(func.count()).select_from(statement.subquery())
-        total_result = await self.session.exec(count_stmt)
-        total = total_result.one() or 0
+        total = await self.session.scalar(count_stmt) or 0
 
         return PaginationResponse.from_items(items, total, pagination.offset, pagination.limit)

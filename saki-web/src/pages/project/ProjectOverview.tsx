@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import {Avatar, Button, Form, Input, message, Modal, Spin, Tag} from 'antd'
-import {FolderOutlined, HistoryOutlined} from '@ant-design/icons'
+import {FolderOutlined, HistoryOutlined, ImportOutlined} from '@ant-design/icons'
 import {useNavigate, useParams} from 'react-router-dom'
 import {useTranslation} from 'react-i18next'
 import {RepoActionBar} from '../../layouts/github/RepoActionBar'
@@ -8,7 +8,7 @@ import {RepoHeader} from '../../layouts/github/RepoHeader'
 import {FileTable} from '../../layouts/github/FileTable'
 import {api} from '../../services/api'
 import {CommitHistoryItem, Dataset, Project, ProjectBranch, ResourceMember} from '../../types'
-import {usePermission} from '../../hooks'
+import {usePermission, useResourcePermission} from '../../hooks'
 import ProjectSidebar from './ProjectSidebar'
 
 
@@ -29,7 +29,9 @@ const ProjectOverview: React.FC = () => {
     const [forking, setForking] = useState(false)
     const [forkForm] = Form.useForm()
     const {can} = usePermission()
+    const {can: canProject} = useResourcePermission('project', projectId)
     const canFork = can('project:create')
+    const canImport = canProject('annotation:create:assigned') && canProject('commit:create:assigned')
 
     const formatRelativeTime = useCallback((value?: string) => {
         if (!value) return t('common.placeholder')
@@ -179,6 +181,20 @@ const ProjectOverview: React.FC = () => {
             <RepoHeader
                 title={project.name}
                 visibilityLabel={taskTypeLabel}
+                actions={
+                    <Button
+                        className="!bg-github-input !border-github-border !text-github-text"
+                        icon={<ImportOutlined/>}
+                        onClick={() => {
+                            if (projectId) {
+                                navigate(`/projects/${projectId}/import`)
+                            }
+                        }}
+                        disabled={!canImport}
+                    >
+                        {t('import.project.entry')}
+                    </Button>
+                }
                 stats={[{
                     label: t('layout.repoHeader.stats.fork'),
                     count: project.forkCount || 0,

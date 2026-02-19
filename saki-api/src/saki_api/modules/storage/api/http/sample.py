@@ -1,16 +1,13 @@
 """
 Sample Endpoints.
 """
-import json
 import uuid
-from typing import List
 
-from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi import APIRouter, Depends, Query
 from loguru import logger
 from sqlalchemy import asc, desc, or_
-from starlette.responses import StreamingResponse
 
-from saki_api.app.deps import DatasetServiceDep, SampleServiceDep, AssetServiceDep
+from saki_api.app.deps import SampleServiceDep, AssetServiceDep
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
@@ -20,97 +17,6 @@ from saki_api.modules.storage.api.sample import SampleRead
 from saki_api.modules.storage.domain.sample import Sample
 
 router = APIRouter()
-
-
-@router.post(
-    "/{dataset_id}/upload",
-    response_model=PaginationResponse[SampleRead],
-    dependencies=[
-        Depends(
-            require_permission(
-                Permissions.SAMPLE_CREATE,
-                ResourceType.DATASET,
-                "dataset_id"
-            )
-        )
-    ]
-)
-async def upload_samples(
-        *,
-        dataset_id: uuid.UUID,
-        files: List[UploadFile] = File(...),
-        dataset_service: DatasetServiceDep,
-        sample_service: SampleServiceDep,
-) -> List[SampleRead]:
-    """
-    Upload files to a dataset.
-    
-    Processes files according to dataset type:
-    - CLASSIC: Image files -> one sample per file
-    - FEDO: TXT files -> one sample per file with generated visualizations
-    
-    All files are stored as assets in object storage.
-    Handler configurations are automatically loaded from environment/config files.
-    """
-    # Get dataset and process upload
-    dataset = await dataset_service.get_by_id_or_raise(dataset_id)
-    return await sample_service.process_upload(dataset, files)
-
-
-@router.post(
-    "/{dataset_id}/stream",
-    response_class=StreamingResponse,
-    dependencies=[
-        Depends(
-            require_permission(
-                Permissions.SAMPLE_CREATE,
-                ResourceType.DATASET,
-                "dataset_id"
-            )
-        )
-    ]
-)
-async def upload_samples_with_progress(
-        dataset_id: uuid.UUID,
-        dataset_service: DatasetServiceDep,
-        sample_service: SampleServiceDep,
-        files: List[UploadFile] = File(...),
-):
-    """
-    Upload samples with SSE progress streaming.
-    
-    Returns a stream of Server-Sent Events (SSE) for real-time progress updates.
-    Handler configurations are automatically loaded from environment/config files.
-    
-    Event Types:
-    - start: Initial event with total file count
-    - file_start: Before processing each file
-    - progress: Progress updates during file processing
-    - file_complete: After each file is processed
-    - complete: Final event with summary
-    
-    Example Event:
-    ```
-    data: {"event": "progress", "file_index": 0, "stage": "fedo_parse", "message": "Parsing data file", "percentage": 50}
-    ```
-    """
-
-    # Get dataset
-    dataset = await dataset_service.get_by_id_or_raise(dataset_id)
-
-    async def generate_progress():
-        async for event in sample_service.iter_upload_progress_events(dataset=dataset, files=files):
-            yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(
-        generate_progress(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-    )
 
 
 @router.get(

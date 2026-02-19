@@ -77,6 +77,23 @@ class Settings(BaseSettings):
     REDIS_KEY_PREFIX: str = "saki"
     REDIS_WORKING_TTL_SECONDS: int = 86400  # 24 hours
 
+    # Importing
+    IMPORT_PREVIEW_TTL_MINUTES: int = 30
+    IMPORT_MAX_ZIP_BYTES: int = 2 * 1024 * 1024 * 1024  # 2GB
+    IMPORT_MAX_ENTRIES: int = 100000
+    IMPORT_ALLOWED_IMAGE_EXTS: List[str] = [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".bmp",
+        ".webp",
+        ".tif",
+        ".tiff",
+    ]
+    IMPORT_MAX_CONCURRENT_TASKS: int = 2
+    IMPORT_TASK_RETENTION_HOURS: int = 72
+    IMPORT_EVENT_HEARTBEAT_SECONDS: int = 10
+
     # Runtime control plane
     INTERNAL_TOKEN: str = "dev-secret"
     RUNTIME_DOMAIN_GRPC_BIND: str = "0.0.0.0:50053"

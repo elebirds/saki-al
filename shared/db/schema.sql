@@ -459,6 +459,51 @@ CREATE TABLE public.dispatch_outbox (
 
 
 --
+-- Name: import_task; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.import_task (
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    id uuid NOT NULL,
+    mode character varying(64) NOT NULL,
+    resource_type character varying(32) NOT NULL,
+    resource_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    status character varying(32) NOT NULL,
+    progress_current integer NOT NULL,
+    progress_total integer NOT NULL,
+    phase character varying(128),
+    payload jsonb,
+    summary jsonb,
+    error character varying(2000),
+    started_at timestamp without time zone,
+    finished_at timestamp without time zone
+);
+
+
+--
+-- Name: import_task_event; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.import_task_event (
+    id uuid NOT NULL,
+    task_id uuid NOT NULL,
+    seq integer NOT NULL,
+    ts timestamp without time zone NOT NULL,
+    event_type character varying(32) NOT NULL,
+    event_subtype character varying(64),
+    phase character varying(128),
+    message character varying(2000),
+    current integer,
+    total integer,
+    item_key character varying(1024),
+    status character varying(128),
+    detail jsonb
+);
+
+
+--
 -- Name: label; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -945,6 +990,22 @@ ALTER TABLE ONLY public.dispatch_outbox
 
 
 --
+-- Name: import_task_event import_task_event_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_task_event
+    ADD CONSTRAINT import_task_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: import_task import_task_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_task
+    ADD CONSTRAINT import_task_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: label label_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1102,6 +1163,14 @@ ALTER TABLE ONLY public.system_setting
 
 ALTER TABLE ONLY public.annotation_draft
     ADD CONSTRAINT uq_annotation_draft UNIQUE (project_id, sample_id, user_id, branch_name);
+
+
+--
+-- Name: import_task_event uq_import_task_event_task_seq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_task_event
+    ADD CONSTRAINT uq_import_task_event_task_seq UNIQUE (task_id, seq);
 
 
 --
@@ -1441,6 +1510,83 @@ CREATE INDEX ix_dispatch_outbox_status_next_attempt_at ON public.dispatch_outbox
 --
 
 CREATE INDEX ix_dispatch_outbox_step_id ON public.dispatch_outbox USING btree (step_id);
+
+
+--
+-- Name: ix_import_task_event_event_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_event_event_type ON public.import_task_event USING btree (event_type);
+
+
+--
+-- Name: ix_import_task_event_seq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_event_seq ON public.import_task_event USING btree (seq);
+
+
+--
+-- Name: ix_import_task_event_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_event_task_id ON public.import_task_event USING btree (task_id);
+
+
+--
+-- Name: ix_import_task_event_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_event_ts ON public.import_task_event USING btree (ts);
+
+
+--
+-- Name: ix_import_task_finished_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_finished_at ON public.import_task USING btree (finished_at);
+
+
+--
+-- Name: ix_import_task_mode; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_mode ON public.import_task USING btree (mode);
+
+
+--
+-- Name: ix_import_task_resource_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_resource_id ON public.import_task USING btree (resource_id);
+
+
+--
+-- Name: ix_import_task_resource_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_resource_type ON public.import_task USING btree (resource_type);
+
+
+--
+-- Name: ix_import_task_started_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_started_at ON public.import_task USING btree (started_at);
+
+
+--
+-- Name: ix_import_task_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_status ON public.import_task USING btree (status);
+
+
+--
+-- Name: ix_import_task_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_task_user_id ON public.import_task USING btree (user_id);
 
 
 --
@@ -2188,6 +2334,14 @@ ALTER TABLE ONLY public.round
 
 ALTER TABLE ONLY public.round
     ADD CONSTRAINT fk_round_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: import_task_event import_task_event_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_task_event
+    ADD CONSTRAINT import_task_event_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.import_task(id);
 
 
 --

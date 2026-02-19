@@ -5,7 +5,7 @@ CAMap Repository - Data access layer for CommitAnnotationMap operations.
 import uuid
 from typing import List, Tuple, Dict
 
-from sqlalchemy import func
+from sqlalchemy import delete, func, insert
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -90,15 +90,18 @@ class CAMapRepository:
             mappings: List of (sample_id, annotation_id) tuples
             project_id: Project ID (for all entries)
         """
-        for sample_id, annotation_id in mappings:
-            entry = CommitAnnotationMap(
-                commit_id=commit_id,
-                sample_id=sample_id,
-                annotation_id=annotation_id,
-                project_id=project_id,
-            )
-            self.session.add(entry)
-
+        if not mappings:
+            return
+        rows = [
+            {
+                "commit_id": commit_id,
+                "sample_id": sample_id,
+                "annotation_id": annotation_id,
+                "project_id": project_id,
+            }
+            for sample_id, annotation_id in mappings
+        ]
+        await self.session.execute(insert(CommitAnnotationMap), rows)
         await self.session.flush()
 
     async def delete_commit_state(self, commit_id: uuid.UUID) -> int:
@@ -111,18 +114,10 @@ class CAMapRepository:
         Returns:
             Number of entries deleted
         """
-        statement = select(CommitAnnotationMap).where(
-            CommitAnnotationMap.commit_id == commit_id,
-        )
-        result = await self.session.exec(statement)
-        entries = result.all()
-
-        count = len(entries)
-        for entry in entries:
-            await self.session.delete(entry)
-
+        stmt = delete(CommitAnnotationMap).where(CommitAnnotationMap.commit_id == commit_id)
+        result = await self.session.exec(stmt)
         await self.session.flush()
-        return count
+        return int(result.rowcount or 0)
 
     async def delete_commit_sample_state(
             self,
@@ -139,19 +134,26 @@ class CAMapRepository:
         Returns:
             Number of entries deleted
         """
-        statement = select(CommitAnnotationMap).where(
-            CommitAnnotationMap.commit_id == commit_id,
-            CommitAnnotationMap.sample_id == sample_id,
+        return await self.delete_commit_sample_states(
+            commit_id=commit_id,
+            sample_ids=[sample_id],
         )
-        result = await self.session.exec(statement)
-        entries = result.all()
 
-        count = len(entries)
-        for entry in entries:
-            await self.session.delete(entry)
-
+    async def delete_commit_sample_states(
+            self,
+            commit_id: uuid.UUID,
+            sample_ids: List[uuid.UUID],
+    ) -> int:
+        unique_sample_ids = list(set(sample_ids))
+        if not unique_sample_ids:
+            return 0
+        stmt = delete(CommitAnnotationMap).where(
+            CommitAnnotationMap.commit_id == commit_id,
+            CommitAnnotationMap.sample_id.in_(unique_sample_ids),
+        )
+        result = await self.session.exec(stmt)
         await self.session.flush()
-        return count
+        return int(result.rowcount or 0)
 
     async def count_annotations_at_commit(self, commit_id: uuid.UUID) -> int:
         """
@@ -168,8 +170,7 @@ class CAMapRepository:
                 CommitAnnotationMap.commit_id == commit_id,
             ).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0
 
     async def count_samples_at_commit(self, commit_id: uuid.UUID) -> int:
         """
@@ -184,8 +185,7 @@ class CAMapRepository:
         statement = select(func.count(func.distinct(CommitAnnotationMap.sample_id))).where(
             CommitAnnotationMap.commit_id == commit_id,
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0
 
     async def get_commit_stats(self, commit_id: uuid.UUID) -> Dict:
         """

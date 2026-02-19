@@ -144,10 +144,9 @@ class ProjectRepository(BaseRepository[Project]):
         )
         items = list(items_result.all())
 
-        total_result = await self.session.exec(
+        total = await self.session.scalar(
             select(func.count()).select_from(filtered_stmt.subquery())
-        )
-        total = total_result.one() or 0
+        ) or 0
 
         return PaginationResponse.from_items(items, total, pagination.offset, pagination.limit)
 
@@ -196,8 +195,7 @@ class ProjectRepository(BaseRepository[Project]):
         statement = select(func.count()).select_from(
             select(ProjectDataset).where(ProjectDataset.project_id == project_id).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0
 
     async def count_labels(self, project_id: uuid.UUID) -> int:
         """Count labels in a project."""
@@ -205,8 +203,7 @@ class ProjectRepository(BaseRepository[Project]):
         statement = select(func.count()).select_from(
             select(Label).where(Label.project_id == project_id).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0
 
     async def count_branches(self, project_id: uuid.UUID) -> int:
         """Count branches in a project."""
@@ -214,8 +211,7 @@ class ProjectRepository(BaseRepository[Project]):
         statement = select(func.count()).select_from(
             select(Branch).where(Branch.project_id == project_id).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0
 
     async def count_commits(self, project_id: uuid.UUID) -> int:
         """Count commits in a project."""
@@ -223,8 +219,7 @@ class ProjectRepository(BaseRepository[Project]):
         statement = select(func.count()).select_from(
             select(Commit).where(Commit.project_id == project_id).subquery()
         )
-        result = await self.session.exec(statement)
-        return result.one() or 0
+        return await self.session.scalar(statement) or 0
 
     async def count_forks(self, project_id: uuid.UUID) -> int:
         """

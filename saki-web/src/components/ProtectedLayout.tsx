@@ -147,6 +147,7 @@ const ProtectedLayout: React.FC = () => {
 
     const isProjectDetail = /^\/projects\/[^/]+/.test(location.pathname)
     const isWorkspace = /^\/projects\/[^/]+\/workspace/.test(location.pathname)
+    const isProjectImport = /^\/projects\/[^/]+\/import/.test(location.pathname)
     const isRuntimeExecutors = /^\/runtime\/executors/.test(location.pathname)
     const showProjectTabs = Boolean(projectId && isProjectDetail)
 
@@ -191,7 +192,7 @@ const ProtectedLayout: React.FC = () => {
         const rest = location.pathname.replace(basePath, '')
         if (!rest || rest === '/') return
         const segment = rest.split('/').filter(Boolean)[0]
-        const passthroughSegments = new Set(['workspace', 'members'])
+        const passthroughSegments = new Set(['workspace', 'members', 'import'])
         if (segment && passthroughSegments.has(segment)) {
             return
         }
@@ -281,6 +282,8 @@ const ProtectedLayout: React.FC = () => {
             contentClassName={
                 isWorkspace
                     ? 'px-6 w-full h-full flex flex-col'
+                    : isProjectImport
+                        ? 'px-6 py-6 w-full h-full flex flex-col'
                     : isRuntimeExecutors
                         ? 'px-6 py-6 w-full h-full flex flex-col'
                     : isProjectDetail

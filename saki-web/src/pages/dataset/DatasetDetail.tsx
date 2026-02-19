@@ -13,10 +13,9 @@ import {
     SortDescendingOutlined,
     UploadOutlined
 } from '@ant-design/icons';
-import UploadProgressModal from '../../components/UploadProgressModal';
 import DatasetSettings from '../../components/settings/DatasetSettings';
 import SampleAssetModal from '../../components/dataset/SampleAssetModal';
-import {useResourcePermission, useSystemCapabilities, useUpload} from '../../hooks';
+import {useResourcePermission, useSystemCapabilities} from '../../hooks';
 import {PaginatedList} from '../../components/common/PaginatedList';
 
 const {Title} = Typography;
@@ -30,8 +29,6 @@ const DatasetDetail: React.FC = () => {
     const [sampleMeta, setSampleMeta] = useState({total: 0, limit: 8, offset: 0, size: 0});
     const [sampleRefreshKey, setSampleRefreshKey] = useState(0);
     const [activeTab, setActiveTab] = useState('data');
-    const [uploadModalOpen, setUploadModalOpen] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const [sortBy, setSortBy] = useState<string>('createdAt');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     const [searchQuery, setSearchQuery] = useState('');
@@ -55,29 +52,6 @@ const DatasetDetail: React.FC = () => {
 
     // System capabilities
     const {getDatasetTypeLabel, getDatasetTypeColor} = useSystemCapabilities();
-
-    // Initialize upload hook
-    const {progress, upload, cancel, reset, isUploading} = useUpload(id || '', {
-        onFileComplete: (result) => {
-            if (result.status === 'success') {
-                console.log(`File uploaded: ${result.filename}`);
-            }
-        },
-        onComplete: (result) => {
-            message.success(t('upload.completeMessage', {
-                success: result.uploaded,
-                total: result.uploaded + result.errors
-            }));
-            // Refresh samples after upload
-            if (id) {
-                setSampleRefreshKey((v) => v + 1);
-                loadDataset(id);
-            }
-        },
-        onError: (error) => {
-            message.error(error);
-        },
-    });
 
     // Load dataset
     const loadDataset = useCallback(async (datasetId: string) => {
@@ -135,32 +109,9 @@ const DatasetDetail: React.FC = () => {
         setSearchQuery(value.trim());
     }, []);
 
-    const handleUploadClick = () => {
-        fileInputRef.current?.click();
-    };
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!dataset || !e.target.files || e.target.files.length === 0) return;
-
-        reset();
-        setUploadModalOpen(true);
-        await upload(Array.from(e.target.files));
-
-        // Reset file input
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
-    };
-
-    const handleUploadModalClose = () => {
-        if (!isUploading) {
-            setUploadModalOpen(false);
-            reset();
-        }
-    };
-
-    const handleUploadCancel = () => {
-        cancel();
+    const handleOpenImportWorkspace = () => {
+        if (!dataset) return;
+        navigate(`/datasets/${dataset.id}/import`);
     };
 
     const handleDeleteSample = async (sample: Sample) => {
@@ -176,17 +127,6 @@ const DatasetDetail: React.FC = () => {
     };
 
     if (!dataset) return <div>{t('common.loading')}</div>;
-
-    // Determine file accept type based on dataset type
-    const getAcceptType = () => {
-        switch (dataset.type) {
-            case 'fedo':
-                return '.txt';
-            case 'classic':
-            default:
-                return 'image/*';
-        }
-    };
 
     // Render sample item
     const renderSampleItem = (item: Sample) => {
@@ -326,13 +266,13 @@ const DatasetDetail: React.FC = () => {
                                                    className="!text-gray-500">{t('dataset.detail.noSamples')}</Title>
                                             {canUpload ? (
                                                 <Button type="primary" icon={<UploadOutlined/>}
-                                                        onClick={handleUploadClick}>
-                                                    {t('dataset.detail.uploadData')}
+                                                        onClick={handleOpenImportWorkspace}>
+                                                    {t('dataset.detail.openImportWorkspace')}
                                                 </Button>
                                             ) : (
                                                 <Tooltip title={t('common.noPermission')}>
                                                     <Button type="primary" icon={<UploadOutlined/>} disabled>
-                                                        {t('dataset.detail.uploadData')}
+                                                        {t('dataset.detail.openImportWorkspace')}
                                                     </Button>
                                                 </Tooltip>
                                             )}
@@ -419,25 +359,16 @@ const DatasetDetail: React.FC = () => {
 
                 <div className="flex w-full flex-col gap-6">
                     {canUpload ? (
-                        <Button block icon={<UploadOutlined/>} onClick={handleUploadClick}>
-                            {t('dataset.detail.uploadData')}
+                        <Button block icon={<UploadOutlined/>} onClick={handleOpenImportWorkspace}>
+                            {t('dataset.detail.openImportWorkspace')}
                         </Button>
                     ) : (
                         <Tooltip title={t('common.noPermission')}>
                             <Button block icon={<UploadOutlined/>} disabled>
-                                {t('dataset.detail.uploadData')}
+                                {t('dataset.detail.openImportWorkspace')}
                             </Button>
                         </Tooltip>
                     )}
-
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        multiple
-                        accept={getAcceptType()}
-                        onChange={handleFileChange}
-                    />
 
                     {canEdit && (
                         <Button block icon={<SettingOutlined/>} onClick={() => setActiveTab('settings')}>
@@ -448,14 +379,6 @@ const DatasetDetail: React.FC = () => {
             </aside>
             <main className="h-full w-4/5 min-w-0 bg-transparent p-6">
                 <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} className="full-height-tabs"/>
-
-                {/* Upload Progress Modal */}
-                <UploadProgressModal
-                    open={uploadModalOpen}
-                    progress={progress}
-                    onClose={handleUploadModalClose}
-                    onCancel={handleUploadCancel}
-                />
 
                 {/* Sample Asset Modal */}
                 <SampleAssetModal

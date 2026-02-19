@@ -66,7 +66,15 @@ import {
     User,
     UserSystemRole,
     UserSystemRoleAssign,
-    UploadProgressEvent,
+    ImportDryRunResponse,
+    ImportExecuteRequest,
+    ImportProgressEvent,
+    ImportTaskCreateResponse,
+    ImportTaskStatusResponse,
+    SampleBulkImportRequest,
+    AnnotationBulkRequest,
+    ProjectAnnotationImportDryRunRequest,
+    ProjectAssociatedImportDryRunRequest,
 } from '../../types';
 
 
@@ -365,6 +373,60 @@ export interface ApiService {
     syncAnnotation(projectId: string, sampleId: string, payload: AnnotationSyncRequest): Promise<AnnotationSyncResponse>;
 
     // ============================================================================
+    // Import APIs
+    // ============================================================================
+    dryRunDatasetImageImport(datasetId: string, file: File): Promise<ImportDryRunResponse>;
+
+    executeDatasetImageImport(
+        datasetId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    dryRunProjectAnnotationImport(
+        projectId: string,
+        payload: ProjectAnnotationImportDryRunRequest,
+    ): Promise<ImportDryRunResponse>;
+
+    executeProjectAnnotationImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    dryRunProjectAssociatedImport(
+        projectId: string,
+        payload: ProjectAssociatedImportDryRunRequest,
+    ): Promise<ImportDryRunResponse>;
+
+    executeProjectAssociatedImport(
+        projectId: string,
+        payload: ImportExecuteRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    getImportTaskStatus(taskId: string): Promise<ImportTaskStatusResponse>;
+
+    streamImportTaskEvents(
+        taskId: string,
+        afterSeq: number,
+        onProgress: (event: ImportProgressEvent) => void,
+        signal?: AbortSignal,
+    ): Promise<void>;
+
+    bulkUploadSamples(
+        datasetId: string,
+        files: File[],
+    ): Promise<ImportTaskCreateResponse>;
+
+    bulkImportSamples(
+        datasetId: string,
+        payload: SampleBulkImportRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    bulkSaveAnnotations(
+        projectId: string,
+        payload: AnnotationBulkRequest,
+    ): Promise<ImportTaskCreateResponse>;
+
+    // ============================================================================
     // Sample APIs
     // ============================================================================
     getSamples(datasetId: string,
@@ -376,11 +438,4 @@ export interface ApiService {
     ): Promise<PaginationResponse<Sample>>;
 
     deleteSample(datasetId: string, sampleId: string): Promise<void>;
-
-    uploadSamplesWithProgress(
-        datasetId: string,
-        files: File[],
-        onProgress: (event: UploadProgressEvent) => void,
-        signal?: AbortSignal
-    ): Promise<void>;
 }

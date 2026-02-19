@@ -242,6 +242,13 @@ const ProjectSamplesAnnotations: React.FC = () => {
                     <div className="flex-1"/>
 
                     <div className="flex items-center gap-2">
+                        <Button
+                            type="primary"
+                            onClick={() => navigate(`/projects/${projectId}/import`)}
+                            disabled={!canAnnotate || !canCommit}
+                        >
+                            {t('import.project.entry')}
+                        </Button>
                         {canAnnotate ? (
                             <Button type="primary" onClick={handleStartAnnotate} disabled={!selectedDatasetId}>
                                 Start Annotating

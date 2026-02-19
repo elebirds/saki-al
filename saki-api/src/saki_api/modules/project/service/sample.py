@@ -13,13 +13,31 @@ from typing import Any, AsyncIterator, List, Optional
 
 from fastapi import UploadFile
 from loguru import logger
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.core.exceptions import BadRequestAppException
+from saki_api.core.config import settings
+from saki_api.core.exceptions import (
+    BadRequestAppException,
+    ConflictAppException,
+    ForbiddenAppException,
+    NotFoundAppException,
+)
+from saki_api.infra.cache.redis import get_redis_client
+from saki_api.infra.db.transaction import transactional
+from saki_api.modules.access.service.permission_checker import PermissionChecker
+from saki_api.modules.annotation.domain.annotation import Annotation
+from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
+from saki_api.modules.annotation.domain.draft import AnnotationDraft
+from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.annotation.extensions.dataset_processing.base import UploadContext, ProgressCallback, EventType, \
     ProgressInfo
 from saki_api.modules.annotation.extensions.factory import AnnotationSystemFactory
 from saki_api.modules.project.repo.sample import SampleRepository
+from saki_api.modules.runtime.domain.metric import RoundSampleMetric
+from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.shared.modeling.enums import DatasetType
 from saki_api.modules.storage.api.sample import SampleRead
@@ -329,6 +347,218 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
                     filename=filename,
                     error=error_text,
                 )
+
+    @staticmethod
+    def _parse_scalar_count(value: Any) -> int:
+        if isinstance(value, (tuple, list)):
+            if not value:
+                return 0
+            value = value[0]
+        return int(value or 0)
+
+    async def _count_rows_by_sample(self, model, sample_id: uuid.UUID) -> int:
+        row = (
+            await self.session.exec(
+                select(func.count()).select_from(model).where(model.sample_id == sample_id)
+            )
+        ).one()
+        return self._parse_scalar_count(row)
+
+    async def _collect_project_ids_by_sample(self, sample_id: uuid.UUID) -> list[str]:
+        project_ids: set[str] = set()
+        model_and_column = (
+            (Annotation, Annotation.project_id),
+            (CommitAnnotationMap, CommitAnnotationMap.project_id),
+            (CommitSampleState, CommitSampleState.project_id),
+        )
+        for model, project_column in model_and_column:
+            rows = await self.session.exec(
+                select(project_column).where(model.sample_id == sample_id).distinct()
+            )
+            for item in rows.all():
+                project_id = item[0] if isinstance(item, (tuple, list)) else item
+                if project_id:
+                    project_ids.add(str(project_id))
+        return sorted(project_ids)
+
+    async def _scan_working_snapshot_keys(self, sample_id: uuid.UUID) -> list[str]:
+        pattern = f"{settings.REDIS_KEY_PREFIX}:working:*:*:*:{sample_id}"
+        redis = get_redis_client()
+        keys: list[str] = []
+        try:
+            async for key in redis.scan_iter(match=pattern, count=500):
+                keys.append(str(key))
+        except Exception as exc:
+            logger.warning("扫描 Working 快照失败 sample_id={} error={}", sample_id, exc)
+            return []
+        return keys
+
+    async def _inspect_sample_refs(self, sample_id: uuid.UUID) -> dict[str, Any]:
+        annotation_count = await self._count_rows_by_sample(Annotation, sample_id)
+        camap_count = await self._count_rows_by_sample(CommitAnnotationMap, sample_id)
+        sample_state_count = await self._count_rows_by_sample(CommitSampleState, sample_id)
+        draft_count = await self._count_rows_by_sample(AnnotationDraft, sample_id)
+        candidate_count = await self._count_rows_by_sample(StepCandidateItem, sample_id)
+        round_metric_count = await self._count_rows_by_sample(RoundSampleMetric, sample_id)
+        working_keys = await self._scan_working_snapshot_keys(sample_id)
+        project_ids = await self._collect_project_ids_by_sample(sample_id)
+
+        committed_refs = {
+            "annotation": annotation_count,
+            "commit_annotation_map": camap_count,
+            "commit_sample_state": sample_state_count,
+            "project_ids": project_ids,
+        }
+        transient_refs = {
+            "annotation_draft": draft_count,
+            "step_candidate_item": candidate_count,
+            "round_sample_metric": round_metric_count,
+            "working_snapshots": len(working_keys),
+        }
+        has_committed_refs = (
+            annotation_count > 0 or camap_count > 0 or sample_state_count > 0
+        )
+        return {
+            "committed_refs": committed_refs,
+            "transient_refs": transient_refs,
+            "has_committed_refs": has_committed_refs,
+        }
+
+    async def _delete_rows_for_sample(self, model, sample_id: uuid.UUID) -> int:
+        rows = await self.session.exec(select(model).where(model.sample_id == sample_id))
+        items = list(rows.all())
+        for item in items:
+            await self.session.delete(item)
+        if items:
+            await self.session.flush()
+        return len(items)
+
+    async def _cleanup_working_snapshots(self, sample_id: uuid.UUID) -> int:
+        keys = await self._scan_working_snapshot_keys(sample_id)
+        if not keys:
+            return 0
+        redis = get_redis_client()
+        try:
+            deleted = await redis.delete(*keys)
+            return int(deleted or 0)
+        except Exception as exc:
+            logger.warning("清理 Working 快照失败 sample_id={} error={}", sample_id, exc)
+            return 0
+
+    async def _cleanup_sample_refs(self, sample_id: uuid.UUID) -> dict[str, dict[str, int]]:
+        committed_deleted = {
+            "annotation": 0,
+            "commit_annotation_map": 0,
+            "commit_sample_state": 0,
+        }
+        transient_deleted = {
+            "annotation_draft": 0,
+            "step_candidate_item": 0,
+            "round_sample_metric": 0,
+            "working_snapshots": 0,
+        }
+
+        # FK 顺序：先删除依赖 annotation/sample 的映射，再删 annotation，再删 sample。
+        committed_deleted["commit_annotation_map"] = await self._delete_rows_for_sample(
+            CommitAnnotationMap,
+            sample_id,
+        )
+        committed_deleted["commit_sample_state"] = await self._delete_rows_for_sample(
+            CommitSampleState,
+            sample_id,
+        )
+        transient_deleted["annotation_draft"] = await self._delete_rows_for_sample(
+            AnnotationDraft,
+            sample_id,
+        )
+        committed_deleted["annotation"] = await self._delete_rows_for_sample(
+            Annotation,
+            sample_id,
+        )
+        transient_deleted["step_candidate_item"] = await self._delete_rows_for_sample(
+            StepCandidateItem,
+            sample_id,
+        )
+        transient_deleted["round_sample_metric"] = await self._delete_rows_for_sample(
+            RoundSampleMetric,
+            sample_id,
+        )
+        transient_deleted["working_snapshots"] = await self._cleanup_working_snapshots(
+            sample_id,
+        )
+        return {
+            "committed_refs_deleted": committed_deleted,
+            "transient_refs_deleted": transient_deleted,
+        }
+
+    async def _can_force_delete(self, actor_user_id: uuid.UUID, dataset_owner_id: uuid.UUID) -> bool:
+        if actor_user_id == dataset_owner_id:
+            return True
+        checker = PermissionChecker(self.session)
+        return await checker.is_super_admin(actor_user_id)
+
+    @staticmethod
+    def _build_conflict_payload(ref_summary: dict[str, Any], can_force: bool) -> dict[str, Any]:
+        return {
+            "reason": "sample_in_use",
+            "confirmation_required": True,
+            "can_force": can_force,
+            "committed_refs": ref_summary["committed_refs"],
+            "transient_refs": ref_summary["transient_refs"],
+        }
+
+    @transactional
+    async def delete_sample_with_policy(
+            self,
+            *,
+            dataset_id: uuid.UUID,
+            sample_id: uuid.UUID,
+            actor_user_id: uuid.UUID,
+            force: bool = False,
+    ) -> dict[str, Any]:
+        sample_result = await self.session.exec(
+            select(Sample).where(Sample.id == sample_id).with_for_update()
+        )
+        sample = sample_result.first()
+        if not sample:
+            raise NotFoundAppException(f"Sample {sample_id} not found")
+        if sample.dataset_id != dataset_id:
+            raise BadRequestAppException("Sample not found in dataset")
+
+        dataset = await self.session.get(Dataset, dataset_id)
+        if not dataset:
+            raise NotFoundAppException(f"Dataset {dataset_id} not found")
+
+        ref_summary = await self._inspect_sample_refs(sample_id)
+        has_committed_refs = bool(ref_summary["has_committed_refs"])
+        can_force = await self._can_force_delete(actor_user_id, dataset.owner_id)
+
+        if has_committed_refs and not force:
+            raise ConflictAppException(
+                "Sample is referenced by committed data, confirmation required before force delete",
+                data=self._build_conflict_payload(ref_summary, can_force=can_force),
+            )
+        if has_committed_refs and force and not can_force:
+            raise ForbiddenAppException("Force delete requires dataset owner or super admin")
+
+        forced = bool(force and has_committed_refs)
+        try:
+            cleanup = await self._cleanup_sample_refs(sample_id)
+            await self.session.delete(sample)
+            await self.session.flush()
+        except IntegrityError as exc:
+            logger.warning("样本删除冲突 sample_id={} error={}", sample_id, exc)
+            raise ConflictAppException(
+                "Sample is still referenced and cannot be deleted directly",
+                data=self._build_conflict_payload(ref_summary, can_force=can_force),
+            ) from exc
+
+        return {
+            "ok": True,
+            "forced": forced,
+            "message": "Sample deleted successfully",
+            "cleanup": cleanup,
+        }
 
     async def get_asset_for_sample(
             self,

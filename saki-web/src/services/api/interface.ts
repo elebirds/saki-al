@@ -445,5 +445,5 @@ export interface ApiService {
                q?: string
     ): Promise<PaginationResponse<Sample>>;
 
-    deleteSample(datasetId: string, sampleId: string): Promise<void>;
+    deleteSample(datasetId: string, sampleId: string, force?: boolean): Promise<void>;
 }

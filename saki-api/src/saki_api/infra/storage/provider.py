@@ -257,9 +257,6 @@ class MinioStorageProvider(BaseStorageProvider):
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
-                print(f"✓ Created bucket: {self.bucket_name}")
-            else:
-                print(f"✓ Bucket exists: {self.bucket_name}")
         except S3Error as e:
             raise StorageError(f"Failed to ensure bucket exists: {e}") from e
 

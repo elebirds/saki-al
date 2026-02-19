@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {Button, Card, Input, List, message, Popconfirm, Select, Tabs, Tag, Tooltip, Typography} from 'antd';
+import {Button, Card, Input, List, message, Modal, Popconfirm, Select, Tabs, Tag, Tooltip, Typography} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {Dataset, Sample} from '../../types';
 import {api} from '../../services/api';
@@ -20,6 +20,65 @@ import {PaginatedList} from '../../components/common/PaginatedList';
 
 const {Title} = Typography;
 const {Option} = Select;
+
+interface SampleDeleteConflictPayload {
+    reason?: string;
+    confirmationRequired?: boolean;
+    canForce?: boolean;
+    committedRefs?: {
+        annotation?: number;
+        commitAnnotationMap?: number;
+        commitSampleState?: number;
+        projectIds?: string[];
+    };
+    transientRefs?: {
+        annotationDraft?: number;
+        stepCandidateItem?: number;
+        roundSampleMetric?: number;
+        workingSnapshots?: number;
+    };
+}
+
+function snakeToCamel(key: string): string {
+    return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function convertKeysToCamel<T>(obj: unknown): T {
+    if (Array.isArray(obj)) {
+        return obj.map((item) => convertKeysToCamel(item)) as T;
+    }
+    if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj as Record<string, unknown>).reduce((result, key) => {
+            const camelKey = snakeToCamel(key);
+            (result as Record<string, unknown>)[camelKey] = convertKeysToCamel(
+                (obj as Record<string, unknown>)[key]
+            );
+            return result;
+        }, {} as T);
+    }
+    return obj as T;
+}
+
+function extractSampleDeleteConflict(error: unknown): SampleDeleteConflictPayload | null {
+    const apiError = error as {
+        statusCode?: number;
+        originalError?: {
+            response?: {
+                data?: unknown;
+            };
+        };
+    };
+    if (apiError.statusCode !== 409) return null;
+    const raw = apiError.originalError?.response?.data;
+    if (!raw || typeof raw !== 'object') return null;
+    const normalized = convertKeysToCamel<Record<string, unknown>>(raw);
+    const payloadRecord =
+        normalized.data && typeof normalized.data === 'object'
+            ? (normalized.data as Record<string, unknown>)
+            : normalized;
+    if (payloadRecord.reason !== 'sample_in_use') return null;
+    return payloadRecord as SampleDeleteConflictPayload;
+}
 
 const DatasetDetail: React.FC = () => {
     const {t} = useTranslation();
@@ -120,9 +179,87 @@ const DatasetDetail: React.FC = () => {
             await api.deleteSample(dataset.id, sample.id);
             message.success(t('dataset.detail.deleteSampleSuccess'));
             setSampleRefreshKey((v) => v + 1);
-            loadDataset(dataset.id);
+            await loadDataset(dataset.id);
         } catch (error) {
-            message.error(t('dataset.detail.deleteSampleError'));
+            const conflict = extractSampleDeleteConflict(error);
+            if (conflict?.reason === 'sample_in_use') {
+                if (!conflict.canForce) {
+                    message.error(t('dataset.detail.deleteSampleForceForbidden'));
+                    return;
+                }
+                const committedRefs = conflict.committedRefs ?? {};
+                const transientRefs = conflict.transientRefs ?? {};
+                Modal.confirm({
+                    title: t('dataset.detail.forceDeleteConfirmTitle'),
+                    okText: t('dataset.detail.forceDeleteAction'),
+                    cancelText: t('common.cancel'),
+                    okButtonProps: {danger: true},
+                    content: (
+                        <div>
+                            <p>{t('dataset.detail.forceDeleteConfirmDescription')}</p>
+                            <div className="mt-2 space-y-1 text-sm">
+                                <div>{t('dataset.detail.forceDeleteRefSummaryTitle')}</div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefCommittedAnnotation', {
+                                        count: committedRefs.annotation ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefCommittedMap', {
+                                        count: committedRefs.commitAnnotationMap ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefCommittedState', {
+                                        count: committedRefs.commitSampleState ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefProjects', {
+                                        count: committedRefs.projectIds?.length ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefTransientDraft', {
+                                        count: transientRefs.annotationDraft ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefTransientCandidate', {
+                                        count: transientRefs.stepCandidateItem ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefTransientMetric', {
+                                        count: transientRefs.roundSampleMetric ?? 0,
+                                    })}
+                                </div>
+                                <div>
+                                    {t('dataset.detail.forceDeleteRefWorking', {
+                                        count: transientRefs.workingSnapshots ?? 0,
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    ),
+                    onOk: async () => {
+                        if (!dataset) return;
+                        try {
+                            await api.deleteSample(dataset.id, sample.id, true);
+                            message.success(t('dataset.detail.deleteSampleSuccessForced'));
+                            setSampleRefreshKey((v) => v + 1);
+                            await loadDataset(dataset.id);
+                        } catch (forceError) {
+                            const forceErrorMessage = forceError instanceof Error ? forceError.message : '';
+                            message.error(forceErrorMessage || t('dataset.detail.deleteSampleError'));
+                            throw forceError;
+                        }
+                    },
+                });
+                return;
+            }
+            const errorMessage = error instanceof Error ? error.message : '';
+            message.error(errorMessage || t('dataset.detail.deleteSampleError'));
         }
     };
 

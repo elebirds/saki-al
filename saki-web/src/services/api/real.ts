@@ -1551,8 +1551,12 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async deleteSample(datasetId: string, sampleId: string): Promise<void> {
-        await this.client.delete(`/samples/${datasetId}/samples/${sampleId}`);
+    async deleteSample(datasetId: string, sampleId: string, force?: boolean): Promise<void> {
+        await this.client.delete(`/samples/${datasetId}/samples/${sampleId}`, {
+            params: {
+                force,
+            },
+        });
     }
 
     async getUsers(page: number = 1, limit: number = 100): Promise<PaginationResponse<User>> {

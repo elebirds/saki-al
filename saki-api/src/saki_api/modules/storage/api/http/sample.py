@@ -2,16 +2,16 @@
 Sample Endpoints.
 """
 import uuid
+from typing import List
 
 from fastapi import APIRouter, Depends, Query
 from loguru import logger
 from sqlalchemy import asc, desc, or_
 
 from saki_api.app.deps import SampleServiceDep, AssetServiceDep
-from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
-from saki_api.modules.access.api.dependencies import require_permission
+from saki_api.modules.access.api.dependencies import get_current_user_id, require_permission
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 from saki_api.modules.storage.api.sample import SampleRead
 from saki_api.modules.storage.domain.sample import Sample
@@ -120,14 +120,16 @@ async def delete_sample(
         *,
         dataset_id: uuid.UUID,
         sample_id: uuid.UUID,
+        force: bool = Query(False, description="Force delete even if committed references exist"),
         sample_service: SampleServiceDep,
+        current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> dict:
     """
     Delete a sample from a dataset.
     """
-    sample = await sample_service.get_by_id_or_raise(sample_id)
-    if sample.dataset_id != dataset_id:
-        raise BadRequestAppException("Sample not found in dataset")
-
-    await sample_service.repository.delete(sample_id)
-    return {"ok": True, "message": "Sample deleted successfully"}
+    return await sample_service.delete_sample_with_policy(
+        dataset_id=dataset_id,
+        sample_id=sample_id,
+        actor_user_id=current_user_id,
+        force=force,
+    )

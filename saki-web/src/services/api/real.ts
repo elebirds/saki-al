@@ -73,9 +73,15 @@ import {
     ImportTaskCreateResponse,
     ImportTaskStatusResponse,
     SampleBulkImportRequest,
+    UploadProgressEvent,
     AnnotationBulkRequest,
     ProjectAnnotationImportDryRunRequest,
     ProjectAssociatedImportDryRunRequest,
+    ProjectIOCapabilities,
+    ProjectExportResolveRequest,
+    ProjectExportResolveResponse,
+    ProjectExportChunkRequest,
+    ProjectExportChunkResponse,
 } from '../../types';
 import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
@@ -848,6 +854,37 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
+    async getProjectIOCapabilities(projectId: string): Promise<ProjectIOCapabilities> {
+        const response = await this.client.get<ProjectIOCapabilities>(`/projects/${projectId}/io-capabilities`);
+        return response.data;
+    }
+
+    async resolveProjectExport(
+        projectId: string,
+        payload: ProjectExportResolveRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportResolveResponse> {
+        const response = await this.client.post<ProjectExportResolveResponse>(
+            `/projects/${projectId}/exports/resolve`,
+            convertKeysToSnake(payload),
+            {signal},
+        );
+        return convertKeysToCamel<ProjectExportResolveResponse>(response.data);
+    }
+
+    async getProjectExportChunk(
+        projectId: string,
+        payload: ProjectExportChunkRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportChunkResponse> {
+        const response = await this.client.post<ProjectExportChunkResponse>(
+            `/projects/${projectId}/exports/chunk`,
+            convertKeysToSnake(payload),
+            {signal},
+        );
+        return convertKeysToCamel<ProjectExportChunkResponse>(response.data);
+    }
+
     async getProjectLoops(projectId: string): Promise<Loop[]> {
         const response = await this.client.get<Loop[]>(`/projects/${projectId}/loops`);
         return response.data.map((item) => normalizeLoop(item));
@@ -1372,7 +1409,7 @@ export class RealApiService implements ApiService {
     ): Promise<ImportDryRunResponse> {
         const formData = new FormData();
         formData.append('file', resolveUploadFile(payload.file));
-        formData.append('format', payload.format);
+        formData.append('format_profile', payload.formatProfile);
         formData.append('dataset_id', payload.datasetId);
         formData.append('branch_name', payload.branchName);
 
@@ -1400,7 +1437,7 @@ export class RealApiService implements ApiService {
     ): Promise<ImportDryRunResponse> {
         const formData = new FormData();
         formData.append('file', resolveUploadFile(payload.file));
-        formData.append('format', payload.format);
+        formData.append('format_profile', payload.formatProfile);
         formData.append('branch_name', payload.branchName);
         formData.append('target_dataset_mode', payload.targetDatasetMode);
         if (payload.targetDatasetId) formData.append('target_dataset_id', payload.targetDatasetId);
@@ -1557,6 +1594,73 @@ export class RealApiService implements ApiService {
                 force,
             },
         });
+    }
+
+    async uploadSamplesWithProgress(
+        datasetId: string,
+        files: File[],
+        onProgress: (event: UploadProgressEvent) => void,
+        signal?: AbortSignal
+    ): Promise<void> {
+        const formData = new FormData();
+        files.forEach((file) => {
+            formData.append('files', resolveUploadFile(file));
+        });
+
+        const token = useAuthStore.getState().token;
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const response = await fetch(
+            `${this.apiBaseUrl}/samples/${datasetId}/stream`,
+            {
+                method: 'POST',
+                body: formData,
+                headers: Object.keys(headers).length > 0 ? headers : undefined,
+                signal,
+            }
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            throw new Error(errorText || `HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+            throw new Error('Response body is not readable');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        try {
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, {stream: true});
+                const lines = buffer.split('\n');
+
+                for (let i = 0; i < lines.length - 1; i++) {
+                    const line = lines[i].trim();
+                    if (!line || line.startsWith(':')) continue;
+                    if (!line.startsWith('data: ')) continue;
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+                    try {
+                        const parsed = convertKeysToCamel<UploadProgressEvent>(JSON.parse(raw));
+                        onProgress(parsed);
+                    } catch (error) {
+                        console.error('Failed to parse SSE event:', raw, error);
+                    }
+                }
+
+                buffer = lines[lines.length - 1];
+            }
+        } finally {
+            reader.releaseLock();
+        }
     }
 
     async getUsers(page: number = 1, limit: number = 100): Promise<PaginationResponse<User>> {

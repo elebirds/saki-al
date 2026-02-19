@@ -72,9 +72,15 @@ import {
     ImportTaskCreateResponse,
     ImportTaskStatusResponse,
     SampleBulkImportRequest,
+    UploadProgressEvent,
     AnnotationBulkRequest,
     ProjectAnnotationImportDryRunRequest,
     ProjectAssociatedImportDryRunRequest,
+    ProjectExportChunkRequest,
+    ProjectExportChunkResponse,
+    ProjectExportResolveRequest,
+    ProjectExportResolveResponse,
+    ProjectIOCapabilities,
 } from '../../types';
 
 
@@ -208,6 +214,20 @@ export interface ApiService {
     unlinkProjectDatasets(projectId: string, datasetIds: string[]): Promise<number>;
 
     getProjectBranches(projectId: string): Promise<ProjectBranch[]>;
+
+    getProjectIOCapabilities(projectId: string): Promise<ProjectIOCapabilities>;
+
+    resolveProjectExport(
+        projectId: string,
+        payload: ProjectExportResolveRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportResolveResponse>;
+
+    getProjectExportChunk(
+        projectId: string,
+        payload: ProjectExportChunkRequest,
+        signal?: AbortSignal,
+    ): Promise<ProjectExportChunkResponse>;
 
     getProjectLoops(projectId: string): Promise<Loop[]>;
 
@@ -446,4 +466,11 @@ export interface ApiService {
     ): Promise<PaginationResponse<Sample>>;
 
     deleteSample(datasetId: string, sampleId: string, force?: boolean): Promise<void>;
+
+    uploadSamplesWithProgress(
+        datasetId: string,
+        files: File[],
+        onProgress: (event: UploadProgressEvent) => void,
+        signal?: AbortSignal
+    ): Promise<void>;
 }

@@ -46,6 +46,7 @@ export type {Scope as AccessScope} from '../types';
 export {useSystemCapabilities, useInitSystemCapabilities} from './system/useSystemCapabilities';
 
 export {useImportTask} from './import/useImportTask';
+export {useUpload} from './upload/useUpload';
 
 // ============================================================================
 // Pagination Hooks

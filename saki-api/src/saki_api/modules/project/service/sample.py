@@ -218,6 +218,87 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
 
         return SampleRead.model_validate(created_sample)
 
+    async def process_upload(
+            self,
+            dataset: Dataset,
+            files: List[UploadFile]
+    ) -> List[SampleRead]:
+        """
+        Process a batch of uploaded files and return created samples.
+        """
+        created_samples: List[SampleRead] = []
+        logger.info(
+            "开始批量处理数据集文件 dataset_id={} dataset_type={} file_count={}",
+            dataset.id,
+            dataset.type,
+            len(files),
+        )
+
+        facade = self._initialize_handler(dataset.type)
+        process_context = self._build_processing_context(dataset.id)
+
+        for file in files:
+            filename = file.filename or "unknown"
+            try:
+                await self._validate_sample_name_policy(dataset=dataset, filename=filename)
+                await self._validate_file(file, facade, process_context)
+                process_result = await self._process_single_file(file, facade, process_context)
+                created_sample = await self._create_sample_from_result(dataset.id, process_result)
+                created_samples.append(created_sample)
+            except BadRequestAppException as exc:
+                raise BadRequestAppException(
+                    f"Failed to process file {filename}: {exc}"
+                ) from exc
+            except Exception as exc:
+                logger.exception("处理文件失败 filename={} error={}", filename, exc)
+                raise BadRequestAppException(
+                    f"Failed to process file {filename}: {exc}"
+                ) from exc
+
+        logger.info("批量处理完成，成功创建样本数量={}", len(created_samples))
+        return created_samples
+
+    async def process_single_file_with_progress(
+            self,
+            dataset: Dataset,
+            file: UploadFile,
+            progress_callback: Optional[ProgressCallback] = None
+    ) -> SampleRead:
+        """
+        Process a single uploaded file and emit processor progress via callback.
+        """
+        filename = file.filename or "unknown"
+        logger.info(
+            "开始处理单文件 dataset_id={} dataset_type={} filename={}",
+            dataset.id,
+            dataset.type,
+            filename,
+        )
+
+        facade = self._initialize_handler(dataset.type)
+        process_context = self._build_processing_context(dataset.id)
+        try:
+            await self._validate_sample_name_policy(dataset=dataset, filename=filename)
+            await self._validate_file(file, facade, process_context)
+            process_result = await self._process_single_file(
+                file,
+                facade,
+                process_context,
+                progress_callback=progress_callback,
+            )
+            created_sample = await self._create_sample_from_result(dataset.id, process_result)
+            logger.info("单文件处理成功，样本已创建 sample_id={}", created_sample.id)
+            return created_sample
+        except BadRequestAppException as exc:
+            raise BadRequestAppException(
+                f"Failed to process file {filename}: {exc}"
+            ) from exc
+        except Exception as exc:
+            logger.exception("单文件处理失败 filename={} error={}", filename, exc)
+            raise BadRequestAppException(
+                f"Failed to process file {filename}: {exc}"
+            ) from exc
+
     @staticmethod
     def _build_progress_event(
             *,
@@ -306,6 +387,105 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
             "filename": filename,
             "error": error,
         }
+
+    @staticmethod
+    def _build_file_complete_event(
+            *,
+            index: int,
+            filename: str,
+            sample_id: str,
+    ) -> dict[str, Any]:
+        return {
+            "event": "file_complete",
+            "index": index,
+            "filename": filename,
+            "success": True,
+            "sample_id": sample_id,
+        }
+
+    @staticmethod
+    def _build_file_error_event(
+            *,
+            index: int,
+            filename: str,
+            error: str,
+    ) -> dict[str, Any]:
+        return {
+            "event": "file_error",
+            "index": index,
+            "filename": filename,
+            "error": error,
+        }
+
+    @staticmethod
+    def _build_complete_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+        success_count = sum(1 for item in results if item.get("status") == "success")
+        error_count = len(results) - success_count
+        return {
+            "event": "complete",
+            "uploaded": success_count,
+            "errors": error_count,
+            "results": results,
+        }
+
+    async def iter_upload_progress_events(
+            self,
+            *,
+            dataset: Dataset,
+            files: List[UploadFile],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        Stream legacy file-upload events for dataset streaming upload.
+        """
+        results: list[dict[str, Any]] = []
+        yield {"event": "start", "total": len(files)}
+
+        facade = self._initialize_handler(dataset.type)
+        process_context = self._build_processing_context(dataset.id)
+
+        for index, file in enumerate(files):
+            filename = file.filename or ""
+            yield {"event": "file_start", "index": index, "filename": filename}
+            created_sample, processing_error, progress_events = await self._process_single_file_with_collected_progress(
+                dataset=dataset,
+                file=file,
+                index=index,
+                facade=facade,
+                process_context=process_context,
+            )
+
+            for event in progress_events:
+                yield event
+
+            if processing_error is None and created_sample is not None:
+                results.append(
+                    {
+                        "id": str(created_sample.id),
+                        "filename": filename,
+                        "status": "success",
+                    }
+                )
+                yield self._build_file_complete_event(
+                    index=index,
+                    filename=filename,
+                    sample_id=str(created_sample.id),
+                )
+            else:
+                error_text = str(processing_error) if processing_error is not None else "unknown error"
+                results.append(
+                    {
+                        "filename": filename,
+                        "status": "error",
+                        "error": error_text,
+                    }
+                )
+                yield self._build_file_error_event(
+                    index=index,
+                    filename=filename,
+                    error=error_text,
+                )
+
+        yield self._build_complete_summary(results)
 
     async def iter_sample_process_events(
             self,

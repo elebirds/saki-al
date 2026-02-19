@@ -5,6 +5,8 @@ export * from './permission';
 export * from './system';
 export * from './pagination';
 export * from './import';
+export * from './export';
+export * from './upload';
 
 
 export * from './l1/dataset';

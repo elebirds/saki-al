@@ -1,14 +1,16 @@
 """
 Sample Endpoints.
 """
+import json
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from loguru import logger
 from sqlalchemy import asc, desc, or_
+from starlette.responses import StreamingResponse
 
-from saki_api.app.deps import SampleServiceDep, AssetServiceDep
+from saki_api.app.deps import AssetServiceDep, DatasetServiceDep, SampleServiceDep
 from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
 from saki_api.modules.access.api.dependencies import get_current_user_id, require_permission
@@ -17,6 +19,73 @@ from saki_api.modules.storage.api.sample import SampleRead
 from saki_api.modules.storage.domain.sample import Sample
 
 router = APIRouter()
+
+
+@router.post(
+    "/{dataset_id}/upload",
+    response_model=List[SampleRead],
+    dependencies=[
+        Depends(
+            require_permission(
+                Permissions.SAMPLE_CREATE,
+                ResourceType.DATASET,
+                "dataset_id"
+            )
+        )
+    ]
+)
+async def upload_samples(
+        *,
+        dataset_id: uuid.UUID,
+        files: List[UploadFile] = File(...),
+        dataset_service: DatasetServiceDep,
+        sample_service: SampleServiceDep,
+) -> List[SampleRead]:
+    """
+    Upload files to a dataset and return created samples.
+    """
+    dataset = await dataset_service.get_by_id_or_raise(dataset_id)
+    return await sample_service.process_upload(dataset, files)
+
+
+@router.post(
+    "/{dataset_id}/stream",
+    response_class=StreamingResponse,
+    dependencies=[
+        Depends(
+            require_permission(
+                Permissions.SAMPLE_CREATE,
+                ResourceType.DATASET,
+                "dataset_id"
+            )
+        )
+    ]
+)
+async def upload_samples_with_progress(
+        *,
+        dataset_id: uuid.UUID,
+        files: List[UploadFile] = File(...),
+        dataset_service: DatasetServiceDep,
+        sample_service: SampleServiceDep,
+) -> StreamingResponse:
+    """
+    Upload samples with legacy SSE progress streaming.
+    """
+    dataset = await dataset_service.get_by_id_or_raise(dataset_id)
+
+    async def generate_progress():
+        async for event in sample_service.iter_upload_progress_events(dataset=dataset, files=files):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        generate_progress(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @router.get(

@@ -21,6 +21,7 @@ import {canModifyAnnotation} from '../../store/permissionStore';
 import {hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
 import {useFedoAnnotations} from '../../hooks/annotation/useFedoAnnotations';
+import {parseProjectSampleSort} from '../../utils/projectSampleSort';
 
 export interface ProjectFedoWorkspaceProps {
     dataset: Dataset;
@@ -54,8 +55,9 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
     const page = Number(searchParams.get('page') || 1);
     const pageSize = Number(searchParams.get('pageSize') || 24);
     const sampleId = searchParams.get('sampleId') || '';
-    const sortBy = 'createdAt';
-    const sortOrder: 'asc' | 'desc' = 'desc';
+    const parsedSort = parseProjectSampleSort(searchParams.get('sort'));
+    const sortBy = parsedSort.sortBy;
+    const sortOrder = parsedSort.sortOrder;
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);

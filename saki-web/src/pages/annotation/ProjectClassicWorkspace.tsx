@@ -25,6 +25,7 @@ import {
     hydrateDraftPayload,
 } from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
+import {parseProjectSampleSort} from '../../utils/projectSampleSort';
 
 export interface ProjectClassicWorkspaceProps {
     dataset: Dataset;
@@ -56,8 +57,9 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     const page = Number(searchParams.get('page') || 1);
     const pageSize = Number(searchParams.get('pageSize') || 24);
     const sampleId = searchParams.get('sampleId') || '';
-    const sortBy = 'createdAt';
-    const sortOrder: 'asc' | 'desc' = 'desc';
+    const parsedSort = parseProjectSampleSort(searchParams.get('sort'));
+    const sortBy = parsedSort.sortBy;
+    const sortOrder = parsedSort.sortOrder;
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);

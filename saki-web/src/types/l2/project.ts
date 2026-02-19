@@ -1,4 +1,5 @@
 import {AnnotationType} from './annotation';
+import {DatasetType} from '../l1/dataset';
 
 export type TaskType = 'classification' | 'detection' | 'segmentation';
 export type ProjectStatus = 'active' | 'archived';
@@ -8,6 +9,7 @@ export interface Project {
     name: string;
     description?: string;
     taskType: TaskType;
+    datasetType: DatasetType;
     enabledAnnotationTypes: AnnotationType[];
     status: ProjectStatus;
     config?: Record<string, any>;
@@ -24,6 +26,7 @@ export interface ProjectCreate {
     name: string;
     description?: string;
     taskType?: TaskType;
+    datasetType?: DatasetType;
     enabledAnnotationTypes: AnnotationType[];
     datasetIds?: string[];
     config?: Record<string, any>;
@@ -39,6 +42,7 @@ export interface ProjectReadMinimal {
     id: string;
     name: string;
     taskType: TaskType;
+    datasetType: DatasetType;
     status: ProjectStatus;
 }
 

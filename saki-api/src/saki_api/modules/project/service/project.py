@@ -66,6 +66,7 @@ from saki_api.modules.shared.modeling.enums import (
     AnnotationType,
     AuthorType,
     CommitSampleReviewState,
+    DatasetType,
     ProjectStatus,
     TaskType,
 )
@@ -126,6 +127,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             self,
             name: str,
             task_type: TaskType | str,
+            dataset_type: DatasetType | str,
             enabled_annotation_types: List[AnnotationType | str],
             dataset_ids: List[uuid.UUID],
             user_id: uuid.UUID,
@@ -155,20 +157,25 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             Created project with all L2 structures initialized
         """
         # 1. Verify datasets exist
-        dataset_type = None
-        dataset_types: list[str] = []
+        try:
+            normalized_dataset_type = (
+                dataset_type
+                if isinstance(dataset_type, DatasetType)
+                else DatasetType(str(dataset_type).strip().lower())
+            )
+        except ValueError as exc:
+            raise BadRequestAppException(f"dataset_type not supported: {dataset_type}") from exc
+        dataset_types: list[str] = [normalized_dataset_type.value]
         for dataset_id in dataset_ids:
             dataset = await self.dataset_repo.get_by_id(dataset_id)
             if not dataset:
                 raise NotFoundAppException(f"Dataset {dataset_id} not found")
             await self._ensure_dataset_link_permission(actor_user_id=user_id, dataset_id=dataset_id)
-            if dataset_type is None:
-                dataset_type = dataset.type
-            elif dataset.type != dataset_type:
+            if dataset.type != normalized_dataset_type:
                 raise BadRequestAppException(
-                    "All datasets linked to a project must share the same type"
+                    "Dataset type does not match project dataset type"
                 )
-            dataset_types.append(dataset.type)
+            dataset_types.append(dataset.type.value if isinstance(dataset.type, DatasetType) else str(dataset.type))
 
         normalized_enabled_types = validate_project_creation_policy(
             task_type=task_type,
@@ -181,6 +188,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             "name": name,
             "description": description,
             "task_type": task_type,
+            "dataset_type": normalized_dataset_type,
             "enabled_annotation_types": [item.value for item in normalized_enabled_types],
             "config": config or {},
         }
@@ -439,6 +447,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             name=fork_name,
             description=payload.description if payload.description is not None else source_project.description,
             task_type=source_project.task_type,
+            dataset_type=source_project.dataset_type,
             enabled_annotation_types=list(source_project.enabled_annotation_types or []),
             status=ProjectStatus.ACTIVE,
             config=cloned_config,
@@ -572,37 +581,30 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         project_enabled_types = list(project.enabled_annotation_types or [])
 
         # Verify datasets exist
-        new_dataset_type = None
+        project_dataset_type = (
+            project.dataset_type
+            if isinstance(project.dataset_type, DatasetType)
+            else DatasetType(str(project.dataset_type).strip().lower())
+        )
         for dataset_id in dataset_ids:
             dataset = await self.dataset_repo.get_by_id(dataset_id)
             if not dataset:
                 raise NotFoundAppException(f"Dataset {dataset_id} not found")
             await self._ensure_dataset_link_permission(actor_user_id=actor_user_id, dataset_id=dataset_id)
+            if dataset.type != project_dataset_type:
+                raise BadRequestAppException(
+                    "Dataset type does not match project dataset type"
+                )
             validate_dataset_link_compatibility(
                 project_enabled_types=project_enabled_types,
                 dataset_type=dataset.type,
             )
-            if new_dataset_type is None:
-                new_dataset_type = dataset.type
-            elif dataset.type != new_dataset_type:
-                raise BadRequestAppException(
-                    "All datasets linked to a project must share the same type"
-                )
 
         # Check for existing links
         existing_ids = await self.repository.get_linked_dataset_ids(project_id)
         new_ids = [did for did in dataset_ids if did not in existing_ids]
         if not new_ids:
             return []
-
-        # Enforce consistent dataset type within project
-        if existing_ids:
-            for dataset_id in existing_ids:
-                existing_dataset = await self.dataset_repo.get_by_id(dataset_id)
-                if existing_dataset and existing_dataset.type != new_dataset_type:
-                    raise BadRequestAppException(
-                        "All datasets linked to a project must share the same type"
-                    )
 
         links = []
         for dataset_id in new_ids:

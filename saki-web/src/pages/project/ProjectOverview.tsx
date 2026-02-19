@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
-import {Avatar, Button, Form, Input, message, Modal, Spin, Tag} from 'antd'
-import {FolderOutlined, HistoryOutlined, ImportOutlined} from '@ant-design/icons'
+import {Avatar, Button, Form, Input, message, Modal, Space, Spin, Tag, Tooltip} from 'antd'
+import {DownloadOutlined, FolderOutlined, HistoryOutlined, ImportOutlined} from '@ant-design/icons'
 import {useNavigate, useParams} from 'react-router-dom'
 import {useTranslation} from 'react-i18next'
 import {RepoActionBar} from '../../layouts/github/RepoActionBar'
@@ -32,6 +32,7 @@ const ProjectOverview: React.FC = () => {
     const {can: canProject} = useResourcePermission('project', projectId)
     const canFork = can('project:create')
     const canImport = canProject('annotation:create:assigned') && canProject('commit:create:assigned')
+    const canExport = canProject('project:export:assigned')
 
     const formatRelativeTime = useCallback((value?: string) => {
         if (!value) return t('common.placeholder')
@@ -175,6 +176,26 @@ const ProjectOverview: React.FC = () => {
 
     const taskTypeLabel = t(`project.overview.taskType.${project.taskType}`, project.taskType)
     const statusLabel = t(`project.overview.status.${project.status}`, project.status)
+    const blockImportByDatasetType = project.datasetType === 'fedo'
+    const canOpenImport = canImport && !blockImportByDatasetType
+    const importDisabledReason = !canImport
+        ? t('common.noPermission')
+        : (blockImportByDatasetType ? t('import.project.classicOnly') : undefined)
+    const importButton = (
+        <Button
+            className="!bg-github-input !border-github-border !text-github-text"
+            icon={<ImportOutlined/>}
+            onClick={() => {
+                if (!canOpenImport) return
+                if (projectId) {
+                    navigate(`/projects/${projectId}/import`)
+                }
+            }}
+            disabled={!canOpenImport}
+        >
+            {t('import.project.entry')}
+        </Button>
+    )
 
     return (
         <div>
@@ -182,18 +203,26 @@ const ProjectOverview: React.FC = () => {
                 title={project.name}
                 visibilityLabel={taskTypeLabel}
                 actions={
-                    <Button
-                        className="!bg-github-input !border-github-border !text-github-text"
-                        icon={<ImportOutlined/>}
-                        onClick={() => {
-                            if (projectId) {
-                                navigate(`/projects/${projectId}/import`)
-                            }
-                        }}
-                        disabled={!canImport}
-                    >
-                        {t('import.project.entry')}
-                    </Button>
+                    <Space>
+                        {canExport ? (
+                            <Button
+                                className="!bg-github-input !border-github-border !text-github-text"
+                                icon={<DownloadOutlined/>}
+                                onClick={() => {
+                                    if (projectId) {
+                                        navigate(`/projects/${projectId}/export`)
+                                    }
+                                }}
+                            >
+                                {t('export.project.entry')}
+                            </Button>
+                        ) : null}
+                        {importDisabledReason ? (
+                            <Tooltip title={importDisabledReason}>
+                                <span>{importButton}</span>
+                            </Tooltip>
+                        ) : importButton}
+                    </Space>
                 }
                 stats={[{
                     label: t('layout.repoHeader.stats.fork'),

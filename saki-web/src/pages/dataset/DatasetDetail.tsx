@@ -190,6 +190,10 @@ const DatasetDetail: React.FC = () => {
 
     const handleOpenImportWorkspace = () => {
         if (!dataset) return;
+        if (dataset.type === 'fedo') {
+            message.warning(t('dataset.detail.importWorkspaceClassicOnly'));
+            return;
+        }
         navigate(`/datasets/${dataset.id}/import`);
     };
 
@@ -393,6 +397,11 @@ const DatasetDetail: React.FC = () => {
     // Check permissions for various actions
     const canUpload = can('sample:create');
     const canImportWorkspace = can('dataset:import') || canUpload;
+    const importWorkspaceDisabledByType = dataset.type === 'fedo';
+    const canOpenImportWorkspace = canImportWorkspace && !importWorkspaceDisabledByType;
+    const importWorkspaceDisabledReason = importWorkspaceDisabledByType
+        ? t('dataset.detail.importWorkspaceClassicOnly')
+        : t('common.noPermission');
     const canEdit = can('dataset:update');
 
     const items = [
@@ -474,13 +483,13 @@ const DatasetDetail: React.FC = () => {
                                                         </Button>
                                                     </Tooltip>
                                                 )}
-                                                {canImportWorkspace ? (
+                                                {canOpenImportWorkspace ? (
                                                     <Button icon={<UploadOutlined/>}
                                                             onClick={handleOpenImportWorkspace}>
                                                         {t('dataset.detail.openImportWorkspace')}
                                                     </Button>
                                                 ) : (
-                                                    <Tooltip title={t('common.noPermission')}>
+                                                    <Tooltip title={importWorkspaceDisabledReason}>
                                                         <Button icon={<UploadOutlined/>} disabled>
                                                             {t('dataset.detail.openImportWorkspace')}
                                                         </Button>
@@ -584,12 +593,12 @@ const DatasetDetail: React.FC = () => {
                         </Tooltip>
                     )}
 
-                    {canImportWorkspace ? (
+                    {canOpenImportWorkspace ? (
                         <Button block icon={<UploadOutlined/>} onClick={handleOpenImportWorkspace}>
                             {t('dataset.detail.openImportWorkspace')}
                         </Button>
                     ) : (
-                        <Tooltip title={t('common.noPermission')}>
+                        <Tooltip title={importWorkspaceDisabledReason}>
                             <Button block icon={<UploadOutlined/>} disabled>
                                 {t('dataset.detail.openImportWorkspace')}
                             </Button>

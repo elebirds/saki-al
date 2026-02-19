@@ -60,6 +60,7 @@ async def create_project(
     project = await project_service.initialize_project(
         name=project_in.name,
         task_type=project_in.task_type,
+        dataset_type=project_in.dataset_type,
         enabled_annotation_types=project_in.enabled_annotation_types,
         dataset_ids=project_in.dataset_ids,
         user_id=current_user_id,
@@ -100,6 +101,7 @@ async def list_projects(
             "name": project.name,
             "description": project.description,
             "task_type": project.task_type,
+            "dataset_type": project.dataset_type,
             "enabled_annotation_types": project.enabled_annotation_types,
             "status": project.status,
             "config": project.config,
@@ -139,6 +141,7 @@ async def list_projects_minimal(
             id=p.id,
             name=p.name,
             task_type=p.task_type,
+            dataset_type=p.dataset_type,
             status=p.status,
         )
         for p in await project_service.list_in_permission(current_user_id)

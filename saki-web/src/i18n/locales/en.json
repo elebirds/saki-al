@@ -246,6 +246,7 @@
     "detail": {
       "openImportWorkspace": "Import Workspace",
       "uploadData": "Streaming Upload",
+      "importWorkspaceClassicOnly": "Import workspace currently supports classic datasets only",
       "settings": "Settings",
       "dataPool": "Data Pool",
       "noSamples": "No data",
@@ -420,6 +421,10 @@
     "form": {
       "dataPool": "Data Pool",
       "taskTypeHelp": "Task type controls annotation and training workflow. It cannot be changed after project creation.",
+      "datasetType": "Dataset Type",
+      "datasetTypeHelp": "Project dataset type controls which datasets can be linked. It cannot be changed after creation.",
+      "datasetTypeRequired": "Please select a dataset type",
+      "datasetTypeMismatch": "Only datasets matching the project's dataset type can be linked",
       "annotationTypes": "Enabled Annotation Types",
       "annotationTypesHelp": "Enabled annotation types determine which tools can be used in the annotation workspace. This setting cannot be changed after project creation.",
       "annotationTypesRequired": "Select at least one annotation type",
@@ -427,6 +432,10 @@
       "annotationTypesDisallowed": "Annotation type {{type}} is disallowed by current task/dataset policy",
       "annotationTypesPolicyConflict": "Current task/dataset policy has no valid annotation type combination",
       "singleDatasetTypeOnly": "Only one dataset type can be selected for a project",
+      "datasetTypeOptions": {
+        "classic": "Classic",
+        "fedo": "FEDO"
+      },
       "annotationTypeOptions": {
         "rect": "Rectangle (Rect)",
         "obb": "Oriented Bounding Box (OBB)"
@@ -557,6 +566,8 @@
         "projectNamePlaceholder": "Project name",
         "taskType": "Task Type",
         "taskTypeHint": "Task type determines annotation workflow and model training, and cannot be changed after creation.",
+        "datasetType": "Dataset Type",
+        "datasetTypeHint": "Projects can only link datasets of the same type, and this cannot be changed after creation.",
         "description": "Description",
         "descriptionPlaceholder": "Describe the project",
         "archiveSectionTitle": "Archive Settings",
@@ -782,6 +793,7 @@
     },
     "project": {
       "entry": "Import",
+      "classicOnly": "Project import currently supports classic projects only",
       "title": "Project Import Workspace",
       "subtitle": "Import external packages into project branches with a dry-run-first flow so every result is traceable and explainable.",
       "introTitle": "Import Principle",

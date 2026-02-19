@@ -588,6 +588,7 @@ CREATE TABLE public.project (
     name character varying NOT NULL,
     description character varying,
     task_type public.tasktype NOT NULL,
+    dataset_type public.datasettype NOT NULL,
     enabled_annotation_types jsonb,
     status public.projectstatus NOT NULL,
     config jsonb
@@ -2532,4 +2533,5 @@ ALTER TABLE ONLY public.user_system_role
 --
 -- PostgreSQL database dump complete
 --
+
 

@@ -4,6 +4,7 @@ import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {
     CloudUploadOutlined,
     DatabaseOutlined,
+    DownloadOutlined,
     FileSearchOutlined,
     FileTextOutlined,
     FilterOutlined,
@@ -14,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {api} from '../../services/api';
-import {Dataset, ProjectBranch, ProjectSample} from '../../types';
+import {Dataset, Project, ProjectBranch, ProjectSample} from '../../types';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import CommitModal from '../../components/project/CommitModal';
 import {PaginatedList} from '../../components/common/PaginatedList';
@@ -29,6 +30,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [datasets, setDatasets] = useState<Dataset[]>([]);
+    const [project, setProject] = useState<Project | null>(null);
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [loadingMeta, setLoadingMeta] = useState(true);
     const [commitModalOpen, setCommitModalOpen] = useState(false);
@@ -37,6 +39,13 @@ const ProjectSamplesAnnotations: React.FC = () => {
     const {can: canProject} = useResourcePermission('project', projectId);
     const canCommit = canProject('commit:create:assigned');
     const canAnnotate = canProject('annotation:create:assigned');
+    const canExport = canProject('project:export:assigned');
+    const projectTypeResolved = Boolean(project);
+    const blockImportByDatasetType = project?.datasetType === 'fedo';
+    const canImport = canAnnotate && canCommit && projectTypeResolved && !blockImportByDatasetType;
+    const importDisabledReason = !canAnnotate || !canCommit
+        ? t('common.noPermission')
+        : (blockImportByDatasetType ? t('import.project.classicOnly') : undefined);
 
     const selectedDatasetId = searchParams.get('datasetId') || '';
     const q = searchParams.get('q') || '';
@@ -79,10 +88,12 @@ const ProjectSamplesAnnotations: React.FC = () => {
         if (!projectId) return;
         setLoadingMeta(true);
         Promise.all([
+            api.getProject(projectId),
             api.getProjectDatasetDetails(projectId),
             api.getProjectBranches(projectId),
         ])
-            .then(([resolved, branchList]) => {
+            .then(([projectData, resolved, branchList]) => {
+                setProject(projectData);
                 setDatasets(resolved);
                 setBranches(branchList || []);
 
@@ -241,14 +252,44 @@ const ProjectSamplesAnnotations: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-2 lg:justify-end">
-                            <Button
-                                type="default"
-                                icon={<CloudUploadOutlined/>}
-                                onClick={() => navigate(`/projects/${projectId}/import`)}
-                                disabled={!canAnnotate || !canCommit}
-                            >
-                                {t('import.project.entry')}
-                            </Button>
+                            {canExport ? (
+                                <Button
+                                    type="default"
+                                    icon={<DownloadOutlined/>}
+                                    onClick={() => navigate(`/projects/${projectId}/export`)}
+                                >
+                                    {t('export.project.entry')}
+                                </Button>
+                            ) : null}
+                            {importDisabledReason ? (
+                                <Tooltip title={importDisabledReason}>
+                                    <span>
+                                        <Button
+                                            type="default"
+                                            icon={<CloudUploadOutlined/>}
+                                            onClick={() => {
+                                                if (!canImport) return;
+                                                navigate(`/projects/${projectId}/import`);
+                                            }}
+                                            disabled={!canImport}
+                                        >
+                                            {t('import.project.entry')}
+                                        </Button>
+                                    </span>
+                                </Tooltip>
+                            ) : (
+                                <Button
+                                    type="default"
+                                    icon={<CloudUploadOutlined/>}
+                                    onClick={() => {
+                                        if (!canImport) return;
+                                        navigate(`/projects/${projectId}/import`);
+                                    }}
+                                    disabled={!canImport}
+                                >
+                                    {t('import.project.entry')}
+                                </Button>
+                            )}
                             {canAnnotate ? (
                                 <Button
                                     type="primary"

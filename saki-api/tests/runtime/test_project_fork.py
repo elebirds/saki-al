@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.modules.shared.modeling  # noqa: F401
 from saki_api.infra.db.session import _session_ctx
-from saki_api.modules.shared.modeling.enums import AnnotationSource, AnnotationType, AuthorType, TaskType
+from saki_api.modules.shared.modeling.enums import AnnotationSource, AnnotationType, AuthorType, DatasetType, TaskType
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
 from saki_api.modules.annotation.domain.annotation import Annotation
@@ -104,6 +104,7 @@ async def test_project_fork_copies_all_branches_and_graph(project_fork_env):
             source_project = await service.initialize_project(
                 name="source-project",
                 task_type=TaskType.DETECTION,
+                dataset_type=DatasetType.CLASSIC,
                 enabled_annotation_types=[AnnotationType.RECT, AnnotationType.OBB],
                 dataset_ids=[dataset.id],
                 user_id=source_user.id,

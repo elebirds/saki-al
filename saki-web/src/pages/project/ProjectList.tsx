@@ -69,15 +69,11 @@ const ProjectList: React.FC = () => {
     }, [createOpen, datasetQuery, loadDatasets])
 
     const selectedTaskType = Form.useWatch('taskType', form) as TaskType | undefined
-    const selectedDatasetIds = Form.useWatch('datasetIds', form) as string[] | undefined
+    const selectedProjectDatasetType = Form.useWatch('datasetType', form) as Dataset['type'] | undefined
 
     const taskTypeInfoMap = new Map((availableTypes?.taskTypes || []).map((item) => [item.value, item]))
     const datasetTypeInfoMap = new Map((availableTypes?.datasetTypes || []).map((item) => [item.value, item]))
     const datasetById = new Map(datasets.map((item) => [item.id, item]))
-
-    const selectedDatasetTypes = Array.from(
-        new Set((selectedDatasetIds || []).map((id) => datasetById.get(id)?.type).filter(Boolean) as string[])
-    )
 
     const selectedTaskInfo = selectedTaskType ? taskTypeInfoMap.get(selectedTaskType) : undefined
 
@@ -97,8 +93,13 @@ const ProjectList: React.FC = () => {
     }
 
     const taskConstraint = parseConstraint(selectedTaskInfo)
-    const datasetConstraints = selectedDatasetTypes.map((datasetType) => parseConstraint(datasetTypeInfoMap.get(datasetType)))
+    const datasetConstraints = selectedProjectDatasetType
+        ? [parseConstraint(datasetTypeInfoMap.get(selectedProjectDatasetType))]
+        : []
     const allConstraints = [taskConstraint, ...datasetConstraints]
+    const selectableDatasets = selectedProjectDatasetType
+        ? datasets.filter((dataset) => dataset.type === selectedProjectDatasetType)
+        : datasets
 
     let allowedSet = new Set<DetectionAnnotationType>(ALL_ANNOTATION_TYPES)
     let hasAllowedConstraint = false
@@ -132,7 +133,17 @@ const ProjectList: React.FC = () => {
         ? taskDefaultTypes
         : (mandatoryAnnotationTypes.length > 0 ? mandatoryAnnotationTypes : allowedAnnotationTypes)
 
-    const selectedDatasetType = selectedDatasetTypes[0]
+    useEffect(() => {
+        if (!createOpen) return
+        if (!selectedProjectDatasetType) return
+        const ids = (form.getFieldValue('datasetIds') || []) as string[]
+        if (!ids.length) return
+        const filteredIds = ids.filter((id) => datasetById.get(id)?.type === selectedProjectDatasetType)
+        if (filteredIds.length !== ids.length) {
+            form.setFieldsValue({datasetIds: filteredIds})
+            message.warning(t('project.form.datasetTypeMismatch'))
+        }
+    }, [createOpen, datasetById, form, selectedProjectDatasetType, t])
 
     useEffect(() => {
         if (!createOpen) return
@@ -170,6 +181,7 @@ const ProjectList: React.FC = () => {
                 name: values.name,
                 description: values.description,
                 taskType: values.taskType as TaskType,
+                datasetType: values.datasetType as Dataset['type'],
                 enabledAnnotationTypes: values.enabledAnnotationTypes as AnnotationType[],
                 datasetIds: values.datasetIds || [],
             })
@@ -282,7 +294,11 @@ const ProjectList: React.FC = () => {
                 <Form
                     form={form}
                     layout="vertical"
-                    initialValues={{taskType: 'detection', enabledAnnotationTypes: DEFAULT_DETECTION_ANNOTATION_TYPES}}
+                    initialValues={{
+                        taskType: 'detection',
+                        datasetType: 'classic',
+                        enabledAnnotationTypes: DEFAULT_DETECTION_ANNOTATION_TYPES,
+                    }}
                 >
                     <Form.Item
                         name="name"
@@ -314,6 +330,29 @@ const ProjectList: React.FC = () => {
                             ]).map((item) => (
                                 <Option key={item.value} value={item.value} disabled={item.enabled === false}>
                                     {item.label}
+                                </Option>
+                            ))}
+                        </Select>
+                    </Form.Item>
+                    <Form.Item
+                        name="datasetType"
+                        label={(
+                            <div className="flex items-center gap-1">
+                                <span>{t('project.form.datasetType')}</span>
+                                <Tooltip title={t('project.form.datasetTypeHelp')}>
+                                    <QuestionCircleOutlined className="text-github-muted"/>
+                                </Tooltip>
+                            </div>
+                        )}
+                        rules={[{required: true, message: t('project.form.datasetTypeRequired')}]}
+                    >
+                        <Select>
+                            {(availableTypes?.datasetTypes || [
+                                {value: 'classic', label: t('project.form.datasetTypeOptions.classic'), enabled: true},
+                                {value: 'fedo', label: t('project.form.datasetTypeOptions.fedo'), enabled: true},
+                            ]).map((item) => (
+                                <Option key={item.value} value={item.value} disabled={item.enabled === false}>
+                                    {item.label || item.value}
                                 </Option>
                             ))}
                         </Select>
@@ -371,6 +410,15 @@ const ProjectList: React.FC = () => {
                             {
                                 validator: (_, value: string[] | undefined) => {
                                     const ids = value || []
+                                    if (selectedProjectDatasetType) {
+                                        const hasMismatch = ids.some((id) => {
+                                            const datasetType = datasetById.get(id)?.type
+                                            return datasetType && datasetType !== selectedProjectDatasetType
+                                        })
+                                        if (hasMismatch) {
+                                            return Promise.reject(new Error(t('project.form.datasetTypeMismatch')))
+                                        }
+                                    }
                                     const typeSet = new Set(
                                         ids
                                             .map((id) => datasetById.get(id)?.type)
@@ -389,29 +437,22 @@ const ProjectList: React.FC = () => {
                             showSearch
                             filterOption={false}
                             onChange={(nextIds: string[]) => {
-                                if (!nextIds.length) return
-                                const firstType = datasetById.get(nextIds[0])?.type
-                                if (!firstType) return
+                                if (!nextIds.length || !selectedProjectDatasetType) return
                                 const filteredIds = nextIds.filter((id) => {
                                     const itemType = datasetById.get(id)?.type
-                                    return !itemType || itemType === firstType
+                                    return !itemType || itemType === selectedProjectDatasetType
                                 })
                                 if (filteredIds.length !== nextIds.length) {
                                     form.setFieldsValue({datasetIds: filteredIds})
-                                    message.warning(t('project.form.singleDatasetTypeOnly'))
+                                    message.warning(t('project.form.datasetTypeMismatch'))
                                 }
                             }}
                             onSearch={(value) => setDatasetQuery(value)}
                             placeholder={t('dataset.list.newDataset')}
                             loading={datasetsLoading}
-                            options={datasets.map((dataset) => ({
+                            options={selectableDatasets.map((dataset) => ({
                                 value: dataset.id,
                                 label: `${dataset.name} (${dataset.type})`,
-                                disabled: Boolean(
-                                    selectedDatasetType &&
-                                    dataset.type !== selectedDatasetType &&
-                                    !(selectedDatasetIds || []).includes(dataset.id)
-                                ),
                             }))}
                         />
                     </Form.Item>

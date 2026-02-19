@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlmodel import Field, SQLModel
 
-from saki_api.modules.shared.modeling.enums import AnnotationType, TaskType, ProjectStatus
+from saki_api.modules.shared.modeling.enums import AnnotationType, TaskType, ProjectStatus, DatasetType
 
 
 class ProjectBase(SQLModel):
@@ -17,6 +17,7 @@ class ProjectBase(SQLModel):
     name: str
     description: str | None = None
     task_type: TaskType = TaskType.DETECTION
+    dataset_type: DatasetType = DatasetType.CLASSIC
     enabled_annotation_types: list[AnnotationType] = Field(
         default_factory=lambda: [AnnotationType.RECT, AnnotationType.OBB]
     )
@@ -31,6 +32,7 @@ class ProjectCreate(SQLModel):
     name: str
     description: str | None = None
     task_type: TaskType = TaskType.DETECTION
+    dataset_type: DatasetType = DatasetType.CLASSIC
     enabled_annotation_types: list[AnnotationType]
     config: dict[str, Any] = Field(default_factory=dict)
     dataset_ids: list[uuid.UUID] = Field(default_factory=list)  # Datasets to link on creation
@@ -86,4 +88,5 @@ class ProjectReadMinimal(SQLModel):
     id: uuid.UUID
     name: str
     task_type: TaskType
+    dataset_type: DatasetType
     status: ProjectStatus

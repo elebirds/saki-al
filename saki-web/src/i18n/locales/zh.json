@@ -246,6 +246,7 @@
     "detail": {
       "openImportWorkspace": "导入工作台",
       "uploadData": "流式上传",
+      "importWorkspaceClassicOnly": "导入工作台当前仅支持 classic 类型数据集",
       "settings": "设置",
       "dataPool": "数据池",
       "noSamples": "暂无数据",
@@ -420,6 +421,10 @@
     "form": {
       "dataPool": "数据池",
       "taskTypeHelp": "任务类型决定标注与训练流程，项目创建后不可修改。",
+      "datasetType": "数据集类型",
+      "datasetTypeHelp": "项目数据集类型决定可关联的数据池范围，创建后不可修改。",
+      "datasetTypeRequired": "请选择数据集类型",
+      "datasetTypeMismatch": "只能关联与项目数据集类型一致的数据集",
       "annotationTypes": "启用标注类型",
       "annotationTypesHelp": "启用标注类型将决定标注界面可用工具，项目创建后不可修改。",
       "annotationTypesRequired": "请至少选择一种标注类型",
@@ -427,6 +432,10 @@
       "annotationTypesDisallowed": "标注类型 {{type}} 不符合当前任务/数据集策略",
       "annotationTypesPolicyConflict": "当前任务与数据集策略冲突，没有可用的标注类型组合",
       "singleDatasetTypeOnly": "一个项目只能选择一种类型的数据池",
+      "datasetTypeOptions": {
+        "classic": "Classic",
+        "fedo": "FEDO"
+      },
       "annotationTypeOptions": {
         "rect": "矩形框 (Rect)",
         "obb": "旋转框 (OBB)"
@@ -557,6 +566,8 @@
         "projectNamePlaceholder": "项目名称",
         "taskType": "任务类型",
         "taskTypeHint": "任务类型决定标注方式与模型训练流程，创建后不可更改。",
+        "datasetType": "数据集类型",
+        "datasetTypeHint": "项目只能关联同类型数据集，创建后不可更改。",
         "description": "描述",
         "descriptionPlaceholder": "描述该项目",
         "archiveSectionTitle": "归档设置",
@@ -782,6 +793,7 @@
     },
     "project": {
       "entry": "导入",
+      "classicOnly": "项目导入当前仅支持 classic 类型项目",
       "title": "项目导入工作台",
       "subtitle": "将外部数据包导入到项目分支，先预检再执行，确保导入过程可追踪、可解释。",
       "introTitle": "导入原则",

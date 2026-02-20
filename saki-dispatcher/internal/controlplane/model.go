@@ -205,6 +205,8 @@ func toRuntimeStepType(raw db.Steptype) runtimecontrolv1.RuntimeStepType {
 		return runtimecontrolv1.RuntimeStepType_EXPORT
 	case db.SteptypeUPLOADARTIFACT:
 		return runtimecontrolv1.RuntimeStepType_UPLOAD_ARTIFACT
+	case db.Steptype("CUSTOM"):
+		return runtimecontrolv1.RuntimeStepType_CUSTOM
 	default:
 		return runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED
 	}

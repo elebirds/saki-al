@@ -403,7 +403,14 @@ export interface ApiService {
     // ============================================================================
     // Import APIs
     // ============================================================================
-    dryRunDatasetImageImport(datasetId: string, file: File): Promise<ImportDryRunResponse>;
+    dryRunDatasetImageImport(
+        datasetId: string,
+        file: File,
+        options?: {
+            pathFlattenMode?: 'basename' | 'preserve_path';
+            nameCollisionPolicy?: 'abort' | 'auto_rename' | 'overwrite';
+        },
+    ): Promise<ImportDryRunResponse>;
 
     executeDatasetImageImport(
         datasetId: string,

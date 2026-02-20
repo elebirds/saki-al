@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from saki_api.app.deps import ImportServiceDep
 from saki_api.modules.access.api.dependencies import get_current_user_id, require_permission
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
-from saki_api.modules.importing.schema import ImportDryRunResponse, ImportExecuteRequest, ImportTaskCreateResponse
+from saki_api.modules.importing.schema import (
+    ImportDryRunResponse,
+    ImportExecuteRequest,
+    ImportTaskCreateResponse,
+    NameCollisionPolicy,
+    PathFlattenMode,
+)
 
 router = APIRouter()
 
@@ -23,6 +29,8 @@ async def dry_run_dataset_image_import(
     *,
     dataset_id: uuid.UUID,
     file: UploadFile = File(..., description="ZIP file"),
+    path_flatten_mode: PathFlattenMode = Form(PathFlattenMode.BASENAME),
+    name_collision_policy: NameCollisionPolicy = Form(NameCollisionPolicy.ABORT),
     service: ImportServiceDep,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> ImportDryRunResponse:
@@ -30,6 +38,8 @@ async def dry_run_dataset_image_import(
         user_id=current_user_id,
         dataset_id=dataset_id,
         zip_file=file,
+        path_flatten_mode=path_flatten_mode,
+        name_collision_policy=name_collision_policy,
     )
 
 

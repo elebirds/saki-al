@@ -15,6 +15,7 @@ from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 from saki_api.modules.importing.schema import (
     AnnotationBulkRequest,
     AnnotationBulkSource,
+    ImportImageEntry,
     ImportExecuteRequest,
     ImportTaskCreateResponse,
     SampleBulkImportRequest,
@@ -111,7 +112,7 @@ async def bulk_import_samples(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> ImportTaskCreateResponse:
     if payload.preview_token:
-        zip_asset_id, image_paths = await import_service.resolve_dataset_image_manifest(
+        zip_asset_id, image_entries = await import_service.resolve_dataset_image_manifest(
             user_id=current_user_id,
             dataset_id=dataset_id,
             preview_token=payload.preview_token,
@@ -120,10 +121,21 @@ async def bulk_import_samples(
     else:
         if payload.zip_asset_id is None:
             raise BadRequestAppException("zip_asset_id is required when preview_token is not provided")
-        if not payload.image_paths:
-            raise BadRequestAppException("image_paths is required when preview_token is not provided")
+        if payload.image_entries:
+            image_entries = payload.image_entries
+        elif payload.image_paths:
+            image_entries = [
+                ImportImageEntry(
+                    zip_entry_path=str(item),
+                    resolved_sample_name=str(item),
+                    original_relative_path=str(item),
+                    collision_action="none",
+                )
+                for item in payload.image_paths
+            ]
+        else:
+            raise BadRequestAppException("image_entries or image_paths is required when preview_token is not provided")
         zip_asset_id = payload.zip_asset_id
-        image_paths = payload.image_paths
 
     task = await task_service.create_task(
         mode="sample_bulk_import",
@@ -133,7 +145,7 @@ async def bulk_import_samples(
         payload={
             "dataset_id": str(dataset_id),
             "zip_asset_id": str(zip_asset_id),
-            "image_paths": image_paths,
+            "image_entries": [item.model_dump(mode="json") for item in image_entries],
         },
     )
     await task_service.session.commit()
@@ -145,7 +157,7 @@ async def bulk_import_samples(
         return service.iter_bulk_import_zip_entries(
             dataset_id=dataset_id,
             zip_asset_id=zip_asset_id,
-            image_paths=image_paths,
+            image_entries=image_entries,
         )
 
     TaskService.schedule_streaming_job(task_id=task.id, producer_factory=producer_factory)

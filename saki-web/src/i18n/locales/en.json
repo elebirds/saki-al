@@ -854,6 +854,13 @@
       "newDatasetName": "New Dataset Name",
       "newDatasetDescription": "New Dataset Description",
       "strategyLabel": "Conflict Strategy",
+      "pathFlattenModeLabel": "Path Flatten Mode",
+      "pathFlattenModeBasename": "Keep filename only (default)",
+      "pathFlattenModePreservePath": "Preserve relative path",
+      "nameCollisionPolicyLabel": "Name Collision Policy",
+      "nameCollisionPolicyAbort": "Abort on collision (default)",
+      "nameCollisionPolicyAutoRename": "Auto rename on collision",
+      "nameCollisionPolicyOverwrite": "Overwrite with latest entry",
       "currentConfig": "Current Configuration",
       "helpButton": "Glossary",
       "runHint": "Recommended order: run dry run first, confirm planned new labels, then execute.",
@@ -905,6 +912,8 @@
         "branch_name": "Branch",
         "format_profile": "Format",
         "format": "Format",
+        "path_flatten_mode": "Path Flatten Mode",
+        "name_collision_policy": "Name Collision Policy",
         "target_dataset_mode": "Target Dataset Mode",
         "total_entries": "Total Image Entries",
         "new_samples": "New Samples",
@@ -929,6 +938,15 @@
           "existing": "Existing Dataset",
           "new": "New Dataset"
         },
+        "pathFlattenMode": {
+          "basename": "Keep filename only",
+          "preserve_path": "Preserve relative path"
+        },
+        "nameCollisionPolicy": {
+          "abort": "Abort",
+          "auto_rename": "Auto rename",
+          "overwrite": "Overwrite"
+        },
         "format": {
           "coco": "COCO",
           "voc": "VOC",
@@ -944,6 +962,9 @@
         "CONVERT_ERROR": "Conversion error: {{message}}",
         "ANNOTATION_TYPE_NOT_ENABLED": "Annotation type {{annotationType}} is not enabled ({{count}} items). Enabled types: {{enabledTypes}}",
         "ZIP_SYMLINK_SKIPPED": "Symlink entry skipped in ZIP: {{path}}",
+        "IMAGE_NAME_COLLISION": "Sample name collision after flattening: {{path}}",
+        "IMAGE_NAME_AUTO_RENAMED": "Sample name auto-renamed due to collision: {{path}}",
+        "IMAGE_NAME_OVERWRITTEN": "Later ZIP entry overwrote same sample name: {{path}}",
         "ZIP_ENTRY_MISSING": "ZIP entry missing: {{path}}",
         "ZIP_ENTRY_INVALID": "Invalid ZIP entry: {{path}}",
         "LABEL_NOT_FOUND": "Label not found in project: {{label}}"

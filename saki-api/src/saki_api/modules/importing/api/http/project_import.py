@@ -13,6 +13,8 @@ from saki_api.modules.importing.schema import (
     ImportExecuteRequest,
     ImportFormat,
     ImportTaskCreateResponse,
+    NameCollisionPolicy,
+    PathFlattenMode,
 )
 
 router = APIRouter()
@@ -36,6 +38,8 @@ async def dry_run_project_annotation_import(
     format_profile: ImportFormat = Form(...),
     dataset_id: uuid.UUID = Form(...),
     branch_name: str = Form("master"),
+    path_flatten_mode: PathFlattenMode = Form(PathFlattenMode.BASENAME),
+    name_collision_policy: NameCollisionPolicy = Form(NameCollisionPolicy.ABORT),
     service: ImportServiceDep,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> ImportDryRunResponse:
@@ -46,6 +50,8 @@ async def dry_run_project_annotation_import(
         branch_name=branch_name,
         fmt=format_profile,
         zip_file=file,
+        path_flatten_mode=path_flatten_mode,
+        name_collision_policy=name_collision_policy,
     )
 
 
@@ -79,6 +85,8 @@ async def dry_run_project_associated_import(
     file: UploadFile = File(..., description="ZIP file"),
     format_profile: ImportFormat = Form(...),
     branch_name: str = Form("master"),
+    path_flatten_mode: PathFlattenMode = Form(PathFlattenMode.BASENAME),
+    name_collision_policy: NameCollisionPolicy = Form(NameCollisionPolicy.ABORT),
     target_dataset_mode: AssociatedDatasetMode = Form(...),
     target_dataset_id: uuid.UUID | None = Form(default=None),
     new_dataset_name: str | None = Form(default=None),
@@ -91,6 +99,8 @@ async def dry_run_project_associated_import(
         project_id=project_id,
         branch_name=branch_name,
         fmt=format_profile,
+        path_flatten_mode=path_flatten_mode,
+        name_collision_policy=name_collision_policy,
         target_mode=target_dataset_mode,
         target_dataset_id=target_dataset_id,
         new_dataset_name=new_dataset_name,

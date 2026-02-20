@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from saki_api.core.exceptions import BadRequestAppException
-from saki_api.modules.importing.schema import ImportIssue
+from saki_api.modules.importing.schema import ImportIssue, NameCollisionPolicy, PathFlattenMode
 from saki_api.modules.importing.service.import_service import ImportService, PreparedAnnotation
 
 
@@ -112,6 +112,78 @@ def test_manifest_has_error_code_matches_case_insensitive() -> None:
 def test_manifest_has_error_code_returns_false_when_missing() -> None:
     manifest = {"errors": [{"code": "SOMETHING_ELSE"}]}
     assert ImportService._manifest_has_error_code(manifest, "ANNOTATION_TYPE_NOT_ENABLED") is False
+
+
+def test_build_image_entries_basename_abort_collision() -> None:
+    service = object.__new__(ImportService)
+    warnings: list[ImportIssue] = []
+    errors: list[ImportIssue] = []
+
+    entries = service._build_image_entries(
+        image_paths=["a/b/c/file.jpg", "x/y/file.jpg"],
+        path_flatten_mode=PathFlattenMode.BASENAME,
+        name_collision_policy=NameCollisionPolicy.ABORT,
+        warnings=warnings,
+        errors=errors,
+    )
+
+    assert len(entries) == 1
+    assert entries[0].resolved_sample_name == "file.jpg"
+    assert any(item.code == "IMAGE_NAME_COLLISION" for item in errors)
+
+
+def test_build_image_entries_basename_auto_rename_collision() -> None:
+    service = object.__new__(ImportService)
+    warnings: list[ImportIssue] = []
+    errors: list[ImportIssue] = []
+
+    entries = service._build_image_entries(
+        image_paths=["a/b/c/file.jpg", "x/y/file.jpg"],
+        path_flatten_mode=PathFlattenMode.BASENAME,
+        name_collision_policy=NameCollisionPolicy.AUTO_RENAME,
+        warnings=warnings,
+        errors=errors,
+    )
+
+    assert len(entries) == 2
+    assert entries[0].resolved_sample_name == "file.jpg"
+    assert entries[1].resolved_sample_name != "file.jpg"
+    assert "__" in entries[1].resolved_sample_name
+    assert entries[1].collision_action == "renamed"
+    assert any(item.code == "IMAGE_NAME_AUTO_RENAMED" for item in warnings)
+    assert not errors
+
+
+def test_build_image_entries_basename_overwrite_collision() -> None:
+    service = object.__new__(ImportService)
+    warnings: list[ImportIssue] = []
+    errors: list[ImportIssue] = []
+
+    entries = service._build_image_entries(
+        image_paths=["a/b/c/file.jpg", "x/y/file.jpg"],
+        path_flatten_mode=PathFlattenMode.BASENAME,
+        name_collision_policy=NameCollisionPolicy.OVERWRITE,
+        warnings=warnings,
+        errors=errors,
+    )
+
+    assert len(entries) == 1
+    assert entries[0].resolved_sample_name == "file.jpg"
+    assert entries[0].zip_entry_path == "x/y/file.jpg"
+    assert entries[0].collision_action == "overwritten"
+    assert any(item.code == "IMAGE_NAME_OVERWRITTEN" for item in warnings)
+    assert not errors
+
+
+def test_manifest_image_entries_fallback_to_image_paths() -> None:
+    manifest = {
+        "image_paths": ["a/b/c/file.jpg"],
+    }
+    entries = ImportService._manifest_image_entries(manifest)
+    assert len(entries) == 1
+    assert entries[0].zip_entry_path == "a/b/c/file.jpg"
+    assert entries[0].resolved_sample_name == "a/b/c/file.jpg"
+    assert entries[0].original_relative_path == "a/b/c/file.jpg"
 
 
 def test_build_voc_import_split_merges_split_keys_and_annotation_xmls(tmp_path: Path) -> None:

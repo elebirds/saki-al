@@ -44,10 +44,13 @@ from saki_api.modules.importing.schema import (
     AssociatedManifestTarget,
     ConflictStrategy,
     ImportDryRunResponse,
+    ImportImageEntry,
     ImportTaskCreateResponse,
     ImportExecuteRequest,
     ImportFormat,
     ImportIssue,
+    NameCollisionPolicy,
+    PathFlattenMode,
 )
 from saki_api.modules.importing.service.task_service import TaskService
 from saki_ir import ConversionContext, ConversionReport, load_coco_dataset, load_voc_dataset, load_yolo_dataset
@@ -59,6 +62,9 @@ _MAX_EXECUTION_ITEM_EVENTS = 2000
 _PREVIEW_TOKEN_KEY = f"{settings.REDIS_KEY_PREFIX}:import:preview"
 _IMPORT_UUID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "saki.import.annotation.v1")
 _ZIP_MAGIC = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
+_IMAGE_COLLISION_ACTION_NONE = "none"
+_IMAGE_COLLISION_ACTION_RENAMED = "renamed"
+_IMAGE_COLLISION_ACTION_OVERWRITTEN = "overwritten"
 
 
 @dataclass(slots=True)
@@ -162,6 +168,8 @@ class ImportService:
         user_id: uuid.UUID,
         dataset_id: uuid.UUID,
         zip_file: UploadFile,
+        path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME,
+        name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT,
     ) -> ImportDryRunResponse:
         dataset = await self.dataset_service.get_by_id_or_raise(dataset_id)
         self._ensure_dataset_type_classic(dataset.type)
@@ -182,22 +190,35 @@ class ImportService:
                 warnings=issues_warnings,
                 errors=issues_errors,
             )
+        image_entries = self._build_image_entries(
+            image_paths=image_paths,
+            path_flatten_mode=path_flatten_mode,
+            name_collision_policy=name_collision_policy,
+            warnings=issues_warnings,
+            errors=issues_errors,
+        )
 
         allow_duplicate_names = bool(dataset.allow_duplicate_sample_names)
         if allow_duplicate_names:
             reuse_count = 0
-            new_count = len(image_paths)
+            new_count = len(image_entries)
         else:
             sample_names = await self._list_dataset_sample_names(dataset_id)
             existing_names = set(sample_names)
-            reuse_count = sum(1 for item in image_paths if item in existing_names)
-            new_count = len(image_paths) - reuse_count
+            reuse_count = sum(
+                1
+                for item in image_entries
+                if self._normalize_name_key(item.resolved_sample_name) in existing_names
+            )
+            new_count = len(image_entries) - reuse_count
 
         summary = {
             "mode": "dataset_images",
             "dataset_id": str(dataset_id),
             "allow_duplicate_sample_names": allow_duplicate_names,
-            "total_entries": len(image_paths),
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
+            "total_entries": len(image_entries),
             "new_samples": new_count,
             "reused_samples": reuse_count,
             "skipped_non_image": max(0, self._last_scan_total_files - len(image_paths)),
@@ -206,6 +227,9 @@ class ImportService:
         manifest = {
             "mode": "dataset_images",
             "dataset_id": str(dataset_id),
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
+            "image_entries": [item.model_dump(mode="json") for item in image_entries],
             "image_paths": image_paths,
             "summary": summary,
             "warnings": [item.model_dump(mode="json") for item in issues_warnings],
@@ -214,6 +238,8 @@ class ImportService:
         params = {
             "mode": "dataset_images",
             "dataset_id": str(dataset_id),
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
         }
 
         return await self._build_dry_run_response(
@@ -239,6 +265,8 @@ class ImportService:
         branch_name: str,
         fmt: ImportFormat,
         zip_file: UploadFile,
+        path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME,
+        name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT,
     ) -> ImportDryRunResponse:
         await self._validate_zip_upload(zip_file)
         await self._ensure_project_dataset_context(
@@ -327,6 +355,8 @@ class ImportService:
             "dataset_id": str(dataset_id),
             "branch_name": branch_name,
             "format_profile": fmt.value,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
             "total_annotations": len(prepared_annotations),
             "matched_annotations": matched_annotations,
             "skipped_annotations": skipped_annotations,
@@ -341,6 +371,8 @@ class ImportService:
             "dataset_id": str(dataset_id),
             "branch_name": branch_name,
             "format_profile": fmt.value,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
             "prepared_annotations": [item.to_json() for item in prepared_annotations],
             "planned_new_labels": planned_new_labels,
             "summary": summary,
@@ -353,6 +385,8 @@ class ImportService:
             "dataset_id": str(dataset_id),
             "branch_name": branch_name,
             "format_profile": fmt.value,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
         }
 
         return await self._build_dry_run_response(
@@ -376,6 +410,8 @@ class ImportService:
         project_id: uuid.UUID,
         branch_name: str,
         fmt: ImportFormat,
+        path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME,
+        name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT,
         target_mode: AssociatedDatasetMode,
         target_dataset_id: uuid.UUID | None,
         new_dataset_name: str | None,
@@ -410,6 +446,7 @@ class ImportService:
         warnings: list[ImportIssue] = []
         errors: list[ImportIssue] = []
         image_paths: list[str] = []
+        image_entries: list[ImportImageEntry] = []
         prepared_annotations: list[PreparedAnnotation]
         raw_labels: list[str]
 
@@ -419,6 +456,13 @@ class ImportService:
             with zipfile.ZipFile(zip_file.file) as archive:
                 image_paths = self._collect_zip_image_paths(
                     archive,
+                    warnings=warnings,
+                    errors=errors,
+                )
+                image_entries = self._build_image_entries(
+                    image_paths=image_paths,
+                    path_flatten_mode=path_flatten_mode,
+                    name_collision_policy=name_collision_policy,
                     warnings=warnings,
                     errors=errors,
                 )
@@ -443,9 +487,9 @@ class ImportService:
             assert normalized_target.dataset_id is not None
             existing_rows = await self._list_dataset_sample_rows(normalized_target.dataset_id)
             existing_names = {name for _, name in existing_rows}
-            target_names = existing_names | set(image_paths)
+            target_names = existing_names | {item.resolved_sample_name for item in image_entries}
         else:
-            target_names = set(image_paths)
+            target_names = {item.resolved_sample_name for item in image_entries}
 
         name_lookup, basename_lookup = self._build_name_lookup(target_names)
 
@@ -499,8 +543,10 @@ class ImportService:
             "project_id": str(project_id),
             "branch_name": branch_name,
             "format_profile": fmt.value,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
             "target_dataset_mode": normalized_target.mode.value,
-            "image_candidates": len(image_paths),
+            "image_candidates": len(image_entries),
             "total_annotations": len(prepared_annotations),
             "matched_annotations": matched_annotations,
             "skipped_annotations": skipped_annotations,
@@ -514,7 +560,10 @@ class ImportService:
             "project_id": str(project_id),
             "branch_name": branch_name,
             "format_profile": fmt.value,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
             "target": normalized_target.model_dump(mode="json"),
+            "image_entries": [item.model_dump(mode="json") for item in image_entries],
             "image_paths": image_paths,
             "prepared_annotations": [item.to_json() for item in prepared_annotations],
             "planned_new_labels": planned_new_labels,
@@ -527,6 +576,8 @@ class ImportService:
             "project_id": str(project_id),
             "branch_name": branch_name,
             "format_profile": fmt.value,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
             "target": normalized_target.model_dump(mode="json"),
         }
 
@@ -555,17 +606,23 @@ class ImportService:
         dataset_id: uuid.UUID,
         request: ImportExecuteRequest,
     ) -> ImportTaskCreateResponse:
-        await self._load_and_validate_manifest(
+        token_payload, manifest = await self._load_and_validate_manifest(
             token=request.preview_token,
             expected_mode="dataset_images",
             user_id=user_id,
             expected_resource_type=ResourceType.DATASET.value,
             expected_resource_id=dataset_id,
-            expected_params={
-                "mode": "dataset_images",
-                "dataset_id": str(dataset_id),
-            },
         )
+        self._assert_preview_params_hash(
+            token_payload,
+            self._build_dataset_image_params(
+                dataset_id=dataset_id,
+                path_flatten_mode=self._manifest_path_flatten_mode(manifest),
+                name_collision_policy=self._manifest_name_collision_policy(manifest),
+            ),
+        )
+        if self._manifest_has_error_code(manifest, "IMAGE_NAME_COLLISION"):
+            raise BadRequestAppException("dry-run contains IMAGE_NAME_COLLISION; execute is blocked")
 
         task = await self.task_service.create_task(
             mode="dataset_images_execute",
@@ -599,20 +656,24 @@ class ImportService:
         user_id: uuid.UUID,
         dataset_id: uuid.UUID,
         preview_token: str,
-    ) -> tuple[uuid.UUID, list[str]]:
+    ) -> tuple[uuid.UUID, list[ImportImageEntry]]:
         token_payload, manifest = await self._load_and_validate_manifest(
             token=preview_token,
             expected_mode="dataset_images",
             user_id=user_id,
             expected_resource_type=ResourceType.DATASET.value,
             expected_resource_id=dataset_id,
-            expected_params={
-                "mode": "dataset_images",
-                "dataset_id": str(dataset_id),
-            },
         )
-        image_paths = [str(item) for item in (manifest.get("image_paths") or [])]
-        return token_payload.zip_asset_id, image_paths
+        self._assert_preview_params_hash(
+            token_payload,
+            self._build_dataset_image_params(
+                dataset_id=dataset_id,
+                path_flatten_mode=self._manifest_path_flatten_mode(manifest),
+                name_collision_policy=self._manifest_name_collision_policy(manifest),
+            ),
+        )
+        image_entries = self._manifest_image_entries(manifest)
+        return token_payload.zip_asset_id, image_entries
 
     async def consume_preview_token(self, token: str) -> None:
         await self._consume_preview_token(token)
@@ -633,6 +694,8 @@ class ImportService:
         )
         if self._manifest_has_error_code(manifest, "ANNOTATION_TYPE_NOT_ENABLED"):
             raise BadRequestAppException("dry-run contains ANNOTATION_TYPE_NOT_ENABLED; execute is blocked")
+        if self._manifest_has_error_code(manifest, "IMAGE_NAME_COLLISION"):
+            raise BadRequestAppException("dry-run contains IMAGE_NAME_COLLISION; execute is blocked")
         planned_new_labels = list(manifest.get("planned_new_labels") or [])
         if planned_new_labels and not request.confirm_create_labels:
             raise BadRequestAppException("planned_new_labels exists; confirm_create_labels must be true")
@@ -730,19 +793,22 @@ class ImportService:
             user_id=user_id,
             expected_resource_type=ResourceType.DATASET.value,
             expected_resource_id=dataset_id,
-            expected_params={
-                "mode": "dataset_images",
-                "dataset_id": str(dataset_id),
-            },
         )
-
-        image_paths = [str(item) for item in (manifest.get("image_paths") or [])]
+        self._assert_preview_params_hash(
+            token_payload,
+            self._build_dataset_image_params(
+                dataset_id=dataset_id,
+                path_flatten_mode=self._manifest_path_flatten_mode(manifest),
+                name_collision_policy=self._manifest_name_collision_policy(manifest),
+            ),
+        )
+        image_entries = self._manifest_image_entries(manifest)
 
         try:
             async for event in self.sample_bulk_service.iter_bulk_import_zip_entries(
                 dataset_id=dataset_id,
                 zip_asset_id=token_payload.zip_asset_id,
-                image_paths=image_paths,
+                image_entries=image_entries,
             ):
                 yield event
         except Exception as exc:  # noqa: BLE001
@@ -781,13 +847,14 @@ class ImportService:
         fmt = str(manifest.get("format_profile") or "")
         self._assert_preview_params_hash(
             token_payload,
-            {
-                "mode": "project_annotations",
-                "project_id": str(project_id),
-                "dataset_id": str(dataset_id),
-                "branch_name": branch_name,
-                "format_profile": fmt,
-            },
+            self._build_project_annotation_params(
+                project_id=project_id,
+                dataset_id=dataset_id,
+                branch_name=branch_name,
+                fmt=fmt,
+                path_flatten_mode=self._manifest_path_flatten_mode(manifest),
+                name_collision_policy=self._manifest_name_collision_policy(manifest),
+            ),
         )
 
         try:
@@ -857,24 +924,25 @@ class ImportService:
 
         branch_name = str(manifest.get("branch_name") or "master")
         fmt = str(manifest.get("format_profile") or "")
-        image_paths = [str(item) for item in (manifest.get("image_paths") or [])]
+        image_entries = self._manifest_image_entries(manifest)
         prepared_annotations = [PreparedAnnotation.from_json(item) for item in (manifest.get("prepared_annotations") or [])]
         planned_new_labels = [str(item) for item in (manifest.get("planned_new_labels") or [])]
 
         target = AssociatedManifestTarget.model_validate(manifest.get("target") or {})
         self._assert_preview_params_hash(
             token_payload,
-            {
-                "mode": "project_associated",
-                "project_id": str(project_id),
-                "branch_name": branch_name,
-                "format_profile": fmt,
-                "target": target.model_dump(mode="json"),
-            },
+            self._build_project_associated_params(
+                project_id=project_id,
+                branch_name=branch_name,
+                fmt=fmt,
+                path_flatten_mode=self._manifest_path_flatten_mode(manifest),
+                name_collision_policy=self._manifest_name_collision_policy(manifest),
+                target=target,
+            ),
         )
 
         try:
-            total = len(image_paths) + len(prepared_annotations)
+            total = len(image_entries) + len(prepared_annotations)
             yield self._event_start(total=total, phase="project_associated_execute")
 
             dataset = await self._resolve_associated_target_dataset(
@@ -889,13 +957,18 @@ class ImportService:
                 "failed_samples": 0,
             }
 
-            yield self._event_phase(phase="dataset_images_execute", message="importing image package", current=0, total=len(image_paths))
+            yield self._event_phase(
+                phase="dataset_images_execute",
+                message="importing image package",
+                current=0,
+                total=len(image_entries),
+            )
 
-            if image_paths:
+            if image_entries:
                 async for event in self.sample_bulk_service.iter_bulk_import_zip_entries(
                     dataset_id=dataset.id,
                     zip_asset_id=token_payload.zip_asset_id,
-                    image_paths=image_paths,
+                    image_entries=image_entries,
                 ):
                     event_name = str(event.get("event") or "")
                     if event_name == "complete":
@@ -906,8 +979,8 @@ class ImportService:
                         yield self._event_phase(
                             phase="dataset_images_execute",
                             message="image package import completed",
-                            current=len(image_paths),
-                            total=len(image_paths),
+                            current=len(image_entries),
+                            total=len(image_entries),
                         )
                         continue
                     yield event
@@ -1458,6 +1531,203 @@ class ImportService:
         self._last_scan_total_files = total_files
         return image_paths
 
+    def _build_image_entries(
+        self,
+        *,
+        image_paths: list[str],
+        path_flatten_mode: PathFlattenMode,
+        name_collision_policy: NameCollisionPolicy,
+        warnings: list[ImportIssue],
+        errors: list[ImportIssue],
+    ) -> list[ImportImageEntry]:
+        normalized_paths = [
+            self._normalize_name_key(item)
+            for item in image_paths
+            if self._normalize_name_key(item)
+        ]
+        if name_collision_policy == NameCollisionPolicy.OVERWRITE:
+            return self._build_image_entries_with_overwrite(
+                image_paths=normalized_paths,
+                path_flatten_mode=path_flatten_mode,
+                warnings=warnings,
+            )
+
+        entries: list[ImportImageEntry] = []
+        used_names: set[str] = set()
+        first_path_by_name: dict[str, str] = {}
+        collision_reported_names: set[str] = set()
+
+        for image_path in normalized_paths:
+            resolved_name = self._resolve_sample_name(image_path, path_flatten_mode)
+            if not resolved_name:
+                continue
+
+            if resolved_name in used_names:
+                if name_collision_policy == NameCollisionPolicy.ABORT:
+                    first_path = first_path_by_name.get(resolved_name) or image_path
+                    if resolved_name not in collision_reported_names:
+                        self._append_issue(
+                            errors,
+                            ImportIssue(
+                                code="IMAGE_NAME_COLLISION",
+                                message=f"sample name collision after flatten: {resolved_name}",
+                                path=first_path,
+                                detail={
+                                    "sample_name": resolved_name,
+                                    "path_flatten_mode": path_flatten_mode.value,
+                                    "name_collision_policy": name_collision_policy.value,
+                                },
+                            ),
+                        )
+                        collision_reported_names.add(resolved_name)
+                    self._append_issue(
+                        errors,
+                        ImportIssue(
+                            code="IMAGE_NAME_COLLISION",
+                            message=f"sample name collision after flatten: {resolved_name}",
+                            path=image_path,
+                            detail={
+                                "sample_name": resolved_name,
+                                "path_flatten_mode": path_flatten_mode.value,
+                                "name_collision_policy": name_collision_policy.value,
+                            },
+                        ),
+                    )
+                    continue
+
+                renamed_name = self._build_auto_renamed_sample_name(
+                    source_name=resolved_name,
+                    zip_entry_path=image_path,
+                    used_names=used_names,
+                )
+                self._append_issue(
+                    warnings,
+                    ImportIssue(
+                        code="IMAGE_NAME_AUTO_RENAMED",
+                        message=f"sample name auto-renamed: {resolved_name} -> {renamed_name}",
+                        path=image_path,
+                        detail={
+                            "from": resolved_name,
+                            "to": renamed_name,
+                            "path_flatten_mode": path_flatten_mode.value,
+                            "name_collision_policy": name_collision_policy.value,
+                        },
+                    ),
+                )
+                resolved_name = renamed_name
+                action = _IMAGE_COLLISION_ACTION_RENAMED
+            else:
+                action = _IMAGE_COLLISION_ACTION_NONE
+
+            first_path_by_name.setdefault(resolved_name, image_path)
+            used_names.add(resolved_name)
+            entries.append(
+                ImportImageEntry(
+                    zip_entry_path=image_path,
+                    resolved_sample_name=resolved_name,
+                    original_relative_path=image_path,
+                    collision_action=action,
+                )
+            )
+
+        return entries
+
+    def _build_image_entries_with_overwrite(
+        self,
+        *,
+        image_paths: list[str],
+        path_flatten_mode: PathFlattenMode,
+        warnings: list[ImportIssue],
+    ) -> list[ImportImageEntry]:
+        ordered_names: list[str] = []
+        entry_by_name: dict[str, ImportImageEntry] = {}
+        source_by_name: dict[str, str] = {}
+
+        for image_path in image_paths:
+            resolved_name = self._resolve_sample_name(image_path, path_flatten_mode)
+            if not resolved_name:
+                continue
+
+            has_collision = resolved_name in entry_by_name
+            if has_collision:
+                previous_path = source_by_name.get(resolved_name) or image_path
+                self._append_issue(
+                    warnings,
+                    ImportIssue(
+                        code="IMAGE_NAME_OVERWRITTEN",
+                        message=f"sample name overwritten by later entry: {resolved_name}",
+                        path=image_path,
+                        detail={
+                            "sample_name": resolved_name,
+                            "previous_path": previous_path,
+                            "current_path": image_path,
+                            "path_flatten_mode": path_flatten_mode.value,
+                            "name_collision_policy": NameCollisionPolicy.OVERWRITE.value,
+                        },
+                    ),
+                )
+                try:
+                    ordered_names.remove(resolved_name)
+                except ValueError:
+                    pass
+
+            ordered_names.append(resolved_name)
+            source_by_name[resolved_name] = image_path
+            entry_by_name[resolved_name] = ImportImageEntry(
+                zip_entry_path=image_path,
+                resolved_sample_name=resolved_name,
+                original_relative_path=image_path,
+                collision_action=(
+                    _IMAGE_COLLISION_ACTION_OVERWRITTEN
+                    if has_collision
+                    else _IMAGE_COLLISION_ACTION_NONE
+                ),
+            )
+
+        return [entry_by_name[name] for name in ordered_names]
+
+    @staticmethod
+    def _resolve_sample_name(image_path: str, mode: PathFlattenMode) -> str:
+        normalized = ImportService._normalize_name_key(image_path)
+        if not normalized:
+            return ""
+        if mode == PathFlattenMode.PRESERVE_PATH:
+            return normalized
+        return ImportService._normalize_name_key(Path(normalized).name)
+
+    @staticmethod
+    def _build_auto_renamed_sample_name(
+        *,
+        source_name: str,
+        zip_entry_path: str,
+        used_names: set[str],
+    ) -> str:
+        source = ImportService._normalize_name_key(source_name)
+        parent = str(Path(source).parent).replace("\\", "/")
+        if parent == ".":
+            parent = ""
+        stem = Path(source).stem or "sample"
+        suffix = Path(source).suffix
+        digest = hashlib.sha1(zip_entry_path.encode("utf-8")).hexdigest()[:8]
+
+        def build_candidate(index: int | None = None) -> str:
+            if index is None:
+                base = f"{stem}__{digest}{suffix}"
+            else:
+                base = f"{stem}__{digest}_{index}{suffix}"
+            return f"{parent}/{base}" if parent else base
+
+        candidate = ImportService._normalize_name_key(build_candidate())
+        if candidate not in used_names:
+            return candidate
+
+        counter = 1
+        while True:
+            candidate = ImportService._normalize_name_key(build_candidate(counter))
+            if candidate not in used_names:
+                return candidate
+            counter += 1
+
     def _extract_zip_archive(self, archive: zipfile.ZipFile, output_dir: Path) -> None:
         infos = archive.infolist()
         if len(infos) > settings.IMPORT_MAX_ENTRIES:
@@ -2005,6 +2275,106 @@ class ImportService:
                 errors,
                 ImportIssue(code="CONVERT_ERROR", message=str(item)),
             )
+
+    @staticmethod
+    def _manifest_image_entries(manifest: dict[str, Any]) -> list[ImportImageEntry]:
+        parsed: list[ImportImageEntry] = []
+        for item in (manifest.get("image_entries") or []):
+            if not isinstance(item, dict):
+                continue
+            try:
+                parsed.append(ImportImageEntry.model_validate(item))
+            except Exception:  # noqa: BLE001
+                continue
+
+        if parsed:
+            return parsed
+
+        # Backward compatibility for manifests generated before image_entries rollout.
+        legacy_entries: list[ImportImageEntry] = []
+        for item in (manifest.get("image_paths") or []):
+            path = ImportService._normalize_name_key(str(item or ""))
+            if not path:
+                continue
+            legacy_entries.append(
+                ImportImageEntry(
+                    zip_entry_path=path,
+                    resolved_sample_name=path,
+                    original_relative_path=path,
+                    collision_action=_IMAGE_COLLISION_ACTION_NONE,
+                )
+            )
+        return legacy_entries
+
+    @staticmethod
+    def _manifest_path_flatten_mode(manifest: dict[str, Any]) -> PathFlattenMode:
+        raw = str(manifest.get("path_flatten_mode") or PathFlattenMode.BASENAME.value).strip().lower()
+        try:
+            return PathFlattenMode(raw)
+        except ValueError:
+            return PathFlattenMode.BASENAME
+
+    @staticmethod
+    def _manifest_name_collision_policy(manifest: dict[str, Any]) -> NameCollisionPolicy:
+        raw = str(manifest.get("name_collision_policy") or NameCollisionPolicy.ABORT.value).strip().lower()
+        try:
+            return NameCollisionPolicy(raw)
+        except ValueError:
+            return NameCollisionPolicy.ABORT
+
+    @staticmethod
+    def _build_dataset_image_params(
+        *,
+        dataset_id: uuid.UUID,
+        path_flatten_mode: PathFlattenMode,
+        name_collision_policy: NameCollisionPolicy,
+    ) -> dict[str, Any]:
+        return {
+            "mode": "dataset_images",
+            "dataset_id": str(dataset_id),
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
+        }
+
+    @staticmethod
+    def _build_project_annotation_params(
+        *,
+        project_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        branch_name: str,
+        fmt: str,
+        path_flatten_mode: PathFlattenMode,
+        name_collision_policy: NameCollisionPolicy,
+    ) -> dict[str, Any]:
+        return {
+            "mode": "project_annotations",
+            "project_id": str(project_id),
+            "dataset_id": str(dataset_id),
+            "branch_name": branch_name,
+            "format_profile": fmt,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
+        }
+
+    @staticmethod
+    def _build_project_associated_params(
+        *,
+        project_id: uuid.UUID,
+        branch_name: str,
+        fmt: str,
+        path_flatten_mode: PathFlattenMode,
+        name_collision_policy: NameCollisionPolicy,
+        target: AssociatedManifestTarget,
+    ) -> dict[str, Any]:
+        return {
+            "mode": "project_associated",
+            "project_id": str(project_id),
+            "branch_name": branch_name,
+            "format_profile": fmt,
+            "path_flatten_mode": path_flatten_mode.value,
+            "name_collision_policy": name_collision_policy.value,
+            "target": target.model_dump(mode="json"),
+        }
 
     @staticmethod
     def _manifest_has_error_code(manifest: dict[str, Any], code: str) -> bool:

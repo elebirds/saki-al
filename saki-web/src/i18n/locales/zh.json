@@ -854,6 +854,13 @@
       "newDatasetName": "新建数据集名称",
       "newDatasetDescription": "新建数据集描述",
       "strategyLabel": "冲突策略",
+      "pathFlattenModeLabel": "路径扁平策略",
+      "pathFlattenModeBasename": "仅保留文件名（默认）",
+      "pathFlattenModePreservePath": "保留相对路径",
+      "nameCollisionPolicyLabel": "重名冲突策略",
+      "nameCollisionPolicyAbort": "冲突即终止（默认）",
+      "nameCollisionPolicyAutoRename": "冲突自动重命名",
+      "nameCollisionPolicyOverwrite": "后者覆盖前者",
       "currentConfig": "当前配置",
       "helpButton": "术语说明",
       "runHint": "建议顺序：先预检，确认“待新建标签”后再执行。",
@@ -905,6 +912,8 @@
         "branch_name": "分支",
         "format_profile": "标注格式",
         "format": "标注格式",
+        "path_flatten_mode": "路径扁平策略",
+        "name_collision_policy": "重名冲突策略",
         "target_dataset_mode": "目标数据集模式",
         "total_entries": "图片条目总数",
         "new_samples": "新建样本数",
@@ -929,6 +938,15 @@
           "existing": "已有数据集",
           "new": "新建数据集"
         },
+        "pathFlattenMode": {
+          "basename": "仅保留文件名",
+          "preserve_path": "保留相对路径"
+        },
+        "nameCollisionPolicy": {
+          "abort": "终止",
+          "auto_rename": "自动重命名",
+          "overwrite": "覆盖"
+        },
         "format": {
           "coco": "COCO",
           "voc": "VOC",
@@ -944,6 +962,9 @@
         "CONVERT_ERROR": "格式转换失败：{{message}}",
         "ANNOTATION_TYPE_NOT_ENABLED": "项目未启用标注类型 {{annotationType}}（共 {{count}} 条），当前启用：{{enabledTypes}}",
         "ZIP_SYMLINK_SKIPPED": "ZIP 中的软链接条目已跳过：{{path}}",
+        "IMAGE_NAME_COLLISION": "路径扁平后样本名冲突：{{path}}",
+        "IMAGE_NAME_AUTO_RENAMED": "样本名冲突，已自动重命名：{{path}}",
+        "IMAGE_NAME_OVERWRITTEN": "同名样本已被后续 ZIP 条目覆盖：{{path}}",
         "ZIP_ENTRY_MISSING": "压缩包内缺少条目：{{path}}",
         "ZIP_ENTRY_INVALID": "压缩包条目无效：{{path}}",
         "LABEL_NOT_FOUND": "项目中缺少标签：{{label}}"

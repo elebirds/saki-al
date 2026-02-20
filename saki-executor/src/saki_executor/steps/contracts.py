@@ -12,6 +12,8 @@ SUPPORTED_LOOP_MODES = {"active_learning", "simulation", "manual"}
 class StepExecutionRequest:
     step_id: str
     round_id: str
+    step_type: str
+    dispatch_kind: str
     plugin_id: str
     resolved_params: dict[str, Any]
     project_id: str
@@ -37,6 +39,12 @@ class StepExecutionRequest:
         if not query_strategy:
             raise ValueError("query_strategy is required")
 
+        step_type = str(payload.get("step_type") or "train").strip().lower() or "train"
+
+        dispatch_kind = str(payload.get("dispatch_kind") or "dispatchable").strip().lower()
+        if dispatch_kind not in {"dispatchable", "orchestrator"}:
+            raise ValueError(f"unsupported dispatch_kind: {dispatch_kind or '<empty>'}")
+
         mode = str(payload.get("mode") or "").strip().lower()
         if mode not in SUPPORTED_LOOP_MODES:
             raise ValueError(f"unsupported mode: {mode or '<empty>'}")
@@ -48,6 +56,8 @@ class StepExecutionRequest:
         return cls(
             step_id=step_id,
             round_id=str(payload.get("round_id") or ""),
+            step_type=step_type,
+            dispatch_kind=dispatch_kind,
             plugin_id=str(payload.get("plugin_id") or ""),
             resolved_params=dict(payload.get("resolved_params") or {}),
             project_id=str(payload.get("project_id") or ""),

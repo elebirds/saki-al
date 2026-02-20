@@ -218,6 +218,8 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
     const [newDatasetName, setNewDatasetName] = useState('');
     const [newDatasetDescription, setNewDatasetDescription] = useState('');
     const [conflictStrategy, setConflictStrategy] = useState<'replace' | 'merge'>('replace');
+    const [pathFlattenMode, setPathFlattenMode] = useState<'basename' | 'preserve_path'>('basename');
+    const [nameCollisionPolicy, setNameCollisionPolicy] = useState<'abort' | 'auto_rename' | 'overwrite'>('abort');
 
     const [datasets, setDatasets] = useState<Dataset[]>([]);
     const [datasetInfo, setDatasetInfo] = useState<Dataset | null>(null);
@@ -327,7 +329,20 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             errors: {current: 1, pageSize: 20},
             labels: {current: 1, pageSize: 20},
         });
-    }, [mode, formatProfile, yoloObbLabelFormat, branchName, targetDatasetId, associatedTargetMode, newDatasetName, newDatasetDescription, conflictStrategy, sourceMode]);
+    }, [
+        mode,
+        formatProfile,
+        yoloObbLabelFormat,
+        branchName,
+        targetDatasetId,
+        associatedTargetMode,
+        newDatasetName,
+        newDatasetDescription,
+        conflictStrategy,
+        sourceMode,
+        pathFlattenMode,
+        nameCollisionPolicy,
+    ]);
 
     const summaryEntries = useMemo(
         () => getOrderedImportSummaryEntries(dryRun?.summary).map(([key, value]) => ({
@@ -417,6 +432,10 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             || mode === 'annotations'
             || (mode === 'associated' && associatedTargetMode === 'existing'),
         [associatedTargetMode, isDatasetScope, mode],
+    );
+    const shouldShowPathFlattenPolicy = useMemo(
+        () => !(isDatasetScope && sourceMode === 'files'),
+        [isDatasetScope, sourceMode],
     );
 
     const branchOptions = useMemo(
@@ -523,7 +542,14 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             }
             setDryRunLoading(true);
             try {
-                const result = await api.dryRunDatasetImageImport(targetDatasetId, archive);
+                const result = await api.dryRunDatasetImageImport(
+                    targetDatasetId,
+                    archive,
+                    {
+                        pathFlattenMode,
+                        nameCollisionPolicy,
+                    },
+                );
                 setDryRun(result);
                 setDryRunFailure(null);
                 setConfirmCreateLabels(result.plannedNewLabels.length === 0);
@@ -567,19 +593,30 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
         try {
             let result: ImportDryRunResponse;
             if (mode === 'images') {
-                result = await api.dryRunDatasetImageImport(targetDatasetId, archive);
+                result = await api.dryRunDatasetImageImport(
+                    targetDatasetId,
+                    archive,
+                    {
+                        pathFlattenMode,
+                        nameCollisionPolicy,
+                    },
+                );
             } else if (mode === 'annotations') {
                 result = await api.dryRunProjectAnnotationImport(projectId, {
                     file: archive,
                     formatProfile,
                     datasetId: targetDatasetId,
                     branchName,
+                    pathFlattenMode,
+                    nameCollisionPolicy,
                 });
             } else {
                 result = await api.dryRunProjectAssociatedImport(projectId, {
                     file: archive,
                     formatProfile,
                     branchName,
+                    pathFlattenMode,
+                    nameCollisionPolicy,
                     targetDatasetMode: associatedTargetMode,
                     targetDatasetId: associatedTargetMode === 'existing' ? targetDatasetId : undefined,
                     newDatasetName: associatedTargetMode === 'new' ? newDatasetName : undefined,
@@ -899,6 +936,36 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                     </Space>
                                 ) : null}
                             </div>
+
+                            {shouldShowPathFlattenPolicy ? (
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    <div>
+                                        <Text strong>{t('import.workspace.pathFlattenModeLabel')}</Text>
+                                        <Select
+                                            value={pathFlattenMode}
+                                            onChange={(value) => setPathFlattenMode(value as 'basename' | 'preserve_path')}
+                                            options={[
+                                                {label: t('import.workspace.pathFlattenModeBasename'), value: 'basename'},
+                                                {label: t('import.workspace.pathFlattenModePreservePath'), value: 'preserve_path'},
+                                            ]}
+                                            className="mt-2 w-full"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Text strong>{t('import.workspace.nameCollisionPolicyLabel')}</Text>
+                                        <Select
+                                            value={nameCollisionPolicy}
+                                            onChange={(value) => setNameCollisionPolicy(value as 'abort' | 'auto_rename' | 'overwrite')}
+                                            options={[
+                                                {label: t('import.workspace.nameCollisionPolicyAbort'), value: 'abort'},
+                                                {label: t('import.workspace.nameCollisionPolicyAutoRename'), value: 'auto_rename'},
+                                                {label: t('import.workspace.nameCollisionPolicyOverwrite'), value: 'overwrite'},
+                                            ]}
+                                            className="mt-2 w-full"
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
 
                             {isProjectScope ? (
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

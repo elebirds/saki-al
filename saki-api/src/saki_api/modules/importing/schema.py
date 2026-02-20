@@ -20,6 +20,17 @@ class ConflictStrategy(str, Enum):
     MERGE = "merge"
 
 
+class PathFlattenMode(str, Enum):
+    BASENAME = "basename"
+    PRESERVE_PATH = "preserve_path"
+
+
+class NameCollisionPolicy(str, Enum):
+    ABORT = "abort"
+    AUTO_RENAME = "auto_rename"
+    OVERWRITE = "overwrite"
+
+
 class AssociatedDatasetMode(str, Enum):
     EXISTING = "existing"
     NEW = "new"
@@ -80,6 +91,8 @@ class AnnotationDryRunPayload(BaseModel):
 class AssociatedDryRunPayload(BaseModel):
     format_profile: ImportFormat
     branch_name: str = "master"
+    path_flatten_mode: PathFlattenMode = PathFlattenMode.BASENAME
+    name_collision_policy: NameCollisionPolicy = NameCollisionPolicy.ABORT
     target_dataset_mode: AssociatedDatasetMode
     target_dataset_id: uuid.UUID | None = None
     new_dataset_name: str | None = None
@@ -110,9 +123,17 @@ class ImportTaskStatusResponse(BaseModel):
     finished_at: datetime | None = None
 
 
+class ImportImageEntry(BaseModel):
+    zip_entry_path: str
+    resolved_sample_name: str
+    original_relative_path: str
+    collision_action: str = "none"
+
+
 class SampleBulkImportRequest(BaseModel):
     preview_token: str | None = None
     zip_asset_id: uuid.UUID | None = None
+    image_entries: list[ImportImageEntry] = Field(default_factory=list)
     image_paths: list[str] = Field(default_factory=list)
 
 

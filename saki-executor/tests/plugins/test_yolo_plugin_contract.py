@@ -11,7 +11,7 @@ from saki_executor.steps.workspace import Workspace
 def test_yolo_plugin_contract_fields():
     plugin = YoloDetectionPlugin()
     assert plugin.plugin_id == "yolo_det_v1"
-    assert "train_detection" in plugin.supported_step_types
+    assert "train" in plugin.supported_step_types
     assert "aug_iou_disagreement_v1" in plugin.supported_strategies
 
 

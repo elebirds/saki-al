@@ -24,7 +24,14 @@ class DemoDetectionInternal:
 
     @property
     def supported_step_types(self) -> list[str]:
-        return ["train_detection"]
+        return [
+            "train",
+            "score",
+            "eval",
+            "export",
+            "upload_artifact",
+            "custom",
+        ]
 
     @property
     def supported_strategies(self) -> list[str]:

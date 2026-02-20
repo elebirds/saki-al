@@ -28,7 +28,7 @@ class _ModeAwarePlugin(ExecutorPlugin):
 
     @property
     def supported_step_types(self) -> list[str]:
-        return ["train_detection"]
+        return ["train"]
 
     @property
     def supported_strategies(self) -> list[str]:

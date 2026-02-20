@@ -20,6 +20,20 @@ if TYPE_CHECKING:
 
 class StepPipelineRunner:
     _SUPPORTED_MODES = SUPPORTED_LOOP_MODES
+    _ORCHESTRATOR_ONLY_STEP_TYPES = {
+        "select",
+        "activate_samples",
+        "advance_branch",
+        "wait_annotation",
+    }
+    _TRAINING_PIPELINE_STEP_TYPES = {
+        "train",
+        "score",
+        "eval",
+        "export",
+        "upload_artifact",
+        "custom",
+    }
 
     def __init__(self, *, manager: StepManager, request: StepExecutionRequest) -> None:
         self._manager = manager
@@ -58,11 +72,29 @@ class StepPipelineRunner:
     def _validate_request(self) -> None:
         if self._request.mode not in self._SUPPORTED_MODES:
             raise RuntimeError(f"unsupported mode: {self._request.mode}")
+        if self._request.dispatch_kind == "orchestrator":
+            raise RuntimeError(f"orchestrator step should not be dispatched to executor: {self._request.step_id}")
+        if self._request.step_type in self._ORCHESTRATOR_ONLY_STEP_TYPES:
+            raise RuntimeError(
+                f"step_type '{self._request.step_type}' must be handled by dispatcher orchestrator"
+            )
+        if self._request.step_type not in self._TRAINING_PIPELINE_STEP_TYPES:
+            raise RuntimeError(f"unsupported step_type for executor pipeline: {self._request.step_type}")
 
     def _resolve_plugin(self):
         plugin = self._manager.plugin_registry.get(self._request.plugin_id)
         if not plugin:
             raise RuntimeError(f"plugin not found: {self._request.plugin_id}")
+        supported_step_types = {
+            str(item).strip().lower()
+            for item in (plugin.supported_step_types or [])
+            if str(item).strip()
+        }
+        if supported_step_types and self._request.step_type not in supported_step_types:
+            raise RuntimeError(
+                f"plugin {self._request.plugin_id} does not support step_type={self._request.step_type}; "
+                f"supported={sorted(supported_step_types)}"
+            )
         plugin.validate_params(self._request.resolved_params)
         self._manager._active_plugin = plugin  # noqa: SLF001
         return plugin

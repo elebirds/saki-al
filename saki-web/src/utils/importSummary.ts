@@ -4,6 +4,8 @@ const IMPORT_SUMMARY_KEY_ORDER = [
     'mode',
     'format_profile',
     'format',
+    'path_flatten_mode',
+    'name_collision_policy',
     'branch_name',
     'target_dataset_mode',
     'dataset_id',
@@ -92,6 +94,14 @@ export function formatImportSummaryValue(t: TFunction, key: string, value: unkno
         if (normalizedKey === 'format' || normalizedKey === 'format_profile') {
             const formatText = t(`import.workspace.summaryValue.format.${text}`, {defaultValue: ''}).trim();
             return formatText || text.toUpperCase();
+        }
+        if (normalizedKey === 'path_flatten_mode') {
+            const modeText = t(`import.workspace.summaryValue.pathFlattenMode.${text}`, {defaultValue: ''}).trim();
+            return modeText || text;
+        }
+        if (normalizedKey === 'name_collision_policy') {
+            const policyText = t(`import.workspace.summaryValue.nameCollisionPolicy.${text}`, {defaultValue: ''}).trim();
+            return policyText || text;
         }
 
         return text;

@@ -14,6 +14,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import BadRequestAppException
+from saki_api.modules.importing.schema import ImportImageEntry
 from saki_api.modules.project.service.dataset import DatasetService
 from saki_api.modules.project.service.sample import SampleService
 from saki_api.modules.shared.modeling.enums import DatasetType
@@ -120,7 +121,7 @@ class SampleBulkService:
         *,
         dataset_id: uuid.UUID,
         zip_asset_id: uuid.UUID,
-        image_paths: list[str],
+        image_entries: list[ImportImageEntry],
         batch_size: int = 256,
     ) -> AsyncIterator[dict[str, Any]]:
         dataset = await self.dataset_service.get_by_id_or_raise(dataset_id)
@@ -131,7 +132,7 @@ class SampleBulkService:
         sample_names = [] if allow_duplicate_names else await self._list_dataset_sample_names(dataset_id)
         existing = set(sample_names)
 
-        total = len(image_paths)
+        total = len(image_entries)
         imported = 0
         reused = 0
         failed = 0
@@ -153,11 +154,28 @@ class SampleBulkService:
 
             with zipfile.ZipFile(zip_local_path) as archive:
                 batch_files: list[UploadFile] = []
+                batch_entry_meta: list[ImportImageEntry] = []
                 processed = 0
 
-                for image_path in image_paths:
+                for entry in image_entries:
                     processed += 1
-                    if (not allow_duplicate_names) and image_path in existing:
+                    zip_entry_path = self._normalize_name_key(entry.zip_entry_path)
+                    resolved_sample_name = self._normalize_name_key(entry.resolved_sample_name)
+                    original_relative_path = self._normalize_name_key(entry.original_relative_path) or zip_entry_path
+                    if not zip_entry_path or not resolved_sample_name:
+                        failed += 1
+                        yield {
+                            "event": "error",
+                            "phase": "dataset_images_execute",
+                            "message": "invalid image entry",
+                            "item_key": zip_entry_path or resolved_sample_name or "",
+                            "detail": {"code": "ZIP_ENTRY_INVALID"},
+                            "current": processed,
+                            "total": total,
+                        }
+                        continue
+
+                    if (not allow_duplicate_names) and resolved_sample_name in existing:
                         reused += 1
                         if processed % 100 == 0 or processed == total:
                             yield {
@@ -170,14 +188,14 @@ class SampleBulkService:
                         continue
 
                     try:
-                        info = archive.getinfo(image_path)
+                        info = archive.getinfo(zip_entry_path)
                     except KeyError:
                         failed += 1
                         yield {
                             "event": "error",
                             "phase": "dataset_images_execute",
-                            "message": f"zip entry missing: {image_path}",
-                            "item_key": image_path,
+                            "message": f"zip entry missing: {zip_entry_path}",
+                            "item_key": zip_entry_path,
                             "detail": {"code": "ZIP_ENTRY_MISSING"},
                             "current": processed,
                             "total": total,
@@ -185,14 +203,19 @@ class SampleBulkService:
                         continue
 
                     try:
-                        upload = self._build_upload_from_zip_entry(archive, info)
+                        upload = self._build_upload_from_zip_entry(
+                            archive,
+                            info,
+                            resolved_sample_name=resolved_sample_name,
+                            original_relative_path=original_relative_path,
+                        )
                     except Exception as exc:  # noqa: BLE001
                         failed += 1
                         yield {
                             "event": "error",
                             "phase": "dataset_images_execute",
                             "message": str(exc),
-                            "item_key": image_path,
+                            "item_key": zip_entry_path,
                             "detail": {"code": "ZIP_ENTRY_INVALID"},
                             "current": processed,
                             "total": total,
@@ -200,13 +223,22 @@ class SampleBulkService:
                         continue
 
                     batch_files.append(upload)
+                    batch_entry_meta.append(
+                        ImportImageEntry(
+                            zip_entry_path=zip_entry_path,
+                            resolved_sample_name=resolved_sample_name,
+                            original_relative_path=original_relative_path,
+                            collision_action=str(entry.collision_action or "none"),
+                        )
+                    )
                     if not allow_duplicate_names:
-                        existing.add(image_path)
+                        existing.add(resolved_sample_name)
 
                     if len(batch_files) >= max(1, int(batch_size)):
-                        async for event in self.sample_service.iter_sample_process_events(
+                        async for event in self._flush_import_batch(
                             dataset=dataset,
                             files=batch_files,
+                            entries=batch_entry_meta,
                             facade=facade,
                             process_context=process_context,
                         ):
@@ -222,12 +254,14 @@ class SampleBulkService:
                                     "item_key": str(event.get("filename") or ""),
                                     "detail": {"code": "SAMPLE_IMPORT_FAILED"},
                                 }
-                        for item in batch_files:
-                            try:
-                                item.file.close()
-                            except Exception:  # noqa: BLE001
-                                pass
-                        batch_files.clear()
+                            elif et == "warning":
+                                yield {
+                                    "event": "warning",
+                                    "phase": "dataset_images_execute",
+                                    "message": str(event.get("message") or "metadata update warning"),
+                                    "item_key": str(event.get("item_key") or ""),
+                                    "detail": event.get("detail") or {"code": "SAMPLE_META_UPDATE_FAILED"},
+                                }
 
                     if processed % 100 == 0 or processed == total:
                         yield {
@@ -239,9 +273,10 @@ class SampleBulkService:
                         }
 
                 if batch_files:
-                    async for event in self.sample_service.iter_sample_process_events(
+                    async for event in self._flush_import_batch(
                         dataset=dataset,
                         files=batch_files,
+                        entries=batch_entry_meta,
                         facade=facade,
                         process_context=process_context,
                     ):
@@ -257,12 +292,14 @@ class SampleBulkService:
                                 "item_key": str(event.get("filename") or ""),
                                 "detail": {"code": "SAMPLE_IMPORT_FAILED"},
                             }
-                    for item in batch_files:
-                        try:
-                            item.file.close()
-                        except Exception:  # noqa: BLE001
-                            pass
-                    batch_files.clear()
+                        elif et == "warning":
+                            yield {
+                                "event": "warning",
+                                "phase": "dataset_images_execute",
+                                "message": str(event.get("message") or "metadata update warning"),
+                                "item_key": str(event.get("item_key") or ""),
+                                "detail": event.get("detail") or {"code": "SAMPLE_META_UPDATE_FAILED"},
+                            }
 
         yield {
             "event": "complete",
@@ -270,11 +307,76 @@ class SampleBulkService:
             "detail": {
                 "dataset_id": str(dataset_id),
                 "allow_duplicate_sample_names": allow_duplicate_names,
+                "total_entries": total,
                 "imported_samples": imported,
                 "reused_samples": reused,
                 "failed_samples": failed,
             },
         }
+
+    async def _flush_import_batch(
+        self,
+        *,
+        dataset,
+        files: list[UploadFile],
+        entries: list[ImportImageEntry],
+        facade,
+        process_context,
+    ) -> AsyncIterator[dict[str, Any]]:
+        try:
+            async for event in self.sample_service.iter_sample_process_events(
+                dataset=dataset,
+                files=files,
+                facade=facade,
+                process_context=process_context,
+            ):
+                et = str(event.get("event") or "")
+                if et == "sample_complete":
+                    index = int(event.get("index") or -1)
+                    sample_id = str(event.get("sample_id") or "")
+                    if sample_id and 0 <= index < len(entries):
+                        try:
+                            await self._update_sample_import_meta(
+                                sample_id=sample_id,
+                                entry=entries[index],
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            yield {
+                                "event": "warning",
+                                "message": str(exc),
+                                "item_key": entries[index].resolved_sample_name,
+                                "detail": {"code": "SAMPLE_META_UPDATE_FAILED"},
+                            }
+                yield event
+            await self.session.flush()
+        finally:
+            for item in files:
+                try:
+                    item.file.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            files.clear()
+            entries.clear()
+
+    async def _update_sample_import_meta(self, *, sample_id: str, entry: ImportImageEntry) -> None:
+        sample = await self.session.get(Sample, uuid.UUID(sample_id))
+        if sample is None:
+            return
+
+        meta_info = dict(sample.meta_info or {})
+        import_meta = dict(meta_info.get("import") or {})
+        import_meta.update(
+            {
+                "zip_entry_path": entry.zip_entry_path,
+                "resolved_sample_name": entry.resolved_sample_name,
+                "original_relative_path": entry.original_relative_path,
+                "collision_action": entry.collision_action,
+            }
+        )
+        meta_info["import"] = import_meta
+        meta_info["original_relative_path"] = entry.original_relative_path
+        sample.meta_info = meta_info
+        self.session.add(sample)
 
     async def _list_dataset_sample_names(self, dataset_id: uuid.UUID) -> list[str]:
         stmt = select(Sample.name).where(Sample.dataset_id == dataset_id)
@@ -289,13 +391,23 @@ class SampleBulkService:
         return normalized
 
     @staticmethod
-    def _build_upload_from_zip_entry(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> UploadFile:
+    def _build_upload_from_zip_entry(
+        archive: zipfile.ZipFile,
+        info: zipfile.ZipInfo,
+        *,
+        resolved_sample_name: str,
+        original_relative_path: str,
+    ) -> UploadFile:
         normalized = SampleBulkService._normalize_name_key(info.filename)
+        sample_name = SampleBulkService._normalize_name_key(resolved_sample_name)
+        source_path = SampleBulkService._normalize_name_key(original_relative_path) or normalized
         if not normalized:
             raise BadRequestAppException("invalid zip entry")
+        if not sample_name:
+            raise BadRequestAppException("invalid sample name")
         if normalized.startswith("/") or any(part == ".." for part in Path(normalized).parts):
             raise BadRequestAppException(f"invalid zip entry path: {info.filename}")
-        mime_type = mimetypes.guess_type(normalized)[0] or "application/octet-stream"
+        mime_type = mimetypes.guess_type(sample_name)[0] or mimetypes.guess_type(normalized)[0] or "application/octet-stream"
 
         temp_file = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)
         with archive.open(info) as src:
@@ -304,6 +416,12 @@ class SampleBulkService:
 
         return UploadFile(
             file=temp_file,
-            filename=normalized,
-            headers=Headers({"content-type": mime_type}),
+            filename=sample_name,
+            headers=Headers(
+                {
+                    "content-type": mime_type,
+                    "x-saki-original-relative-path": source_path,
+                    "x-saki-zip-entry-path": normalized,
+                }
+            ),
         )

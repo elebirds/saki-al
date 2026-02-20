@@ -1,6 +1,8 @@
 export type ImportFormat = 'coco' | 'voc' | 'yolo' | 'yolo_obb';
 
 export type ConflictStrategy = 'replace' | 'merge';
+export type PathFlattenMode = 'basename' | 'preserve_path';
+export type NameCollisionPolicy = 'abort' | 'auto_rename' | 'overwrite';
 
 export type AssociatedDatasetMode = 'existing' | 'new';
 
@@ -68,21 +70,33 @@ export interface ProjectAnnotationImportDryRunRequest {
     formatProfile: ImportFormat;
     datasetId: string;
     branchName: string;
+    pathFlattenMode?: PathFlattenMode;
+    nameCollisionPolicy?: NameCollisionPolicy;
 }
 
 export interface ProjectAssociatedImportDryRunRequest {
     file: File;
     formatProfile: ImportFormat;
     branchName: string;
+    pathFlattenMode?: PathFlattenMode;
+    nameCollisionPolicy?: NameCollisionPolicy;
     targetDatasetMode: AssociatedDatasetMode;
     targetDatasetId?: string;
     newDatasetName?: string;
     newDatasetDescription?: string;
 }
 
+export interface ImportImageEntry {
+    zipEntryPath: string;
+    resolvedSampleName: string;
+    originalRelativePath: string;
+    collisionAction?: string;
+}
+
 export interface SampleBulkImportRequest {
     previewToken?: string;
     zipAssetId?: string;
+    imageEntries?: ImportImageEntry[];
     imagePaths?: string[];
 }
 

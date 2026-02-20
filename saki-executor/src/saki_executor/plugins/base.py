@@ -68,11 +68,9 @@ class ExecutorPlugin(ABC):
     def supports_auto_fallback(self) -> bool:
         return True
 
-    @abstractmethod
     def validate_params(self, params: dict[str, Any]) -> None:
-        pass
+        del params
 
-    @abstractmethod
     async def prepare_data(
             self,
             workspace: Workspace,
@@ -81,7 +79,7 @@ class ExecutorPlugin(ABC):
             annotations: list[dict[str, Any]],
             dataset_ir: Any,
     ) -> None:
-        pass
+        del workspace, labels, samples, annotations, dataset_ir
 
     @abstractmethod
     async def train(
@@ -116,6 +114,5 @@ class ExecutorPlugin(ABC):
             params=params,
         )
 
-    @abstractmethod
     async def stop(self, step_id: str) -> None:
-        pass
+        del step_id

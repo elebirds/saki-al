@@ -244,7 +244,8 @@ CREATE TYPE public.steptype AS ENUM (
     'EVAL',
     'EXPORT',
     'UPLOAD_ARTIFACT',
-    'MANUAL_REVIEW'
+    'MANUAL_REVIEW',
+    'CUSTOM'
 );
 
 
@@ -2533,5 +2534,4 @@ ALTER TABLE ONLY public.user_system_role
 --
 -- PostgreSQL database dump complete
 --
-
 

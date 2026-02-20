@@ -43,6 +43,7 @@ _STEP_TYPE_TO_TEXT: dict[int, str] = {
     pb.EVAL: "eval",
     pb.EXPORT: "export",
     pb.UPLOAD_ARTIFACT: "upload_artifact",
+    pb.MANUAL_REVIEW: "manual_review",
     pb.CUSTOM: "custom",
 }
 _TEXT_TO_STEP_TYPE: dict[str, int] = {value: key for key, value in _STEP_TYPE_TO_TEXT.items()}

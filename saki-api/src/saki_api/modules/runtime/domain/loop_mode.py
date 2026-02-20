@@ -31,7 +31,10 @@ LOOP_STEP_SPECS_BY_MODE: dict[LoopMode, tuple[StepType, ...]] = {
 
 
 def step_specs_for_mode(mode: LoopMode) -> tuple[StepType, ...]:
-    return LOOP_STEP_SPECS_BY_MODE.get(mode, LOOP_STEP_SPECS_BY_MODE[LoopMode.ACTIVE_LEARNING])
+    try:
+        return LOOP_STEP_SPECS_BY_MODE[mode]
+    except KeyError as exc:
+        raise ValueError(f"unsupported loop mode for step specs: {mode}") from exc
 
 
 def phase_for_mode(mode: LoopMode) -> LoopPhase:

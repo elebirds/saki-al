@@ -704,6 +704,7 @@ const (
 	SteptypeEXPORT          Steptype = "EXPORT"
 	SteptypeUPLOADARTIFACT  Steptype = "UPLOAD_ARTIFACT"
 	SteptypeMANUALREVIEW    Steptype = "MANUAL_REVIEW"
+	SteptypeCUSTOM          Steptype = "CUSTOM"
 )
 
 func (e *Steptype) Scan(src interface{}) error {

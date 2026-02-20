@@ -160,6 +160,13 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 
 func stepSpecsByMode(mode db.Loopmode) []db.Steptype {
 	switch mode {
+	case modeAL:
+		return []db.Steptype{
+			db.SteptypeTRAIN,
+			db.SteptypeSCORE,
+			db.SteptypeEVAL,
+			db.SteptypeSELECT,
+		}
 	case modeSIM:
 		return []db.Steptype{
 			db.SteptypeTRAIN,
@@ -176,12 +183,57 @@ func stepSpecsByMode(mode db.Loopmode) []db.Steptype {
 			db.SteptypeEXPORT,
 		}
 	default:
-		return []db.Steptype{
-			db.SteptypeTRAIN,
-			db.SteptypeSCORE,
-			db.SteptypeEVAL,
-			db.SteptypeSELECT,
+		return nil
+	}
+}
+
+func phaseForStep(mode db.Loopmode, stepType db.Steptype) (db.Loopphase, bool) {
+	switch mode {
+	case modeAL:
+		switch stepType {
+		case db.SteptypeTRAIN:
+			return phaseALTrain, true
+		case db.SteptypeSCORE:
+			return phaseALScore, true
+		case db.SteptypeEVAL:
+			return phaseALEval, true
+		case db.SteptypeSELECT:
+			return phaseALSelect, true
+		case db.SteptypeWAITANNOTATION:
+			return phaseALWaitAnnotation, true
+		default:
+			return "", false
 		}
+	case modeSIM:
+		switch stepType {
+		case db.SteptypeTRAIN:
+			return phaseSimTrain, true
+		case db.SteptypeSCORE:
+			return phaseSimScore, true
+		case db.SteptypeEVAL:
+			return phaseSimEval, true
+		case db.SteptypeSELECT:
+			return phaseSimSelect, true
+		case db.SteptypeACTIVATESAMPLES, db.SteptypeADVANCEBRANCH:
+			return phaseSimActivate, true
+		default:
+			return "", false
+		}
+	case modeManual:
+		switch stepType {
+		case db.SteptypeTRAIN:
+			return phaseManualTrain, true
+		case db.SteptypeEVAL:
+			return phaseManualEval, true
+		case db.SteptypeEXPORT, db.SteptypeUPLOADARTIFACT:
+			return phaseManualExport, true
+		case db.SteptypeMANUALREVIEW:
+			return phaseManualEval, true
+		default:
+			return "", false
+		}
+	default:
+		return "", false
 	}
 }
 
@@ -205,7 +257,9 @@ func toRuntimeStepType(raw db.Steptype) runtimecontrolv1.RuntimeStepType {
 		return runtimecontrolv1.RuntimeStepType_EXPORT
 	case db.SteptypeUPLOADARTIFACT:
 		return runtimecontrolv1.RuntimeStepType_UPLOAD_ARTIFACT
-	case db.Steptype("CUSTOM"):
+	case db.SteptypeMANUALREVIEW:
+		return runtimecontrolv1.RuntimeStepType_MANUAL_REVIEW
+	case db.SteptypeCUSTOM:
 		return runtimecontrolv1.RuntimeStepType_CUSTOM
 	default:
 		return runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED

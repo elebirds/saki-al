@@ -77,6 +77,32 @@ def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
     assert payload["mode"] == ""
 
 
+def test_parse_assign_step_manual_review_step_type():
+    runtime_message = pb.RuntimeMessage(
+        assign_step=pb.AssignStep(
+            request_id="req-manual-review",
+            step=pb.StepPayload(
+                step_id="task-manual-review",
+                round_id="job-manual-review",
+                project_id="project1",
+                loop_id="loop1",
+                input_commit_id="commit1",
+                step_type=pb.MANUAL_REVIEW,
+                dispatch_kind=pb.ORCHESTRATOR,
+                plugin_id="demo_det_v1",
+                mode=pb.MANUAL,
+                query_strategy="uncertainty_1_minus_max_conf",
+                resolved_params=codec.dict_to_struct({}),
+                round_index=1,
+            ),
+        )
+    )
+    payload = codec.parse_assign_step(runtime_message.assign_step)
+    assert payload["step_type"] == "manual_review"
+    assert payload["dispatch_kind"] == "orchestrator"
+    assert payload["mode"] == "manual"
+
+
 def test_build_data_request_query_type_mapping():
     message = codec.build_data_request_message(
         request_id="r1",

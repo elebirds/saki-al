@@ -672,6 +672,27 @@ func (q *Queries) UpdateLoopLastConfirmedCommit(ctx context.Context, arg UpdateL
 	return err
 }
 
+const updateLoopPhaseIfRunning = `-- name: UpdateLoopPhaseIfRunning :execrows
+UPDATE loop
+SET phase = $1::loopphase,
+    updated_at = now()
+WHERE id = $2::uuid
+  AND status = 'RUNNING'::loopstatus
+`
+
+type UpdateLoopPhaseIfRunningParams struct {
+	Phase  Loopphase
+	LoopID uuid.UUID
+}
+
+func (q *Queries) UpdateLoopPhaseIfRunning(ctx context.Context, arg UpdateLoopPhaseIfRunningParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateLoopPhaseIfRunning, arg.Phase, arg.LoopID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateLoopState = `-- name: UpdateLoopState :exec
 UPDATE loop
 SET status = $1::loopstatus,

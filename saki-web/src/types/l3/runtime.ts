@@ -112,7 +112,8 @@ export type RuntimeStepType =
     | 'eval'
     | 'upload_artifact'
     | 'export'
-    | 'manual_review';
+    | 'manual_review'
+    | 'custom';
 
 export type RuntimeStepDispatchKind = 'dispatchable' | 'orchestrator';
 

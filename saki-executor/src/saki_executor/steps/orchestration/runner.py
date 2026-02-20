@@ -25,6 +25,7 @@ class StepPipelineRunner:
         "activate_samples",
         "advance_branch",
         "wait_annotation",
+        "manual_review",
     }
     _TRAINING_PIPELINE_STEP_TYPES = {
         "train",

@@ -474,6 +474,103 @@ async def test_orchestrator_dispatch_kind_is_rejected(tmp_path: Path):
 
 
 @pytest.mark.anyio
+async def test_manual_review_step_type_is_rejected_on_executor(tmp_path: Path):
+    plugin = _ModeAwarePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+    request_calls = 0
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        nonlocal request_calls
+        request_calls += 1
+        raise AssertionError(f"unexpected request payload: {message.WhichOneof('payload')}")
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-manual-review-1",
+        {
+            "step_id": "task-manual-review-1",
+            "round_id": "job-manual-review-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "manual",
+            "step_type": "manual_review",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.FAILED
+    assert "must be handled by dispatcher orchestrator" in result.error_message
+    assert request_calls == 0
+
+
+@pytest.mark.anyio
+async def test_custom_step_type_uses_train_and_sampling_pipeline(tmp_path: Path):
+    plugin = _ModeAwarePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-custom-1",
+        {
+            "step_id": "task-custom-1",
+            "round_id": "job-custom-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "custom",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {"topk": 10},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.SUCCEEDED
+    assert len(result.candidates) == 2
+    assert plugin.train_calls == 1
+    assert plugin.predict_calls == 1
+
+
+@pytest.mark.anyio
 async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
     plugin = _ModeAwarePlugin()
     manager = _build_manager(tmp_path, plugin)

@@ -18,6 +18,14 @@ from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.shared.modeling.enums import RoundStatus, StepDispatchKind, StepStatus, StepType
 
+_ORCHESTRATOR_STEP_TYPES: set[StepType] = {
+    StepType.SELECT,
+    StepType.ACTIVATE_SAMPLES,
+    StepType.ADVANCE_BRANCH,
+    StepType.WAIT_ANNOTATION,
+    StepType.MANUAL_REVIEW,
+}
+
 
 class RoundCommandMixin:
     @transactional
@@ -99,7 +107,7 @@ class RoundCommandMixin:
             depends_on = [str(previous_step_id)] if previous_step_id else []
             dispatch_kind = (
                 StepDispatchKind.ORCHESTRATOR
-                if step_type in {StepType.SELECT, StepType.ACTIVATE_SAMPLES, StepType.ADVANCE_BRANCH}
+                if step_type in _ORCHESTRATOR_STEP_TYPES
                 else StepDispatchKind.DISPATCHABLE
             )
             step = await self.step_repo.create(

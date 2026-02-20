@@ -595,6 +595,9 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 	}
 
 	stepSpecs := stepSpecsByMode(loop.Mode)
+	if len(stepSpecs) == 0 {
+		return false, fmt.Errorf("unsupported loop mode for step specs: %s", loop.Mode)
+	}
 	var previousStepID *uuid.UUID
 	for idx, stepType := range stepSpecs {
 		stepID := uuid.New()
@@ -629,12 +632,9 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		}
 	}
 
-	phase := phaseALTrain
-	if loop.Mode == modeSIM {
-		phase = phaseSimTrain
-	}
-	if loop.Mode == modeManual {
-		phase = phaseManualTrain
+	phase, ok := phaseForStep(loop.Mode, stepSpecs[0])
+	if !ok {
+		return false, fmt.Errorf("cannot resolve initial phase for loop mode=%s step_type=%s", loop.Mode, stepSpecs[0])
 	}
 
 	if err := s.qtx(tx).UpdateLoopAfterRoundCreated(ctx, db.UpdateLoopAfterRoundCreatedParams{

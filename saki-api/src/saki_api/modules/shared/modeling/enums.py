@@ -188,6 +188,7 @@ class StepType(str, Enum):
     EXPORT = "export"
     UPLOAD_ARTIFACT = "upload_artifact"
     MANUAL_REVIEW = "manual_review"
+    CUSTOM = "custom"
 
 
 class StepDispatchKind(str, Enum):

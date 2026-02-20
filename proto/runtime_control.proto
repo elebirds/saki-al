@@ -56,6 +56,7 @@ enum RuntimeStepType {
   EVAL = 7;
   UPLOAD_ARTIFACT = 8;
   EXPORT = 9;
+  MANUAL_REVIEW = 10;
   CUSTOM = 99;
 }
 

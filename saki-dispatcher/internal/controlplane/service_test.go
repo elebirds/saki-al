@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -98,6 +99,76 @@ func TestToRuntimeStepDispatchKind(t *testing.T) {
 	}
 }
 
+func TestToRuntimeStepType(t *testing.T) {
+	cases := map[db.Steptype]runtimecontrolv1.RuntimeStepType{
+		db.SteptypeTRAIN:           runtimecontrolv1.RuntimeStepType_TRAIN,
+		db.SteptypeSCORE:           runtimecontrolv1.RuntimeStepType_SCORE,
+		db.SteptypeSELECT:          runtimecontrolv1.RuntimeStepType_SELECT,
+		db.SteptypeACTIVATESAMPLES: runtimecontrolv1.RuntimeStepType_ACTIVATE_SAMPLES,
+		db.SteptypeWAITANNOTATION:  runtimecontrolv1.RuntimeStepType_WAIT_ANNOTATION,
+		db.SteptypeADVANCEBRANCH:   runtimecontrolv1.RuntimeStepType_ADVANCE_BRANCH,
+		db.SteptypeEVAL:            runtimecontrolv1.RuntimeStepType_EVAL,
+		db.SteptypeUPLOADARTIFACT:  runtimecontrolv1.RuntimeStepType_UPLOAD_ARTIFACT,
+		db.SteptypeEXPORT:          runtimecontrolv1.RuntimeStepType_EXPORT,
+		db.SteptypeMANUALREVIEW:    runtimecontrolv1.RuntimeStepType_MANUAL_REVIEW,
+		db.SteptypeCUSTOM:          runtimecontrolv1.RuntimeStepType_CUSTOM,
+	}
+	for stepType, want := range cases {
+		if got := toRuntimeStepType(stepType); got != want {
+			t.Fatalf("step type mapping mismatch: %s -> %v, want %v", stepType, got, want)
+		}
+	}
+	if got := toRuntimeStepType(db.Steptype("UNKNOWN")); got != runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED {
+		t.Fatalf("unknown step type fallback mismatch: %v", got)
+	}
+}
+
+func TestStepSpecsByMode(t *testing.T) {
+	if got := stepSpecsByMode(modeAL); !reflect.DeepEqual(got, []db.Steptype{
+		db.SteptypeTRAIN,
+		db.SteptypeSCORE,
+		db.SteptypeEVAL,
+		db.SteptypeSELECT,
+	}) {
+		t.Fatalf("active learning step specs mismatch: %v", got)
+	}
+	if got := stepSpecsByMode(modeSIM); !reflect.DeepEqual(got, []db.Steptype{
+		db.SteptypeTRAIN,
+		db.SteptypeSCORE,
+		db.SteptypeEVAL,
+		db.SteptypeSELECT,
+		db.SteptypeACTIVATESAMPLES,
+		db.SteptypeADVANCEBRANCH,
+	}) {
+		t.Fatalf("simulation step specs mismatch: %v", got)
+	}
+	if got := stepSpecsByMode(modeManual); !reflect.DeepEqual(got, []db.Steptype{
+		db.SteptypeTRAIN,
+		db.SteptypeEVAL,
+		db.SteptypeEXPORT,
+	}) {
+		t.Fatalf("manual step specs mismatch: %v", got)
+	}
+	if got := stepSpecsByMode(db.Loopmode("UNKNOWN")); got != nil {
+		t.Fatalf("unknown mode should return nil specs, got=%v", got)
+	}
+}
+
+func TestPhaseForStep(t *testing.T) {
+	if phase, ok := phaseForStep(modeAL, db.SteptypeWAITANNOTATION); !ok || phase != phaseALWaitAnnotation {
+		t.Fatalf("phase mapping mismatch for AL wait_annotation: ok=%v phase=%s", ok, phase)
+	}
+	if phase, ok := phaseForStep(modeSIM, db.SteptypeADVANCEBRANCH); !ok || phase != phaseSimActivate {
+		t.Fatalf("phase mapping mismatch for SIM advance_branch: ok=%v phase=%s", ok, phase)
+	}
+	if phase, ok := phaseForStep(modeManual, db.SteptypeUPLOADARTIFACT); !ok || phase != phaseManualExport {
+		t.Fatalf("phase mapping mismatch for MANUAL upload_artifact: ok=%v phase=%s", ok, phase)
+	}
+	if _, ok := phaseForStep(modeManual, db.SteptypeCUSTOM); ok {
+		t.Fatal("manual CUSTOM should not have default phase mapping")
+	}
+}
+
 func TestIsOrchestratorDispatchKind(t *testing.T) {
 	if !isOrchestratorDispatchKind(db.StepdispatchkindORCHESTRATOR) {
 		t.Fatal("ORCHESTRATOR should be recognized as orchestrator dispatch kind")
@@ -106,6 +177,25 @@ func TestIsOrchestratorDispatchKind(t *testing.T) {
 		t.Fatal("DISPATCHABLE should not be recognized as orchestrator dispatch kind")
 	}
 }
+
+func TestIsOrchestratorStepType(t *testing.T) {
+	trueCases := []db.Steptype{
+		db.SteptypeSELECT,
+		db.SteptypeACTIVATESAMPLES,
+		db.SteptypeADVANCEBRANCH,
+		db.SteptypeWAITANNOTATION,
+		db.SteptypeMANUALREVIEW,
+	}
+	for _, stepType := range trueCases {
+		if !isOrchestratorStepType(stepType) {
+			t.Fatalf("expected orchestrator step type: %s", stepType)
+		}
+	}
+	if isOrchestratorStepType(db.SteptypeTRAIN) {
+		t.Fatal("TRAIN should not be recognized as orchestrator step type")
+	}
+}
+
 func TestCanStepTransitionRejectsTerminalRollback(t *testing.T) {
 	if canStepTransition(db.StepstatusCANCELLED, db.StepstatusRUNNING) {
 		t.Fatal("terminal step status should not transition back to RUNNING")

@@ -76,6 +76,7 @@ type Querier interface {
 	UpdateCommandLogStatusDetail(ctx context.Context, arg UpdateCommandLogStatusDetailParams) error
 	UpdateLoopAfterRoundCreated(ctx context.Context, arg UpdateLoopAfterRoundCreatedParams) error
 	UpdateLoopLastConfirmedCommit(ctx context.Context, arg UpdateLoopLastConfirmedCommitParams) error
+	UpdateLoopPhaseIfRunning(ctx context.Context, arg UpdateLoopPhaseIfRunningParams) (int64, error)
 	UpdateLoopState(ctx context.Context, arg UpdateLoopStateParams) error
 	UpdateLoopStateGuarded(ctx context.Context, arg UpdateLoopStateGuardedParams) (int64, error)
 	UpdateLoopStatus(ctx context.Context, arg UpdateLoopStatusParams) error

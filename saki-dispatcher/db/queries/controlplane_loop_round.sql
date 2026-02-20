@@ -104,6 +104,13 @@ SET current_iteration = sqlc.arg(current_iteration),
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid;
 
+-- name: UpdateLoopPhaseIfRunning :execrows
+UPDATE loop
+SET phase = sqlc.arg(phase)::loopphase,
+    updated_at = now()
+WHERE id = sqlc.arg(loop_id)::uuid
+  AND status = 'RUNNING'::loopstatus;
+
 -- name: UpdateLoopStatus :exec
 UPDATE loop
 SET status = sqlc.arg(status)::loopstatus,

@@ -267,6 +267,7 @@ const (
 	RuntimeStepType_EVAL                          RuntimeStepType = 7
 	RuntimeStepType_UPLOAD_ARTIFACT               RuntimeStepType = 8
 	RuntimeStepType_EXPORT                        RuntimeStepType = 9
+	RuntimeStepType_MANUAL_REVIEW                 RuntimeStepType = 10
 	RuntimeStepType_CUSTOM                        RuntimeStepType = 99
 )
 
@@ -283,6 +284,7 @@ var (
 		7:  "EVAL",
 		8:  "UPLOAD_ARTIFACT",
 		9:  "EXPORT",
+		10: "MANUAL_REVIEW",
 		99: "CUSTOM",
 	}
 	RuntimeStepType_value = map[string]int32{
@@ -296,6 +298,7 @@ var (
 		"EVAL":                          7,
 		"UPLOAD_ARTIFACT":               8,
 		"EXPORT":                        9,
+		"MANUAL_REVIEW":                 10,
 		"CUSTOM":                        99,
 	}
 )
@@ -3313,7 +3316,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x18ACK_REASON_EXECUTOR_BUSY\x10\x03\x12\x17\n" +
 	"\x13ACK_REASON_STOPPING\x10\x04\x12\x1f\n" +
 	"\x1bACK_REASON_STEP_NOT_RUNNING\x10\x05\x12\x17\n" +
-	"\x13ACK_REASON_REJECTED\x10\x06*\xcc\x01\n" +
+	"\x13ACK_REASON_REJECTED\x10\x06*\xdf\x01\n" +
 	"\x0fRuntimeStepType\x12!\n" +
 	"\x1dRUNTIME_STEP_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05TRAIN\x10\x01\x12\t\n" +
@@ -3326,7 +3329,9 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x04EVAL\x10\a\x12\x13\n" +
 	"\x0fUPLOAD_ARTIFACT\x10\b\x12\n" +
 	"\n" +
-	"\x06EXPORT\x10\t\x12\n" +
+	"\x06EXPORT\x10\t\x12\x11\n" +
+	"\rMANUAL_REVIEW\x10\n" +
+	"\x12\n" +
 	"\n" +
 	"\x06CUSTOM\x10c*i\n" +
 	"\x17RuntimeStepDispatchKind\x12*\n" +

@@ -231,6 +231,9 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	if stepPayload.Status != stepReady {
 		return false, tx.Commit(ctx)
 	}
+	if err := s.syncLoopPhaseWithStepTx(ctx, tx, stepPayload); err != nil {
+		return false, err
+	}
 	if isOrchestratorDispatchKind(stepPayload.DispatchKind) {
 		executed, err := s.executeOrchestratorStepTx(ctx, tx, stepPayload)
 		if err != nil {
@@ -298,6 +301,18 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	return true, tx.Commit(ctx)
 }
 
+func (s *Service) syncLoopPhaseWithStepTx(ctx context.Context, tx pgx.Tx, stepPayload stepDispatchPayload) error {
+	nextPhase, ok := phaseForStep(stepPayload.Mode, stepPayload.StepType)
+	if !ok {
+		return nil
+	}
+	_, err := s.qtx(tx).UpdateLoopPhaseIfRunning(ctx, db.UpdateLoopPhaseIfRunningParams{
+		Phase:  nextPhase,
+		LoopID: stepPayload.LoopID,
+	})
+	return err
+}
+
 func isOrchestratorStepType(stepType db.Steptype) bool {
 	switch stepType {
 	case db.SteptypeSELECT:
@@ -305,6 +320,10 @@ func isOrchestratorStepType(stepType db.Steptype) bool {
 	case db.SteptypeACTIVATESAMPLES:
 		return true
 	case db.SteptypeADVANCEBRANCH:
+		return true
+	case db.SteptypeWAITANNOTATION:
+		return true
+	case db.SteptypeMANUALREVIEW:
 		return true
 	default:
 		return false
@@ -410,8 +429,12 @@ func (s *Service) runOrchestratorStepTx(
 		return s.runActivateSamplesTx(ctx, tx, stepPayload, resultCommitID)
 	case db.SteptypeADVANCEBRANCH:
 		return s.runAdvanceBranchTx(ctx, tx, stepPayload, resultCommitID)
-	default:
+	case db.SteptypeWAITANNOTATION:
 		return nil
+	case db.SteptypeMANUALREVIEW:
+		return nil
+	default:
+		return fmt.Errorf("unsupported orchestrator step type: %s", stepPayload.StepType)
 	}
 }
 

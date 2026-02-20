@@ -51,6 +51,32 @@ def test_parse_assign_step_payload():
     assert payload["round_index"] == 3
 
 
+def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
+    runtime_message = pb.RuntimeMessage(
+        assign_step=pb.AssignStep(
+            request_id="req1",
+            step=pb.StepPayload(
+                step_id="task1",
+                round_id="job1",
+                project_id="project1",
+                loop_id="loop1",
+                input_commit_id="commit1",
+                step_type=pb.RUNTIME_STEP_TYPE_UNSPECIFIED,
+                dispatch_kind=pb.RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED,
+                plugin_id="demo_det_v1",
+                mode=pb.RUNTIME_LOOP_MODE_UNSPECIFIED,
+                query_strategy="uncertainty_1_minus_max_conf",
+                resolved_params=codec.dict_to_struct({"epochs": 5}),
+                round_index=3,
+            ),
+        )
+    )
+    payload = codec.parse_assign_step(runtime_message.assign_step)
+    assert payload["step_type"] == ""
+    assert payload["dispatch_kind"] == ""
+    assert payload["mode"] == ""
+
+
 def test_build_data_request_query_type_mapping():
     message = codec.build_data_request_message(
         request_id="r1",

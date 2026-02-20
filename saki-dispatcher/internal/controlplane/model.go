@@ -196,18 +196,6 @@ func stepPlanByMode(mode db.Loopmode) []loopModeStepSpec {
 	return result
 }
 
-func stepSpecsByMode(mode db.Loopmode) []db.Steptype {
-	plan := stepPlanByMode(mode)
-	if len(plan) == 0 {
-		return nil
-	}
-	result := make([]db.Steptype, 0, len(plan))
-	for _, item := range plan {
-		result = append(result, item.StepType)
-	}
-	return result
-}
-
 func phaseForStep(mode db.Loopmode, stepType db.Steptype) (db.Loopphase, bool) {
 	for _, item := range stepPlanByMode(mode) {
 		if item.StepType == stepType {

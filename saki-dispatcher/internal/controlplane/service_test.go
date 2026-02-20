@@ -1,7 +1,6 @@
 package controlplane
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -123,37 +122,6 @@ func TestToRuntimeStepType(t *testing.T) {
 	}
 }
 
-func TestStepSpecsByMode(t *testing.T) {
-	if got := stepSpecsByMode(modeAL); !reflect.DeepEqual(got, []db.Steptype{
-		db.SteptypeTRAIN,
-		db.SteptypeSCORE,
-		db.SteptypeEVAL,
-		db.SteptypeSELECT,
-	}) {
-		t.Fatalf("active learning step specs mismatch: %v", got)
-	}
-	if got := stepSpecsByMode(modeSIM); !reflect.DeepEqual(got, []db.Steptype{
-		db.SteptypeTRAIN,
-		db.SteptypeSCORE,
-		db.SteptypeEVAL,
-		db.SteptypeSELECT,
-		db.SteptypeACTIVATESAMPLES,
-		db.SteptypeADVANCEBRANCH,
-	}) {
-		t.Fatalf("simulation step specs mismatch: %v", got)
-	}
-	if got := stepSpecsByMode(modeManual); !reflect.DeepEqual(got, []db.Steptype{
-		db.SteptypeTRAIN,
-		db.SteptypeEVAL,
-		db.SteptypeEXPORT,
-	}) {
-		t.Fatalf("manual step specs mismatch: %v", got)
-	}
-	if got := stepSpecsByMode(db.Loopmode("UNKNOWN")); got != nil {
-		t.Fatalf("unknown mode should return nil specs, got=%v", got)
-	}
-}
-
 func TestStepPlanByModeDispatchKinds(t *testing.T) {
 	plan := stepPlanByMode(modeSIM)
 	if len(plan) != 6 {
@@ -199,24 +167,6 @@ func TestIsOrchestratorDispatchKind(t *testing.T) {
 	}
 	if isOrchestratorDispatchKind(db.StepdispatchkindDISPATCHABLE) {
 		t.Fatal("DISPATCHABLE should not be recognized as orchestrator dispatch kind")
-	}
-}
-
-func TestIsOrchestratorStepType(t *testing.T) {
-	trueCases := []db.Steptype{
-		db.SteptypeSELECT,
-		db.SteptypeACTIVATESAMPLES,
-		db.SteptypeADVANCEBRANCH,
-		db.SteptypeWAITANNOTATION,
-		db.SteptypeMANUALREVIEW,
-	}
-	for _, stepType := range trueCases {
-		if !isOrchestratorStepType(stepType) {
-			t.Fatalf("expected orchestrator step type: %s", stepType)
-		}
-	}
-	if isOrchestratorStepType(db.SteptypeTRAIN) {
-		t.Fatal("TRAIN should not be recognized as orchestrator step type")
 	}
 }
 

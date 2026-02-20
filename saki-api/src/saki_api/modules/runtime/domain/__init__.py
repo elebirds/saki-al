@@ -2,9 +2,7 @@
 
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.loop_mode import (
-    LOOP_STEP_SPECS_BY_MODE,
     phase_for_mode,
-    step_specs_for_mode,
 )
 from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.model import Model
@@ -39,9 +37,7 @@ __all__ = [
     "StepCandidateItem",
     "StepEvent",
     "StepMetricPoint",
-    "LOOP_STEP_SPECS_BY_MODE",
     "phase_for_mode",
-    "step_specs_for_mode",
     "RUNNING_ROUND_STATES",
     "RUNNING_STEP_STATES",
     "TERMINAL_ROUND_STATES",

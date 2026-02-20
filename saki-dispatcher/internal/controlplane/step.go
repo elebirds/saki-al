@@ -313,23 +313,6 @@ func (s *Service) syncLoopPhaseWithStepTx(ctx context.Context, tx pgx.Tx, stepPa
 	return err
 }
 
-func isOrchestratorStepType(stepType db.Steptype) bool {
-	switch stepType {
-	case db.SteptypeSELECT:
-		return true
-	case db.SteptypeACTIVATESAMPLES:
-		return true
-	case db.SteptypeADVANCEBRANCH:
-		return true
-	case db.SteptypeWAITANNOTATION:
-		return true
-	case db.SteptypeMANUALREVIEW:
-		return true
-	default:
-		return false
-	}
-}
-
 func isOrchestratorDispatchKind(dispatchKind db.Stepdispatchkind) bool {
 	return dispatchKind == db.StepdispatchkindORCHESTRATOR
 }

@@ -15,7 +15,6 @@ from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 from saki_api.modules.importing.schema import (
     AnnotationBulkRequest,
     AnnotationBulkSource,
-    ImportImageEntry,
     ImportExecuteRequest,
     ImportTaskCreateResponse,
     SampleBulkImportRequest,
@@ -123,18 +122,8 @@ async def bulk_import_samples(
             raise BadRequestAppException("zip_asset_id is required when preview_token is not provided")
         if payload.image_entries:
             image_entries = payload.image_entries
-        elif payload.image_paths:
-            image_entries = [
-                ImportImageEntry(
-                    zip_entry_path=str(item),
-                    resolved_sample_name=str(item),
-                    original_relative_path=str(item),
-                    collision_action="none",
-                )
-                for item in payload.image_paths
-            ]
         else:
-            raise BadRequestAppException("image_entries or image_paths is required when preview_token is not provided")
+            raise BadRequestAppException("image_entries is required when preview_token is not provided")
         zip_asset_id = payload.zip_asset_id
 
     task = await task_service.create_task(

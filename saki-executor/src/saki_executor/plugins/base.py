@@ -79,7 +79,7 @@ class ExecutorPlugin(ABC):
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
-            dataset_ir: Any | None = None,
+            dataset_ir: Any,
     ) -> None:
         pass
 

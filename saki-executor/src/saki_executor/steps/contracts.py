@@ -39,9 +39,13 @@ class StepExecutionRequest:
         if not query_strategy:
             raise ValueError("query_strategy is required")
 
-        step_type = str(payload.get("step_type") or "train").strip().lower() or "train"
+        step_type = str(payload.get("step_type") or "").strip().lower()
+        if not step_type:
+            raise ValueError("step_type is required")
 
-        dispatch_kind = str(payload.get("dispatch_kind") or "dispatchable").strip().lower()
+        dispatch_kind = str(payload.get("dispatch_kind") or "").strip().lower()
+        if not dispatch_kind:
+            raise ValueError("dispatch_kind is required")
         if dispatch_kind not in {"dispatchable", "orchestrator"}:
             raise ValueError(f"unsupported dispatch_kind: {dispatch_kind or '<empty>'}")
 

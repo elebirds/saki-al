@@ -66,59 +66,8 @@ def _to_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _to_bool(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    raw = str(value).strip().lower()
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    return default
-
-
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
-
-
-def _rect_to_corners(x: float, y: float, w: float, h: float) -> list[tuple[float, float]]:
-    return [
-        (x, y),
-        (x + w, y),
-        (x + w, y + h),
-        (x, y + h),
-    ]
-
-
-def _rotated_rect_to_corners(cx: float, cy: float, w: float, h: float, angle_deg: float) -> list[tuple[float, float]]:
-    rad = math.radians(angle_deg)
-    cos_v = math.cos(rad)
-    sin_v = math.sin(rad)
-    dx = w / 2.0
-    dy = h / 2.0
-    base = [(-dx, -dy), (dx, -dy), (dx, dy), (-dx, dy)]
-    corners: list[tuple[float, float]] = []
-    for px, py in base:
-        rx = px * cos_v - py * sin_v + cx
-        ry = px * sin_v + py * cos_v + cy
-        corners.append((rx, ry))
-    return corners
-
-
-def _normalize_obb_corners(
-    corners: list[tuple[float, float]],
-    width: float,
-    height: float,
-) -> list[float]:
-    safe_w = max(1.0, width)
-    safe_h = max(1.0, height)
-    values: list[float] = []
-    for x, y in corners:
-        values.append(_clamp(x / safe_w, 0.0, 1.0))
-        values.append(_clamp(y / safe_h, 0.0, 1.0))
-    return values
 
 
 def _infer_image_hw(path: Path) -> tuple[int, int]:
@@ -291,17 +240,16 @@ class YoloDetectionInternal:
         labels: list[dict[str, Any]],
         samples: list[dict[str, Any]],
         annotations: list[dict[str, Any]],
+        dataset_ir: Any,
         infer_image_hw: Callable[[Path], tuple[int, int]] | None = None,
-        dataset_ir: Any | None = None,
     ) -> None:
+        del annotations
         prepare_yolo_dataset(
             workspace=workspace,
             labels=labels,
             samples=samples,
-            annotations=annotations,
             infer_image_hw=infer_image_hw or _infer_image_hw,
             to_int=_to_int,
-            annotation_to_line=self._annotation_to_yolo_obb_line,
             resolve_split_config=self._resolve_split_config,
             dataset_ir=dataset_ir,
         )
@@ -445,52 +393,6 @@ class YoloDetectionInternal:
     async def stop(self, step_id: str) -> None:
         del step_id
         self._stop_flag.set()
-
-    def _annotation_to_yolo_obb_line(
-        self,
-        *,
-        ann: dict[str, Any],
-        cls_idx: int,
-        width: int,
-        height: int,
-    ) -> str | None:
-        obb = ann.get("obb")
-        corners: list[tuple[float, float]] | None = None
-
-        if isinstance(obb, dict):
-            required_fields = {"cx", "cy", "w", "h", "angle_deg", "normalized"}
-            if not required_fields.issubset(obb.keys()):
-                return None
-            if not _to_bool(obb.get("normalized"), False):
-                return None
-            cx = _to_float(obb.get("cx"))
-            cy = _to_float(obb.get("cy"))
-            w = _to_float(obb.get("w"))
-            h = _to_float(obb.get("h"))
-            angle = _to_float(obb.get("angle_deg"), 0.0)
-            if w <= 0 or h <= 0:
-                return None
-            corners = _rotated_rect_to_corners(
-                cx * float(width),
-                cy * float(height),
-                w * float(width),
-                h * float(height),
-                angle,
-            )
-
-        if corners is None:
-            bbox = ann.get("bbox_xywh")
-            if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
-                x, y, w, h = [_to_float(v) for v in bbox]
-                if w > 0 and h > 0:
-                    corners = _rect_to_corners(x, y, w, h)
-
-        if not corners:
-            return None
-
-        normalized = _normalize_obb_corners(corners, width=float(width), height=float(height))
-        values = " ".join(f"{value:.6f}" for value in normalized)
-        return f"{cls_idx} {values}"
 
     async def _resolve_base_model(
         self,

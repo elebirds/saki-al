@@ -41,8 +41,9 @@ class _ArtifactPlugin(ExecutorPlugin):
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
+            dataset_ir,
     ) -> None:
-        del workspace, labels, samples, annotations
+        del workspace, labels, samples, annotations, dataset_ir
 
     async def train(self, workspace, params: dict[str, Any], emit) -> TrainOutput:
         del params
@@ -236,6 +237,8 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {},
@@ -296,6 +299,8 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {},
@@ -337,6 +342,8 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {},
@@ -378,6 +385,8 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {},
@@ -420,6 +429,8 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
             "input_commit_id": "commit-1",
             "plugin_id": "artifact_plugin",
             "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {},

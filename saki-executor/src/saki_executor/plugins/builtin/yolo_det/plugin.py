@@ -62,15 +62,15 @@ class YoloDetectionPlugin(ExecutorPlugin):
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
-            dataset_ir: Any | None = None,
+            dataset_ir: Any,
     ) -> None:
         await self._internal.prepare_data(
             workspace=workspace,
             labels=labels,
             samples=samples,
             annotations=annotations,
-            infer_image_hw=_infer_image_hw,
             dataset_ir=dataset_ir,
+            infer_image_hw=_infer_image_hw,
         )
 
     async def train(
@@ -101,22 +101,6 @@ class YoloDetectionPlugin(ExecutorPlugin):
 
     async def stop(self, step_id: str) -> None:
         await self._internal.stop(step_id)
-
-    # Expose internal helper methods for existing tests.
-    def _annotation_to_yolo_obb_line(
-            self,
-            *,
-            ann: dict[str, Any],
-            cls_idx: int,
-            width: int,
-            height: int,
-    ) -> str | None:
-        return self._internal._annotation_to_yolo_obb_line(  # noqa: SLF001
-            ann=ann,
-            cls_idx=cls_idx,
-            width=width,
-            height=height,
-        )
 
     def _resolve_split_config(self, workspace: Workspace) -> tuple[int, float]:
         return self._internal._resolve_split_config(workspace)  # noqa: SLF001

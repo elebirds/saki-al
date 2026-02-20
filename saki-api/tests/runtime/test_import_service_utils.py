@@ -175,15 +175,12 @@ def test_build_image_entries_basename_overwrite_collision() -> None:
     assert not errors
 
 
-def test_manifest_image_entries_fallback_to_image_paths() -> None:
+def test_manifest_image_entries_requires_image_entries_field() -> None:
     manifest = {
         "image_paths": ["a/b/c/file.jpg"],
     }
     entries = ImportService._manifest_image_entries(manifest)
-    assert len(entries) == 1
-    assert entries[0].zip_entry_path == "a/b/c/file.jpg"
-    assert entries[0].resolved_sample_name == "a/b/c/file.jpg"
-    assert entries[0].original_relative_path == "a/b/c/file.jpg"
+    assert entries == []
 
 
 def test_build_voc_import_split_merges_split_keys_and_annotation_xmls(tmp_path: Path) -> None:

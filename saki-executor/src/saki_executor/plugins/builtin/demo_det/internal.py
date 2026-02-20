@@ -77,13 +77,13 @@ class DemoDetectionInternal:
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
-            dataset_ir: Any | None = None,
+            dataset_ir: Any,
     ) -> None:
         payload = {
             "labels": labels,
             "sample_count": len(samples),
             "annotation_count": len(annotations),
-            "ir_item_count": len(dataset_ir.items) if dataset_ir is not None else 0,
+            "ir_item_count": len(dataset_ir.items),
         }
         (workspace.data_dir / "dataset_manifest.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),

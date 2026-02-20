@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -192,33 +191,14 @@ class StepPipelineRunner:
             plugin=plugin,
             emit=emitter.emit,
         )
-        prepare_kwargs = self._build_prepare_data_kwargs(
-            plugin=plugin,
-            ir_batch=data_bundle.ir_batch,
-        )
         await plugin.prepare_data(
             workspace,
             data_bundle.labels,
             data_bundle.train_samples,
             data_bundle.train_annotations,
-            **prepare_kwargs,
+            data_bundle.ir_batch,
         )
         return data_bundle.protected
-
-    @staticmethod
-    def _build_prepare_data_kwargs(*, plugin: Any, ir_batch: Any) -> dict[str, Any]:
-        try:
-            signature = inspect.signature(plugin.prepare_data)
-        except (TypeError, ValueError):
-            return {}
-
-        parameters = signature.parameters
-        if "dataset_ir" in parameters:
-            return {"dataset_ir": ir_batch}
-        for parameter in parameters.values():
-            if parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                return {"dataset_ir": ir_batch}
-        return {}
 
     async def _run_train_and_sample_pipeline(
         self,

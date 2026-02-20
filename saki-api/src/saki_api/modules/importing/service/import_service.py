@@ -230,7 +230,6 @@ class ImportService:
             "path_flatten_mode": path_flatten_mode.value,
             "name_collision_policy": name_collision_policy.value,
             "image_entries": [item.model_dump(mode="json") for item in image_entries],
-            "image_paths": image_paths,
             "summary": summary,
             "warnings": [item.model_dump(mode="json") for item in issues_warnings],
             "errors": [item.model_dump(mode="json") for item in issues_errors],
@@ -564,7 +563,6 @@ class ImportService:
             "name_collision_policy": name_collision_policy.value,
             "target": normalized_target.model_dump(mode="json"),
             "image_entries": [item.model_dump(mode="json") for item in image_entries],
-            "image_paths": image_paths,
             "prepared_annotations": [item.to_json() for item in prepared_annotations],
             "planned_new_labels": planned_new_labels,
             "summary": summary,
@@ -2286,25 +2284,7 @@ class ImportService:
                 parsed.append(ImportImageEntry.model_validate(item))
             except Exception:  # noqa: BLE001
                 continue
-
-        if parsed:
-            return parsed
-
-        # Backward compatibility for manifests generated before image_entries rollout.
-        legacy_entries: list[ImportImageEntry] = []
-        for item in (manifest.get("image_paths") or []):
-            path = ImportService._normalize_name_key(str(item or ""))
-            if not path:
-                continue
-            legacy_entries.append(
-                ImportImageEntry(
-                    zip_entry_path=path,
-                    resolved_sample_name=path,
-                    original_relative_path=path,
-                    collision_action=_IMAGE_COLLISION_ACTION_NONE,
-                )
-            )
-        return legacy_entries
+        return parsed
 
     @staticmethod
     def _manifest_path_flatten_mode(manifest: dict[str, Any]) -> PathFlattenMode:

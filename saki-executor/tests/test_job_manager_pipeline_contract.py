@@ -25,6 +25,8 @@ def test_job_execution_request_from_payload_requires_explicit_fields():
             "plugin_id": "demo_det_v1",
             "round_index": "2",
             "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "query_strategy": "random_baseline",
             "resolved_params": {"topk": 10},
         }
@@ -34,6 +36,34 @@ def test_job_execution_request_from_payload_requires_explicit_fields():
     assert request.mode == "simulation"
     assert request.round_index == 2
     assert request.query_strategy == "random_baseline"
+
+
+def test_job_execution_request_requires_step_type_and_dispatch_kind():
+    with pytest.raises(ValueError, match="step_type is required"):
+        StepExecutionRequest.from_payload(
+            {
+                "step_id": "step-1",
+                "round_id": "round-1",
+                "plugin_id": "demo_det_v1",
+                "round_index": 1,
+                "mode": "simulation",
+                "dispatch_kind": "dispatchable",
+                "query_strategy": "random_baseline",
+            }
+        )
+
+    with pytest.raises(ValueError, match="dispatch_kind is required"):
+        StepExecutionRequest.from_payload(
+            {
+                "step_id": "step-1",
+                "round_id": "round-1",
+                "plugin_id": "demo_det_v1",
+                "round_index": 1,
+                "mode": "simulation",
+                "step_type": "train",
+                "query_strategy": "random_baseline",
+            }
+        )
 
 
 @pytest.mark.anyio
@@ -54,6 +84,8 @@ async def test_assign_step_passes_typed_request_to_run_step(tmp_path: Path):
             "input_commit_id": "commit-1",
             "plugin_id": "demo_det_v1",
             "mode": "active_learning",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "query_strategy": "uncertainty_1_minus_max_conf",
             "round_index": 1,
             "resolved_params": {"topk": 10},

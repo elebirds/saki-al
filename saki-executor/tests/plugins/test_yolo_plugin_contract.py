@@ -28,49 +28,6 @@ def test_yolo_plugin_validate_params():
     )
 
 
-def test_yolo_plugin_parse_normalized_obb_payload():
-    plugin = YoloDetectionPlugin()
-    line = plugin._annotation_to_yolo_obb_line(  # noqa: SLF001
-        ann={
-            "obb": {
-                "cx": 0.5,
-                "cy": 0.5,
-                "w": 0.4,
-                "h": 0.2,
-                "angle_deg": 30.0,
-                "normalized": True,
-            }
-        },
-        cls_idx=1,
-        width=1000,
-        height=500,
-    )
-    assert line is not None
-    values = line.split()
-    assert values[0] == "1"
-    assert len(values) == 9
-
-
-def test_yolo_plugin_rejects_legacy_obb_payload():
-    plugin = YoloDetectionPlugin()
-    line = plugin._annotation_to_yolo_obb_line(  # noqa: SLF001
-        ann={
-            "obb": {
-                "cx": 0.5,
-                "cy": 0.5,
-                "width": 0.4,
-                "height": 0.2,
-                "angle": 30.0,
-                "normalized": True,
-            }
-        },
-        cls_idx=1,
-        width=1000,
-        height=500,
-    )
-    assert line is None
-
-
 def test_yolo_plugin_resolve_split_seed_from_workspace_config(tmp_path: Path):
     plugin = YoloDetectionPlugin()
     workspace = Workspace(str(tmp_path), "job-1")
@@ -104,23 +61,28 @@ def test_yolo_prepare_data_infers_hw_from_source_path(tmp_path: Path, monkeypatc
     monkeypatch.setattr(yolo_plugin_module, "_infer_image_hw", _fake_infer)
 
     labels = [{"id": "label-1", "name": "ship"}]
-    samples = [{"id": "sample-1", "local_path": str(image_path), "width": 0, "height": 0}]
+    samples_for_plugin = [{"id": "sample-1", "local_path": str(image_path), "width": 0, "height": 0}]
+    samples_for_ir = [{"id": "sample-1", "local_path": str(image_path), "width": 1000, "height": 500}]
     annotations = [
         {
             "sample_id": "sample-1",
             "category_id": "label-1",
             "obb": {
-                "cx": 0.5,
-                "cy": 0.5,
-                "w": 0.4,
-                "h": 0.2,
-                "angle_deg": 30.0,
-                "normalized": True,
+                "cx": 500.0,
+                "cy": 250.0,
+                "width": 400.0,
+                "height": 200.0,
+                "angle_deg_ccw": 30.0,
             },
         }
     ]
+    dataset_ir, _ = build_training_batch_ir(
+        labels=labels,
+        samples=samples_for_ir,
+        annotations=annotations,
+    )
 
-    asyncio.run(plugin.prepare_data(workspace, labels, samples, annotations))
+    asyncio.run(plugin.prepare_data(workspace, labels, samples_for_plugin, annotations, dataset_ir=dataset_ir))
     assert called["path"] == image_path
 
     label_file = workspace.data_dir / "labels" / "train" / "sample-1.txt"

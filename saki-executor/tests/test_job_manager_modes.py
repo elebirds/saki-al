@@ -45,8 +45,9 @@ class _ModeAwarePlugin(ExecutorPlugin):
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
+            dataset_ir,
     ) -> None:
-        del workspace, labels
+        del workspace, labels, dataset_ir
         self.prepare_samples_count = len(samples)
         self.prepare_annotations_count = len(annotations)
 
@@ -170,6 +171,8 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {},
@@ -221,6 +224,8 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {"topk": 10},
@@ -273,6 +278,7 @@ async def test_score_step_skips_training_and_only_runs_sampling(tmp_path: Path):
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
             "step_type": "score",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {"topk": 10},
@@ -324,6 +330,7 @@ async def test_eval_step_trains_without_sampling(tmp_path: Path):
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
             "step_type": "eval",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {"topk": 10},
@@ -402,6 +409,8 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "active_learning",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
             "resolved_params": {"topk": 2, "unlabeled_page_size": 3},
@@ -500,6 +509,8 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
                 "input_commit_id": "commit-1",
                 "plugin_id": plugin.plugin_id,
                 "mode": "unexpected_mode",
+                "step_type": "train",
+                "dispatch_kind": "dispatchable",
                 "round_index": 1,
                 "query_strategy": "uncertainty_1_minus_max_conf",
                 "resolved_params": {},

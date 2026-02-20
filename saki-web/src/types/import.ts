@@ -97,7 +97,6 @@ export interface SampleBulkImportRequest {
     previewToken?: string;
     zipAssetId?: string;
     imageEntries?: ImportImageEntry[];
-    imagePaths?: string[];
 }
 
 export type AnnotationBulkSource = 'direct' | 'import_preview';

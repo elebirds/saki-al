@@ -134,7 +134,6 @@ class SampleBulkImportRequest(BaseModel):
     preview_token: str | None = None
     zip_asset_id: uuid.UUID | None = None
     image_entries: list[ImportImageEntry] = Field(default_factory=list)
-    image_paths: list[str] = Field(default_factory=list)
 
 
 class AnnotationBulkSource(str, Enum):

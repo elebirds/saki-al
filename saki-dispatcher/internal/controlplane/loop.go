@@ -594,12 +594,12 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		return false, err
 	}
 
-	stepSpecs := stepSpecsByMode(loop.Mode)
-	if len(stepSpecs) == 0 {
-		return false, fmt.Errorf("unsupported loop mode for step specs: %s", loop.Mode)
+	stepPlan := stepPlanByMode(loop.Mode)
+	if len(stepPlan) == 0 {
+		return false, fmt.Errorf("unsupported loop mode for step plan: %s", loop.Mode)
 	}
 	var previousStepID *uuid.UUID
-	for idx, stepType := range stepSpecs {
+	for idx, stepSpec := range stepPlan {
 		stepID := uuid.New()
 		dependsOn := make([]uuid.UUID, 0, 1)
 		if previousStepID != nil {
@@ -609,15 +609,11 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		if err != nil {
 			return false, err
 		}
-		dispatchKind := db.StepdispatchkindDISPATCHABLE
-		if isOrchestratorStepType(stepType) {
-			dispatchKind = db.StepdispatchkindORCHESTRATOR
-		}
 		if err := s.qtx(tx).InsertStep(ctx, db.InsertStepParams{
 			StepID:           stepID,
 			RoundID:          roundID,
-			StepType:         stepType,
-			DispatchKind:     dispatchKind,
+			StepType:         stepSpec.StepType,
+			DispatchKind:     stepSpec.DispatchKind,
 			RoundIndex:       int32(nextRound),
 			StepIndex:        int32(idx + 1),
 			DependsOnStepIds: []byte(dependsOnJSON),
@@ -632,10 +628,7 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		}
 	}
 
-	phase, ok := phaseForStep(loop.Mode, stepSpecs[0])
-	if !ok {
-		return false, fmt.Errorf("cannot resolve initial phase for loop mode=%s step_type=%s", loop.Mode, stepSpecs[0])
-	}
+	phase := stepPlan[0].Phase
 
 	if err := s.qtx(tx).UpdateLoopAfterRoundCreated(ctx, db.UpdateLoopAfterRoundCreatedParams{
 		CurrentIteration: int32(nextRound),

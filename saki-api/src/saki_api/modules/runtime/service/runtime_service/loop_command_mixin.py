@@ -18,7 +18,7 @@ from saki_api.modules.runtime.api.round_step import (
 )
 from saki_api.modules.runtime.domain import phase_for_mode
 from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.shared.modeling.enums import LoopMode, LoopStatus, LoopPhase
+from saki_api.modules.shared.modeling.enums import LoopMode
 
 
 class LoopCommandMixin:
@@ -227,56 +227,3 @@ class LoopCommandMixin:
                 loops.append(loop)
 
         return group_id, loops
-
-    @transactional
-    async def confirm_loop_step(self, loop_id: uuid.UUID) -> Loop:
-        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.mode != LoopMode.MANUAL:
-            raise BadRequestAppException("confirm is only available in manual mode")
-        if loop.phase != LoopPhase.MANUAL_EVAL:
-            raise BadRequestAppException("loop is not waiting for manual confirmation")
-
-        return await self.loop_repo.update_or_raise(
-            loop_id,
-            LoopPatch(phase=LoopPhase.MANUAL_FINALIZE).model_dump(exclude_none=True),
-        )
-
-    @transactional
-    async def start_loop(self, loop_id: uuid.UUID) -> Loop:
-        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.status not in {LoopStatus.DRAFT, LoopStatus.STOPPED}:
-            raise BadRequestAppException(f"Loop in status {loop.status} cannot be started")
-        return await self.loop_repo.update_or_raise(
-            loop_id,
-            LoopPatch(status=LoopStatus.RUNNING).model_dump(exclude_none=True),
-        )
-
-    @transactional
-    async def pause_loop(self, loop_id: uuid.UUID) -> Loop:
-        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.status != LoopStatus.RUNNING:
-            raise BadRequestAppException(f"Loop in status {loop.status} cannot be paused")
-        return await self.loop_repo.update_or_raise(
-            loop_id,
-            LoopPatch(status=LoopStatus.PAUSED).model_dump(exclude_none=True),
-        )
-
-    @transactional
-    async def resume_loop(self, loop_id: uuid.UUID) -> Loop:
-        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.status != LoopStatus.PAUSED:
-            raise BadRequestAppException(f"Loop in status {loop.status} cannot be resumed")
-        return await self.loop_repo.update_or_raise(
-            loop_id,
-            LoopPatch(status=LoopStatus.RUNNING).model_dump(exclude_none=True),
-        )
-
-    @transactional
-    async def stop_loop(self, loop_id: uuid.UUID) -> Loop:
-        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.status not in {LoopStatus.RUNNING, LoopStatus.PAUSED}:
-            raise BadRequestAppException(f"Loop in status {loop.status} cannot be stopped")
-        return await self.loop_repo.update_or_raise(
-            loop_id,
-            LoopPatch(status=LoopStatus.STOPPING).model_dump(exclude_none=True),
-        )

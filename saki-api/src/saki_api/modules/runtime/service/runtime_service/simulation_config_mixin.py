@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import math
 import uuid
 from typing import Any
 
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.modules.runtime.api.round_step import LoopSimulationConfig
-from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase
 from saki_api.modules.system.service.system_settings_reader import system_settings_reader
 
 
@@ -78,55 +75,3 @@ class SimulationConfigMixin:
             include=include,
         )
         return self._normalize_simulation_config({**defaults, **payload})
-
-    async def _resolve_simulation_round(
-        self,
-        *,
-        loop: Loop,
-        next_round: int,
-        source_commit_id: uuid.UUID | None,
-        params: dict[str, Any],
-    ) -> tuple[uuid.UUID | None, LoopPhase, dict[str, Any]]:
-        if loop.mode != LoopMode.SIMULATION:
-            if loop.mode == LoopMode.MANUAL:
-                return source_commit_id, LoopPhase.MANUAL_TRAIN, dict(loop.phase_meta or {})
-            return source_commit_id, LoopPhase.AL_TRAIN, dict(loop.phase_meta or {})
-
-        simulation = LoopSimulationConfig.model_validate((loop.global_config or {}).get("simulation") or {})
-        if simulation.oracle_commit_id is None:
-            raise RuntimeError("simulation mode requires oracle_commit_id")
-
-        oracle_commit_id = simulation.oracle_commit_id
-        total_count = await self.annotation_gateway.count_samples_at_commit(oracle_commit_id)
-        if total_count <= 0:
-            raise RuntimeError("simulation oracle commit has no labeled samples")
-
-        seed_ratio = float(simulation.seed_ratio or 0.05)
-        step_ratio = float(simulation.step_ratio or 0.05)
-        target_ratio = min(1.0, seed_ratio + (next_round - 1) * step_ratio)
-        prev_ratio = float((loop.phase_meta or {}).get("current_ratio") or 0.0)
-        prev_selected = int((loop.phase_meta or {}).get("selected_count") or max(1, math.ceil(seed_ratio * total_count)))
-        target_total = max(prev_selected, int(math.ceil(target_ratio * total_count)))
-        add_count = max(0, target_total - prev_selected)
-
-        phase_meta = dict(loop.phase_meta or {})
-        phase_meta.update(
-            {
-                "total_count": total_count,
-                "current_ratio": target_ratio,
-                "selected_count": target_total,
-                "add_count": add_count,
-                "prev_ratio": prev_ratio,
-            }
-        )
-
-        params["simulation"] = {
-            "oracle_commit_id": str(oracle_commit_id),
-            "seed_ratio": seed_ratio,
-            "step_ratio": step_ratio,
-            "target_ratio": target_ratio,
-            "total_count": total_count,
-            "add_count": add_count,
-            "single_seed": int(simulation.single_seed or 0),
-        }
-        return oracle_commit_id, LoopPhase.SIM_TRAIN, phase_meta

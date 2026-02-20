@@ -64,6 +64,34 @@ type stepDispatchPayload struct {
 	roundInputCommitID *uuid.UUID
 }
 
+type loopModeStepSpec struct {
+	StepType     db.Steptype
+	DispatchKind db.Stepdispatchkind
+	Phase        db.Loopphase
+}
+
+var loopModeStepPlan = map[db.Loopmode][]loopModeStepSpec{
+	modeAL: {
+		{StepType: db.SteptypeTRAIN, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseALTrain},
+		{StepType: db.SteptypeSCORE, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseALScore},
+		{StepType: db.SteptypeEVAL, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseALEval},
+		{StepType: db.SteptypeSELECT, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseALSelect},
+	},
+	modeSIM: {
+		{StepType: db.SteptypeTRAIN, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimTrain},
+		{StepType: db.SteptypeSCORE, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimScore},
+		{StepType: db.SteptypeEVAL, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimEval},
+		{StepType: db.SteptypeSELECT, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseSimSelect},
+		{StepType: db.SteptypeACTIVATESAMPLES, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseSimActivate},
+		{StepType: db.SteptypeADVANCEBRANCH, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseSimActivate},
+	},
+	modeManual: {
+		{StepType: db.SteptypeTRAIN, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseManualTrain},
+		{StepType: db.SteptypeEVAL, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseManualEval},
+		{StepType: db.SteptypeEXPORT, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseManualExport},
+	},
+}
+
 // stoppingStep is used by STOPPING drain logic.
 type stoppingStep struct {
 	ID        uuid.UUID
@@ -158,83 +186,48 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 	return row, nil
 }
 
-func stepSpecsByMode(mode db.Loopmode) []db.Steptype {
-	switch mode {
-	case modeAL:
-		return []db.Steptype{
-			db.SteptypeTRAIN,
-			db.SteptypeSCORE,
-			db.SteptypeEVAL,
-			db.SteptypeSELECT,
-		}
-	case modeSIM:
-		return []db.Steptype{
-			db.SteptypeTRAIN,
-			db.SteptypeSCORE,
-			db.SteptypeEVAL,
-			db.SteptypeSELECT,
-			db.SteptypeACTIVATESAMPLES,
-			db.SteptypeADVANCEBRANCH,
-		}
-	case modeManual:
-		return []db.Steptype{
-			db.SteptypeTRAIN,
-			db.SteptypeEVAL,
-			db.SteptypeEXPORT,
-		}
-	default:
+func stepPlanByMode(mode db.Loopmode) []loopModeStepSpec {
+	specs, ok := loopModeStepPlan[mode]
+	if !ok || len(specs) == 0 {
 		return nil
 	}
+	result := make([]loopModeStepSpec, len(specs))
+	copy(result, specs)
+	return result
+}
+
+func stepSpecsByMode(mode db.Loopmode) []db.Steptype {
+	plan := stepPlanByMode(mode)
+	if len(plan) == 0 {
+		return nil
+	}
+	result := make([]db.Steptype, 0, len(plan))
+	for _, item := range plan {
+		result = append(result, item.StepType)
+	}
+	return result
 }
 
 func phaseForStep(mode db.Loopmode, stepType db.Steptype) (db.Loopphase, bool) {
+	for _, item := range stepPlanByMode(mode) {
+		if item.StepType == stepType {
+			return item.Phase, true
+		}
+	}
 	switch mode {
 	case modeAL:
-		switch stepType {
-		case db.SteptypeTRAIN:
-			return phaseALTrain, true
-		case db.SteptypeSCORE:
-			return phaseALScore, true
-		case db.SteptypeEVAL:
-			return phaseALEval, true
-		case db.SteptypeSELECT:
-			return phaseALSelect, true
-		case db.SteptypeWAITANNOTATION:
+		if stepType == db.SteptypeWAITANNOTATION {
 			return phaseALWaitAnnotation, true
-		default:
-			return "", false
-		}
-	case modeSIM:
-		switch stepType {
-		case db.SteptypeTRAIN:
-			return phaseSimTrain, true
-		case db.SteptypeSCORE:
-			return phaseSimScore, true
-		case db.SteptypeEVAL:
-			return phaseSimEval, true
-		case db.SteptypeSELECT:
-			return phaseSimSelect, true
-		case db.SteptypeACTIVATESAMPLES, db.SteptypeADVANCEBRANCH:
-			return phaseSimActivate, true
-		default:
-			return "", false
 		}
 	case modeManual:
-		switch stepType {
-		case db.SteptypeTRAIN:
-			return phaseManualTrain, true
-		case db.SteptypeEVAL:
-			return phaseManualEval, true
-		case db.SteptypeEXPORT, db.SteptypeUPLOADARTIFACT:
+		if stepType == db.SteptypeUPLOADARTIFACT {
 			return phaseManualExport, true
-		case db.SteptypeMANUALREVIEW:
-			return phaseManualEval, true
-		default:
-			return "", false
 		}
-	default:
-		return "", false
+		if stepType == db.SteptypeMANUALREVIEW {
+			return phaseManualEval, true
+		}
 	}
+	return "", false
 }
 
 func toRuntimeStepType(raw db.Steptype) runtimecontrolv1.RuntimeStepType {

@@ -154,6 +154,30 @@ func TestStepSpecsByMode(t *testing.T) {
 	}
 }
 
+func TestStepPlanByModeDispatchKinds(t *testing.T) {
+	plan := stepPlanByMode(modeSIM)
+	if len(plan) != 6 {
+		t.Fatalf("simulation step plan size mismatch: %d", len(plan))
+	}
+	last := plan[len(plan)-1]
+	if last.StepType != db.SteptypeADVANCEBRANCH {
+		t.Fatalf("last sim step mismatch: %s", last.StepType)
+	}
+	if last.DispatchKind != db.StepdispatchkindORCHESTRATOR {
+		t.Fatalf("last sim step dispatch kind mismatch: %s", last.DispatchKind)
+	}
+
+	manualPlan := stepPlanByMode(modeManual)
+	if len(manualPlan) != 3 {
+		t.Fatalf("manual step plan size mismatch: %d", len(manualPlan))
+	}
+	for _, item := range manualPlan {
+		if item.DispatchKind != db.StepdispatchkindDISPATCHABLE {
+			t.Fatalf("manual step should be dispatchable: %s => %s", item.StepType, item.DispatchKind)
+		}
+	}
+}
+
 func TestPhaseForStep(t *testing.T) {
 	if phase, ok := phaseForStep(modeAL, db.SteptypeWAITANNOTATION); !ok || phase != phaseALWaitAnnotation {
 		t.Fatalf("phase mapping mismatch for AL wait_annotation: ok=%v phase=%s", ok, phase)

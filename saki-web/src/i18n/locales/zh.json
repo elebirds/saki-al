@@ -957,6 +957,7 @@
       "subtitle": "按数据集与格式流式导出，前端直接落盘，避免后端整包占用资源。",
       "metaLoadError": "加载导出元信息失败",
       "noAvailableExportProfile": "当前项目能力下没有可用的导出格式，请先调整项目标注类型配置。",
+      "fedoObbOnlyHint": "已选 FEDO 数据集，导出格式仅可使用支持 OBB 的选项。",
       "configTitle": "导出配置",
       "statusTitle": "导出状态",
       "start": "开始导出",

@@ -12,6 +12,7 @@ class ImportFormat(str, Enum):
     COCO = "coco"
     VOC = "voc"
     YOLO = "yolo"
+    YOLO_OBB = "yolo_obb"
 
 
 class ConflictStrategy(str, Enum):
@@ -71,13 +72,13 @@ class ImportProgressEvent(BaseModel):
 
 
 class AnnotationDryRunPayload(BaseModel):
-    format: ImportFormat
+    format_profile: ImportFormat
     dataset_id: uuid.UUID
     branch_name: str = "master"
 
 
 class AssociatedDryRunPayload(BaseModel):
-    format: ImportFormat
+    format_profile: ImportFormat
     branch_name: str = "master"
     target_dataset_mode: AssociatedDatasetMode
     target_dataset_id: uuid.UUID | None = None

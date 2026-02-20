@@ -2,6 +2,7 @@ import type {TFunction} from 'i18next';
 
 const IMPORT_SUMMARY_KEY_ORDER = [
     'mode',
+    'format_profile',
     'format',
     'branch_name',
     'target_dataset_mode',
@@ -88,7 +89,7 @@ export function formatImportSummaryValue(t: TFunction, key: string, value: unkno
             const modeText = t(`import.workspace.summaryValue.targetDatasetMode.${text}`, {defaultValue: ''}).trim();
             return modeText || text;
         }
-        if (normalizedKey === 'format') {
+        if (normalizedKey === 'format' || normalizedKey === 'format_profile') {
             const formatText = t(`import.workspace.summaryValue.format.${text}`, {defaultValue: ''}).trim();
             return formatText || text.toUpperCase();
         }

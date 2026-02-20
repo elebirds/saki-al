@@ -192,6 +192,7 @@ TaskServiceDep = Annotated["TaskService", Depends(get_task_service)]
 
 from saki_api.modules.project.service.project import ProjectService
 from saki_api.modules.project.service.label import LabelService
+from saki_api.modules.project.service.export import ExportService
 
 
 def get_project_service(
@@ -210,6 +211,15 @@ def get_label_service(
 
 
 LabelServiceDep = Annotated[LabelService, Depends(get_label_service)]
+
+
+def get_export_service(
+        session: AsyncSession = Depends(get_session),
+) -> ExportService:
+    return ExportService(session=session)
+
+
+ExportServiceDep = Annotated[ExportService, Depends(get_export_service)]
 
 
 def get_annotation_bulk_service(

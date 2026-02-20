@@ -108,6 +108,7 @@ const getPermissionCategories = (
                 {value: 'dataset:delete:all', label: t('role.management.permissionLabels.datasetDeleteAll')},
                 {value: 'dataset:assign:all', label: t('role.management.permissionLabels.datasetAssignAll')},
                 {value: 'dataset:link_project:all', label: t('role.management.permissionLabels.datasetLinkProjectAll')},
+                {value: 'dataset:export:all', label: t('role.management.permissionLabels.datasetExportAll')},
                 {value: 'dataset:import:all', label: t('role.management.permissionLabels.datasetImportAll')},
             ],
         },
@@ -121,6 +122,7 @@ const getPermissionCategories = (
                     value: 'dataset:link_project:assigned',
                     label: t('role.management.permissionLabels.datasetLinkProjectAssigned')
                 },
+                {value: 'dataset:export:assigned', label: t('role.management.permissionLabels.datasetExportAssigned')},
                 {value: 'dataset:import:assigned', label: t('role.management.permissionLabels.datasetImportAssigned')},
             ],
         },
@@ -180,6 +182,7 @@ const getPermissionCategories = (
                 {value: 'project:archive:all', label: t('role.management.permissionLabels.projectArchiveAll')},
                 {value: 'project:delete:all', label: t('role.management.permissionLabels.projectDeleteAll')},
                 {value: 'project:assign:all', label: t('role.management.permissionLabels.projectAssignAll')},
+                {value: 'project:export:all', label: t('role.management.permissionLabels.projectExportAll')},
             ],
         },
         {
@@ -193,6 +196,7 @@ const getPermissionCategories = (
                 },
                 {value: 'project:delete:assigned', label: t('role.management.permissionLabels.projectDeleteAssigned')},
                 {value: 'project:assign:assigned', label: t('role.management.permissionLabels.projectAssignAssigned')},
+                {value: 'project:export:assigned', label: t('role.management.permissionLabels.projectExportAssigned')},
             ],
         },
         {

@@ -12,6 +12,7 @@ import ProjectSamplesAnnotations from './pages/project/ProjectSamplesAnnotations
 import ProjectInsights from './pages/project/ProjectInsights';
 import ProjectSettings from './pages/project/ProjectSettings';
 import ProjectWorkspace from './pages/project/ProjectWorkspace';
+import ProjectExportWorkspace from './pages/export/ProjectExportWorkspace';
 import DatasetImportWorkspace from './pages/import/DatasetImportWorkspace';
 import ProjectImportWorkspace from './pages/import/ProjectImportWorkspace';
 import ProjectLoopOverview from './pages/project/loops/ProjectLoopOverview';
@@ -70,6 +71,7 @@ const App: React.FC = () => {
                                     <Route path="commits/:commitId" element={<ProjectCommitDetail/>}/>
                                     <Route path="samples" element={<ProjectSamplesAnnotations/>}/>
                                     <Route path="import" element={<ProjectImportWorkspace/>}/>
+                                    <Route path="export" element={<ProjectExportWorkspace/>}/>
                                     <Route path="loops" element={<ProjectLoopOverview/>}/>
                                     <Route path="loops/:loopId" element={<ProjectLoopDetail/>}/>
                                     <Route path="loops/:loopId/rounds/:roundId" element={<ProjectLoopRoundDetail/>}/>

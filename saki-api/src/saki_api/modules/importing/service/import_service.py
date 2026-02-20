@@ -326,7 +326,7 @@ class ImportService:
             "project_id": str(project_id),
             "dataset_id": str(dataset_id),
             "branch_name": branch_name,
-            "format": fmt.value,
+            "format_profile": fmt.value,
             "total_annotations": len(prepared_annotations),
             "matched_annotations": matched_annotations,
             "skipped_annotations": skipped_annotations,
@@ -340,7 +340,7 @@ class ImportService:
             "project_id": str(project_id),
             "dataset_id": str(dataset_id),
             "branch_name": branch_name,
-            "format": fmt.value,
+            "format_profile": fmt.value,
             "prepared_annotations": [item.to_json() for item in prepared_annotations],
             "planned_new_labels": planned_new_labels,
             "summary": summary,
@@ -352,7 +352,7 @@ class ImportService:
             "project_id": str(project_id),
             "dataset_id": str(dataset_id),
             "branch_name": branch_name,
-            "format": fmt.value,
+            "format_profile": fmt.value,
         }
 
         return await self._build_dry_run_response(
@@ -498,7 +498,7 @@ class ImportService:
             "mode": "project_associated",
             "project_id": str(project_id),
             "branch_name": branch_name,
-            "format": fmt.value,
+            "format_profile": fmt.value,
             "target_dataset_mode": normalized_target.mode.value,
             "image_candidates": len(image_paths),
             "total_annotations": len(prepared_annotations),
@@ -513,7 +513,7 @@ class ImportService:
             "mode": "project_associated",
             "project_id": str(project_id),
             "branch_name": branch_name,
-            "format": fmt.value,
+            "format_profile": fmt.value,
             "target": normalized_target.model_dump(mode="json"),
             "image_paths": image_paths,
             "prepared_annotations": [item.to_json() for item in prepared_annotations],
@@ -526,7 +526,7 @@ class ImportService:
             "mode": "project_associated",
             "project_id": str(project_id),
             "branch_name": branch_name,
-            "format": fmt.value,
+            "format_profile": fmt.value,
             "target": normalized_target.model_dump(mode="json"),
         }
 
@@ -778,7 +778,7 @@ class ImportService:
 
         dataset_id = manifest_dataset_id(manifest)
         branch_name = str(manifest.get("branch_name") or "master")
-        fmt = str(manifest.get("format") or "")
+        fmt = str(manifest.get("format_profile") or "")
         self._assert_preview_params_hash(
             token_payload,
             {
@@ -786,7 +786,7 @@ class ImportService:
                 "project_id": str(project_id),
                 "dataset_id": str(dataset_id),
                 "branch_name": branch_name,
-                "format": fmt,
+                "format_profile": fmt,
             },
         )
 
@@ -816,7 +816,7 @@ class ImportService:
                 "project_id": str(project_id),
                 "dataset_id": str(dataset_id),
                 "branch_name": branch_name,
-                "format": fmt,
+                "format_profile": fmt,
                 "commit_id": str(commit_id) if commit_id else None,
                 **stats,
             }
@@ -832,7 +832,7 @@ class ImportService:
                     "project_id": str(project_id),
                     "dataset_id": str(dataset_id),
                     "branch_name": branch_name,
-                    "format": fmt,
+                    "format_profile": fmt,
                     "failed": True,
                     "error": str(exc),
                 }
@@ -856,7 +856,7 @@ class ImportService:
         )
 
         branch_name = str(manifest.get("branch_name") or "master")
-        fmt = str(manifest.get("format") or "")
+        fmt = str(manifest.get("format_profile") or "")
         image_paths = [str(item) for item in (manifest.get("image_paths") or [])]
         prepared_annotations = [PreparedAnnotation.from_json(item) for item in (manifest.get("prepared_annotations") or [])]
         planned_new_labels = [str(item) for item in (manifest.get("planned_new_labels") or [])]
@@ -868,7 +868,7 @@ class ImportService:
                 "mode": "project_associated",
                 "project_id": str(project_id),
                 "branch_name": branch_name,
-                "format": fmt,
+                "format_profile": fmt,
                 "target": target.model_dump(mode="json"),
             },
         )
@@ -938,7 +938,7 @@ class ImportService:
                     "project_id": str(project_id),
                     "dataset_id": str(dataset.id),
                     "branch_name": branch_name,
-                    "format": fmt,
+                    "format_profile": fmt,
                     "target_dataset_mode": target.mode.value,
                     "commit_id": str(commit_id) if commit_id else None,
                     **image_stats,
@@ -955,7 +955,7 @@ class ImportService:
                 {
                     "project_id": str(project_id),
                     "branch_name": branch_name,
-                    "format": fmt,
+                    "format_profile": fmt,
                     "target_dataset_mode": target.mode.value,
                     "failed": True,
                     "error": str(exc),
@@ -1559,12 +1559,16 @@ class ImportService:
                 raise BadRequestAppException("VOC dataset structure not found in ZIP")
             split = self._build_voc_import_split(voc_root)
             batch = load_voc_dataset(voc_root, split=split, ctx=ctx, report=report)
-        elif fmt == ImportFormat.YOLO:
+        elif fmt in {ImportFormat.YOLO, ImportFormat.YOLO_OBB}:
             yolo_root = self._find_yolo_root(root)
             if yolo_root is None:
                 raise BadRequestAppException("YOLO dataset structure not found in ZIP")
             split = self._pick_yolo_split(yolo_root)
             yolo_format = self._detect_yolo_label_format(yolo_root, split)
+            if fmt == ImportFormat.YOLO and yolo_format != "det":
+                raise BadRequestAppException("format_profile=yolo 仅支持 DET 标签")
+            if fmt == ImportFormat.YOLO_OBB and yolo_format == "det":
+                raise BadRequestAppException("format_profile=yolo_obb 仅支持 OBB 标签")
             batch = load_yolo_dataset(
                 yolo_root,
                 split=split,
@@ -1579,7 +1583,7 @@ class ImportService:
                 report=report,
             )
         else:
-            raise BadRequestAppException(f"Unsupported annotation format: {fmt.value}")
+            raise BadRequestAppException(f"Unsupported annotation format_profile: {fmt.value}")
 
         labels_by_id, samples, annotations = split_batch(batch, ctx=ctx, report=report)
 

@@ -192,7 +192,7 @@ const ProtectedLayout: React.FC = () => {
         const rest = location.pathname.replace(basePath, '')
         if (!rest || rest === '/') return
         const segment = rest.split('/').filter(Boolean)[0]
-        const passthroughSegments = new Set(['workspace', 'members', 'import'])
+        const passthroughSegments = new Set(['workspace', 'members', 'import', 'export'])
         if (segment && passthroughSegments.has(segment)) {
             return
         }

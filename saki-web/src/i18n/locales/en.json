@@ -957,6 +957,7 @@
       "subtitle": "Stream datasets by selected format directly to local files to avoid backend full-package load.",
       "metaLoadError": "Failed to load export metadata",
       "noAvailableExportProfile": "No export format is available for this project's annotation capabilities.",
+      "fedoObbOnlyHint": "FEDO datasets are selected. Only OBB-compatible export formats are allowed.",
       "configTitle": "Export Configuration",
       "statusTitle": "Export Status",
       "start": "Start Export",

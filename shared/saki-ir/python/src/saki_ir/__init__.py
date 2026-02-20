@@ -23,6 +23,13 @@ from saki_ir.convert.io import (
     save_yolo_dataset,
 )
 from saki_ir.dataframe import to_dataframe
+from saki_ir.format_profiles import (
+    FormatProfile,
+    FormatProfileId,
+    filter_profiles_by_annotation_types,
+    get_format_profile,
+    list_format_profiles,
+)
 from saki_ir.normalize import normalize_ir, validate_ir
 from saki_ir.transport import (
     ChunkAssembler,
@@ -62,6 +69,11 @@ __all__ = [
     "read_header",
     "iter_items",
     "to_dataframe",
+    "FormatProfileId",
+    "FormatProfile",
+    "list_format_profiles",
+    "get_format_profile",
+    "filter_profiles_by_annotation_types",
     "serialize_header",
     "parse_header",
     "split_encoded_payload",

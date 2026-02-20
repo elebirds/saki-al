@@ -178,6 +178,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             time_energy_asset_id: str,
             l_omegad_asset_id: str,
             metadata: Dict[str, Any],
+            time_energy_image_meta: Dict[str, Any],
             lookup_asset_id: Optional[str] = None,
             data_asset_id: Optional[str] = None,
     ) -> ProcessResult:
@@ -200,10 +201,22 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             sample_fields={
                 "meta_info": {
                     "original_filename": filename,
+                    **time_energy_image_meta,
                     "fedo_metadata": metadata,
                 }
             }
         )
+
+    @staticmethod
+    def _build_visualization_image_meta(fedo_config: FedoConfig) -> Dict[str, Any]:
+        width = max(0, int(round(float(fedo_config.figsize[0]) * float(fedo_config.dpi))))
+        height = max(0, int(round(float(fedo_config.figsize[1]) * float(fedo_config.dpi))))
+        return {
+            "width": width,
+            "height": height,
+            "format": "PNG",
+            "dpi": int(fedo_config.dpi),
+        }
 
     @staticmethod
     def _create_progress_state(
@@ -227,9 +240,12 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             self,
             *,
             fedo_data: FedoData,
+            fedo_config: FedoConfig,
             context: UploadContext,
             sample_id: str,
     ) -> dict[str, Any]:
+        image_meta = self._build_visualization_image_meta(fedo_config)
+
         time_energy_asset = await self._upload_generated_bytes(
             content=fedo_data.time_energy_image_bytes,
             filename="time_energy.png",
@@ -238,6 +254,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
                 "generated": True,
                 "type": "fedo_visualization",
                 "view": FedoView.TIME_ENERGY.value,
+                **image_meta,
             },
         )
         l_omegad_asset = await self._upload_generated_bytes(
@@ -248,6 +265,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
                 "generated": True,
                 "type": "fedo_visualization",
                 "view": FedoView.L_OMEGAD.value,
+                **image_meta,
             },
         )
         lookup_asset = await self._upload_generated_bytes(
@@ -279,6 +297,8 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             "lookup_asset": lookup_asset,
             "data_asset": data_asset,
             "lookup_local_path": lookup_local_path,
+            "time_energy_image_meta": image_meta,
+            "l_omegad_image_meta": image_meta,
         }
 
     @staticmethod
@@ -374,6 +394,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             self._update_progress(progress_callback, progress, 4, "Generating visualizations", "fedo_viz")
             generated_assets = await self._upload_generated_assets(
                 fedo_data=fedo_data,
+                fedo_config=fedo_config,
                 context=context,
                 sample_id=sample_id,
             )
@@ -382,6 +403,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
             lookup_asset = generated_assets["lookup_asset"]
             data_asset = generated_assets["data_asset"]
             lookup_local_path = generated_assets["lookup_local_path"]
+            time_energy_image_meta = generated_assets["time_energy_image_meta"]
 
             self._update_progress(progress_callback, progress, 5, "Finalizing", "fedo_finalize")
             self._update_progress(progress_callback, progress, 6, "Processing complete", "fedo_complete")
@@ -404,6 +426,7 @@ class FedoDatasetProcessor(BaseDatasetProcessor):
                 l_omegad_asset_id=str(l_omegad_asset.id),
                 lookup_asset_id=str(lookup_asset.id),
                 data_asset_id=str(data_asset.id),
+                time_energy_image_meta=time_energy_image_meta,
                 metadata=self._build_result_metadata(
                     fedo_metadata=fedo_data.metadata,
                     lookup_asset=lookup_asset,

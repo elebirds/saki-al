@@ -25,6 +25,7 @@ from saki_api.modules.annotation.extensions.dataset_processing.base import (
     UploadContext,
 )
 from saki_api.modules.annotation.extensions.dataset_processing.registry import register_processor
+from saki_api.modules.annotation.extensions.dataset_processing.utils import extract_image_meta_from_upload
 from saki_api.modules.shared.modeling.enums import DatasetType
 
 
@@ -70,6 +71,7 @@ class ClassicProcessor(BaseDatasetProcessor):
     async def _upload_image_asset(
             self,
             file: UploadFile,
+            image_meta: Dict[str, Any],
             progress_callback: Optional[ProgressCallback] = None,
             progress: Optional[ProgressInfo] = None
     ):
@@ -96,7 +98,10 @@ class ClassicProcessor(BaseDatasetProcessor):
 
         asset = await self.asset_service.upload_file(
             file,
-            meta_info={"generated": False}  # Original file, not generated
+            meta_info={
+                "generated": False,  # Original file, not generated
+                **image_meta,
+            }
         )
 
         return asset
@@ -203,15 +208,26 @@ class ClassicProcessor(BaseDatasetProcessor):
             progress_callback(EventType.PROCESS_PROGRESS, progress)
 
         try:
+            image_meta_from_upload = await extract_image_meta_from_upload(file)
+
             # 1. Upload file to object storage
-            asset = await self._upload_image_asset(file, progress_callback, progress)
+            asset = await self._upload_image_asset(
+                file,
+                image_meta_from_upload,
+                progress_callback,
+                progress,
+            )
 
             # 2. Extract image metadata
-            image_meta = self._extract_image_metadata(
+            image_meta_from_asset = self._extract_image_metadata(
                 asset.meta_info,
                 progress_callback,
                 progress
             )
+            image_meta = {
+                **image_meta_from_asset,
+                **image_meta_from_upload,
+            }
 
             if progress_callback and progress:
                 progress.update(3, "Complete", ProcessingStage.CLASSIC_COMPLETE)

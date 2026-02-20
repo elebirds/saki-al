@@ -33,7 +33,14 @@ import {
 import {useNavigate, useParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {api} from '../../services/api';
-import {Dataset, ImportDryRunResponse, ProjectBranch, type ImportProgressEventType} from '../../types';
+import {
+    Dataset,
+    ImportDryRunResponse,
+    ProjectBranch,
+    type ImportFormat,
+    type ImportProgressEventType,
+    type FormatProfileCapability,
+} from '../../types';
 import {useImportTask, useResourcePermission} from '../../hooks';
 import {localizeImportIssueMessage} from '../../utils/importIssue';
 import {
@@ -49,6 +56,7 @@ type ProjectImportMode = 'images' | 'annotations' | 'associated';
 type ImportWorkspaceScope = 'project' | 'dataset';
 type DatasetImportSourceMode = 'zip' | 'files';
 type PreviewDetailTabKey = 'warnings' | 'errors' | 'labels';
+type YoloObbLabelFormat = 'obb_rbox' | 'obb_poly8';
 const EVENT_ROW_HEIGHT = 76;
 const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {numeric: 'auto'});
 
@@ -73,6 +81,20 @@ const eventTagColorMap: Record<ImportProgressEventType, string> = {
     error: 'red',
     complete: 'green',
 };
+
+function formatProfileLabel(profileId: ImportFormat): string {
+    if (profileId === 'coco') return 'COCO';
+    if (profileId === 'voc') return 'VOC';
+    if (profileId === 'yolo') return 'YOLO';
+    return 'YOLO OBB';
+}
+
+function formatGlossaryKey(profileId: ImportFormat): string {
+    if (profileId === 'coco') return 'formatCoco';
+    if (profileId === 'voc') return 'formatVoc';
+    if (profileId === 'yolo') return 'formatYolo';
+    return 'formatYoloObb';
+}
 
 function compareByName(left: string, right: string): number {
     return left.localeCompare(right, undefined, {numeric: true, sensitivity: 'base'});
@@ -188,7 +210,8 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
     const [sourceMode, setSourceMode] = useState<DatasetImportSourceMode>('zip');
     const [archive, setArchive] = useState<File | null>(null);
     const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [format, setFormat] = useState<'coco' | 'voc' | 'yolo'>('yolo');
+    const [formatProfile, setFormatProfile] = useState<ImportFormat>('yolo');
+    const [yoloObbLabelFormat, setYoloObbLabelFormat] = useState<YoloObbLabelFormat>('obb_rbox');
     const [branchName, setBranchName] = useState('master');
     const [targetDatasetId, setTargetDatasetId] = useState<string>('');
     const [associatedTargetMode, setAssociatedTargetMode] = useState<'existing' | 'new'>('existing');
@@ -199,6 +222,7 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
     const [datasets, setDatasets] = useState<Dataset[]>([]);
     const [datasetInfo, setDatasetInfo] = useState<Dataset | null>(null);
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
+    const [importProfiles, setImportProfiles] = useState<FormatProfileCapability[]>([]);
     const [dryRun, setDryRun] = useState<ImportDryRunResponse | null>(null);
     const [dryRunFailure, setDryRunFailure] = useState<DryRunFailureState | null>(null);
     const [confirmCreateLabels, setConfirmCreateLabels] = useState(false);
@@ -223,17 +247,28 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             Promise.all([
                 api.getProjectDatasetDetails(projectId),
                 api.getProjectBranches(projectId),
-            ]).then(([datasetList, branchList]) => {
+                api.getProjectIOCapabilities(projectId),
+            ]).then(([datasetList, branchList, capabilities]) => {
                 const sortedDatasets = sortDatasets(datasetList || []);
                 const sortedBranches = sortBranches(branchList || []);
                 setDatasetInfo(null);
                 setDatasets(sortedDatasets);
                 setBranches(sortedBranches);
+                const profiles = capabilities.importProfiles || [];
+                setImportProfiles(profiles);
                 if (sortedDatasets.length > 0 && !targetDatasetId) {
                     setTargetDatasetId(sortedDatasets[0].id);
                 }
                 if (sortedBranches.length > 0) {
                     setBranchName(sortedBranches[0].name);
+                }
+                const availableProfiles = profiles
+                    .filter((profile) => profile.available)
+                    .map((profile) => profile.id);
+                if (availableProfiles.length > 0) {
+                    setFormatProfile((prev) => (
+                        availableProfiles.includes(prev) ? prev : (availableProfiles[0] as ImportFormat)
+                    ));
                 }
             }).catch((error) => {
                 const msg = error instanceof Error ? error.message : t('import.workspace.metaLoadError');
@@ -248,6 +283,7 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                 setDatasetInfo(dataset);
                 setDatasets([dataset]);
                 setBranches([]);
+                setImportProfiles([]);
                 setTargetDatasetId(dataset.id);
             })
             .catch((error) => {
@@ -291,7 +327,7 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             errors: {current: 1, pageSize: 20},
             labels: {current: 1, pageSize: 20},
         });
-    }, [mode, format, branchName, targetDatasetId, associatedTargetMode, newDatasetName, newDatasetDescription, conflictStrategy, sourceMode]);
+    }, [mode, formatProfile, yoloObbLabelFormat, branchName, targetDatasetId, associatedTargetMode, newDatasetName, newDatasetDescription, conflictStrategy, sourceMode]);
 
     const summaryEntries = useMemo(
         () => getOrderedImportSummaryEntries(dryRun?.summary).map(([key, value]) => ({
@@ -355,13 +391,15 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
     ]), [t]);
 
     const formatOptions = useMemo(
-        () => [
-            {label: 'YOLO', value: 'yolo'},
-            {label: 'COCO', value: 'coco'},
-            {label: 'VOC', value: 'voc'},
-        ],
-        [],
+        () => importProfiles
+            .filter((profile) => profile.available)
+            .map((profile) => ({
+                label: formatProfileLabel(profile.id as ImportFormat),
+                value: profile.id as ImportFormat,
+            })),
+        [importProfiles],
     );
+    const hasAvailableImportProfile = formatOptions.length > 0;
 
     const datasetOptions = useMemo(
         () => datasets.map((dataset) => ({label: dataset.name, value: dataset.id})),
@@ -390,7 +428,7 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
         {
             key: 'format',
             title: t('import.project.glossary.format'),
-            description: t(`import.project.glossary.format${format.charAt(0).toUpperCase()}${format.slice(1)}`),
+            description: t(`import.project.glossary.${formatGlossaryKey(formatProfile)}`),
         },
         {
             key: 'branch',
@@ -409,7 +447,7 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                 ? t('import.project.glossary.replaceDesc')
                 : t('import.project.glossary.mergeDesc'),
         },
-    ]), [t, format, conflictStrategy]);
+    ]), [t, formatProfile, conflictStrategy]);
 
     const currentStep = useMemo(() => {
         if (importTask.state.status === 'running' || importTask.state.events.length > 0) return 2;
@@ -506,6 +544,10 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
         }
 
         if (!projectId) return;
+        if (mode !== 'images' && !hasAvailableImportProfile) {
+            message.warning(t('import.workspace.noAvailableImportProfile'));
+            return;
+        }
         if (requiresProjectWritePermission && (!canAnnotate || !canCommit)) {
             message.warning(t('common.noPermission'));
             return;
@@ -529,14 +571,14 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
             } else if (mode === 'annotations') {
                 result = await api.dryRunProjectAnnotationImport(projectId, {
                     file: archive,
-                    format,
+                    formatProfile,
                     datasetId: targetDatasetId,
                     branchName,
                 });
             } else {
                 result = await api.dryRunProjectAssociatedImport(projectId, {
                     file: archive,
-                    format,
+                    formatProfile,
                     branchName,
                     targetDatasetMode: associatedTargetMode,
                     targetDatasetId: associatedTargetMode === 'existing' ? targetDatasetId : undefined,
@@ -727,6 +769,9 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                             {isProjectScope && requiresProjectWritePermission && (!canAnnotate || !canCommit) ? (
                                 <Alert type="warning" showIcon message={t('common.noPermission')}/>
                             ) : null}
+                            {isProjectScope && mode !== 'images' && !hasAvailableImportProfile ? (
+                                <Alert type="error" showIcon message={t('import.workspace.noAvailableImportProfile')}/>
+                            ) : null}
                             {isDatasetScope && !hasDatasetModePermission ? (
                                 <Alert type="warning" showIcon message={t('common.noPermission')}/>
                             ) : null}
@@ -861,9 +906,25 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                         <div>
                                             <Text strong>{t('import.workspace.formatLabel')}</Text>
                                             <Select
-                                                value={format}
-                                                onChange={(value) => setFormat(value)}
+                                                value={formatProfile}
+                                                onChange={(value) => setFormatProfile(value as ImportFormat)}
                                                 options={formatOptions}
+                                                className="mt-2 w-full"
+                                                disabled={!hasAvailableImportProfile}
+                                            />
+                                        </div>
+                                    ) : null}
+
+                                    {mode !== 'images' && formatProfile === 'yolo_obb' ? (
+                                        <div>
+                                            <Text strong>{t('import.workspace.yoloSubFormatLabel')}</Text>
+                                            <Select
+                                                value={yoloObbLabelFormat}
+                                                onChange={(value) => setYoloObbLabelFormat(value as YoloObbLabelFormat)}
+                                                options={[
+                                                    {label: 'OBB RBox', value: 'obb_rbox'},
+                                                    {label: 'OBB Poly8', value: 'obb_poly8'},
+                                                ]}
                                                 className="mt-2 w-full"
                                             />
                                         </div>
@@ -955,7 +1016,11 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                         type="primary"
                                         onClick={handleDryRun}
                                         loading={dryRunLoading}
-                                        disabled={!archive || (isDatasetScope && !hasDatasetModePermission)}
+                                        disabled={
+                                            !archive
+                                            || (isDatasetScope && !hasDatasetModePermission)
+                                            || (isProjectScope && mode !== 'images' && !hasAvailableImportProfile)
+                                        }
                                     >
                                         {t('import.workspace.dryRun')}
                                     </Button>
@@ -1352,7 +1417,12 @@ const ProjectImportWorkspace: React.FC<ProjectImportWorkspaceProps> = ({scope}) 
                                 ) : null}
                                 {mode !== 'images' ? (
                                     <Descriptions.Item label={t('import.workspace.formatLabel')}>
-                                        {format.toUpperCase()}
+                                        {formatProfileLabel(formatProfile)}
+                                    </Descriptions.Item>
+                                ) : null}
+                                {mode !== 'images' && formatProfile === 'yolo_obb' ? (
+                                    <Descriptions.Item label={t('import.workspace.yoloSubFormatLabel')}>
+                                        {yoloObbLabelFormat === 'obb_rbox' ? 'OBB RBox' : 'OBB Poly8'}
                                     </Descriptions.Item>
                                 ) : null}
                                 {mode !== 'images' ? (

@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     IMPORT_TASK_RETENTION_HOURS: int = 72
     IMPORT_EVENT_HEARTBEAT_SECONDS: int = 10
 
+    # Exporting
+    EXPORT_FRONTEND_MAX_TOTAL_BYTES: int = 1024 * 1024 * 1024  # 1GB
+    EXPORT_ASSET_URL_EXPIRE_HOURS: int = 2
+
     # Runtime control plane
     INTERNAL_TOKEN: str = "dev-secret"
     RUNTIME_DOMAIN_GRPC_BIND: str = "0.0.0.0:50053"

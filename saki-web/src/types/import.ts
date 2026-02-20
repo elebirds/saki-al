@@ -1,4 +1,4 @@
-export type ImportFormat = 'coco' | 'voc' | 'yolo';
+export type ImportFormat = 'coco' | 'voc' | 'yolo' | 'yolo_obb';
 
 export type ConflictStrategy = 'replace' | 'merge';
 
@@ -65,14 +65,14 @@ export interface ImportTaskStatusResponse {
 
 export interface ProjectAnnotationImportDryRunRequest {
     file: File;
-    format: ImportFormat;
+    formatProfile: ImportFormat;
     datasetId: string;
     branchName: string;
 }
 
 export interface ProjectAssociatedImportDryRunRequest {
     file: File;
-    format: ImportFormat;
+    formatProfile: ImportFormat;
     branchName: string;
     targetDatasetMode: AssociatedDatasetMode;
     targetDatasetId?: string;

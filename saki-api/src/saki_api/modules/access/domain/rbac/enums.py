@@ -152,6 +152,7 @@ class Permissions:
     DATASET_DELETE_ALL = "dataset:delete:all"  # 全局允许：删除数据集
     DATASET_ASSIGN_ALL = "dataset:assign:all"  # 全局允许：管理数据集成员和权限
     DATASET_LINK_PROJECT_ALL = "dataset:link_project:all"  # 全局允许：关联/解除关联项目
+    DATASET_EXPORT_ALL = "dataset:export:all"  # 全局允许：导出数据集内容
     DATASET_IMPORT_ALL = "dataset:import:all"  # 全局允许：导入数据集内容
     # Dataset - assigned scope
     DATASET_READ = "dataset:read:assigned"  # 成员允许：读取数据集信息
@@ -159,6 +160,7 @@ class Permissions:
     DATASET_DELETE = "dataset:delete:assigned"  # 成员允许：删除数据集（应该永远不分配此权限）
     DATASET_ASSIGN = "dataset:assign:assigned"  # 成员允许：管理数据集成员和权限
     DATASET_LINK_PROJECT = "dataset:link_project:assigned"  # 成员允许：关联/解除关联项目
+    DATASET_EXPORT = "dataset:export:assigned"  # 成员允许：导出数据集内容
     DATASET_IMPORT = "dataset:import:assigned"  # 成员允许：导入数据集内容
 
     # ============================================================================
@@ -183,12 +185,14 @@ class Permissions:
     PROJECT_ARCHIVE_ALL = "project:archive:all"  # 全局允许：归档/取消归档项目
     PROJECT_DELETE_ALL = "project:delete:all"  # 全局允许：删除项目
     PROJECT_ASSIGN_ALL = "project:assign:all"  # 全局允许：管理项目成员和权限
+    PROJECT_EXPORT_ALL = "project:export:all"  # 全局允许：导出项目内容
     # Project - assigned scope
     PROJECT_READ = "project:read:assigned"  # 成员允许：读取项目信息
     PROJECT_UPDATE = "project:update:assigned"  # 成员允许：修改项目信息
     PROJECT_ARCHIVE = "project:archive:assigned"  # 成员允许：归档/取消归档项目
     PROJECT_DELETE = "project:delete:assigned"  # 成员允许：删除项目（应该永远不分配此权限）
     PROJECT_ASSIGN = "project:assign:assigned"  # 成员允许：管理项目成员和权限
+    PROJECT_EXPORT = "project:export:assigned"  # 成员允许：导出项目内容
 
     # ============================================================================
     # Label Permissions (L2 Layer)

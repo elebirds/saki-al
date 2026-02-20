@@ -937,6 +937,7 @@ type Dataset struct {
 	Description               pgtype.Text
 	Type                      Datasettype
 	AllowDuplicateSampleNames bool
+	IsPublic                  bool
 	OwnerID                   uuid.UUID
 }
 
@@ -1056,6 +1057,7 @@ type Project struct {
 	Name                   string
 	Description            pgtype.Text
 	TaskType               Tasktype
+	DatasetType            Datasettype
 	EnabledAnnotationTypes []byte
 	Status                 Projectstatus
 	Config                 []byte

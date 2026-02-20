@@ -113,6 +113,18 @@ def validate_dataset_link_compatibility(
         )
 
 
+def collect_required_annotation_types_for_dataset_types(
+    dataset_types: Iterable[Any],
+) -> set[AnnotationType]:
+    """Collect required annotation types for a list of dataset types."""
+
+    required: set[AnnotationType] = set()
+    for dataset_type in dataset_types:
+        normalized_dataset = _normalize_dataset_type(dataset_type)
+        required.update(DATASET_REQUIRED_ANNOTATION_TYPES.get(normalized_dataset, ()))
+    return required
+
+
 def assert_annotation_type_enabled(
     *,
     project_enabled_types: Iterable[Any],
@@ -128,4 +140,3 @@ def assert_annotation_type_enabled(
 
     if normalized not in enabled:
         raise BadRequestAppException(f"annotation type {normalized.value} is not enabled for this project")
-

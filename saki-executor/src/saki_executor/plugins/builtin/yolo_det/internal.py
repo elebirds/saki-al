@@ -292,6 +292,7 @@ class YoloDetectionInternal:
         samples: list[dict[str, Any]],
         annotations: list[dict[str, Any]],
         infer_image_hw: Callable[[Path], tuple[int, int]] | None = None,
+        dataset_ir: Any | None = None,
     ) -> None:
         prepare_yolo_dataset(
             workspace=workspace,
@@ -302,6 +303,7 @@ class YoloDetectionInternal:
             to_int=_to_int,
             annotation_to_line=self._annotation_to_yolo_obb_line,
             resolve_split_config=self._resolve_split_config,
+            dataset_ir=dataset_ir,
         )
 
     async def train(

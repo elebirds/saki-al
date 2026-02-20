@@ -48,8 +48,9 @@ class DemoDetectionPlugin(ExecutorPlugin):
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
+            dataset_ir: Any | None = None,
     ) -> None:
-        await self._internal.prepare_data(workspace, labels, samples, annotations)
+        await self._internal.prepare_data(workspace, labels, samples, annotations, dataset_ir)
 
     async def train(
             self,

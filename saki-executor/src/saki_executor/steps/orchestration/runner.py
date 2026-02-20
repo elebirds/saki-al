@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +35,18 @@ class StepPipelineRunner:
         "upload_artifact",
         "custom",
     }
+    _TRAIN_AND_SAMPLE_STEP_TYPES = {
+        "train",
+        "custom",
+    }
+    _SCORE_ONLY_STEP_TYPES = {
+        "score",
+    }
+    _TRAIN_ONLY_STEP_TYPES = {
+        "eval",
+        "export",
+        "upload_artifact",
+    }
 
     def __init__(self, *, manager: StepManager, request: StepExecutionRequest) -> None:
         self._manager = manager
@@ -46,24 +59,37 @@ class StepPipelineRunner:
         workspace, reporter, emitter = self._prepare_workspace()
         await self._emit_start_status(emitter)
 
-        output, protected = await self._run_training_pipeline(
-            plugin=plugin,
-            workspace=workspace,
-            emitter=emitter,
-        )
-        candidates = await self._collect_candidates(
-            plugin=plugin,
-            workspace=workspace,
-            emitter=emitter,
-            protected=protected,
-        )
-        artifacts, optional_upload_failures = await self._upload_artifacts(
-            output_artifacts=output.artifacts,
-            reporter=reporter,
-        )
+        metrics: dict[str, Any]
+        artifacts: dict[str, Any]
+        candidates: list[dict[str, Any]]
+        optional_upload_failures: list[str]
+
+        if self._request.step_type in self._SCORE_ONLY_STEP_TYPES:
+            metrics, artifacts, candidates, optional_upload_failures = await self._run_score_pipeline(
+                plugin=plugin,
+                workspace=workspace,
+                emitter=emitter,
+            )
+        elif self._request.step_type in self._TRAIN_ONLY_STEP_TYPES:
+            metrics, artifacts, candidates, optional_upload_failures = await self._run_train_only_pipeline(
+                plugin=plugin,
+                workspace=workspace,
+                emitter=emitter,
+                reporter=reporter,
+            )
+        elif self._request.step_type in self._TRAIN_AND_SAMPLE_STEP_TYPES:
+            metrics, artifacts, candidates, optional_upload_failures = await self._run_train_and_sample_pipeline(
+                plugin=plugin,
+                workspace=workspace,
+                emitter=emitter,
+                reporter=reporter,
+            )
+        else:
+            raise RuntimeError(f"step_type routing is not implemented: {self._request.step_type}")
+
         return await self._finalize_result(
             reporter=reporter,
-            metrics=output.metrics,
+            metrics=metrics,
             artifacts=artifacts,
             candidates=candidates,
             optional_upload_failures=optional_upload_failures,
@@ -128,6 +154,21 @@ class StepPipelineRunner:
         workspace: Workspace,
         emitter: StepEventEmitter,
     ) -> tuple[Any, set[str]]:
+        protected = await self._prepare_plugin_data(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+        )
+        output = await plugin.train(workspace, self._request.resolved_params, emitter.emit)
+        return output, protected
+
+    async def _prepare_plugin_data(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+    ) -> set[str]:
         params_snapshot = {
             "epochs": self._request.resolved_params.get("epochs"),
             "batch": self._request.resolved_params.get("batch", self._request.resolved_params.get("batch_size")),
@@ -136,6 +177,7 @@ class StepPipelineRunner:
             "split_seed": self._request.resolved_params.get("split_seed"),
             "random_seed": self._request.resolved_params.get("random_seed"),
             "mode": self._request.mode,
+            "step_type": self._request.step_type,
             "round_index": self._request.round_index,
             "step_id": self._request.step_id,
         }
@@ -150,14 +192,100 @@ class StepPipelineRunner:
             plugin=plugin,
             emit=emitter.emit,
         )
+        prepare_kwargs = self._build_prepare_data_kwargs(
+            plugin=plugin,
+            ir_batch=data_bundle.ir_batch,
+        )
         await plugin.prepare_data(
             workspace,
             data_bundle.labels,
             data_bundle.train_samples,
             data_bundle.train_annotations,
+            **prepare_kwargs,
         )
-        output = await plugin.train(workspace, self._request.resolved_params, emitter.emit)
-        return output, data_bundle.protected
+        return data_bundle.protected
+
+    @staticmethod
+    def _build_prepare_data_kwargs(*, plugin: Any, ir_batch: Any) -> dict[str, Any]:
+        try:
+            signature = inspect.signature(plugin.prepare_data)
+        except (TypeError, ValueError):
+            return {}
+
+        parameters = signature.parameters
+        if "dataset_ir" in parameters:
+            return {"dataset_ir": ir_batch}
+        for parameter in parameters.values():
+            if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                return {"dataset_ir": ir_batch}
+        return {}
+
+    async def _run_train_and_sample_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        reporter: StepReporter,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+        output, protected = await self._run_training_pipeline(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+        )
+        candidates = await self._collect_candidates(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+            protected=protected,
+        )
+        artifacts, optional_upload_failures = await self._upload_artifacts(
+            output_artifacts=output.artifacts,
+            reporter=reporter,
+        )
+        return output.metrics, artifacts, candidates, optional_upload_failures
+
+    async def _run_train_only_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        reporter: StepReporter,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+        output, _protected = await self._run_training_pipeline(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+        )
+        artifacts, optional_upload_failures = await self._upload_artifacts(
+            output_artifacts=output.artifacts,
+            reporter=reporter,
+        )
+        return output.metrics, artifacts, [], optional_upload_failures
+
+    async def _run_score_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+        protected = await self._prepare_plugin_data(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+        )
+        candidates = await self._collect_candidates(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+            protected=protected,
+        )
+        metrics: dict[str, Any] = {
+            "score_candidate_count": float(len(candidates)),
+        }
+        return metrics, {}, candidates, []
 
     async def _collect_candidates(
         self,

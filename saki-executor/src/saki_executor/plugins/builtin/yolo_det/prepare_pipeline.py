@@ -8,6 +8,9 @@ from typing import Any, Callable
 from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.builtin.yolo_det.split_policy import resolve_train_val_split
 from saki_executor.plugins.builtin.yolo_det.types import PreparedDataset
+from saki_ir import ConversionContext, ConversionReport, save_yolo_dataset
+from saki_ir.convert.base import build_batch, split_batch
+from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 
 def prepare_yolo_dataset(
@@ -20,6 +23,7 @@ def prepare_yolo_dataset(
     to_int: Callable[[Any, int], int],
     annotation_to_line: Callable[..., str | None],
     resolve_split_config: Callable[[Workspace], tuple[int, float]],
+    dataset_ir: irpb.DataBatchIR | None = None,
 ) -> PreparedDataset:
     data_root = workspace.data_dir
     images_train_dir = data_root / "images" / "train"
@@ -58,6 +62,8 @@ def prepare_yolo_dataset(
         images_val_dir=images_val_dir,
         labels_train_dir=labels_train_dir,
         labels_val_dir=labels_val_dir,
+        data_root=data_root,
+        dataset_ir=dataset_ir,
     )
 
     _write_dataset_yaml(
@@ -169,18 +175,125 @@ def _write_dataset_files(
     images_val_dir: Path,
     labels_train_dir: Path,
     labels_val_dir: Path,
+    data_root: Path,
+    dataset_ir: irpb.DataBatchIR | None,
 ) -> None:
     for sample_id, item in sample_map.items():
         target_images_dir = images_train_dir
-        target_labels_dir = labels_train_dir
         if not val_degraded and sample_id in val_ids:
             target_images_dir = images_val_dir
-            target_labels_dir = labels_val_dir
         src = Path(item["source_path"])
         dst = target_images_dir / f"{sample_id}.jpg"
         shutil.copy2(src, dst)
+
+    if dataset_ir is not None and _write_label_files_with_ir(
+        data_root=data_root,
+        dataset_ir=dataset_ir,
+        train_ids=train_ids,
+        val_ids=val_ids,
+        val_degraded=val_degraded,
+        labels_train_dir=labels_train_dir,
+        labels_val_dir=labels_val_dir,
+    ):
+        return
+
+    shutil.rmtree(labels_train_dir, ignore_errors=True)
+    labels_train_dir.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(labels_val_dir, ignore_errors=True)
+    labels_val_dir.mkdir(parents=True, exist_ok=True)
+
+    for sample_id in sample_map:
+        target_labels_dir = labels_train_dir
+        if not val_degraded and sample_id in val_ids:
+            target_labels_dir = labels_val_dir
         label_file = target_labels_dir / f"{sample_id}.txt"
         label_file.write_text("\n".join(ann_by_sample.get(sample_id, [])), encoding="utf-8")
+
+
+def _write_label_files_with_ir(
+    *,
+    data_root: Path,
+    dataset_ir: irpb.DataBatchIR,
+    train_ids: set[str],
+    val_ids: set[str],
+    val_degraded: bool,
+    labels_train_dir: Path,
+    labels_val_dir: Path,
+) -> bool:
+    try:
+        ctx = ConversionContext(
+            strict=False,
+            include_external_ref=False,
+            emit_labels=True,
+            yolo_is_normalized=True,
+            yolo_label_format="obb_poly8",
+            yolo_obb_angle_unit="deg",
+            yolo_write_empty_label_files=True,
+            naming="uuid",
+            read_images=False,
+        )
+        report = ConversionReport()
+        labels_by_id, samples, annotations = split_batch(dataset_ir, ctx=ctx, report=report)
+        label_records = list(labels_by_id.values())
+
+        train_batch = _subset_ir_batch(
+            labels=label_records,
+            samples=samples,
+            annotations=annotations,
+            target_sample_ids=train_ids,
+        )
+        save_yolo_dataset(
+            batch=train_batch,
+            root=data_root,
+            split="train",
+            ctx=ctx,
+            report=report,
+        )
+
+        if not val_degraded:
+            val_batch = _subset_ir_batch(
+                labels=label_records,
+                samples=samples,
+                annotations=annotations,
+                target_sample_ids=val_ids,
+            )
+            save_yolo_dataset(
+                batch=val_batch,
+                root=data_root,
+                split="val",
+                ctx=ctx,
+                report=report,
+            )
+        else:
+            shutil.rmtree(labels_val_dir, ignore_errors=True)
+            labels_val_dir.mkdir(parents=True, exist_ok=True)
+
+        if report.errors:
+            shutil.rmtree(labels_train_dir, ignore_errors=True)
+            labels_train_dir.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(labels_val_dir, ignore_errors=True)
+            labels_val_dir.mkdir(parents=True, exist_ok=True)
+            return False
+        return True
+    except Exception:
+        shutil.rmtree(labels_train_dir, ignore_errors=True)
+        labels_train_dir.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(labels_val_dir, ignore_errors=True)
+        labels_val_dir.mkdir(parents=True, exist_ok=True)
+        return False
+
+
+def _subset_ir_batch(
+    *,
+    labels: list[irpb.LabelRecord],
+    samples: list[irpb.SampleRecord],
+    annotations: list[irpb.AnnotationRecord],
+    target_sample_ids: set[str],
+) -> irpb.DataBatchIR:
+    selected_sample_ids = {str(item) for item in target_sample_ids}
+    subset_samples = [item for item in samples if item.id in selected_sample_ids]
+    subset_annotations = [item for item in annotations if item.sample_id in selected_sample_ids]
+    return build_batch(labels, subset_samples, subset_annotations)
 
 
 def _write_dataset_yaml(
@@ -229,4 +342,3 @@ def _build_manifest(
         "split_seed": split_seed,
         "val_split_ratio": val_split_ratio,
     }
-

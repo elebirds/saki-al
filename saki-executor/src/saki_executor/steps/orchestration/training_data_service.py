@@ -6,7 +6,9 @@ from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.steps.contracts import StepExecutionRequest
+from saki_executor.steps.services import IRDatasetBuildReport, build_training_batch_ir
 from saki_executor.plugins.base import ExecutorPlugin
+from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 FetchAllFn = Callable[[str, str, str, str], Awaitable[list[dict[str, Any]]]]
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -17,6 +19,8 @@ class TrainingDataBundle:
     labels: list[dict[str, Any]]
     train_samples: list[dict[str, Any]]
     train_annotations: list[dict[str, Any]]
+    ir_batch: irpb.DataBatchIR
+    ir_report: IRDatasetBuildReport
     protected: set[str]
 
 
@@ -100,9 +104,30 @@ class TrainingDataService:
             item["local_path"] = str(cached_path)
             protected.add(str(asset_hash))
 
+        ir_batch, ir_report = build_training_batch_ir(
+            labels=labels,
+            samples=train_samples,
+            annotations=train_annotations,
+        )
+        await emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "ir training batch prepared "
+                    f"labels={ir_report.label_count} "
+                    f"samples={ir_report.sample_count} "
+                    f"annotations={ir_report.annotation_count} "
+                    f"dropped_annotations={ir_report.dropped_annotation_count}"
+                ),
+            },
+        )
+
         return TrainingDataBundle(
             labels=labels,
             train_samples=train_samples,
             train_annotations=train_annotations,
+            ir_batch=ir_batch,
+            ir_report=ir_report,
             protected=protected,
         )

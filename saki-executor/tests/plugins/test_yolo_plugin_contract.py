@@ -5,6 +5,7 @@ import pytest
 
 from saki_executor.plugins.builtin.yolo_det import plugin as yolo_plugin_module
 from saki_executor.plugins.builtin.yolo_det.plugin import YoloDetectionPlugin
+from saki_executor.steps.services.ir_dataset_builder import build_training_batch_ir
 from saki_executor.steps.workspace import Workspace
 
 
@@ -125,6 +126,48 @@ def test_yolo_prepare_data_infers_hw_from_source_path(tmp_path: Path, monkeypatc
     label_file = workspace.data_dir / "labels" / "train" / "sample-1.txt"
     assert label_file.exists()
     assert label_file.read_text(encoding="utf-8").strip()
+
+
+def test_yolo_prepare_data_uses_ir_dataset_for_legacy_obb_payload(tmp_path: Path, monkeypatch):
+    plugin = YoloDetectionPlugin()
+    workspace = Workspace(str(tmp_path), "job-prepare-ir")
+    workspace.ensure()
+
+    image_path = tmp_path / "sample.jpg"
+    image_path.write_bytes(b"not-an-image-but-copyable")
+
+    def _fail_infer(path: Path) -> tuple[int, int]:
+        raise AssertionError(f"unexpected infer call: {path}")
+
+    monkeypatch.setattr(yolo_plugin_module, "_infer_image_hw", _fail_infer)
+
+    labels = [{"id": "label-1", "name": "ship"}]
+    samples = [{"id": "sample-1", "local_path": str(image_path), "width": 1000, "height": 500}]
+    annotations = [
+        {
+            "sample_id": "sample-1",
+            "category_id": "label-1",
+            "obb": {
+                "cx": 500.0,
+                "cy": 250.0,
+                "width": 400.0,
+                "height": 200.0,
+                "angle_deg_ccw": 30.0,
+            },
+        }
+    ]
+    dataset_ir, _ = build_training_batch_ir(
+        labels=labels,
+        samples=samples,
+        annotations=annotations,
+    )
+
+    asyncio.run(plugin.prepare_data(workspace, labels, samples, annotations, dataset_ir=dataset_ir))
+
+    label_file = workspace.data_dir / "labels" / "train" / "sample-1.txt"
+    assert label_file.exists()
+    values = label_file.read_text(encoding="utf-8").strip().split()
+    assert len(values) == 9
 
 
 def test_yolo_plugin_auto_device_falls_back_to_cpu(monkeypatch):

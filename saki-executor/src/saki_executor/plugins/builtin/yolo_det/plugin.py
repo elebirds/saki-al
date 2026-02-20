@@ -62,6 +62,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
+            dataset_ir: Any | None = None,
     ) -> None:
         await self._internal.prepare_data(
             workspace=workspace,
@@ -69,6 +70,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             samples=samples,
             annotations=annotations,
             infer_image_hw=_infer_image_hw,
+            dataset_ir=dataset_ir,
         )
 
     async def train(

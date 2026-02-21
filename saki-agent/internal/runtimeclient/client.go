@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +21,7 @@ import (
 	"github.com/elebirds/saki/saki-agent/internal/agent"
 	"github.com/elebirds/saki/saki-agent/internal/device"
 	runtimecontrolv1 "github.com/elebirds/saki/saki-agent/internal/gen/runtimecontrolv1"
+	"github.com/elebirds/saki/saki-agent/internal/pluginloader"
 )
 
 const (
@@ -47,7 +47,7 @@ type Config struct {
 	NodeID            string
 	Version           string
 	RuntimeKind       string
-	PluginIDs         []string
+	KernelsDir        string
 	HeartbeatInterval time.Duration
 	ConnectTimeout    time.Duration
 	InitialBackoff    time.Duration
@@ -66,6 +66,19 @@ type StatusSnapshot struct {
 	LastError           string
 	LastConnectedAt     time.Time
 	NextRetryAt         time.Time
+	PluginCatalogLoaded bool
+	PluginCatalogSize   int
+	PluginCatalogAt     time.Time
+	PluginCatalogError  string
+	Plugins             []PluginSnapshot
+}
+
+type PluginSnapshot struct {
+	ID                   string
+	Version              string
+	DisplayName          string
+	SourcePath           string
+	SupportsAutoFallback bool
 }
 
 type runningStep struct {
@@ -100,16 +113,24 @@ type Client struct {
 	stepMu      sync.Mutex
 	runningStep *runningStep
 	outgoingCh  chan *runtimecontrolv1.RuntimeMessage
+
+	pluginMu              sync.RWMutex
+	pluginCatalogLoaded   bool
+	pluginCatalogAt       time.Time
+	pluginCatalogError    string
+	pluginCatalogSnapshot []pluginloader.PluginSpec
 }
 
 func New(cfg Config, daemon *agent.Agent, logger zerolog.Logger) *Client {
 	target := strings.TrimSpace(cfg.Target)
 	executorID := strings.TrimSpace(cfg.ExecutorID)
 	if executorID == "" {
+		// 默认值仅为开发便利；生产建议显式配置稳定 executor_id。
 		executorID = defaultID("agent")
 	}
 	nodeID := strings.TrimSpace(cfg.NodeID)
 	if nodeID == "" {
+		// node_id 默认与主机名一致，用于节点归属，不影响调度主键语义。
 		nodeID = defaultID("node")
 	}
 	version := strings.TrimSpace(cfg.Version)
@@ -119,10 +140,6 @@ func New(cfg Config, daemon *agent.Agent, logger zerolog.Logger) *Client {
 	runtimeKind := strings.TrimSpace(cfg.RuntimeKind)
 	if runtimeKind == "" {
 		runtimeKind = "saki-agent"
-	}
-	pluginIDs := normalizePluginIDs(cfg.PluginIDs)
-	if len(pluginIDs) == 0 {
-		pluginIDs = []string{"saki-agent-placeholder"}
 	}
 	heartbeatInterval := cfg.HeartbeatInterval
 	if heartbeatInterval <= 0 {
@@ -151,7 +168,7 @@ func New(cfg Config, daemon *agent.Agent, logger zerolog.Logger) *Client {
 			NodeID:            nodeID,
 			Version:           version,
 			RuntimeKind:       runtimeKind,
-			PluginIDs:         pluginIDs,
+			KernelsDir:        strings.TrimSpace(cfg.KernelsDir),
 			HeartbeatInterval: heartbeatInterval,
 			ConnectTimeout:    connectTimeout,
 			InitialBackoff:    initialBackoff,
@@ -191,6 +208,10 @@ func (c *Client) Start(ctx context.Context) {
 		c.logger.Warn().Msg("RUNTIME_CONTROL_TARGET 为空，dispatcher 流式连接未启用")
 		close(done)
 		return
+	}
+
+	if _, err := c.ensurePluginCatalogLoaded(); err != nil {
+		c.logger.Warn().Err(err).Msg("插件目录初始化失败，agent 将以上次缓存/空清单继续运行")
 	}
 
 	go c.run(loopCtx, done)
@@ -254,6 +275,12 @@ func (c *Client) Status() StatusSnapshot {
 	busy, stepID := c.currentStepSnapshot()
 	snapshot.Busy = busy
 	snapshot.CurrentStepID = stepID
+	loaded, loadedAt, loadErr, plugins := c.pluginCatalogStatusSnapshot()
+	snapshot.PluginCatalogLoaded = loaded
+	snapshot.PluginCatalogSize = len(plugins)
+	snapshot.PluginCatalogAt = loadedAt
+	snapshot.PluginCatalogError = loadErr
+	snapshot.Plugins = plugins
 	return snapshot
 }
 
@@ -433,20 +460,7 @@ func (c *Client) buildRegisterMessage() (*runtimecontrolv1.RuntimeMessage, *runt
 	mpsProfile, _ := structpb.NewStruct(mpsStabilityProfileMap(capabilities))
 	compatFlags, _ := structpb.NewStruct(kernelCompatFlagsMap(capabilities))
 
-	plugins := make([]*runtimecontrolv1.PluginCapability, 0, len(c.cfg.PluginIDs))
-	for _, pluginID := range c.cfg.PluginIDs {
-		plugins = append(plugins, &runtimecontrolv1.PluginCapability{
-			PluginId:              pluginID,
-			Version:               c.cfg.Version,
-			SupportedStepTypes:    []string{"TRAIN", "SCORE", "EVAL", "EXPORT"},
-			SupportedStrategies:   []string{"uncertainty", "entropy", "random"},
-			DisplayName:           "saki-agent-placeholder",
-			SupportedAccelerators: resourcesToSupportedAccelerators(resources),
-			SupportsAutoFallback:  true,
-			RequestConfigSchema:   &structpb.Struct{Fields: map[string]*structpb.Value{}},
-			DefaultRequestConfig:  &structpb.Struct{Fields: map[string]*structpb.Value{}},
-		})
-	}
+	plugins, _ := c.loadPlugins(resources)
 
 	register := &runtimecontrolv1.Register{
 		RequestId:           uuid.NewString(),
@@ -463,6 +477,139 @@ func (c *Client) buildRegisterMessage() (*runtimecontrolv1.RuntimeMessage, *runt
 	return &runtimecontrolv1.RuntimeMessage{
 		Payload: &runtimecontrolv1.RuntimeMessage_Register{Register: register},
 	}, resources, nil
+}
+
+func (c *Client) loadPlugins(resources *runtimecontrolv1.ResourceSummary) ([]*runtimecontrolv1.PluginCapability, error) {
+	items, err := c.ensurePluginCatalogLoaded()
+	if len(items) == 0 {
+		return nil, err
+	}
+	accelerators := resourcesToSupportedAccelerators(resources)
+	plugins := make([]*runtimecontrolv1.PluginCapability, 0, len(items))
+	for _, item := range items {
+		requestSchema, schemaErr := structpb.NewStruct(item.RequestConfigSchema)
+		if schemaErr != nil {
+			requestSchema = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		}
+		defaultConfig, defaultErr := structpb.NewStruct(item.DefaultRequestConfig)
+		if defaultErr != nil {
+			defaultConfig = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		}
+		plugins = append(plugins, &runtimecontrolv1.PluginCapability{
+			PluginId:              item.ID,
+			Version:               item.Version,
+			SupportedStepTypes:    item.SupportedStepTypes,
+			SupportedStrategies:   item.SupportedStrategies,
+			DisplayName:           item.DisplayName,
+			SupportedAccelerators: accelerators,
+			SupportsAutoFallback:  item.SupportsAutoFallback,
+			RequestConfigSchema:   requestSchema,
+			DefaultRequestConfig:  defaultConfig,
+		})
+	}
+	return plugins, err
+}
+
+func (c *Client) ensurePluginCatalogLoaded() ([]pluginloader.PluginSpec, error) {
+	c.pluginMu.RLock()
+	if c.pluginCatalogLoaded {
+		items := clonePluginSpecs(c.pluginCatalogSnapshot)
+		loadErr := errorFromText(c.pluginCatalogError)
+		c.pluginMu.RUnlock()
+		return items, loadErr
+	}
+	c.pluginMu.RUnlock()
+
+	c.pluginMu.Lock()
+	defer c.pluginMu.Unlock()
+
+	if c.pluginCatalogLoaded {
+		return clonePluginSpecs(c.pluginCatalogSnapshot), errorFromText(c.pluginCatalogError)
+	}
+
+	kernelsDir := strings.TrimSpace(c.cfg.KernelsDir)
+	started := time.Now()
+	c.logger.Info().Str("kernels_dir", kernelsDir).Msg("开始扫描 kernel 插件清单")
+
+	var (
+		items   []pluginloader.PluginSpec
+		loadErr error
+	)
+	switch {
+	case kernelsDir == "":
+		loadErr = errors.New("kernels_dir 为空")
+	default:
+		info, statErr := os.Stat(kernelsDir)
+		if statErr != nil {
+			loadErr = fmt.Errorf("检查 kernels_dir 失败: %w", statErr)
+			break
+		}
+		if !info.IsDir() {
+			loadErr = fmt.Errorf("kernels_dir 不是目录: %s", kernelsDir)
+			break
+		}
+		items, loadErr = pluginloader.LoadFromDir(kernelsDir)
+	}
+
+	c.pluginCatalogSnapshot = clonePluginSpecs(items)
+	c.pluginCatalogLoaded = true
+	c.pluginCatalogAt = time.Now().UTC()
+	c.pluginCatalogError = ""
+	if loadErr != nil {
+		c.pluginCatalogError = loadErr.Error()
+	}
+
+	elapsed := time.Since(started)
+	if loadErr != nil {
+		c.logger.Warn().
+			Err(loadErr).
+			Str("kernels_dir", kernelsDir).
+			Int("plugin_count", len(c.pluginCatalogSnapshot)).
+			Dur("elapsed", elapsed).
+			Msg("扫描 kernel 插件清单完成（包含错误）")
+	} else {
+		c.logger.Info().
+			Str("kernels_dir", kernelsDir).
+			Int("plugin_count", len(c.pluginCatalogSnapshot)).
+			Dur("elapsed", elapsed).
+			Msg("扫描 kernel 插件清单完成")
+	}
+	if len(c.pluginCatalogSnapshot) == 0 {
+		c.logger.Warn().Str("kernels_dir", kernelsDir).Msg("未加载到任何插件能力，dispatcher 将无法派发业务 step")
+	}
+	for _, item := range c.pluginCatalogSnapshot {
+		c.logger.Info().
+			Str("plugin_id", item.ID).
+			Str("version", item.Version).
+			Str("display_name", item.DisplayName).
+			Str("source", item.SourcePath).
+			Strs("supported_step_types", item.SupportedStepTypes).
+			Strs("supported_strategies", item.SupportedStrategies).
+			Bool("supports_auto_fallback", item.SupportsAutoFallback).
+			Msg("插件已加载并常驻内存")
+	}
+
+	return clonePluginSpecs(c.pluginCatalogSnapshot), loadErr
+}
+
+func (c *Client) pluginCatalogStatusSnapshot() (bool, time.Time, string, []PluginSnapshot) {
+	c.pluginMu.RLock()
+	defer c.pluginMu.RUnlock()
+
+	if !c.pluginCatalogLoaded {
+		return false, time.Time{}, "", nil
+	}
+	plugins := make([]PluginSnapshot, 0, len(c.pluginCatalogSnapshot))
+	for _, item := range c.pluginCatalogSnapshot {
+		plugins = append(plugins, PluginSnapshot{
+			ID:                   item.ID,
+			Version:              item.Version,
+			DisplayName:          item.DisplayName,
+			SourcePath:           item.SourcePath,
+			SupportsAutoFallback: item.SupportsAutoFallback,
+		})
+	}
+	return true, c.pluginCatalogAt, c.pluginCatalogError, plugins
 }
 
 func (c *Client) buildHeartbeatMessage(resources *runtimecontrolv1.ResourceSummary, startedAt time.Time) *runtimecontrolv1.RuntimeMessage {
@@ -915,30 +1062,51 @@ func parsePositiveDuration(raw string) (time.Duration, bool) {
 	return 0, false
 }
 
-func normalizePluginIDs(items []string) []string {
-	set := make(map[string]struct{})
-	for _, item := range items {
-		for _, token := range strings.Split(item, ",") {
-			trimmed := strings.TrimSpace(token)
-			if trimmed == "" {
-				continue
-			}
-			set[trimmed] = struct{}{}
-		}
-	}
-	out := make([]string, 0, len(set))
-	for item := range set {
-		out = append(out, item)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func minDuration(a, b time.Duration) time.Duration {
 	if a < b {
 		return a
 	}
 	return b
+}
+
+func clonePluginSpecs(items []pluginloader.PluginSpec) []pluginloader.PluginSpec {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]pluginloader.PluginSpec, 0, len(items))
+	for _, item := range items {
+		out = append(out, pluginloader.PluginSpec{
+			ID:                   item.ID,
+			Version:              item.Version,
+			DisplayName:          item.DisplayName,
+			SupportedStepTypes:   append([]string(nil), item.SupportedStepTypes...),
+			SupportedStrategies:  append([]string(nil), item.SupportedStrategies...),
+			RequestConfigSchema:  cloneAnyMap(item.RequestConfigSchema),
+			DefaultRequestConfig: cloneAnyMap(item.DefaultRequestConfig),
+			SupportsAutoFallback: item.SupportsAutoFallback,
+			SourcePath:           item.SourcePath,
+		})
+	}
+	return out
+}
+
+func cloneAnyMap(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
+}
+
+func errorFromText(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	return errors.New(raw)
 }
 
 func resourceSummaryFromCapabilities(caps *device.DeviceCapabilities) *runtimecontrolv1.ResourceSummary {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -66,7 +65,7 @@ func run() error {
 			NodeID:            cfg.NodeID,
 			Version:           cfg.Version,
 			RuntimeKind:       cfg.RuntimeKind,
-			PluginIDs:         parseCSV(cfg.PluginIDsCSV),
+			KernelsDir:        cfg.KernelsDir,
 			HeartbeatInterval: time.Duration(cfg.HeartbeatIntervalSec) * time.Second,
 			ConnectTimeout:    time.Duration(cfg.ConnectTimeoutSec) * time.Second,
 			InitialBackoff:    time.Duration(cfg.ReconnectInitialBackoffSec) * time.Second,
@@ -97,16 +96,4 @@ func run() error {
 	<-ctx.Done()
 	logger.Info().Msg("收到退出信号，saki-agent 正在停机")
 	return nil
-}
-
-func parseCSV(raw string) []string {
-	items := []string{}
-	for _, token := range strings.Split(raw, ",") {
-		trimmed := strings.TrimSpace(token)
-		if trimmed == "" {
-			continue
-		}
-		items = append(items, trimmed)
-	}
-	return items
 }

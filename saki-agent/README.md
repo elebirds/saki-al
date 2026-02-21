@@ -41,13 +41,19 @@
 12. `SAKI_AGENT_CONNECT_TIMEOUT_SEC`（默认 `5`）
 13. `SAKI_AGENT_RECONNECT_INITIAL_BACKOFF_SEC`（默认 `2`）
 14. `SAKI_AGENT_RECONNECT_MAX_BACKOFF_SEC`（默认 `30`）
-15. `SAKI_AGENT_PLUGIN_IDS`（默认 `saki-agent-placeholder`）
+15. `SAKI_AGENT_KERNELS_DIR`（默认自动探测：`./saki-kernels/kernels` 或 `../saki-kernels/kernels`）
 16. `SAKI_AGENT_MINIO_ENDPOINT`
 17. `SAKI_AGENT_MINIO_ACCESS_KEY`
 18. `SAKI_AGENT_MINIO_SECRET_KEY`
 19. `SAKI_AGENT_MINIO_BUCKET`
 20. `SAKI_AGENT_MINIO_PREFIX`（默认 `runtime-artifacts`）
 21. `SAKI_AGENT_MINIO_USE_SSL`（默认 `false`）
+
+## 插件加载
+
+1. Agent 仅从 `SAKI_AGENT_KERNELS_DIR` 下扫描 `**/kernel.yaml`（或 `kernel.yml`）加载插件能力。
+2. 不再支持通过 CSV 手工注入插件 ID。
+3. 若未扫描到任何插件，注册仍会继续，但 dispatcher 无法派发业务 step。
 
 ## Stdin 命令台
 

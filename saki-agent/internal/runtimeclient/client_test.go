@@ -2,6 +2,8 @@ package runtimeclient
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -160,6 +162,138 @@ func TestAssignTerminalFailureWhenNoStop(t *testing.T) {
 	}
 	if !strings.Contains(failedResult.GetErrorMessage(), "尚未接入") {
 		t.Fatalf("unexpected failed result message: %s", failedResult.GetErrorMessage())
+	}
+}
+
+func TestBuildRegisterMessageLoadsPluginsFromKernelYAML(t *testing.T) {
+	root := t.TempDir()
+	kernelDir := filepath.Join(root, "example")
+	if err := os.MkdirAll(kernelDir, 0o755); err != nil {
+		t.Fatalf("mkdir kernel dir failed: %v", err)
+	}
+	manifest := `id: "example-train"
+version: "0.2.0"
+display_name: "Example Train"
+supported_step_types:
+  - "TRAIN"
+supported_strategies:
+  - "entropy"
+`
+	if err := os.WriteFile(filepath.Join(kernelDir, "kernel.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write kernel manifest failed: %v", err)
+	}
+
+	client := New(Config{
+		Target:     "127.0.0.1:50051",
+		KernelsDir: root,
+	}, nil, zerolog.Nop())
+	message, _, err := client.buildRegisterMessage()
+	if err != nil {
+		t.Fatalf("buildRegisterMessage failed: %v", err)
+	}
+	register := message.GetRegister()
+	if register == nil {
+		t.Fatal("expected register payload")
+	}
+	if len(register.GetPlugins()) != 1 {
+		t.Fatalf("expected 1 plugin, got %d", len(register.GetPlugins()))
+	}
+	plugin := register.GetPlugins()[0]
+	if plugin.GetPluginId() != "example-train" {
+		t.Fatalf("unexpected plugin id: %s", plugin.GetPluginId())
+	}
+	if plugin.GetVersion() != "0.2.0" {
+		t.Fatalf("unexpected plugin version: %s", plugin.GetVersion())
+	}
+}
+
+func TestPluginCatalogCachedInMemoryAfterFirstLoad(t *testing.T) {
+	root := t.TempDir()
+	kernelDir := filepath.Join(root, "example")
+	if err := os.MkdirAll(kernelDir, 0o755); err != nil {
+		t.Fatalf("mkdir kernel dir failed: %v", err)
+	}
+	manifestPath := filepath.Join(kernelDir, "kernel.yaml")
+	manifest := `id: "cached-plugin"
+version: "1.0.0"
+display_name: "Cached Plugin"
+supported_step_types:
+  - "TRAIN"
+`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write kernel manifest failed: %v", err)
+	}
+
+	client := New(Config{
+		Target:     "127.0.0.1:50051",
+		KernelsDir: root,
+	}, nil, zerolog.Nop())
+
+	first, _, err := client.buildRegisterMessage()
+	if err != nil {
+		t.Fatalf("first buildRegisterMessage failed: %v", err)
+	}
+	if len(first.GetRegister().GetPlugins()) != 1 {
+		t.Fatalf("expected 1 plugin on first load, got %d", len(first.GetRegister().GetPlugins()))
+	}
+
+	if err := os.Remove(manifestPath); err != nil {
+		t.Fatalf("remove kernel manifest failed: %v", err)
+	}
+	second, _, err := client.buildRegisterMessage()
+	if err != nil {
+		t.Fatalf("second buildRegisterMessage failed: %v", err)
+	}
+	if len(second.GetRegister().GetPlugins()) != 1 {
+		t.Fatalf("expected cached plugin after source removal, got %d", len(second.GetRegister().GetPlugins()))
+	}
+	if second.GetRegister().GetPlugins()[0].GetPluginId() != "cached-plugin" {
+		t.Fatalf("unexpected cached plugin id: %s", second.GetRegister().GetPlugins()[0].GetPluginId())
+	}
+
+	status := client.Status()
+	if !status.PluginCatalogLoaded {
+		t.Fatalf("expected plugin catalog loaded in status")
+	}
+	if status.PluginCatalogSize != 1 {
+		t.Fatalf("expected plugin catalog size 1, got %d", status.PluginCatalogSize)
+	}
+	if status.PluginCatalogAt.IsZero() {
+		t.Fatalf("expected plugin catalog loaded_at set")
+	}
+	if status.PluginCatalogError != "" {
+		t.Fatalf("unexpected plugin catalog error: %s", status.PluginCatalogError)
+	}
+}
+
+func TestPluginCatalogStatusContainsLoadError(t *testing.T) {
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	client := New(Config{
+		Target:     "127.0.0.1:50051",
+		KernelsDir: missingDir,
+	}, nil, zerolog.Nop())
+
+	message, _, err := client.buildRegisterMessage()
+	if err != nil {
+		t.Fatalf("buildRegisterMessage failed: %v", err)
+	}
+	register := message.GetRegister()
+	if register == nil {
+		t.Fatalf("expected register payload")
+	}
+	if len(register.GetPlugins()) != 0 {
+		t.Fatalf("expected no plugins, got %d", len(register.GetPlugins()))
+	}
+
+	status := client.Status()
+	if !status.PluginCatalogLoaded {
+		t.Fatalf("expected plugin catalog loaded state")
+	}
+	if status.PluginCatalogError == "" {
+		t.Fatalf("expected plugin catalog load error")
+	}
+	if status.PluginCatalogSize != 0 {
+		t.Fatalf("expected plugin catalog size 0, got %d", status.PluginCatalogSize)
 	}
 }
 

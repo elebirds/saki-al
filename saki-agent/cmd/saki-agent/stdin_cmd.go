@@ -159,6 +159,22 @@ func printStatus(daemon *agent.Agent, runtimeClient *runtimeclient.Client) {
 			formatTime(runtimeSnapshot.LastConnectedAt),
 			formatTime(runtimeSnapshot.NextRetryAt),
 		)
+		fmt.Fprintf(
+			os.Stdout,
+			"plugins: loaded=%t count=%d loaded_at=%s load_error=%s\n",
+			runtimeSnapshot.PluginCatalogLoaded,
+			runtimeSnapshot.PluginCatalogSize,
+			formatTime(runtimeSnapshot.PluginCatalogAt),
+			defaultText(runtimeSnapshot.PluginCatalogError),
+		)
+		if len(runtimeSnapshot.Plugins) > 0 {
+			pluginLabels := make([]string, 0, len(runtimeSnapshot.Plugins))
+			for _, plugin := range runtimeSnapshot.Plugins {
+				label := fmt.Sprintf("%s@%s", plugin.ID, plugin.Version)
+				pluginLabels = append(pluginLabels, label)
+			}
+			fmt.Fprintf(os.Stdout, "plugins_loaded: %s\n", strings.Join(pluginLabels, ", "))
+		}
 	}
 }
 

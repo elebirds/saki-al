@@ -117,10 +117,14 @@ message ResourceSummary {
 
 message Register {
   string request_id = 1;
+  // executor_id: 执行实例唯一标识（调度与会话主键）。
+  // 同一 node 上可以有多个 executor_id；重启后如需保持会话连续应复用该值。
   string executor_id = 2;
   string version = 3;
   repeated PluginCapability plugins = 4;
   ResourceSummary resources = 5;
+  // node_id: 物理/逻辑节点标识（资产归属、拓扑与观测维度），非调度主键。
+  // 多个 executor_id 可以共享同一个 node_id。
   string node_id = 6;
   google.protobuf.Struct hardware_profile = 7;
   google.protobuf.Struct mps_stability_profile = 8;
@@ -130,10 +134,12 @@ message Register {
 
 message Heartbeat {
   string request_id = 1;
+  // executor_id: 心跳归属的执行实例（必须与 Register 的 executor_id 一致）。
   string executor_id = 2;
   bool busy = 3;
   string current_step_id = 4;
   ResourceSummary resources = 5;
+  // node_id: 节点维度的冗余上报，便于链路排障与数据校验。
   string node_id = 6;
   string health_status = 7;
   google.protobuf.Struct health_detail = 8;

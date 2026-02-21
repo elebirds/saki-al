@@ -36,10 +36,14 @@ class PluginWorkerClient:
         plugin_id: str,
         step_id: str,
         event_handler: EventHandler,
+        python_executable: str | Path | None = None,
+        entrypoint_module: str | None = None,
     ) -> None:
         self._plugin_id = plugin_id
         self._step_id = step_id
         self._event_handler = event_handler
+        self._python_executable = str(python_executable) if python_executable else sys.executable
+        self._entrypoint_module = entrypoint_module or "saki_executor.plugins.ipc.worker_main"
         self._ctx = zmq.asyncio.Context.instance()
         self._process: asyncio.subprocess.Process | None = None
         self._req_socket: zmq.asyncio.Socket | None = None
@@ -159,10 +163,17 @@ class PluginWorkerClient:
         env = dict(os.environ)
         env["PYTHONUNBUFFERED"] = "1"
         env["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+
+        # Resolve entrypoint module: the part before ":" is the module,
+        # e.g. "saki_plugin_yolo_det.worker:main" → module = "saki_plugin_yolo_det.worker"
+        module = self._entrypoint_module
+        if ":" in module:
+            module = module.split(":")[0]
+
         command = [
-            sys.executable,
+            self._python_executable,
             "-m",
-            "saki_executor.plugins.ipc.worker_main",
+            module,
             "--plugin-id",
             self._plugin_id,
             "--step-id",

@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     ENABLE_COMMAND_STDIN: bool = True
     DISCONNECT_FORCE_WAIT_SEC: int = 20
+    PLUGINS_DIR: str = "../saki-plugins"
+    PLUGIN_VENV_AUTO_SYNC: bool = True
     PLUGIN_WORKER_STARTUP_TIMEOUT_SEC: int = 10
     PLUGIN_WORKER_TERM_TIMEOUT_SEC: int = 5
     PLUGIN_WORKER_REQ_POLL_INTERVAL_MS: int = 200

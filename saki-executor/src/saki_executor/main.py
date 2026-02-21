@@ -24,7 +24,7 @@ async def run() -> None:
     )
 
     registry = PluginRegistry()
-    registry.load_builtin()
+    registry.discover_plugins(settings.PLUGINS_DIR, auto_sync=settings.PLUGIN_VENV_AUTO_SYNC)
 
     cache = AssetCache(root_dir=settings.CACHE_DIR, max_bytes=settings.CACHE_MAX_BYTES)
     manager = StepManager(

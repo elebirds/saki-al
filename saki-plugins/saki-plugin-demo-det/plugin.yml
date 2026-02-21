@@ -1,0 +1,51 @@
+plugin_id: "demo_det_v1"
+version: "0.1.0"
+display_name: "Demo Detection (Mock)"
+sdk_version: ">=0.1.0"
+
+supported_step_types:
+  - train
+  - score
+  - eval
+  - export
+  - upload_artifact
+  - custom
+
+supported_strategies:
+  - uncertainty_1_minus_max_conf
+  - aug_iou_disagreement
+  - random_baseline
+
+supported_accelerators:
+  - cpu
+
+supports_auto_fallback: true
+
+config_schema:
+  title: "Demo Detection Request Config"
+  fields:
+    - key: epochs
+      label: Epochs
+      type: integer
+      required: true
+      min: 1
+      max: 500
+    - key: batch_size
+      label: Batch Size
+      type: integer
+      required: true
+      min: 1
+      max: 2048
+    - key: steps_per_epoch
+      label: Steps / Epoch
+      type: integer
+      required: false
+      min: 1
+      max: 5000
+
+default_config:
+  epochs: 5
+  batch_size: 8
+  steps_per_epoch: 20
+
+entrypoint: "saki_plugin_demo_det.worker:main"

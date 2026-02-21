@@ -1,0 +1,112 @@
+plugin_id: "yolo_det_v1"
+version: "0.1.0"
+display_name: "YOLO Detection (OBB)"
+sdk_version: ">=0.1.0"
+
+supported_step_types:
+  - train
+  - score
+  - eval
+  - export
+  - upload_artifact
+  - custom
+
+supported_strategies:
+  - aug_iou_disagreement
+  - uncertainty_1_minus_max_conf
+  - random_baseline
+
+supported_accelerators:
+  - cuda
+  - mps
+  - cpu
+
+supports_auto_fallback: true
+
+config_schema:
+  title: "YOLO Detection Request Config"
+  fields:
+    - key: epochs
+      label: Epochs
+      type: integer
+      required: true
+      min: 1
+      max: 5000
+    - key: batch
+      label: Batch Size
+      type: integer
+      required: true
+      min: 1
+      max: 2048
+    - key: imgsz
+      label: Image Size
+      type: integer
+      required: true
+      min: 64
+      max: 4096
+    - key: patience
+      label: Patience
+      type: integer
+      required: false
+      min: 1
+      max: 1000
+    - key: predict_conf
+      label: Predict Conf
+      type: number
+      required: false
+      min: 0.0
+      max: 1.0
+    - key: val_split_ratio
+      label: Val Split Ratio
+      type: number
+      required: false
+      min: 0.05
+      max: 0.5
+    - key: model_source
+      label: Model Source
+      type: select
+      required: true
+      options:
+        - label: Preset
+          value: preset
+        - label: Custom Local
+          value: custom_local
+        - label: Custom URL
+          value: custom_url
+    - key: model_preset
+      label: Preset Model
+      type: select
+      required: false
+      options:
+        - label: yolov8n-obb.pt
+          value: yolov8n-obb.pt
+        - label: yolov8s-obb.pt
+          value: yolov8s-obb.pt
+        - label: yolov8m-obb.pt
+          value: yolov8m-obb.pt
+        - label: yolov8l-obb.pt
+          value: yolov8l-obb.pt
+        - label: yolov8x-obb.pt
+          value: yolov8x-obb.pt
+    - key: model_custom_ref
+      label: Custom Model Ref
+      type: string
+      required: false
+    - key: device
+      label: Device
+      type: string
+      required: false
+
+default_config:
+  epochs: 30
+  batch: 16
+  imgsz: 640
+  patience: 20
+  predict_conf: 0.1
+  val_split_ratio: 0.2
+  model_source: preset
+  model_preset: yolov8n-obb.pt
+  model_custom_ref: ""
+  device: auto
+
+entrypoint: "saki_plugin_yolo_det.worker:main"

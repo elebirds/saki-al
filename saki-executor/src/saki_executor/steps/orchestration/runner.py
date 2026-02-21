@@ -138,10 +138,16 @@ class StepPipelineRunner:
         return plugin
 
     def _build_execution_plugin(self, *, metadata_plugin: Any, emitter: StepEventEmitter):
+        # Extract external plugin info if available
+        python_executable = getattr(metadata_plugin, "python_path", None)
+        entrypoint_module = getattr(metadata_plugin, "entrypoint", None)
+
         plugin = SubprocessPluginProxy(
             metadata_plugin=metadata_plugin,
             step_id=self._request.step_id,
             emit=emitter.emit,
+            python_executable=python_executable,
+            entrypoint_module=entrypoint_module,
         )
         self._manager._active_plugin = plugin  # noqa: SLF001
         return plugin

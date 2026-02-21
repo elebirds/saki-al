@@ -17,6 +17,8 @@ class SubprocessPluginProxy(ExecutorPlugin):
         metadata_plugin: ExecutorPlugin,
         step_id: str,
         emit: EventCallback,
+        python_executable: str | Path | None = None,
+        entrypoint_module: str | None = None,
     ) -> None:
         self._metadata = metadata_plugin
         self._step_id = step_id
@@ -25,6 +27,8 @@ class SubprocessPluginProxy(ExecutorPlugin):
             plugin_id=self._metadata.plugin_id,
             step_id=self._step_id,
             event_handler=self._on_worker_event,
+            python_executable=python_executable,
+            entrypoint_module=entrypoint_module,
         )
 
     @property

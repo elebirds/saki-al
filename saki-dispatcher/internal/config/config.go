@@ -11,7 +11,7 @@ type Config struct {
 	RuntimeGRPCBind string `env:"RUNTIME_GRPC_BIND" envDefault:"0.0.0.0:50051"`
 	AdminGRPCBind   string `env:"ADMIN_GRPC_BIND" envDefault:"0.0.0.0:50052"`
 
-	DatabaseURL string `env:"DATABASE_URL" envDefault:""`
+	DatabaseURL string `env:"DATABASE_URL" envDefault:"postgresql://postgres:postgres@localhost:5432/saki"`
 
 	InternalToken string `env:"INTERNAL_TOKEN" envDefault:"dev-secret"`
 	LogLevel      string `env:"LOG_LEVEL" envDefault:"info"`
@@ -27,8 +27,8 @@ type Config struct {
 	AssignAckTimeoutSec        int   `env:"ASSIGN_ACK_TIMEOUT_SEC" envDefault:"30"`
 	DispatchScanLockKey        int64 `env:"DISPATCH_SCAN_LOCK_KEY" envDefault:"8042002"`
 
-	RuntimeDomainTarget string `env:"RUNTIME_DOMAIN_TARGET" envDefault:""`
-	RuntimeDomainToken  string `env:"RUNTIME_DOMAIN_TOKEN" envDefault:""`
+	RuntimeDomainTarget string `env:"RUNTIME_DOMAIN_TARGET" envDefault:"localhost:50053"`
+	RuntimeDomainToken  string `env:"RUNTIME_DOMAIN_TOKEN" envDefault:"dev-secret"`
 }
 
 func Load() (Config, error) {

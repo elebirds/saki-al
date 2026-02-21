@@ -1,0 +1,1 @@
+"""Demo Detection plugin package."""

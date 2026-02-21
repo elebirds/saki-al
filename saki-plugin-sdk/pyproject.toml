@@ -1,27 +1,21 @@
 [project]
-name = "saki-executor"
+name = "saki-plugin-sdk"
 version = "0.1.0"
-description = "GPU runtime executor for Saki active learning platform"
+description = "Plugin SDK for Saki executor – base classes, IPC protocol, and built-in strategies"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "grpcio>=1.78.0",
-    "httpx>=0.27.0",
     "loguru>=0.7.2",
-    "pyzmq>=26.2.0",
     "pydantic>=2.7.0",
-    "pydantic-settings>=2.2.1",
-    "protobuf>=6.31.1,<7",
+    "pyzmq>=26.2.0",
     "pyyaml>=6.0",
     "saki-ir",
-    "saki-plugin-sdk",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.7",
-    "grpcio-tools==1.78.*",
 ]
 
 [build-system]
@@ -29,8 +23,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/saki_executor"]
+packages = ["src/saki_plugin_sdk"]
 
 [tool.uv.sources]
 saki-ir = { path = "../shared/saki-ir/python", editable = true }
-saki-plugin-sdk = { path = "../saki-plugin-sdk", editable = true }

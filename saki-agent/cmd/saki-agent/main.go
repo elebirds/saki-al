@@ -2,52 +2,68 @@ package main
 
 import (
 	"context"
-	"flag"
-	"log"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+
 	"github.com/elebirds/saki/saki-agent/internal/agent"
+	"github.com/elebirds/saki/saki-agent/internal/config"
 )
 
 func main() {
-	var runDir string
-	var minioEndpoint string
-	var minioAccessKey string
-	var minioSecretKey string
-	var minioBucket string
-	var minioPrefix string
-	var minioUseSSL bool
-	flag.StringVar(&runDir, "run-dir", "/var/run/saki-agent", "runtime socket directory")
-	flag.StringVar(&minioEndpoint, "minio-endpoint", "", "minio endpoint host:port")
-	flag.StringVar(&minioAccessKey, "minio-access-key", "", "minio access key")
-	flag.StringVar(&minioSecretKey, "minio-secret-key", "", "minio secret key")
-	flag.StringVar(&minioBucket, "minio-bucket", "", "minio bucket name")
-	flag.StringVar(&minioPrefix, "minio-prefix", "runtime-artifacts", "artifact object key prefix")
-	flag.BoolVar(&minioUseSSL, "minio-ssl", false, "use https to connect minio")
-	flag.Parse()
+	if err := run(); err != nil {
+		log.Error().Err(err).Msg("saki-agent 异常退出")
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	setupLogger(cfg.LogLevel)
+	logger := log.With().Str("component", "saki-agent").Logger()
 
 	daemon, err := agent.New(agent.Config{
-		RunDir:         runDir,
-		MinIOEndpoint:  minioEndpoint,
-		MinIOAccessKey: minioAccessKey,
-		MinIOSecretKey: minioSecretKey,
-		MinIOBucket:    minioBucket,
-		MinIOPrefix:    minioPrefix,
-		MinIOUseSSL:    minioUseSSL,
+		RunDir:         cfg.RunDir,
+		MinIOEndpoint:  cfg.MinIOEndpoint,
+		MinIOAccessKey: cfg.MinIOAccessKey,
+		MinIOSecretKey: cfg.MinIOSecretKey,
+		MinIOBucket:    cfg.MinIOBucket,
+		MinIOPrefix:    cfg.MinIOPrefix,
+		MinIOUseSSL:    cfg.MinIOUseSSL,
 	})
 	if err != nil {
-		log.Fatalf("init agent failed: %v", err)
+		return err
 	}
 	if err := daemon.PrepareRunDir(); err != nil {
-		log.Fatalf("prepare run dir failed: %v", err)
+		return err
 	}
 	if err := daemon.CleanupStaleSockets(); err != nil {
-		log.Fatalf("cleanup stale sockets failed: %v", err)
+		return err
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	logger.Info().Msg("saki-agent 已启动")
+
 	<-ctx.Done()
+	logger.Info().Msg("收到退出信号，saki-agent 正在停机")
+	return nil
+}
+
+func setupLogger(level string) {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
+	parsed, err := zerolog.ParseLevel(strings.ToLower(strings.TrimSpace(level)))
+	if err != nil {
+		parsed = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(parsed)
 }

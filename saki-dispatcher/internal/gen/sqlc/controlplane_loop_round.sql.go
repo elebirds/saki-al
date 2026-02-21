@@ -282,6 +282,21 @@ func (q *Queries) GetNextRoundIndex(ctx context.Context, loopID uuid.UUID) (int3
 	return next_round_index, err
 }
 
+const getPrimaryDatasetIDByProject = `-- name: GetPrimaryDatasetIDByProject :one
+SELECT dataset_id
+FROM project_dataset
+WHERE project_id = $1::uuid
+ORDER BY dataset_id ASC
+LIMIT 1
+`
+
+func (q *Queries) GetPrimaryDatasetIDByProject(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getPrimaryDatasetIDByProject, projectID)
+	var dataset_id uuid.UUID
+	err := row.Scan(&dataset_id)
+	return dataset_id, err
+}
+
 const getRoundState = `-- name: GetRoundState :one
 SELECT state
 FROM round

@@ -785,14 +785,19 @@ func (x *ResourceSummary) GetAccelerators() []*AcceleratorCapability {
 }
 
 type Register struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	ExecutorId    string                 `protobuf:"bytes,2,opt,name=executor_id,json=executorId,proto3" json:"executor_id,omitempty"`
-	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
-	Plugins       []*PluginCapability    `protobuf:"bytes,4,rep,name=plugins,proto3" json:"plugins,omitempty"`
-	Resources     *ResourceSummary       `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	RequestId           string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	ExecutorId          string                 `protobuf:"bytes,2,opt,name=executor_id,json=executorId,proto3" json:"executor_id,omitempty"`
+	Version             string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	Plugins             []*PluginCapability    `protobuf:"bytes,4,rep,name=plugins,proto3" json:"plugins,omitempty"`
+	Resources           *ResourceSummary       `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
+	NodeId              string                 `protobuf:"bytes,6,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	HardwareProfile     *structpb.Struct       `protobuf:"bytes,7,opt,name=hardware_profile,json=hardwareProfile,proto3" json:"hardware_profile,omitempty"`
+	MpsStabilityProfile *structpb.Struct       `protobuf:"bytes,8,opt,name=mps_stability_profile,json=mpsStabilityProfile,proto3" json:"mps_stability_profile,omitempty"`
+	KernelCompatFlags   *structpb.Struct       `protobuf:"bytes,9,opt,name=kernel_compat_flags,json=kernelCompatFlags,proto3" json:"kernel_compat_flags,omitempty"`
+	RuntimeKind         string                 `protobuf:"bytes,10,opt,name=runtime_kind,json=runtimeKind,proto3" json:"runtime_kind,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Register) Reset() {
@@ -860,6 +865,41 @@ func (x *Register) GetResources() *ResourceSummary {
 	return nil
 }
 
+func (x *Register) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *Register) GetHardwareProfile() *structpb.Struct {
+	if x != nil {
+		return x.HardwareProfile
+	}
+	return nil
+}
+
+func (x *Register) GetMpsStabilityProfile() *structpb.Struct {
+	if x != nil {
+		return x.MpsStabilityProfile
+	}
+	return nil
+}
+
+func (x *Register) GetKernelCompatFlags() *structpb.Struct {
+	if x != nil {
+		return x.KernelCompatFlags
+	}
+	return nil
+}
+
+func (x *Register) GetRuntimeKind() string {
+	if x != nil {
+		return x.RuntimeKind
+	}
+	return ""
+}
+
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -867,6 +907,10 @@ type Heartbeat struct {
 	Busy          bool                   `protobuf:"varint,3,opt,name=busy,proto3" json:"busy,omitempty"`
 	CurrentStepId string                 `protobuf:"bytes,4,opt,name=current_step_id,json=currentStepId,proto3" json:"current_step_id,omitempty"`
 	Resources     *ResourceSummary       `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
+	NodeId        string                 `protobuf:"bytes,6,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	HealthStatus  string                 `protobuf:"bytes,7,opt,name=health_status,json=healthStatus,proto3" json:"health_status,omitempty"`
+	HealthDetail  *structpb.Struct       `protobuf:"bytes,8,opt,name=health_detail,json=healthDetail,proto3" json:"health_detail,omitempty"`
+	UptimeSec     int64                  `protobuf:"varint,9,opt,name=uptime_sec,json=uptimeSec,proto3" json:"uptime_sec,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -936,25 +980,61 @@ func (x *Heartbeat) GetResources() *ResourceSummary {
 	return nil
 }
 
+func (x *Heartbeat) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *Heartbeat) GetHealthStatus() string {
+	if x != nil {
+		return x.HealthStatus
+	}
+	return ""
+}
+
+func (x *Heartbeat) GetHealthDetail() *structpb.Struct {
+	if x != nil {
+		return x.HealthDetail
+	}
+	return nil
+}
+
+func (x *Heartbeat) GetUptimeSec() int64 {
+	if x != nil {
+		return x.UptimeSec
+	}
+	return 0
+}
+
 type StepPayload struct {
-	state            protoimpl.MessageState  `protogen:"open.v1"`
-	StepId           string                  `protobuf:"bytes,1,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	RoundId          string                  `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
-	LoopId           string                  `protobuf:"bytes,3,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
-	ProjectId        string                  `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	InputCommitId    string                  `protobuf:"bytes,5,opt,name=input_commit_id,json=inputCommitId,proto3" json:"input_commit_id,omitempty"`
-	StepType         RuntimeStepType         `protobuf:"varint,6,opt,name=step_type,json=stepType,proto3,enum=saki.runtime.v1.RuntimeStepType" json:"step_type,omitempty"`
-	PluginId         string                  `protobuf:"bytes,7,opt,name=plugin_id,json=pluginId,proto3" json:"plugin_id,omitempty"`
-	Mode             RuntimeLoopMode         `protobuf:"varint,8,opt,name=mode,proto3,enum=saki.runtime.v1.RuntimeLoopMode" json:"mode,omitempty"`
-	QueryStrategy    string                  `protobuf:"bytes,9,opt,name=query_strategy,json=queryStrategy,proto3" json:"query_strategy,omitempty"`
-	ResolvedParams   *structpb.Struct        `protobuf:"bytes,10,opt,name=resolved_params,json=resolvedParams,proto3" json:"resolved_params,omitempty"`
-	Resources        *ResourceSummary        `protobuf:"bytes,11,opt,name=resources,proto3" json:"resources,omitempty"`
-	RoundIndex       int32                   `protobuf:"varint,12,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
-	Attempt          int32                   `protobuf:"varint,13,opt,name=attempt,proto3" json:"attempt,omitempty"`
-	DependsOnStepIds []string                `protobuf:"bytes,14,rep,name=depends_on_step_ids,json=dependsOnStepIds,proto3" json:"depends_on_step_ids,omitempty"`
-	DispatchKind     RuntimeStepDispatchKind `protobuf:"varint,15,opt,name=dispatch_kind,json=dispatchKind,proto3,enum=saki.runtime.v1.RuntimeStepDispatchKind" json:"dispatch_kind,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state                        protoimpl.MessageState  `protogen:"open.v1"`
+	StepId                       string                  `protobuf:"bytes,1,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	RoundId                      string                  `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
+	LoopId                       string                  `protobuf:"bytes,3,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
+	ProjectId                    string                  `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	InputCommitId                string                  `protobuf:"bytes,5,opt,name=input_commit_id,json=inputCommitId,proto3" json:"input_commit_id,omitempty"`
+	StepType                     RuntimeStepType         `protobuf:"varint,6,opt,name=step_type,json=stepType,proto3,enum=saki.runtime.v1.RuntimeStepType" json:"step_type,omitempty"`
+	PluginId                     string                  `protobuf:"bytes,7,opt,name=plugin_id,json=pluginId,proto3" json:"plugin_id,omitempty"`
+	Mode                         RuntimeLoopMode         `protobuf:"varint,8,opt,name=mode,proto3,enum=saki.runtime.v1.RuntimeLoopMode" json:"mode,omitempty"`
+	QueryStrategy                string                  `protobuf:"bytes,9,opt,name=query_strategy,json=queryStrategy,proto3" json:"query_strategy,omitempty"`
+	ResolvedParams               *structpb.Struct        `protobuf:"bytes,10,opt,name=resolved_params,json=resolvedParams,proto3" json:"resolved_params,omitempty"`
+	Resources                    *ResourceSummary        `protobuf:"bytes,11,opt,name=resources,proto3" json:"resources,omitempty"`
+	RoundIndex                   int32                   `protobuf:"varint,12,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
+	Attempt                      int32                   `protobuf:"varint,13,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	DependsOnStepIds             []string                `protobuf:"bytes,14,rep,name=depends_on_step_ids,json=dependsOnStepIds,proto3" json:"depends_on_step_ids,omitempty"`
+	DispatchKind                 RuntimeStepDispatchKind `protobuf:"varint,15,opt,name=dispatch_kind,json=dispatchKind,proto3,enum=saki.runtime.v1.RuntimeStepDispatchKind" json:"dispatch_kind,omitempty"`
+	DatasetManifestRef           string                  `protobuf:"bytes,16,opt,name=dataset_manifest_ref,json=datasetManifestRef,proto3" json:"dataset_manifest_ref,omitempty"`
+	SnapshotId                   string                  `protobuf:"bytes,17,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	EnvOverrides                 map[string]string       `protobuf:"bytes,18,rep,name=env_overrides,json=envOverrides,proto3" json:"env_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	RuntimeHints                 *structpb.Struct        `protobuf:"bytes,19,opt,name=runtime_hints,json=runtimeHints,proto3" json:"runtime_hints,omitempty"`
+	KernelCapabilityRequirements *structpb.Struct        `protobuf:"bytes,20,opt,name=kernel_capability_requirements,json=kernelCapabilityRequirements,proto3" json:"kernel_capability_requirements,omitempty"`
+	GpuExclusive                 bool                    `protobuf:"varint,21,opt,name=gpu_exclusive,json=gpuExclusive,proto3" json:"gpu_exclusive,omitempty"`
+	KernelId                     string                  `protobuf:"bytes,22,opt,name=kernel_id,json=kernelId,proto3" json:"kernel_id,omitempty"`
+	KernelVersion                string                  `protobuf:"bytes,23,opt,name=kernel_version,json=kernelVersion,proto3" json:"kernel_version,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *StepPayload) Reset() {
@@ -1092,6 +1172,62 @@ func (x *StepPayload) GetDispatchKind() RuntimeStepDispatchKind {
 	return RuntimeStepDispatchKind_RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED
 }
 
+func (x *StepPayload) GetDatasetManifestRef() string {
+	if x != nil {
+		return x.DatasetManifestRef
+	}
+	return ""
+}
+
+func (x *StepPayload) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *StepPayload) GetEnvOverrides() map[string]string {
+	if x != nil {
+		return x.EnvOverrides
+	}
+	return nil
+}
+
+func (x *StepPayload) GetRuntimeHints() *structpb.Struct {
+	if x != nil {
+		return x.RuntimeHints
+	}
+	return nil
+}
+
+func (x *StepPayload) GetKernelCapabilityRequirements() *structpb.Struct {
+	if x != nil {
+		return x.KernelCapabilityRequirements
+	}
+	return nil
+}
+
+func (x *StepPayload) GetGpuExclusive() bool {
+	if x != nil {
+		return x.GpuExclusive
+	}
+	return false
+}
+
+func (x *StepPayload) GetKernelId() string {
+	if x != nil {
+		return x.KernelId
+	}
+	return ""
+}
+
+func (x *StepPayload) GetKernelVersion() string {
+	if x != nil {
+		return x.KernelVersion
+	}
+	return ""
+}
+
 type AssignStep struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -1149,6 +1285,7 @@ type StopStep struct {
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
 	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	Force         bool                   `protobuf:"varint,4,opt,name=force,proto3" json:"force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1202,6 +1339,13 @@ func (x *StopStep) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *StopStep) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
 }
 
 type StatusEvent struct {
@@ -1548,6 +1692,166 @@ func (x *ArtifactEvent) GetArtifact() *ArtifactItem {
 	return nil
 }
 
+type ArtifactLocalReadyEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RelativePath  string                 `protobuf:"bytes,1,opt,name=relative_path,json=relativePath,proto3" json:"relative_path,omitempty"`
+	SizeBytes     uint64                 `protobuf:"varint,2,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Sha256        string                 `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	Kind          string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	Required      bool                   `protobuf:"varint,5,opt,name=required,proto3" json:"required,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArtifactLocalReadyEvent) Reset() {
+	*x = ArtifactLocalReadyEvent{}
+	mi := &file_runtime_control_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArtifactLocalReadyEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArtifactLocalReadyEvent) ProtoMessage() {}
+
+func (x *ArtifactLocalReadyEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_control_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArtifactLocalReadyEvent.ProtoReflect.Descriptor instead.
+func (*ArtifactLocalReadyEvent) Descriptor() ([]byte, []int) {
+	return file_runtime_control_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ArtifactLocalReadyEvent) GetRelativePath() string {
+	if x != nil {
+		return x.RelativePath
+	}
+	return ""
+}
+
+func (x *ArtifactLocalReadyEvent) GetSizeBytes() uint64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *ArtifactLocalReadyEvent) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *ArtifactLocalReadyEvent) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ArtifactLocalReadyEvent) GetRequired() bool {
+	if x != nil {
+		return x.Required
+	}
+	return false
+}
+
+type ArtifactUploadedEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RelativePath  string                 `protobuf:"bytes,1,opt,name=relative_path,json=relativePath,proto3" json:"relative_path,omitempty"`
+	StorageUri    string                 `protobuf:"bytes,2,opt,name=storage_uri,json=storageUri,proto3" json:"storage_uri,omitempty"`
+	Etag          string                 `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
+	Checksum      string                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Kind          string                 `protobuf:"bytes,5,opt,name=kind,proto3" json:"kind,omitempty"`
+	Required      bool                   `protobuf:"varint,6,opt,name=required,proto3" json:"required,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArtifactUploadedEvent) Reset() {
+	*x = ArtifactUploadedEvent{}
+	mi := &file_runtime_control_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArtifactUploadedEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArtifactUploadedEvent) ProtoMessage() {}
+
+func (x *ArtifactUploadedEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_control_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArtifactUploadedEvent.ProtoReflect.Descriptor instead.
+func (*ArtifactUploadedEvent) Descriptor() ([]byte, []int) {
+	return file_runtime_control_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ArtifactUploadedEvent) GetRelativePath() string {
+	if x != nil {
+		return x.RelativePath
+	}
+	return ""
+}
+
+func (x *ArtifactUploadedEvent) GetStorageUri() string {
+	if x != nil {
+		return x.StorageUri
+	}
+	return ""
+}
+
+func (x *ArtifactUploadedEvent) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *ArtifactUploadedEvent) GetChecksum() string {
+	if x != nil {
+		return x.Checksum
+	}
+	return ""
+}
+
+func (x *ArtifactUploadedEvent) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ArtifactUploadedEvent) GetRequired() bool {
+	if x != nil {
+		return x.Required
+	}
+	return false
+}
+
 type StepEvent struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -1561,14 +1865,18 @@ type StepEvent struct {
 	//	*StepEvent_ProgressEvent
 	//	*StepEvent_MetricEvent
 	//	*StepEvent_ArtifactEvent
-	EventPayload  isStepEvent_EventPayload `protobuf_oneof:"event_payload"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	//	*StepEvent_ArtifactLocalReadyEvent
+	//	*StepEvent_ArtifactUploadedEvent
+	EventPayload     isStepEvent_EventPayload `protobuf_oneof:"event_payload"`
+	KernelState      string                   `protobuf:"bytes,10,opt,name=kernel_state,json=kernelState,proto3" json:"kernel_state,omitempty"`
+	KernelInstanceId string                   `protobuf:"bytes,11,opt,name=kernel_instance_id,json=kernelInstanceId,proto3" json:"kernel_instance_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *StepEvent) Reset() {
 	*x = StepEvent{}
-	mi := &file_runtime_control_proto_msgTypes[14]
+	mi := &file_runtime_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1580,7 +1888,7 @@ func (x *StepEvent) String() string {
 func (*StepEvent) ProtoMessage() {}
 
 func (x *StepEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[14]
+	mi := &file_runtime_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1593,7 +1901,7 @@ func (x *StepEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepEvent.ProtoReflect.Descriptor instead.
 func (*StepEvent) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{14}
+	return file_runtime_control_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *StepEvent) GetRequestId() string {
@@ -1676,6 +1984,38 @@ func (x *StepEvent) GetArtifactEvent() *ArtifactEvent {
 	return nil
 }
 
+func (x *StepEvent) GetArtifactLocalReadyEvent() *ArtifactLocalReadyEvent {
+	if x != nil {
+		if x, ok := x.EventPayload.(*StepEvent_ArtifactLocalReadyEvent); ok {
+			return x.ArtifactLocalReadyEvent
+		}
+	}
+	return nil
+}
+
+func (x *StepEvent) GetArtifactUploadedEvent() *ArtifactUploadedEvent {
+	if x != nil {
+		if x, ok := x.EventPayload.(*StepEvent_ArtifactUploadedEvent); ok {
+			return x.ArtifactUploadedEvent
+		}
+	}
+	return nil
+}
+
+func (x *StepEvent) GetKernelState() string {
+	if x != nil {
+		return x.KernelState
+	}
+	return ""
+}
+
+func (x *StepEvent) GetKernelInstanceId() string {
+	if x != nil {
+		return x.KernelInstanceId
+	}
+	return ""
+}
+
 type isStepEvent_EventPayload interface {
 	isStepEvent_EventPayload()
 }
@@ -1700,6 +2040,14 @@ type StepEvent_ArtifactEvent struct {
 	ArtifactEvent *ArtifactEvent `protobuf:"bytes,9,opt,name=artifact_event,json=artifactEvent,proto3,oneof"`
 }
 
+type StepEvent_ArtifactLocalReadyEvent struct {
+	ArtifactLocalReadyEvent *ArtifactLocalReadyEvent `protobuf:"bytes,12,opt,name=artifact_local_ready_event,json=artifactLocalReadyEvent,proto3,oneof"`
+}
+
+type StepEvent_ArtifactUploadedEvent struct {
+	ArtifactUploadedEvent *ArtifactUploadedEvent `protobuf:"bytes,13,opt,name=artifact_uploaded_event,json=artifactUploadedEvent,proto3,oneof"`
+}
+
 func (*StepEvent_StatusEvent) isStepEvent_EventPayload() {}
 
 func (*StepEvent_LogEvent) isStepEvent_EventPayload() {}
@@ -1709,6 +2057,10 @@ func (*StepEvent_ProgressEvent) isStepEvent_EventPayload() {}
 func (*StepEvent_MetricEvent) isStepEvent_EventPayload() {}
 
 func (*StepEvent_ArtifactEvent) isStepEvent_EventPayload() {}
+
+func (*StepEvent_ArtifactLocalReadyEvent) isStepEvent_EventPayload() {}
+
+func (*StepEvent_ArtifactUploadedEvent) isStepEvent_EventPayload() {}
 
 type QueryCandidate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1721,7 +2073,7 @@ type QueryCandidate struct {
 
 func (x *QueryCandidate) Reset() {
 	*x = QueryCandidate{}
-	mi := &file_runtime_control_proto_msgTypes[15]
+	mi := &file_runtime_control_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1733,7 +2085,7 @@ func (x *QueryCandidate) String() string {
 func (*QueryCandidate) ProtoMessage() {}
 
 func (x *QueryCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[15]
+	mi := &file_runtime_control_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1746,7 +2098,7 @@ func (x *QueryCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryCandidate.ProtoReflect.Descriptor instead.
 func (*QueryCandidate) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{15}
+	return file_runtime_control_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *QueryCandidate) GetSampleId() string {
@@ -1779,13 +2131,14 @@ type StepResult struct {
 	Artifacts     []*ArtifactItem        `protobuf:"bytes,5,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
 	Candidates    []*QueryCandidate      `protobuf:"bytes,6,rep,name=candidates,proto3" json:"candidates,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,7,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	RuntimeMeta   *structpb.Struct       `protobuf:"bytes,8,opt,name=runtime_meta,json=runtimeMeta,proto3" json:"runtime_meta,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StepResult) Reset() {
 	*x = StepResult{}
-	mi := &file_runtime_control_proto_msgTypes[16]
+	mi := &file_runtime_control_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1797,7 +2150,7 @@ func (x *StepResult) String() string {
 func (*StepResult) ProtoMessage() {}
 
 func (x *StepResult) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[16]
+	mi := &file_runtime_control_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1810,7 +2163,7 @@ func (x *StepResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepResult.ProtoReflect.Descriptor instead.
 func (*StepResult) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{16}
+	return file_runtime_control_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *StepResult) GetRequestId() string {
@@ -1862,6 +2215,13 @@ func (x *StepResult) GetErrorMessage() string {
 	return ""
 }
 
+func (x *StepResult) GetRuntimeMeta() *structpb.Struct {
+	if x != nil {
+		return x.RuntimeMeta
+	}
+	return nil
+}
+
 type DataRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	RequestId            string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -1879,7 +2239,7 @@ type DataRequest struct {
 
 func (x *DataRequest) Reset() {
 	*x = DataRequest{}
-	mi := &file_runtime_control_proto_msgTypes[17]
+	mi := &file_runtime_control_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1891,7 +2251,7 @@ func (x *DataRequest) String() string {
 func (*DataRequest) ProtoMessage() {}
 
 func (x *DataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[17]
+	mi := &file_runtime_control_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1904,7 +2264,7 @@ func (x *DataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataRequest.ProtoReflect.Descriptor instead.
 func (*DataRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{17}
+	return file_runtime_control_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DataRequest) GetRequestId() string {
@@ -1981,7 +2341,7 @@ type LabelItem struct {
 
 func (x *LabelItem) Reset() {
 	*x = LabelItem{}
-	mi := &file_runtime_control_proto_msgTypes[18]
+	mi := &file_runtime_control_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1993,7 +2353,7 @@ func (x *LabelItem) String() string {
 func (*LabelItem) ProtoMessage() {}
 
 func (x *LabelItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[18]
+	mi := &file_runtime_control_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2006,7 +2366,7 @@ func (x *LabelItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LabelItem.ProtoReflect.Descriptor instead.
 func (*LabelItem) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{18}
+	return file_runtime_control_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *LabelItem) GetId() string {
@@ -2044,7 +2404,7 @@ type SampleItem struct {
 
 func (x *SampleItem) Reset() {
 	*x = SampleItem{}
-	mi := &file_runtime_control_proto_msgTypes[19]
+	mi := &file_runtime_control_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2056,7 +2416,7 @@ func (x *SampleItem) String() string {
 func (*SampleItem) ProtoMessage() {}
 
 func (x *SampleItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[19]
+	mi := &file_runtime_control_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2069,7 +2429,7 @@ func (x *SampleItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SampleItem.ProtoReflect.Descriptor instead.
 func (*SampleItem) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{19}
+	return file_runtime_control_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SampleItem) GetId() string {
@@ -2129,7 +2489,7 @@ type AnnotationItem struct {
 
 func (x *AnnotationItem) Reset() {
 	*x = AnnotationItem{}
-	mi := &file_runtime_control_proto_msgTypes[20]
+	mi := &file_runtime_control_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2141,7 +2501,7 @@ func (x *AnnotationItem) String() string {
 func (*AnnotationItem) ProtoMessage() {}
 
 func (x *AnnotationItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[20]
+	mi := &file_runtime_control_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2154,7 +2514,7 @@ func (x *AnnotationItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnotationItem.ProtoReflect.Descriptor instead.
 func (*AnnotationItem) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{20}
+	return file_runtime_control_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *AnnotationItem) GetId() string {
@@ -2220,7 +2580,7 @@ type DataItem struct {
 
 func (x *DataItem) Reset() {
 	*x = DataItem{}
-	mi := &file_runtime_control_proto_msgTypes[21]
+	mi := &file_runtime_control_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2232,7 +2592,7 @@ func (x *DataItem) String() string {
 func (*DataItem) ProtoMessage() {}
 
 func (x *DataItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[21]
+	mi := &file_runtime_control_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2245,7 +2605,7 @@ func (x *DataItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataItem.ProtoReflect.Descriptor instead.
 func (*DataItem) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{21}
+	return file_runtime_control_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DataItem) GetItem() isDataItem_Item {
@@ -2326,7 +2686,7 @@ type DataResponse struct {
 
 func (x *DataResponse) Reset() {
 	*x = DataResponse{}
-	mi := &file_runtime_control_proto_msgTypes[22]
+	mi := &file_runtime_control_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2338,7 +2698,7 @@ func (x *DataResponse) String() string {
 func (*DataResponse) ProtoMessage() {}
 
 func (x *DataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[22]
+	mi := &file_runtime_control_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2351,7 +2711,7 @@ func (x *DataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataResponse.ProtoReflect.Descriptor instead.
 func (*DataResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{22}
+	return file_runtime_control_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DataResponse) GetRequestId() string {
@@ -2464,7 +2824,7 @@ type UploadTicketRequest struct {
 
 func (x *UploadTicketRequest) Reset() {
 	*x = UploadTicketRequest{}
-	mi := &file_runtime_control_proto_msgTypes[23]
+	mi := &file_runtime_control_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2476,7 +2836,7 @@ func (x *UploadTicketRequest) String() string {
 func (*UploadTicketRequest) ProtoMessage() {}
 
 func (x *UploadTicketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[23]
+	mi := &file_runtime_control_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2489,7 +2849,7 @@ func (x *UploadTicketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadTicketRequest.ProtoReflect.Descriptor instead.
 func (*UploadTicketRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{23}
+	return file_runtime_control_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UploadTicketRequest) GetRequestId() string {
@@ -2534,7 +2894,7 @@ type UploadTicketResponse struct {
 
 func (x *UploadTicketResponse) Reset() {
 	*x = UploadTicketResponse{}
-	mi := &file_runtime_control_proto_msgTypes[24]
+	mi := &file_runtime_control_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2546,7 +2906,7 @@ func (x *UploadTicketResponse) String() string {
 func (*UploadTicketResponse) ProtoMessage() {}
 
 func (x *UploadTicketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[24]
+	mi := &file_runtime_control_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2559,7 +2919,7 @@ func (x *UploadTicketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadTicketResponse.ProtoReflect.Descriptor instead.
 func (*UploadTicketResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{24}
+	return file_runtime_control_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *UploadTicketResponse) GetRequestId() string {
@@ -2618,7 +2978,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_runtime_control_proto_msgTypes[25]
+	mi := &file_runtime_control_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2630,7 +2990,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[25]
+	mi := &file_runtime_control_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2643,7 +3003,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{25}
+	return file_runtime_control_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *Ack) GetRequestId() string {
@@ -2704,7 +3064,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_runtime_control_proto_msgTypes[26]
+	mi := &file_runtime_control_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2716,7 +3076,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[26]
+	mi := &file_runtime_control_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2729,7 +3089,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{26}
+	return file_runtime_control_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *Error) GetRequestId() string {
@@ -2811,7 +3171,7 @@ type RuntimeMessage struct {
 
 func (x *RuntimeMessage) Reset() {
 	*x = RuntimeMessage{}
-	mi := &file_runtime_control_proto_msgTypes[27]
+	mi := &file_runtime_control_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2823,7 +3183,7 @@ func (x *RuntimeMessage) String() string {
 func (*RuntimeMessage) ProtoMessage() {}
 
 func (x *RuntimeMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_control_proto_msgTypes[27]
+	mi := &file_runtime_control_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2836,7 +3196,7 @@ func (x *RuntimeMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeMessage.ProtoReflect.Descriptor instead.
 func (*RuntimeMessage) Descriptor() ([]byte, []int) {
-	return file_runtime_control_proto_rawDescGZIP(), []int{27}
+	return file_runtime_control_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RuntimeMessage) GetPayload() isRuntimeMessage_Payload {
@@ -3057,7 +3417,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\vcpu_workers\x18\x03 \x01(\x05R\n" +
 	"cpuWorkers\x12\x1b\n" +
 	"\tmemory_mb\x18\x04 \x01(\x05R\bmemoryMb\x12J\n" +
-	"\faccelerators\x18\x05 \x03(\v2&.saki.runtime.v1.AcceleratorCapabilityR\faccelerators\"\xe1\x01\n" +
+	"\faccelerators\x18\x05 \x03(\v2&.saki.runtime.v1.AcceleratorCapabilityR\faccelerators\"\xf7\x03\n" +
 	"\bRegister\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1f\n" +
@@ -3065,7 +3425,13 @@ const file_runtime_control_proto_rawDesc = "" +
 	"executorId\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12;\n" +
 	"\aplugins\x18\x04 \x03(\v2!.saki.runtime.v1.PluginCapabilityR\aplugins\x12>\n" +
-	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\xc7\x01\n" +
+	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\x12\x17\n" +
+	"\anode_id\x18\x06 \x01(\tR\x06nodeId\x12B\n" +
+	"\x10hardware_profile\x18\a \x01(\v2\x17.google.protobuf.StructR\x0fhardwareProfile\x12K\n" +
+	"\x15mps_stability_profile\x18\b \x01(\v2\x17.google.protobuf.StructR\x13mpsStabilityProfile\x12G\n" +
+	"\x13kernel_compat_flags\x18\t \x01(\v2\x17.google.protobuf.StructR\x11kernelCompatFlags\x12!\n" +
+	"\fruntime_kind\x18\n" +
+	" \x01(\tR\vruntimeKind\"\xe2\x02\n" +
 	"\tHeartbeat\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1f\n" +
@@ -3073,7 +3439,12 @@ const file_runtime_control_proto_rawDesc = "" +
 	"executorId\x12\x12\n" +
 	"\x04busy\x18\x03 \x01(\bR\x04busy\x12&\n" +
 	"\x0fcurrent_step_id\x18\x04 \x01(\tR\rcurrentStepId\x12>\n" +
-	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\x95\x05\n" +
+	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\x12\x17\n" +
+	"\anode_id\x18\x06 \x01(\tR\x06nodeId\x12#\n" +
+	"\rhealth_status\x18\a \x01(\tR\fhealthStatus\x12<\n" +
+	"\rhealth_detail\x18\b \x01(\v2\x17.google.protobuf.StructR\fhealthDetail\x12\x1d\n" +
+	"\n" +
+	"uptime_sec\x18\t \x01(\x03R\tuptimeSec\"\x84\t\n" +
 	"\vStepPayload\x12\x17\n" +
 	"\astep_id\x18\x01 \x01(\tR\x06stepId\x12\x19\n" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x17\n" +
@@ -3092,17 +3463,30 @@ const file_runtime_control_proto_rawDesc = "" +
 	"roundIndex\x12\x18\n" +
 	"\aattempt\x18\r \x01(\x05R\aattempt\x12-\n" +
 	"\x13depends_on_step_ids\x18\x0e \x03(\tR\x10dependsOnStepIds\x12M\n" +
-	"\rdispatch_kind\x18\x0f \x01(\x0e2(.saki.runtime.v1.RuntimeStepDispatchKindR\fdispatchKind\"]\n" +
+	"\rdispatch_kind\x18\x0f \x01(\x0e2(.saki.runtime.v1.RuntimeStepDispatchKindR\fdispatchKind\x120\n" +
+	"\x14dataset_manifest_ref\x18\x10 \x01(\tR\x12datasetManifestRef\x12\x1f\n" +
+	"\vsnapshot_id\x18\x11 \x01(\tR\n" +
+	"snapshotId\x12S\n" +
+	"\renv_overrides\x18\x12 \x03(\v2..saki.runtime.v1.StepPayload.EnvOverridesEntryR\fenvOverrides\x12<\n" +
+	"\rruntime_hints\x18\x13 \x01(\v2\x17.google.protobuf.StructR\fruntimeHints\x12]\n" +
+	"\x1ekernel_capability_requirements\x18\x14 \x01(\v2\x17.google.protobuf.StructR\x1ckernelCapabilityRequirements\x12#\n" +
+	"\rgpu_exclusive\x18\x15 \x01(\bR\fgpuExclusive\x12\x1b\n" +
+	"\tkernel_id\x18\x16 \x01(\tR\bkernelId\x12%\n" +
+	"\x0ekernel_version\x18\x17 \x01(\tR\rkernelVersion\x1a?\n" +
+	"\x11EnvOverridesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +
 	"\n" +
 	"AssignStep\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x120\n" +
-	"\x04step\x18\x02 \x01(\v2\x1c.saki.runtime.v1.StepPayloadR\x04step\"Z\n" +
+	"\x04step\x18\x02 \x01(\v2\x1c.saki.runtime.v1.StepPayloadR\x04step\"p\n" +
 	"\bStopStep\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
 	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"a\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x14\n" +
+	"\x05force\x18\x04 \x01(\bR\x05force\"a\n" +
 	"\vStatusEvent\x12:\n" +
 	"\x06status\x18\x01 \x01(\x0e2\".saki.runtime.v1.RuntimeStepStatusR\x06status\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\":\n" +
@@ -3128,7 +3512,22 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x03uri\x18\x03 \x01(\tR\x03uri\x12+\n" +
 	"\x04meta\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04meta\"J\n" +
 	"\rArtifactEvent\x129\n" +
-	"\bartifact\x18\x01 \x01(\v2\x1d.saki.runtime.v1.ArtifactItemR\bartifact\"\xc8\x03\n" +
+	"\bartifact\x18\x01 \x01(\v2\x1d.saki.runtime.v1.ArtifactItemR\bartifact\"\xa5\x01\n" +
+	"\x17ArtifactLocalReadyEvent\x12#\n" +
+	"\rrelative_path\x18\x01 \x01(\tR\frelativePath\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x02 \x01(\x04R\tsizeBytes\x12\x16\n" +
+	"\x06sha256\x18\x03 \x01(\tR\x06sha256\x12\x12\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x1a\n" +
+	"\brequired\x18\x05 \x01(\bR\brequired\"\xbd\x01\n" +
+	"\x15ArtifactUploadedEvent\x12#\n" +
+	"\rrelative_path\x18\x01 \x01(\tR\frelativePath\x12\x1f\n" +
+	"\vstorage_uri\x18\x02 \x01(\tR\n" +
+	"storageUri\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\x12\x1a\n" +
+	"\bchecksum\x18\x04 \x01(\tR\bchecksum\x12\x12\n" +
+	"\x04kind\x18\x05 \x01(\tR\x04kind\x12\x1a\n" +
+	"\brequired\x18\x06 \x01(\bR\brequired\"\xe4\x05\n" +
 	"\tStepEvent\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
@@ -3139,12 +3538,17 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\tlog_event\x18\x06 \x01(\v2\x19.saki.runtime.v1.LogEventH\x00R\blogEvent\x12G\n" +
 	"\x0eprogress_event\x18\a \x01(\v2\x1e.saki.runtime.v1.ProgressEventH\x00R\rprogressEvent\x12A\n" +
 	"\fmetric_event\x18\b \x01(\v2\x1c.saki.runtime.v1.MetricEventH\x00R\vmetricEvent\x12G\n" +
-	"\x0eartifact_event\x18\t \x01(\v2\x1e.saki.runtime.v1.ArtifactEventH\x00R\rartifactEventB\x0f\n" +
+	"\x0eartifact_event\x18\t \x01(\v2\x1e.saki.runtime.v1.ArtifactEventH\x00R\rartifactEvent\x12g\n" +
+	"\x1aartifact_local_ready_event\x18\f \x01(\v2(.saki.runtime.v1.ArtifactLocalReadyEventH\x00R\x17artifactLocalReadyEvent\x12`\n" +
+	"\x17artifact_uploaded_event\x18\r \x01(\v2&.saki.runtime.v1.ArtifactUploadedEventH\x00R\x15artifactUploadedEvent\x12!\n" +
+	"\fkernel_state\x18\n" +
+	" \x01(\tR\vkernelState\x12,\n" +
+	"\x12kernel_instance_id\x18\v \x01(\tR\x10kernelInstanceIdB\x0f\n" +
 	"\revent_payload\"t\n" +
 	"\x0eQueryCandidate\x12\x1b\n" +
 	"\tsample_id\x18\x01 \x01(\tR\bsampleId\x12\x14\n" +
 	"\x05score\x18\x02 \x01(\x01R\x05score\x12/\n" +
-	"\x06reason\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06reason\"\xa3\x03\n" +
+	"\x06reason\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06reason\"\xdf\x03\n" +
 	"\n" +
 	"StepResult\x12\x1d\n" +
 	"\n" +
@@ -3156,7 +3560,8 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\n" +
 	"candidates\x18\x06 \x03(\v2\x1f.saki.runtime.v1.QueryCandidateR\n" +
 	"candidates\x12#\n" +
-	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x1a:\n" +
+	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x12:\n" +
+	"\fruntime_meta\x18\b \x01(\v2\x17.google.protobuf.StructR\vruntimeMeta\x1a:\n" +
 	"\fMetricsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xdb\x02\n" +
@@ -3366,110 +3771,123 @@ func file_runtime_control_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_control_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_runtime_control_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_runtime_control_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_runtime_control_proto_goTypes = []any{
-	(RuntimeStepStatus)(0),        // 0: saki.runtime.v1.RuntimeStepStatus
-	(AckStatus)(0),                // 1: saki.runtime.v1.AckStatus
-	(AckType)(0),                  // 2: saki.runtime.v1.AckType
-	(AckReason)(0),                // 3: saki.runtime.v1.AckReason
-	(RuntimeStepType)(0),          // 4: saki.runtime.v1.RuntimeStepType
-	(RuntimeStepDispatchKind)(0),  // 5: saki.runtime.v1.RuntimeStepDispatchKind
-	(RuntimeLoopMode)(0),          // 6: saki.runtime.v1.RuntimeLoopMode
-	(RuntimeQueryType)(0),         // 7: saki.runtime.v1.RuntimeQueryType
-	(AcceleratorType)(0),          // 8: saki.runtime.v1.AcceleratorType
-	(*AcceleratorCapability)(nil), // 9: saki.runtime.v1.AcceleratorCapability
-	(*PluginCapability)(nil),      // 10: saki.runtime.v1.PluginCapability
-	(*ResourceSummary)(nil),       // 11: saki.runtime.v1.ResourceSummary
-	(*Register)(nil),              // 12: saki.runtime.v1.Register
-	(*Heartbeat)(nil),             // 13: saki.runtime.v1.Heartbeat
-	(*StepPayload)(nil),           // 14: saki.runtime.v1.StepPayload
-	(*AssignStep)(nil),            // 15: saki.runtime.v1.AssignStep
-	(*StopStep)(nil),              // 16: saki.runtime.v1.StopStep
-	(*StatusEvent)(nil),           // 17: saki.runtime.v1.StatusEvent
-	(*LogEvent)(nil),              // 18: saki.runtime.v1.LogEvent
-	(*ProgressEvent)(nil),         // 19: saki.runtime.v1.ProgressEvent
-	(*MetricEvent)(nil),           // 20: saki.runtime.v1.MetricEvent
-	(*ArtifactItem)(nil),          // 21: saki.runtime.v1.ArtifactItem
-	(*ArtifactEvent)(nil),         // 22: saki.runtime.v1.ArtifactEvent
-	(*StepEvent)(nil),             // 23: saki.runtime.v1.StepEvent
-	(*QueryCandidate)(nil),        // 24: saki.runtime.v1.QueryCandidate
-	(*StepResult)(nil),            // 25: saki.runtime.v1.StepResult
-	(*DataRequest)(nil),           // 26: saki.runtime.v1.DataRequest
-	(*LabelItem)(nil),             // 27: saki.runtime.v1.LabelItem
-	(*SampleItem)(nil),            // 28: saki.runtime.v1.SampleItem
-	(*AnnotationItem)(nil),        // 29: saki.runtime.v1.AnnotationItem
-	(*DataItem)(nil),              // 30: saki.runtime.v1.DataItem
-	(*DataResponse)(nil),          // 31: saki.runtime.v1.DataResponse
-	(*UploadTicketRequest)(nil),   // 32: saki.runtime.v1.UploadTicketRequest
-	(*UploadTicketResponse)(nil),  // 33: saki.runtime.v1.UploadTicketResponse
-	(*Ack)(nil),                   // 34: saki.runtime.v1.Ack
-	(*Error)(nil),                 // 35: saki.runtime.v1.Error
-	(*RuntimeMessage)(nil),        // 36: saki.runtime.v1.RuntimeMessage
-	nil,                           // 37: saki.runtime.v1.MetricEvent.MetricsEntry
-	nil,                           // 38: saki.runtime.v1.StepResult.MetricsEntry
-	nil,                           // 39: saki.runtime.v1.UploadTicketResponse.HeadersEntry
-	(*structpb.Struct)(nil),       // 40: google.protobuf.Struct
+	(RuntimeStepStatus)(0),          // 0: saki.runtime.v1.RuntimeStepStatus
+	(AckStatus)(0),                  // 1: saki.runtime.v1.AckStatus
+	(AckType)(0),                    // 2: saki.runtime.v1.AckType
+	(AckReason)(0),                  // 3: saki.runtime.v1.AckReason
+	(RuntimeStepType)(0),            // 4: saki.runtime.v1.RuntimeStepType
+	(RuntimeStepDispatchKind)(0),    // 5: saki.runtime.v1.RuntimeStepDispatchKind
+	(RuntimeLoopMode)(0),            // 6: saki.runtime.v1.RuntimeLoopMode
+	(RuntimeQueryType)(0),           // 7: saki.runtime.v1.RuntimeQueryType
+	(AcceleratorType)(0),            // 8: saki.runtime.v1.AcceleratorType
+	(*AcceleratorCapability)(nil),   // 9: saki.runtime.v1.AcceleratorCapability
+	(*PluginCapability)(nil),        // 10: saki.runtime.v1.PluginCapability
+	(*ResourceSummary)(nil),         // 11: saki.runtime.v1.ResourceSummary
+	(*Register)(nil),                // 12: saki.runtime.v1.Register
+	(*Heartbeat)(nil),               // 13: saki.runtime.v1.Heartbeat
+	(*StepPayload)(nil),             // 14: saki.runtime.v1.StepPayload
+	(*AssignStep)(nil),              // 15: saki.runtime.v1.AssignStep
+	(*StopStep)(nil),                // 16: saki.runtime.v1.StopStep
+	(*StatusEvent)(nil),             // 17: saki.runtime.v1.StatusEvent
+	(*LogEvent)(nil),                // 18: saki.runtime.v1.LogEvent
+	(*ProgressEvent)(nil),           // 19: saki.runtime.v1.ProgressEvent
+	(*MetricEvent)(nil),             // 20: saki.runtime.v1.MetricEvent
+	(*ArtifactItem)(nil),            // 21: saki.runtime.v1.ArtifactItem
+	(*ArtifactEvent)(nil),           // 22: saki.runtime.v1.ArtifactEvent
+	(*ArtifactLocalReadyEvent)(nil), // 23: saki.runtime.v1.ArtifactLocalReadyEvent
+	(*ArtifactUploadedEvent)(nil),   // 24: saki.runtime.v1.ArtifactUploadedEvent
+	(*StepEvent)(nil),               // 25: saki.runtime.v1.StepEvent
+	(*QueryCandidate)(nil),          // 26: saki.runtime.v1.QueryCandidate
+	(*StepResult)(nil),              // 27: saki.runtime.v1.StepResult
+	(*DataRequest)(nil),             // 28: saki.runtime.v1.DataRequest
+	(*LabelItem)(nil),               // 29: saki.runtime.v1.LabelItem
+	(*SampleItem)(nil),              // 30: saki.runtime.v1.SampleItem
+	(*AnnotationItem)(nil),          // 31: saki.runtime.v1.AnnotationItem
+	(*DataItem)(nil),                // 32: saki.runtime.v1.DataItem
+	(*DataResponse)(nil),            // 33: saki.runtime.v1.DataResponse
+	(*UploadTicketRequest)(nil),     // 34: saki.runtime.v1.UploadTicketRequest
+	(*UploadTicketResponse)(nil),    // 35: saki.runtime.v1.UploadTicketResponse
+	(*Ack)(nil),                     // 36: saki.runtime.v1.Ack
+	(*Error)(nil),                   // 37: saki.runtime.v1.Error
+	(*RuntimeMessage)(nil),          // 38: saki.runtime.v1.RuntimeMessage
+	nil,                             // 39: saki.runtime.v1.StepPayload.EnvOverridesEntry
+	nil,                             // 40: saki.runtime.v1.MetricEvent.MetricsEntry
+	nil,                             // 41: saki.runtime.v1.StepResult.MetricsEntry
+	nil,                             // 42: saki.runtime.v1.UploadTicketResponse.HeadersEntry
+	(*structpb.Struct)(nil),         // 43: google.protobuf.Struct
 }
 var file_runtime_control_proto_depIdxs = []int32{
 	8,  // 0: saki.runtime.v1.AcceleratorCapability.type:type_name -> saki.runtime.v1.AcceleratorType
-	40, // 1: saki.runtime.v1.PluginCapability.request_config_schema:type_name -> google.protobuf.Struct
-	40, // 2: saki.runtime.v1.PluginCapability.default_request_config:type_name -> google.protobuf.Struct
+	43, // 1: saki.runtime.v1.PluginCapability.request_config_schema:type_name -> google.protobuf.Struct
+	43, // 2: saki.runtime.v1.PluginCapability.default_request_config:type_name -> google.protobuf.Struct
 	8,  // 3: saki.runtime.v1.PluginCapability.supported_accelerators:type_name -> saki.runtime.v1.AcceleratorType
 	9,  // 4: saki.runtime.v1.ResourceSummary.accelerators:type_name -> saki.runtime.v1.AcceleratorCapability
 	10, // 5: saki.runtime.v1.Register.plugins:type_name -> saki.runtime.v1.PluginCapability
 	11, // 6: saki.runtime.v1.Register.resources:type_name -> saki.runtime.v1.ResourceSummary
-	11, // 7: saki.runtime.v1.Heartbeat.resources:type_name -> saki.runtime.v1.ResourceSummary
-	4,  // 8: saki.runtime.v1.StepPayload.step_type:type_name -> saki.runtime.v1.RuntimeStepType
-	6,  // 9: saki.runtime.v1.StepPayload.mode:type_name -> saki.runtime.v1.RuntimeLoopMode
-	40, // 10: saki.runtime.v1.StepPayload.resolved_params:type_name -> google.protobuf.Struct
-	11, // 11: saki.runtime.v1.StepPayload.resources:type_name -> saki.runtime.v1.ResourceSummary
-	5,  // 12: saki.runtime.v1.StepPayload.dispatch_kind:type_name -> saki.runtime.v1.RuntimeStepDispatchKind
-	14, // 13: saki.runtime.v1.AssignStep.step:type_name -> saki.runtime.v1.StepPayload
-	0,  // 14: saki.runtime.v1.StatusEvent.status:type_name -> saki.runtime.v1.RuntimeStepStatus
-	37, // 15: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
-	40, // 16: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct
-	21, // 17: saki.runtime.v1.ArtifactEvent.artifact:type_name -> saki.runtime.v1.ArtifactItem
-	17, // 18: saki.runtime.v1.StepEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
-	18, // 19: saki.runtime.v1.StepEvent.log_event:type_name -> saki.runtime.v1.LogEvent
-	19, // 20: saki.runtime.v1.StepEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
-	20, // 21: saki.runtime.v1.StepEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
-	22, // 22: saki.runtime.v1.StepEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
-	40, // 23: saki.runtime.v1.QueryCandidate.reason:type_name -> google.protobuf.Struct
-	0,  // 24: saki.runtime.v1.StepResult.status:type_name -> saki.runtime.v1.RuntimeStepStatus
-	38, // 25: saki.runtime.v1.StepResult.metrics:type_name -> saki.runtime.v1.StepResult.MetricsEntry
-	21, // 26: saki.runtime.v1.StepResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
-	24, // 27: saki.runtime.v1.StepResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
-	7,  // 28: saki.runtime.v1.DataRequest.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	40, // 29: saki.runtime.v1.SampleItem.meta:type_name -> google.protobuf.Struct
-	40, // 30: saki.runtime.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
-	27, // 31: saki.runtime.v1.DataItem.label_item:type_name -> saki.runtime.v1.LabelItem
-	28, // 32: saki.runtime.v1.DataItem.sample_item:type_name -> saki.runtime.v1.SampleItem
-	29, // 33: saki.runtime.v1.DataItem.annotation_item:type_name -> saki.runtime.v1.AnnotationItem
-	7,  // 34: saki.runtime.v1.DataResponse.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	39, // 35: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
-	1,  // 36: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
-	2,  // 37: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
-	3,  // 38: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
-	7,  // 39: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	12, // 40: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
-	13, // 41: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
-	15, // 42: saki.runtime.v1.RuntimeMessage.assign_step:type_name -> saki.runtime.v1.AssignStep
-	16, // 43: saki.runtime.v1.RuntimeMessage.stop_step:type_name -> saki.runtime.v1.StopStep
-	23, // 44: saki.runtime.v1.RuntimeMessage.step_event:type_name -> saki.runtime.v1.StepEvent
-	25, // 45: saki.runtime.v1.RuntimeMessage.step_result:type_name -> saki.runtime.v1.StepResult
-	26, // 46: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
-	31, // 47: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
-	32, // 48: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
-	33, // 49: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
-	34, // 50: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
-	35, // 51: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
-	36, // 52: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
-	36, // 53: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
-	53, // [53:54] is the sub-list for method output_type
-	52, // [52:53] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	43, // 7: saki.runtime.v1.Register.hardware_profile:type_name -> google.protobuf.Struct
+	43, // 8: saki.runtime.v1.Register.mps_stability_profile:type_name -> google.protobuf.Struct
+	43, // 9: saki.runtime.v1.Register.kernel_compat_flags:type_name -> google.protobuf.Struct
+	11, // 10: saki.runtime.v1.Heartbeat.resources:type_name -> saki.runtime.v1.ResourceSummary
+	43, // 11: saki.runtime.v1.Heartbeat.health_detail:type_name -> google.protobuf.Struct
+	4,  // 12: saki.runtime.v1.StepPayload.step_type:type_name -> saki.runtime.v1.RuntimeStepType
+	6,  // 13: saki.runtime.v1.StepPayload.mode:type_name -> saki.runtime.v1.RuntimeLoopMode
+	43, // 14: saki.runtime.v1.StepPayload.resolved_params:type_name -> google.protobuf.Struct
+	11, // 15: saki.runtime.v1.StepPayload.resources:type_name -> saki.runtime.v1.ResourceSummary
+	5,  // 16: saki.runtime.v1.StepPayload.dispatch_kind:type_name -> saki.runtime.v1.RuntimeStepDispatchKind
+	39, // 17: saki.runtime.v1.StepPayload.env_overrides:type_name -> saki.runtime.v1.StepPayload.EnvOverridesEntry
+	43, // 18: saki.runtime.v1.StepPayload.runtime_hints:type_name -> google.protobuf.Struct
+	43, // 19: saki.runtime.v1.StepPayload.kernel_capability_requirements:type_name -> google.protobuf.Struct
+	14, // 20: saki.runtime.v1.AssignStep.step:type_name -> saki.runtime.v1.StepPayload
+	0,  // 21: saki.runtime.v1.StatusEvent.status:type_name -> saki.runtime.v1.RuntimeStepStatus
+	40, // 22: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
+	43, // 23: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct
+	21, // 24: saki.runtime.v1.ArtifactEvent.artifact:type_name -> saki.runtime.v1.ArtifactItem
+	17, // 25: saki.runtime.v1.StepEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
+	18, // 26: saki.runtime.v1.StepEvent.log_event:type_name -> saki.runtime.v1.LogEvent
+	19, // 27: saki.runtime.v1.StepEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
+	20, // 28: saki.runtime.v1.StepEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
+	22, // 29: saki.runtime.v1.StepEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
+	23, // 30: saki.runtime.v1.StepEvent.artifact_local_ready_event:type_name -> saki.runtime.v1.ArtifactLocalReadyEvent
+	24, // 31: saki.runtime.v1.StepEvent.artifact_uploaded_event:type_name -> saki.runtime.v1.ArtifactUploadedEvent
+	43, // 32: saki.runtime.v1.QueryCandidate.reason:type_name -> google.protobuf.Struct
+	0,  // 33: saki.runtime.v1.StepResult.status:type_name -> saki.runtime.v1.RuntimeStepStatus
+	41, // 34: saki.runtime.v1.StepResult.metrics:type_name -> saki.runtime.v1.StepResult.MetricsEntry
+	21, // 35: saki.runtime.v1.StepResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
+	26, // 36: saki.runtime.v1.StepResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
+	43, // 37: saki.runtime.v1.StepResult.runtime_meta:type_name -> google.protobuf.Struct
+	7,  // 38: saki.runtime.v1.DataRequest.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	43, // 39: saki.runtime.v1.SampleItem.meta:type_name -> google.protobuf.Struct
+	43, // 40: saki.runtime.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
+	29, // 41: saki.runtime.v1.DataItem.label_item:type_name -> saki.runtime.v1.LabelItem
+	30, // 42: saki.runtime.v1.DataItem.sample_item:type_name -> saki.runtime.v1.SampleItem
+	31, // 43: saki.runtime.v1.DataItem.annotation_item:type_name -> saki.runtime.v1.AnnotationItem
+	7,  // 44: saki.runtime.v1.DataResponse.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	42, // 45: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
+	1,  // 46: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
+	2,  // 47: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
+	3,  // 48: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
+	7,  // 49: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	12, // 50: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
+	13, // 51: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
+	15, // 52: saki.runtime.v1.RuntimeMessage.assign_step:type_name -> saki.runtime.v1.AssignStep
+	16, // 53: saki.runtime.v1.RuntimeMessage.stop_step:type_name -> saki.runtime.v1.StopStep
+	25, // 54: saki.runtime.v1.RuntimeMessage.step_event:type_name -> saki.runtime.v1.StepEvent
+	27, // 55: saki.runtime.v1.RuntimeMessage.step_result:type_name -> saki.runtime.v1.StepResult
+	28, // 56: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
+	33, // 57: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
+	34, // 58: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
+	35, // 59: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
+	36, // 60: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
+	37, // 61: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
+	38, // 62: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
+	38, // 63: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
+	63, // [63:64] is the sub-list for method output_type
+	62, // [62:63] is the sub-list for method input_type
+	62, // [62:62] is the sub-list for extension type_name
+	62, // [62:62] is the sub-list for extension extendee
+	0,  // [0:62] is the sub-list for field type_name
 }
 
 func init() { file_runtime_control_proto_init() }
@@ -3477,19 +3895,21 @@ func file_runtime_control_proto_init() {
 	if File_runtime_control_proto != nil {
 		return
 	}
-	file_runtime_control_proto_msgTypes[14].OneofWrappers = []any{
+	file_runtime_control_proto_msgTypes[16].OneofWrappers = []any{
 		(*StepEvent_StatusEvent)(nil),
 		(*StepEvent_LogEvent)(nil),
 		(*StepEvent_ProgressEvent)(nil),
 		(*StepEvent_MetricEvent)(nil),
 		(*StepEvent_ArtifactEvent)(nil),
+		(*StepEvent_ArtifactLocalReadyEvent)(nil),
+		(*StepEvent_ArtifactUploadedEvent)(nil),
 	}
-	file_runtime_control_proto_msgTypes[21].OneofWrappers = []any{
+	file_runtime_control_proto_msgTypes[23].OneofWrappers = []any{
 		(*DataItem_LabelItem)(nil),
 		(*DataItem_SampleItem)(nil),
 		(*DataItem_AnnotationItem)(nil),
 	}
-	file_runtime_control_proto_msgTypes[27].OneofWrappers = []any{
+	file_runtime_control_proto_msgTypes[29].OneofWrappers = []any{
 		(*RuntimeMessage_Register)(nil),
 		(*RuntimeMessage_Heartbeat)(nil),
 		(*RuntimeMessage_AssignStep)(nil),
@@ -3509,7 +3929,7 @@ func file_runtime_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_control_proto_rawDesc), len(file_runtime_control_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   31,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

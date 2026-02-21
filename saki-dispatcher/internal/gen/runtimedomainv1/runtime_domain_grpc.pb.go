@@ -21,6 +21,10 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	RuntimeDomain_GetBranchHead_FullMethodName             = "/saki.runtime.domain.v1.RuntimeDomain/GetBranchHead"
 	RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName = "/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit"
+	RuntimeDomain_BuildDatasetSnapshot_FullMethodName      = "/saki.runtime.domain.v1.RuntimeDomain/BuildDatasetSnapshot"
+	RuntimeDomain_CreateRoundDatasetView_FullMethodName    = "/saki.runtime.domain.v1.RuntimeDomain/CreateRoundDatasetView"
+	RuntimeDomain_GetRoundManifest_FullMethodName          = "/saki.runtime.domain.v1.RuntimeDomain/GetRoundManifest"
+	RuntimeDomain_ValidateSelector_FullMethodName          = "/saki.runtime.domain.v1.RuntimeDomain/ValidateSelector"
 	RuntimeDomain_ActivateSamples_FullMethodName           = "/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples"
 	RuntimeDomain_AdvanceBranchHead_FullMethodName         = "/saki.runtime.domain.v1.RuntimeDomain/AdvanceBranchHead"
 	RuntimeDomain_QueryData_FullMethodName                 = "/saki.runtime.domain.v1.RuntimeDomain/QueryData"
@@ -33,6 +37,10 @@ const (
 type RuntimeDomainClient interface {
 	GetBranchHead(ctx context.Context, in *GetBranchHeadRequest, opts ...grpc.CallOption) (*GetBranchHeadResponse, error)
 	CountNewLabelsSinceCommit(ctx context.Context, in *CountNewLabelsSinceCommitRequest, opts ...grpc.CallOption) (*CountNewLabelsSinceCommitResponse, error)
+	BuildDatasetSnapshot(ctx context.Context, in *BuildDatasetSnapshotRequest, opts ...grpc.CallOption) (*BuildDatasetSnapshotResponse, error)
+	CreateRoundDatasetView(ctx context.Context, in *CreateRoundDatasetViewRequest, opts ...grpc.CallOption) (*CreateRoundDatasetViewResponse, error)
+	GetRoundManifest(ctx context.Context, in *GetRoundManifestRequest, opts ...grpc.CallOption) (*GetRoundManifestResponse, error)
+	ValidateSelector(ctx context.Context, in *ValidateSelectorRequest, opts ...grpc.CallOption) (*ValidateSelectorResponse, error)
 	ActivateSamples(ctx context.Context, in *ActivateSamplesRequest, opts ...grpc.CallOption) (*ActivateSamplesResponse, error)
 	AdvanceBranchHead(ctx context.Context, in *AdvanceBranchHeadRequest, opts ...grpc.CallOption) (*AdvanceBranchHeadResponse, error)
 	QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataResponse], error)
@@ -61,6 +69,46 @@ func (c *runtimeDomainClient) CountNewLabelsSinceCommit(ctx context.Context, in 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CountNewLabelsSinceCommitResponse)
 	err := c.cc.Invoke(ctx, RuntimeDomain_CountNewLabelsSinceCommit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeDomainClient) BuildDatasetSnapshot(ctx context.Context, in *BuildDatasetSnapshotRequest, opts ...grpc.CallOption) (*BuildDatasetSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BuildDatasetSnapshotResponse)
+	err := c.cc.Invoke(ctx, RuntimeDomain_BuildDatasetSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeDomainClient) CreateRoundDatasetView(ctx context.Context, in *CreateRoundDatasetViewRequest, opts ...grpc.CallOption) (*CreateRoundDatasetViewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateRoundDatasetViewResponse)
+	err := c.cc.Invoke(ctx, RuntimeDomain_CreateRoundDatasetView_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeDomainClient) GetRoundManifest(ctx context.Context, in *GetRoundManifestRequest, opts ...grpc.CallOption) (*GetRoundManifestResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetRoundManifestResponse)
+	err := c.cc.Invoke(ctx, RuntimeDomain_GetRoundManifest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runtimeDomainClient) ValidateSelector(ctx context.Context, in *ValidateSelectorRequest, opts ...grpc.CallOption) (*ValidateSelectorResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidateSelectorResponse)
+	err := c.cc.Invoke(ctx, RuntimeDomain_ValidateSelector_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +170,10 @@ func (c *runtimeDomainClient) CreateUploadTicket(ctx context.Context, in *Upload
 type RuntimeDomainServer interface {
 	GetBranchHead(context.Context, *GetBranchHeadRequest) (*GetBranchHeadResponse, error)
 	CountNewLabelsSinceCommit(context.Context, *CountNewLabelsSinceCommitRequest) (*CountNewLabelsSinceCommitResponse, error)
+	BuildDatasetSnapshot(context.Context, *BuildDatasetSnapshotRequest) (*BuildDatasetSnapshotResponse, error)
+	CreateRoundDatasetView(context.Context, *CreateRoundDatasetViewRequest) (*CreateRoundDatasetViewResponse, error)
+	GetRoundManifest(context.Context, *GetRoundManifestRequest) (*GetRoundManifestResponse, error)
+	ValidateSelector(context.Context, *ValidateSelectorRequest) (*ValidateSelectorResponse, error)
 	ActivateSamples(context.Context, *ActivateSamplesRequest) (*ActivateSamplesResponse, error)
 	AdvanceBranchHead(context.Context, *AdvanceBranchHeadRequest) (*AdvanceBranchHeadResponse, error)
 	QueryData(*DataRequest, grpc.ServerStreamingServer[DataResponse]) error
@@ -141,6 +193,18 @@ func (UnimplementedRuntimeDomainServer) GetBranchHead(context.Context, *GetBranc
 }
 func (UnimplementedRuntimeDomainServer) CountNewLabelsSinceCommit(context.Context, *CountNewLabelsSinceCommitRequest) (*CountNewLabelsSinceCommitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountNewLabelsSinceCommit not implemented")
+}
+func (UnimplementedRuntimeDomainServer) BuildDatasetSnapshot(context.Context, *BuildDatasetSnapshotRequest) (*BuildDatasetSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BuildDatasetSnapshot not implemented")
+}
+func (UnimplementedRuntimeDomainServer) CreateRoundDatasetView(context.Context, *CreateRoundDatasetViewRequest) (*CreateRoundDatasetViewResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateRoundDatasetView not implemented")
+}
+func (UnimplementedRuntimeDomainServer) GetRoundManifest(context.Context, *GetRoundManifestRequest) (*GetRoundManifestResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRoundManifest not implemented")
+}
+func (UnimplementedRuntimeDomainServer) ValidateSelector(context.Context, *ValidateSelectorRequest) (*ValidateSelectorResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateSelector not implemented")
 }
 func (UnimplementedRuntimeDomainServer) ActivateSamples(context.Context, *ActivateSamplesRequest) (*ActivateSamplesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ActivateSamples not implemented")
@@ -207,6 +271,78 @@ func _RuntimeDomain_CountNewLabelsSinceCommit_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RuntimeDomainServer).CountNewLabelsSinceCommit(ctx, req.(*CountNewLabelsSinceCommitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeDomain_BuildDatasetSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BuildDatasetSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeDomainServer).BuildDatasetSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeDomain_BuildDatasetSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeDomainServer).BuildDatasetSnapshot(ctx, req.(*BuildDatasetSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeDomain_CreateRoundDatasetView_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateRoundDatasetViewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeDomainServer).CreateRoundDatasetView(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeDomain_CreateRoundDatasetView_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeDomainServer).CreateRoundDatasetView(ctx, req.(*CreateRoundDatasetViewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeDomain_GetRoundManifest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRoundManifestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeDomainServer).GetRoundManifest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeDomain_GetRoundManifest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeDomainServer).GetRoundManifest(ctx, req.(*GetRoundManifestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RuntimeDomain_ValidateSelector_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateSelectorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeDomainServer).ValidateSelector(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeDomain_ValidateSelector_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeDomainServer).ValidateSelector(ctx, req.(*ValidateSelectorRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -290,6 +426,22 @@ var RuntimeDomain_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CountNewLabelsSinceCommit",
 			Handler:    _RuntimeDomain_CountNewLabelsSinceCommit_Handler,
+		},
+		{
+			MethodName: "BuildDatasetSnapshot",
+			Handler:    _RuntimeDomain_BuildDatasetSnapshot_Handler,
+		},
+		{
+			MethodName: "CreateRoundDatasetView",
+			Handler:    _RuntimeDomain_CreateRoundDatasetView_Handler,
+		},
+		{
+			MethodName: "GetRoundManifest",
+			Handler:    _RuntimeDomain_GetRoundManifest_Handler,
+		},
+		{
+			MethodName: "ValidateSelector",
+			Handler:    _RuntimeDomain_ValidateSelector_Handler,
 		},
 		{
 			MethodName: "ActivateSamples",

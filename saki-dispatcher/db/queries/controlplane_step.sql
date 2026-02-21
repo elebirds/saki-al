@@ -52,6 +52,14 @@ SELECT
   t.state_version,
   t.depends_on_step_ids AS depends_on_raw,
   t.resolved_params AS params_raw,
+  t.dataset_manifest_ref,
+  t.snapshot_id,
+  t.env_overrides AS env_overrides_raw,
+  t.runtime_hints AS runtime_hints_raw,
+  t.kernel_capability_requirements AS kernel_capability_requirements_raw,
+  t.gpu_exclusive,
+  t.kernel_id,
+  t.kernel_version,
   t.input_commit_id AS input_commit_id,
   j.loop_id AS loop_id,
   j.project_id AS project_id,
@@ -295,5 +303,18 @@ FOR UPDATE;
 -- name: UpdateStepArtifacts :exec
 UPDATE step
 SET artifacts = sqlc.arg(artifacts)::jsonb,
+    updated_at = now()
+WHERE id = sqlc.arg(step_id)::uuid;
+
+-- name: UpdateStepDatasetBinding :exec
+UPDATE step
+SET dataset_manifest_ref = sqlc.narg(dataset_manifest_ref)::text,
+    snapshot_id = sqlc.narg(snapshot_id)::uuid,
+    env_overrides = sqlc.arg(env_overrides)::jsonb,
+    runtime_hints = sqlc.arg(runtime_hints)::jsonb,
+    kernel_capability_requirements = sqlc.arg(kernel_capability_requirements)::jsonb,
+    gpu_exclusive = sqlc.arg(gpu_exclusive),
+    kernel_id = sqlc.narg(kernel_id)::text,
+    kernel_version = sqlc.narg(kernel_version)::text,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid;

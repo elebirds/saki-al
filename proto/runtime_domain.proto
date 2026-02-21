@@ -5,6 +5,86 @@ option go_package = "github.com/elebirds/saki/saki-dispatcher/internal/gen/runti
 
 import "google/protobuf/struct.proto";
 
+enum SelectorEncoding {
+  SELECTOR_ENCODING_UNSPECIFIED = 0;
+  SELECTOR_ENCODING_ROARING = 1;
+  SELECTOR_ENCODING_RANGE = 2;
+  SELECTOR_ENCODING_BITSET = 3;
+}
+
+message SelectorDigest {
+  string snapshot_id = 1;
+  SelectorEncoding encoding = 2;
+  bytes selector_bytes = 3;
+  uint32 cardinality = 4;
+  string checksum = 5;
+}
+
+message DatasetManifestRef {
+  string split = 1;
+  bool is_static = 2;
+  string snapshot_id = 3;
+  string manifest_ref = 4;
+  SelectorDigest selector = 5;
+}
+
+message BuildDatasetSnapshotRequest {
+  string dataset_id = 1;
+  string parent_snapshot_id = 2;
+  uint32 seed = 3;
+  bool lock_static_splits = 4;
+  google.protobuf.Struct split_policy = 5;
+  repeated string append_sample_uuids = 6;
+  repeated string tombstone_sample_uuids = 7;
+  string reason = 8;
+}
+
+message BuildDatasetSnapshotResponse {
+  bool created = 1;
+  string snapshot_id = 2;
+  uint32 universe_size = 3;
+  uint32 max_ordinal = 4;
+  uint32 tombstone_count = 5;
+}
+
+message CreateRoundDatasetViewRequest {
+  string loop_id = 1;
+  string round_id = 2;
+  string snapshot_id = 3;
+  int32 round_index = 4;
+  string mode = 5;
+  bool simulation_mode = 6;
+  google.protobuf.Struct plan = 7;
+}
+
+message CreateRoundDatasetViewResponse {
+  bool created = 1;
+  string round_id = 2;
+  repeated DatasetManifestRef manifests = 3;
+}
+
+message GetRoundManifestRequest {
+  string loop_id = 1;
+  string round_id = 2;
+  string split = 3;
+}
+
+message GetRoundManifestResponse {
+  bool found = 1;
+  DatasetManifestRef manifest = 2;
+}
+
+message ValidateSelectorRequest {
+  SelectorDigest selector = 1;
+}
+
+message ValidateSelectorResponse {
+  bool ok = 1;
+  uint32 cardinality = 2;
+  string checksum = 3;
+  string reason = 4;
+}
+
 message GetBranchHeadRequest {
   string branch_id = 1;
 }
@@ -38,6 +118,11 @@ message ActivateSamplesRequest {
   int32 round_index = 7;
   string query_strategy = 8;
   int32 topk = 9;
+  string snapshot_id = 10;
+  SelectorEncoding selector_encoding = 11;
+  bytes selector_bytes = 12;
+  uint32 selector_cardinality = 13;
+  string selector_checksum = 14;
 }
 
 message ActivateSamplesResponse {
@@ -147,6 +232,10 @@ message UploadTicketResponse {
 service RuntimeDomain {
   rpc GetBranchHead(GetBranchHeadRequest) returns (GetBranchHeadResponse);
   rpc CountNewLabelsSinceCommit(CountNewLabelsSinceCommitRequest) returns (CountNewLabelsSinceCommitResponse);
+  rpc BuildDatasetSnapshot(BuildDatasetSnapshotRequest) returns (BuildDatasetSnapshotResponse);
+  rpc CreateRoundDatasetView(CreateRoundDatasetViewRequest) returns (CreateRoundDatasetViewResponse);
+  rpc GetRoundManifest(GetRoundManifestRequest) returns (GetRoundManifestResponse);
+  rpc ValidateSelector(ValidateSelectorRequest) returns (ValidateSelectorResponse);
   rpc ActivateSamples(ActivateSamplesRequest) returns (ActivateSamplesResponse);
   rpc AdvanceBranchHead(AdvanceBranchHeadRequest) returns (AdvanceBranchHeadResponse);
   rpc QueryData(DataRequest) returns (stream DataResponse);

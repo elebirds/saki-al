@@ -286,6 +286,66 @@ func (c *Client) CountNewLabelsSinceCommit(
 	return resp, callErr
 }
 
+func (c *Client) BuildDatasetSnapshot(
+	ctx context.Context,
+	req *runtimedomainv1.BuildDatasetSnapshotRequest,
+) (*runtimedomainv1.BuildDatasetSnapshotResponse, error) {
+	client, token, timeout, err := c.clientForCall()
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
+	defer cancel()
+	resp, callErr := client.BuildDatasetSnapshot(callCtx, req)
+	c.handleCallError(callErr)
+	return resp, callErr
+}
+
+func (c *Client) CreateRoundDatasetView(
+	ctx context.Context,
+	req *runtimedomainv1.CreateRoundDatasetViewRequest,
+) (*runtimedomainv1.CreateRoundDatasetViewResponse, error) {
+	client, token, timeout, err := c.clientForCall()
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
+	defer cancel()
+	resp, callErr := client.CreateRoundDatasetView(callCtx, req)
+	c.handleCallError(callErr)
+	return resp, callErr
+}
+
+func (c *Client) GetRoundManifest(
+	ctx context.Context,
+	req *runtimedomainv1.GetRoundManifestRequest,
+) (*runtimedomainv1.GetRoundManifestResponse, error) {
+	client, token, timeout, err := c.clientForCall()
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
+	defer cancel()
+	resp, callErr := client.GetRoundManifest(callCtx, req)
+	c.handleCallError(callErr)
+	return resp, callErr
+}
+
+func (c *Client) ValidateSelector(
+	ctx context.Context,
+	req *runtimedomainv1.ValidateSelectorRequest,
+) (*runtimedomainv1.ValidateSelectorResponse, error) {
+	client, token, timeout, err := c.clientForCall()
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
+	defer cancel()
+	resp, callErr := client.ValidateSelector(callCtx, req)
+	c.handleCallError(callErr)
+	return resp, callErr
+}
+
 func (c *Client) ActivateSamples(
 	ctx context.Context,
 	req *runtimedomainv1.ActivateSamplesRequest,

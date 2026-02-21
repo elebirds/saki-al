@@ -1,2 +1,0 @@
-"""Plugin subprocess IPC modules."""
-

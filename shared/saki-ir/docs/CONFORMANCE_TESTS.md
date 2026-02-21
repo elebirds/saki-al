@@ -80,6 +80,20 @@
     - Python: `python/tests/test_ir.py::test_cross_language_crc32c_vector`
     - Go: `go/sakir/codec_test.go::TestCrossLanguageCRC32CVector`
 
+- [x] **Test name**: Selector cardinality/checksum vector
+  - **Spec reference**: `docs/dataset-snapshot-manifest-v1.md#5-校验契约`
+  - **What to assert**: 对同一 `snapshot_id + selector_bytes`，Go/Python 输出完全一致 `cardinality/checksum`。
+  - **Where implemented**:
+    - Python: `python/tests/test_selector.py::test_selector_vector_cardinality_and_checksum`
+    - Go: `go/sakir/selector_test.go::TestSelectorVectorCardinalityAndChecksum`
+
+- [x] **Test name**: Selector checksum mismatch rejection
+  - **Spec reference**: `docs/dataset-snapshot-manifest-v1.md#5-校验契约`
+  - **What to assert**: checksum 与 bytes 不一致时必须拒绝。
+  - **Where implemented**:
+    - Python: `python/tests/test_selector.py::test_selector_validation_detects_checksum_mismatch`
+    - Go: `go/sakir/selector_test.go::TestValidateManifestSelectorChecksumMismatch`
+
 - [x] **Test name**: OBB vertices invariant under normalization
   - **Spec reference**: `IR_SPEC.md#6-obb-normalization`, `IR_SPEC.md#7-vertices-and-aabb`
   - **What to assert**: normalize 前后顶点集合一致（允许顺序变化）。

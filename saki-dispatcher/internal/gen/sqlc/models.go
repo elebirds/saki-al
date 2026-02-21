@@ -825,6 +825,21 @@ func (ns NullTasktype) Value() (driver.Value, error) {
 	return string(ns.Tasktype), nil
 }
 
+type AlSessionState struct {
+	ID                  uuid.UUID
+	LoopID              uuid.UUID
+	RoundID             *uuid.UUID
+	SnapshotID          uuid.UUID
+	SelectorEncoding    string
+	SelectorBytes       []byte
+	SelectorCardinality int32
+	SelectorChecksum    string
+	SelectorManifestRef pgtype.Text
+	RoundIndex          int32
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
+}
+
 type AlembicVersion struct {
 	VersionNum string
 }
@@ -938,6 +953,26 @@ type Dataset struct {
 	AllowDuplicateSampleNames bool
 	IsPublic                  bool
 	OwnerID                   uuid.UUID
+}
+
+type DatasetSnapshot struct {
+	ID               uuid.UUID
+	DatasetID        uuid.UUID
+	ParentSnapshotID *uuid.UUID
+	UniverseSize     int32
+	MaxOrdinal       int32
+	CreatedAt        pgtype.Timestamp
+}
+
+type DatasetSnapshotSampleOrdinal struct {
+	SnapshotID      uuid.UUID
+	SampleUuid      uuid.UUID
+	Ordinal         int32
+	IsTombstone     bool
+	TombstoneAt     pgtype.Timestamp
+	TombstoneReason pgtype.Text
+	CreatedAt       pgtype.Timestamp
+	UpdatedAt       pgtype.Timestamp
 }
 
 type DispatchOutbox struct {
@@ -1129,6 +1164,22 @@ type Round struct {
 	StrategyParams     []byte
 }
 
+type RoundDatasetView struct {
+	ID                  uuid.UUID
+	LoopID              uuid.UUID
+	RoundID             uuid.UUID
+	Split               string
+	IsStatic            bool
+	SnapshotID          uuid.UUID
+	SelectorEncoding    string
+	SelectorBytes       []byte
+	SelectorCardinality int32
+	SelectorChecksum    string
+	ManifestRef         string
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
+}
+
 type RoundSampleMetric struct {
 	ID                 uuid.UUID
 	RoundID            uuid.UUID
@@ -1150,18 +1201,26 @@ type RuntimeCommandLog struct {
 }
 
 type RuntimeExecutor struct {
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
-	ID            uuid.UUID
-	ExecutorID    string
-	Version       string
-	Status        string
-	IsOnline      bool
-	CurrentStepID pgtype.Text
-	PluginIds     []byte
-	Resources     []byte
-	LastSeenAt    pgtype.Timestamp
-	LastError     pgtype.Text
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
+	ID                  uuid.UUID
+	ExecutorID          string
+	NodeID              pgtype.Text
+	Version             string
+	RuntimeKind         pgtype.Text
+	Status              string
+	IsOnline            bool
+	CurrentStepID       pgtype.Text
+	PluginIds           []byte
+	Resources           []byte
+	HardwareProfile     []byte
+	MpsStabilityProfile []byte
+	KernelCompatFlags   []byte
+	HealthStatus        pgtype.Text
+	HealthDetail        []byte
+	UptimeSec           pgtype.Int8
+	LastSeenAt          pgtype.Timestamp
+	LastError           pgtype.Text
 }
 
 type RuntimeExecutorStat struct {
@@ -1191,29 +1250,37 @@ type Sample struct {
 }
 
 type Step struct {
-	CreatedAt          pgtype.Timestamp
-	UpdatedAt          pgtype.Timestamp
-	ID                 uuid.UUID
-	RoundID            uuid.UUID
-	StepType           Steptype
-	DispatchKind       Stepdispatchkind
-	State              Stepstatus
-	RoundIndex         int32
-	StepIndex          int32
-	DependsOnStepIds   []byte
-	ResolvedParams     []byte
-	Metrics            []byte
-	Artifacts          []byte
-	InputCommitID      *uuid.UUID
-	OutputCommitID     *uuid.UUID
-	AssignedExecutorID pgtype.Text
-	DispatchRequestID  pgtype.Text
-	StateVersion       int32
-	Attempt            int32
-	MaxAttempts        int32
-	StartedAt          pgtype.Timestamp
-	EndedAt            pgtype.Timestamp
-	LastError          pgtype.Text
+	CreatedAt                    pgtype.Timestamp
+	UpdatedAt                    pgtype.Timestamp
+	ID                           uuid.UUID
+	RoundID                      uuid.UUID
+	StepType                     Steptype
+	DispatchKind                 Stepdispatchkind
+	State                        Stepstatus
+	RoundIndex                   int32
+	StepIndex                    int32
+	DependsOnStepIds             []byte
+	ResolvedParams               []byte
+	Metrics                      []byte
+	Artifacts                    []byte
+	DatasetManifestRef           pgtype.Text
+	SnapshotID                   *uuid.UUID
+	EnvOverrides                 []byte
+	RuntimeHints                 []byte
+	KernelCapabilityRequirements []byte
+	GpuExclusive                 bool
+	KernelID                     pgtype.Text
+	KernelVersion                pgtype.Text
+	InputCommitID                *uuid.UUID
+	OutputCommitID               *uuid.UUID
+	AssignedExecutorID           pgtype.Text
+	DispatchRequestID            pgtype.Text
+	StateVersion                 int32
+	Attempt                      int32
+	MaxAttempts                  int32
+	StartedAt                    pgtype.Timestamp
+	EndedAt                      pgtype.Timestamp
+	LastError                    pgtype.Text
 }
 
 type StepCandidateItem struct {

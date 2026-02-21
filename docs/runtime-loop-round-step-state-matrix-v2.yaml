@@ -1,6 +1,8 @@
 version: "2.0"
 name: "saki-runtime-loop-round-step"
 updated_at: "2026-02-14"
+archived: true
+replaced_by: "docs/runtime-loop-round-step-state-matrix-v3.yaml"
 
 entities:
   loop:

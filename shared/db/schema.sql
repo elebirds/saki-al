@@ -436,6 +436,76 @@ CREATE TABLE public.dataset (
     owner_id uuid NOT NULL
 );
 
+--
+-- Name: dataset_snapshot; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.dataset_snapshot (
+    id uuid NOT NULL,
+    dataset_id uuid NOT NULL,
+    parent_snapshot_id uuid,
+    universe_size integer NOT NULL,
+    max_ordinal integer NOT NULL,
+    created_at timestamp without time zone NOT NULL
+);
+
+
+--
+-- Name: dataset_snapshot_sample_ordinal; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.dataset_snapshot_sample_ordinal (
+    snapshot_id uuid NOT NULL,
+    sample_uuid uuid NOT NULL,
+    ordinal integer NOT NULL,
+    is_tombstone boolean NOT NULL,
+    tombstone_at timestamp without time zone,
+    tombstone_reason character varying(255),
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
+);
+
+
+--
+-- Name: round_dataset_view; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.round_dataset_view (
+    id uuid NOT NULL,
+    loop_id uuid NOT NULL,
+    round_id uuid NOT NULL,
+    split character varying(32) NOT NULL,
+    is_static boolean NOT NULL,
+    snapshot_id uuid NOT NULL,
+    selector_encoding character varying(16) NOT NULL,
+    selector_bytes bytea NOT NULL,
+    selector_cardinality integer NOT NULL,
+    selector_checksum character varying(128) NOT NULL,
+    manifest_ref character varying(512) NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
+);
+
+
+--
+-- Name: al_session_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.al_session_state (
+    id uuid NOT NULL,
+    loop_id uuid NOT NULL,
+    round_id uuid,
+    snapshot_id uuid NOT NULL,
+    selector_encoding character varying(16) NOT NULL,
+    selector_bytes bytea NOT NULL,
+    selector_cardinality integer NOT NULL,
+    selector_checksum character varying(128) NOT NULL,
+    selector_manifest_ref character varying(512),
+    round_index integer NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL
+);
+
 
 --
 -- Name: dispatch_outbox; Type: TABLE; Schema: public; Owner: -
@@ -725,12 +795,20 @@ CREATE TABLE public.runtime_executor (
     updated_at timestamp without time zone NOT NULL,
     id uuid NOT NULL,
     executor_id character varying(128) NOT NULL,
+    node_id character varying(128),
     version character varying(64) NOT NULL,
+    runtime_kind character varying(32),
     status character varying(32) NOT NULL,
     is_online boolean NOT NULL,
     current_step_id character varying(64),
     plugin_ids jsonb,
     resources jsonb,
+    hardware_profile jsonb,
+    mps_stability_profile jsonb,
+    kernel_compat_flags jsonb,
+    health_status character varying(32),
+    health_detail jsonb,
+    uptime_sec bigint,
     last_seen_at timestamp without time zone,
     last_error character varying(4000)
 );
@@ -790,6 +868,14 @@ CREATE TABLE public.step (
     resolved_params jsonb,
     metrics jsonb,
     artifacts jsonb,
+    dataset_manifest_ref character varying(512),
+    snapshot_id uuid,
+    env_overrides jsonb,
+    runtime_hints jsonb,
+    kernel_capability_requirements jsonb,
+    gpu_exclusive boolean NOT NULL DEFAULT false,
+    kernel_id character varying(128),
+    kernel_version character varying(128),
     input_commit_id uuid,
     output_commit_id uuid,
     assigned_executor_id character varying,
@@ -981,6 +1067,22 @@ ALTER TABLE ONLY public.dataset
 
 
 --
+-- Name: dataset_snapshot dataset_snapshot_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot
+    ADD CONSTRAINT dataset_snapshot_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: dataset_snapshot_sample_ordinal dataset_snapshot_sample_ordinal_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot_sample_ordinal
+    ADD CONSTRAINT dataset_snapshot_sample_ordinal_pkey PRIMARY KEY (snapshot_id, sample_uuid);
+
+
+--
 -- Name: dispatch_outbox dispatch_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1077,6 +1179,14 @@ ALTER TABLE ONLY public.round
 
 
 --
+-- Name: round_dataset_view round_dataset_view_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_dataset_view
+    ADD CONSTRAINT round_dataset_view_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: round_sample_metric round_sample_metric_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1090,6 +1200,14 @@ ALTER TABLE ONLY public.round_sample_metric
 
 ALTER TABLE ONLY public.runtime_command_log
     ADD CONSTRAINT runtime_command_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: al_session_state al_session_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.al_session_state
+    ADD CONSTRAINT al_session_state_pkey PRIMARY KEY (id);
 
 
 --
@@ -1173,6 +1291,14 @@ ALTER TABLE ONLY public.import_task_event
 
 
 --
+-- Name: dataset_snapshot_sample_ordinal uq_dataset_snapshot_ordinal; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot_sample_ordinal
+    ADD CONSTRAINT uq_dataset_snapshot_ordinal UNIQUE (snapshot_id, ordinal);
+
+
+--
 -- Name: loop uq_loop_branch_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1213,6 +1339,22 @@ ALTER TABLE ONLY public.round
 
 
 --
+-- Name: round_dataset_view uq_round_dataset_view_split; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_dataset_view
+    ADD CONSTRAINT uq_round_dataset_view_split UNIQUE (round_id, split);
+
+
+--
+-- Name: al_session_state uq_al_session_state_loop; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.al_session_state
+    ADD CONSTRAINT uq_al_session_state_loop UNIQUE (loop_id);
+
+
+--
 -- Name: step_candidate_item uq_step_candidate_item; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1234,6 +1376,30 @@ ALTER TABLE ONLY public.step_event
 
 ALTER TABLE ONLY public.step
     ADD CONSTRAINT uq_step_order UNIQUE (round_id, step_index);
+
+
+--
+-- Name: dataset_snapshot ck_dataset_snapshot_ordinal_bounds; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot
+    ADD CONSTRAINT ck_dataset_snapshot_ordinal_bounds CHECK (((universe_size >= 0) AND (max_ordinal >= 0) AND (max_ordinal <= 4294967295)));
+
+
+--
+-- Name: dataset_snapshot_sample_ordinal ck_snapshot_sample_ordinal_bounds; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot_sample_ordinal
+    ADD CONSTRAINT ck_snapshot_sample_ordinal_bounds CHECK (((ordinal >= 0) AND (ordinal <= 4294967295)));
+
+
+--
+-- Name: dataset_snapshot_sample_ordinal ck_snapshot_sample_tombstone; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot_sample_ordinal
+    ADD CONSTRAINT ck_snapshot_sample_tombstone CHECK (((is_tombstone = false AND tombstone_at IS NULL) OR (is_tombstone = true)));
 
 
 --
@@ -1488,6 +1654,27 @@ CREATE INDEX ix_commit_sample_state_state ON public.commit_sample_state USING bt
 --
 
 CREATE INDEX ix_dataset_owner_id ON public.dataset USING btree (owner_id);
+
+
+--
+-- Name: ix_dataset_snapshot_dataset_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_dataset_snapshot_dataset_id ON public.dataset_snapshot USING btree (dataset_id);
+
+
+--
+-- Name: ix_dataset_snapshot_parent_snapshot_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_dataset_snapshot_parent_snapshot_id ON public.dataset_snapshot USING btree (parent_snapshot_id);
+
+
+--
+-- Name: ix_dataset_snapshot_sample_ordinal_tombstone; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_dataset_snapshot_sample_ordinal_tombstone ON public.dataset_snapshot_sample_ordinal USING btree (snapshot_id, is_tombstone);
 
 
 --
@@ -1799,10 +1986,31 @@ CREATE INDEX ix_round_state ON public.round USING btree (state);
 
 
 --
+-- Name: ix_round_dataset_view_round_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_dataset_view_round_id ON public.round_dataset_view USING btree (round_id);
+
+
+--
+-- Name: ix_round_dataset_view_snapshot_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_dataset_view_snapshot_id ON public.round_dataset_view USING btree (snapshot_id);
+
+
+--
 -- Name: ix_runtime_command_log_command_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX ix_runtime_command_log_command_id ON public.runtime_command_log USING btree (command_id);
+
+
+--
+-- Name: ix_al_session_state_loop_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_al_session_state_loop_id ON public.al_session_state USING btree (loop_id);
 
 
 --
@@ -1838,6 +2046,13 @@ CREATE INDEX ix_runtime_executor_current_step_id ON public.runtime_executor USIN
 --
 
 CREATE UNIQUE INDEX ix_runtime_executor_executor_id ON public.runtime_executor USING btree (executor_id);
+
+
+--
+-- Name: ix_runtime_executor_node_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_runtime_executor_node_id ON public.runtime_executor USING btree (node_id);
 
 
 --
@@ -1950,6 +2165,13 @@ CREATE INDEX ix_step_event_ts ON public.step_event USING btree (ts);
 --
 
 CREATE INDEX ix_step_input_commit_id ON public.step USING btree (input_commit_id);
+
+
+--
+-- Name: ix_step_snapshot_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_step_snapshot_id ON public.step USING btree (snapshot_id);
 
 
 --
@@ -2240,6 +2462,30 @@ ALTER TABLE ONLY public.dataset
 
 
 --
+-- Name: dataset_snapshot dataset_snapshot_dataset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot
+    ADD CONSTRAINT dataset_snapshot_dataset_id_fkey FOREIGN KEY (dataset_id) REFERENCES public.dataset(id);
+
+
+--
+-- Name: dataset_snapshot dataset_snapshot_parent_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot
+    ADD CONSTRAINT dataset_snapshot_parent_snapshot_id_fkey FOREIGN KEY (parent_snapshot_id) REFERENCES public.dataset_snapshot(id);
+
+
+--
+-- Name: dataset_snapshot_sample_ordinal dataset_snapshot_sample_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.dataset_snapshot_sample_ordinal
+    ADD CONSTRAINT dataset_snapshot_sample_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES public.dataset_snapshot(id);
+
+
+--
 -- Name: dispatch_outbox dispatch_outbox_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2333,6 +2579,54 @@ ALTER TABLE ONLY public.round
 
 ALTER TABLE ONLY public.round
     ADD CONSTRAINT fk_round_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: round_dataset_view round_dataset_view_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_dataset_view
+    ADD CONSTRAINT round_dataset_view_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: round_dataset_view round_dataset_view_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_dataset_view
+    ADD CONSTRAINT round_dataset_view_round_id_fkey FOREIGN KEY (round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: round_dataset_view round_dataset_view_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round_dataset_view
+    ADD CONSTRAINT round_dataset_view_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES public.dataset_snapshot(id);
+
+
+--
+-- Name: al_session_state al_session_state_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.al_session_state
+    ADD CONSTRAINT al_session_state_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: al_session_state al_session_state_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.al_session_state
+    ADD CONSTRAINT al_session_state_round_id_fkey FOREIGN KEY (round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: al_session_state al_session_state_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.al_session_state
+    ADD CONSTRAINT al_session_state_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES public.dataset_snapshot(id);
 
 
 --
@@ -2464,6 +2758,14 @@ ALTER TABLE ONLY public.step
 
 
 --
+-- Name: step step_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.step
+    ADD CONSTRAINT step_snapshot_id_fkey FOREIGN KEY (snapshot_id) REFERENCES public.dataset_snapshot(id);
+
+
+--
 -- Name: step_metric_point step_metric_point_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2528,6 +2830,71 @@ ALTER TABLE ONLY public.user_system_role
 
 
 --
--- PostgreSQL database dump complete
+-- Name: guard_snapshot_sample_ordinal_update(); Type: FUNCTION; Schema: public; Owner: -
 --
 
+CREATE FUNCTION public.guard_snapshot_sample_ordinal_update() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.snapshot_id <> OLD.snapshot_id THEN
+        RAISE EXCEPTION 'dataset_snapshot_sample_ordinal.snapshot_id is immutable';
+    END IF;
+    IF NEW.sample_uuid <> OLD.sample_uuid THEN
+        RAISE EXCEPTION 'dataset_snapshot_sample_ordinal.sample_uuid is immutable';
+    END IF;
+    IF NEW.ordinal <> OLD.ordinal THEN
+        RAISE EXCEPTION 'dataset_snapshot_sample_ordinal.ordinal is immutable';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: guard_snapshot_sample_ordinal_insert(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.guard_snapshot_sample_ordinal_insert() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    expected_ordinal integer;
+BEGIN
+    SELECT COALESCE(MAX(ordinal) + 1, 0)
+      INTO expected_ordinal
+      FROM public.dataset_snapshot_sample_ordinal
+     WHERE snapshot_id = NEW.snapshot_id;
+
+    IF NEW.ordinal <> expected_ordinal THEN
+        RAISE EXCEPTION 'dataset_snapshot_sample_ordinal.ordinal must be append-only: expected %, got %', expected_ordinal, NEW.ordinal;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: trg_guard_snapshot_sample_ordinal_insert; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_guard_snapshot_sample_ordinal_insert
+BEFORE INSERT ON public.dataset_snapshot_sample_ordinal
+FOR EACH ROW
+EXECUTE FUNCTION public.guard_snapshot_sample_ordinal_insert();
+
+
+--
+-- Name: trg_guard_snapshot_sample_ordinal_update; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_guard_snapshot_sample_ordinal_update
+BEFORE UPDATE ON public.dataset_snapshot_sample_ordinal
+FOR EACH ROW
+EXECUTE FUNCTION public.guard_snapshot_sample_ordinal_update();
+
+
+--
+-- PostgreSQL database dump complete
+--

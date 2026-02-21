@@ -121,6 +121,11 @@ message Register {
   string version = 3;
   repeated PluginCapability plugins = 4;
   ResourceSummary resources = 5;
+  string node_id = 6;
+  google.protobuf.Struct hardware_profile = 7;
+  google.protobuf.Struct mps_stability_profile = 8;
+  google.protobuf.Struct kernel_compat_flags = 9;
+  string runtime_kind = 10;
 }
 
 message Heartbeat {
@@ -129,6 +134,10 @@ message Heartbeat {
   bool busy = 3;
   string current_step_id = 4;
   ResourceSummary resources = 5;
+  string node_id = 6;
+  string health_status = 7;
+  google.protobuf.Struct health_detail = 8;
+  int64 uptime_sec = 9;
 }
 
 message StepPayload {
@@ -147,6 +156,14 @@ message StepPayload {
   int32 attempt = 13;
   repeated string depends_on_step_ids = 14;
   RuntimeStepDispatchKind dispatch_kind = 15;
+  string dataset_manifest_ref = 16;
+  string snapshot_id = 17;
+  map<string, string> env_overrides = 18;
+  google.protobuf.Struct runtime_hints = 19;
+  google.protobuf.Struct kernel_capability_requirements = 20;
+  bool gpu_exclusive = 21;
+  string kernel_id = 22;
+  string kernel_version = 23;
 }
 
 message AssignStep {
@@ -158,6 +175,7 @@ message StopStep {
   string request_id = 1;
   string step_id = 2;
   string reason = 3;
+  bool force = 4;
 }
 
 message StatusEvent {
@@ -194,6 +212,23 @@ message ArtifactEvent {
   ArtifactItem artifact = 1;
 }
 
+message ArtifactLocalReadyEvent {
+  string relative_path = 1;
+  uint64 size_bytes = 2;
+  string sha256 = 3;
+  string kind = 4;
+  bool required = 5;
+}
+
+message ArtifactUploadedEvent {
+  string relative_path = 1;
+  string storage_uri = 2;
+  string etag = 3;
+  string checksum = 4;
+  string kind = 5;
+  bool required = 6;
+}
+
 message StepEvent {
   string request_id = 1;
   string step_id = 2;
@@ -205,7 +240,11 @@ message StepEvent {
     ProgressEvent progress_event = 7;
     MetricEvent metric_event = 8;
     ArtifactEvent artifact_event = 9;
+    ArtifactLocalReadyEvent artifact_local_ready_event = 12;
+    ArtifactUploadedEvent artifact_uploaded_event = 13;
   }
+  string kernel_state = 10;
+  string kernel_instance_id = 11;
 }
 
 message QueryCandidate {
@@ -222,6 +261,7 @@ message StepResult {
   repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;
   string error_message = 7;
+  google.protobuf.Struct runtime_meta = 8;
 }
 
 message DataRequest {

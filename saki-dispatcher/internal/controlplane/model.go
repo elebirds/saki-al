@@ -39,27 +39,38 @@ type commandLogEntry struct {
 }
 
 type stepDispatchPayload struct {
-	StepID           uuid.UUID
-	RoundID          uuid.UUID
-	LoopID           uuid.UUID
-	ProjectID        uuid.UUID
-	InputCommitID    *uuid.UUID
-	StepType         db.Steptype
-	DispatchKind     db.Stepdispatchkind
-	PluginID         string
-	Mode             db.Loopmode
-	RoundIndex       int
-	Attempt          int
-	Status           db.Stepstatus
-	DependsOnStepIDs []uuid.UUID
-	Params           *structpb.Struct
-	Resources        *runtimecontrolv1.ResourceSummary
+	StepID                       uuid.UUID
+	RoundID                      uuid.UUID
+	LoopID                       uuid.UUID
+	ProjectID                    uuid.UUID
+	InputCommitID                *uuid.UUID
+	SnapshotID                   *uuid.UUID
+	StepType                     db.Steptype
+	DispatchKind                 db.Stepdispatchkind
+	PluginID                     string
+	Mode                         db.Loopmode
+	DatasetManifestRef           string
+	KernelID                     string
+	KernelVersion                string
+	RoundIndex                   int
+	Attempt                      int
+	GpuExclusive                 bool
+	Status                       db.Stepstatus
+	DependsOnStepIDs             []uuid.UUID
+	EnvOverrides                 map[string]string
+	Params                       *structpb.Struct
+	RuntimeHints                 *structpb.Struct
+	KernelCapabilityRequirements *structpb.Struct
+	Resources                    *runtimecontrolv1.ResourceSummary
 
-	dependsOnRaw       []byte
-	paramsRaw          []byte
-	roundParamsRaw     []byte
-	resourcesRaw       []byte
-	roundInputCommitID *uuid.UUID
+	dependsOnRaw                    []byte
+	paramsRaw                       []byte
+	envOverridesRaw                 []byte
+	runtimeHintsRaw                 []byte
+	kernelCapabilityRequirementsRaw []byte
+	roundParamsRaw                  []byte
+	resourcesRaw                    []byte
+	roundInputCommitID              *uuid.UUID
 }
 
 type loopModeStepSpec struct {
@@ -142,23 +153,40 @@ func mapLoopStoppableSteps(rows []db.ListLoopStoppableStepsRow) []stoppingStep {
 
 func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPayload, error) {
 	row := stepDispatchPayload{
-		StepID:             record.StepID,
-		RoundID:            record.RoundID,
-		Status:             record.Status,
-		StepType:           record.StepType,
-		DispatchKind:       record.DispatchKind,
-		RoundIndex:         int(record.RoundIndex),
-		Attempt:            int(record.Attempt),
-		dependsOnRaw:       record.DependsOnRaw,
-		paramsRaw:          record.ParamsRaw,
-		InputCommitID:      record.InputCommitID,
-		LoopID:             record.LoopID,
-		ProjectID:          record.ProjectID,
-		PluginID:           record.PluginID,
-		Mode:               record.Mode,
-		roundParamsRaw:     record.RoundParamsRaw,
-		resourcesRaw:       record.ResourcesRaw,
-		roundInputCommitID: record.RoundInputCommitID,
+		StepID:                          record.StepID,
+		RoundID:                         record.RoundID,
+		Status:                          record.Status,
+		StepType:                        record.StepType,
+		DispatchKind:                    record.DispatchKind,
+		RoundIndex:                      int(record.RoundIndex),
+		Attempt:                         int(record.Attempt),
+		dependsOnRaw:                    record.DependsOnRaw,
+		paramsRaw:                       record.ParamsRaw,
+		envOverridesRaw:                 record.EnvOverridesRaw,
+		runtimeHintsRaw:                 record.RuntimeHintsRaw,
+		kernelCapabilityRequirementsRaw: record.KernelCapabilityRequirementsRaw,
+		InputCommitID:                   record.InputCommitID,
+		SnapshotID:                      record.SnapshotID,
+		LoopID:                          record.LoopID,
+		ProjectID:                       record.ProjectID,
+		PluginID:                        record.PluginID,
+		Mode:                            record.Mode,
+		DatasetManifestRef:              record.DatasetManifestRef.String,
+		GpuExclusive:                    record.GpuExclusive,
+		KernelID:                        record.KernelID.String,
+		KernelVersion:                   record.KernelVersion.String,
+		roundParamsRaw:                  record.RoundParamsRaw,
+		resourcesRaw:                    record.ResourcesRaw,
+		roundInputCommitID:              record.RoundInputCommitID,
+	}
+	if !record.DatasetManifestRef.Valid {
+		row.DatasetManifestRef = ""
+	}
+	if !record.KernelID.Valid {
+		row.KernelID = ""
+	}
+	if !record.KernelVersion.Valid {
+		row.KernelVersion = ""
 	}
 	if row.InputCommitID == nil {
 		row.InputCommitID = row.roundInputCommitID
@@ -177,6 +205,18 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 		if parseErr != nil {
 			return stepDispatchPayload{}, parseErr
 		}
+	}
+	row.EnvOverrides, parseErr = parseJSONStringMap(row.envOverridesRaw)
+	if parseErr != nil {
+		return stepDispatchPayload{}, parseErr
+	}
+	row.RuntimeHints, parseErr = toStruct(row.runtimeHintsRaw)
+	if parseErr != nil {
+		return stepDispatchPayload{}, parseErr
+	}
+	row.KernelCapabilityRequirements, parseErr = toStruct(row.kernelCapabilityRequirementsRaw)
+	if parseErr != nil {
+		return stepDispatchPayload{}, parseErr
 	}
 	row.Resources = toResourceSummary(row.resourcesRaw)
 	return row, nil

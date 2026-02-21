@@ -1,0 +1,16 @@
+id: "example-train"
+version: "0.1.0"
+entry: "main.py"
+class_name: "ExampleTrainKernel"
+supported_step_types:
+  - "TRAIN"
+supported_modes:
+  - "ACTIVE_LEARNING"
+  - "SIMULATION"
+  - "MANUAL"
+capabilities:
+  supports_mps_loss_cpu_fallback: true
+  gpu_exclusive: true
+runtime:
+  python: "3.11"
+  manager: "uv"

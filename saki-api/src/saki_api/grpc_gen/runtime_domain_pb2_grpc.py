@@ -44,6 +44,26 @@ class RuntimeDomainStub(object):
                 request_serializer=runtime__domain__pb2.CountNewLabelsSinceCommitRequest.SerializeToString,
                 response_deserializer=runtime__domain__pb2.CountNewLabelsSinceCommitResponse.FromString,
                 _registered_method=True)
+        self.BuildDatasetSnapshot = channel.unary_unary(
+                '/saki.runtime.domain.v1.RuntimeDomain/BuildDatasetSnapshot',
+                request_serializer=runtime__domain__pb2.BuildDatasetSnapshotRequest.SerializeToString,
+                response_deserializer=runtime__domain__pb2.BuildDatasetSnapshotResponse.FromString,
+                _registered_method=True)
+        self.CreateRoundDatasetView = channel.unary_unary(
+                '/saki.runtime.domain.v1.RuntimeDomain/CreateRoundDatasetView',
+                request_serializer=runtime__domain__pb2.CreateRoundDatasetViewRequest.SerializeToString,
+                response_deserializer=runtime__domain__pb2.CreateRoundDatasetViewResponse.FromString,
+                _registered_method=True)
+        self.GetRoundManifest = channel.unary_unary(
+                '/saki.runtime.domain.v1.RuntimeDomain/GetRoundManifest',
+                request_serializer=runtime__domain__pb2.GetRoundManifestRequest.SerializeToString,
+                response_deserializer=runtime__domain__pb2.GetRoundManifestResponse.FromString,
+                _registered_method=True)
+        self.ValidateSelector = channel.unary_unary(
+                '/saki.runtime.domain.v1.RuntimeDomain/ValidateSelector',
+                request_serializer=runtime__domain__pb2.ValidateSelectorRequest.SerializeToString,
+                response_deserializer=runtime__domain__pb2.ValidateSelectorResponse.FromString,
+                _registered_method=True)
         self.ActivateSamples = channel.unary_unary(
                 '/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples',
                 request_serializer=runtime__domain__pb2.ActivateSamplesRequest.SerializeToString,
@@ -76,6 +96,30 @@ class RuntimeDomainServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def CountNewLabelsSinceCommit(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BuildDatasetSnapshot(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateRoundDatasetView(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRoundManifest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ValidateSelector(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -117,6 +161,26 @@ def add_RuntimeDomainServicer_to_server(servicer, server):
                     servicer.CountNewLabelsSinceCommit,
                     request_deserializer=runtime__domain__pb2.CountNewLabelsSinceCommitRequest.FromString,
                     response_serializer=runtime__domain__pb2.CountNewLabelsSinceCommitResponse.SerializeToString,
+            ),
+            'BuildDatasetSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.BuildDatasetSnapshot,
+                    request_deserializer=runtime__domain__pb2.BuildDatasetSnapshotRequest.FromString,
+                    response_serializer=runtime__domain__pb2.BuildDatasetSnapshotResponse.SerializeToString,
+            ),
+            'CreateRoundDatasetView': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateRoundDatasetView,
+                    request_deserializer=runtime__domain__pb2.CreateRoundDatasetViewRequest.FromString,
+                    response_serializer=runtime__domain__pb2.CreateRoundDatasetViewResponse.SerializeToString,
+            ),
+            'GetRoundManifest': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRoundManifest,
+                    request_deserializer=runtime__domain__pb2.GetRoundManifestRequest.FromString,
+                    response_serializer=runtime__domain__pb2.GetRoundManifestResponse.SerializeToString,
+            ),
+            'ValidateSelector': grpc.unary_unary_rpc_method_handler(
+                    servicer.ValidateSelector,
+                    request_deserializer=runtime__domain__pb2.ValidateSelectorRequest.FromString,
+                    response_serializer=runtime__domain__pb2.ValidateSelectorResponse.SerializeToString,
             ),
             'ActivateSamples': grpc.unary_unary_rpc_method_handler(
                     servicer.ActivateSamples,
@@ -193,6 +257,114 @@ class RuntimeDomain(object):
             '/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit',
             runtime__domain__pb2.CountNewLabelsSinceCommitRequest.SerializeToString,
             runtime__domain__pb2.CountNewLabelsSinceCommitResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BuildDatasetSnapshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.runtime.domain.v1.RuntimeDomain/BuildDatasetSnapshot',
+            runtime__domain__pb2.BuildDatasetSnapshotRequest.SerializeToString,
+            runtime__domain__pb2.BuildDatasetSnapshotResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateRoundDatasetView(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.runtime.domain.v1.RuntimeDomain/CreateRoundDatasetView',
+            runtime__domain__pb2.CreateRoundDatasetViewRequest.SerializeToString,
+            runtime__domain__pb2.CreateRoundDatasetViewResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRoundManifest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.runtime.domain.v1.RuntimeDomain/GetRoundManifest',
+            runtime__domain__pb2.GetRoundManifestRequest.SerializeToString,
+            runtime__domain__pb2.GetRoundManifestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ValidateSelector(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.runtime.domain.v1.RuntimeDomain/ValidateSelector',
+            runtime__domain__pb2.ValidateSelectorRequest.SerializeToString,
+            runtime__domain__pb2.ValidateSelectorResponse.FromString,
             options,
             channel_credentials,
             insecure,

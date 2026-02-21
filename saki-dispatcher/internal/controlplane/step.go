@@ -3,12 +3,15 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
@@ -241,8 +244,13 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		}
 		return executed, tx.Commit(ctx)
 	}
+	stepPayload, err = s.ensureStepDatasetBindingTx(ctx, tx, stepPayload)
+	if err != nil {
+		return false, err
+	}
 
-	executorID, found := s.dispatcher.PickExecutor(stepPayload.PluginID)
+	requiresMPSLossCPUFallback := shouldInjectMPSFallback(stepPayload)
+	executorID, found := s.dispatcher.PickExecutorForStep(stepPayload.PluginID, requiresMPSLossCPUFallback)
 	if !found {
 		return false, tx.Commit(ctx)
 	}
@@ -263,22 +271,59 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	for _, item := range stepPayload.DependsOnStepIDs {
 		dependsOnStepIDs = append(dependsOnStepIDs, item.String())
 	}
+	snapshotID := ""
+	if stepPayload.SnapshotID != nil {
+		snapshotID = stepPayload.SnapshotID.String()
+	}
+	envOverrides := map[string]string{}
+	for key, value := range stepPayload.EnvOverrides {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		envOverrides[key] = value
+	}
+	runtimeHints := stepPayload.RuntimeHints
+	if runtimeHints == nil {
+		runtimeHints = &structpb.Struct{}
+	}
+	kernelCapabilityRequirements := stepPayload.KernelCapabilityRequirements
+	if kernelCapabilityRequirements == nil {
+		kernelCapabilityRequirements = &structpb.Struct{}
+	}
+	if requiresMPSLossCPUFallback {
+		envOverrides["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+		envOverrides["USE_CPU_FOR_LOSS"] = "true"
+		requirementFields := kernelCapabilityRequirements.GetFields()
+		if requirementFields == nil {
+			requirementFields = map[string]*structpb.Value{}
+		}
+		requirementFields["supports_mps_loss_cpu_fallback"] = structpb.NewBoolValue(true)
+		kernelCapabilityRequirements = &structpb.Struct{Fields: requirementFields}
+	}
 	message := &runtimecontrolv1.StepPayload{
-		StepId:           stepPayload.StepID.String(),
-		RoundId:          stepPayload.RoundID.String(),
-		LoopId:           stepPayload.LoopID.String(),
-		ProjectId:        stepPayload.ProjectID.String(),
-		InputCommitId:    inputCommitID,
-		StepType:         toRuntimeStepType(stepPayload.StepType),
-		DispatchKind:     toRuntimeStepDispatchKind(stepPayload.DispatchKind),
-		PluginId:         stepPayload.PluginID,
-		Mode:             toRuntimeLoopMode(stepPayload.Mode),
-		QueryStrategy:    extractSamplingStrategyFromStruct(stepPayload.Params),
-		ResolvedParams:   stepPayload.Params,
-		Resources:        stepPayload.Resources,
-		RoundIndex:       int32(stepPayload.RoundIndex),
-		Attempt:          int32(stepPayload.Attempt),
-		DependsOnStepIds: dependsOnStepIDs,
+		StepId:                       stepPayload.StepID.String(),
+		RoundId:                      stepPayload.RoundID.String(),
+		LoopId:                       stepPayload.LoopID.String(),
+		ProjectId:                    stepPayload.ProjectID.String(),
+		InputCommitId:                inputCommitID,
+		StepType:                     toRuntimeStepType(stepPayload.StepType),
+		DispatchKind:                 toRuntimeStepDispatchKind(stepPayload.DispatchKind),
+		PluginId:                     stepPayload.PluginID,
+		Mode:                         toRuntimeLoopMode(stepPayload.Mode),
+		QueryStrategy:                extractSamplingStrategyFromStruct(stepPayload.Params),
+		ResolvedParams:               stepPayload.Params,
+		Resources:                    stepPayload.Resources,
+		RoundIndex:                   int32(stepPayload.RoundIndex),
+		Attempt:                      int32(stepPayload.Attempt),
+		DependsOnStepIds:             dependsOnStepIDs,
+		DatasetManifestRef:           stepPayload.DatasetManifestRef,
+		SnapshotId:                   snapshotID,
+		EnvOverrides:                 envOverrides,
+		RuntimeHints:                 runtimeHints,
+		KernelCapabilityRequirements: kernelCapabilityRequirements,
+		GpuExclusive:                 stepPayload.GpuExclusive,
+		KernelId:                     stepPayload.KernelID,
+		KernelVersion:                stepPayload.KernelVersion,
 	}
 	payloadRaw, err := protojson.Marshal(message)
 	if err != nil {
@@ -541,6 +586,10 @@ func (s *Service) runActivateSamplesTx(
 	if topk <= 0 {
 		topk = 1
 	}
+	snapshotID := ""
+	if stepPayload.SnapshotID != nil {
+		snapshotID = stepPayload.SnapshotID.String()
+	}
 
 	commandID := activationCommandID(stepPayload)
 	response, err := s.domainClient.ActivateSamples(ctx, &runtimedomainv1.ActivateSamplesRequest{
@@ -553,6 +602,7 @@ func (s *Service) runActivateSamplesTx(
 		RoundIndex:     int32(stepPayload.RoundIndex),
 		QueryStrategy:  queryStrategy,
 		Topk:           int32(topk),
+		SnapshotId:     snapshotID,
 	})
 	if err != nil {
 		return err
@@ -715,6 +765,33 @@ func (s *Service) OnStepEvent(ctx context.Context, event *runtimecontrolv1.StepE
 			if err := s.mergeArtifactIntoStepTx(ctx, tx, stepID, artifactPayload.GetArtifact()); err != nil {
 				return err
 			}
+		}
+	case "artifact_uploaded":
+		payload := eventPayload
+		relativePath := strings.TrimSpace(fmt.Sprintf("%v", payload["relative_path"]))
+		if relativePath == "" {
+			break
+		}
+		artifactName := filepath.Base(relativePath)
+		if artifactName == "." || artifactName == "/" {
+			artifactName = relativePath
+		}
+		meta, err := structpb.NewStruct(map[string]any{
+			"relative_path": relativePath,
+			"etag":          strings.TrimSpace(fmt.Sprintf("%v", payload["etag"])),
+			"checksum":      strings.TrimSpace(fmt.Sprintf("%v", payload["checksum"])),
+			"required":      payload["required"],
+		})
+		if err != nil {
+			return err
+		}
+		if err := s.mergeArtifactIntoStepTx(ctx, tx, stepID, &runtimecontrolv1.ArtifactItem{
+			Kind: strings.TrimSpace(fmt.Sprintf("%v", payload["kind"])),
+			Name: artifactName,
+			Uri:  strings.TrimSpace(fmt.Sprintf("%v", payload["storage_uri"])),
+			Meta: meta,
+		}); err != nil {
+			return err
 		}
 	}
 
@@ -1246,6 +1323,178 @@ func minInt(a, b int) int {
 	return b
 }
 
+func shouldInjectMPSFallback(stepPayload stepDispatchPayload) bool {
+	if structContainsToken(stepPayload.RuntimeHints, "mps") || structContainsToken(stepPayload.Params, "mps") {
+		return true
+	}
+	for _, accelerator := range stepPayload.Resources.GetAccelerators() {
+		if accelerator.GetType() == runtimecontrolv1.AcceleratorType_MPS {
+			return true
+		}
+	}
+	return false
+}
+
+func manifestSplitForStep(stepType db.Steptype) string {
+	switch stepType {
+	case db.SteptypeEVAL:
+		return "val"
+	default:
+		return "train"
+	}
+}
+
+func (s *Service) ensureStepDatasetBindingTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepPayload stepDispatchPayload,
+) (stepDispatchPayload, error) {
+	if strings.TrimSpace(stepPayload.DatasetManifestRef) != "" && stepPayload.SnapshotID != nil {
+		return stepPayload, nil
+	}
+	if s.domainClient == nil || !s.domainClient.Enabled() {
+		return stepPayload, nil
+	}
+	split := manifestSplitForStep(stepPayload.StepType)
+	viewRow, err := s.qtx(tx).GetRoundDatasetViewBySplit(ctx, db.GetRoundDatasetViewBySplitParams{
+		RoundID: stepPayload.RoundID,
+		Split:   split,
+	})
+	if err != nil {
+		if err != pgx.ErrNoRows {
+			return stepPayload, err
+		}
+		if err := s.materializeRoundDatasetViewTx(ctx, tx, stepPayload); err != nil {
+			return stepPayload, err
+		}
+		viewRow, err = s.qtx(tx).GetRoundDatasetViewBySplit(ctx, db.GetRoundDatasetViewBySplitParams{
+			RoundID: stepPayload.RoundID,
+			Split:   split,
+		})
+		if err != nil {
+			return stepPayload, err
+		}
+	}
+	runtimeHintsMap := structToMap(stepPayload.RuntimeHints)
+	if runtimeHintsMap == nil {
+		runtimeHintsMap = map[string]any{}
+	}
+	runtimeHintsMap["dataset_split"] = split
+	runtimeHintsMap["dataset_manifest_ref"] = viewRow.ManifestRef
+	runtimeHintsJSON, err := marshalJSON(runtimeHintsMap)
+	if err != nil {
+		return stepPayload, err
+	}
+	envOverridesJSON, err := marshalJSON(stepPayload.EnvOverrides)
+	if err != nil {
+		return stepPayload, err
+	}
+	kernelCapabilityRequirementsJSON, err := marshalJSON(structToMap(stepPayload.KernelCapabilityRequirements))
+	if err != nil {
+		return stepPayload, err
+	}
+	if err := s.qtx(tx).UpdateStepDatasetBinding(ctx, db.UpdateStepDatasetBindingParams{
+		DatasetManifestRef:           toNullablePGText(strings.TrimSpace(viewRow.ManifestRef)),
+		SnapshotID:                   &viewRow.SnapshotID,
+		EnvOverrides:                 []byte(envOverridesJSON),
+		RuntimeHints:                 []byte(runtimeHintsJSON),
+		KernelCapabilityRequirements: []byte(kernelCapabilityRequirementsJSON),
+		GpuExclusive:                 stepPayload.GpuExclusive,
+		KernelID:                     toNullablePGText(strings.TrimSpace(stepPayload.KernelID)),
+		KernelVersion:                toNullablePGText(strings.TrimSpace(stepPayload.KernelVersion)),
+		StepID:                       stepPayload.StepID,
+	}); err != nil {
+		return stepPayload, err
+	}
+
+	stepPayload.DatasetManifestRef = strings.TrimSpace(viewRow.ManifestRef)
+	stepPayload.SnapshotID = &viewRow.SnapshotID
+	runtimeHintsStruct, err := structpb.NewStruct(runtimeHintsMap)
+	if err == nil {
+		stepPayload.RuntimeHints = runtimeHintsStruct
+	}
+	return stepPayload, nil
+}
+
+func (s *Service) materializeRoundDatasetViewTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepPayload stepDispatchPayload,
+) error {
+	projectDatasetID, err := s.qtx(tx).GetPrimaryDatasetIDByProject(ctx, stepPayload.ProjectID)
+	if err != nil {
+		return err
+	}
+	loopRuntimeConfig, err := s.qtx(tx).GetLoopRuntimeConfig(ctx, stepPayload.LoopID)
+	if err != nil {
+		return err
+	}
+	planMap, _ := parseJSONObject(loopRuntimeConfig.Config)
+	if planMap == nil {
+		planMap = map[string]any{}
+	}
+	if _, ok := planMap["seed"]; !ok {
+		planMap["seed"] = 42
+	}
+	planStruct, err := structpb.NewStruct(planMap)
+	if err != nil {
+		planStruct = &structpb.Struct{}
+	}
+
+	snapshotResp, err := s.domainClient.BuildDatasetSnapshot(ctx, &runtimedomainv1.BuildDatasetSnapshotRequest{
+		DatasetId: projectDatasetID.String(),
+		Seed:      uint32(max(toInt(planMap["seed"], 42), 0)),
+	})
+	if err != nil {
+		return err
+	}
+	if !snapshotResp.GetCreated() || strings.TrimSpace(snapshotResp.GetSnapshotId()) == "" {
+		return fmt.Errorf("runtime_domain BuildDatasetSnapshot failed for loop=%s round=%s", stepPayload.LoopID, stepPayload.RoundID)
+	}
+
+	_, err = s.domainClient.CreateRoundDatasetView(ctx, &runtimedomainv1.CreateRoundDatasetViewRequest{
+		LoopId:         stepPayload.LoopID.String(),
+		RoundId:        stepPayload.RoundID.String(),
+		SnapshotId:     strings.TrimSpace(snapshotResp.GetSnapshotId()),
+		RoundIndex:     int32(stepPayload.RoundIndex),
+		Mode:           string(stepPayload.Mode),
+		SimulationMode: stepPayload.Mode == modeSIM,
+		Plan:           planStruct,
+	})
+	return err
+}
+
+func structContainsToken(payload *structpb.Struct, token string) bool {
+	if payload == nil || len(payload.GetFields()) == 0 {
+		return false
+	}
+	for _, value := range payload.GetFields() {
+		if valueContainsToken(value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func valueContainsToken(value *structpb.Value, token string) bool {
+	if value == nil {
+		return false
+	}
+	switch kind := value.GetKind().(type) {
+	case *structpb.Value_StringValue:
+		return strings.Contains(strings.ToLower(kind.StringValue), token)
+	case *structpb.Value_StructValue:
+		return structContainsToken(kind.StructValue, token)
+	case *structpb.Value_ListValue:
+		for _, item := range kind.ListValue.GetValues() {
+			if valueContainsToken(item, token) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontrolv1.Register) error {
 	if !s.dbEnabled() || register == nil {
 		return nil
@@ -1266,13 +1515,37 @@ func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontr
 	if err != nil {
 		return err
 	}
+	hardwareProfileJSON, err := marshalJSON(structToMap(register.GetHardwareProfile()))
+	if err != nil {
+		return err
+	}
+	mpsStabilityProfileJSON, err := marshalJSON(structToMap(register.GetMpsStabilityProfile()))
+	if err != nil {
+		return err
+	}
+	kernelCompatFlagsJSON, err := marshalJSON(structToMap(register.GetKernelCompatFlags()))
+	if err != nil {
+		return err
+	}
+	healthDetailJSON, err := marshalJSON(map[string]any{})
+	if err != nil {
+		return err
+	}
 
 	return s.queries.UpsertRuntimeExecutorOnRegister(ctx, db.UpsertRuntimeExecutorOnRegisterParams{
-		ExecutorRowID: uuid.New(),
-		ExecutorID:    executorID,
-		Version:       version,
-		PluginIds:     []byte(pluginPayloadJSON),
-		Resources:     []byte(resourcesJSON),
+		ExecutorRowID:       uuid.New(),
+		ExecutorID:          executorID,
+		NodeID:              toNullablePGText(strings.TrimSpace(register.GetNodeId())),
+		Version:             version,
+		RuntimeKind:         toNullablePGText(strings.TrimSpace(register.GetRuntimeKind())),
+		PluginIds:           []byte(pluginPayloadJSON),
+		Resources:           []byte(resourcesJSON),
+		HardwareProfile:     []byte(hardwareProfileJSON),
+		MpsStabilityProfile: []byte(mpsStabilityProfileJSON),
+		KernelCompatFlags:   []byte(kernelCompatFlagsJSON),
+		HealthStatus:        toNullablePGText("unknown"),
+		HealthDetail:        []byte(healthDetailJSON),
+		UptimeSec:           pgtype.Int8{Int64: 0, Valid: true},
 	})
 }
 
@@ -1298,13 +1571,29 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 	if err != nil {
 		return err
 	}
+	healthDetailJSON, err := marshalJSON(structToMap(heartbeat.GetHealthDetail()))
+	if err != nil {
+		return err
+	}
+	healthStatus := strings.TrimSpace(heartbeat.GetHealthStatus())
+	if healthStatus == "" {
+		if heartbeat.GetBusy() {
+			healthStatus = "busy"
+		} else {
+			healthStatus = "ok"
+		}
+	}
 
 	return s.queries.UpsertRuntimeExecutorOnHeartbeat(ctx, db.UpsertRuntimeExecutorOnHeartbeatParams{
 		ExecutorRowID: uuid.New(),
 		ExecutorID:    executorID,
+		NodeID:        toNullablePGText(strings.TrimSpace(heartbeat.GetNodeId())),
 		Status:        status,
 		CurrentStepID: currentStepUUID,
 		Resources:     []byte(resourcesJSON),
+		HealthStatus:  toNullablePGText(healthStatus),
+		HealthDetail:  []byte(healthDetailJSON),
+		UptimeSec:     pgtype.Int8{Int64: heartbeat.GetUptimeSec(), Valid: true},
 	})
 }
 

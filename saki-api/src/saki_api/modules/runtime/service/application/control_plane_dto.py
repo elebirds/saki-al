@@ -45,15 +45,27 @@ class RuntimePluginCapabilityDTO:
 class RuntimeRegisterDTO:
     request_id: str
     executor_id: str
+    node_id: str
     version: str
+    runtime_kind: str = ""
     plugins: list[RuntimePluginCapabilityDTO] = field(default_factory=list)
     resources: dict[str, Any] = field(default_factory=dict)
+    hardware_profile: dict[str, Any] = field(default_factory=dict)
+    mps_stability_profile: dict[str, Any] = field(default_factory=dict)
+    kernel_compat_flags: dict[str, Any] = field(default_factory=dict)
+    health_status: str = ""
+    health_detail: dict[str, Any] = field(default_factory=dict)
+    uptime_sec: int = 0
 
 
 @dataclass(slots=True)
 class RuntimeHeartbeatDTO:
     request_id: str
     executor_id: str
+    node_id: str
     busy: bool
     current_step_id: str
     resources: dict[str, Any] = field(default_factory=dict)
+    health_status: str = ""
+    health_detail: dict[str, Any] = field(default_factory=dict)
+    uptime_sec: int = 0

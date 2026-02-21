@@ -1,0 +1,70 @@
+version: "3.0"
+name: "saki-runtime-loop-round-step-agent-kernel"
+updated_at: "2026-02-21"
+archived_ref:
+  - "runtime-loop-round-step-语义计划书-v2.md"
+  - "runtime-loop-round-step-state-matrix-v2.yaml"
+
+entities:
+  loop:
+    states: [DRAFT, RUNNING, PAUSED, STOPPING, STOPPED, COMPLETED, FAILED]
+  round:
+    states: [PENDING, RUNNING, WAIT_USER, COMPLETED, CANCELLED, FAILED]
+  step:
+    states: [PENDING, READY, DISPATCHING, RUNNING, RETRYING, SUCCEEDED, FAILED, CANCELLED, SKIPPED]
+    dispatch_kinds: [DISPATCHABLE, ORCHESTRATOR]
+  kernel_process:
+    states: [STARTING, RUNNING, STOPPING, STOPPED, CRASHED]
+
+mode_policies:
+  ACTIVE_LEARNING:
+    static_splits: [val, test]
+    dynamic_splits: [train, unlabeled]
+    round_template:
+      - { step_type: TRAIN, dispatch_kind: DISPATCHABLE }
+      - { step_type: SCORE, dispatch_kind: DISPATCHABLE }
+      - { step_type: EVAL, dispatch_kind: DISPATCHABLE }
+      - { step_type: SELECT, dispatch_kind: ORCHESTRATOR }
+    round_complete_action: WAIT_USER
+  SIMULATION:
+    static_splits: [val, test]
+    dynamic_splits: [train, unlabeled]
+    round_template:
+      - { step_type: TRAIN, dispatch_kind: DISPATCHABLE }
+      - { step_type: SCORE, dispatch_kind: DISPATCHABLE }
+      - { step_type: EVAL, dispatch_kind: DISPATCHABLE }
+      - { step_type: SELECT, dispatch_kind: ORCHESTRATOR }
+      - { step_type: ACTIVATE_SAMPLES, dispatch_kind: ORCHESTRATOR }
+      - { step_type: ADVANCE_BRANCH, dispatch_kind: ORCHESTRATOR }
+    round_complete_action: AUTO_NEXT_ROUND
+  MANUAL:
+    static_splits: [val, test]
+    dynamic_splits: [train]
+    round_template:
+      - { step_type: TRAIN, dispatch_kind: DISPATCHABLE }
+      - { step_type: EVAL, dispatch_kind: DISPATCHABLE }
+      - { step_type: EXPORT, dispatch_kind: DISPATCHABLE }
+    round_complete_action: LOOP_COMPLETED
+
+invariants:
+  - "dataset_snapshot_sample_ordinal.ordinal is immutable"
+  - "tombstone keeps (snapshot_id, sample_uuid, ordinal)"
+  - "new sample ordinal must be max_ordinal + 1"
+  - "selector must carry snapshot_id"
+  - "kernel never owns MinIO credentials"
+  - "agent-kernel transport is IPC only"
+
+artifact_flow:
+  - "kernel emits artifact_local_ready_event(relative_path,size,sha256,required)"
+  - "agent uploads local artifact to MinIO asynchronously"
+  - "agent emits artifact_uploaded_event(storage_uri,etag,checksum)"
+  - "only artifact_uploaded_event is eligible for final step artifacts"
+
+m4_mps_policy:
+  capability_key: "supports_mps_loss_cpu_fallback"
+  inject_env:
+    PYTORCH_ENABLE_MPS_FALLBACK: "1"
+    USE_CPU_FOR_LOSS: "true"
+  dispatch_rule:
+    - "if step requires fallback and node/kernel support => allow mixed run"
+    - "else fallback cpu or reject with explicit reason"

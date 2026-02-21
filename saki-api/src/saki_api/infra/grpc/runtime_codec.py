@@ -332,6 +332,8 @@ def build_assign_step_message(*, request_id: str, payload: Mapping[str, Any]) ->
     round_id = str(payload.get("round_id") or "")
     depends_on_step_ids = [str(v) for v in (payload.get("depends_on_step_ids") or [])]
     input_commit_id = str(payload.get("input_commit_id") or "")
+    env_overrides_raw = payload.get("env_overrides") or {}
+    env_overrides = {str(k): str(v) for k, v in dict(env_overrides_raw).items() if str(k)}
     return pb.RuntimeMessage(
         assign_step=pb.AssignStep(
             request_id=request_id,
@@ -351,6 +353,14 @@ def build_assign_step_message(*, request_id: str, payload: Mapping[str, Any]) ->
                 round_index=int(payload.get("round_index") or 0),
                 attempt=int(payload.get("attempt") or 1),
                 depends_on_step_ids=depends_on_step_ids,
+                dataset_manifest_ref=str(payload.get("dataset_manifest_ref") or ""),
+                snapshot_id=str(payload.get("snapshot_id") or ""),
+                env_overrides=env_overrides,
+                runtime_hints=dict_to_struct(payload.get("runtime_hints") or {}),
+                kernel_capability_requirements=dict_to_struct(payload.get("kernel_capability_requirements") or {}),
+                gpu_exclusive=bool(payload.get("gpu_exclusive") or False),
+                kernel_id=str(payload.get("kernel_id") or ""),
+                kernel_version=str(payload.get("kernel_version") or ""),
             ),
         )
     )
@@ -420,6 +430,31 @@ def decode_step_event(event: pb.StepEvent) -> tuple[str, dict[str, Any], int | N
             },
             None,
         )
+    if payload_type == "artifact_local_ready_event":
+        return (
+            "artifact_local_ready",
+            {
+                "relative_path": str(event.artifact_local_ready_event.relative_path or ""),
+                "size_bytes": int(event.artifact_local_ready_event.size_bytes),
+                "sha256": str(event.artifact_local_ready_event.sha256 or ""),
+                "kind": str(event.artifact_local_ready_event.kind or ""),
+                "required": bool(event.artifact_local_ready_event.required),
+            },
+            None,
+        )
+    if payload_type == "artifact_uploaded_event":
+        return (
+            "artifact_uploaded",
+            {
+                "relative_path": str(event.artifact_uploaded_event.relative_path or ""),
+                "storage_uri": str(event.artifact_uploaded_event.storage_uri or ""),
+                "etag": str(event.artifact_uploaded_event.etag or ""),
+                "checksum": str(event.artifact_uploaded_event.checksum or ""),
+                "kind": str(event.artifact_uploaded_event.kind or ""),
+                "required": bool(event.artifact_uploaded_event.required),
+            },
+            None,
+        )
 
     return (
         "log",
@@ -454,9 +489,17 @@ def parse_register(message: pb.Register) -> RuntimeRegisterDTO:
     return RuntimeRegisterDTO(
         request_id=str(message.request_id),
         executor_id=str(message.executor_id),
+        node_id=str(message.node_id or ""),
         version=str(message.version),
+        runtime_kind=str(message.runtime_kind or ""),
         plugins=plugins,
         resources=resource_summary_to_dict(message.resources),
+        hardware_profile=struct_to_dict(message.hardware_profile),
+        mps_stability_profile=struct_to_dict(message.mps_stability_profile),
+        kernel_compat_flags=struct_to_dict(message.kernel_compat_flags),
+        health_status=str(message.health_status or ""),
+        health_detail=struct_to_dict(message.health_detail),
+        uptime_sec=int(message.uptime_sec or 0),
     )
 
 
@@ -464,7 +507,11 @@ def parse_heartbeat(message: pb.Heartbeat) -> RuntimeHeartbeatDTO:
     return RuntimeHeartbeatDTO(
         request_id=str(message.request_id),
         executor_id=str(message.executor_id),
+        node_id=str(message.node_id or ""),
         busy=bool(message.busy),
         current_step_id=str(message.current_step_id or ""),
         resources=resource_summary_to_dict(message.resources),
+        health_status=str(message.health_status or ""),
+        health_detail=struct_to_dict(message.health_detail),
+        uptime_sec=int(message.uptime_sec or 0),
     )

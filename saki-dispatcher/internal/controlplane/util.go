@@ -186,6 +186,23 @@ func decodeStepEvent(event *runtimecontrolv1.StepEvent) (string, map[string]any,
 			"uri":  strings.TrimSpace(artifact.GetUri()),
 			"meta": structToMap(artifact.GetMeta()),
 		}, ""
+	case *runtimecontrolv1.StepEvent_ArtifactLocalReadyEvent:
+		return "artifact_local_ready", map[string]any{
+			"relative_path": strings.TrimSpace(payload.ArtifactLocalReadyEvent.GetRelativePath()),
+			"size_bytes":    payload.ArtifactLocalReadyEvent.GetSizeBytes(),
+			"sha256":        strings.TrimSpace(payload.ArtifactLocalReadyEvent.GetSha256()),
+			"kind":          strings.TrimSpace(payload.ArtifactLocalReadyEvent.GetKind()),
+			"required":      payload.ArtifactLocalReadyEvent.GetRequired(),
+		}, ""
+	case *runtimecontrolv1.StepEvent_ArtifactUploadedEvent:
+		return "artifact_uploaded", map[string]any{
+			"relative_path": strings.TrimSpace(payload.ArtifactUploadedEvent.GetRelativePath()),
+			"storage_uri":   strings.TrimSpace(payload.ArtifactUploadedEvent.GetStorageUri()),
+			"etag":          strings.TrimSpace(payload.ArtifactUploadedEvent.GetEtag()),
+			"checksum":      strings.TrimSpace(payload.ArtifactUploadedEvent.GetChecksum()),
+			"kind":          strings.TrimSpace(payload.ArtifactUploadedEvent.GetKind()),
+			"required":      payload.ArtifactUploadedEvent.GetRequired(),
+		}, ""
 	default:
 		return "log", map[string]any{
 			"level":   "WARN",
@@ -226,6 +243,25 @@ func parseJSONUUIDs(raw []byte) ([]uuid.UUID, error) {
 		items = append(items, parsed)
 	}
 	return items, nil
+}
+
+func parseJSONStringMap(raw []byte) (map[string]string, error) {
+	result := map[string]string{}
+	if len(raw) == 0 {
+		return result, nil
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return result, nil
+	}
+	for key, value := range payload {
+		trimmed := strings.TrimSpace(key)
+		if trimmed == "" {
+			continue
+		}
+		result[trimmed] = fmt.Sprintf("%v", value)
+	}
+	return result, nil
 }
 
 func toResourceSummary(raw []byte) *runtimecontrolv1.ResourceSummary {

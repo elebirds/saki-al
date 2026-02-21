@@ -170,6 +170,14 @@ SELECT
   t.state_version,
   t.depends_on_step_ids AS depends_on_raw,
   t.resolved_params AS params_raw,
+  t.dataset_manifest_ref,
+  t.snapshot_id,
+  t.env_overrides AS env_overrides_raw,
+  t.runtime_hints AS runtime_hints_raw,
+  t.kernel_capability_requirements AS kernel_capability_requirements_raw,
+  t.gpu_exclusive,
+  t.kernel_id,
+  t.kernel_version,
   t.input_commit_id AS input_commit_id,
   j.loop_id AS loop_id,
   j.project_id AS project_id,
@@ -185,24 +193,32 @@ FOR UPDATE SKIP LOCKED
 `
 
 type GetStepPayloadByIDForUpdateRow struct {
-	StepID             uuid.UUID
-	RoundID            uuid.UUID
-	Status             Stepstatus
-	StepType           Steptype
-	DispatchKind       Stepdispatchkind
-	RoundIndex         int32
-	Attempt            int32
-	StateVersion       int32
-	DependsOnRaw       []byte
-	ParamsRaw          []byte
-	InputCommitID      *uuid.UUID
-	LoopID             uuid.UUID
-	ProjectID          uuid.UUID
-	PluginID           string
-	Mode               Loopmode
-	RoundParamsRaw     []byte
-	ResourcesRaw       []byte
-	RoundInputCommitID *uuid.UUID
+	StepID                          uuid.UUID
+	RoundID                         uuid.UUID
+	Status                          Stepstatus
+	StepType                        Steptype
+	DispatchKind                    Stepdispatchkind
+	RoundIndex                      int32
+	Attempt                         int32
+	StateVersion                    int32
+	DependsOnRaw                    []byte
+	ParamsRaw                       []byte
+	DatasetManifestRef              pgtype.Text
+	SnapshotID                      *uuid.UUID
+	EnvOverridesRaw                 []byte
+	RuntimeHintsRaw                 []byte
+	KernelCapabilityRequirementsRaw []byte
+	GpuExclusive                    bool
+	KernelID                        pgtype.Text
+	KernelVersion                   pgtype.Text
+	InputCommitID                   *uuid.UUID
+	LoopID                          uuid.UUID
+	ProjectID                       uuid.UUID
+	PluginID                        string
+	Mode                            Loopmode
+	RoundParamsRaw                  []byte
+	ResourcesRaw                    []byte
+	RoundInputCommitID              *uuid.UUID
 }
 
 func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.UUID) (GetStepPayloadByIDForUpdateRow, error) {
@@ -219,6 +235,14 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.U
 		&i.StateVersion,
 		&i.DependsOnRaw,
 		&i.ParamsRaw,
+		&i.DatasetManifestRef,
+		&i.SnapshotID,
+		&i.EnvOverridesRaw,
+		&i.RuntimeHintsRaw,
+		&i.KernelCapabilityRequirementsRaw,
+		&i.GpuExclusive,
+		&i.KernelID,
+		&i.KernelVersion,
 		&i.InputCommitID,
 		&i.LoopID,
 		&i.ProjectID,
@@ -675,6 +699,47 @@ type UpdateStepArtifactsParams struct {
 
 func (q *Queries) UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifactsParams) error {
 	_, err := q.db.Exec(ctx, updateStepArtifacts, arg.Artifacts, arg.StepID)
+	return err
+}
+
+const updateStepDatasetBinding = `-- name: UpdateStepDatasetBinding :exec
+UPDATE step
+SET dataset_manifest_ref = $1::text,
+    snapshot_id = $2::uuid,
+    env_overrides = $3::jsonb,
+    runtime_hints = $4::jsonb,
+    kernel_capability_requirements = $5::jsonb,
+    gpu_exclusive = $6,
+    kernel_id = $7::text,
+    kernel_version = $8::text,
+    updated_at = now()
+WHERE id = $9::uuid
+`
+
+type UpdateStepDatasetBindingParams struct {
+	DatasetManifestRef           pgtype.Text
+	SnapshotID                   *uuid.UUID
+	EnvOverrides                 []byte
+	RuntimeHints                 []byte
+	KernelCapabilityRequirements []byte
+	GpuExclusive                 bool
+	KernelID                     pgtype.Text
+	KernelVersion                pgtype.Text
+	StepID                       uuid.UUID
+}
+
+func (q *Queries) UpdateStepDatasetBinding(ctx context.Context, arg UpdateStepDatasetBindingParams) error {
+	_, err := q.db.Exec(ctx, updateStepDatasetBinding,
+		arg.DatasetManifestRef,
+		arg.SnapshotID,
+		arg.EnvOverrides,
+		arg.RuntimeHints,
+		arg.KernelCapabilityRequirements,
+		arg.GpuExclusive,
+		arg.KernelID,
+		arg.KernelVersion,
+		arg.StepID,
+	)
 	return err
 }
 

@@ -278,6 +278,13 @@ SELECT status
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 
+-- name: GetPrimaryDatasetIDByProject :one
+SELECT dataset_id
+FROM project_dataset
+WHERE project_id = sqlc.arg(project_id)::uuid
+ORDER BY dataset_id ASC
+LIMIT 1;
+
 -- name: GetCommandLogByCommandID :one
 SELECT
   id,

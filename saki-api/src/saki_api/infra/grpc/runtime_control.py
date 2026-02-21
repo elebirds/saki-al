@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import random
+import struct
 import uuid
+from datetime import UTC, datetime
 
 import grpc
+from google.protobuf.json_format import MessageToDict
 from loguru import logger
 from sqlmodel import select
 
@@ -21,11 +25,14 @@ from saki_api.modules.project.repo.branch import BranchRepository
 from saki_api.modules.project.repo.commit import CommitRepository
 from saki_api.modules.project.repo.commit_sample_state import CommitSampleStateRepository
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
+from saki_api.modules.runtime.domain.dataset_snapshot import DatasetSnapshot, DatasetSnapshotSampleOrdinal
+from saki_api.modules.runtime.domain.dataset_view import ALSessionState, RoundDatasetView
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
 from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, StepType
+from saki_api.modules.storage.domain.sample import Sample
 
 
 def _parse_uuid(raw: str) -> uuid.UUID | None:
@@ -66,6 +73,166 @@ def _to_domain_data_response(response: pb.DataResponse) -> domain_pb.DataRespons
         next_cursor=str(response.next_cursor or ""),
         is_last_chunk=bool(response.is_last_chunk),
     )
+
+
+def _compute_selector_cardinality_and_checksum(
+    snapshot_id: str,
+    encoding: int,
+    selector_bytes: bytes,
+) -> tuple[int, str]:
+    cardinality = 0
+    if encoding == domain_pb.SELECTOR_ENCODING_BITSET:
+        cardinality = int(sum(int(byte).bit_count() for byte in selector_bytes))
+    elif encoding == domain_pb.SELECTOR_ENCODING_RANGE:
+        if len(selector_bytes) % 8 != 0:
+            raise ValueError("range selector bytes length must be multiple of 8")
+        merged: list[tuple[int, int]] = []
+        for idx in range(0, len(selector_bytes), 8):
+            start, end = struct.unpack("<II", selector_bytes[idx:idx + 8])
+            if end < start:
+                raise ValueError("range selector contains end < start")
+            if not merged:
+                merged.append((start, end))
+                continue
+            last_start, last_end = merged[-1]
+            if start <= last_end + 1:
+                merged[-1] = (last_start, max(last_end, end))
+            else:
+                merged.append((start, end))
+        cardinality = int(sum((end - start + 1) for start, end in merged))
+
+    base = hashlib.sha256()
+    base.update((snapshot_id or "").encode("utf-8"))
+    base.update(b"\x00")
+    base.update(struct.pack("<I", int(encoding)))
+    base.update(bytes(selector_bytes))
+    base.update(struct.pack("<I", int(cardinality)))
+    return cardinality, base.hexdigest()
+
+
+def _uuid7() -> uuid.UUID:
+    generator = getattr(uuid, "uuid7", None)
+    if callable(generator):
+        return generator()
+    return uuid.uuid4()
+
+
+def _parse_uuid_list(raw_values: list[str]) -> tuple[list[uuid.UUID], str | None]:
+    ordered: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for raw in raw_values:
+        item = _parse_uuid(raw)
+        if item is None:
+            return [], f"invalid uuid value: {raw}"
+        if item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered, None
+
+
+def _selector_encoding_to_name(encoding: int) -> str:
+    if encoding == domain_pb.SELECTOR_ENCODING_RANGE:
+        return "RANGE"
+    if encoding == domain_pb.SELECTOR_ENCODING_ROARING:
+        return "ROARING"
+    return "BITSET"
+
+
+def _selector_name_to_encoding(name: str) -> int:
+    upper = str(name or "").strip().upper()
+    if upper == "RANGE":
+        return domain_pb.SELECTOR_ENCODING_RANGE
+    if upper == "ROARING":
+        return domain_pb.SELECTOR_ENCODING_ROARING
+    return domain_pb.SELECTOR_ENCODING_BITSET
+
+
+def _decode_selector_bytes(encoding: int, selector_bytes: bytes) -> list[int]:
+    if encoding == domain_pb.SELECTOR_ENCODING_RANGE:
+        if len(selector_bytes) % 8 != 0:
+            raise ValueError("range selector bytes length must be multiple of 8")
+        values: list[int] = []
+        for idx in range(0, len(selector_bytes), 8):
+            start, end = struct.unpack("<II", selector_bytes[idx:idx + 8])
+            if end < start:
+                raise ValueError("range selector contains end < start")
+            values.extend(range(int(start), int(end) + 1))
+        return values
+    if encoding == domain_pb.SELECTOR_ENCODING_BITSET:
+        values: list[int] = []
+        for byte_idx, byte_value in enumerate(selector_bytes):
+            for bit_idx in range(8):
+                if (byte_value >> bit_idx) & 1:
+                    values.append(byte_idx * 8 + bit_idx)
+        return values
+    # ROARING 目前只校验 checksum/cardinality，不解码明细。
+    return []
+
+
+def _encode_selector_from_ordinals(snapshot_id: str, ordinals: list[int], universe_size: int) -> tuple[int, bytes, int, str]:
+    dedup_sorted = sorted({int(item) for item in ordinals if int(item) >= 0})
+    cardinality = len(dedup_sorted)
+    if cardinality == 0:
+        checksum = _compute_selector_cardinality_and_checksum(snapshot_id, domain_pb.SELECTOR_ENCODING_RANGE, b"")[1]
+        return domain_pb.SELECTOR_ENCODING_RANGE, b"", 0, checksum
+
+    ranges: list[tuple[int, int]] = []
+    start = dedup_sorted[0]
+    end = dedup_sorted[0]
+    for value in dedup_sorted[1:]:
+        if value == end + 1:
+            end = value
+            continue
+        ranges.append((start, end))
+        start = value
+        end = value
+    ranges.append((start, end))
+    range_bytes = b"".join(struct.pack("<II", int(s), int(e)) for s, e in ranges)
+
+    bitset_size = max(int(universe_size), dedup_sorted[-1] + 1, 1)
+    bitset = bytearray((bitset_size + 7) // 8)
+    for ordinal in dedup_sorted:
+        byte_idx = ordinal // 8
+        bit_idx = ordinal % 8
+        bitset[byte_idx] |= (1 << bit_idx)
+    bitset_bytes = bytes(bitset)
+
+    if len(ranges) <= 16 and len(range_bytes) <= len(bitset_bytes):
+        encoding = domain_pb.SELECTOR_ENCODING_RANGE
+        selector_bytes = range_bytes
+    else:
+        encoding = domain_pb.SELECTOR_ENCODING_BITSET
+        selector_bytes = bitset_bytes
+    _, checksum = _compute_selector_cardinality_and_checksum(snapshot_id, encoding, selector_bytes)
+    return encoding, selector_bytes, cardinality, checksum
+
+
+def _split_holdout_counts(total: int, val_rate: float, test_rate: float, min_val: int, min_test: int) -> tuple[int, int]:
+    if total <= 0:
+        return 0, 0
+    if total < 3:
+        return min(1, total), max(0, total - 1)
+
+    if total < 300:
+        val = max(1, int(round(total * val_rate)))
+        test = max(1, int(round(total * test_rate)))
+    else:
+        val = max(min_val, int(total * val_rate))
+        test = max(min_test, int(total * test_rate))
+
+    if val + test >= total:
+        overflow = val + test - total + 1
+        while overflow > 0 and (val > 1 or test > 1):
+            if val >= test and val > 1:
+                val -= 1
+            elif test > 1:
+                test -= 1
+            overflow -= 1
+    if val + test >= total:
+        test = max(1, total - val - 1)
+        val = max(1, total - test - 1)
+    return max(1, val), max(1, test)
 
 
 class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
@@ -125,6 +292,464 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 latest_commit_id=str(latest_commit_id),
             )
 
+    async def _list_snapshot_rows(
+            self,
+            *,
+            session,
+            snapshot_id: uuid.UUID,
+    ) -> list[DatasetSnapshotSampleOrdinal]:
+        statement = (
+            select(DatasetSnapshotSampleOrdinal)
+            .where(DatasetSnapshotSampleOrdinal.snapshot_id == snapshot_id)
+            .order_by(DatasetSnapshotSampleOrdinal.ordinal.asc())
+        )
+        return list((await session.exec(statement)).all())
+
+    async def _upsert_round_dataset_view(
+            self,
+            *,
+            session,
+            loop_id: uuid.UUID,
+            round_id: uuid.UUID,
+            split: str,
+            is_static: bool,
+            snapshot_id: uuid.UUID,
+            encoding: int,
+            selector_bytes: bytes,
+            cardinality: int,
+            checksum: str,
+            manifest_ref: str,
+    ) -> RoundDatasetView:
+        split_name = str(split or "").strip().lower()
+        statement = (
+            select(RoundDatasetView)
+            .where(
+                RoundDatasetView.round_id == round_id,
+                RoundDatasetView.split == split_name,
+            )
+            .limit(1)
+        )
+        row = (await session.exec(statement)).first()
+        if row is None:
+            row = RoundDatasetView(
+                id=_uuid7(),
+                loop_id=loop_id,
+                round_id=round_id,
+                split=split_name,
+                is_static=is_static,
+                snapshot_id=snapshot_id,
+                selector_encoding=_selector_encoding_to_name(encoding),
+                selector_bytes=bytes(selector_bytes),
+                selector_cardinality=int(cardinality),
+                selector_checksum=str(checksum),
+                manifest_ref=str(manifest_ref),
+            )
+        else:
+            row.is_static = bool(is_static)
+            row.snapshot_id = snapshot_id
+            row.selector_encoding = _selector_encoding_to_name(encoding)
+            row.selector_bytes = bytes(selector_bytes)
+            row.selector_cardinality = int(cardinality)
+            row.selector_checksum = str(checksum)
+            row.manifest_ref = str(manifest_ref)
+            row.updated_at = datetime.now(UTC)
+        session.add(row)
+        return row
+
+    async def _load_latest_split_selector(
+            self,
+            *,
+            session,
+            loop_id: uuid.UUID,
+            split: str,
+    ) -> RoundDatasetView | None:
+        statement = (
+            select(RoundDatasetView)
+            .where(
+                RoundDatasetView.loop_id == loop_id,
+                RoundDatasetView.split == str(split or "").strip().lower(),
+            )
+            .order_by(RoundDatasetView.created_at.desc())
+            .limit(1)
+        )
+        return (await session.exec(statement)).first()
+
+    async def _upsert_al_session_state(
+            self,
+            *,
+            session,
+            loop_id: uuid.UUID,
+            round_id: uuid.UUID | None,
+            snapshot_id: uuid.UUID,
+            round_index: int,
+            encoding: int,
+            selector_bytes: bytes,
+            cardinality: int,
+            checksum: str,
+            manifest_ref: str,
+    ) -> ALSessionState:
+        statement = select(ALSessionState).where(ALSessionState.loop_id == loop_id).limit(1)
+        row = (await session.exec(statement)).first()
+        if row is None:
+            row = ALSessionState(
+                id=_uuid7(),
+                loop_id=loop_id,
+                round_id=round_id,
+                snapshot_id=snapshot_id,
+                selector_encoding=_selector_encoding_to_name(encoding),
+                selector_bytes=bytes(selector_bytes),
+                selector_cardinality=int(cardinality),
+                selector_checksum=str(checksum),
+                selector_manifest_ref=str(manifest_ref),
+                round_index=int(round_index),
+            )
+        else:
+            row.round_id = round_id
+            row.snapshot_id = snapshot_id
+            row.selector_encoding = _selector_encoding_to_name(encoding)
+            row.selector_bytes = bytes(selector_bytes)
+            row.selector_cardinality = int(cardinality)
+            row.selector_checksum = str(checksum)
+            row.selector_manifest_ref = str(manifest_ref)
+            row.round_index = int(round_index)
+            row.updated_at = datetime.now(UTC)
+        session.add(row)
+        return row
+
+    async def BuildDatasetSnapshot(self, request, context):  # noqa: N802
+        dataset_id = _parse_uuid(request.dataset_id)
+        if dataset_id is None:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("dataset_id is required")
+            return domain_pb.BuildDatasetSnapshotResponse(created=False, snapshot_id="", universe_size=0, max_ordinal=0, tombstone_count=0)
+
+        parent_snapshot_id = _parse_uuid(request.parent_snapshot_id)
+        append_ids, append_err = _parse_uuid_list(list(request.append_sample_uuids))
+        if append_err:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(append_err)
+            return domain_pb.BuildDatasetSnapshotResponse(created=False, snapshot_id="", universe_size=0, max_ordinal=0, tombstone_count=0)
+        tombstone_ids, tombstone_err = _parse_uuid_list(list(request.tombstone_sample_uuids))
+        if tombstone_err:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(tombstone_err)
+            return domain_pb.BuildDatasetSnapshotResponse(created=False, snapshot_id="", universe_size=0, max_ordinal=0, tombstone_count=0)
+        tombstone_set = set(tombstone_ids)
+
+        async with SessionLocal() as session:
+            parent_snapshot: DatasetSnapshot | None = None
+            base_rows: list[DatasetSnapshotSampleOrdinal] = []
+            if parent_snapshot_id is not None:
+                parent_snapshot = await session.get(DatasetSnapshot, parent_snapshot_id)
+                if parent_snapshot is None:
+                    context.set_code(grpc.StatusCode.NOT_FOUND)
+                    context.set_details("parent snapshot not found")
+                    return domain_pb.BuildDatasetSnapshotResponse(created=False, snapshot_id="", universe_size=0, max_ordinal=0, tombstone_count=0)
+                if parent_snapshot.dataset_id != dataset_id:
+                    context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                    context.set_details("parent snapshot dataset mismatch")
+                    return domain_pb.BuildDatasetSnapshotResponse(created=False, snapshot_id="", universe_size=0, max_ordinal=0, tombstone_count=0)
+                base_rows = await self._list_snapshot_rows(session=session, snapshot_id=parent_snapshot.id)
+
+            if not base_rows:
+                sample_statement = (
+                    select(Sample.id)
+                    .where(Sample.dataset_id == dataset_id)
+                    .order_by(Sample.id.asc())
+                )
+                sample_ids = list((await session.exec(sample_statement)).all())
+                current_ordinal = 0
+                for sample_id in sample_ids:
+                    base_rows.append(
+                        DatasetSnapshotSampleOrdinal(
+                            snapshot_id=uuid.UUID(int=0),
+                            sample_uuid=sample_id,
+                            ordinal=current_ordinal,
+                            is_tombstone=sample_id in tombstone_set,
+                            tombstone_at=(datetime.now(UTC) if sample_id in tombstone_set else None),
+                            tombstone_reason=("deleted" if sample_id in tombstone_set else None),
+                            created_at=datetime.now(UTC),
+                            updated_at=datetime.now(UTC),
+                        )
+                    )
+                    current_ordinal += 1
+            snapshot_id = _uuid7()
+            snapshot = DatasetSnapshot(
+                id=snapshot_id,
+                dataset_id=dataset_id,
+                parent_snapshot_id=(parent_snapshot.id if parent_snapshot is not None else None),
+                universe_size=0,
+                max_ordinal=0,
+                created_at=datetime.now(UTC),
+            )
+            session.add(snapshot)
+
+            current_max = -1
+            existing_sample_ids: set[uuid.UUID] = set()
+            for row in sorted(base_rows, key=lambda item: int(item.ordinal)):
+                is_tombstone = bool(row.is_tombstone) or row.sample_uuid in tombstone_set
+                copied = DatasetSnapshotSampleOrdinal(
+                    snapshot_id=snapshot_id,
+                    sample_uuid=row.sample_uuid,
+                    ordinal=int(row.ordinal),
+                    is_tombstone=is_tombstone,
+                    tombstone_at=(datetime.now(UTC) if is_tombstone else None),
+                    tombstone_reason=(row.tombstone_reason or "deleted" if is_tombstone else None),
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
+                )
+                session.add(copied)
+                existing_sample_ids.add(row.sample_uuid)
+                current_max = max(current_max, int(row.ordinal))
+
+            for sample_id in append_ids:
+                if sample_id in existing_sample_ids:
+                    continue
+                current_max += 1
+                session.add(
+                    DatasetSnapshotSampleOrdinal(
+                        snapshot_id=snapshot_id,
+                        sample_uuid=sample_id,
+                        ordinal=current_max,
+                        is_tombstone=False,
+                        tombstone_at=None,
+                        tombstone_reason=None,
+                        created_at=datetime.now(UTC),
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+                existing_sample_ids.add(sample_id)
+
+            snapshot.max_ordinal = max(current_max, 0)
+            snapshot.universe_size = max(current_max + 1, 0)
+            session.add(snapshot)
+            await session.commit()
+
+            rows = await self._list_snapshot_rows(session=session, snapshot_id=snapshot_id)
+            tombstone_count = sum(1 for item in rows if item.is_tombstone)
+            return domain_pb.BuildDatasetSnapshotResponse(
+                created=True,
+                snapshot_id=str(snapshot_id),
+                universe_size=int(snapshot.universe_size),
+                max_ordinal=int(snapshot.max_ordinal),
+                tombstone_count=int(tombstone_count),
+            )
+
+    async def CreateRoundDatasetView(self, request, context):  # noqa: N802
+        loop_id = _parse_uuid(request.loop_id)
+        round_id = _parse_uuid(request.round_id)
+        snapshot_id = _parse_uuid(request.snapshot_id)
+        if loop_id is None or round_id is None or snapshot_id is None:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("loop_id/round_id/snapshot_id are required")
+            return domain_pb.CreateRoundDatasetViewResponse(created=False, round_id=str(request.round_id or ""), manifests=[])
+
+        plan = MessageToDict(request.plan, preserving_proto_field_name=True) if request.plan and request.plan.ListFields() else {}
+        seed = int(plan.get("seed", 42))
+        val_rate = float(plan.get("val_rate", 0.15))
+        test_rate = float(plan.get("test_rate", 0.15))
+        min_val = int(plan.get("min_val", 50))
+        min_test = int(plan.get("min_test", 50))
+        initial_train_rate = float(plan.get("initial_train_rate", 0.1))
+        initial_train_min = int(plan.get("initial_train_min", 200))
+        simulation_growth_rate = float(plan.get("simulation_growth_rate", 0.05))
+        simulation_growth_min_count = int(plan.get("simulation_growth_min_count", 10))
+
+        mode = str(request.mode or "").strip().upper()
+        is_manual = mode == "MANUAL"
+
+        async with SessionLocal() as session:
+            snapshot = await session.get(DatasetSnapshot, snapshot_id)
+            if snapshot is None:
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                context.set_details("snapshot not found")
+                return domain_pb.CreateRoundDatasetViewResponse(created=False, round_id=str(request.round_id or ""), manifests=[])
+
+            rows = await self._list_snapshot_rows(session=session, snapshot_id=snapshot_id)
+            available_ordinals = [int(item.ordinal) for item in rows if not item.is_tombstone]
+            available_set = set(available_ordinals)
+
+            static_val: set[int] = set()
+            static_test: set[int] = set()
+            previous_val = await self._load_latest_split_selector(session=session, loop_id=loop_id, split="val")
+            previous_test = await self._load_latest_split_selector(session=session, loop_id=loop_id, split="test")
+            if previous_val and previous_test and previous_val.snapshot_id == snapshot_id and previous_test.snapshot_id == snapshot_id:
+                static_val = set(_decode_selector_bytes(_selector_name_to_encoding(previous_val.selector_encoding), bytes(previous_val.selector_bytes)))
+                static_test = set(_decode_selector_bytes(_selector_name_to_encoding(previous_test.selector_encoding), bytes(previous_test.selector_bytes)))
+                static_val &= available_set
+                static_test &= available_set
+                static_test -= static_val
+            else:
+                shuffled = list(available_ordinals)
+                random.Random(seed).shuffle(shuffled)
+                val_count, test_count = _split_holdout_counts(len(shuffled), val_rate, test_rate, min_val, min_test)
+                static_val = set(shuffled[:val_count])
+                static_test = set(shuffled[val_count:val_count + test_count])
+
+            train_pool = sorted(available_set - static_val - static_test)
+            train_set: set[int]
+            session_state = (await session.exec(select(ALSessionState).where(ALSessionState.loop_id == loop_id).limit(1))).first()
+            if is_manual:
+                train_set = set(train_pool)
+            elif session_state is not None and session_state.snapshot_id == snapshot_id:
+                train_set = set(
+                    _decode_selector_bytes(
+                        _selector_name_to_encoding(session_state.selector_encoding),
+                        bytes(session_state.selector_bytes),
+                    )
+                )
+                train_set &= set(train_pool)
+            else:
+                shuffled_pool = list(train_pool)
+                random.Random(seed).shuffle(shuffled_pool)
+                initial_count = max(int(len(shuffled_pool) * initial_train_rate), min(initial_train_min, len(shuffled_pool)))
+                if len(shuffled_pool) > 0:
+                    initial_count = max(1, min(initial_count, len(shuffled_pool)))
+                train_set = set(shuffled_pool[:initial_count])
+
+            if request.simulation_mode and not is_manual:
+                unlabeled_now = sorted(set(train_pool) - train_set)
+                if unlabeled_now:
+                    growth_count = max(int(len(train_pool) * simulation_growth_rate), simulation_growth_min_count)
+                    growth_count = max(1, min(growth_count, len(unlabeled_now)))
+                    random.Random(seed + int(request.round_index or 0)).shuffle(unlabeled_now)
+                    train_set.update(unlabeled_now[:growth_count])
+
+            unlabeled_set = set() if is_manual else (set(train_pool) - train_set)
+
+            split_payloads = {
+                "train": (train_set, False),
+                "unlabeled": (unlabeled_set, False),
+                "val": (static_val, True),
+                "test": (static_test, True),
+            }
+            manifests: list[domain_pb.DatasetManifestRef] = []
+            for split_name, (ordinal_set, is_static) in split_payloads.items():
+                encoding, selector_bytes, cardinality, checksum = _encode_selector_from_ordinals(
+                    snapshot_id=str(snapshot_id),
+                    ordinals=sorted(ordinal_set),
+                    universe_size=int(snapshot.universe_size),
+                )
+                manifest_ref = f"manifest://loop/{loop_id}/round/{round_id}/{split_name}"
+                await self._upsert_round_dataset_view(
+                    session=session,
+                    loop_id=loop_id,
+                    round_id=round_id,
+                    split=split_name,
+                    is_static=is_static,
+                    snapshot_id=snapshot_id,
+                    encoding=encoding,
+                    selector_bytes=selector_bytes,
+                    cardinality=cardinality,
+                    checksum=checksum,
+                    manifest_ref=manifest_ref,
+                )
+                manifests.append(
+                    domain_pb.DatasetManifestRef(
+                        split=split_name,
+                        is_static=is_static,
+                        snapshot_id=str(snapshot_id),
+                        manifest_ref=manifest_ref,
+                        selector=domain_pb.SelectorDigest(
+                            snapshot_id=str(snapshot_id),
+                            encoding=encoding,
+                            selector_bytes=selector_bytes,
+                            cardinality=cardinality,
+                            checksum=checksum,
+                        ),
+                    )
+                )
+
+            train_manifest = next((item for item in manifests if item.split == "train"), None)
+            if train_manifest is not None:
+                await self._upsert_al_session_state(
+                    session=session,
+                    loop_id=loop_id,
+                    round_id=round_id,
+                    snapshot_id=snapshot_id,
+                    round_index=int(request.round_index or 0),
+                    encoding=int(train_manifest.selector.encoding),
+                    selector_bytes=bytes(train_manifest.selector.selector_bytes),
+                    cardinality=int(train_manifest.selector.cardinality),
+                    checksum=str(train_manifest.selector.checksum),
+                    manifest_ref=str(train_manifest.manifest_ref),
+                )
+
+            await session.commit()
+            return domain_pb.CreateRoundDatasetViewResponse(
+                created=True,
+                round_id=str(round_id),
+                manifests=manifests,
+            )
+
+    async def GetRoundManifest(self, request, context):  # noqa: N802
+        round_id = _parse_uuid(request.round_id)
+        split_name = str(request.split or "").strip().lower()
+        if round_id is None or not split_name:
+            return domain_pb.GetRoundManifestResponse(found=False)
+        async with SessionLocal() as session:
+            statement = (
+                select(RoundDatasetView)
+                .where(
+                    RoundDatasetView.round_id == round_id,
+                    RoundDatasetView.split == split_name,
+                )
+                .limit(1)
+            )
+            row = (await session.exec(statement)).first()
+            if row is None:
+                return domain_pb.GetRoundManifestResponse(found=False)
+            encoding = _selector_name_to_encoding(row.selector_encoding)
+            return domain_pb.GetRoundManifestResponse(
+                found=True,
+                manifest=domain_pb.DatasetManifestRef(
+                    split=split_name,
+                    is_static=bool(row.is_static),
+                    snapshot_id=str(row.snapshot_id),
+                    manifest_ref=str(row.manifest_ref),
+                    selector=domain_pb.SelectorDigest(
+                        snapshot_id=str(row.snapshot_id),
+                        encoding=encoding,
+                        selector_bytes=bytes(row.selector_bytes),
+                        cardinality=int(row.selector_cardinality),
+                        checksum=str(row.selector_checksum),
+                    ),
+                ),
+            )
+
+    async def ValidateSelector(self, request, context):  # noqa: N802
+        selector = request.selector
+        if not selector.snapshot_id:
+            return domain_pb.ValidateSelectorResponse(ok=False, cardinality=0, checksum="", reason="snapshot_id is required")
+        if selector.encoding == domain_pb.SELECTOR_ENCODING_UNSPECIFIED:
+            return domain_pb.ValidateSelectorResponse(ok=False, cardinality=0, checksum="", reason="selector encoding is required")
+        try:
+            cardinality, checksum = _compute_selector_cardinality_and_checksum(
+                snapshot_id=str(selector.snapshot_id or ""),
+                encoding=int(selector.encoding),
+                selector_bytes=bytes(selector.selector_bytes),
+            )
+        except ValueError as exc:
+            return domain_pb.ValidateSelectorResponse(ok=False, cardinality=0, checksum="", reason=str(exc))
+
+        expected_cardinality = int(selector.cardinality or 0)
+        if expected_cardinality > 0 and expected_cardinality != cardinality:
+            return domain_pb.ValidateSelectorResponse(
+                ok=False,
+                cardinality=cardinality,
+                checksum=checksum,
+                reason=f"cardinality mismatch expected={expected_cardinality} actual={cardinality}",
+            )
+        expected_checksum = str(selector.checksum or "").strip().lower()
+        if expected_checksum and expected_checksum != checksum:
+            return domain_pb.ValidateSelectorResponse(
+                ok=False,
+                cardinality=cardinality,
+                checksum=checksum,
+                reason=f"checksum mismatch expected={expected_checksum} actual={checksum}",
+            )
+        return domain_pb.ValidateSelectorResponse(ok=True, cardinality=cardinality, checksum=checksum, reason="")
+
     async def _create_simulation_commit_tx(
             self,
             *,
@@ -139,6 +764,10 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             round_index: int,
             query_strategy: str,
             topk: int,
+            snapshot_id: str,
+            selector_encoding: int,
+            selector_cardinality: int,
+            selector_checksum: str,
     ) -> Commit:
         commit = Commit(
             project_id=project_id,
@@ -161,6 +790,10 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     "oracle_commit_id": str(oracle_commit_id),
                     "source_commit_id": str(parent_commit_id),
                     "selected_sample_ids": [str(item) for item in selected_sample_ids],
+                    "snapshot_id": str(snapshot_id or ""),
+                    "selector_encoding": int(selector_encoding),
+                    "selector_cardinality": int(selector_cardinality),
+                    "selector_checksum": str(selector_checksum or ""),
                 }
             },
             commit_hash="",
@@ -302,11 +935,71 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return item
         return None
 
+    async def _grow_train_selector_after_activation(
+            self,
+            *,
+            session,
+            loop_id: uuid.UUID,
+            round_id: uuid.UUID | None,
+            round_index: int,
+            snapshot_id: uuid.UUID | None,
+            selected_sample_ids: list[uuid.UUID],
+    ) -> None:
+        if snapshot_id is None:
+            return
+        if not selected_sample_ids:
+            return
+        state = (await session.exec(select(ALSessionState).where(ALSessionState.loop_id == loop_id).limit(1))).first()
+        if state is None or state.snapshot_id != snapshot_id:
+            return
+        snapshot = await session.get(DatasetSnapshot, snapshot_id)
+        if snapshot is None:
+            return
+
+        current_train = set(
+            _decode_selector_bytes(
+                _selector_name_to_encoding(state.selector_encoding),
+                bytes(state.selector_bytes),
+            )
+        )
+        ordinal_rows = list(
+            (
+                await session.exec(
+                    select(DatasetSnapshotSampleOrdinal)
+                    .where(
+                        DatasetSnapshotSampleOrdinal.snapshot_id == snapshot_id,
+                        DatasetSnapshotSampleOrdinal.sample_uuid.in_(selected_sample_ids),
+                        DatasetSnapshotSampleOrdinal.is_tombstone.is_(False),
+                    )
+                )
+            ).all()
+        )
+        for item in ordinal_rows:
+            current_train.add(int(item.ordinal))
+        encoding, selector_bytes, cardinality, checksum = _encode_selector_from_ordinals(
+            snapshot_id=str(snapshot_id),
+            ordinals=sorted(current_train),
+            universe_size=int(snapshot.universe_size),
+        )
+        await self._upsert_al_session_state(
+            session=session,
+            loop_id=loop_id,
+            round_id=round_id,
+            snapshot_id=snapshot_id,
+            round_index=round_index,
+            encoding=encoding,
+            selector_bytes=selector_bytes,
+            cardinality=cardinality,
+            checksum=checksum,
+            manifest_ref=f"manifest://loop/{loop_id}/round/{round_id or 'unknown'}/train",
+        )
+
     async def ActivateSamples(self, request, context):  # noqa: N802
         project_id = _parse_uuid(request.project_id)
         branch_id = _parse_uuid(request.branch_id)
         oracle_commit_id = _parse_uuid(request.oracle_commit_id)
         source_commit_id = _parse_uuid(request.source_commit_id)
+        snapshot_uuid = _parse_uuid(request.snapshot_id)
 
         if project_id is None or branch_id is None or oracle_commit_id is None:
             return domain_pb.ActivateSamplesResponse(created=False, commit_id="")
@@ -364,6 +1057,18 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 round_index=round_index,
                 query_strategy=str(request.query_strategy or ""),
                 topk=int(request.topk or 0),
+                snapshot_id=str(request.snapshot_id or ""),
+                selector_encoding=int(request.selector_encoding or 0),
+                selector_cardinality=int(request.selector_cardinality or 0),
+                selector_checksum=str(request.selector_checksum or ""),
+            )
+            await self._grow_train_selector_after_activation(
+                session=session,
+                loop_id=loop_uuid,
+                round_id=None,
+                round_index=round_index,
+                snapshot_id=snapshot_uuid,
+                selected_sample_ids=selected_sample_ids,
             )
             branch.head_commit_id = commit.id
             session.add(branch)

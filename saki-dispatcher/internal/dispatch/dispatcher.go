@@ -3,6 +3,7 @@ package dispatch
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,9 +14,11 @@ import (
 )
 
 type ExecutorSession struct {
-	ExecutorID string
-	Version    string
-	PluginIDs  []string
+	ExecutorID        string
+	NodeID            string
+	Version           string
+	PluginIDs         []string
+	KernelCompatFlags map[string]bool
 
 	Busy          bool
 	CurrentStepID string
@@ -105,7 +108,9 @@ func (d *Dispatcher) RegisterExecutor(register *runtimecontrolv1.Register) (*Exe
 		d.sessions[executorID] = existing
 	}
 	existing.Version = register.GetVersion()
+	existing.NodeID = strings.TrimSpace(register.GetNodeId())
 	existing.PluginIDs = pluginIDs
+	existing.KernelCompatFlags = parseKernelCompatFlags(register)
 	existing.Busy = false
 	existing.CurrentStepID = ""
 	existing.Status = "idle"
@@ -201,6 +206,10 @@ func (d *Dispatcher) GetQueue(executorID string) <-chan *runtimecontrolv1.Runtim
 }
 
 func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
+	return d.PickExecutorForStep(pluginID, false)
+}
+
+func (d *Dispatcher) PickExecutorForStep(pluginID string, requiresMPSLossCPUFallback bool) (string, bool) {
 	pluginID = strings.TrimSpace(pluginID)
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -222,6 +231,9 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 				continue
 			}
 		}
+		if requiresMPSLossCPUFallback && !session.KernelCompatFlags["supports_mps_loss_cpu_fallback"] {
+			continue
+		}
 		candidates = append(candidates, session)
 	}
 	if len(candidates) == 0 {
@@ -231,6 +243,42 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 		return candidates[i].LastSeen.After(candidates[j].LastSeen)
 	})
 	return candidates[0].ExecutorID, true
+}
+
+func parseKernelCompatFlags(register *runtimecontrolv1.Register) map[string]bool {
+	flags := map[string]bool{}
+	if register == nil || register.GetKernelCompatFlags() == nil {
+		return flags
+	}
+	for key, raw := range register.GetKernelCompatFlags().AsMap() {
+		trimmed := strings.TrimSpace(key)
+		if trimmed == "" {
+			continue
+		}
+		value, ok := asBool(raw)
+		if !ok {
+			continue
+		}
+		flags[trimmed] = value
+	}
+	return flags
+}
+
+func asBool(raw any) (bool, bool) {
+	switch value := raw.(type) {
+	case bool:
+		return value, true
+	case float64:
+		return value != 0, true
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return false, false
+		}
+		return parsed, true
+	default:
+		return false, false
+	}
 }
 
 func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *runtimecontrolv1.StepPayload) bool {

@@ -1,5 +1,8 @@
 # Saki Runtime 语义计划书 v2（Loop / Round / Step）
 
+> 状态：`ARCHIVED`（只读）。  
+> 替代文档：`docs/runtime-loop-round-step-agent-kernel-语义计划书-v3.md`。
+
 ## 0. 文档目的
 
 本文件定义 **saki-api / saki-dispatcher / saki-executor** 的统一运行时语义，作为后续代码重构、数据库命名重构、Proto 契约调整和前端交互实现的唯一依据。

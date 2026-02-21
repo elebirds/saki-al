@@ -35,16 +35,26 @@ func (q *Queries) UpdateRuntimeExecutorDisconnected(ctx context.Context, arg Upd
 
 const upsertRuntimeExecutorOnHeartbeat = `-- name: UpsertRuntimeExecutorOnHeartbeat :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_step_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, node_id, version, runtime_kind, status, is_online, current_step_id, plugin_ids, resources,
+  hardware_profile, mps_stability_profile, kernel_compat_flags, health_status, health_detail, uptime_sec,
+  last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   $1::uuid,
   $2,
+  $3::text,
   '',
-  $3,
+  NULL,
+  $4,
   TRUE,
-  $4::uuid,
+  $5::uuid,
   '{}'::jsonb,
-  $5::jsonb,
+  $6::jsonb,
+  '{}'::jsonb,
+  '{}'::jsonb,
+  '{}'::jsonb,
+  $7,
+  $8::jsonb,
+  $9,
   now(),
   NULL,
   now(),
@@ -55,6 +65,10 @@ ON CONFLICT (executor_id) DO UPDATE SET
   is_online = TRUE,
   current_step_id = EXCLUDED.current_step_id,
   resources = EXCLUDED.resources,
+  node_id = COALESCE(EXCLUDED.node_id, runtime_executor.node_id),
+  health_status = EXCLUDED.health_status,
+  health_detail = EXCLUDED.health_detail,
+  uptime_sec = EXCLUDED.uptime_sec,
   last_seen_at = EXCLUDED.last_seen_at,
   last_error = NULL,
   updated_at = now()
@@ -63,34 +77,52 @@ ON CONFLICT (executor_id) DO UPDATE SET
 type UpsertRuntimeExecutorOnHeartbeatParams struct {
 	ExecutorRowID uuid.UUID
 	ExecutorID    string
+	NodeID        pgtype.Text
 	Status        string
 	CurrentStepID *uuid.UUID
 	Resources     []byte
+	HealthStatus  pgtype.Text
+	HealthDetail  []byte
+	UptimeSec     pgtype.Int8
 }
 
 func (q *Queries) UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg UpsertRuntimeExecutorOnHeartbeatParams) error {
 	_, err := q.db.Exec(ctx, upsertRuntimeExecutorOnHeartbeat,
 		arg.ExecutorRowID,
 		arg.ExecutorID,
+		arg.NodeID,
 		arg.Status,
 		arg.CurrentStepID,
 		arg.Resources,
+		arg.HealthStatus,
+		arg.HealthDetail,
+		arg.UptimeSec,
 	)
 	return err
 }
 
 const upsertRuntimeExecutorOnRegister = `-- name: UpsertRuntimeExecutorOnRegister :exec
 INSERT INTO runtime_executor(
-  id, executor_id, version, status, is_online, current_step_id, plugin_ids, resources, last_seen_at, last_error, created_at, updated_at
+  id, executor_id, node_id, version, runtime_kind, status, is_online, current_step_id, plugin_ids, resources,
+  hardware_profile, mps_stability_profile, kernel_compat_flags, health_status, health_detail, uptime_sec,
+  last_seen_at, last_error, created_at, updated_at
 ) VALUES(
   $1::uuid,
   $2,
-  $3,
+  $3::text,
+  $4,
+  $5::text,
   'idle',
   TRUE,
   NULL,
-  $4::jsonb,
-  $5::jsonb,
+  $6::jsonb,
+  $7::jsonb,
+  $8::jsonb,
+  $9::jsonb,
+  $10::jsonb,
+  $11,
+  $12::jsonb,
+  $13,
   now(),
   NULL,
   now(),
@@ -103,26 +135,50 @@ ON CONFLICT (executor_id) DO UPDATE SET
   current_step_id = NULL,
   plugin_ids = EXCLUDED.plugin_ids,
   resources = EXCLUDED.resources,
+  node_id = EXCLUDED.node_id,
+  runtime_kind = EXCLUDED.runtime_kind,
+  hardware_profile = EXCLUDED.hardware_profile,
+  mps_stability_profile = EXCLUDED.mps_stability_profile,
+  kernel_compat_flags = EXCLUDED.kernel_compat_flags,
+  health_status = EXCLUDED.health_status,
+  health_detail = EXCLUDED.health_detail,
+  uptime_sec = EXCLUDED.uptime_sec,
   last_seen_at = EXCLUDED.last_seen_at,
   last_error = NULL,
   updated_at = now()
 `
 
 type UpsertRuntimeExecutorOnRegisterParams struct {
-	ExecutorRowID uuid.UUID
-	ExecutorID    string
-	Version       string
-	PluginIds     []byte
-	Resources     []byte
+	ExecutorRowID       uuid.UUID
+	ExecutorID          string
+	NodeID              pgtype.Text
+	Version             string
+	RuntimeKind         pgtype.Text
+	PluginIds           []byte
+	Resources           []byte
+	HardwareProfile     []byte
+	MpsStabilityProfile []byte
+	KernelCompatFlags   []byte
+	HealthStatus        pgtype.Text
+	HealthDetail        []byte
+	UptimeSec           pgtype.Int8
 }
 
 func (q *Queries) UpsertRuntimeExecutorOnRegister(ctx context.Context, arg UpsertRuntimeExecutorOnRegisterParams) error {
 	_, err := q.db.Exec(ctx, upsertRuntimeExecutorOnRegister,
 		arg.ExecutorRowID,
 		arg.ExecutorID,
+		arg.NodeID,
 		arg.Version,
+		arg.RuntimeKind,
 		arg.PluginIds,
 		arg.Resources,
+		arg.HardwareProfile,
+		arg.MpsStabilityProfile,
+		arg.KernelCompatFlags,
+		arg.HealthStatus,
+		arg.HealthDetail,
+		arg.UptimeSec,
 	)
 	return err
 }

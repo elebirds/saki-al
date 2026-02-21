@@ -7,6 +7,11 @@ from saki_api.modules.runtime.domain.loop_mode import (
 from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.dataset_snapshot import (
+    DatasetSnapshot,
+    DatasetSnapshotSampleOrdinal,
+)
+from saki_api.modules.runtime.domain.dataset_view import ALSessionState, RoundDatasetView
 from saki_api.modules.runtime.domain.dispatch_outbox import DispatchOutbox
 from saki_api.modules.runtime.domain.runtime_command_log import RuntimeCommandLog
 from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
@@ -29,6 +34,10 @@ __all__ = [
     "Round",
     "Step",
     "DispatchOutbox",
+    "DatasetSnapshot",
+    "DatasetSnapshotSampleOrdinal",
+    "RoundDatasetView",
+    "ALSessionState",
     "RoundSampleMetric",
     "Model",
     "RuntimeCommandLog",

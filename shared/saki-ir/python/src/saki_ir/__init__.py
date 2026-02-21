@@ -31,6 +31,7 @@ from saki_ir.format_profiles import (
     list_format_profiles,
 )
 from saki_ir.normalize import normalize_ir, validate_ir
+from saki_ir.selector import selector_cardinality, selector_checksum, validate_manifest_selector
 from saki_ir.transport import (
     ChunkAssembler,
     CompletedPayloadCache,
@@ -58,6 +59,17 @@ from saki_ir.proto.saki.ir.v1.annotation_ir_pb2 import (  # noqa: F401
     RectGeometry,
     SampleRecord,
 )
+from saki_ir.proto.saki.ir.v1.dataset_manifest_ir_pb2 import (  # noqa: F401
+    BitsetSelector,
+    DatasetManifestIR,
+    DatasetSplitManifestIR,
+    ManifestSelector,
+    ManifestSelectorEncoding,
+    OrdinalRange,
+    RangeSelector,
+    RoaringSelector,
+    RoundManifestBundleIR,
+)
 
 __all__ = [
     "normalize_ir",
@@ -68,6 +80,9 @@ __all__ = [
     "verify_checksum",
     "read_header",
     "iter_items",
+    "selector_cardinality",
+    "selector_checksum",
+    "validate_manifest_selector",
     "to_dataframe",
     "FormatProfileId",
     "FormatProfile",
@@ -119,4 +134,13 @@ __all__ = [
     "PayloadStats",
     "PayloadHeader",
     "EncodedPayload",
+    "ManifestSelectorEncoding",
+    "OrdinalRange",
+    "RangeSelector",
+    "RoaringSelector",
+    "BitsetSelector",
+    "ManifestSelector",
+    "DatasetManifestIR",
+    "DatasetSplitManifestIR",
+    "RoundManifestBundleIR",
 ]

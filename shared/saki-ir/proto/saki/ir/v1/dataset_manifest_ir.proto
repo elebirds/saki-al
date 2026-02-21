@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package saki.ir.v1;
+
+option go_package = "github.com/saki-ai/saki/shared/saki-ir/go/gen/manifestirv1;manifestirv1";
+
+enum ManifestSelectorEncoding {
+  MANIFEST_SELECTOR_ENCODING_UNSPECIFIED = 0;
+  MANIFEST_SELECTOR_ENCODING_ROARING = 1;
+  MANIFEST_SELECTOR_ENCODING_RANGE = 2;
+  MANIFEST_SELECTOR_ENCODING_BITSET = 3;
+}
+
+message OrdinalRange {
+  uint32 start = 1;
+  uint32 end = 2; // inclusive
+}
+
+message RangeSelector {
+  repeated OrdinalRange ranges = 1;
+}
+
+message RoaringSelector {
+  bytes bitmap = 1;
+}
+
+message BitsetSelector {
+  bytes bitset_le = 1;
+}
+
+message ManifestSelector {
+  string snapshot_id = 1;
+  ManifestSelectorEncoding encoding = 2;
+  oneof payload {
+    RoaringSelector roaring = 3;
+    RangeSelector range = 4;
+    BitsetSelector bitset = 5;
+  }
+  uint32 cardinality = 10;
+  string checksum = 11;
+}
+
+message DatasetManifestIR {
+  string manifest_id = 1;
+  string dataset_id = 2;
+  string snapshot_id = 3;
+  string split = 4; // train | val | test | unlabeled
+  bool is_static = 5;
+  ManifestSelector selector = 6;
+  uint64 universe_size = 7;
+}
+
+message DatasetSplitManifestIR {
+  string split = 1;
+  bool is_static = 2;
+  ManifestSelector selector = 3;
+}
+
+message RoundManifestBundleIR {
+  string loop_id = 1;
+  string round_id = 2;
+  uint32 round_index = 3;
+  string snapshot_id = 4;
+  repeated DatasetSplitManifestIR splits = 5;
+}

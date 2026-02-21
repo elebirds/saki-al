@@ -22,6 +22,58 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type SelectorEncoding int32
+
+const (
+	SelectorEncoding_SELECTOR_ENCODING_UNSPECIFIED SelectorEncoding = 0
+	SelectorEncoding_SELECTOR_ENCODING_ROARING     SelectorEncoding = 1
+	SelectorEncoding_SELECTOR_ENCODING_RANGE       SelectorEncoding = 2
+	SelectorEncoding_SELECTOR_ENCODING_BITSET      SelectorEncoding = 3
+)
+
+// Enum value maps for SelectorEncoding.
+var (
+	SelectorEncoding_name = map[int32]string{
+		0: "SELECTOR_ENCODING_UNSPECIFIED",
+		1: "SELECTOR_ENCODING_ROARING",
+		2: "SELECTOR_ENCODING_RANGE",
+		3: "SELECTOR_ENCODING_BITSET",
+	}
+	SelectorEncoding_value = map[string]int32{
+		"SELECTOR_ENCODING_UNSPECIFIED": 0,
+		"SELECTOR_ENCODING_ROARING":     1,
+		"SELECTOR_ENCODING_RANGE":       2,
+		"SELECTOR_ENCODING_BITSET":      3,
+	}
+)
+
+func (x SelectorEncoding) Enum() *SelectorEncoding {
+	p := new(SelectorEncoding)
+	*p = x
+	return p
+}
+
+func (x SelectorEncoding) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SelectorEncoding) Descriptor() protoreflect.EnumDescriptor {
+	return file_runtime_domain_proto_enumTypes[0].Descriptor()
+}
+
+func (SelectorEncoding) Type() protoreflect.EnumType {
+	return &file_runtime_domain_proto_enumTypes[0]
+}
+
+func (x SelectorEncoding) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SelectorEncoding.Descriptor instead.
+func (SelectorEncoding) EnumDescriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{0}
+}
+
 type RuntimeQueryType int32
 
 const (
@@ -61,11 +113,11 @@ func (x RuntimeQueryType) String() string {
 }
 
 func (RuntimeQueryType) Descriptor() protoreflect.EnumDescriptor {
-	return file_runtime_domain_proto_enumTypes[0].Descriptor()
+	return file_runtime_domain_proto_enumTypes[1].Descriptor()
 }
 
 func (RuntimeQueryType) Type() protoreflect.EnumType {
-	return &file_runtime_domain_proto_enumTypes[0]
+	return &file_runtime_domain_proto_enumTypes[1]
 }
 
 func (x RuntimeQueryType) Number() protoreflect.EnumNumber {
@@ -74,7 +126,711 @@ func (x RuntimeQueryType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RuntimeQueryType.Descriptor instead.
 func (RuntimeQueryType) EnumDescriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{1}
+}
+
+type SelectorDigest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SnapshotId    string                 `protobuf:"bytes,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	Encoding      SelectorEncoding       `protobuf:"varint,2,opt,name=encoding,proto3,enum=saki.runtime.domain.v1.SelectorEncoding" json:"encoding,omitempty"`
+	SelectorBytes []byte                 `protobuf:"bytes,3,opt,name=selector_bytes,json=selectorBytes,proto3" json:"selector_bytes,omitempty"`
+	Cardinality   uint32                 `protobuf:"varint,4,opt,name=cardinality,proto3" json:"cardinality,omitempty"`
+	Checksum      string                 `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SelectorDigest) Reset() {
+	*x = SelectorDigest{}
+	mi := &file_runtime_domain_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SelectorDigest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SelectorDigest) ProtoMessage() {}
+
+func (x *SelectorDigest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SelectorDigest.ProtoReflect.Descriptor instead.
+func (*SelectorDigest) Descriptor() ([]byte, []int) {
 	return file_runtime_domain_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SelectorDigest) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *SelectorDigest) GetEncoding() SelectorEncoding {
+	if x != nil {
+		return x.Encoding
+	}
+	return SelectorEncoding_SELECTOR_ENCODING_UNSPECIFIED
+}
+
+func (x *SelectorDigest) GetSelectorBytes() []byte {
+	if x != nil {
+		return x.SelectorBytes
+	}
+	return nil
+}
+
+func (x *SelectorDigest) GetCardinality() uint32 {
+	if x != nil {
+		return x.Cardinality
+	}
+	return 0
+}
+
+func (x *SelectorDigest) GetChecksum() string {
+	if x != nil {
+		return x.Checksum
+	}
+	return ""
+}
+
+type DatasetManifestRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Split         string                 `protobuf:"bytes,1,opt,name=split,proto3" json:"split,omitempty"`
+	IsStatic      bool                   `protobuf:"varint,2,opt,name=is_static,json=isStatic,proto3" json:"is_static,omitempty"`
+	SnapshotId    string                 `protobuf:"bytes,3,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	ManifestRef   string                 `protobuf:"bytes,4,opt,name=manifest_ref,json=manifestRef,proto3" json:"manifest_ref,omitempty"`
+	Selector      *SelectorDigest        `protobuf:"bytes,5,opt,name=selector,proto3" json:"selector,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DatasetManifestRef) Reset() {
+	*x = DatasetManifestRef{}
+	mi := &file_runtime_domain_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DatasetManifestRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DatasetManifestRef) ProtoMessage() {}
+
+func (x *DatasetManifestRef) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DatasetManifestRef.ProtoReflect.Descriptor instead.
+func (*DatasetManifestRef) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *DatasetManifestRef) GetSplit() string {
+	if x != nil {
+		return x.Split
+	}
+	return ""
+}
+
+func (x *DatasetManifestRef) GetIsStatic() bool {
+	if x != nil {
+		return x.IsStatic
+	}
+	return false
+}
+
+func (x *DatasetManifestRef) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *DatasetManifestRef) GetManifestRef() string {
+	if x != nil {
+		return x.ManifestRef
+	}
+	return ""
+}
+
+func (x *DatasetManifestRef) GetSelector() *SelectorDigest {
+	if x != nil {
+		return x.Selector
+	}
+	return nil
+}
+
+type BuildDatasetSnapshotRequest struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId            string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	ParentSnapshotId     string                 `protobuf:"bytes,2,opt,name=parent_snapshot_id,json=parentSnapshotId,proto3" json:"parent_snapshot_id,omitempty"`
+	Seed                 uint32                 `protobuf:"varint,3,opt,name=seed,proto3" json:"seed,omitempty"`
+	LockStaticSplits     bool                   `protobuf:"varint,4,opt,name=lock_static_splits,json=lockStaticSplits,proto3" json:"lock_static_splits,omitempty"`
+	SplitPolicy          *structpb.Struct       `protobuf:"bytes,5,opt,name=split_policy,json=splitPolicy,proto3" json:"split_policy,omitempty"`
+	AppendSampleUuids    []string               `protobuf:"bytes,6,rep,name=append_sample_uuids,json=appendSampleUuids,proto3" json:"append_sample_uuids,omitempty"`
+	TombstoneSampleUuids []string               `protobuf:"bytes,7,rep,name=tombstone_sample_uuids,json=tombstoneSampleUuids,proto3" json:"tombstone_sample_uuids,omitempty"`
+	Reason               string                 `protobuf:"bytes,8,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *BuildDatasetSnapshotRequest) Reset() {
+	*x = BuildDatasetSnapshotRequest{}
+	mi := &file_runtime_domain_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuildDatasetSnapshotRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuildDatasetSnapshotRequest) ProtoMessage() {}
+
+func (x *BuildDatasetSnapshotRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuildDatasetSnapshotRequest.ProtoReflect.Descriptor instead.
+func (*BuildDatasetSnapshotRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *BuildDatasetSnapshotRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *BuildDatasetSnapshotRequest) GetParentSnapshotId() string {
+	if x != nil {
+		return x.ParentSnapshotId
+	}
+	return ""
+}
+
+func (x *BuildDatasetSnapshotRequest) GetSeed() uint32 {
+	if x != nil {
+		return x.Seed
+	}
+	return 0
+}
+
+func (x *BuildDatasetSnapshotRequest) GetLockStaticSplits() bool {
+	if x != nil {
+		return x.LockStaticSplits
+	}
+	return false
+}
+
+func (x *BuildDatasetSnapshotRequest) GetSplitPolicy() *structpb.Struct {
+	if x != nil {
+		return x.SplitPolicy
+	}
+	return nil
+}
+
+func (x *BuildDatasetSnapshotRequest) GetAppendSampleUuids() []string {
+	if x != nil {
+		return x.AppendSampleUuids
+	}
+	return nil
+}
+
+func (x *BuildDatasetSnapshotRequest) GetTombstoneSampleUuids() []string {
+	if x != nil {
+		return x.TombstoneSampleUuids
+	}
+	return nil
+}
+
+func (x *BuildDatasetSnapshotRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type BuildDatasetSnapshotResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Created        bool                   `protobuf:"varint,1,opt,name=created,proto3" json:"created,omitempty"`
+	SnapshotId     string                 `protobuf:"bytes,2,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	UniverseSize   uint32                 `protobuf:"varint,3,opt,name=universe_size,json=universeSize,proto3" json:"universe_size,omitempty"`
+	MaxOrdinal     uint32                 `protobuf:"varint,4,opt,name=max_ordinal,json=maxOrdinal,proto3" json:"max_ordinal,omitempty"`
+	TombstoneCount uint32                 `protobuf:"varint,5,opt,name=tombstone_count,json=tombstoneCount,proto3" json:"tombstone_count,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *BuildDatasetSnapshotResponse) Reset() {
+	*x = BuildDatasetSnapshotResponse{}
+	mi := &file_runtime_domain_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuildDatasetSnapshotResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuildDatasetSnapshotResponse) ProtoMessage() {}
+
+func (x *BuildDatasetSnapshotResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuildDatasetSnapshotResponse.ProtoReflect.Descriptor instead.
+func (*BuildDatasetSnapshotResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *BuildDatasetSnapshotResponse) GetCreated() bool {
+	if x != nil {
+		return x.Created
+	}
+	return false
+}
+
+func (x *BuildDatasetSnapshotResponse) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *BuildDatasetSnapshotResponse) GetUniverseSize() uint32 {
+	if x != nil {
+		return x.UniverseSize
+	}
+	return 0
+}
+
+func (x *BuildDatasetSnapshotResponse) GetMaxOrdinal() uint32 {
+	if x != nil {
+		return x.MaxOrdinal
+	}
+	return 0
+}
+
+func (x *BuildDatasetSnapshotResponse) GetTombstoneCount() uint32 {
+	if x != nil {
+		return x.TombstoneCount
+	}
+	return 0
+}
+
+type CreateRoundDatasetViewRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	LoopId         string                 `protobuf:"bytes,1,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
+	RoundId        string                 `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
+	SnapshotId     string                 `protobuf:"bytes,3,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	RoundIndex     int32                  `protobuf:"varint,4,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
+	Mode           string                 `protobuf:"bytes,5,opt,name=mode,proto3" json:"mode,omitempty"`
+	SimulationMode bool                   `protobuf:"varint,6,opt,name=simulation_mode,json=simulationMode,proto3" json:"simulation_mode,omitempty"`
+	Plan           *structpb.Struct       `protobuf:"bytes,7,opt,name=plan,proto3" json:"plan,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CreateRoundDatasetViewRequest) Reset() {
+	*x = CreateRoundDatasetViewRequest{}
+	mi := &file_runtime_domain_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRoundDatasetViewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRoundDatasetViewRequest) ProtoMessage() {}
+
+func (x *CreateRoundDatasetViewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRoundDatasetViewRequest.ProtoReflect.Descriptor instead.
+func (*CreateRoundDatasetViewRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CreateRoundDatasetViewRequest) GetLoopId() string {
+	if x != nil {
+		return x.LoopId
+	}
+	return ""
+}
+
+func (x *CreateRoundDatasetViewRequest) GetRoundId() string {
+	if x != nil {
+		return x.RoundId
+	}
+	return ""
+}
+
+func (x *CreateRoundDatasetViewRequest) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *CreateRoundDatasetViewRequest) GetRoundIndex() int32 {
+	if x != nil {
+		return x.RoundIndex
+	}
+	return 0
+}
+
+func (x *CreateRoundDatasetViewRequest) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *CreateRoundDatasetViewRequest) GetSimulationMode() bool {
+	if x != nil {
+		return x.SimulationMode
+	}
+	return false
+}
+
+func (x *CreateRoundDatasetViewRequest) GetPlan() *structpb.Struct {
+	if x != nil {
+		return x.Plan
+	}
+	return nil
+}
+
+type CreateRoundDatasetViewResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Created       bool                   `protobuf:"varint,1,opt,name=created,proto3" json:"created,omitempty"`
+	RoundId       string                 `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
+	Manifests     []*DatasetManifestRef  `protobuf:"bytes,3,rep,name=manifests,proto3" json:"manifests,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateRoundDatasetViewResponse) Reset() {
+	*x = CreateRoundDatasetViewResponse{}
+	mi := &file_runtime_domain_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRoundDatasetViewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRoundDatasetViewResponse) ProtoMessage() {}
+
+func (x *CreateRoundDatasetViewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRoundDatasetViewResponse.ProtoReflect.Descriptor instead.
+func (*CreateRoundDatasetViewResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CreateRoundDatasetViewResponse) GetCreated() bool {
+	if x != nil {
+		return x.Created
+	}
+	return false
+}
+
+func (x *CreateRoundDatasetViewResponse) GetRoundId() string {
+	if x != nil {
+		return x.RoundId
+	}
+	return ""
+}
+
+func (x *CreateRoundDatasetViewResponse) GetManifests() []*DatasetManifestRef {
+	if x != nil {
+		return x.Manifests
+	}
+	return nil
+}
+
+type GetRoundManifestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LoopId        string                 `protobuf:"bytes,1,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
+	RoundId       string                 `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
+	Split         string                 `protobuf:"bytes,3,opt,name=split,proto3" json:"split,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRoundManifestRequest) Reset() {
+	*x = GetRoundManifestRequest{}
+	mi := &file_runtime_domain_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRoundManifestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRoundManifestRequest) ProtoMessage() {}
+
+func (x *GetRoundManifestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRoundManifestRequest.ProtoReflect.Descriptor instead.
+func (*GetRoundManifestRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetRoundManifestRequest) GetLoopId() string {
+	if x != nil {
+		return x.LoopId
+	}
+	return ""
+}
+
+func (x *GetRoundManifestRequest) GetRoundId() string {
+	if x != nil {
+		return x.RoundId
+	}
+	return ""
+}
+
+func (x *GetRoundManifestRequest) GetSplit() string {
+	if x != nil {
+		return x.Split
+	}
+	return ""
+}
+
+type GetRoundManifestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	Manifest      *DatasetManifestRef    `protobuf:"bytes,2,opt,name=manifest,proto3" json:"manifest,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRoundManifestResponse) Reset() {
+	*x = GetRoundManifestResponse{}
+	mi := &file_runtime_domain_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRoundManifestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRoundManifestResponse) ProtoMessage() {}
+
+func (x *GetRoundManifestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRoundManifestResponse.ProtoReflect.Descriptor instead.
+func (*GetRoundManifestResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetRoundManifestResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetRoundManifestResponse) GetManifest() *DatasetManifestRef {
+	if x != nil {
+		return x.Manifest
+	}
+	return nil
+}
+
+type ValidateSelectorRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Selector      *SelectorDigest        `protobuf:"bytes,1,opt,name=selector,proto3" json:"selector,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ValidateSelectorRequest) Reset() {
+	*x = ValidateSelectorRequest{}
+	mi := &file_runtime_domain_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidateSelectorRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidateSelectorRequest) ProtoMessage() {}
+
+func (x *ValidateSelectorRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidateSelectorRequest.ProtoReflect.Descriptor instead.
+func (*ValidateSelectorRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ValidateSelectorRequest) GetSelector() *SelectorDigest {
+	if x != nil {
+		return x.Selector
+	}
+	return nil
+}
+
+type ValidateSelectorResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Cardinality   uint32                 `protobuf:"varint,2,opt,name=cardinality,proto3" json:"cardinality,omitempty"`
+	Checksum      string                 `protobuf:"bytes,3,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ValidateSelectorResponse) Reset() {
+	*x = ValidateSelectorResponse{}
+	mi := &file_runtime_domain_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidateSelectorResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidateSelectorResponse) ProtoMessage() {}
+
+func (x *ValidateSelectorResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidateSelectorResponse.ProtoReflect.Descriptor instead.
+func (*ValidateSelectorResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ValidateSelectorResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ValidateSelectorResponse) GetCardinality() uint32 {
+	if x != nil {
+		return x.Cardinality
+	}
+	return 0
+}
+
+func (x *ValidateSelectorResponse) GetChecksum() string {
+	if x != nil {
+		return x.Checksum
+	}
+	return ""
+}
+
+func (x *ValidateSelectorResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
 }
 
 type GetBranchHeadRequest struct {
@@ -86,7 +842,7 @@ type GetBranchHeadRequest struct {
 
 func (x *GetBranchHeadRequest) Reset() {
 	*x = GetBranchHeadRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[0]
+	mi := &file_runtime_domain_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -98,7 +854,7 @@ func (x *GetBranchHeadRequest) String() string {
 func (*GetBranchHeadRequest) ProtoMessage() {}
 
 func (x *GetBranchHeadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[0]
+	mi := &file_runtime_domain_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -111,7 +867,7 @@ func (x *GetBranchHeadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBranchHeadRequest.ProtoReflect.Descriptor instead.
 func (*GetBranchHeadRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{0}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetBranchHeadRequest) GetBranchId() string {
@@ -134,7 +890,7 @@ type GetBranchHeadResponse struct {
 
 func (x *GetBranchHeadResponse) Reset() {
 	*x = GetBranchHeadResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[1]
+	mi := &file_runtime_domain_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -146,7 +902,7 @@ func (x *GetBranchHeadResponse) String() string {
 func (*GetBranchHeadResponse) ProtoMessage() {}
 
 func (x *GetBranchHeadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[1]
+	mi := &file_runtime_domain_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -159,7 +915,7 @@ func (x *GetBranchHeadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBranchHeadResponse.ProtoReflect.Descriptor instead.
 func (*GetBranchHeadResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{1}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetBranchHeadResponse) GetFound() bool {
@@ -208,7 +964,7 @@ type CountNewLabelsSinceCommitRequest struct {
 
 func (x *CountNewLabelsSinceCommitRequest) Reset() {
 	*x = CountNewLabelsSinceCommitRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[2]
+	mi := &file_runtime_domain_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -220,7 +976,7 @@ func (x *CountNewLabelsSinceCommitRequest) String() string {
 func (*CountNewLabelsSinceCommitRequest) ProtoMessage() {}
 
 func (x *CountNewLabelsSinceCommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[2]
+	mi := &file_runtime_domain_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -233,7 +989,7 @@ func (x *CountNewLabelsSinceCommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountNewLabelsSinceCommitRequest.ProtoReflect.Descriptor instead.
 func (*CountNewLabelsSinceCommitRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{2}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CountNewLabelsSinceCommitRequest) GetProjectId() string {
@@ -267,7 +1023,7 @@ type CountNewLabelsSinceCommitResponse struct {
 
 func (x *CountNewLabelsSinceCommitResponse) Reset() {
 	*x = CountNewLabelsSinceCommitResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[3]
+	mi := &file_runtime_domain_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -279,7 +1035,7 @@ func (x *CountNewLabelsSinceCommitResponse) String() string {
 func (*CountNewLabelsSinceCommitResponse) ProtoMessage() {}
 
 func (x *CountNewLabelsSinceCommitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[3]
+	mi := &file_runtime_domain_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -292,7 +1048,7 @@ func (x *CountNewLabelsSinceCommitResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use CountNewLabelsSinceCommitResponse.ProtoReflect.Descriptor instead.
 func (*CountNewLabelsSinceCommitResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{3}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CountNewLabelsSinceCommitResponse) GetNewLabelCount() int64 {
@@ -310,23 +1066,28 @@ func (x *CountNewLabelsSinceCommitResponse) GetLatestCommitId() string {
 }
 
 type ActivateSamplesRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	CommandId      string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	BranchId       string                 `protobuf:"bytes,3,opt,name=branch_id,json=branchId,proto3" json:"branch_id,omitempty"`
-	OracleCommitId string                 `protobuf:"bytes,4,opt,name=oracle_commit_id,json=oracleCommitId,proto3" json:"oracle_commit_id,omitempty"`
-	SourceCommitId string                 `protobuf:"bytes,5,opt,name=source_commit_id,json=sourceCommitId,proto3" json:"source_commit_id,omitempty"`
-	LoopId         string                 `protobuf:"bytes,6,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
-	RoundIndex     int32                  `protobuf:"varint,7,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
-	QueryStrategy  string                 `protobuf:"bytes,8,opt,name=query_strategy,json=queryStrategy,proto3" json:"query_strategy,omitempty"`
-	Topk           int32                  `protobuf:"varint,9,opt,name=topk,proto3" json:"topk,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	CommandId           string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	ProjectId           string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	BranchId            string                 `protobuf:"bytes,3,opt,name=branch_id,json=branchId,proto3" json:"branch_id,omitempty"`
+	OracleCommitId      string                 `protobuf:"bytes,4,opt,name=oracle_commit_id,json=oracleCommitId,proto3" json:"oracle_commit_id,omitempty"`
+	SourceCommitId      string                 `protobuf:"bytes,5,opt,name=source_commit_id,json=sourceCommitId,proto3" json:"source_commit_id,omitempty"`
+	LoopId              string                 `protobuf:"bytes,6,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
+	RoundIndex          int32                  `protobuf:"varint,7,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
+	QueryStrategy       string                 `protobuf:"bytes,8,opt,name=query_strategy,json=queryStrategy,proto3" json:"query_strategy,omitempty"`
+	Topk                int32                  `protobuf:"varint,9,opt,name=topk,proto3" json:"topk,omitempty"`
+	SnapshotId          string                 `protobuf:"bytes,10,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	SelectorEncoding    SelectorEncoding       `protobuf:"varint,11,opt,name=selector_encoding,json=selectorEncoding,proto3,enum=saki.runtime.domain.v1.SelectorEncoding" json:"selector_encoding,omitempty"`
+	SelectorBytes       []byte                 `protobuf:"bytes,12,opt,name=selector_bytes,json=selectorBytes,proto3" json:"selector_bytes,omitempty"`
+	SelectorCardinality uint32                 `protobuf:"varint,13,opt,name=selector_cardinality,json=selectorCardinality,proto3" json:"selector_cardinality,omitempty"`
+	SelectorChecksum    string                 `protobuf:"bytes,14,opt,name=selector_checksum,json=selectorChecksum,proto3" json:"selector_checksum,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ActivateSamplesRequest) Reset() {
 	*x = ActivateSamplesRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[4]
+	mi := &file_runtime_domain_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -338,7 +1099,7 @@ func (x *ActivateSamplesRequest) String() string {
 func (*ActivateSamplesRequest) ProtoMessage() {}
 
 func (x *ActivateSamplesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[4]
+	mi := &file_runtime_domain_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -351,7 +1112,7 @@ func (x *ActivateSamplesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivateSamplesRequest.ProtoReflect.Descriptor instead.
 func (*ActivateSamplesRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{4}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ActivateSamplesRequest) GetCommandId() string {
@@ -417,6 +1178,41 @@ func (x *ActivateSamplesRequest) GetTopk() int32 {
 	return 0
 }
 
+func (x *ActivateSamplesRequest) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *ActivateSamplesRequest) GetSelectorEncoding() SelectorEncoding {
+	if x != nil {
+		return x.SelectorEncoding
+	}
+	return SelectorEncoding_SELECTOR_ENCODING_UNSPECIFIED
+}
+
+func (x *ActivateSamplesRequest) GetSelectorBytes() []byte {
+	if x != nil {
+		return x.SelectorBytes
+	}
+	return nil
+}
+
+func (x *ActivateSamplesRequest) GetSelectorCardinality() uint32 {
+	if x != nil {
+		return x.SelectorCardinality
+	}
+	return 0
+}
+
+func (x *ActivateSamplesRequest) GetSelectorChecksum() string {
+	if x != nil {
+		return x.SelectorChecksum
+	}
+	return ""
+}
+
 type ActivateSamplesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Created       bool                   `protobuf:"varint,1,opt,name=created,proto3" json:"created,omitempty"`
@@ -427,7 +1223,7 @@ type ActivateSamplesResponse struct {
 
 func (x *ActivateSamplesResponse) Reset() {
 	*x = ActivateSamplesResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[5]
+	mi := &file_runtime_domain_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -439,7 +1235,7 @@ func (x *ActivateSamplesResponse) String() string {
 func (*ActivateSamplesResponse) ProtoMessage() {}
 
 func (x *ActivateSamplesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[5]
+	mi := &file_runtime_domain_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -452,7 +1248,7 @@ func (x *ActivateSamplesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivateSamplesResponse.ProtoReflect.Descriptor instead.
 func (*ActivateSamplesResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{5}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ActivateSamplesResponse) GetCreated() bool {
@@ -481,7 +1277,7 @@ type AdvanceBranchHeadRequest struct {
 
 func (x *AdvanceBranchHeadRequest) Reset() {
 	*x = AdvanceBranchHeadRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[6]
+	mi := &file_runtime_domain_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -493,7 +1289,7 @@ func (x *AdvanceBranchHeadRequest) String() string {
 func (*AdvanceBranchHeadRequest) ProtoMessage() {}
 
 func (x *AdvanceBranchHeadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[6]
+	mi := &file_runtime_domain_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +1302,7 @@ func (x *AdvanceBranchHeadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceBranchHeadRequest.ProtoReflect.Descriptor instead.
 func (*AdvanceBranchHeadRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{6}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AdvanceBranchHeadRequest) GetCommandId() string {
@@ -548,7 +1344,7 @@ type AdvanceBranchHeadResponse struct {
 
 func (x *AdvanceBranchHeadResponse) Reset() {
 	*x = AdvanceBranchHeadResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[7]
+	mi := &file_runtime_domain_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -560,7 +1356,7 @@ func (x *AdvanceBranchHeadResponse) String() string {
 func (*AdvanceBranchHeadResponse) ProtoMessage() {}
 
 func (x *AdvanceBranchHeadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[7]
+	mi := &file_runtime_domain_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,7 +1369,7 @@ func (x *AdvanceBranchHeadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceBranchHeadResponse.ProtoReflect.Descriptor instead.
 func (*AdvanceBranchHeadResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{7}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *AdvanceBranchHeadResponse) GetAdvanced() bool {
@@ -614,7 +1410,7 @@ type DataRequest struct {
 
 func (x *DataRequest) Reset() {
 	*x = DataRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[8]
+	mi := &file_runtime_domain_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -626,7 +1422,7 @@ func (x *DataRequest) String() string {
 func (*DataRequest) ProtoMessage() {}
 
 func (x *DataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[8]
+	mi := &file_runtime_domain_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -639,7 +1435,7 @@ func (x *DataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataRequest.ProtoReflect.Descriptor instead.
 func (*DataRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{8}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DataRequest) GetRequestId() string {
@@ -716,7 +1512,7 @@ type LabelItem struct {
 
 func (x *LabelItem) Reset() {
 	*x = LabelItem{}
-	mi := &file_runtime_domain_proto_msgTypes[9]
+	mi := &file_runtime_domain_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -728,7 +1524,7 @@ func (x *LabelItem) String() string {
 func (*LabelItem) ProtoMessage() {}
 
 func (x *LabelItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[9]
+	mi := &file_runtime_domain_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -741,7 +1537,7 @@ func (x *LabelItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LabelItem.ProtoReflect.Descriptor instead.
 func (*LabelItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{9}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *LabelItem) GetId() string {
@@ -779,7 +1575,7 @@ type SampleItem struct {
 
 func (x *SampleItem) Reset() {
 	*x = SampleItem{}
-	mi := &file_runtime_domain_proto_msgTypes[10]
+	mi := &file_runtime_domain_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -791,7 +1587,7 @@ func (x *SampleItem) String() string {
 func (*SampleItem) ProtoMessage() {}
 
 func (x *SampleItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[10]
+	mi := &file_runtime_domain_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -804,7 +1600,7 @@ func (x *SampleItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SampleItem.ProtoReflect.Descriptor instead.
 func (*SampleItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{10}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SampleItem) GetId() string {
@@ -864,7 +1660,7 @@ type AnnotationItem struct {
 
 func (x *AnnotationItem) Reset() {
 	*x = AnnotationItem{}
-	mi := &file_runtime_domain_proto_msgTypes[11]
+	mi := &file_runtime_domain_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -876,7 +1672,7 @@ func (x *AnnotationItem) String() string {
 func (*AnnotationItem) ProtoMessage() {}
 
 func (x *AnnotationItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[11]
+	mi := &file_runtime_domain_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -889,7 +1685,7 @@ func (x *AnnotationItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnotationItem.ProtoReflect.Descriptor instead.
 func (*AnnotationItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{11}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *AnnotationItem) GetId() string {
@@ -955,7 +1751,7 @@ type DataItem struct {
 
 func (x *DataItem) Reset() {
 	*x = DataItem{}
-	mi := &file_runtime_domain_proto_msgTypes[12]
+	mi := &file_runtime_domain_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -967,7 +1763,7 @@ func (x *DataItem) String() string {
 func (*DataItem) ProtoMessage() {}
 
 func (x *DataItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[12]
+	mi := &file_runtime_domain_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -980,7 +1776,7 @@ func (x *DataItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataItem.ProtoReflect.Descriptor instead.
 func (*DataItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{12}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DataItem) GetItem() isDataItem_Item {
@@ -1061,7 +1857,7 @@ type DataResponse struct {
 
 func (x *DataResponse) Reset() {
 	*x = DataResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[13]
+	mi := &file_runtime_domain_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1073,7 +1869,7 @@ func (x *DataResponse) String() string {
 func (*DataResponse) ProtoMessage() {}
 
 func (x *DataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[13]
+	mi := &file_runtime_domain_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1086,7 +1882,7 @@ func (x *DataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataResponse.ProtoReflect.Descriptor instead.
 func (*DataResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{13}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DataResponse) GetRequestId() string {
@@ -1199,7 +1995,7 @@ type UploadTicketRequest struct {
 
 func (x *UploadTicketRequest) Reset() {
 	*x = UploadTicketRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[14]
+	mi := &file_runtime_domain_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1211,7 +2007,7 @@ func (x *UploadTicketRequest) String() string {
 func (*UploadTicketRequest) ProtoMessage() {}
 
 func (x *UploadTicketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[14]
+	mi := &file_runtime_domain_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1224,7 +2020,7 @@ func (x *UploadTicketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadTicketRequest.ProtoReflect.Descriptor instead.
 func (*UploadTicketRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{14}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UploadTicketRequest) GetRequestId() string {
@@ -1269,7 +2065,7 @@ type UploadTicketResponse struct {
 
 func (x *UploadTicketResponse) Reset() {
 	*x = UploadTicketResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[15]
+	mi := &file_runtime_domain_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1281,7 +2077,7 @@ func (x *UploadTicketResponse) String() string {
 func (*UploadTicketResponse) ProtoMessage() {}
 
 func (x *UploadTicketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[15]
+	mi := &file_runtime_domain_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1294,7 +2090,7 @@ func (x *UploadTicketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadTicketResponse.ProtoReflect.Descriptor instead.
 func (*UploadTicketResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{15}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UploadTicketResponse) GetRequestId() string {
@@ -1343,7 +2139,67 @@ var File_runtime_domain_proto protoreflect.FileDescriptor
 
 const file_runtime_domain_proto_rawDesc = "" +
 	"\n" +
-	"\x14runtime_domain.proto\x12\x16saki.runtime.domain.v1\x1a\x1cgoogle/protobuf/struct.proto\"3\n" +
+	"\x14runtime_domain.proto\x12\x16saki.runtime.domain.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xdc\x01\n" +
+	"\x0eSelectorDigest\x12\x1f\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
+	"snapshotId\x12D\n" +
+	"\bencoding\x18\x02 \x01(\x0e2(.saki.runtime.domain.v1.SelectorEncodingR\bencoding\x12%\n" +
+	"\x0eselector_bytes\x18\x03 \x01(\fR\rselectorBytes\x12 \n" +
+	"\vcardinality\x18\x04 \x01(\rR\vcardinality\x12\x1a\n" +
+	"\bchecksum\x18\x05 \x01(\tR\bchecksum\"\xcf\x01\n" +
+	"\x12DatasetManifestRef\x12\x14\n" +
+	"\x05split\x18\x01 \x01(\tR\x05split\x12\x1b\n" +
+	"\tis_static\x18\x02 \x01(\bR\bisStatic\x12\x1f\n" +
+	"\vsnapshot_id\x18\x03 \x01(\tR\n" +
+	"snapshotId\x12!\n" +
+	"\fmanifest_ref\x18\x04 \x01(\tR\vmanifestRef\x12B\n" +
+	"\bselector\x18\x05 \x01(\v2&.saki.runtime.domain.v1.SelectorDigestR\bselector\"\xe6\x02\n" +
+	"\x1bBuildDatasetSnapshotRequest\x12\x1d\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tR\tdatasetId\x12,\n" +
+	"\x12parent_snapshot_id\x18\x02 \x01(\tR\x10parentSnapshotId\x12\x12\n" +
+	"\x04seed\x18\x03 \x01(\rR\x04seed\x12,\n" +
+	"\x12lock_static_splits\x18\x04 \x01(\bR\x10lockStaticSplits\x12:\n" +
+	"\fsplit_policy\x18\x05 \x01(\v2\x17.google.protobuf.StructR\vsplitPolicy\x12.\n" +
+	"\x13append_sample_uuids\x18\x06 \x03(\tR\x11appendSampleUuids\x124\n" +
+	"\x16tombstone_sample_uuids\x18\a \x03(\tR\x14tombstoneSampleUuids\x12\x16\n" +
+	"\x06reason\x18\b \x01(\tR\x06reason\"\xc8\x01\n" +
+	"\x1cBuildDatasetSnapshotResponse\x12\x18\n" +
+	"\acreated\x18\x01 \x01(\bR\acreated\x12\x1f\n" +
+	"\vsnapshot_id\x18\x02 \x01(\tR\n" +
+	"snapshotId\x12#\n" +
+	"\runiverse_size\x18\x03 \x01(\rR\funiverseSize\x12\x1f\n" +
+	"\vmax_ordinal\x18\x04 \x01(\rR\n" +
+	"maxOrdinal\x12'\n" +
+	"\x0ftombstone_count\x18\x05 \x01(\rR\x0etombstoneCount\"\xff\x01\n" +
+	"\x1dCreateRoundDatasetViewRequest\x12\x17\n" +
+	"\aloop_id\x18\x01 \x01(\tR\x06loopId\x12\x19\n" +
+	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x1f\n" +
+	"\vsnapshot_id\x18\x03 \x01(\tR\n" +
+	"snapshotId\x12\x1f\n" +
+	"\vround_index\x18\x04 \x01(\x05R\n" +
+	"roundIndex\x12\x12\n" +
+	"\x04mode\x18\x05 \x01(\tR\x04mode\x12'\n" +
+	"\x0fsimulation_mode\x18\x06 \x01(\bR\x0esimulationMode\x12+\n" +
+	"\x04plan\x18\a \x01(\v2\x17.google.protobuf.StructR\x04plan\"\x9f\x01\n" +
+	"\x1eCreateRoundDatasetViewResponse\x12\x18\n" +
+	"\acreated\x18\x01 \x01(\bR\acreated\x12\x19\n" +
+	"\bround_id\x18\x02 \x01(\tR\aroundId\x12H\n" +
+	"\tmanifests\x18\x03 \x03(\v2*.saki.runtime.domain.v1.DatasetManifestRefR\tmanifests\"c\n" +
+	"\x17GetRoundManifestRequest\x12\x17\n" +
+	"\aloop_id\x18\x01 \x01(\tR\x06loopId\x12\x19\n" +
+	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x14\n" +
+	"\x05split\x18\x03 \x01(\tR\x05split\"x\n" +
+	"\x18GetRoundManifestResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12F\n" +
+	"\bmanifest\x18\x02 \x01(\v2*.saki.runtime.domain.v1.DatasetManifestRefR\bmanifest\"]\n" +
+	"\x17ValidateSelectorRequest\x12B\n" +
+	"\bselector\x18\x01 \x01(\v2&.saki.runtime.domain.v1.SelectorDigestR\bselector\"\x80\x01\n" +
+	"\x18ValidateSelectorResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12 \n" +
+	"\vcardinality\x18\x02 \x01(\rR\vcardinality\x12\x1a\n" +
+	"\bchecksum\x18\x03 \x01(\tR\bchecksum\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"3\n" +
 	"\x14GetBranchHeadRequest\x12\x1b\n" +
 	"\tbranch_id\x18\x01 \x01(\tR\bbranchId\"\xb0\x01\n" +
 	"\x15GetBranchHeadResponse\x12\x14\n" +
@@ -1361,7 +2217,7 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x0fsince_commit_id\x18\x03 \x01(\tR\rsinceCommitId\"u\n" +
 	"!CountNewLabelsSinceCommitResponse\x12&\n" +
 	"\x0fnew_label_count\x18\x01 \x01(\x03R\rnewLabelCount\x12(\n" +
-	"\x10latest_commit_id\x18\x02 \x01(\tR\x0elatestCommitId\"\xbc\x02\n" +
+	"\x10latest_commit_id\x18\x02 \x01(\tR\x0elatestCommitId\"\xbb\x04\n" +
 	"\x16ActivateSamplesRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
@@ -1374,7 +2230,14 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\vround_index\x18\a \x01(\x05R\n" +
 	"roundIndex\x12%\n" +
 	"\x0equery_strategy\x18\b \x01(\tR\rqueryStrategy\x12\x12\n" +
-	"\x04topk\x18\t \x01(\x05R\x04topk\"P\n" +
+	"\x04topk\x18\t \x01(\x05R\x04topk\x12\x1f\n" +
+	"\vsnapshot_id\x18\n" +
+	" \x01(\tR\n" +
+	"snapshotId\x12U\n" +
+	"\x11selector_encoding\x18\v \x01(\x0e2(.saki.runtime.domain.v1.SelectorEncodingR\x10selectorEncoding\x12%\n" +
+	"\x0eselector_bytes\x18\f \x01(\fR\rselectorBytes\x121\n" +
+	"\x14selector_cardinality\x18\r \x01(\rR\x13selectorCardinality\x12+\n" +
+	"\x11selector_checksum\x18\x0e \x01(\tR\x10selectorChecksum\"P\n" +
 	"\x17ActivateSamplesResponse\x12\x18\n" +
 	"\acreated\x18\x01 \x01(\bR\acreated\x12\x1b\n" +
 	"\tcommit_id\x18\x02 \x01(\tR\bcommitId\"\x90\x01\n" +
@@ -1473,17 +2336,26 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\aheaders\x18\x06 \x03(\v29.saki.runtime.domain.v1.UploadTicketResponse.HeadersEntryR\aheaders\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*w\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\x8f\x01\n" +
+	"\x10SelectorEncoding\x12!\n" +
+	"\x1dSELECTOR_ENCODING_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19SELECTOR_ENCODING_ROARING\x10\x01\x12\x1b\n" +
+	"\x17SELECTOR_ENCODING_RANGE\x10\x02\x12\x1c\n" +
+	"\x18SELECTOR_ENCODING_BITSET\x10\x03*w\n" +
 	"\x10RuntimeQueryType\x12\"\n" +
 	"\x1eRUNTIME_QUERY_TYPE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06LABELS\x10\x01\x12\v\n" +
 	"\aSAMPLES\x10\x02\x12\x0f\n" +
 	"\vANNOTATIONS\x10\x03\x12\x15\n" +
-	"\x11UNLABELED_SAMPLES\x10\x042\xc9\x05\n" +
+	"\x11UNLABELED_SAMPLES\x10\x042\xc5\t\n" +
 	"\rRuntimeDomain\x12l\n" +
 	"\rGetBranchHead\x12,.saki.runtime.domain.v1.GetBranchHeadRequest\x1a-.saki.runtime.domain.v1.GetBranchHeadResponse\x12\x90\x01\n" +
-	"\x19CountNewLabelsSinceCommit\x128.saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest\x1a9.saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse\x12r\n" +
+	"\x19CountNewLabelsSinceCommit\x128.saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest\x1a9.saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse\x12\x81\x01\n" +
+	"\x14BuildDatasetSnapshot\x123.saki.runtime.domain.v1.BuildDatasetSnapshotRequest\x1a4.saki.runtime.domain.v1.BuildDatasetSnapshotResponse\x12\x87\x01\n" +
+	"\x16CreateRoundDatasetView\x125.saki.runtime.domain.v1.CreateRoundDatasetViewRequest\x1a6.saki.runtime.domain.v1.CreateRoundDatasetViewResponse\x12u\n" +
+	"\x10GetRoundManifest\x12/.saki.runtime.domain.v1.GetRoundManifestRequest\x1a0.saki.runtime.domain.v1.GetRoundManifestResponse\x12u\n" +
+	"\x10ValidateSelector\x12/.saki.runtime.domain.v1.ValidateSelectorRequest\x1a0.saki.runtime.domain.v1.ValidateSelectorResponse\x12r\n" +
 	"\x0fActivateSamples\x12..saki.runtime.domain.v1.ActivateSamplesRequest\x1a/.saki.runtime.domain.v1.ActivateSamplesResponse\x12x\n" +
 	"\x11AdvanceBranchHead\x120.saki.runtime.domain.v1.AdvanceBranchHeadRequest\x1a1.saki.runtime.domain.v1.AdvanceBranchHeadResponse\x12X\n" +
 	"\tQueryData\x12#.saki.runtime.domain.v1.DataRequest\x1a$.saki.runtime.domain.v1.DataResponse0\x01\x12o\n" +
@@ -1501,55 +2373,82 @@ func file_runtime_domain_proto_rawDescGZIP() []byte {
 	return file_runtime_domain_proto_rawDescData
 }
 
-var file_runtime_domain_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_runtime_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_runtime_domain_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_runtime_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_runtime_domain_proto_goTypes = []any{
-	(RuntimeQueryType)(0),                     // 0: saki.runtime.domain.v1.RuntimeQueryType
-	(*GetBranchHeadRequest)(nil),              // 1: saki.runtime.domain.v1.GetBranchHeadRequest
-	(*GetBranchHeadResponse)(nil),             // 2: saki.runtime.domain.v1.GetBranchHeadResponse
-	(*CountNewLabelsSinceCommitRequest)(nil),  // 3: saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
-	(*CountNewLabelsSinceCommitResponse)(nil), // 4: saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
-	(*ActivateSamplesRequest)(nil),            // 5: saki.runtime.domain.v1.ActivateSamplesRequest
-	(*ActivateSamplesResponse)(nil),           // 6: saki.runtime.domain.v1.ActivateSamplesResponse
-	(*AdvanceBranchHeadRequest)(nil),          // 7: saki.runtime.domain.v1.AdvanceBranchHeadRequest
-	(*AdvanceBranchHeadResponse)(nil),         // 8: saki.runtime.domain.v1.AdvanceBranchHeadResponse
-	(*DataRequest)(nil),                       // 9: saki.runtime.domain.v1.DataRequest
-	(*LabelItem)(nil),                         // 10: saki.runtime.domain.v1.LabelItem
-	(*SampleItem)(nil),                        // 11: saki.runtime.domain.v1.SampleItem
-	(*AnnotationItem)(nil),                    // 12: saki.runtime.domain.v1.AnnotationItem
-	(*DataItem)(nil),                          // 13: saki.runtime.domain.v1.DataItem
-	(*DataResponse)(nil),                      // 14: saki.runtime.domain.v1.DataResponse
-	(*UploadTicketRequest)(nil),               // 15: saki.runtime.domain.v1.UploadTicketRequest
-	(*UploadTicketResponse)(nil),              // 16: saki.runtime.domain.v1.UploadTicketResponse
-	nil,                                       // 17: saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
-	(*structpb.Struct)(nil),                   // 18: google.protobuf.Struct
+	(SelectorEncoding)(0),                     // 0: saki.runtime.domain.v1.SelectorEncoding
+	(RuntimeQueryType)(0),                     // 1: saki.runtime.domain.v1.RuntimeQueryType
+	(*SelectorDigest)(nil),                    // 2: saki.runtime.domain.v1.SelectorDigest
+	(*DatasetManifestRef)(nil),                // 3: saki.runtime.domain.v1.DatasetManifestRef
+	(*BuildDatasetSnapshotRequest)(nil),       // 4: saki.runtime.domain.v1.BuildDatasetSnapshotRequest
+	(*BuildDatasetSnapshotResponse)(nil),      // 5: saki.runtime.domain.v1.BuildDatasetSnapshotResponse
+	(*CreateRoundDatasetViewRequest)(nil),     // 6: saki.runtime.domain.v1.CreateRoundDatasetViewRequest
+	(*CreateRoundDatasetViewResponse)(nil),    // 7: saki.runtime.domain.v1.CreateRoundDatasetViewResponse
+	(*GetRoundManifestRequest)(nil),           // 8: saki.runtime.domain.v1.GetRoundManifestRequest
+	(*GetRoundManifestResponse)(nil),          // 9: saki.runtime.domain.v1.GetRoundManifestResponse
+	(*ValidateSelectorRequest)(nil),           // 10: saki.runtime.domain.v1.ValidateSelectorRequest
+	(*ValidateSelectorResponse)(nil),          // 11: saki.runtime.domain.v1.ValidateSelectorResponse
+	(*GetBranchHeadRequest)(nil),              // 12: saki.runtime.domain.v1.GetBranchHeadRequest
+	(*GetBranchHeadResponse)(nil),             // 13: saki.runtime.domain.v1.GetBranchHeadResponse
+	(*CountNewLabelsSinceCommitRequest)(nil),  // 14: saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
+	(*CountNewLabelsSinceCommitResponse)(nil), // 15: saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
+	(*ActivateSamplesRequest)(nil),            // 16: saki.runtime.domain.v1.ActivateSamplesRequest
+	(*ActivateSamplesResponse)(nil),           // 17: saki.runtime.domain.v1.ActivateSamplesResponse
+	(*AdvanceBranchHeadRequest)(nil),          // 18: saki.runtime.domain.v1.AdvanceBranchHeadRequest
+	(*AdvanceBranchHeadResponse)(nil),         // 19: saki.runtime.domain.v1.AdvanceBranchHeadResponse
+	(*DataRequest)(nil),                       // 20: saki.runtime.domain.v1.DataRequest
+	(*LabelItem)(nil),                         // 21: saki.runtime.domain.v1.LabelItem
+	(*SampleItem)(nil),                        // 22: saki.runtime.domain.v1.SampleItem
+	(*AnnotationItem)(nil),                    // 23: saki.runtime.domain.v1.AnnotationItem
+	(*DataItem)(nil),                          // 24: saki.runtime.domain.v1.DataItem
+	(*DataResponse)(nil),                      // 25: saki.runtime.domain.v1.DataResponse
+	(*UploadTicketRequest)(nil),               // 26: saki.runtime.domain.v1.UploadTicketRequest
+	(*UploadTicketResponse)(nil),              // 27: saki.runtime.domain.v1.UploadTicketResponse
+	nil,                                       // 28: saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
+	(*structpb.Struct)(nil),                   // 29: google.protobuf.Struct
 }
 var file_runtime_domain_proto_depIdxs = []int32{
-	0,  // 0: saki.runtime.domain.v1.DataRequest.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
-	18, // 1: saki.runtime.domain.v1.SampleItem.meta:type_name -> google.protobuf.Struct
-	18, // 2: saki.runtime.domain.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
-	10, // 3: saki.runtime.domain.v1.DataItem.label_item:type_name -> saki.runtime.domain.v1.LabelItem
-	11, // 4: saki.runtime.domain.v1.DataItem.sample_item:type_name -> saki.runtime.domain.v1.SampleItem
-	12, // 5: saki.runtime.domain.v1.DataItem.annotation_item:type_name -> saki.runtime.domain.v1.AnnotationItem
-	0,  // 6: saki.runtime.domain.v1.DataResponse.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
-	17, // 7: saki.runtime.domain.v1.UploadTicketResponse.headers:type_name -> saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
-	1,  // 8: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:input_type -> saki.runtime.domain.v1.GetBranchHeadRequest
-	3,  // 9: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:input_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
-	5,  // 10: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:input_type -> saki.runtime.domain.v1.ActivateSamplesRequest
-	7,  // 11: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:input_type -> saki.runtime.domain.v1.AdvanceBranchHeadRequest
-	9,  // 12: saki.runtime.domain.v1.RuntimeDomain.QueryData:input_type -> saki.runtime.domain.v1.DataRequest
-	15, // 13: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:input_type -> saki.runtime.domain.v1.UploadTicketRequest
-	2,  // 14: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:output_type -> saki.runtime.domain.v1.GetBranchHeadResponse
-	4,  // 15: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:output_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
-	6,  // 16: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:output_type -> saki.runtime.domain.v1.ActivateSamplesResponse
-	8,  // 17: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:output_type -> saki.runtime.domain.v1.AdvanceBranchHeadResponse
-	14, // 18: saki.runtime.domain.v1.RuntimeDomain.QueryData:output_type -> saki.runtime.domain.v1.DataResponse
-	16, // 19: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:output_type -> saki.runtime.domain.v1.UploadTicketResponse
-	14, // [14:20] is the sub-list for method output_type
-	8,  // [8:14] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	0,  // 0: saki.runtime.domain.v1.SelectorDigest.encoding:type_name -> saki.runtime.domain.v1.SelectorEncoding
+	2,  // 1: saki.runtime.domain.v1.DatasetManifestRef.selector:type_name -> saki.runtime.domain.v1.SelectorDigest
+	29, // 2: saki.runtime.domain.v1.BuildDatasetSnapshotRequest.split_policy:type_name -> google.protobuf.Struct
+	29, // 3: saki.runtime.domain.v1.CreateRoundDatasetViewRequest.plan:type_name -> google.protobuf.Struct
+	3,  // 4: saki.runtime.domain.v1.CreateRoundDatasetViewResponse.manifests:type_name -> saki.runtime.domain.v1.DatasetManifestRef
+	3,  // 5: saki.runtime.domain.v1.GetRoundManifestResponse.manifest:type_name -> saki.runtime.domain.v1.DatasetManifestRef
+	2,  // 6: saki.runtime.domain.v1.ValidateSelectorRequest.selector:type_name -> saki.runtime.domain.v1.SelectorDigest
+	0,  // 7: saki.runtime.domain.v1.ActivateSamplesRequest.selector_encoding:type_name -> saki.runtime.domain.v1.SelectorEncoding
+	1,  // 8: saki.runtime.domain.v1.DataRequest.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
+	29, // 9: saki.runtime.domain.v1.SampleItem.meta:type_name -> google.protobuf.Struct
+	29, // 10: saki.runtime.domain.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
+	21, // 11: saki.runtime.domain.v1.DataItem.label_item:type_name -> saki.runtime.domain.v1.LabelItem
+	22, // 12: saki.runtime.domain.v1.DataItem.sample_item:type_name -> saki.runtime.domain.v1.SampleItem
+	23, // 13: saki.runtime.domain.v1.DataItem.annotation_item:type_name -> saki.runtime.domain.v1.AnnotationItem
+	1,  // 14: saki.runtime.domain.v1.DataResponse.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
+	28, // 15: saki.runtime.domain.v1.UploadTicketResponse.headers:type_name -> saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
+	12, // 16: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:input_type -> saki.runtime.domain.v1.GetBranchHeadRequest
+	14, // 17: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:input_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
+	4,  // 18: saki.runtime.domain.v1.RuntimeDomain.BuildDatasetSnapshot:input_type -> saki.runtime.domain.v1.BuildDatasetSnapshotRequest
+	6,  // 19: saki.runtime.domain.v1.RuntimeDomain.CreateRoundDatasetView:input_type -> saki.runtime.domain.v1.CreateRoundDatasetViewRequest
+	8,  // 20: saki.runtime.domain.v1.RuntimeDomain.GetRoundManifest:input_type -> saki.runtime.domain.v1.GetRoundManifestRequest
+	10, // 21: saki.runtime.domain.v1.RuntimeDomain.ValidateSelector:input_type -> saki.runtime.domain.v1.ValidateSelectorRequest
+	16, // 22: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:input_type -> saki.runtime.domain.v1.ActivateSamplesRequest
+	18, // 23: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:input_type -> saki.runtime.domain.v1.AdvanceBranchHeadRequest
+	20, // 24: saki.runtime.domain.v1.RuntimeDomain.QueryData:input_type -> saki.runtime.domain.v1.DataRequest
+	26, // 25: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:input_type -> saki.runtime.domain.v1.UploadTicketRequest
+	13, // 26: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:output_type -> saki.runtime.domain.v1.GetBranchHeadResponse
+	15, // 27: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:output_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
+	5,  // 28: saki.runtime.domain.v1.RuntimeDomain.BuildDatasetSnapshot:output_type -> saki.runtime.domain.v1.BuildDatasetSnapshotResponse
+	7,  // 29: saki.runtime.domain.v1.RuntimeDomain.CreateRoundDatasetView:output_type -> saki.runtime.domain.v1.CreateRoundDatasetViewResponse
+	9,  // 30: saki.runtime.domain.v1.RuntimeDomain.GetRoundManifest:output_type -> saki.runtime.domain.v1.GetRoundManifestResponse
+	11, // 31: saki.runtime.domain.v1.RuntimeDomain.ValidateSelector:output_type -> saki.runtime.domain.v1.ValidateSelectorResponse
+	17, // 32: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:output_type -> saki.runtime.domain.v1.ActivateSamplesResponse
+	19, // 33: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:output_type -> saki.runtime.domain.v1.AdvanceBranchHeadResponse
+	25, // 34: saki.runtime.domain.v1.RuntimeDomain.QueryData:output_type -> saki.runtime.domain.v1.DataResponse
+	27, // 35: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:output_type -> saki.runtime.domain.v1.UploadTicketResponse
+	26, // [26:36] is the sub-list for method output_type
+	16, // [16:26] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_runtime_domain_proto_init() }
@@ -1557,7 +2456,7 @@ func file_runtime_domain_proto_init() {
 	if File_runtime_domain_proto != nil {
 		return
 	}
-	file_runtime_domain_proto_msgTypes[12].OneofWrappers = []any{
+	file_runtime_domain_proto_msgTypes[22].OneofWrappers = []any{
 		(*DataItem_LabelItem)(nil),
 		(*DataItem_SampleItem)(nil),
 		(*DataItem_AnnotationItem)(nil),
@@ -1567,8 +2466,8 @@ func file_runtime_domain_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_domain_proto_rawDesc), len(file_runtime_domain_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   17,
+			NumEnums:      2,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

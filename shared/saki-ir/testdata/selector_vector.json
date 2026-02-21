@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "name": "range_merged",
+      "snapshot_id": "0194f6d6-3f0d-7d1a-a1f1-000000000001",
+      "encoding": "RANGE",
+      "ranges": [[0, 0], [2, 5], [5, 9], [100, 105]],
+      "cardinality": 15,
+      "checksum": "20ccba0cedc21503275b1652b59e74d5bf5ad6d51ebb9fb546a23943234984ed"
+    },
+    {
+      "name": "bitset_small",
+      "snapshot_id": "0194f6d6-3f0d-7d1a-a1f1-000000000002",
+      "encoding": "BITSET",
+      "bitset_le_hex": "b401",
+      "cardinality": 5,
+      "checksum": "cce635681d5f0503429a5706029b8e8e898cd45eed914fb03b42a43c53ed515b"
+    },
+    {
+      "name": "roaring_opaque",
+      "snapshot_id": "0194f6d6-3f0d-7d1a-a1f1-000000000003",
+      "encoding": "ROARING",
+      "roaring_hex": "3a300001",
+      "cardinality": 42,
+      "checksum": "4b46adb4b2fdfe84a2ca04d42672fe0d0a7f5263f3537c4e3a3834cc1fb97d46"
+    }
+  ]
+}

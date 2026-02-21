@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -1545,7 +1544,7 @@ func (s *Service) OnExecutorRegister(ctx context.Context, register *runtimecontr
 		KernelCompatFlags:   []byte(kernelCompatFlagsJSON),
 		HealthStatus:        toNullablePGText("unknown"),
 		HealthDetail:        []byte(healthDetailJSON),
-		UptimeSec:           pgtype.Int8{Int64: 0, Valid: true},
+		UptimeSec:           toPGInt4FromInt64(0),
 	})
 }
 
@@ -1593,7 +1592,7 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 		Resources:     []byte(resourcesJSON),
 		HealthStatus:  toNullablePGText(healthStatus),
 		HealthDetail:  []byte(healthDetailJSON),
-		UptimeSec:     pgtype.Int8{Int64: heartbeat.GetUptimeSec(), Valid: true},
+		UptimeSec:     toPGInt4FromInt64(heartbeat.GetUptimeSec()),
 	})
 }
 

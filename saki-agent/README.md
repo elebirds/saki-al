@@ -24,10 +24,38 @@
 
 1. Kernel 仅上报本地相对路径（`workspace/output/...`），不持有存储凭证。
 2. Agent 使用 MinIO Go SDK 流式上传本地文件。
-3. 启动参数：
-   - `--minio-endpoint`
-   - `--minio-access-key`
-   - `--minio-secret-key`
-   - `--minio-bucket`
-   - `--minio-prefix`（默认 `runtime-artifacts`）
-   - `--minio-ssl`
+
+## 配置（环境变量）
+
+1. `SAKI_AGENT_RUN_DIR`（默认：`<启动目录>/.saki-agent/run`）
+2. `SAKI_AGENT_CACHE_DIR`（默认：`<启动目录>/.saki-agent/cache`）
+3. `LOG_LEVEL`（默认 `info`）
+4. `ENABLE_STDIN_COMMANDS`（默认 `true`）
+5. `RUNTIME_CONTROL_TARGET`（默认 `127.0.0.1:50051`）
+6. `INTERNAL_TOKEN`（默认 `dev-secret`，与 dispatcher 保持一致）
+7. `SAKI_AGENT_EXECUTOR_ID`（默认主机名）
+8. `SAKI_AGENT_NODE_ID`（默认主机名）
+9. `SAKI_AGENT_RUNTIME_KIND`（默认 `saki-agent`）
+10. `SAKI_AGENT_VERSION`（默认 `dev`）
+11. `SAKI_AGENT_HEARTBEAT_INTERVAL_SEC`（默认 `10`）
+12. `SAKI_AGENT_CONNECT_TIMEOUT_SEC`（默认 `5`）
+13. `SAKI_AGENT_RECONNECT_INITIAL_BACKOFF_SEC`（默认 `2`）
+14. `SAKI_AGENT_RECONNECT_MAX_BACKOFF_SEC`（默认 `30`）
+15. `SAKI_AGENT_PLUGIN_IDS`（默认 `saki-agent-placeholder`）
+16. `SAKI_AGENT_MINIO_ENDPOINT`
+17. `SAKI_AGENT_MINIO_ACCESS_KEY`
+18. `SAKI_AGENT_MINIO_SECRET_KEY`
+19. `SAKI_AGENT_MINIO_BUCKET`
+20. `SAKI_AGENT_MINIO_PREFIX`（默认 `runtime-artifacts`）
+21. `SAKI_AGENT_MINIO_USE_SSL`（默认 `false`）
+
+## Stdin 命令台
+
+1. `status|st`
+2. `kernels`
+3. `cache`
+4. `drain [on|off]`
+5. `kill <kernel_id>`
+6. `reconnect`（触发与 dispatcher 的 stream 重连）
+7. `help|h|?`
+8. `exit|quit`

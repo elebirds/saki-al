@@ -83,7 +83,7 @@ type UpsertRuntimeExecutorOnHeartbeatParams struct {
 	Resources     []byte
 	HealthStatus  pgtype.Text
 	HealthDetail  []byte
-	UptimeSec     pgtype.Int8
+	UptimeSec     pgtype.Int4
 }
 
 func (q *Queries) UpsertRuntimeExecutorOnHeartbeat(ctx context.Context, arg UpsertRuntimeExecutorOnHeartbeatParams) error {
@@ -161,7 +161,7 @@ type UpsertRuntimeExecutorOnRegisterParams struct {
 	KernelCompatFlags   []byte
 	HealthStatus        pgtype.Text
 	HealthDetail        []byte
-	UptimeSec           pgtype.Int8
+	UptimeSec           pgtype.Int4
 }
 
 func (q *Queries) UpsertRuntimeExecutorOnRegister(ctx context.Context, arg UpsertRuntimeExecutorOnRegisterParams) error {

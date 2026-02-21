@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -71,6 +72,16 @@ func toPGInt4(value *int) pgtype.Int4 {
 		return pgtype.Int4{}
 	}
 	return pgtype.Int4{Int32: int32(*value), Valid: true}
+}
+
+func toPGInt4FromInt64(value int64) pgtype.Int4 {
+	if value > math.MaxInt32 {
+		value = math.MaxInt32
+	}
+	if value < math.MinInt32 {
+		value = math.MinInt32
+	}
+	return pgtype.Int4{Int32: int32(value), Valid: true}
 }
 
 func timestampPtr(ts pgtype.Timestamp) *time.Time {

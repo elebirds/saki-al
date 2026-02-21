@@ -25,10 +25,11 @@ DISP_OUT_ROOT="$ROOT_DIR/saki-dispatcher/internal/gen"
 DISP_RUNTIME_OUT="$DISP_OUT_ROOT/runtimecontrolv1"
 DISP_ADMIN_OUT="$DISP_OUT_ROOT/dispatcheradminv1"
 DISP_DOMAIN_OUT="$DISP_OUT_ROOT/runtimedomainv1"
+AGENT_RUNTIME_OUT="$ROOT_DIR/saki-agent/internal/gen/runtimecontrolv1"
 IR_PY_OUT="$ROOT_DIR/shared/saki-ir/python/src/saki_ir/proto"
 IR_GO_OUT="$ROOT_DIR/shared/saki-ir/go/gen"
 
-mkdir -p "$API_OUT" "$EXEC_OUT" "$DISP_RUNTIME_OUT" "$DISP_ADMIN_OUT" "$DISP_DOMAIN_OUT" "$IR_PY_OUT" "$IR_GO_OUT"
+mkdir -p "$API_OUT" "$EXEC_OUT" "$DISP_RUNTIME_OUT" "$DISP_ADMIN_OUT" "$DISP_DOMAIN_OUT" "$AGENT_RUNTIME_OUT" "$IR_PY_OUT" "$IR_GO_OUT"
 
 uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
@@ -49,7 +50,7 @@ uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSI
 
 export PATH="$HOME/go/bin:$PATH"
 if command -v protoc-gen-go >/dev/null 2>&1 && command -v protoc-gen-go-grpc >/dev/null 2>&1; then
-  rm -f "$DISP_RUNTIME_OUT"/*.go "$DISP_ADMIN_OUT"/*.go "$DISP_DOMAIN_OUT"/*.go
+  rm -f "$DISP_RUNTIME_OUT"/*.go "$DISP_ADMIN_OUT"/*.go "$DISP_DOMAIN_OUT"/*.go "$AGENT_RUNTIME_OUT"/*.go
   rm -f "$IR_GO_OUT"/annotationirv1/*.go "$IR_GO_OUT"/manifestirv1/*.go
   rm -rf "$IR_GO_OUT"/saki
   rm -rf "$IR_GO_OUT"/gen
@@ -59,6 +60,14 @@ if command -v protoc-gen-go >/dev/null 2>&1 && command -v protoc-gen-go-grpc >/d
     --go_out="$DISP_RUNTIME_OUT" \
     --go_opt=paths=source_relative \
     --go-grpc_out="$DISP_RUNTIME_OUT" \
+    --go-grpc_opt=paths=source_relative \
+    "$RUNTIME_PROTO"
+
+  uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
+    -I "$PROTO_DIR" \
+    --go_out="$AGENT_RUNTIME_OUT" \
+    --go_opt=paths=source_relative \
+    --go-grpc_out="$AGENT_RUNTIME_OUT" \
     --go-grpc_opt=paths=source_relative \
     "$RUNTIME_PROTO"
 
@@ -85,7 +94,7 @@ if command -v protoc-gen-go >/dev/null 2>&1 && command -v protoc-gen-go-grpc >/d
     --go_opt=module=github.com/saki-ai/saki/shared/saki-ir/go/gen \
     "${IR_PROTO_FILES[@]}"
 
-  echo "generated Go stubs for saki-dispatcher"
+  echo "generated Go stubs for saki-dispatcher/saki-agent"
 else
   echo "skip Go stubs generation: protoc-gen-go or protoc-gen-go-grpc not found"
 fi

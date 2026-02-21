@@ -31,9 +31,24 @@ WHERE loop_id = $1::uuid
 LIMIT 1
 `
 
-func (q *Queries) GetALSessionStateByLoopID(ctx context.Context, loopID uuid.UUID) (AlSessionState, error) {
+type GetALSessionStateByLoopIDRow struct {
+	ID                  uuid.UUID
+	LoopID              uuid.UUID
+	RoundID             *uuid.UUID
+	SnapshotID          uuid.UUID
+	SelectorEncoding    string
+	SelectorBytes       []byte
+	SelectorCardinality int32
+	SelectorChecksum    string
+	SelectorManifestRef pgtype.Text
+	RoundIndex          int32
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
+}
+
+func (q *Queries) GetALSessionStateByLoopID(ctx context.Context, loopID uuid.UUID) (GetALSessionStateByLoopIDRow, error) {
 	row := q.db.QueryRow(ctx, getALSessionStateByLoopID, loopID)
-	var i AlSessionState
+	var i GetALSessionStateByLoopIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.LoopID,
@@ -77,9 +92,25 @@ type GetRoundDatasetViewBySplitParams struct {
 	Split   string
 }
 
-func (q *Queries) GetRoundDatasetViewBySplit(ctx context.Context, arg GetRoundDatasetViewBySplitParams) (RoundDatasetView, error) {
+type GetRoundDatasetViewBySplitRow struct {
+	ID                  uuid.UUID
+	LoopID              uuid.UUID
+	RoundID             uuid.UUID
+	Split               string
+	IsStatic            bool
+	SnapshotID          uuid.UUID
+	SelectorEncoding    string
+	SelectorBytes       []byte
+	SelectorCardinality int32
+	SelectorChecksum    string
+	ManifestRef         string
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
+}
+
+func (q *Queries) GetRoundDatasetViewBySplit(ctx context.Context, arg GetRoundDatasetViewBySplitParams) (GetRoundDatasetViewBySplitRow, error) {
 	row := q.db.QueryRow(ctx, getRoundDatasetViewBySplit, arg.RoundID, arg.Split)
-	var i RoundDatasetView
+	var i GetRoundDatasetViewBySplitRow
 	err := row.Scan(
 		&i.ID,
 		&i.LoopID,

@@ -826,6 +826,8 @@ func (ns NullTasktype) Value() (driver.Value, error) {
 }
 
 type AlSessionState struct {
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
 	ID                  uuid.UUID
 	LoopID              uuid.UUID
 	RoundID             *uuid.UUID
@@ -836,8 +838,6 @@ type AlSessionState struct {
 	SelectorChecksum    string
 	SelectorManifestRef pgtype.Text
 	RoundIndex          int32
-	CreatedAt           pgtype.Timestamp
-	UpdatedAt           pgtype.Timestamp
 }
 
 type AlembicVersion struct {
@@ -1165,6 +1165,8 @@ type Round struct {
 }
 
 type RoundDatasetView struct {
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
 	ID                  uuid.UUID
 	LoopID              uuid.UUID
 	RoundID             uuid.UUID
@@ -1176,8 +1178,6 @@ type RoundDatasetView struct {
 	SelectorCardinality int32
 	SelectorChecksum    string
 	ManifestRef         string
-	CreatedAt           pgtype.Timestamp
-	UpdatedAt           pgtype.Timestamp
 }
 
 type RoundSampleMetric struct {
@@ -1218,7 +1218,7 @@ type RuntimeExecutor struct {
 	KernelCompatFlags   []byte
 	HealthStatus        pgtype.Text
 	HealthDetail        []byte
-	UptimeSec           pgtype.Int8
+	UptimeSec           pgtype.Int4
 	LastSeenAt          pgtype.Timestamp
 	LastError           pgtype.Text
 }

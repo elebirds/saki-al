@@ -112,3 +112,48 @@ func TestUploadArtifactRejectsPathTraversal(t *testing.T) {
 		t.Fatalf("expected path traversal error")
 	}
 }
+
+func TestListKernelInstanceAndKill(t *testing.T) {
+	runDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(runDir, "k1.ctl.sock"), []byte{}, 0o644); err != nil {
+		t.Fatalf("write socket file failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "k1.evt.sock"), []byte{}, 0o644); err != nil {
+		t.Fatalf("write socket file failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "k2.ctl.sock"), []byte{}, 0o644); err != nil {
+		t.Fatalf("write socket file failed: %v", err)
+	}
+
+	a := NewWithUploader(Config{
+		RunDir:      runDir,
+		CacheDir:    t.TempDir(),
+		MinIOBucket: "runtime-bucket",
+	}, &fakeUploader{})
+
+	ids, err := a.ListKernelInstanceIDs()
+	if err != nil {
+		t.Fatalf("list kernels failed: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 kernel ids, got %d", len(ids))
+	}
+
+	socketCount, err := a.SocketCount()
+	if err != nil {
+		t.Fatalf("socket count failed: %v", err)
+	}
+	if socketCount != 3 {
+		t.Fatalf("expected 3 sockets, got %d", socketCount)
+	}
+
+	if err := a.KillKernel("k1"); err != nil {
+		t.Fatalf("kill kernel failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "k1.ctl.sock")); !os.IsNotExist(err) {
+		t.Fatalf("expected k1.ctl.sock removed")
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "k1.evt.sock")); !os.IsNotExist(err) {
+		t.Fatalf("expected k1.evt.sock removed")
+	}
+}

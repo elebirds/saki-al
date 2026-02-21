@@ -13,9 +13,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/rs/zerolog"
 )
 
 var forbiddenKernelEnvPrefixes = []string{
@@ -27,6 +30,7 @@ var forbiddenKernelEnvPrefixes = []string{
 
 type Config struct {
 	RunDir         string
+	CacheDir       string
 	MinIOEndpoint  string
 	MinIOAccessKey string
 	MinIOSecretKey string
@@ -64,22 +68,37 @@ type minioUploader struct {
 type Agent struct {
 	cfg      Config
 	uploader artifactUploader
+	logger   zerolog.Logger
+
+	mu              sync.RWMutex
+	draining        bool
+	reconnectCount  int64
+	lastReconnectAt time.Time
 }
 
 func New(cfg Config) (*Agent, error) {
+	return NewWithLogger(cfg, zerolog.Nop())
+}
+
+func NewWithLogger(cfg Config, logger zerolog.Logger) (*Agent, error) {
 	runDir := strings.TrimSpace(cfg.RunDir)
 	if runDir == "" {
 		runDir = "/var/run/saki-agent"
 	}
+	cacheDir := strings.TrimSpace(cfg.CacheDir)
+	if cacheDir == "" {
+		cacheDir = "/var/lib/saki-agent/cache"
+	}
 	cfg.RunDir = runDir
+	cfg.CacheDir = cacheDir
 	if shouldInitMinIO(cfg) {
 		uploader, err := newMinIOUploader(cfg)
 		if err != nil {
 			return nil, err
 		}
-		return &Agent{cfg: cfg, uploader: uploader}, nil
+		return &Agent{cfg: cfg, uploader: uploader, logger: logger}, nil
 	}
-	return &Agent{cfg: cfg}, nil
+	return &Agent{cfg: cfg, logger: logger}, nil
 }
 
 func NewWithUploader(cfg Config, uploader artifactUploader) *Agent {
@@ -87,8 +106,13 @@ func NewWithUploader(cfg Config, uploader artifactUploader) *Agent {
 	if runDir == "" {
 		runDir = "/var/run/saki-agent"
 	}
+	cacheDir := strings.TrimSpace(cfg.CacheDir)
+	if cacheDir == "" {
+		cacheDir = "/var/lib/saki-agent/cache"
+	}
 	cfg.RunDir = runDir
-	return &Agent{cfg: cfg, uploader: uploader}
+	cfg.CacheDir = cacheDir
+	return &Agent{cfg: cfg, uploader: uploader, logger: zerolog.Nop()}
 }
 
 func shouldInitMinIO(cfg Config) bool {
@@ -126,6 +150,16 @@ func (a *Agent) PrepareRunDir() error {
 	return nil
 }
 
+func (a *Agent) PrepareCacheDir() error {
+	if strings.TrimSpace(a.cfg.CacheDir) == "" {
+		return nil
+	}
+	if err := os.MkdirAll(a.cfg.CacheDir, 0o755); err != nil {
+		return fmt.Errorf("create cache dir: %w", err)
+	}
+	return nil
+}
+
 func (a *Agent) CleanupStaleSockets() error {
 	pattern := filepath.Join(a.cfg.RunDir, "*.sock")
 	matches, err := filepath.Glob(pattern)
@@ -139,6 +173,43 @@ func (a *Agent) CleanupStaleSockets() error {
 		}
 	}
 	return nil
+}
+
+func (a *Agent) SetDraining(draining bool) {
+	a.mu.Lock()
+	a.draining = draining
+	a.mu.Unlock()
+	a.logger.Info().Bool("draining", draining).Msg("agent drain 状态已更新")
+}
+
+func (a *Agent) IsDraining() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.draining
+}
+
+func (a *Agent) MarkReconnect() {
+	a.mu.Lock()
+	a.reconnectCount++
+	a.lastReconnectAt = time.Now()
+	count := a.reconnectCount
+	last := a.lastReconnectAt
+	a.mu.Unlock()
+	a.logger.Info().Int64("reconnect_count", count).Time("last_reconnect_at", last).Msg("agent reconnect 已记录")
+}
+
+func (a *Agent) ReconnectSnapshot() (count int64, last time.Time) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.reconnectCount, a.lastReconnectAt
+}
+
+func (a *Agent) RunDir() string {
+	return a.cfg.RunDir
+}
+
+func (a *Agent) CacheDir() string {
+	return a.cfg.CacheDir
 }
 
 func (a *Agent) KernelIPC(instanceID string) KernelInstance {

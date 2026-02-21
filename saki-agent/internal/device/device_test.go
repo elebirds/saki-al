@@ -4,6 +4,62 @@ import (
 	"testing"
 )
 
+func TestBestDevice(t *testing.T) {
+	cases := []struct {
+		name string
+		caps *DeviceCapabilities
+		want string
+	}{
+		{
+			name: "nil_caps_fallback_cpu",
+			caps: nil,
+			want: BestDeviceCPU,
+		},
+		{
+			name: "cpu_only",
+			caps: &DeviceCapabilities{
+				CPU: &CPUInfo{LogicalCores: 8},
+			},
+			want: BestDeviceCPU,
+		},
+		{
+			name: "mps_only",
+			caps: &DeviceCapabilities{
+				MPS: &MPSInfo{Available: true},
+				CPU: &CPUInfo{LogicalCores: 8},
+			},
+			want: BestDeviceMPS,
+		},
+		{
+			name: "cuda_only",
+			caps: &DeviceCapabilities{
+				CUDA: &CUDAInfo{Available: true, DeviceCount: 1},
+				CPU:  &CPUInfo{LogicalCores: 8},
+			},
+			want: BestDeviceCUDA,
+		},
+		{
+			name: "cuda_prior_higher_than_mps",
+			caps: &DeviceCapabilities{
+				CUDA: &CUDAInfo{Available: true, DeviceCount: 2},
+				MPS:  &MPSInfo{Available: true},
+				CPU:  &CPUInfo{LogicalCores: 8},
+			},
+			want: BestDeviceCUDA,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.caps.BestDevice()
+			if got != tc.want {
+				t.Fatalf("BestDevice mismatch: got=%s want=%s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDetectDeviceCapabilities(t *testing.T) {
 	caps, err := DetectDeviceCapabilities()
 	if err != nil {

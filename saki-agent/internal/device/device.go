@@ -1,13 +1,15 @@
 package device
 
 import (
-	"fmt"
-	"log"
+	"bufio"
+	"context"
+	"errors"
+	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
-
-	"github.com/shirou/gopsutil/v3/cpu"
+	"time"
 )
 
 // DeviceCapabilities 代表系统的硬件能力
@@ -17,6 +19,12 @@ type DeviceCapabilities struct {
 	CPU      *CPUInfo  `json:"cpu"`
 	Platform string    `json:"platform"`
 }
+
+const (
+	BestDeviceCPU  = "cpu"
+	BestDeviceCUDA = "cuda"
+	BestDeviceMPS  = "mps"
+)
 
 // CUDAInfo 包含 CUDA 设备的信息
 type CUDAInfo struct {
@@ -60,60 +68,55 @@ func DetectDeviceCapabilities() (*DeviceCapabilities, error) {
 	return caps, nil
 }
 
+// BestDevice 返回建议的默认设备类型（优先级：CUDA > MPS > CPU）。
+func (c *DeviceCapabilities) BestDevice() string {
+	if c == nil {
+		return BestDeviceCPU
+	}
+	if c.CUDA != nil && c.CUDA.Available && c.CUDA.DeviceCount > 0 {
+		return BestDeviceCUDA
+	}
+	if c.MPS != nil && c.MPS.Available {
+		return BestDeviceMPS
+	}
+	return BestDeviceCPU
+}
+
 // detectCUDA 检测 CUDA 是否可用及其信息
 func detectCUDA() *CUDAInfo {
 	cudaInfo := &CUDAInfo{Available: false}
 
-	// 检查 nvidia-smi 是否存在
+	// nvidia-smi 不存在是常态（例如 Apple Silicon），此处静默返回。
 	path, err := exec.LookPath("nvidia-smi")
 	if err != nil {
-		log.Printf("nvidia-smi not found: %v", err)
 		return cudaInfo
 	}
 
-	// 执行 nvidia-smi --query-gpu=count --format=csv,noheader
-	cmd := exec.Command(path, "--query-gpu=count", "--format=csv,noheader")
-	output, err := cmd.Output()
+	// 通过设备名列表统计设备数量，兼容性更稳定。
+	rawNames, err := commandOutput(path, "--query-gpu=name", "--format=csv,noheader")
 	if err != nil {
-		log.Printf("failed to query GPU count: %v", err)
 		return cudaInfo
 	}
-
-	countStr := strings.TrimSpace(string(output))
-	var deviceCount int
-	_, err = fmt.Sscanf(countStr, "%d", &deviceCount)
-	if err != nil {
-		log.Printf("failed to parse GPU count: %v", err)
-		return cudaInfo
-	}
-
-	if deviceCount == 0 {
+	names := parseLines(rawNames)
+	if len(names) == 0 {
 		return cudaInfo
 	}
 
 	cudaInfo.Available = true
-	cudaInfo.DeviceCount = deviceCount
+	cudaInfo.DeviceCount = len(names)
+	cudaInfo.DeviceNames = names
 
-	// 获取 CUDA 版本
-	cmd = exec.Command(path, "--query-cuda=compute_cap", "--format=csv,noheader")
-	output, err = cmd.Output()
-	if err == nil {
-		cudaInfo.ComputeCapability = strings.TrimSpace(string(output))
+	// 计算能力（可能是一行一个设备，去重后逗号拼接）
+	if rawCC, ccErr := commandOutput(path, "--query-gpu=compute_cap", "--format=csv,noheader"); ccErr == nil {
+		cudaInfo.ComputeCapability = strings.Join(parseUniqueLines(rawCC), ",")
 	}
 
-	// 获取设备名称
-	cmd = exec.Command(path, "--query-gpu=name", "--format=csv,noheader")
-	output, err = cmd.Output()
-	if err == nil {
-		names := strings.Split(strings.TrimSpace(string(output)), "\n")
-		cudaInfo.DeviceNames = names
-	}
-
-	// 获取 CUDA 驱动版本
-	cmd = exec.Command(path, "--query-gpu=driver_version", "--format=csv,noheader")
-	output, err = cmd.Output()
-	if err == nil {
-		cudaInfo.Version = strings.TrimSpace(string(output))
+	// 驱动版本（可能一行一个设备，通常相同，取第一项）
+	if rawVer, verErr := commandOutput(path, "--query-gpu=driver_version", "--format=csv,noheader"); verErr == nil {
+		versions := parseLines(rawVer)
+		if len(versions) > 0 {
+			cudaInfo.Version = versions[0]
+		}
 	}
 
 	return cudaInfo
@@ -122,66 +125,64 @@ func detectCUDA() *CUDAInfo {
 // detectMPS 检测 Metal Performance Shaders 是否可用 (macOS only)
 func detectMPS() *MPSInfo {
 	mpsInfo := &MPSInfo{Available: false}
-
 	if runtime.GOOS != "darwin" {
 		return mpsInfo
 	}
 
-	// 在 macOS 上检查 GPU 是否可用
-	// 使用 system_profiler SPDisplaysDataType 命令
-	cmd := exec.Command("system_profiler", "SPDisplaysDataType")
-	output, err := cmd.Output()
+	output, err := commandOutput("system_profiler", "SPDisplaysDataType")
 	if err != nil {
-		log.Printf("failed to query system GPU info: %v", err)
+		// 退化策略：Apple Silicon 默认认为 MPS 可用。
+		if runtime.GOARCH == "arm64" {
+			mpsInfo.Available = true
+			mpsInfo.Version = "Apple Silicon (MPS available)"
+		}
 		return mpsInfo
 	}
 
-	// 检查输出中是否包含 GPU 信息
-	outputStr := string(output)
-	if strings.Contains(outputStr, "Metal") ||
-		strings.Contains(outputStr, "GPU") ||
-		strings.Contains(outputStr, "Graphics") {
+	if strings.Contains(output, "Metal") ||
+		strings.Contains(output, "GPU") ||
+		strings.Contains(output, "Graphics") {
 		mpsInfo.Available = true
-
-		// 尝试从 GPU 名称中识别
-		if strings.Contains(outputStr, "Apple") {
+		if strings.Contains(output, "Apple") {
 			mpsInfo.Version = "Apple Silicon (MPS available)"
 		} else {
-			// 对于独立 GPU（如 AMD, NVIDIA），MPS 仍然可用
 			mpsInfo.Version = "Discrete GPU (MPS available)"
 		}
 	}
-
 	return mpsInfo
 }
 
 // detectCPUInfo 检测 CPU 信息
 func detectCPUInfo() *CPUInfo {
-	cpuInfo := &CPUInfo{}
-
-	// 获取物理核心数
-	physicalCores, err := cpu.Counts(false)
-	if err != nil {
-		log.Printf("failed to get physical CPU cores: %v", err)
-		physicalCores = runtime.NumCPU()
-	}
-	cpuInfo.PhysicalCores = physicalCores
-
-	// 获取逻辑核心数
-	logicalCores := runtime.NumCPU()
-	cpuInfo.LogicalCores = logicalCores
-
-	// 获取 CPU 模型名称
-	cpuInfos, err := cpu.Info()
-	if err == nil && len(cpuInfos) > 0 {
-		cpuInfo.ModelName = cpuInfos[0].ModelName
-		cpuInfo.Frequency = float64(cpuInfos[0].Mhz)
+	logical := runtime.NumCPU()
+	info := &CPUInfo{
+		PhysicalCores: logical,
+		LogicalCores:  logical,
+		Architecture:  runtime.GOARCH,
 	}
 
-	// 获取架构信息
-	cpuInfo.Architecture = runtime.GOARCH
+	switch runtime.GOOS {
+	case "darwin":
+		if model, err := commandOutput("sysctl", "-n", "machdep.cpu.brand_string"); err == nil {
+			info.ModelName = model
+		}
+		if physical, err := commandOutput("sysctl", "-n", "hw.physicalcpu"); err == nil {
+			if n, parseErr := strconv.Atoi(strings.TrimSpace(physical)); parseErr == nil && n > 0 {
+				info.PhysicalCores = n
+			}
+		}
+		if hz, err := commandOutput("sysctl", "-n", "hw.cpufrequency"); err == nil {
+			if v, parseErr := strconv.ParseFloat(strings.TrimSpace(hz), 64); parseErr == nil && v > 0 {
+				info.Frequency = v / 1_000_000
+			}
+		}
+	case "linux":
+		if content, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+			fillCPUInfoFromProc(string(content), info)
+		}
+	}
 
-	return cpuInfo
+	return info
 }
 
 // GetCUDACapability 获取 CUDA 能力，如果不可用返回 false
@@ -217,4 +218,110 @@ func IsMPSAvailable() bool {
 	}
 	available, _ := GetMPSCapability()
 	return available
+}
+
+func commandOutput(name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", ctx.Err()
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func parseLines(raw string) []string {
+	items := make([]string, 0)
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		items = append(items, line)
+	}
+	return items
+}
+
+func parseUniqueLines(raw string) []string {
+	set := make(map[string]struct{})
+	items := make([]string, 0)
+	for _, line := range parseLines(raw) {
+		if _, exists := set[line]; exists {
+			continue
+		}
+		set[line] = struct{}{}
+		items = append(items, line)
+	}
+	return items
+}
+
+func fillCPUInfoFromProc(content string, info *CPUInfo) {
+	if info == nil {
+		return
+	}
+
+	var model string
+	var mhz float64
+	corePairs := make(map[string]struct{})
+	hasPair := false
+	physicalID := ""
+	coreID := ""
+
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			if physicalID != "" && coreID != "" {
+				corePairs[physicalID+":"+coreID] = struct{}{}
+				hasPair = true
+			}
+			physicalID = ""
+			coreID = ""
+			continue
+		}
+
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "model name":
+			if model == "" {
+				model = value
+			}
+		case "cpu MHz":
+			if mhz <= 0 {
+				if parsed, err := strconv.ParseFloat(value, 64); err == nil && parsed > 0 {
+					mhz = parsed
+				}
+			}
+		case "physical id":
+			physicalID = value
+		case "core id":
+			coreID = value
+		}
+	}
+	if physicalID != "" && coreID != "" {
+		corePairs[physicalID+":"+coreID] = struct{}{}
+		hasPair = true
+	}
+
+	if hasPair && len(corePairs) > 0 {
+		info.PhysicalCores = len(corePairs)
+	}
+	if model != "" {
+		info.ModelName = model
+	}
+	if mhz > 0 {
+		info.Frequency = mhz
+	}
 }

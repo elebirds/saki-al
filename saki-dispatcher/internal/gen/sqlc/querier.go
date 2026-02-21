@@ -27,7 +27,7 @@ type Querier interface {
 	DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgtype.Timestamp) (int64, error)
 	DeleteStepCandidatesByStepID(ctx context.Context, stepID uuid.UUID) error
 	FindRoundIDByStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
-	GetALSessionStateByLoopID(ctx context.Context, loopID uuid.UUID) (AlSessionState, error)
+	GetALSessionStateByLoopID(ctx context.Context, loopID uuid.UUID) (GetALSessionStateByLoopIDRow, error)
 	GetCommandLogByCommandID(ctx context.Context, commandID string) (GetCommandLogByCommandIDRow, error)
 	GetDependencyStatesByIDs(ctx context.Context, stepIds []uuid.UUID) ([]Stepstatus, error)
 	GetLatestActivateOutputCommitByRound(ctx context.Context, roundID uuid.UUID) (*uuid.UUID, error)
@@ -39,7 +39,7 @@ type Querier interface {
 	GetLoopStatus(ctx context.Context, loopID uuid.UUID) (Loopstatus, error)
 	GetNextRoundIndex(ctx context.Context, loopID uuid.UUID) (int32, error)
 	GetPrimaryDatasetIDByProject(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error)
-	GetRoundDatasetViewBySplit(ctx context.Context, arg GetRoundDatasetViewBySplitParams) (RoundDatasetView, error)
+	GetRoundDatasetViewBySplit(ctx context.Context, arg GetRoundDatasetViewBySplitParams) (GetRoundDatasetViewBySplitRow, error)
 	GetRoundState(ctx context.Context, roundID uuid.UUID) (Roundstatus, error)
 	GetStepArtifactsForUpdate(ctx context.Context, stepID uuid.UUID) ([]byte, error)
 	GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.UUID) (GetStepPayloadByIDForUpdateRow, error)

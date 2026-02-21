@@ -6,12 +6,13 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/elebirds/saki/saki-agent/internal/agent"
 	"github.com/elebirds/saki/saki-agent/internal/config"
+	"github.com/elebirds/saki/saki-agent/internal/runtimeclient"
 )
 
 func main() {
@@ -30,19 +31,23 @@ func run() error {
 	setupLogger(cfg.LogLevel)
 	logger := log.With().Str("component", "saki-agent").Logger()
 
-	daemon, err := agent.New(agent.Config{
+	daemon, err := agent.NewWithLogger(agent.Config{
 		RunDir:         cfg.RunDir,
+		CacheDir:       cfg.CacheDir,
 		MinIOEndpoint:  cfg.MinIOEndpoint,
 		MinIOAccessKey: cfg.MinIOAccessKey,
 		MinIOSecretKey: cfg.MinIOSecretKey,
 		MinIOBucket:    cfg.MinIOBucket,
 		MinIOPrefix:    cfg.MinIOPrefix,
 		MinIOUseSSL:    cfg.MinIOUseSSL,
-	})
+	}, logger.With().Str("service", "agent").Logger())
 	if err != nil {
 		return err
 	}
 	if err := daemon.PrepareRunDir(); err != nil {
+		return err
+	}
+	if err := daemon.PrepareCacheDir(); err != nil {
 		return err
 	}
 	if err := daemon.CleanupStaleSockets(); err != nil {
@@ -53,17 +58,55 @@ func run() error {
 	defer cancel()
 
 	logger.Info().Msg("saki-agent 已启动")
+	runtimeClient := runtimeclient.New(
+		runtimeclient.Config{
+			Target:            cfg.RuntimeControlTarget,
+			Token:             cfg.InternalToken,
+			ExecutorID:        cfg.ExecutorID,
+			NodeID:            cfg.NodeID,
+			Version:           cfg.Version,
+			RuntimeKind:       cfg.RuntimeKind,
+			PluginIDs:         parseCSV(cfg.PluginIDsCSV),
+			HeartbeatInterval: time.Duration(cfg.HeartbeatIntervalSec) * time.Second,
+			ConnectTimeout:    time.Duration(cfg.ConnectTimeoutSec) * time.Second,
+			InitialBackoff:    time.Duration(cfg.ReconnectInitialBackoffSec) * time.Second,
+			MaxBackoff:        time.Duration(cfg.ReconnectMaxBackoffSec) * time.Second,
+		},
+		daemon,
+		logger.With().Str("service", "runtime_client").Logger(),
+	)
+	runtimeClient.Start(ctx)
+	defer func() {
+		if err := runtimeClient.Close(); err != nil {
+			logger.Warn().Err(err).Msg("关闭 runtime client 失败")
+		}
+	}()
+
+	if cfg.EnableStdinCommands {
+		startStdinCommandLoop(
+			ctx,
+			cancel,
+			daemon,
+			runtimeClient,
+			logger.With().Str("module", "stdin_cmd").Logger(),
+		)
+	} else {
+		logger.Info().Msg("stdin 命令台未启用")
+	}
 
 	<-ctx.Done()
 	logger.Info().Msg("收到退出信号，saki-agent 正在停机")
 	return nil
 }
 
-func setupLogger(level string) {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
-	parsed, err := zerolog.ParseLevel(strings.ToLower(strings.TrimSpace(level)))
-	if err != nil {
-		parsed = zerolog.InfoLevel
+func parseCSV(raw string) []string {
+	items := []string{}
+	for _, token := range strings.Split(raw, ",") {
+		trimmed := strings.TrimSpace(token)
+		if trimmed == "" {
+			continue
+		}
+		items = append(items, trimmed)
 	}
-	zerolog.SetGlobalLevel(parsed)
+	return items
 }

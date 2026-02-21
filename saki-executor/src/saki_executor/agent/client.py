@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import uuid
 from collections import OrderedDict
 from typing import Any
+
+# Executor spawns plugin workers via subprocess; disable gRPC fork handlers to avoid
+# noisy "skipping fork() handlers" warnings under multi-threaded workloads.
+os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
 
 import grpc
 from loguru import logger
@@ -282,14 +287,25 @@ class AgentClient:
 
             task_payload = runtime_codec.parse_assign_step(assign)
             logger.info("收到任务派发 request_id={} step_id={}", request_id, task_payload.get("step_id"))
-            accepted = await self.step_manager.assign_step(request_id, task_payload)
+            ack_reason = "executor_busy"
+            ack_detail = "executor busy"
+            accepted = False
+            try:
+                accepted = await self.step_manager.assign_step(request_id, task_payload)
+                if accepted:
+                    ack_reason = "accepted"
+                    ack_detail = "accepted"
+            except Exception as exc:
+                logger.warning("任务派发参数非法 request_id={} error={}", request_id, exc)
+                ack_reason = "rejected"
+                ack_detail = str(exc) or "rejected"
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
                 ok=accepted,
                 ack_type="assign_step",
-                ack_reason="accepted" if accepted else "executor_busy",
-                detail="accepted" if accepted else "executor busy",
+                ack_reason=ack_reason,
+                detail=ack_detail,
             )
             await self.send_message(ack_message)
             self._cache_control_ack(request_id, ack_message)

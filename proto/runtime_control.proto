@@ -51,12 +51,12 @@ enum RuntimeStepType {
   SCORE = 2;
   SELECT = 3;
   ACTIVATE_SAMPLES = 4;
-  WAIT_ANNOTATION = 5;
+  reserved 5;
   ADVANCE_BRANCH = 6;
   EVAL = 7;
   UPLOAD_ARTIFACT = 8;
   EXPORT = 9;
-  MANUAL_REVIEW = 10;
+  reserved 10;
   CUSTOM = 99;
 }
 

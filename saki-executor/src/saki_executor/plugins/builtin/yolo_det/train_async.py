@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import threading
 from typing import Any, Awaitable, Callable
 
 from saki_executor.steps.workspace import Workspace
@@ -13,7 +14,7 @@ from saki_executor.plugins.base import EventCallback
 ToIntFn = Callable[[Any, int], int]
 ToBoolFn = Callable[[Any, bool], bool]
 ResolveDeviceFn = Callable[[dict[str, Any]], tuple[Any, str, str]]
-ResolveBaseModelFn = Callable[..., Awaitable[str]]
+ResolveModelRefFn = Callable[..., Awaitable[str]]
 
 
 async def resolve_train_config(
@@ -22,19 +23,19 @@ async def resolve_train_config(
     params: dict[str, Any],
     to_int: ToIntFn,
     resolve_device: ResolveDeviceFn,
-    resolve_base_model: ResolveBaseModelFn,
+    resolve_model_ref: ResolveModelRefFn,
 ) -> TrainConfig:
     epochs = to_int(params.get("epochs", 30), 30)
     batch = to_int(params.get("batch", params.get("batch_size", 16)), 16)
     imgsz = to_int(params.get("imgsz", 640), 640)
     patience = to_int(params.get("patience", 20), 20)
     device, requested_device, resolved_backend = resolve_device(params)
-    base_model = str(params.get("base_model", "yolov8n-obb.pt") or "yolov8n-obb.pt")
-    resolved_base_model = await resolve_base_model(
+    resolved_base_model = await resolve_model_ref(
         workspace=workspace,
-        base_model=base_model,
         params=params,
     )
+    train_seed = max(0, to_int(params.get("train_seed"), 0))
+    deterministic = bool(params.get("deterministic", False))
     return TrainConfig(
         epochs=epochs,
         batch=batch,
@@ -44,6 +45,8 @@ async def resolve_train_config(
         requested_device=requested_device,
         resolved_backend=resolved_backend,
         resolved_base_model=resolved_base_model,
+        train_seed=train_seed,
+        deterministic=deterministic,
     )
 
 
@@ -67,7 +70,8 @@ async def run_train_with_epoch_stream(
                 f"YOLO training started base_model={config.resolved_base_model} "
                 f"epochs={config.epochs} batch={config.batch} imgsz={config.imgsz} "
                 f"patience={config.patience} requested_device={config.requested_device} "
-                f"resolved_backend={config.resolved_backend} device={config.device}"
+                f"resolved_backend={config.resolved_backend} device={config.device} "
+                f"train_seed={config.train_seed} deterministic={config.deterministic}"
             ),
         },
     )
@@ -78,23 +82,40 @@ async def run_train_with_epoch_stream(
     def _on_epoch_update(payload: dict[str, Any]) -> None:
         loop.call_soon_threadsafe(epoch_queue.put_nowait, payload)
 
-    train_task = asyncio.create_task(
-        asyncio.to_thread(
-            run_train_sync,
-            workspace=workspace,
-            dataset_yaml=dataset_yaml,
-            base_model=config.resolved_base_model,
-            epochs=config.epochs,
-            batch=config.batch,
-            imgsz=config.imgsz,
-            patience=config.patience,
-            device=config.device,
-            epoch_callback=_on_epoch_update,
-        )
+    train_done = asyncio.Event()
+    train_result: dict[str, Any] | None = None
+    train_error: BaseException | None = None
+
+    def _run_train() -> None:
+        nonlocal train_result, train_error
+        try:
+            train_result = run_train_sync(
+                workspace=workspace,
+                dataset_yaml=dataset_yaml,
+                base_model=config.resolved_base_model,
+                epochs=config.epochs,
+                batch=config.batch,
+                imgsz=config.imgsz,
+                patience=config.patience,
+                device=config.device,
+                train_seed=config.train_seed,
+                deterministic=config.deterministic,
+                epoch_callback=_on_epoch_update,
+            )
+        except BaseException as exc:  # pragma: no cover - delegated to caller path
+            train_error = exc
+        finally:
+            loop.call_soon_threadsafe(train_done.set)
+
+    train_thread = threading.Thread(
+        target=_run_train,
+        name=f"yolo-train-{workspace.step_id}",
+        daemon=True,
     )
+    train_thread.start()
 
     while True:
-        if train_task.done() and epoch_queue.empty():
+        if train_done.is_set() and epoch_queue.empty():
             break
         try:
             epoch_payload = await asyncio.wait_for(epoch_queue.get(), timeout=0.2)
@@ -117,7 +138,12 @@ async def run_train_with_epoch_stream(
         )
         await emit("metric", {"step": step, "epoch": epoch, "metrics": metrics_row})
 
-    return await train_task
+    if train_error is not None:
+        raise train_error
+    if train_result is None:
+        raise RuntimeError("training thread finished without result")
+
+    return train_result
 
 
 def load_prepare_stats(workspace: Workspace) -> dict[str, Any]:

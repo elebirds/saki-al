@@ -26,6 +26,7 @@ def score_unlabeled_samples(
     build_detection_boxes: Callable[[list[dict[str, Any]]], list[Any]],
     score_aug_iou_disagreement: Callable[[list[list[Any]]], tuple[float, dict[str, Any]]],
     score_by_strategy: Callable[..., tuple[float, dict[str, Any]]],
+    normalize_strategy_name: Callable[[str], str],
     random_seed: int,
     round_index: int,
 ) -> list[dict[str, Any]]:
@@ -43,7 +44,8 @@ def score_unlabeled_samples(
         image_path = Path(local_path)
         if not image_path.exists():
             continue
-        if (strategy or "").lower() in {"aug_iou_disagreement_v1", "aug_iou_disagreement"}:
+        strategy_key = normalize_strategy_name(strategy)
+        if strategy_key == "aug_iou_disagreement":
             preds_by_aug = predict_with_aug(
                 model=model,
                 image_path=image_path,
@@ -59,7 +61,7 @@ def score_unlabeled_samples(
                     "score": score,
                     "reason": reason,
                     "prediction_snapshot": {
-                        "strategy": "aug_iou_disagreement_v1",
+                        "strategy": "aug_iou_disagreement",
                         "aug_count": len(preds_by_aug),
                         "pred_per_aug": [len(item) for item in preds_by_aug],
                         "base_predictions": preds_by_aug[0][:30] if preds_by_aug else [],
@@ -67,8 +69,7 @@ def score_unlabeled_samples(
                 }
             )
             continue
-        strategy_key = (strategy or "").lower()
-        if strategy_key in {"uncertainty", "uncertainty_1_minus_max_conf", "plugin_native", "plugin_native_strategy"}:
+        if strategy_key == "uncertainty_1_minus_max_conf":
             predicts = model.predict(
                 source=str(image_path),
                 conf=conf,
@@ -81,23 +82,12 @@ def score_unlabeled_samples(
             conf_values = [float(item.get("conf") or 0.0) for item in rows]
             max_conf = max(conf_values) if conf_values else 0.0
             uncertainty = 1.0 - max(0.0, min(1.0, max_conf))
-            if strategy_key in {"plugin_native", "plugin_native_strategy"}:
-                density = min(1.0, len(rows) / 20.0)
-                score = max(0.0, min(1.0, 0.7 * uncertainty + 0.3 * density))
-                reason = {
-                    "strategy": "plugin_native_strategy",
-                    "max_conf": max_conf,
-                    "uncertainty": uncertainty,
-                    "density": density,
-                    "score": score,
-                }
-            else:
-                score = uncertainty
-                reason = {
-                    "strategy": "uncertainty_1_minus_max_conf",
-                    "max_conf": max_conf,
-                    "pred_count": len(rows),
-                }
+            score = uncertainty
+            reason = {
+                "strategy": "uncertainty_1_minus_max_conf",
+                "max_conf": max_conf,
+                "pred_count": len(rows),
+            }
             candidates.append(
                 {
                     "sample_id": sample_id,
@@ -112,7 +102,7 @@ def score_unlabeled_samples(
             )
             continue
 
-        if strategy_key in {"random", "random_baseline"}:
+        if strategy_key == "random_baseline":
             score = _stable_random_score(sample_id=sample_id, random_seed=random_seed, round_index=round_index)
             candidates.append(
                 {
@@ -129,7 +119,7 @@ def score_unlabeled_samples(
             continue
 
         score, reason = score_by_strategy(
-            strategy,
+            strategy_key,
             sample_id,
             random_seed=random_seed,
             round_index=round_index,

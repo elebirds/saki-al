@@ -47,11 +47,20 @@ class YoloDetectionPlugin(ExecutorPlugin):
 
     @property
     def request_config_schema(self) -> dict[str, Any]:
-        return self._internal.request_config_schema
+        return self._internal.config_schema()
 
     @property
     def default_request_config(self) -> dict[str, Any]:
-        return self._internal.default_request_config
+        return self._internal.default_config()
+
+    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
+        return self._internal.config_schema(mode=mode)
+
+    def default_config(self, mode: str | None = None) -> dict[str, Any]:
+        return self._internal.default_config(mode=mode)
+
+    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
+        return self._internal.resolve_config(mode=mode, raw_config=raw_config)
 
     def validate_params(self, params: dict[str, Any]) -> None:
         self._internal.validate_params(params)
@@ -63,6 +72,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir: Any,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         await self._internal.prepare_data(
             workspace=workspace,
@@ -71,6 +81,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             annotations=annotations,
             dataset_ir=dataset_ir,
             infer_image_hw=_infer_image_hw,
+            splits=splits,
         )
 
     async def train(
@@ -101,9 +112,6 @@ class YoloDetectionPlugin(ExecutorPlugin):
 
     async def stop(self, step_id: str) -> None:
         await self._internal.stop(step_id)
-
-    def _resolve_split_config(self, workspace: Workspace) -> tuple[int, float]:
-        return self._internal._resolve_split_config(workspace)  # noqa: SLF001
 
 
 __all__ = ["YoloDetectionPlugin", "_infer_image_hw"]

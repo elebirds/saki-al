@@ -213,9 +213,8 @@ SELECT
   current_iteration,
   max_rounds,
   query_batch_size,
-  query_strategy,
   model_arch,
-  global_config,
+  config,
   last_confirmed_commit_id
 FROM loop
 WHERE id = $1::uuid
@@ -232,9 +231,8 @@ type GetLoopForUpdateRow struct {
 	CurrentIteration      int32
 	MaxRounds             int32
 	QueryBatchSize        int32
-	QueryStrategy         string
 	ModelArch             string
-	GlobalConfig          []byte
+	Config                []byte
 	LastConfirmedCommitID *uuid.UUID
 }
 
@@ -251,9 +249,8 @@ func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLo
 		&i.CurrentIteration,
 		&i.MaxRounds,
 		&i.QueryBatchSize,
-		&i.QueryStrategy,
 		&i.ModelArch,
-		&i.GlobalConfig,
+		&i.Config,
 		&i.LastConfirmedCommitID,
 	)
 	return i, err
@@ -349,7 +346,7 @@ func (q *Queries) InsertCommandLog(ctx context.Context, arg InsertCommandLogPara
 
 const insertRound = `-- name: InsertRound :exec
 INSERT INTO round(
-  id, project_id, loop_id, round_index, mode, state, step_counts, round_type, plugin_id, query_strategy,
+  id, project_id, loop_id, round_index, mode, state, step_counts, round_type, plugin_id,
   resolved_params, resources, input_commit_id, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
   created_at, updated_at
 ) VALUES (
@@ -362,10 +359,9 @@ INSERT INTO round(
   $7::jsonb,
   'loop_round',
   $8,
-  $9,
+  $9::jsonb,
   $10::jsonb,
-  $11::jsonb,
-  $12::uuid,
+  $11::uuid,
   0,
   NULL,
   '{}'::jsonb,
@@ -385,7 +381,6 @@ type InsertRoundParams struct {
 	State          Roundstatus
 	StepCounts     []byte
 	PluginID       string
-	QueryStrategy  string
 	ResolvedParams []byte
 	Resources      []byte
 	InputCommitID  *uuid.UUID
@@ -401,7 +396,6 @@ func (q *Queries) InsertRound(ctx context.Context, arg InsertRoundParams) error 
 		arg.State,
 		arg.StepCounts,
 		arg.PluginID,
-		arg.QueryStrategy,
 		arg.ResolvedParams,
 		arg.Resources,
 		arg.InputCommitID,

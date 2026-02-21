@@ -339,15 +339,24 @@ func extractOracleCommitID(rawConfig []byte) string {
 	if err := json.Unmarshal(rawConfig, &payload); err != nil {
 		return ""
 	}
-	simulationRaw, ok := payload["simulation"]
+	modeRaw, ok := payload["mode"]
+	if !ok {
+		// fallback for legacy payload
+		simulationRaw, legacyOK := payload["simulation"]
+		if !legacyOK {
+			return ""
+		}
+		simulationMap, mapOK := simulationRaw.(map[string]any)
+		if !mapOK {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprintf("%v", simulationMap["oracle_commit_id"]))
+	}
+	modeMap, ok := modeRaw.(map[string]any)
 	if !ok {
 		return ""
 	}
-	simulationMap, ok := simulationRaw.(map[string]any)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprintf("%v", simulationMap["oracle_commit_id"]))
+	return strings.TrimSpace(fmt.Sprintf("%v", modeMap["oracle_commit_id"]))
 }
 
 func extractRoundResources(rawConfig []byte) map[string]any {
@@ -355,6 +364,18 @@ func extractRoundResources(rawConfig []byte) map[string]any {
 	if err := json.Unmarshal(rawConfig, &payload); err != nil {
 		return nil
 	}
+	executionRaw, ok := payload["execution"]
+	if ok {
+		if executionMap, mapOK := executionRaw.(map[string]any); mapOK {
+			if resourcesRaw, exists := executionMap["round_resources_default"]; exists {
+				if resources, resourcesOK := resourcesRaw.(map[string]any); resourcesOK {
+					return resources
+				}
+			}
+		}
+	}
+
+	// fallback for legacy payload
 	resourcesRaw, ok := payload["round_resources_default"]
 	if !ok {
 		return nil

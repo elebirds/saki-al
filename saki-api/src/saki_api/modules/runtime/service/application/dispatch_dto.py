@@ -17,7 +17,7 @@ class StepDispatchPayloadDTO(BaseModel):
     dispatch_kind: str = "dispatchable"
     plugin_id: str
     mode: str
-    query_strategy: str
+    query_strategy: str = ""
     params: dict[str, Any] = Field(default_factory=dict)
     resources: dict[str, Any] = Field(default_factory=dict)
     round_index: int = Field(default=0)

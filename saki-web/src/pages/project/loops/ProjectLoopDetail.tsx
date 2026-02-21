@@ -55,20 +55,13 @@ type LoopConfigForm = {
     name: string;
     mode: 'active_learning' | 'simulation' | 'manual';
     modelArch: string;
-    queryStrategy: string;
-    maxRounds: number;
-    queryBatchSize: number;
-    minSeedLabeled: number;
-    minNewLabelsPerRound: number;
-    stopPatienceRounds: number;
-    stopMinGain: number;
-    autoRegisterModel: boolean;
-    modelRequestConfig: Record<string, any>;
+    samplingStrategy?: string;
+    queryBatchSize?: number;
+    pluginConfig: Record<string, any>;
     simulationConfig: {
         oracleCommitId?: string | null;
-        seedRatio: number;
-        stepRatio: number;
-        maxRounds: number;
+        seedRatio?: number;
+        stepRatio?: number;
         randomBaselineEnabled?: boolean;
         seeds: Array<number | string>;
     };
@@ -97,7 +90,7 @@ const ProjectLoopDetail: React.FC = () => {
     );
 
     const renderDynamicField = (field: RuntimeRequestConfigField) => {
-        const keyPath: (string | number)[] = ['modelRequestConfig', field.key];
+        const keyPath: (string | number)[] = ['pluginConfig', field.key];
         const rules = field.required ? [{required: true, message: `${field.label} 必填`}] : undefined;
         if (field.type === 'boolean') {
             return (
@@ -146,29 +139,25 @@ const ProjectLoopDetail: React.FC = () => {
         setPlugins(pluginCatalog.items || []);
 
         const plugin = pluginCatalog.items.find((item) => item.pluginId === loopRow.modelArch);
+        const loopConfig = loopRow.config || ({} as any);
+        const loopSampling: any = loopConfig.sampling || {};
+        const loopModeConfig = loopConfig.mode || {};
         configForm.setFieldsValue({
             name: loopRow.name,
             mode: loopRow.mode || 'active_learning',
             modelArch: loopRow.modelArch,
-            queryStrategy: loopRow.queryStrategy,
-            maxRounds: loopRow.maxRounds,
-            queryBatchSize: loopRow.queryBatchSize,
-            minSeedLabeled: loopRow.minSeedLabeled,
-            minNewLabelsPerRound: loopRow.minNewLabelsPerRound,
-            stopPatienceRounds: loopRow.stopPatienceRounds,
-            stopMinGain: loopRow.stopMinGain,
-            autoRegisterModel: loopRow.autoRegisterModel,
-            modelRequestConfig: {
+            samplingStrategy: loopSampling.strategy || plugin?.supportedStrategies?.[0],
+            queryBatchSize: Number(loopSampling.topk ?? 200),
+            pluginConfig: {
                 ...(plugin?.defaultRequestConfig || {}),
-                ...(loopRow.modelRequestConfig || {}),
+                ...(loopConfig.plugin || {}),
             },
             simulationConfig: {
-                oracleCommitId: loopRow.simulationConfig?.oracleCommitId,
-                seedRatio: loopRow.simulationConfig?.seedRatio ?? 0.05,
-                stepRatio: loopRow.simulationConfig?.stepRatio ?? 0.05,
-                maxRounds: loopRow.simulationConfig?.maxRounds ?? loopRow.maxRounds,
-                randomBaselineEnabled: loopRow.simulationConfig?.randomBaselineEnabled ?? true,
-                seeds: loopRow.simulationConfig?.seeds ?? [0, 1, 2, 3, 4],
+                oracleCommitId: loopModeConfig.oracleCommitId,
+                seedRatio: loopModeConfig.seedRatio ?? 0.05,
+                stepRatio: loopModeConfig.stepRatio ?? 0.05,
+                randomBaselineEnabled: loopModeConfig.randomBaselineEnabled ?? true,
+                seeds: loopModeConfig.seeds ?? [0, 1, 2, 3, 4],
             },
         });
     }, [loopId, configForm]);
@@ -195,30 +184,35 @@ const ProjectLoopDetail: React.FC = () => {
         try {
             const values = await configForm.validateFields();
             setSaving(true);
-            const payload: LoopUpdateRequest = {
-                name: values.name,
-                mode: values.mode,
-                modelArch: values.modelArch,
-                queryStrategy: values.queryStrategy,
-                maxRounds: values.maxRounds,
-                queryBatchSize: values.queryBatchSize,
-                minSeedLabeled: values.minSeedLabeled,
-                minNewLabelsPerRound: values.minNewLabelsPerRound,
-                stopPatienceRounds: values.stopPatienceRounds,
-                stopMinGain: values.stopMinGain,
-                autoRegisterModel: values.autoRegisterModel,
-                modelRequestConfig: values.modelRequestConfig || {},
-                simulationConfig: {
+            const config: any = {
+                plugin: values.pluginConfig || {},
+            };
+            if (values.mode !== 'manual') {
+                config.sampling = {
+                    strategy: values.samplingStrategy || selectedPlugin?.supportedStrategies?.[0] || 'random_baseline',
+                    topk: Number(values.queryBatchSize ?? 200),
+                };
+            } else {
+                config.mode = {singleRound: true};
+            }
+            if (values.mode === 'simulation') {
+                config.mode = {
+                    ...(config.mode || {}),
                     oracleCommitId: values.simulationConfig?.oracleCommitId,
                     seedRatio: Number(values.simulationConfig?.seedRatio ?? 0.05),
                     stepRatio: Number(values.simulationConfig?.stepRatio ?? 0.05),
-                    maxRounds: Number(values.simulationConfig?.maxRounds ?? values.maxRounds),
                     randomBaselineEnabled: Boolean(values.simulationConfig?.randomBaselineEnabled ?? true),
                     seeds: (values.simulationConfig?.seeds || [0, 1, 2, 3, 4])
                         .map((item) => Number(item))
                         .filter((item) => Number.isFinite(item))
                         .map((item) => Math.trunc(item)),
-                },
+                };
+            }
+            const payload: LoopUpdateRequest = {
+                name: values.name,
+                mode: values.mode,
+                modelArch: values.modelArch,
+                config,
             };
             await api.updateLoop(loopId, payload);
             message.success('Loop 配置已保存');
@@ -393,13 +387,13 @@ const ProjectLoopDetail: React.FC = () => {
                                     onChange={(value) => {
                                         const plugin = plugins.find((item) => item.pluginId === value);
                                         if (!plugin) return;
-                                        const currentValues = configForm.getFieldValue('modelRequestConfig') || {};
+                                        const currentValues = configForm.getFieldValue('pluginConfig') || {};
                                         configForm.setFieldsValue({
-                                            queryStrategy:
-                                                plugin.supportedStrategies.includes(configForm.getFieldValue('queryStrategy'))
-                                                    ? configForm.getFieldValue('queryStrategy')
+                                            samplingStrategy:
+                                                plugin.supportedStrategies.includes(configForm.getFieldValue('samplingStrategy'))
+                                                    ? configForm.getFieldValue('samplingStrategy')
                                                     : (plugin.supportedStrategies[0] || ''),
-                                            modelRequestConfig: {
+                                            pluginConfig: {
                                                 ...plugin.defaultRequestConfig,
                                                 ...currentValues,
                                             },
@@ -410,89 +404,57 @@ const ProjectLoopDetail: React.FC = () => {
                         </div>
                     </div>
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
-                        <div>
-                            <Form.Item name="queryStrategy" label="采样策略" rules={[{required: true, message: '请选择采样策略'}]}>
-                                <Select
-                                    options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}
-                                />
-                            </Form.Item>
-                        </div>
-                        <div>
-                            <Form.Item name="autoRegisterModel" label="自动注册模型" valuePropName="checked">
-                                <Switch/>
-                            </Form.Item>
-                        </div>
+                        {selectedMode !== 'manual' ? (
+                            <div>
+                                <Form.Item name="samplingStrategy" label="采样策略" rules={[{required: true, message: '请选择采样策略'}]}>
+                                    <Select
+                                        options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}
+                                    />
+                                </Form.Item>
+                            </div>
+                        ) : null}
                     </div>
 
-                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
-                        <div>
-                            <Form.Item name="maxRounds" label="最大轮次">
-                                <InputNumber min={1} max={500} className="w-full"/>
-                            </Form.Item>
-                        </div>
-                        <div>
-                            <Form.Item name="queryBatchSize" label="每轮 TopK">
-                                <InputNumber min={1} max={5000} className="w-full"/>
-                            </Form.Item>
-                        </div>
-                        <div>
-                            <Form.Item name="minSeedLabeled" label="最小 Seed 标注量">
-                                <InputNumber min={1} max={5000} className="w-full"/>
-                            </Form.Item>
-                        </div>
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+                        {selectedMode !== 'manual' ? (
+                            <div>
+                                <Form.Item name="queryBatchSize" label="每轮 TopK">
+                                    <InputNumber min={1} max={5000} className="w-full"/>
+                                </Form.Item>
+                            </div>
+                        ) : null}
                     </div>
 
                     {selectedMode === 'simulation' ? (
-                        <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
-                            <div>
-                                <Form.Item
-                                    name={['simulationConfig', 'oracleCommitId']}
-                                    label="Oracle Commit ID"
-                                    rules={[{required: true, message: 'simulation 需要 oracle commit'}]}
-                                >
-                                    <Input/>
-                                </Form.Item>
-                            </div>
-                            <div>
-                                <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
-                                    <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
-                                </Form.Item>
-                            </div>
-                            <div>
-                                <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
-                                    <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
-                                </Form.Item>
-                            </div>
-                            <div>
-                                <Form.Item name={['simulationConfig', 'maxRounds']} label="模拟最大轮次">
-                                    <InputNumber min={1} max={500} className="w-full"/>
-                                </Form.Item>
-                            </div>
-                            <div>
-                                <Form.Item name={['simulationConfig', 'seeds']} label="随机种子列表">
-                                    <Select mode="tags" tokenSeparators={[',']} placeholder="例如：0,1,2,3,4"/>
-                                </Form.Item>
+                        <div>
+                            <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
+                                <div>
+                                    <Form.Item
+                                        name={['simulationConfig', 'oracleCommitId']}
+                                        label="Oracle Commit ID"
+                                        rules={[{required: true, message: 'simulation 需要 oracle commit'}]}
+                                    >
+                                        <Input/>
+                                    </Form.Item>
+                                </div>
+                                <div>
+                                    <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
+                                        <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
+                                    </Form.Item>
+                                </div>
+                                <div>
+                                    <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
+                                        <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
+                                    </Form.Item>
+                                </div>
+                                <div>
+                                    <Form.Item name={['simulationConfig', 'seeds']} label="随机种子列表">
+                                        <Select mode="tags" tokenSeparators={[',']} placeholder="例如：0,1,2,3,4"/>
+                                    </Form.Item>
+                                </div>
                             </div>
                         </div>
                     ) : null}
-
-                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
-                        <div>
-                            <Form.Item name="minNewLabelsPerRound" label="每轮最小新增标注">
-                                <InputNumber min={1} max={5000} className="w-full"/>
-                            </Form.Item>
-                        </div>
-                        <div>
-                            <Form.Item name="stopPatienceRounds" label="Early Stop Patience">
-                                <InputNumber min={1} max={100} className="w-full"/>
-                            </Form.Item>
-                        </div>
-                        <div>
-                            <Form.Item name="stopMinGain" label="Early Stop 最小增益">
-                                <InputNumber min={0} max={1} step={0.0001} className="w-full"/>
-                            </Form.Item>
-                        </div>
-                    </div>
 
                     <Card size="small" className="!border-github-border !bg-github-panel" title={selectedPlugin?.requestConfigSchema?.title || '模型请求参数'}>
                         {(selectedPlugin?.requestConfigSchema?.fields || []).length === 0 ? (
@@ -523,7 +485,10 @@ const ProjectLoopDetail: React.FC = () => {
                             render: (value: string) => <Tag color={ROUND_STATE_COLOR[value] || 'default'}>{value}</Tag>,
                         },
                         {title: '插件', dataIndex: 'pluginId'},
-                        {title: '策略', dataIndex: 'queryStrategy'},
+                        {
+                            title: '策略',
+                            render: (_v: unknown, row: RuntimeRound) => row.resolvedParams?.sampling?.strategy || '-',
+                        },
                         {
                             title: 'Steps',
                             width: 180,

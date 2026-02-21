@@ -283,31 +283,6 @@ func (s *Service) StopStep(ctx context.Context, commandID string, stepID string,
 	})
 }
 
-func (s *Service) TriggerDispatch(ctx context.Context, commandID string, stepID string) (CommandResult, error) {
-	stepID = strings.TrimSpace(stepID)
-	return s.withCommand(ctx, commandID, "trigger_dispatch", stepID, func(tx pgx.Tx, _ string) (string, string, error) {
-		if stepID != "" {
-			stepUUID, err := parseUUID(stepID)
-			if err != nil {
-				return "rejected", "step not found", nil
-			}
-			dispatched, err := s.dispatchStepByID(ctx, stepUUID)
-			if err != nil {
-				return "", "", err
-			}
-			if !dispatched {
-				return "applied", "step not dispatched", nil
-			}
-			return "applied", "step dispatched", nil
-		}
-		count, err := s.dispatchPending(ctx, 128)
-		if err != nil {
-			return "", "", err
-		}
-		return "applied", fmt.Sprintf("dispatch scan completed, dispatched=%d", count), nil
-	})
-}
-
 func (s *Service) listTickLoopIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListTickLoopIDs(ctx, int32(max(1, limit)))
 }
@@ -354,58 +329,74 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 	if err != nil {
 		return err
 	}
-	if loop.Mode == modeAL && roundStatus == roundCompleted {
-		if err := s.qtx(tx).UpdateRoundWaitUser(ctx, latestRound.ID); err != nil {
-			return err
-		}
-		roundStatus = roundWaitUser
+	roundStatus, err = s.normalizeRunningRoundStatusTx(ctx, tx, loop, latestRound, roundStatus)
+	if err != nil {
+		return err
 	}
 	if _, ok := terminalRoundStatuses[roundStatus]; !ok {
-		if loop.Mode == modeAL && roundStatus == roundWaitUser {
-			return s.updateLoopState(ctx, tx, loop.ID, statusRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
-		}
-		return nil
+		return s.handleNonTerminalRoundByModeTx(ctx, tx, loop, roundStatus)
 	}
 
 	if roundStatus == roundFailed || roundStatus == roundCancelled {
-		if err := s.updateLoopState(
-			ctx,
-			tx,
-			loop.ID,
-			statusFailed,
-			loop.Phase,
-			terminalReasonSystemError,
-			loop.LastConfirmedCommitID,
-		); err != nil {
-			return err
-		}
-		return nil
+		return s.markLoopFailedByRoundTx(ctx, tx, loop)
 	}
 
-	switch loop.Mode {
-	case modeSIM:
-		if latestRound.RoundIndex >= loop.MaxRounds {
-			if err := s.updateLoopState(
-				ctx,
-				tx,
-				loop.ID,
-				statusCompleted,
-				phaseSimFinalize,
-				terminalReasonSuccess,
-				loop.LastConfirmedCommitID,
-			); err != nil {
-				return err
-			}
-		} else {
-			if s.shouldDelaySimulationRound(latestRound.EndedAt) {
-				return nil
-			}
-			if _, err := s.createNextRoundTx(ctx, tx, loop, uuid.NewString()); err != nil {
-				return err
-			}
+	return s.handleTerminalRoundByModeTx(ctx, tx, loop, latestRound)
+}
+
+func (s *Service) normalizeRunningRoundStatusTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	loop loopRow,
+	latestRound roundRow,
+	roundStatus db.Roundstatus,
+) (db.Roundstatus, error) {
+	if loop.Mode == modeAL && roundStatus == roundCompleted {
+		if err := s.qtx(tx).UpdateRoundWaitUser(ctx, latestRound.ID); err != nil {
+			return "", err
 		}
+		return roundWaitUser, nil
+	}
+	return roundStatus, nil
+}
+
+func (s *Service) handleNonTerminalRoundByModeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	loop loopRow,
+	roundStatus db.Roundstatus,
+) error {
+	if loop.Mode == modeAL && roundStatus == roundWaitUser {
+		return s.updateLoopState(ctx, tx, loop.ID, statusRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
+	}
+	return nil
+}
+
+func (s *Service) markLoopFailedByRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow) error {
+	return s.updateLoopState(
+		ctx,
+		tx,
+		loop.ID,
+		statusFailed,
+		loop.Phase,
+		terminalReasonSystemError,
+		loop.LastConfirmedCommitID,
+	)
+}
+
+func (s *Service) handleTerminalRoundByModeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	loop loopRow,
+	latestRound roundRow,
+) error {
+	switch loop.Mode {
+	case modeAL:
+		return nil
+	case modeSIM:
+		return s.handleSimulationTerminalRoundTx(ctx, tx, loop, latestRound)
 	case modeManual:
-		if err := s.updateLoopState(
+		return s.updateLoopState(
 			ctx,
 			tx,
 			loop.ID,
@@ -413,11 +404,34 @@ func (s *Service) processRunningLoopTx(ctx context.Context, tx pgx.Tx, loop loop
 			phaseManualFinalize,
 			terminalReasonSuccess,
 			loop.LastConfirmedCommitID,
-		); err != nil {
-			return err
-		}
+		)
+	default:
+		return fmt.Errorf("unsupported loop mode: %s", loop.Mode)
 	}
-	return nil
+}
+
+func (s *Service) handleSimulationTerminalRoundTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	loop loopRow,
+	latestRound roundRow,
+) error {
+	if latestRound.RoundIndex >= loop.MaxRounds {
+		return s.updateLoopState(
+			ctx,
+			tx,
+			loop.ID,
+			statusCompleted,
+			phaseSimFinalize,
+			terminalReasonSuccess,
+			loop.LastConfirmedCommitID,
+		)
+	}
+	if s.shouldDelaySimulationRound(latestRound.EndedAt) {
+		return nil
+	}
+	_, err := s.createNextRoundTx(ctx, tx, loop, uuid.NewString())
+	return err
 }
 
 func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loopRow) error {
@@ -562,16 +576,13 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 	}
 
 	roundID := uuid.New()
-	paramsJSON, err := marshalJSON(map[string]any{
-		"round_index":    nextRound,
-		"loop_mode":      loop.Mode,
-		"query_strategy": loop.QueryStrategy,
-	})
+	roundConfig := compileRoundConfig(loop, nextRound)
+	paramsJSON, err := marshalJSON(roundConfig)
 	if err != nil {
 		return false, err
 	}
 	resourcesJSON := "{}"
-	if resourcePayload := extractRoundResources(loop.GlobalConfig); resourcePayload != nil {
+	if resourcePayload := extractRoundResources(loop.Config); resourcePayload != nil {
 		if resourcesJSON, err = marshalJSON(resourcePayload); err != nil {
 			return false, err
 		}
@@ -586,7 +597,6 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		State:          roundPending,
 		StepCounts:     []byte(`{}`),
 		PluginID:       loop.ModelArch,
-		QueryStrategy:  loop.QueryStrategy,
 		ResolvedParams: []byte(paramsJSON),
 		Resources:      []byte(resourcesJSON),
 		InputCommitID:  sourceCommitID,
@@ -609,6 +619,11 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		if err != nil {
 			return false, err
 		}
+		stepConfig := compileStepConfig(roundConfig, stepSpec.StepType, loop.Mode)
+		stepParamsJSON, err := marshalJSON(stepConfig)
+		if err != nil {
+			return false, err
+		}
 		if err := s.qtx(tx).InsertStep(ctx, db.InsertStepParams{
 			StepID:           stepID,
 			RoundID:          roundID,
@@ -617,7 +632,7 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 			RoundIndex:       int32(nextRound),
 			StepIndex:        int32(idx + 1),
 			DependsOnStepIds: []byte(dependsOnJSON),
-			ResolvedParams:   []byte(paramsJSON),
+			ResolvedParams:   []byte(stepParamsJSON),
 			InputCommitID:    sourceCommitID,
 		}); err != nil {
 			return false, err

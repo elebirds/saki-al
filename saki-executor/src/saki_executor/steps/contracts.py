@@ -18,7 +18,7 @@ class StepExecutionRequest:
     resolved_params: dict[str, Any]
     project_id: str
     input_commit_id: str
-    query_strategy: str
+    query_strategy: str | None
     mode: str
     round_index: int
     attempt: int
@@ -35,9 +35,7 @@ class StepExecutionRequest:
         if round_index <= 0:
             raise ValueError("round_index is required and must be a positive integer")
 
-        query_strategy = str(payload.get("query_strategy") or "").strip()
-        if not query_strategy:
-            raise ValueError("query_strategy is required")
+        query_strategy = str(payload.get("query_strategy") or "").strip() or None
 
         step_type = str(payload.get("step_type") or "").strip().lower()
         if not step_type:
@@ -53,6 +51,27 @@ class StepExecutionRequest:
         if mode not in SUPPORTED_LOOP_MODES:
             raise ValueError(f"unsupported mode: {mode or '<empty>'}")
 
+        resolved_params = dict(payload.get("resolved_params") or {})
+        sampling = resolved_params.get("sampling")
+        sampling_cfg = sampling if isinstance(sampling, dict) else {}
+        has_sampling = bool(sampling_cfg) or any(
+            key in resolved_params for key in ("topk", "query_strategy", "sampling_topk")
+        )
+        if mode == "manual" and has_sampling:
+            raise ValueError("manual mode does not allow sampling params")
+        if mode in {"active_learning", "simulation"}:
+            strategy = str(sampling_cfg.get("strategy") or query_strategy or "").strip()
+            fallback_topk = 200 if strategy else 0
+            topk_raw = sampling_cfg.get("topk", resolved_params.get("topk", fallback_topk))
+            try:
+                topk = int(topk_raw)
+            except Exception as exc:
+                raise ValueError("sampling.topk is required for active_learning/simulation") from exc
+            if not strategy:
+                raise ValueError("sampling.strategy is required for active_learning/simulation")
+            if topk <= 0:
+                raise ValueError("sampling.topk must be > 0 for active_learning/simulation")
+
         step_id = str(payload.get("step_id") or "").strip()
         if not step_id:
             raise ValueError("step_id is required")
@@ -63,7 +82,7 @@ class StepExecutionRequest:
             step_type=step_type,
             dispatch_kind=dispatch_kind,
             plugin_id=str(payload.get("plugin_id") or ""),
-            resolved_params=dict(payload.get("resolved_params") or {}),
+            resolved_params=resolved_params,
             project_id=str(payload.get("project_id") or ""),
             input_commit_id=str(payload.get("input_commit_id") or ""),
             query_strategy=query_strategy,

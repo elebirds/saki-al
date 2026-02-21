@@ -35,7 +35,6 @@ from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
 from saki_api.modules.runtime.api.round_step import (
     LoopCreateRequest,
     LoopRead,
-    LoopSimulationConfig,
     LoopUpdateRequest,
     SimulationExperimentCreateRequest,
 )
@@ -102,9 +101,11 @@ async def test_loop_read_model_validate_accepts_orm_instance(loop_api_env):
                 LoopCreateRequest(
                     name="loop-a",
                     branch_id=branch.id,
-                    query_strategy="random_baseline",
                     model_arch="yolo_det_v1",
-                    model_request_config={"epochs": 12, "batch": 8},
+                    config={
+                        "plugin": {"epochs": 12, "batch": 8},
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                    },
                 ),
             )
         finally:
@@ -138,16 +139,17 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
                 payload=LoopCreateRequest(
                     name="loop-b",
                     branch_id=branch.id,
-                    query_strategy="random_baseline",
                     model_arch="yolo_det_v1",
-                    global_config={"warm_start": False},
-                    model_request_config={"epochs": 24, "batch": 16},
+                    config={
+                        "plugin": {"epochs": 24, "batch": 16},
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                    },
                 ),
                 runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
-            assert created.model_request_config == {"epochs": 24, "batch": 16}
+            assert created.config.get("plugin") == {"epochs": 24, "batch": 16}
 
             listed = await loop_query_endpoint.list_project_loops(
                 project_id=project.id,
@@ -170,16 +172,19 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
                 loop_id=created.id,
                 payload=LoopUpdateRequest(
                     model_arch="demo_det_v1",
-                    query_strategy="uncertainty_1_minus_max_conf",
-                    model_request_config={"epochs": 30, "lr": 0.001},
+                    config={
+                        "plugin": {"epochs": 30, "lr": 0.001},
+                        "sampling": {"strategy": "uncertainty_1_minus_max_conf", "topk": 256},
+                    },
                 ),
                 runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
             assert updated.model_arch == "demo_det_v1"
-            assert updated.query_strategy == "uncertainty_1_minus_max_conf"
-            assert updated.model_request_config == {"epochs": 30, "lr": 0.001}
+            assert updated.config.get("sampling", {}).get("strategy") == "uncertainty_1_minus_max_conf"
+            assert updated.config.get("sampling", {}).get("topk") == 256
+            assert updated.config.get("plugin") == {"epochs": 30, "lr": 0.001}
         finally:
             _session_ctx.reset(token)
 
@@ -199,8 +204,8 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
                 LoopCreateRequest(
                     name="loop-first",
                     branch_id=branch.id,
-                    query_strategy="random_baseline",
                     model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
                 ),
             )
             with pytest.raises(BadRequestAppException):
@@ -209,8 +214,8 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
                     LoopCreateRequest(
                         name="loop-second",
                         branch_id=branch.id,
-                        query_strategy="random_baseline",
                         model_arch="yolo_det_v1",
+                        config={"sampling": {"strategy": "random_baseline", "topk": 200}},
                     ),
                 )
         finally:
@@ -250,8 +255,8 @@ async def test_loop_control_confirm_rejects_manual_mode(loop_api_env, monkeypatc
                     name="loop-manual",
                     branch_id=branch.id,
                     mode=LoopMode.MANUAL,
-                    query_strategy="random_baseline",
                     model_arch="yolo_det_v1",
+                    config={"plugin": {"epochs": 1}},
                     status=LoopStatus.RUNNING,
                 ),
             )
@@ -306,8 +311,8 @@ async def test_loop_control_confirm_forwards_force_flag(loop_api_env, monkeypatc
                     name="loop-al-confirm",
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
-                    query_strategy="random_baseline",
                     model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
                     status=LoopStatus.RUNNING,
                 ),
             )
@@ -348,11 +353,13 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
                     name="loop-cleanup-audit",
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
-                    query_strategy="random_baseline",
                     model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
                     status=LoopStatus.RUNNING,
                 ),
             )
+            loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}
+            loop_strategy = str((loop_sampling or {}).get("strategy") or "random_baseline")
             round_row = Round(
                 project_id=project.id,
                 loop_id=loop.id,
@@ -362,12 +369,12 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
                 step_counts={},
                 round_type="loop_round",
                 plugin_id=loop.model_arch,
-                query_strategy=loop.query_strategy,
-                resolved_params={},
+                resolved_params={"sampling": {"strategy": loop_strategy}},
                 resources={},
                 input_commit_id=branch.head_commit_id,
                 final_metrics={},
                 final_artifacts={},
+                strategy_params={"sampling": {"strategy": loop_strategy}},
             )
             session.add(round_row)
             await session.flush()
@@ -460,13 +467,16 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
                     experiment_name="sim-exp",
                     model_arch="yolo_det_v1",
                     strategies=["uncertainty_1_minus_max_conf"],
-                    simulation_config=LoopSimulationConfig(
-                        oracle_commit_id=branch.head_commit_id,
-                        seed_ratio=0.1,
-                        step_ratio=0.1,
-                        max_rounds=3,
-                        seeds=[0, 1],
-                    ),
+                    config={
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "mode": {
+                            "oracle_commit_id": str(branch.head_commit_id),
+                            "seed_ratio": 0.1,
+                            "step_ratio": 0.1,
+                            "max_rounds": 3,
+                            "seeds": [0, 1],
+                        },
+                    },
                 ),
                 runtime_service=service,
                 session=session,
@@ -478,8 +488,10 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
             assert all(loop.mode == LoopMode.SIMULATION for loop in created.loops)
 
             for loop in created.loops:
+                loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}
+                loop_strategy = str((loop_sampling or {}).get("strategy") or "random_baseline")
                 for ridx in [1, 2, 3]:
-                    base = 0.5 if loop.query_strategy == "random_baseline" else 0.6
+                    base = 0.5 if loop_strategy == "random_baseline" else 0.6
                     session.add(
                         Round(
                             project_id=project.id,
@@ -490,12 +502,12 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
                             step_counts={"succeeded": 4},
                             round_type="loop_round",
                             plugin_id=loop.model_arch,
-                            query_strategy=loop.query_strategy,
-                            resolved_params={},
+                            resolved_params={"sampling": {"strategy": loop_strategy}},
                             resources={},
                             input_commit_id=branch.head_commit_id,
                             final_metrics={"map50": base + ridx * 0.01},
                             final_artifacts={},
+                            strategy_params={"sampling": {"strategy": loop_strategy}},
                         )
                     )
             await session.commit()

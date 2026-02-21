@@ -26,7 +26,6 @@ import {
     ProjectSample,
     RuntimeRound,
     RuntimeRoundCommandResponse,
-    RuntimeRoundCreateRequest,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
@@ -260,8 +259,6 @@ export interface ApiService {
     getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
 
     getLoopRounds(loopId: string, limit?: number): Promise<RuntimeRound[]>;
-
-    createLoopRound(loopId: string, payload: RuntimeRoundCreateRequest): Promise<RuntimeRound>;
 
     stopRound(roundId: string, reason?: string): Promise<RuntimeRoundCommandResponse>;
 

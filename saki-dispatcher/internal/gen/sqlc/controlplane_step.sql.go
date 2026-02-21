@@ -119,8 +119,7 @@ const getLoopRuntimeConfig = `-- name: GetLoopRuntimeConfig :one
 SELECT
   project_id AS project_id,
   branch_id AS branch_id,
-  query_strategy,
-  global_config,
+  config,
   query_batch_size
 FROM loop
 WHERE id = $1::uuid
@@ -129,8 +128,7 @@ WHERE id = $1::uuid
 type GetLoopRuntimeConfigRow struct {
 	ProjectID      uuid.UUID
 	BranchID       uuid.UUID
-	QueryStrategy  string
-	GlobalConfig   []byte
+	Config         []byte
 	QueryBatchSize int32
 }
 
@@ -140,8 +138,7 @@ func (q *Queries) GetLoopRuntimeConfig(ctx context.Context, loopID uuid.UUID) (G
 	err := row.Scan(
 		&i.ProjectID,
 		&i.BranchID,
-		&i.QueryStrategy,
-		&i.GlobalConfig,
+		&i.Config,
 		&i.QueryBatchSize,
 	)
 	return i, err
@@ -178,7 +175,6 @@ SELECT
   j.project_id AS project_id,
   j.plugin_id,
   j.mode AS mode,
-  j.query_strategy,
   j.resolved_params AS round_params_raw,
   j.resources AS resources_raw,
   j.input_commit_id AS round_input_commit_id
@@ -204,7 +200,6 @@ type GetStepPayloadByIDForUpdateRow struct {
 	ProjectID          uuid.UUID
 	PluginID           string
 	Mode               Loopmode
-	QueryStrategy      string
 	RoundParamsRaw     []byte
 	ResourcesRaw       []byte
 	RoundInputCommitID *uuid.UUID
@@ -229,7 +224,6 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.U
 		&i.ProjectID,
 		&i.PluginID,
 		&i.Mode,
-		&i.QueryStrategy,
 		&i.RoundParamsRaw,
 		&i.ResourcesRaw,
 		&i.RoundInputCommitID,

@@ -181,7 +181,6 @@ saki-executor/
 1. `uncertainty_1_minus_max_conf`
 2. `aug_iou_disagreement`
 3. `random_baseline`
-4. `plugin_native_strategy`
 
 ---
 

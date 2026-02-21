@@ -141,6 +141,45 @@ async def test_duplicate_assign_step_returns_cached_ack_without_reassign(tmp_pat
 
 
 @pytest.mark.anyio
+async def test_invalid_assign_step_returns_rejected_ack(tmp_path):
+    client = _build_client(tmp_path)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send_message(message: pb.RuntimeMessage):
+        sent_messages.append(message)
+
+    client.send_message = fake_send_message  # type: ignore[method-assign]
+
+    incoming = pb.RuntimeMessage(
+        assign_step=pb.AssignStep(
+            request_id="assign-invalid-1",
+            step=pb.StepPayload(
+                step_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                round_id="11111111-1111-1111-1111-111111111111",
+                project_id="22222222-2222-2222-2222-222222222222",
+                loop_id="33333333-3333-3333-3333-333333333333",
+                input_commit_id="44444444-4444-4444-4444-444444444444",
+                step_type=pb.RUNTIME_STEP_TYPE_UNSPECIFIED,
+                plugin_id="demo_det_v1",
+                mode=pb.MANUAL,
+                query_strategy="random_baseline",
+                round_index=1,
+                dispatch_kind=pb.DISPATCHABLE,
+            ),
+        )
+    )
+
+    await client._handle_incoming(incoming)  # noqa: SLF001
+
+    assert len(sent_messages) == 1
+    ack = sent_messages[0].ack
+    assert ack.ack_for == "assign-invalid-1"
+    assert ack.status == pb.ERROR
+    assert ack.reason == pb.ACK_REASON_REJECTED
+    assert "step_type is required" in ack.detail
+
+
+@pytest.mark.anyio
 async def test_duplicate_stop_step_returns_cached_ack_without_restop(tmp_path):
     client = _build_client(tmp_path)
     stop_calls: list[str] = []

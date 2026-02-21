@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from saki_executor.agent import codec as runtime_codec
+from saki_executor.plugins.ipc.proxy_plugin import SubprocessPluginProxy
 from saki_executor.steps.contracts import SUPPORTED_LOOP_MODES, StepExecutionRequest, StepFinalResult
 from saki_executor.steps.orchestration.event_emitter import StepEventEmitter
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
@@ -24,8 +25,6 @@ class StepPipelineRunner:
         "select",
         "activate_samples",
         "advance_branch",
-        "wait_annotation",
-        "manual_review",
     }
     _TRAINING_PIPELINE_STEP_TYPES = {
         "train",
@@ -52,11 +51,13 @@ class StepPipelineRunner:
         self._manager = manager
         self._request = request
         self._task_id = request.step_id
+        self._effective_plugin_params: dict[str, Any] = {}
 
     async def run(self) -> StepFinalResult:
         self._validate_request()
-        plugin = self._resolve_plugin()
+        metadata_plugin = self._resolve_plugin()
         workspace, reporter, emitter = self._prepare_workspace()
+        plugin = self._build_execution_plugin(metadata_plugin=metadata_plugin, emitter=emitter)
         await self._emit_start_status(emitter)
 
         metrics: dict[str, Any]
@@ -64,36 +65,39 @@ class StepPipelineRunner:
         candidates: list[dict[str, Any]]
         optional_upload_failures: list[str]
 
-        if self._request.step_type in self._SCORE_ONLY_STEP_TYPES:
-            metrics, artifacts, candidates, optional_upload_failures = await self._run_score_pipeline(
-                plugin=plugin,
-                workspace=workspace,
-                emitter=emitter,
-            )
-        elif self._request.step_type in self._TRAIN_ONLY_STEP_TYPES:
-            metrics, artifacts, candidates, optional_upload_failures = await self._run_train_only_pipeline(
-                plugin=plugin,
-                workspace=workspace,
-                emitter=emitter,
-                reporter=reporter,
-            )
-        elif self._request.step_type in self._TRAIN_AND_SAMPLE_STEP_TYPES:
-            metrics, artifacts, candidates, optional_upload_failures = await self._run_train_and_sample_pipeline(
-                plugin=plugin,
-                workspace=workspace,
-                emitter=emitter,
-                reporter=reporter,
-            )
-        else:
-            raise RuntimeError(f"step_type routing is not implemented: {self._request.step_type}")
+        try:
+            if self._request.step_type in self._SCORE_ONLY_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_score_pipeline(
+                    plugin=plugin,
+                    workspace=workspace,
+                    emitter=emitter,
+                )
+            elif self._request.step_type in self._TRAIN_ONLY_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_train_only_pipeline(
+                    plugin=plugin,
+                    workspace=workspace,
+                    emitter=emitter,
+                    reporter=reporter,
+                )
+            elif self._request.step_type in self._TRAIN_AND_SAMPLE_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_train_and_sample_pipeline(
+                    plugin=plugin,
+                    workspace=workspace,
+                    emitter=emitter,
+                    reporter=reporter,
+                )
+            else:
+                raise RuntimeError(f"step_type routing is not implemented: {self._request.step_type}")
 
-        return await self._finalize_result(
-            reporter=reporter,
-            metrics=metrics,
-            artifacts=artifacts,
-            candidates=candidates,
-            optional_upload_failures=optional_upload_failures,
-        )
+            return await self._finalize_result(
+                reporter=reporter,
+                metrics=metrics,
+                artifacts=artifacts,
+                candidates=candidates,
+                optional_upload_failures=optional_upload_failures,
+            )
+        finally:
+            await self._shutdown_plugin(plugin)
 
     def _validate_request(self) -> None:
         if self._request.mode not in self._SUPPORTED_MODES:
@@ -111,6 +115,7 @@ class StepPipelineRunner:
         plugin = self._manager.plugin_registry.get(self._request.plugin_id)
         if not plugin:
             raise RuntimeError(f"plugin not found: {self._request.plugin_id}")
+        self._manager.plugin_registry.ensure_worker_loadable(self._request.plugin_id)
         supported_step_types = {
             str(item).strip().lower()
             for item in (plugin.supported_step_types or [])
@@ -121,9 +126,30 @@ class StepPipelineRunner:
                 f"plugin {self._request.plugin_id} does not support step_type={self._request.step_type}; "
                 f"supported={sorted(supported_step_types)}"
             )
-        plugin.validate_params(self._request.resolved_params)
+        raw_plugin_config = self._request.resolved_params.get("plugin")
+        if not isinstance(raw_plugin_config, dict):
+            raw_plugin_config = dict(self._request.resolved_params)
+        effective_plugin_params = plugin.resolve_config(self._request.mode, raw_plugin_config)
+        for key in ("split_seed", "train_seed", "sampling_seed", "round_index", "deterministic"):
+            if key in self._request.resolved_params and key not in effective_plugin_params:
+                effective_plugin_params[key] = self._request.resolved_params.get(key)
+        plugin.validate_params(effective_plugin_params)
+        self._effective_plugin_params = effective_plugin_params
+        return plugin
+
+    def _build_execution_plugin(self, *, metadata_plugin: Any, emitter: StepEventEmitter):
+        plugin = SubprocessPluginProxy(
+            metadata_plugin=metadata_plugin,
+            step_id=self._request.step_id,
+            emit=emitter.emit,
+        )
         self._manager._active_plugin = plugin  # noqa: SLF001
         return plugin
+
+    async def _shutdown_plugin(self, plugin: Any) -> None:
+        shutdown = getattr(plugin, "shutdown", None)
+        if callable(shutdown):
+            await shutdown()
 
     def _prepare_workspace(self) -> tuple[Workspace, StepReporter, StepEventEmitter]:
         workspace = Workspace(self._manager.runs_dir, self._task_id)
@@ -143,7 +169,6 @@ class StepPipelineRunner:
 
     async def _emit_start_status(self, emitter: StepEventEmitter) -> None:
         self._manager.executor_state = ExecutorState.RUNNING
-        await emitter.emit_status(StepStatus.PENDING, "step pending")
         await emitter.emit_status(StepStatus.DISPATCHING, "step dispatching")
         await emitter.emit_status(StepStatus.RUNNING, "step running")
 
@@ -159,7 +184,7 @@ class StepPipelineRunner:
             workspace=workspace,
             emitter=emitter,
         )
-        output = await plugin.train(workspace, self._request.resolved_params, emitter.emit)
+        output = await plugin.train(workspace, self._effective_plugin_params, emitter.emit)
         return output, protected
 
     async def _prepare_plugin_data(
@@ -170,12 +195,14 @@ class StepPipelineRunner:
         emitter: StepEventEmitter,
     ) -> set[str]:
         params_snapshot = {
-            "epochs": self._request.resolved_params.get("epochs"),
-            "batch": self._request.resolved_params.get("batch", self._request.resolved_params.get("batch_size")),
-            "imgsz": self._request.resolved_params.get("imgsz"),
-            "base_model": self._request.resolved_params.get("base_model"),
+            "epochs": self._effective_plugin_params.get("epochs"),
+            "batch": self._effective_plugin_params.get("batch", self._effective_plugin_params.get("batch_size")),
+            "imgsz": self._effective_plugin_params.get("imgsz"),
+            "model_source": self._effective_plugin_params.get("model_source"),
+            "model_preset": self._effective_plugin_params.get("model_preset"),
             "split_seed": self._request.resolved_params.get("split_seed"),
-            "random_seed": self._request.resolved_params.get("random_seed"),
+            "train_seed": self._request.resolved_params.get("train_seed"),
+            "sampling_seed": self._request.resolved_params.get("sampling_seed"),
             "mode": self._request.mode,
             "step_type": self._request.step_type,
             "round_index": self._request.round_index,
@@ -192,13 +219,24 @@ class StepPipelineRunner:
             plugin=plugin,
             emit=emitter.emit,
         )
-        await plugin.prepare_data(
-            workspace,
-            data_bundle.labels,
-            data_bundle.train_samples,
-            data_bundle.train_annotations,
-            data_bundle.ir_batch,
-        )
+        prepare_data = getattr(plugin, "prepare_data")
+        try:
+            await prepare_data(
+                workspace=workspace,
+                labels=data_bundle.labels,
+                samples=data_bundle.samples,
+                annotations=data_bundle.train_annotations,
+                dataset_ir=data_bundle.ir_batch,
+                splits=data_bundle.splits,
+            )
+        except TypeError:
+            await prepare_data(
+                workspace,
+                data_bundle.labels,
+                data_bundle.samples,
+                data_bundle.train_annotations,
+                data_bundle.ir_batch,
+            )
         return data_bundle.protected
 
     async def _run_train_and_sample_pipeline(
@@ -277,19 +315,37 @@ class StepPipelineRunner:
         protected: set[str],
     ) -> list[dict[str, Any]]:
         skip_sampling = bool(self._request.resolved_params.get("skip_sampling", False))
+        if self._request.mode == "manual":
+            await emitter.emit("log", {"level": "INFO", "message": "manual mode: skip sampling"})
+            return []
         if skip_sampling:
             await emitter.emit("log", {"level": "INFO", "message": "skip_sampling=true, TopK sampling skipped"})
             return []
-        topk = int(self._request.resolved_params.get("topk", 200))
-        sampling_params = dict(self._request.resolved_params)
-        sampling_params["topk"] = topk
+
+        sampling_cfg = self._request.resolved_params.get("sampling")
+        sampling_cfg = dict(sampling_cfg) if isinstance(sampling_cfg, dict) else {}
+        strategy = str(
+            sampling_cfg.get("strategy")
+            or self._request.query_strategy
+            or ""
+        ).strip()
+        if not strategy:
+            await emitter.emit("log", {"level": "INFO", "message": "sampling strategy is empty, skip sampling"})
+            return []
+        topk = int(sampling_cfg.get("topk", self._request.resolved_params.get("topk", 200)))
+        sampling_params = dict(self._effective_plugin_params)
+        sampling_params.update(sampling_cfg)
+        sampling_params["sampling_topk"] = topk
+        sampling_params["sampling_seed"] = int(
+            self._request.resolved_params.get("sampling_seed", sampling_params.get("sampling_seed", 0))
+        )
         return await self._manager._collect_topk_candidates_streaming(  # noqa: SLF001
             plugin=plugin,
             workspace=workspace,
             step_id=self._request.step_id,
             project_id=self._request.project_id,
             commit_id=self._request.input_commit_id,
-            strategy=self._request.query_strategy,
+            strategy=strategy,
             params=sampling_params,
             protected=protected,
             topk=topk,

@@ -28,8 +28,8 @@ def prepare_yolo_dataset(
     samples: list[dict[str, Any]],
     infer_image_hw: Callable[[Path], tuple[int, int]],
     to_int: Callable[[Any, int], int],
-    resolve_split_config: Callable[[Workspace], tuple[int, float]],
     dataset_ir: irpb.DataBatchIR,
+    splits: dict[str, list[dict[str, Any]]] | None = None,
 ) -> PreparedDataset:
     data_root = workspace.data_dir
     images_train_dir = data_root / "images" / "train"
@@ -49,12 +49,33 @@ def prepare_yolo_dataset(
     )
 
     sample_ids = sorted(sample_map.keys())
-    split_seed, val_ratio = resolve_split_config(workspace)
-    train_ids, val_ids, val_degraded = resolve_train_val_split(
+    split_seed = max(0, to_int((splits or {}).get("split_seed"), 0))
+    val_ratio_raw = (splits or {}).get("val_split_ratio")
+    try:
+        val_ratio = float(val_ratio_raw) if val_ratio_raw is not None else 0.2
+    except Exception:
+        val_ratio = 0.2
+
+    train_ids, val_ids = _resolve_split_from_core(
         sample_ids=sample_ids,
-        split_seed=split_seed,
-        val_ratio=val_ratio,
+        samples=samples,
+        splits=splits,
     )
+    val_degraded = len(val_ids) == 0
+    if len(train_ids) == 0:
+        train_ids = set(sample_ids)
+        val_ids = set()
+        val_degraded = True
+    if len(train_ids) > 0 and len(val_ids) > 0:
+        val_degraded = False
+
+    if len(train_ids) == len(sample_ids) and len(val_ids) == 0 and split_seed > 0:
+        # 兜底：若 core 未下发 split，可按种子再切一次。
+        train_ids, val_ids, val_degraded = resolve_train_val_split(
+            sample_ids=sample_ids,
+            split_seed=split_seed,
+            val_ratio=val_ratio,
+        )
     label_stats = _write_dataset_files(
         sample_map=sample_map,
         train_ids=train_ids,
@@ -91,6 +112,45 @@ def prepare_yolo_dataset(
         encoding="utf-8",
     )
     return PreparedDataset(manifest=manifest)
+
+
+def _resolve_split_from_core(
+    *,
+    sample_ids: list[str],
+    samples: list[dict[str, Any]],
+    splits: dict[str, list[dict[str, Any]]] | None,
+) -> tuple[set[str], set[str]]:
+    known = set(sample_ids)
+    train_ids: set[str] = set()
+    val_ids: set[str] = set()
+
+    if isinstance(splits, dict):
+        for item in splits.get("train") or []:
+            if isinstance(item, dict):
+                sample_id = str(item.get("id") or "").strip()
+                if sample_id in known:
+                    train_ids.add(sample_id)
+        for item in splits.get("val") or []:
+            if isinstance(item, dict):
+                sample_id = str(item.get("id") or "").strip()
+                if sample_id in known:
+                    val_ids.add(sample_id)
+
+    if not train_ids and not val_ids:
+        for item in samples:
+            sample_id = str(item.get("id") or "").strip()
+            if sample_id not in known:
+                continue
+            split = str(item.get("_split") or "").strip().lower()
+            if split == "val":
+                val_ids.add(sample_id)
+            elif split == "train":
+                train_ids.add(sample_id)
+
+    if not train_ids and not val_ids:
+        train_ids = set(sample_ids)
+
+    return train_ids, val_ids
 
 
 def _build_label_index(labels: list[dict[str, Any]]) -> tuple[dict[str, int], dict[int, str]]:

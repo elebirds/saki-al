@@ -15,47 +15,12 @@ from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import (
     RoundCommandResponse,
-    RoundCreateRequest,
-    RoundRead,
     StepCommandResponse,
 )
 from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 
 router = APIRouter()
-
-
-async def _trigger_dispatch(dispatcher_admin_client: DispatcherAdminClientDep) -> None:
-    if not dispatcher_admin_client.enabled:
-        raise InternalServerErrorAppException("dispatcher_admin is not configured")
-    try:
-        await dispatcher_admin_client.trigger_dispatch()
-    except Exception as exc:
-        logger.warning("dispatcher trigger_dispatch failed error={}", exc)
-        raise InternalServerErrorAppException("dispatcher trigger_dispatch failed") from exc
-
-
-@router.post("/loops/{loop_id}/rounds", response_model=RoundRead)
-async def create_round(
-    *,
-    loop_id: uuid.UUID,
-    payload: RoundCreateRequest,
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await ensure_project_permission(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required_permission=Permissions.ROUND_MANAGE,
-        fallback_permissions=(Permissions.PROJECT_UPDATE,),
-    )
-    round_item = await runtime_service.create_round_for_loop(loop_id, payload)
-    await _trigger_dispatch(dispatcher_admin_client)
-    return RoundRead.model_validate(round_item)
 
 
 @router.post("/rounds/{round_id}:stop", response_model=RoundCommandResponse)

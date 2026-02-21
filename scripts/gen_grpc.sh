@@ -7,6 +7,8 @@ RUNTIME_PROTO="$PROTO_DIR/runtime_control.proto"
 ADMIN_PROTO="$PROTO_DIR/dispatcher_admin.proto"
 DOMAIN_PROTO="$PROTO_DIR/runtime_domain.proto"
 ALL_PROTO_FILES=("$RUNTIME_PROTO" "$ADMIN_PROTO" "$DOMAIN_PROTO")
+GRPC_TOOLS_VERSION="1.78.0"
+GRPC_VERSION="1.78.0"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is required" >&2
@@ -22,13 +24,13 @@ DISP_DOMAIN_OUT="$DISP_OUT_ROOT/runtimedomainv1"
 
 mkdir -p "$API_OUT" "$EXEC_OUT" "$DISP_RUNTIME_OUT" "$DISP_ADMIN_OUT" "$DISP_DOMAIN_OUT"
 
-uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
+uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
   --python_out="$API_OUT" \
   --grpc_python_out="$API_OUT" \
   "${ALL_PROTO_FILES[@]}"
 
-uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
+uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
   -I "$PROTO_DIR" \
   --python_out="$EXEC_OUT" \
   --grpc_python_out="$EXEC_OUT" \
@@ -38,7 +40,7 @@ export PATH="$HOME/go/bin:$PATH"
 if command -v protoc-gen-go >/dev/null 2>&1 && command -v protoc-gen-go-grpc >/dev/null 2>&1; then
   rm -f "$DISP_RUNTIME_OUT"/*.go "$DISP_ADMIN_OUT"/*.go "$DISP_DOMAIN_OUT"/*.go
 
-  uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
+  uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
     -I "$PROTO_DIR" \
     --go_out="$DISP_RUNTIME_OUT" \
     --go_opt=paths=source_relative \
@@ -46,7 +48,7 @@ if command -v protoc-gen-go >/dev/null 2>&1 && command -v protoc-gen-go-grpc >/d
     --go-grpc_opt=paths=source_relative \
     "$RUNTIME_PROTO"
 
-  uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
+  uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
     -I "$PROTO_DIR" \
     --go_out="$DISP_ADMIN_OUT" \
     --go_opt=paths=source_relative \
@@ -54,7 +56,7 @@ if command -v protoc-gen-go >/dev/null 2>&1 && command -v protoc-gen-go-grpc >/d
     --go-grpc_opt=paths=source_relative \
     "$ADMIN_PROTO"
 
-  uv run --with grpcio-tools==1.78.* python -m grpc_tools.protoc \
+  uv run --with "grpcio-tools==${GRPC_TOOLS_VERSION}" --with "grpcio==${GRPC_VERSION}" python -m grpc_tools.protoc \
     -I "$PROTO_DIR" \
     --go_out="$DISP_DOMAIN_OUT" \
     --go_opt=paths=source_relative \

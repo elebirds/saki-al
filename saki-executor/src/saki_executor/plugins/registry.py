@@ -1,6 +1,5 @@
 from saki_executor.plugins.base import ExecutorPlugin
-from saki_executor.plugins.builtin.demo_det.plugin import DemoDetectionPlugin
-from saki_executor.plugins.builtin.yolo_det.plugin import YoloDetectionPlugin
+from saki_executor.plugins.factory import is_plugin_loadable, load_builtin_plugins
 
 
 class PluginRegistry:
@@ -16,7 +15,13 @@ class PluginRegistry:
     def all(self) -> list[ExecutorPlugin]:
         return list(self._plugins.values())
 
+    def ensure_worker_loadable(self, plugin_id: str) -> None:
+        if not is_plugin_loadable(plugin_id):
+            raise RuntimeError(f"plugin is not loadable in worker process: {plugin_id}")
+
+    def worker_loadable(self, plugin_id: str) -> bool:
+        return is_plugin_loadable(plugin_id)
+
     def load_builtin(self) -> None:
-        # 首选真实 YOLO 插件；保留 demo 作为紧急回退。
-        self.register(YoloDetectionPlugin())
-        self.register(DemoDetectionPlugin())
+        for plugin in load_builtin_plugins():
+            self.register(plugin)

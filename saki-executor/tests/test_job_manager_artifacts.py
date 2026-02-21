@@ -15,6 +15,76 @@ from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
 
 
+class _InProcessProxy(ExecutorPlugin):
+    def __init__(self, *, metadata_plugin: ExecutorPlugin, step_id: str, emit):
+        del step_id
+        self._plugin = metadata_plugin
+        self._emit = emit
+
+    @property
+    def plugin_id(self) -> str:
+        return self._plugin.plugin_id
+
+    @property
+    def version(self) -> str:
+        return self._plugin.version
+
+    @property
+    def supported_step_types(self) -> list[str]:
+        return self._plugin.supported_step_types
+
+    @property
+    def supported_strategies(self) -> list[str]:
+        return self._plugin.supported_strategies
+
+    def validate_params(self, params: dict[str, Any]) -> None:
+        self._plugin.validate_params(params)
+
+    async def prepare_data(
+            self,
+            workspace,
+            labels: list[dict[str, Any]],
+            samples: list[dict[str, Any]],
+            annotations: list[dict[str, Any]],
+            dataset_ir,
+    ) -> None:
+        await self._plugin.prepare_data(workspace, labels, samples, annotations, dataset_ir)
+
+    async def train(self, workspace, params: dict[str, Any], emit) -> TrainOutput:
+        del emit
+        return await self._plugin.train(workspace, params, self._emit)
+
+    async def predict_unlabeled(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return await self._plugin.predict_unlabeled(workspace, unlabeled_samples, strategy, params)
+
+    async def predict_unlabeled_batch(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return await self._plugin.predict_unlabeled_batch(workspace, unlabeled_samples, strategy, params)
+
+    async def stop(self, step_id: str) -> None:
+        await self._plugin.stop(step_id)
+
+    async def shutdown(self) -> None:
+        return
+
+
+@pytest.fixture(autouse=True)
+def _patch_subprocess_proxy(monkeypatch):
+    monkeypatch.setattr("saki_executor.plugins.registry.is_plugin_loadable", lambda plugin_id: True)
+    monkeypatch.setattr("saki_executor.steps.orchestration.runner.SubprocessPluginProxy", _InProcessProxy)
+
+
 class _ArtifactPlugin(ExecutorPlugin):
     @property
     def plugin_id(self) -> str:

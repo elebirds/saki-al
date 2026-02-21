@@ -273,7 +273,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		DispatchKind:     toRuntimeStepDispatchKind(stepPayload.DispatchKind),
 		PluginId:         stepPayload.PluginID,
 		Mode:             toRuntimeLoopMode(stepPayload.Mode),
-		QueryStrategy:    stepPayload.QueryStrategy,
+		QueryStrategy:    extractSamplingStrategyFromStruct(stepPayload.Params),
 		ResolvedParams:   stepPayload.Params,
 		Resources:        stepPayload.Resources,
 		RoundIndex:       int32(stepPayload.RoundIndex),
@@ -412,10 +412,6 @@ func (s *Service) runOrchestratorStepTx(
 		return s.runActivateSamplesTx(ctx, tx, stepPayload, resultCommitID)
 	case db.SteptypeADVANCEBRANCH:
 		return s.runAdvanceBranchTx(ctx, tx, stepPayload, resultCommitID)
-	case db.SteptypeWAITANNOTATION:
-		return nil
-	case db.SteptypeMANUALREVIEW:
-		return nil
 	default:
 		return fmt.Errorf("unsupported orchestrator step type: %s", stepPayload.StepType)
 	}
@@ -505,23 +501,21 @@ func (s *Service) runActivateSamplesTx(
 	}
 
 	var (
-		projectID     string
-		branchID      string
-		queryStrategy string
-		globalConfig  []byte
-		queryBatch    int
+		projectID  string
+		branchID   string
+		loopConfig map[string]any
+		queryBatch int
 	)
-	loopConfig, err := s.qtx(tx).GetLoopRuntimeConfig(ctx, stepPayload.LoopID)
+	loopRuntimeConfig, err := s.qtx(tx).GetLoopRuntimeConfig(ctx, stepPayload.LoopID)
 	if err != nil {
 		return err
 	}
-	projectID = loopConfig.ProjectID.String()
-	branchID = loopConfig.BranchID.String()
-	queryStrategy = loopConfig.QueryStrategy
-	globalConfig = loopConfig.GlobalConfig
-	queryBatch = int(loopConfig.QueryBatchSize)
+	projectID = loopRuntimeConfig.ProjectID.String()
+	branchID = loopRuntimeConfig.BranchID.String()
+	queryBatch = int(loopRuntimeConfig.QueryBatchSize)
+	loopConfig, _ = parseJSONObject(loopRuntimeConfig.Config)
 
-	oracleCommitID := extractOracleCommitID(globalConfig)
+	oracleCommitID := extractOracleCommitID(loopRuntimeConfig.Config)
 	if oracleCommitID == "" {
 		return nil
 	}
@@ -531,7 +525,7 @@ func (s *Service) runActivateSamplesTx(
 		sourceCommitID = stepPayload.InputCommitID.String()
 	}
 	if sourceCommitID == "" {
-		headCommitID, branchProjectID, err := s.resolveBranchHead(ctx, loopConfig.BranchID)
+		headCommitID, branchProjectID, err := s.resolveBranchHead(ctx, loopRuntimeConfig.BranchID)
 		if err != nil {
 			return err
 		}
@@ -541,6 +535,11 @@ func (s *Service) runActivateSamplesTx(
 		if branchProjectID != nil {
 			projectID = branchProjectID.String()
 		}
+	}
+
+	queryStrategy, topk := extractSamplingStrategyAndTopK(loopConfig, stepPayload.Params, queryBatch)
+	if topk <= 0 {
+		topk = 1
 	}
 
 	commandID := activationCommandID(stepPayload)
@@ -553,7 +552,7 @@ func (s *Service) runActivateSamplesTx(
 		LoopId:         stepPayload.LoopID.String(),
 		RoundIndex:     int32(stepPayload.RoundIndex),
 		QueryStrategy:  queryStrategy,
-		Topk:           int32(queryBatch),
+		Topk:           int32(topk),
 	})
 	if err != nil {
 		return err
@@ -677,6 +676,9 @@ func (s *Service) OnStepEvent(ctx context.Context, event *runtimecontrolv1.StepE
 	switch eventType {
 	case "status":
 		targetState := statusValue
+		if targetState == stepPending || !shouldApplyRuntimeStatus(targetState) {
+			break
+		}
 		affected, err := s.updateStepStatusFromEventGuardedTx(
 			ctx,
 			tx,

@@ -57,9 +57,10 @@ def test_build_assign_step_message_and_decode_fields():
     assert runtime_codec.struct_to_dict(step_payload.resolved_params) == {"epochs": 1}
 
 
-def test_step_type_codec_covers_manual_review_and_custom():
-    assert runtime_codec.text_to_step_type("manual_review") == pb.MANUAL_REVIEW
-    assert runtime_codec.step_type_to_text(pb.MANUAL_REVIEW) == "manual_review"
+def test_step_type_codec_keeps_only_active_runtime_types():
+    assert runtime_codec.text_to_step_type("legacy_removed_step_a") == pb.CUSTOM
+    assert runtime_codec.text_to_step_type("legacy_removed_step_b") == pb.CUSTOM
+    assert runtime_codec.step_type_to_text(pb.RUNTIME_STEP_TYPE_UNSPECIFIED) == "custom"
     assert runtime_codec.text_to_step_type("custom") == pb.CUSTOM
     assert runtime_codec.step_type_to_text(pb.CUSTOM) == "custom"
 

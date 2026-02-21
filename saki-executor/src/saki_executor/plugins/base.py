@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
 
 from saki_executor.steps.workspace import Workspace
 
@@ -54,11 +54,25 @@ class ExecutorPlugin(ABC):
 
     @property
     def request_config_schema(self) -> dict[str, Any]:
-        return {}
+        return self.config_schema(mode=None)
 
     @property
     def default_request_config(self) -> dict[str, Any]:
+        return self.default_config(mode=None)
+
+    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
+        del mode
         return {}
+
+    def default_config(self, mode: str | None = None) -> dict[str, Any]:
+        del mode
+        return {}
+
+    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
+        base = dict(self.default_config(mode=mode))
+        if isinstance(raw_config, dict):
+            base.update(raw_config)
+        return base
 
     @property
     def supported_accelerators(self) -> list[str]:
@@ -78,8 +92,9 @@ class ExecutorPlugin(ABC):
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir: Any,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
-        del workspace, labels, samples, annotations, dataset_ir
+        del workspace, labels, samples, annotations, dataset_ir, splits
 
     @abstractmethod
     async def train(

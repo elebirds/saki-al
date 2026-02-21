@@ -27,11 +27,10 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     phase: LoopPhase = Field(default=LoopPhase.AL_BOOTSTRAP, index=True)
     phase_meta: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
-    query_strategy: str
     model_arch: str
     experiment_group_id: uuid.UUID | None = Field(default=None, index=True)
 
-    global_config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     current_iteration: int = Field(default=0)
     status: LoopStatus = Field(default=LoopStatus.DRAFT, index=True)

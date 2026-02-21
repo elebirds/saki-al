@@ -77,17 +77,17 @@ def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
     assert payload["mode"] == ""
 
 
-def test_parse_assign_step_manual_review_step_type():
+def test_parse_assign_step_unsupported_step_type_is_not_mapped():
     runtime_message = pb.RuntimeMessage(
         assign_step=pb.AssignStep(
-            request_id="req-manual-review",
+            request_id="req-unsupported-step",
             step=pb.StepPayload(
-                step_id="task-manual-review",
-                round_id="job-manual-review",
+                step_id="task-unsupported-step",
+                round_id="job-unsupported-step",
                 project_id="project1",
                 loop_id="loop1",
                 input_commit_id="commit1",
-                step_type=pb.MANUAL_REVIEW,
+                step_type=pb.RUNTIME_STEP_TYPE_UNSPECIFIED,
                 dispatch_kind=pb.ORCHESTRATOR,
                 plugin_id="demo_det_v1",
                 mode=pb.MANUAL,
@@ -98,7 +98,7 @@ def test_parse_assign_step_manual_review_step_type():
         )
     )
     payload = codec.parse_assign_step(runtime_message.assign_step)
-    assert payload["step_type"] == "manual_review"
+    assert payload["step_type"] == ""
     assert payload["dispatch_kind"] == "orchestrator"
     assert payload["mode"] == "manual"
 

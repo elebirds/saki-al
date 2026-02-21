@@ -104,12 +104,10 @@ func TestToRuntimeStepType(t *testing.T) {
 		db.SteptypeSCORE:           runtimecontrolv1.RuntimeStepType_SCORE,
 		db.SteptypeSELECT:          runtimecontrolv1.RuntimeStepType_SELECT,
 		db.SteptypeACTIVATESAMPLES: runtimecontrolv1.RuntimeStepType_ACTIVATE_SAMPLES,
-		db.SteptypeWAITANNOTATION:  runtimecontrolv1.RuntimeStepType_WAIT_ANNOTATION,
 		db.SteptypeADVANCEBRANCH:   runtimecontrolv1.RuntimeStepType_ADVANCE_BRANCH,
 		db.SteptypeEVAL:            runtimecontrolv1.RuntimeStepType_EVAL,
 		db.SteptypeUPLOADARTIFACT:  runtimecontrolv1.RuntimeStepType_UPLOAD_ARTIFACT,
 		db.SteptypeEXPORT:          runtimecontrolv1.RuntimeStepType_EXPORT,
-		db.SteptypeMANUALREVIEW:    runtimecontrolv1.RuntimeStepType_MANUAL_REVIEW,
 		db.SteptypeCUSTOM:          runtimecontrolv1.RuntimeStepType_CUSTOM,
 	}
 	for stepType, want := range cases {
@@ -147,17 +145,14 @@ func TestStepPlanByModeDispatchKinds(t *testing.T) {
 }
 
 func TestPhaseForStep(t *testing.T) {
-	if phase, ok := phaseForStep(modeAL, db.SteptypeWAITANNOTATION); !ok || phase != phaseALWaitAnnotation {
-		t.Fatalf("phase mapping mismatch for AL wait_annotation: ok=%v phase=%s", ok, phase)
-	}
 	if phase, ok := phaseForStep(modeSIM, db.SteptypeADVANCEBRANCH); !ok || phase != phaseSimActivate {
 		t.Fatalf("phase mapping mismatch for SIM advance_branch: ok=%v phase=%s", ok, phase)
 	}
-	if phase, ok := phaseForStep(modeManual, db.SteptypeUPLOADARTIFACT); !ok || phase != phaseManualExport {
-		t.Fatalf("phase mapping mismatch for MANUAL upload_artifact: ok=%v phase=%s", ok, phase)
-	}
 	if _, ok := phaseForStep(modeManual, db.SteptypeCUSTOM); ok {
 		t.Fatal("manual CUSTOM should not have default phase mapping")
+	}
+	if _, ok := phaseForStep(modeAL, db.Steptype("LEGACY_STEP")); ok {
+		t.Fatal("unknown step type should not have phase mapping")
 	}
 }
 
@@ -185,6 +180,18 @@ func TestCanStepTransitionAllowsReadyDispatchingAndRunning(t *testing.T) {
 	}
 	if !canStepTransition(db.StepstatusDISPATCHING, db.StepstatusRUNNING) {
 		t.Fatal("DISPATCHING -> RUNNING should be allowed")
+	}
+}
+
+func TestShouldApplyRuntimeStatus(t *testing.T) {
+	if shouldApplyRuntimeStatus(db.Stepstatus("")) {
+		t.Fatal("empty runtime status should be ignored")
+	}
+	if shouldApplyRuntimeStatus(db.StepstatusPENDING) {
+		t.Fatal("runtime PENDING status should be ignored")
+	}
+	if !shouldApplyRuntimeStatus(db.StepstatusRUNNING) {
+		t.Fatal("runtime RUNNING status should be applied")
 	}
 }
 

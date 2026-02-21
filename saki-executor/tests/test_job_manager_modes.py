@@ -12,6 +12,81 @@ from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
 
 
+class _InProcessProxy(ExecutorPlugin):
+    def __init__(self, *, metadata_plugin: ExecutorPlugin, step_id: str, emit):
+        del step_id
+        self._plugin = metadata_plugin
+        self._emit = emit
+
+    @property
+    def plugin_id(self) -> str:
+        return self._plugin.plugin_id
+
+    @property
+    def version(self) -> str:
+        return self._plugin.version
+
+    @property
+    def supported_step_types(self) -> list[str]:
+        return self._plugin.supported_step_types
+
+    @property
+    def supported_strategies(self) -> list[str]:
+        return self._plugin.supported_strategies
+
+    def validate_params(self, params: dict[str, Any]) -> None:
+        self._plugin.validate_params(params)
+
+    async def prepare_data(
+            self,
+            workspace,
+            labels: list[dict[str, Any]],
+            samples: list[dict[str, Any]],
+            annotations: list[dict[str, Any]],
+            dataset_ir,
+    ) -> None:
+        await self._plugin.prepare_data(workspace, labels, samples, annotations, dataset_ir)
+
+    async def train(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del emit
+        return await self._plugin.train(workspace, params, self._emit)
+
+    async def predict_unlabeled(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return await self._plugin.predict_unlabeled(workspace, unlabeled_samples, strategy, params)
+
+    async def predict_unlabeled_batch(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return await self._plugin.predict_unlabeled_batch(workspace, unlabeled_samples, strategy, params)
+
+    async def stop(self, step_id: str) -> None:
+        await self._plugin.stop(step_id)
+
+    async def shutdown(self) -> None:
+        return
+
+
+@pytest.fixture(autouse=True)
+def _patch_subprocess_proxy(monkeypatch):
+    monkeypatch.setattr("saki_executor.plugins.registry.is_plugin_loadable", lambda plugin_id: True)
+    monkeypatch.setattr("saki_executor.steps.orchestration.runner.SubprocessPluginProxy", _InProcessProxy)
+
+
 class _ModeAwarePlugin(ExecutorPlugin):
     def __init__(self) -> None:
         self.prepare_samples_count = 0
@@ -162,6 +237,50 @@ class _MinimalPlugin(ExecutorPlugin):
         ]
 
 
+class _SlowTrainPlugin(ExecutorPlugin):
+    @property
+    def plugin_id(self) -> str:
+        return "slow_train_plugin"
+
+    @property
+    def version(self) -> str:
+        return "0.1.0"
+
+    @property
+    def supported_step_types(self) -> list[str]:
+        return ["train", "eval"]
+
+    @property
+    def supported_strategies(self) -> list[str]:
+        return ["uncertainty_1_minus_max_conf"]
+
+    async def train(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del workspace, params
+        for index in range(1, 200):
+            await asyncio.sleep(0.02)
+            await emit("metric", {"step": index, "epoch": index, "metrics": {"loss": 0.5}})
+        return TrainOutput(metrics={"loss": 0.5}, artifacts=[])
+
+    async def predict_unlabeled(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        del workspace, unlabeled_samples, strategy, params
+        return []
+
+    async def stop(self, step_id: str) -> None:
+        del step_id
+        return
+
+
 def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> StepManager:
     registry = PluginRegistry()
     registry.register(plugin)
@@ -295,6 +414,59 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
     assert plugin.predict_calls == 1
     assert plugin.prepare_samples_count == 2
     assert plugin.prepare_annotations_count == 2
+
+
+@pytest.mark.anyio
+async def test_startup_status_events_skip_pending(tmp_path: Path):
+    plugin = _ModeAwarePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-status-seq-1",
+        {
+            "step_id": "task-status-seq-1",
+            "round_id": "job-status-seq-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    status_codes = [
+        message.step_event.status_event.status
+        for message in sent_messages
+        if message.WhichOneof("payload") == "step_event"
+        and message.step_event.WhichOneof("event_payload") == "status_event"
+    ]
+    assert status_codes[:2] == [pb.DISPATCHING, pb.RUNNING]
+    assert pb.PENDING not in status_codes
 
 
 @pytest.mark.anyio
@@ -526,7 +698,7 @@ async def test_orchestrator_dispatch_kind_is_rejected(tmp_path: Path):
 
 
 @pytest.mark.anyio
-async def test_manual_review_step_type_is_rejected_on_executor(tmp_path: Path):
+async def test_legacy_step_type_is_rejected_on_executor(tmp_path: Path):
     plugin = _ModeAwarePlugin()
     manager = _build_manager(tmp_path, plugin)
     sent_messages: list[pb.RuntimeMessage] = []
@@ -543,15 +715,15 @@ async def test_manual_review_step_type_is_rejected_on_executor(tmp_path: Path):
     manager.set_transport(fake_send, fake_request)
 
     accepted = await manager.assign_step(
-        "assign-manual-review-1",
+        "assign-legacy-step-1",
         {
-            "step_id": "task-manual-review-1",
-            "round_id": "job-manual-review-1",
+            "step_id": "task-legacy-step-1",
+            "round_id": "job-legacy-step-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
             "plugin_id": plugin.plugin_id,
             "mode": "manual",
-            "step_type": "manual_review",
+            "step_type": "legacy_review_step",
             "dispatch_kind": "dispatchable",
             "round_index": 1,
             "query_strategy": "uncertainty_1_minus_max_conf",
@@ -566,7 +738,7 @@ async def test_manual_review_step_type_is_rejected_on_executor(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].step_result
     assert result.status == pb.FAILED
-    assert "must be handled by dispatcher orchestrator" in result.error_message
+    assert "unsupported step_type for executor pipeline" in result.error_message
     assert request_calls == 0
 
 
@@ -723,3 +895,54 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
     assert request_calls == 0
     assert plugin.prepare_samples_count == 0
     assert plugin.predict_calls == 0
+
+
+@pytest.mark.anyio
+async def test_stop_step_forces_cancelled_result(tmp_path: Path):
+    plugin = _SlowTrainPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-stop-1",
+        {
+            "step_id": "task-stop-1",
+            "round_id": "job-stop-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "simulation",
+            "step_type": "eval",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    await asyncio.sleep(0.1)
+    stopped = await manager.stop_step("task-stop-1")
+    assert stopped is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    assert result_messages[0].step_result.status == pb.CANCELLED

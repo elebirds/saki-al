@@ -395,7 +395,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel" title="Round 概览">
                 <Descriptions size="small" column={4}>
                     <Descriptions.Item label="插件">{round.pluginId}</Descriptions.Item>
-                    <Descriptions.Item label="采样策略">{round.queryStrategy}</Descriptions.Item>
+                    <Descriptions.Item label="采样策略">{round.resolvedParams?.sampling?.strategy || '-'}</Descriptions.Item>
                     <Descriptions.Item label="模式">{round.mode}</Descriptions.Item>
                     <Descriptions.Item label="开始时间">{formatDateTime(round.startedAt)}</Descriptions.Item>
                     <Descriptions.Item label="结束时间">{formatDateTime(round.endedAt)}</Descriptions.Item>

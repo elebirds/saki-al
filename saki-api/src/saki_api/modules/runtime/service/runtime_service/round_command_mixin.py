@@ -8,47 +8,11 @@ from saki_api.modules.access.domain.rbac import AuditAction
 from saki_api.modules.access.service.audit import log_audit
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
-from saki_api.modules.runtime.api.round_step import RoundCreate, RoundCreateRequest, LoopPatch
-from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.shared.modeling.enums import RoundStatus, StepType
+from saki_api.modules.shared.modeling.enums import StepType
 
 
 class RoundCommandMixin:
-    @transactional
-    async def create_round_for_loop(self, loop_id: uuid.UUID, payload: RoundCreateRequest) -> Round:
-        loop = await self.loop_repo.get_by_id(loop_id)
-        if not loop:
-            raise NotFoundAppException(f"Loop {loop_id} not found")
-        if loop.project_id != payload.project_id:
-            raise BadRequestAppException("Loop project_id and request.project_id mismatch")
-
-        latest_round = await self.repository.get_latest_by_loop(loop_id)
-        next_round = (int(latest_round.round_index) if latest_round else 0) + 1
-
-        await self.loop_repo.update_or_raise(
-            loop_id,
-            LoopPatch(current_iteration=next_round).model_dump(exclude_none=True),
-        )
-        create_schema = RoundCreate(
-            project_id=payload.project_id,
-            loop_id=loop_id,
-            round_index=next_round,
-            mode=payload.mode,
-            state=RoundStatus.PENDING,
-            step_counts={},
-            input_commit_id=payload.input_commit_id,
-            round_type=payload.round_type,
-            plugin_id=payload.plugin_id,
-            query_strategy=payload.query_strategy,
-            resolved_params=payload.resolved_params,
-            resources=payload.resources,
-            strategy_params=payload.strategy_params,
-            final_metrics={},
-            final_artifacts={},
-        )
-        return await self.create(create_schema)
-
     async def get_step_by_id_or_raise(self, step_id: uuid.UUID) -> Step:
         return await self.step_repo.get_by_id_or_raise(step_id)
 

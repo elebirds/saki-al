@@ -262,12 +262,10 @@ const (
 	RuntimeStepType_SCORE                         RuntimeStepType = 2
 	RuntimeStepType_SELECT                        RuntimeStepType = 3
 	RuntimeStepType_ACTIVATE_SAMPLES              RuntimeStepType = 4
-	RuntimeStepType_WAIT_ANNOTATION               RuntimeStepType = 5
 	RuntimeStepType_ADVANCE_BRANCH                RuntimeStepType = 6
 	RuntimeStepType_EVAL                          RuntimeStepType = 7
 	RuntimeStepType_UPLOAD_ARTIFACT               RuntimeStepType = 8
 	RuntimeStepType_EXPORT                        RuntimeStepType = 9
-	RuntimeStepType_MANUAL_REVIEW                 RuntimeStepType = 10
 	RuntimeStepType_CUSTOM                        RuntimeStepType = 99
 )
 
@@ -279,12 +277,10 @@ var (
 		2:  "SCORE",
 		3:  "SELECT",
 		4:  "ACTIVATE_SAMPLES",
-		5:  "WAIT_ANNOTATION",
 		6:  "ADVANCE_BRANCH",
 		7:  "EVAL",
 		8:  "UPLOAD_ARTIFACT",
 		9:  "EXPORT",
-		10: "MANUAL_REVIEW",
 		99: "CUSTOM",
 	}
 	RuntimeStepType_value = map[string]int32{
@@ -293,12 +289,10 @@ var (
 		"SCORE":                         2,
 		"SELECT":                        3,
 		"ACTIVATE_SAMPLES":              4,
-		"WAIT_ANNOTATION":               5,
 		"ADVANCE_BRANCH":                6,
 		"EVAL":                          7,
 		"UPLOAD_ARTIFACT":               8,
 		"EXPORT":                        9,
-		"MANUAL_REVIEW":                 10,
 		"CUSTOM":                        99,
 	}
 )
@@ -3316,24 +3310,23 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x18ACK_REASON_EXECUTOR_BUSY\x10\x03\x12\x17\n" +
 	"\x13ACK_REASON_STOPPING\x10\x04\x12\x1f\n" +
 	"\x1bACK_REASON_STEP_NOT_RUNNING\x10\x05\x12\x17\n" +
-	"\x13ACK_REASON_REJECTED\x10\x06*\xdf\x01\n" +
+	"\x13ACK_REASON_REJECTED\x10\x06*\xc3\x01\n" +
 	"\x0fRuntimeStepType\x12!\n" +
 	"\x1dRUNTIME_STEP_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05TRAIN\x10\x01\x12\t\n" +
 	"\x05SCORE\x10\x02\x12\n" +
 	"\n" +
 	"\x06SELECT\x10\x03\x12\x14\n" +
-	"\x10ACTIVATE_SAMPLES\x10\x04\x12\x13\n" +
-	"\x0fWAIT_ANNOTATION\x10\x05\x12\x12\n" +
+	"\x10ACTIVATE_SAMPLES\x10\x04\x12\x12\n" +
 	"\x0eADVANCE_BRANCH\x10\x06\x12\b\n" +
 	"\x04EVAL\x10\a\x12\x13\n" +
 	"\x0fUPLOAD_ARTIFACT\x10\b\x12\n" +
 	"\n" +
-	"\x06EXPORT\x10\t\x12\x11\n" +
-	"\rMANUAL_REVIEW\x10\n" +
-	"\x12\n" +
+	"\x06EXPORT\x10\t\x12\n" +
 	"\n" +
-	"\x06CUSTOM\x10c*i\n" +
+	"\x06CUSTOM\x10c\"\x04\b\x05\x10\x05\"\x04\b\n" +
+	"\x10\n" +
+	"*i\n" +
 	"\x17RuntimeStepDispatchKind\x12*\n" +
 	"&RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fDISPATCHABLE\x10\x01\x12\x10\n" +

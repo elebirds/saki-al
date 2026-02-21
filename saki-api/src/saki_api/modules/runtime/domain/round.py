@@ -28,7 +28,6 @@ class RoundBase(SQLModel):
 
     round_type: str = Field(default="loop_round", index=True)
     plugin_id: str = Field(default="", index=True)
-    query_strategy: str = Field(default="random")
     resolved_params: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     resources: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 

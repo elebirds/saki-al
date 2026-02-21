@@ -152,9 +152,10 @@ class RuntimeQueryMixin:
         summary_rows: dict[str, list[tuple[int, float]]] = {}
 
         for loop in loops:
-            simulation_config = self._extract_simulation_config(loop.global_config or {})
+            simulation_config = self._extract_simulation_config(loop.config or {})
             single_seed = int(simulation_config.single_seed or 0)
-            strategy = str(loop.query_strategy or "")
+            loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}
+            strategy = str((loop_sampling or {}).get("strategy") or self.RANDOM_BASELINE_STRATEGY)
             strategy_data = by_strategy.setdefault(strategy, {})
 
             rounds = await self.repository.list_by_loop(loop.id)
@@ -191,7 +192,7 @@ class RuntimeQueryMixin:
                 baseline_final_mean = mean(baseline_last_values) if baseline_last_values else 0.0
 
         delta_vs_baseline: dict[str, float] = {}
-        reference_simulation_config = self._extract_simulation_config(loops[0].global_config)
+        reference_simulation_config = self._extract_simulation_config(loops[0].config or {})
 
         for strategy, round_map in sorted(by_strategy.items(), key=lambda item: item[0]):
             rounds_sorted = sorted(round_map.items(), key=lambda item: item[0])

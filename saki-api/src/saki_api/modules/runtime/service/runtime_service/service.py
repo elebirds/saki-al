@@ -7,7 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.infra.storage.provider import get_storage_provider
 from saki_api.modules.annotation.contracts import AnnotationReadGateway
 from saki_api.modules.project.contracts import ProjectReadGateway
-from saki_api.modules.runtime.api.round_step import RoundCreate, RoundUpdate
+from saki_api.modules.runtime.api.round_step import RoundUpdate
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.repo.loop import LoopRepository
 from saki_api.modules.runtime.repo.round import RoundRepository
@@ -17,9 +17,11 @@ from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemR
 from saki_api.modules.runtime.repo.step_event import StepEventRepository
 from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
 from saki_api.modules.runtime.service.config.loop_config_service import (
+    derive_loop_max_rounds,
+    derive_query_batch_size,
     extract_model_request_config,
     merge_model_request_config,
-    normalize_loop_global_config,
+    normalize_loop_config,
 )
 from saki_api.modules.runtime.service.runtime_service.common_mixin import RuntimeServiceCommonMixin
 from saki_api.modules.runtime.service.runtime_service.loop_command_mixin import LoopCommandMixin
@@ -38,10 +40,12 @@ class RuntimeService(
     LoopCommandMixin,
     RoundCommandMixin,
     RuntimeQueryMixin,
-    CrudServiceBase[Round, RoundRepository, RoundCreate, RoundUpdate],
+    CrudServiceBase[Round, RoundRepository, RoundUpdate, RoundUpdate],
 ):
     RANDOM_BASELINE_STRATEGY = "random_baseline"
-    _normalize_loop_global_config = staticmethod(normalize_loop_global_config)
+    _normalize_loop_config = staticmethod(normalize_loop_config)
+    _derive_loop_max_rounds = staticmethod(derive_loop_max_rounds)
+    _derive_query_batch_size = staticmethod(derive_query_batch_size)
     _merge_model_request_config = staticmethod(merge_model_request_config)
     _extract_model_request_config = staticmethod(extract_model_request_config)
 

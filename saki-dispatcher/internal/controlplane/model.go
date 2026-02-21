@@ -20,9 +20,8 @@ type loopRow struct {
 	CurrentIteration      int
 	MaxRounds             int
 	QueryBatchSize        int
-	QueryStrategy         string
 	ModelArch             string
-	GlobalConfig          []byte
+	Config                []byte
 	LastConfirmedCommitID *uuid.UUID
 }
 
@@ -49,7 +48,6 @@ type stepDispatchPayload struct {
 	DispatchKind     db.Stepdispatchkind
 	PluginID         string
 	Mode             db.Loopmode
-	QueryStrategy    string
 	RoundIndex       int
 	Attempt          int
 	Status           db.Stepstatus
@@ -111,9 +109,8 @@ func mapLoopForUpdate(record db.GetLoopForUpdateRow) loopRow {
 		CurrentIteration:      int(record.CurrentIteration),
 		MaxRounds:             int(record.MaxRounds),
 		QueryBatchSize:        int(record.QueryBatchSize),
-		QueryStrategy:         record.QueryStrategy,
 		ModelArch:             record.ModelArch,
-		GlobalConfig:          record.GlobalConfig,
+		Config:                record.Config,
 		LastConfirmedCommitID: record.LastConfirmedCommitID,
 	}
 }
@@ -159,7 +156,6 @@ func mapStepPayload(record db.GetStepPayloadByIDForUpdateRow) (stepDispatchPaylo
 		ProjectID:          record.ProjectID,
 		PluginID:           record.PluginID,
 		Mode:               record.Mode,
-		QueryStrategy:      record.QueryStrategy,
 		roundParamsRaw:     record.RoundParamsRaw,
 		resourcesRaw:       record.ResourcesRaw,
 		roundInputCommitID: record.RoundInputCommitID,
@@ -202,19 +198,6 @@ func phaseForStep(mode db.Loopmode, stepType db.Steptype) (db.Loopphase, bool) {
 			return item.Phase, true
 		}
 	}
-	switch mode {
-	case modeAL:
-		if stepType == db.SteptypeWAITANNOTATION {
-			return phaseALWaitAnnotation, true
-		}
-	case modeManual:
-		if stepType == db.SteptypeUPLOADARTIFACT {
-			return phaseManualExport, true
-		}
-		if stepType == db.SteptypeMANUALREVIEW {
-			return phaseManualEval, true
-		}
-	}
 	return "", false
 }
 
@@ -230,16 +213,12 @@ func toRuntimeStepType(raw db.Steptype) runtimecontrolv1.RuntimeStepType {
 		return runtimecontrolv1.RuntimeStepType_ACTIVATE_SAMPLES
 	case db.SteptypeADVANCEBRANCH:
 		return runtimecontrolv1.RuntimeStepType_ADVANCE_BRANCH
-	case db.SteptypeWAITANNOTATION:
-		return runtimecontrolv1.RuntimeStepType_WAIT_ANNOTATION
 	case db.SteptypeEVAL:
 		return runtimecontrolv1.RuntimeStepType_EVAL
 	case db.SteptypeEXPORT:
 		return runtimecontrolv1.RuntimeStepType_EXPORT
 	case db.SteptypeUPLOADARTIFACT:
 		return runtimecontrolv1.RuntimeStepType_UPLOAD_ARTIFACT
-	case db.SteptypeMANUALREVIEW:
-		return runtimecontrolv1.RuntimeStepType_MANUAL_REVIEW
 	case db.SteptypeCUSTOM:
 		return runtimecontrolv1.RuntimeStepType_CUSTOM
 	default:

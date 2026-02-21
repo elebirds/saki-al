@@ -27,7 +27,6 @@ import {
     ProjectSample,
     RuntimeRound,
     RuntimeRoundCommandResponse,
-    RuntimeRoundCreateRequest,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
@@ -268,6 +267,7 @@ function normalizeLoop(loop: Loop): Loop {
         ...loop,
         state: (loop as any).state ?? (loop as any).status ?? 'draft',
         lastRoundId: (loop as any).lastRoundId ?? null,
+        config: (loop as any).config ?? {plugin: {}},
     };
 }
 
@@ -977,11 +977,6 @@ export class RealApiService implements ApiService {
     async getLoopRounds(loopId: string, limit: number = 50): Promise<RuntimeRound[]> {
         const response = await this.client.get<RuntimeRound[]>(`/loops/${loopId}/rounds`, {params: {limit}});
         return response.data.map((item) => normalizeRound(item));
-    }
-
-    async createLoopRound(loopId: string, payload: RuntimeRoundCreateRequest): Promise<RuntimeRound> {
-        const response = await this.client.post<RuntimeRound>(`/loops/${loopId}/rounds`, payload);
-        return normalizeRound(response.data);
     }
 
     async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeRoundCommandResponse> {

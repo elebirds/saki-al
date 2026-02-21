@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -17,11 +18,12 @@ EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
 @dataclass(frozen=True)
 class TrainingDataBundle:
     labels: list[dict[str, Any]]
-    train_samples: list[dict[str, Any]]
+    samples: list[dict[str, Any]]
     train_annotations: list[dict[str, Any]]
     ir_batch: irpb.DataBatchIR
     ir_report: IRDatasetBuildReport
     protected: set[str]
+    splits: dict[str, list[dict[str, Any]]]
 
 
 class TrainingDataService:
@@ -62,33 +64,64 @@ class TrainingDataService:
             request.input_commit_id,
         )
 
-        train_samples = samples
         train_annotations = annotations
-        if request.mode in {"active_learning", "simulation"}:
-            labeled_sample_ids = {
-                str(item.get("sample_id") or "")
-                for item in annotations
-                if item.get("sample_id")
-            }
-            if labeled_sample_ids:
-                train_samples = [
-                    item
-                    for item in samples
-                    if str(item.get("id") or "") in labeled_sample_ids
-                ]
-            await emit(
-                "log",
-                {
-                    "level": "INFO",
-                    "message": (
-                        f"simulation mode enabled round_index={request.round_index} "
-                        f"train_samples={len(train_samples)} train_annotations={len(train_annotations)}"
-                    ),
-                },
-            )
+        labeled_sample_ids = {
+            str(item.get("sample_id") or "")
+            for item in annotations
+            if item.get("sample_id")
+        }
+        supervised_samples = [
+            dict(item)
+            for item in samples
+            if str(item.get("id") or "") in labeled_sample_ids
+        ]
+        try:
+            split_seed = max(0, int(request.resolved_params.get("split_seed") or 0))
+        except Exception:
+            split_seed = 0
+        plugin_cfg = request.resolved_params.get("plugin")
+        plugin_cfg = plugin_cfg if isinstance(plugin_cfg, dict) else {}
+        val_ratio_raw = plugin_cfg.get("val_split_ratio", request.resolved_params.get("val_split_ratio", 0.2))
+        try:
+            val_ratio = float(val_ratio_raw)
+        except Exception:
+            val_ratio = 0.2
+        val_ratio = min(0.5, max(0.05, val_ratio))
+
+        train_ids, val_ids, val_degraded = self._split_samples(
+            sample_ids=[str(item.get("id") or "") for item in supervised_samples if str(item.get("id") or "")],
+            split_seed=split_seed,
+            val_ratio=val_ratio,
+        )
+        splits: dict[str, list[dict[str, Any]]] = {
+            "train": [],
+            "val": [],
+        }
+        for item in supervised_samples:
+            sample_id = str(item.get("id") or "")
+            if not sample_id:
+                continue
+            split = "val" if sample_id in val_ids and not val_degraded else "train"
+            item["_split"] = split
+            item["_split_seed"] = split_seed
+            item["_val_split_ratio"] = val_ratio
+            splits[split].append(item)
+
+        await emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    f"training split resolved round_index={request.round_index} "
+                    f"seed={split_seed} val_ratio={val_ratio:.3f} "
+                    f"train={len(splits['train'])} val={len(splits['val'])} "
+                    f"val_degraded={val_degraded}"
+                ),
+            },
+        )
 
         protected: set[str] = set()
-        for item in train_samples:
+        for item in supervised_samples:
             if self._stop_event.is_set():
                 raise asyncio.CancelledError("step stop requested")
             asset_hash = item.get("asset_hash")
@@ -106,7 +139,7 @@ class TrainingDataService:
 
         ir_batch, ir_report = build_training_batch_ir(
             labels=labels,
-            samples=train_samples,
+            samples=supervised_samples,
             annotations=train_annotations,
         )
         await emit(
@@ -125,9 +158,34 @@ class TrainingDataService:
 
         return TrainingDataBundle(
             labels=labels,
-            train_samples=train_samples,
+            samples=supervised_samples,
             train_annotations=train_annotations,
             ir_batch=ir_batch,
             ir_report=ir_report,
             protected=protected,
+            splits=splits,
         )
+
+    @staticmethod
+    def _split_samples(
+        *,
+        sample_ids: list[str],
+        split_seed: int,
+        val_ratio: float,
+    ) -> tuple[set[str], set[str], bool]:
+        filtered = [item for item in sample_ids if item]
+        if len(filtered) < 5:
+            return set(filtered), set(), True
+        randomizer = random.Random(split_seed)
+        shuffled = list(filtered)
+        randomizer.shuffle(shuffled)
+        val_count = max(1, int(round(len(shuffled) * val_ratio)))
+        if len(shuffled)-val_count < 1:
+            val_count = max(1, len(shuffled) - 1)
+        if val_count <= 0:
+            return set(filtered), set(), True
+        val_ids = set(shuffled[:val_count])
+        train_ids = set(shuffled[val_count:])
+        if not train_ids or not val_ids:
+            return set(filtered), set(), True
+        return train_ids, val_ids, False

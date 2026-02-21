@@ -33,11 +33,17 @@ class DemoDetectionPlugin(ExecutorPlugin):
 
     @property
     def request_config_schema(self) -> dict[str, Any]:
-        return self._internal.request_config_schema
+        return self._internal.config_schema()
 
     @property
     def default_request_config(self) -> dict[str, Any]:
-        return self._internal.default_request_config
+        return self._internal.default_config()
+
+    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
+        return self._internal.config_schema(mode=mode)
+
+    def default_config(self, mode: str | None = None) -> dict[str, Any]:
+        return self._internal.default_config(mode=mode)
 
     def validate_params(self, params: dict[str, Any]) -> None:
         self._internal.validate_params(params)
@@ -49,8 +55,9 @@ class DemoDetectionPlugin(ExecutorPlugin):
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir: Any,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
-        await self._internal.prepare_data(workspace, labels, samples, annotations, dataset_ir)
+        await self._internal.prepare_data(workspace, labels, samples, annotations, dataset_ir, splits=splits)
 
     async def train(
             self,

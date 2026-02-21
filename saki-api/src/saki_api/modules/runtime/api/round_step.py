@@ -21,7 +21,6 @@ class LoopSimulationConfig(BaseModel):
     oracle_commit_id: Optional[uuid.UUID] = None
     seed_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
     step_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
-    max_rounds: int = Field(default=20, ge=1)
     random_baseline_enabled: bool = True
     seeds: List[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
     single_seed: Optional[int] = None
@@ -31,38 +30,19 @@ class LoopCreateRequest(BaseModel):
     name: str
     branch_id: uuid.UUID
     mode: LoopMode = LoopMode.ACTIVE_LEARNING
-    query_strategy: str
     model_arch: str
-    global_config: Dict[str, Any] = Field(default_factory=dict)
-    model_request_config: Dict[str, Any] = Field(default_factory=dict)
-    simulation_config: LoopSimulationConfig = Field(default_factory=LoopSimulationConfig)
+    config: Dict[str, Any] = Field(default_factory=dict)
     experiment_group_id: Optional[uuid.UUID] = None
     status: LoopStatus = LoopStatus.DRAFT
-    max_rounds: int = Field(default=20, ge=1)
-    query_batch_size: int = Field(default=200, ge=1)
-    min_seed_labeled: int = Field(default=100, ge=1)
-    min_new_labels_per_round: int = Field(default=120, ge=1)
-    stop_patience_rounds: int = Field(default=2, ge=1)
-    stop_min_gain: float = Field(default=0.002)
-    auto_register_model: bool = True
 
 
 class LoopUpdateRequest(BaseModel):
     name: Optional[str] = None
     mode: Optional[LoopMode] = None
-    query_strategy: Optional[str] = None
     model_arch: Optional[str] = None
-    global_config: Optional[Dict[str, Any]] = None
-    model_request_config: Optional[Dict[str, Any]] = None
-    simulation_config: Optional[LoopSimulationConfig] = None
+    config: Optional[Dict[str, Any]] = None
     experiment_group_id: Optional[uuid.UUID] = None
-    max_rounds: Optional[int] = Field(default=None, ge=1)
-    query_batch_size: Optional[int] = Field(default=None, ge=1)
-    min_seed_labeled: Optional[int] = Field(default=None, ge=1)
-    min_new_labels_per_round: Optional[int] = Field(default=None, ge=1)
-    stop_patience_rounds: Optional[int] = Field(default=None, ge=1)
-    stop_min_gain: Optional[float] = None
-    auto_register_model: Optional[bool] = None
+    status: Optional[LoopStatus] = None
 
 
 class LoopCreateData(BaseModel):
@@ -72,10 +52,9 @@ class LoopCreateData(BaseModel):
     mode: LoopMode = LoopMode.ACTIVE_LEARNING
     phase: LoopPhase = LoopPhase.AL_BOOTSTRAP
     phase_meta: Dict[str, Any] = Field(default_factory=dict)
-    query_strategy: str
     model_arch: str
     experiment_group_id: Optional[uuid.UUID] = None
-    global_config: Dict[str, Any] = Field(default_factory=dict)
+    config: Dict[str, Any] = Field(default_factory=dict)
     current_iteration: int = Field(default=0, ge=0)
     status: LoopStatus = LoopStatus.DRAFT
     max_rounds: int = Field(default=20, ge=1)
@@ -93,10 +72,9 @@ class LoopPatch(BaseModel):
     mode: Optional[LoopMode] = None
     phase: Optional[LoopPhase] = None
     phase_meta: Optional[Dict[str, Any]] = None
-    query_strategy: Optional[str] = None
     model_arch: Optional[str] = None
     experiment_group_id: Optional[uuid.UUID] = None
-    global_config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None
     current_iteration: Optional[int] = Field(default=None, ge=0)
     status: Optional[LoopStatus] = None
     max_rounds: Optional[int] = Field(default=None, ge=1)
@@ -119,11 +97,8 @@ class LoopRead(BaseModel):
     mode: LoopMode
     phase: LoopPhase
     phase_meta: Dict[str, Any]
-    query_strategy: str
     model_arch: str
-    global_config: Dict[str, Any]
-    model_request_config: Dict[str, Any] = Field(default_factory=dict)
-    simulation_config: LoopSimulationConfig = Field(default_factory=LoopSimulationConfig)
+    config: Dict[str, Any]
     experiment_group_id: Optional[uuid.UUID] = None
     current_iteration: int
     status: LoopStatus
@@ -137,40 +112,6 @@ class LoopRead(BaseModel):
     terminal_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-
-class RoundCreateRequest(BaseModel):
-    project_id: uuid.UUID
-    input_commit_id: Optional[uuid.UUID] = None
-    plugin_id: str
-    round_type: str = "loop_round"
-    mode: LoopMode = LoopMode.ACTIVE_LEARNING
-    query_strategy: str
-    resolved_params: Dict[str, Any] = Field(default_factory=dict)
-    resources: Dict[str, Any] = Field(default_factory=dict)
-    strategy_params: Dict[str, Any] = Field(default_factory=dict)
-
-
-class RoundCreate(BaseModel):
-    project_id: uuid.UUID
-    loop_id: uuid.UUID
-    round_index: int = Field(ge=1)
-    mode: LoopMode = LoopMode.ACTIVE_LEARNING
-    state: RoundStatus = RoundStatus.PENDING
-    step_counts: Dict[str, int] = Field(default_factory=dict)
-    round_type: str = "loop_round"
-    plugin_id: str
-    query_strategy: str
-    resolved_params: Dict[str, Any] = Field(default_factory=dict)
-    resources: Dict[str, Any] = Field(default_factory=dict)
-    input_commit_id: Optional[uuid.UUID] = None
-    output_commit_id: Optional[uuid.UUID] = None
-    assigned_executor_id: Optional[str] = None
-    retry_count: int = Field(default=0, ge=0)
-    terminal_reason: Optional[str] = None
-    final_metrics: Dict[str, Any] = Field(default_factory=dict)
-    final_artifacts: Dict[str, Any] = Field(default_factory=dict)
-    strategy_params: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RoundUpdate(BaseModel):
@@ -187,36 +128,6 @@ class RoundUpdate(BaseModel):
     strategy_params: Optional[Dict[str, Any]] = None
 
 
-class StepCreate(BaseModel):
-    round_id: uuid.UUID
-    step_type: StepType
-    dispatch_kind: StepDispatchKind = StepDispatchKind.DISPATCHABLE
-    state: StepStatus = StepStatus.PENDING
-    round_index: int = Field(default=1, ge=1)
-    step_index: int = Field(default=1, ge=1)
-    depends_on_step_ids: List[str] = Field(default_factory=list)
-    resolved_params: Dict[str, Any] = Field(default_factory=dict)
-    metrics: Dict[str, Any] = Field(default_factory=dict)
-    artifacts: Dict[str, Any] = Field(default_factory=dict)
-    input_commit_id: Optional[uuid.UUID] = None
-    output_commit_id: Optional[uuid.UUID] = None
-    assigned_executor_id: Optional[str] = None
-    attempt: int = Field(default=1, ge=1)
-    max_attempts: int = Field(default=2, ge=1)
-    last_error: Optional[str] = None
-
-
-class StepUpdate(BaseModel):
-    state: Optional[StepStatus] = None
-    metrics: Optional[Dict[str, Any]] = None
-    artifacts: Optional[Dict[str, Any]] = None
-    output_commit_id: Optional[uuid.UUID] = None
-    assigned_executor_id: Optional[str] = None
-    attempt: Optional[int] = Field(default=None, ge=1)
-    max_attempts: Optional[int] = Field(default=None, ge=1)
-    last_error: Optional[str] = None
-
-
 class RoundRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -229,7 +140,6 @@ class RoundRead(BaseModel):
     step_counts: Dict[str, int]
     round_type: str
     plugin_id: str
-    query_strategy: str
     input_commit_id: Optional[uuid.UUID] = None
     output_commit_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
@@ -342,9 +252,7 @@ class SimulationExperimentCreateRequest(BaseModel):
     experiment_name: Optional[str] = None
     model_arch: str
     strategies: List[str]
-    global_config: Dict[str, Any] = Field(default_factory=dict)
-    model_request_config: Dict[str, Any] = Field(default_factory=dict)
-    simulation_config: LoopSimulationConfig
+    config: Dict[str, Any] = Field(default_factory=dict)
     status: LoopStatus = LoopStatus.DRAFT
 
 

@@ -239,12 +239,10 @@ CREATE TYPE public.steptype AS ENUM (
     'SCORE',
     'SELECT',
     'ACTIVATE_SAMPLES',
-    'WAIT_ANNOTATION',
     'ADVANCE_BRANCH',
     'EVAL',
     'EXPORT',
     'UPLOAD_ARTIFACT',
-    'MANUAL_REVIEW',
     'CUSTOM'
 );
 
@@ -536,10 +534,9 @@ CREATE TABLE public.loop (
     mode public.loopmode NOT NULL,
     phase public.loopphase NOT NULL,
     phase_meta jsonb,
-    query_strategy character varying NOT NULL,
     model_arch character varying NOT NULL,
     experiment_group_id uuid,
-    global_config jsonb,
+    config jsonb,
     current_iteration integer NOT NULL,
     status public.loopstatus NOT NULL,
     max_rounds integer NOT NULL,
@@ -674,7 +671,6 @@ CREATE TABLE public.round (
     step_counts jsonb,
     round_type character varying NOT NULL,
     plugin_id character varying NOT NULL,
-    query_strategy character varying NOT NULL,
     resolved_params jsonb,
     resources jsonb,
     input_commit_id uuid,

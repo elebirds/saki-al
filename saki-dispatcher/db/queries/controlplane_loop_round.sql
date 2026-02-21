@@ -18,9 +18,8 @@ SELECT
   current_iteration,
   max_rounds,
   query_batch_size,
-  query_strategy,
   model_arch,
-  global_config,
+  config,
   last_confirmed_commit_id
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid
@@ -44,7 +43,7 @@ WHERE loop_id = sqlc.arg(loop_id)::uuid;
 
 -- name: InsertRound :exec
 INSERT INTO round(
-  id, project_id, loop_id, round_index, mode, state, step_counts, round_type, plugin_id, query_strategy,
+  id, project_id, loop_id, round_index, mode, state, step_counts, round_type, plugin_id,
   resolved_params, resources, input_commit_id, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
   created_at, updated_at
 ) VALUES (
@@ -57,7 +56,6 @@ INSERT INTO round(
   sqlc.arg(step_counts)::jsonb,
   'loop_round',
   sqlc.arg(plugin_id),
-  sqlc.arg(query_strategy),
   sqlc.arg(resolved_params)::jsonb,
   sqlc.arg(resources)::jsonb,
   sqlc.narg(input_commit_id)::uuid,

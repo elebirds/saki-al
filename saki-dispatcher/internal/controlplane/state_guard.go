@@ -50,6 +50,15 @@ func stepFromCandidatesForTarget(target db.Stepstatus) []db.Stepstatus {
 	}
 }
 
+func shouldApplyRuntimeStatus(target db.Stepstatus) bool {
+	switch target {
+	case "", db.StepstatusPENDING:
+		return false
+	default:
+		return true
+	}
+}
+
 func canLoopTransition(from db.Loopstatus, to db.Loopstatus) bool {
 	if from == to {
 		return true

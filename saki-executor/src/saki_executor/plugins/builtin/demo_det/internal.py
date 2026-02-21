@@ -39,28 +39,25 @@ class DemoDetectionInternal:
             "uncertainty_1_minus_max_conf",
             "aug_iou_disagreement",
             "random_baseline",
-            "plugin_native_strategy",
         ]
 
-    @property
-    def request_config_schema(self) -> dict[str, Any]:
+    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
+        del mode
         return {
             "title": "Demo Detection Request Config",
             "fields": [
                 {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1, "max": 500},
                 {"key": "batch_size", "label": "Batch Size", "type": "integer", "required": True, "min": 1, "max": 2048},
                 {"key": "steps_per_epoch", "label": "Steps / Epoch", "type": "integer", "required": False, "min": 1, "max": 5000},
-                {"key": "topk", "label": "TopK", "type": "integer", "required": False, "min": 1, "max": 5000},
             ],
         }
 
-    @property
-    def default_request_config(self) -> dict[str, Any]:
+    def default_config(self, mode: str | None = None) -> dict[str, Any]:
+        del mode
         return {
             "epochs": 5,
             "batch_size": 8,
             "steps_per_epoch": 20,
-            "topk": 200,
         }
 
     def validate_params(self, params: dict[str, Any]) -> None:
@@ -78,7 +75,9 @@ class DemoDetectionInternal:
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir: Any,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
+        del splits
         payload = {
             "labels": labels,
             "sample_count": len(samples),

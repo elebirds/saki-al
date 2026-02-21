@@ -22,13 +22,46 @@ export type LoopPhase =
     | 'manual_export'
     | 'manual_finalize';
 
-export interface LoopSimulationConfig {
+export interface LoopSamplingConfig {
+    strategy: string;
+    topk: number;
+    unlabeledPageSize?: number;
+    minCandidatesRequired?: number;
+}
+
+export interface LoopModeConfig {
+    confirmRequired?: boolean;
     oracleCommitId?: string | null;
-    seedRatio: number;
-    stepRatio: number;
-    maxRounds: number;
+    seedRatio?: number;
+    stepRatio?: number;
+    seeds?: number[];
+    singleSeed?: number;
     randomBaselineEnabled?: boolean;
-    seeds: number[];
+    roundCooldownSec?: number;
+    singleRound?: boolean;
+}
+
+export interface LoopReproducibilityConfig {
+    globalSeed?: string;
+    splitSeedPolicy?: string;
+    trainSeedPolicy?: string;
+    samplingSeedPolicy?: string;
+    deterministicLevel?: string;
+}
+
+export interface LoopExecutionConfig {
+    preferredAccelerator?: string;
+    allowFallback?: boolean;
+    roundResourcesDefault?: Record<string, any>;
+    retryMaxAttempts?: number;
+}
+
+export interface LoopRuntimeConfig {
+    plugin: Record<string, any>;
+    sampling?: LoopSamplingConfig;
+    mode?: LoopModeConfig;
+    reproducibility?: LoopReproducibilityConfig;
+    execution?: LoopExecutionConfig;
 }
 
 export interface Loop {
@@ -39,11 +72,8 @@ export interface Loop {
     mode: LoopMode;
     phase: LoopPhase;
     phaseMeta: Record<string, any>;
-    queryStrategy: string;
     modelArch: string;
-    globalConfig: Record<string, any>;
-    modelRequestConfig: Record<string, any>;
-    simulationConfig: LoopSimulationConfig;
+    config: LoopRuntimeConfig;
     experimentGroupId?: string | null;
     currentIteration: number;
     state: LoopState;
@@ -73,7 +103,6 @@ export interface RuntimeRound {
     stepCounts: Record<string, number>;
     roundType: string;
     pluginId: string;
-    queryStrategy: string;
     inputCommitId?: string | null;
     outputCommitId?: string | null;
     assignedExecutorId?: string | null;
@@ -107,12 +136,10 @@ export type RuntimeStepType =
     | 'score'
     | 'select'
     | 'activate_samples'
-    | 'wait_annotation'
     | 'advance_branch'
     | 'eval'
     | 'upload_artifact'
     | 'export'
-    | 'manual_review'
     | 'custom';
 
 export type RuntimeStepDispatchKind = 'dispatchable' | 'orchestrator';
@@ -145,50 +172,19 @@ export interface LoopCreateRequest {
     name: string;
     branchId: string;
     mode?: LoopMode;
-    queryStrategy: string;
     modelArch: string;
-    globalConfig?: Record<string, any>;
-    modelRequestConfig?: Record<string, any>;
-    simulationConfig?: LoopSimulationConfig;
+    config?: LoopRuntimeConfig;
     experimentGroupId?: string;
     state?: LoopState;
-    maxRounds?: number;
-    queryBatchSize?: number;
-    minSeedLabeled?: number;
-    minNewLabelsPerRound?: number;
-    stopPatienceRounds?: number;
-    stopMinGain?: number;
-    autoRegisterModel?: boolean;
 }
 
 export interface LoopUpdateRequest {
     name?: string;
     mode?: LoopMode;
-    queryStrategy?: string;
     modelArch?: string;
-    globalConfig?: Record<string, any>;
-    modelRequestConfig?: Record<string, any>;
-    simulationConfig?: LoopSimulationConfig;
+    config?: LoopRuntimeConfig;
     experimentGroupId?: string;
-    maxRounds?: number;
-    queryBatchSize?: number;
-    minSeedLabeled?: number;
-    minNewLabelsPerRound?: number;
-    stopPatienceRounds?: number;
-    stopMinGain?: number;
-    autoRegisterModel?: boolean;
-}
-
-export interface RuntimeRoundCreateRequest {
-    projectId: string;
-    inputCommitId?: string;
-    pluginId: string;
-    roundType?: string;
-    mode?: LoopMode;
-    queryStrategy: string;
-    resolvedParams?: Record<string, any>;
-    resources?: Record<string, any>;
-    strategyParams?: Record<string, any>;
+    state?: LoopState;
 }
 
 export interface RuntimeRoundCommandResponse {
@@ -261,9 +257,7 @@ export interface SimulationExperimentCreateRequest {
     experimentName?: string;
     modelArch: string;
     strategies: string[];
-    globalConfig?: Record<string, any>;
-    modelRequestConfig?: Record<string, any>;
-    simulationConfig: LoopSimulationConfig;
+    config?: LoopRuntimeConfig;
     state?: LoopState;
 }
 

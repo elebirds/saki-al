@@ -698,12 +698,10 @@ const (
 	SteptypeSCORE           Steptype = "SCORE"
 	SteptypeSELECT          Steptype = "SELECT"
 	SteptypeACTIVATESAMPLES Steptype = "ACTIVATE_SAMPLES"
-	SteptypeWAITANNOTATION  Steptype = "WAIT_ANNOTATION"
 	SteptypeADVANCEBRANCH   Steptype = "ADVANCE_BRANCH"
 	SteptypeEVAL            Steptype = "EVAL"
 	SteptypeEXPORT          Steptype = "EXPORT"
 	SteptypeUPLOADARTIFACT  Steptype = "UPLOAD_ARTIFACT"
-	SteptypeMANUALREVIEW    Steptype = "MANUAL_REVIEW"
 	SteptypeCUSTOM          Steptype = "CUSTOM"
 )
 
@@ -1015,10 +1013,9 @@ type Loop struct {
 	Mode                  Loopmode
 	Phase                 Loopphase
 	PhaseMeta             []byte
-	QueryStrategy         string
 	ModelArch             string
 	ExperimentGroupID     *uuid.UUID
-	GlobalConfig          []byte
+	Config                []byte
 	CurrentIteration      int32
 	Status                Loopstatus
 	MaxRounds             int32
@@ -1118,7 +1115,6 @@ type Round struct {
 	StepCounts         []byte
 	RoundType          string
 	PluginID           string
-	QueryStrategy      string
 	ResolvedParams     []byte
 	Resources          []byte
 	InputCommitID      *uuid.UUID

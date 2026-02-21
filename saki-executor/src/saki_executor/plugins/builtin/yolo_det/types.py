@@ -14,9 +14,10 @@ class TrainConfig:
     requested_device: str
     resolved_backend: str
     resolved_base_model: str
+    train_seed: int
+    deterministic: bool
 
 
 @dataclass(frozen=True)
 class PreparedDataset:
     manifest: dict[str, Any]
-

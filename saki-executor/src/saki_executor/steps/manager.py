@@ -117,11 +117,11 @@ class StepManager:
             raise RuntimeError("step manager transport is not configured")
         final_status = StepStatus.FAILED
         logger.info(
-            "任务开始执行 step_id={} plugin_id={} mode={} query_strategy={}",
+            "任务开始执行 step_id={} plugin_id={} mode={} sampling_strategy={}",
             request.step_id,
             request.plugin_id,
             request.mode,
-            request.query_strategy,
+            (request.resolved_params.get("sampling") or {}).get("strategy") if isinstance(request.resolved_params.get("sampling"), dict) else request.query_strategy,
         )
         try:
             result = await StepPipelineRunner(manager=self, request=request).run()
@@ -129,7 +129,10 @@ class StepManager:
         except asyncio.CancelledError:
             final_status = await self._publish_cancelled_result(request)
         except Exception as exc:
-            final_status = await self._publish_failed_result(request, exc)
+            if self._stop_event.is_set():
+                final_status = await self._publish_cancelled_result(request)
+            else:
+                final_status = await self._publish_failed_result(request, exc)
         finally:
             await self._reset_after_task(request.step_id, final_status)
 

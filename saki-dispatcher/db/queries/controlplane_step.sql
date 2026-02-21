@@ -57,7 +57,6 @@ SELECT
   j.project_id AS project_id,
   j.plugin_id,
   j.mode AS mode,
-  j.query_strategy,
   j.resolved_params AS round_params_raw,
   j.resources AS resources_raw,
   j.input_commit_id AS round_input_commit_id
@@ -216,8 +215,7 @@ INSERT INTO step_candidate_item(
 SELECT
   project_id AS project_id,
   branch_id AS branch_id,
-  query_strategy,
-  global_config,
+  config,
   query_batch_size
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;

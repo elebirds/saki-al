@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/spf13/cast"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -1440,9 +1441,16 @@ func (s *Service) materializeRoundDatasetViewTx(
 		planStruct = &structpb.Struct{}
 	}
 
+	seed, seedErr := cast.ToIntE(planMap["seed"])
+	if seedErr != nil {
+		seed = 42
+	}
+	if seed < 0 {
+		seed = 0
+	}
 	snapshotResp, err := s.domainClient.BuildDatasetSnapshot(ctx, &runtimedomainv1.BuildDatasetSnapshotRequest{
 		DatasetId: projectDatasetID.String(),
-		Seed:      uint32(max(toInt(planMap["seed"], 42), 0)),
+		Seed:      uint32(seed),
 	})
 	if err != nil {
 		return err

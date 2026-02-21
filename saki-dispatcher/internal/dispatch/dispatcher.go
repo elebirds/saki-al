@@ -3,12 +3,12 @@ package dispatch
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cast"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 )
@@ -255,30 +255,13 @@ func parseKernelCompatFlags(register *runtimecontrolv1.Register) map[string]bool
 		if trimmed == "" {
 			continue
 		}
-		value, ok := asBool(raw)
-		if !ok {
+		value, err := cast.ToBoolE(raw)
+		if err != nil {
 			continue
 		}
 		flags[trimmed] = value
 	}
 	return flags
-}
-
-func asBool(raw any) (bool, bool) {
-	switch value := raw.(type) {
-	case bool:
-		return value, true
-	case float64:
-		return value != 0, true
-	case string:
-		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
-		if err != nil {
-			return false, false
-		}
-		return parsed, true
-	default:
-		return false, false
-	}
 }
 
 func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *runtimecontrolv1.StepPayload) bool {

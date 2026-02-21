@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"github.com/spf13/cast"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
@@ -829,23 +830,8 @@ func (c *Client) resolveStubDuration(step *runtimecontrolv1.StepPayload) time.Du
 	if !ok {
 		return defaultStubStepDuration
 	}
-	switch value := raw.(type) {
-	case float64:
-		if value > 0 {
-			return time.Duration(value * float64(time.Second))
-		}
-	case int64:
-		if value > 0 {
-			return time.Duration(value) * time.Second
-		}
-	case string:
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return defaultStubStepDuration
-		}
-		if parsed, ok := parsePositiveDuration(value); ok {
-			return parsed
-		}
+	if parsed, ok := parsePositiveDuration(cast.ToString(raw)); ok {
+		return parsed
 	}
 	return defaultStubStepDuration
 }

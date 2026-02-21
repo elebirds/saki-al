@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
+	"github.com/spf13/cast"
 	"gopkg.in/yaml.v3"
 )
 
@@ -144,7 +144,7 @@ func parseKernelManifest(path string) (PluginSpec, error) {
 		spec.SupportedStrategies = []string{"uncertainty", "entropy", "random"}
 	}
 	if value, ok := manifest.Capabilities["supports_auto_fallback"]; ok {
-		if parsed, valid := asBool(value); valid {
+		if parsed, err := cast.ToBoolE(value); err == nil {
 			spec.SupportsAutoFallback = parsed
 		}
 	}
@@ -180,25 +180,4 @@ func cloneMap(input map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
-}
-
-func asBool(raw any) (bool, bool) {
-	switch value := raw.(type) {
-	case bool:
-		return value, true
-	case int:
-		return value != 0, true
-	case int64:
-		return value != 0, true
-	case float64:
-		return value != 0, true
-	case string:
-		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
-		if err != nil {
-			return false, false
-		}
-		return parsed, true
-	default:
-		return false, false
-	}
 }

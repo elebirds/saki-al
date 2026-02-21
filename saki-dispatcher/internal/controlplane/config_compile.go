@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
@@ -16,12 +16,12 @@ import (
 
 func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 	loopConfig, _ := parseJSONObject(loop.Config)
-	pluginConfig := ensureMap(loopConfig["plugin"])
-	modeConfig := ensureMap(loopConfig["mode"])
-	reproConfig := ensureMap(loopConfig["reproducibility"])
-	executionConfig := ensureMap(loopConfig["execution"])
+	pluginConfig := cast.ToStringMap(loopConfig["plugin"])
+	modeConfig := cast.ToStringMap(loopConfig["mode"])
+	reproConfig := cast.ToStringMap(loopConfig["reproducibility"])
+	executionConfig := cast.ToStringMap(loopConfig["execution"])
 
-	globalSeed := strings.TrimSpace(toString(reproConfig["global_seed"]))
+	globalSeed := strings.TrimSpace(cast.ToString(reproConfig["global_seed"]))
 	if globalSeed == "" {
 		globalSeed = loop.ID.String()
 	}
@@ -29,7 +29,7 @@ func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 	trainSeed := deriveScopedSeed(globalSeed, loop.ID, roundIndex, "train")
 	samplingSeed := deriveScopedSeed(globalSeed, loop.ID, roundIndex, "sampling")
 
-	deterministicLevel := strings.TrimSpace(toString(reproConfig["deterministic_level"]))
+	deterministicLevel := strings.TrimSpace(cast.ToString(reproConfig["deterministic_level"]))
 	if deterministicLevel == "" {
 		deterministicLevel = "standard"
 	}
@@ -75,10 +75,10 @@ func compileStepConfig(roundConfig map[string]any, stepType db.Steptype, mode db
 
 func extractSamplingStrategyFromStruct(params *structpb.Struct) string {
 	fields := structToMap(params)
-	sampling := ensureMap(fields["sampling"])
-	strategy := strings.TrimSpace(toString(sampling["strategy"]))
+	sampling := cast.ToStringMap(fields["sampling"])
+	strategy := strings.TrimSpace(cast.ToString(sampling["strategy"]))
 	if strategy == "" {
-		strategy = strings.TrimSpace(toString(fields["query_strategy"]))
+		strategy = strings.TrimSpace(cast.ToString(fields["query_strategy"]))
 	}
 	return strategy
 }
@@ -89,14 +89,14 @@ func extractSamplingStrategyAndTopK(
 	fallbackTopk int,
 ) (string, int) {
 	fields := structToMap(params)
-	sampling := ensureMap(fields["sampling"])
-	strategy := strings.TrimSpace(toString(sampling["strategy"]))
+	sampling := cast.ToStringMap(fields["sampling"])
+	strategy := strings.TrimSpace(cast.ToString(sampling["strategy"]))
 	if strategy == "" {
-		strategy = strings.TrimSpace(toString(loopConfig["query_strategy"]))
+		strategy = strings.TrimSpace(cast.ToString(loopConfig["query_strategy"]))
 	}
-	topk := toInt(sampling["topk"], 0)
+	topk := cast.ToInt(sampling["topk"])
 	if topk <= 0 {
-		topk = toInt(fields["topk"], 0)
+		topk = cast.ToInt(fields["topk"])
 	}
 	if topk <= 0 {
 		topk = max(1, fallbackTopk)
@@ -105,17 +105,20 @@ func extractSamplingStrategyAndTopK(
 }
 
 func compileSamplingConfig(loop loopRow, loopConfig map[string]any) map[string]any {
-	sampling := ensureMap(loopConfig["sampling"])
-	strategy := strings.TrimSpace(toString(sampling["strategy"]))
+	sampling := cast.ToStringMap(loopConfig["sampling"])
+	strategy := strings.TrimSpace(cast.ToString(sampling["strategy"]))
 	if strategy == "" {
 		strategy = "random_baseline"
 	}
-	topk := toInt(sampling["topk"], 0)
+	topk := cast.ToInt(sampling["topk"])
 	if topk <= 0 {
 		topk = max(1, loop.QueryBatchSize)
 	}
-	unlabeledPageSize := toInt(sampling["unlabeled_page_size"], 1000)
-	minCandidatesRequired := toInt(sampling["min_candidates_required"], 1)
+	unlabeledPageSize := cast.ToInt(sampling["unlabeled_page_size"])
+	if unlabeledPageSize <= 0 {
+		unlabeledPageSize = 1000
+	}
+	minCandidatesRequired := cast.ToInt(sampling["min_candidates_required"])
 	if minCandidatesRequired <= 0 {
 		minCandidatesRequired = 1
 	}
@@ -142,13 +145,6 @@ func isDeterministicLevel(level string) bool {
 	}
 }
 
-func ensureMap(value any) map[string]any {
-	if mapped, ok := value.(map[string]any); ok {
-		return mapped
-	}
-	return map[string]any{}
-}
-
 func cloneMap(value map[string]any) map[string]any {
 	raw, err := json.Marshal(value)
 	if err != nil {
@@ -159,36 +155,4 @@ func cloneMap(value map[string]any) map[string]any {
 		return map[string]any{}
 	}
 	return out
-}
-
-func toString(value any) string {
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case fmt.Stringer:
-		return typed.String()
-	default:
-		return strings.TrimSpace(fmt.Sprintf("%v", value))
-	}
-}
-
-func toInt(value any, defaultValue int) int {
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int32:
-		return int(typed)
-	case int64:
-		return int(typed)
-	case float32:
-		return int(typed)
-	case float64:
-		return int(typed)
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
-		if err == nil {
-			return parsed
-		}
-	}
-	return defaultValue
 }

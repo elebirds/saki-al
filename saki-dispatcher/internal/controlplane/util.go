@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
@@ -270,7 +271,7 @@ func parseJSONStringMap(raw []byte) (map[string]string, error) {
 		if trimmed == "" {
 			continue
 		}
-		result[trimmed] = fmt.Sprintf("%v", value)
+		result[trimmed] = cast.ToString(value)
 	}
 	return result, nil
 }
@@ -284,21 +285,15 @@ func toResourceSummary(raw []byte) *runtimecontrolv1.ResourceSummary {
 		return &runtimecontrolv1.ResourceSummary{}
 	}
 	summary := &runtimecontrolv1.ResourceSummary{}
-	if value, ok := payload["gpu_count"].(float64); ok {
-		summary.GpuCount = int32(value)
-	}
-	if value, ok := payload["cpu_workers"].(float64); ok {
-		summary.CpuWorkers = int32(value)
-	}
-	if value, ok := payload["memory_mb"].(float64); ok {
-		summary.MemoryMb = int32(value)
-	}
-	if ids, ok := payload["gpu_device_ids"].([]any); ok {
-		for _, item := range ids {
-			if numeric, ok := item.(float64); ok {
-				summary.GpuDeviceIds = append(summary.GpuDeviceIds, int32(numeric))
-			}
+	summary.GpuCount = cast.ToInt32(payload["gpu_count"])
+	summary.CpuWorkers = cast.ToInt32(payload["cpu_workers"])
+	summary.MemoryMb = cast.ToInt32(payload["memory_mb"])
+	for _, item := range cast.ToSlice(payload["gpu_device_ids"]) {
+		numeric, err := cast.ToInt32E(item)
+		if err != nil {
+			continue
 		}
+		summary.GpuDeviceIds = append(summary.GpuDeviceIds, numeric)
 	}
 	return summary
 }
@@ -393,17 +388,17 @@ func extractOracleCommitID(rawConfig []byte) string {
 		if !legacyOK {
 			return ""
 		}
-		simulationMap, mapOK := simulationRaw.(map[string]any)
-		if !mapOK {
+		simulationMap := cast.ToStringMap(simulationRaw)
+		if len(simulationMap) == 0 {
 			return ""
 		}
-		return strings.TrimSpace(fmt.Sprintf("%v", simulationMap["oracle_commit_id"]))
+		return strings.TrimSpace(cast.ToString(simulationMap["oracle_commit_id"]))
 	}
-	modeMap, ok := modeRaw.(map[string]any)
-	if !ok {
+	modeMap := cast.ToStringMap(modeRaw)
+	if len(modeMap) == 0 {
 		return ""
 	}
-	return strings.TrimSpace(fmt.Sprintf("%v", modeMap["oracle_commit_id"]))
+	return strings.TrimSpace(cast.ToString(modeMap["oracle_commit_id"]))
 }
 
 func extractRoundResources(rawConfig []byte) map[string]any {
@@ -413,9 +408,11 @@ func extractRoundResources(rawConfig []byte) map[string]any {
 	}
 	executionRaw, ok := payload["execution"]
 	if ok {
-		if executionMap, mapOK := executionRaw.(map[string]any); mapOK {
+		executionMap := cast.ToStringMap(executionRaw)
+		if len(executionMap) > 0 {
 			if resourcesRaw, exists := executionMap["round_resources_default"]; exists {
-				if resources, resourcesOK := resourcesRaw.(map[string]any); resourcesOK {
+				resources := cast.ToStringMap(resourcesRaw)
+				if len(resources) > 0 {
 					return resources
 				}
 			}
@@ -427,8 +424,8 @@ func extractRoundResources(rawConfig []byte) map[string]any {
 	if !ok {
 		return nil
 	}
-	resources, ok := resourcesRaw.(map[string]any)
-	if !ok {
+	resources := cast.ToStringMap(resourcesRaw)
+	if len(resources) == 0 {
 		return nil
 	}
 	return resources

@@ -7,9 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/cast"
 )
 
 // DeviceCapabilities 代表系统的硬件能力
@@ -167,12 +168,12 @@ func detectCPUInfo() *CPUInfo {
 			info.ModelName = model
 		}
 		if physical, err := commandOutput("sysctl", "-n", "hw.physicalcpu"); err == nil {
-			if n, parseErr := strconv.Atoi(strings.TrimSpace(physical)); parseErr == nil && n > 0 {
+			if n, parseErr := cast.ToIntE(strings.TrimSpace(physical)); parseErr == nil && n > 0 {
 				info.PhysicalCores = n
 			}
 		}
 		if hz, err := commandOutput("sysctl", "-n", "hw.cpufrequency"); err == nil {
-			if v, parseErr := strconv.ParseFloat(strings.TrimSpace(hz), 64); parseErr == nil && v > 0 {
+			if v, parseErr := cast.ToFloat64E(strings.TrimSpace(hz)); parseErr == nil && v > 0 {
 				info.Frequency = v / 1_000_000
 			}
 		}
@@ -300,7 +301,7 @@ func fillCPUInfoFromProc(content string, info *CPUInfo) {
 			}
 		case "cpu MHz":
 			if mhz <= 0 {
-				if parsed, err := strconv.ParseFloat(value, 64); err == nil && parsed > 0 {
+				if parsed, err := cast.ToFloat64E(value); err == nil && parsed > 0 {
 					mhz = parsed
 				}
 			}

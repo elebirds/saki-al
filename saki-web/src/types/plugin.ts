@@ -15,19 +15,11 @@ export interface PluginConfigFieldProps {
   [key: string]: any; // 允许额外的任意属性
 }
 
-/** 选项条件 (已弃用 - 使用 visible 表达式代替) */
-export interface PluginConfigFieldOptionCond {
-  annotation_types?: { subset_of: string[] };
-  when_field?: Record<string, string>;
-  visible?: string;
-}
-
 /** 选项定义 */
 export interface PluginConfigFieldOption {
   label: string;
   value: string | number | boolean;
-  cond?: PluginConfigFieldOptionCond; // 已弃用
-  visible?: string; // 推荐：使用 visible 表达式
+  visible?: string; // 可见性表达式
 }
 
 /** 配置字段定义 */

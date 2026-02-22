@@ -64,19 +64,11 @@ function evaluateVisible(
 
     const form = { ...context.fieldValues };
 
-    // 转换 JS 运算符到 Python（因为后端使用 Python eval）
-    // === -> ==, !== -> !=, && -> and, || -> or
-    let pyExpr = trimmed
-      .replace(/===/g, '==')
-      .replace(/!==/g, '!=')
-      .replace(/&&/g, ' and ')
-      .replace(/\|\|/g, ' or ');
-
     // 创建安全的评估函数
     const safeEval = new Function('ctx', 'form', `
       "use strict";
       try {
-        return ${pyExpr};
+        return ${trimmed};
       } catch (e) {
         return false;
       }

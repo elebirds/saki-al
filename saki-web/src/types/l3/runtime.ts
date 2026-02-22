@@ -333,15 +333,10 @@ export interface ProjectModel {
     updatedAt: string;
 }
 
-export interface RuntimeRequestConfigFieldOptionCond {
-    annotation_types?: { subset_of: string[] };
-    when_field?: Record<string, string>;
-}
-
 export interface RuntimeRequestConfigFieldOption {
     label: string;
     value: string | number | boolean;
-    cond?: RuntimeRequestConfigFieldOptionCond;
+    visible?: string; // 可见性表达式
 }
 
 export interface RuntimeRequestConfigField {
@@ -352,13 +347,24 @@ export interface RuntimeRequestConfigField {
     min?: number;
     max?: number;
     options?: RuntimeRequestConfigFieldOption[];
+    default?: any;
     // 新增可选字段（用于增强配置表单）
     description?: string;
     group?: string;
     depends_on?: string[];
+    visible?: string; // 字段级可见性表达式
     ui?: {
         placeholder?: string;
         step?: number;
+        rows?: number;
+        min?: number;
+        max?: number;
+    };
+    props?: {
+        min?: number;
+        max?: number;
+        step?: number;
+        placeholder?: string;
         rows?: number;
     };
 }

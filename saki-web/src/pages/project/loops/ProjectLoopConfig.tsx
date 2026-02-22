@@ -31,32 +31,12 @@ import {DynamicConfigForm} from '../../../components/common';
 // ---------------------------------------------------------------------------
 
 function toPluginConfigField(field: RuntimeRequestConfigField): PluginConfigField {
-    // Convert cond to visible expression for options
-    const options = field.options?.map((opt) => {
-        const result: any = {
-            label: opt.label,
-            value: opt.value,
-        };
-
-        // Convert cond to visible expression if present
-        if (opt.cond) {
-            const condParts: string[] = [];
-            if (opt.cond.annotation_types?.subset_of) {
-                const types = opt.cond.annotation_types.subset_of;
-                condParts.push(`ctx.annotation_types.includes('${types[0]}')`);
-            }
-            if (opt.cond.when_field) {
-                for (const [key, val] of Object.entries(opt.cond.when_field)) {
-                    condParts.push(`form.${key} === '${val}'`);
-                }
-            }
-            if (condParts.length > 0) {
-                result.visible = condParts.join(' && ');
-            }
-        }
-
-        return result;
-    });
+    // 直接保留 visible 表达式（不做任何转换）
+    const options = field.options?.map((opt) => ({
+        label: opt.label,
+        value: opt.value,
+        visible: (opt as any).visible, // 保留 visible 属性
+    }));
 
     return {
         key: field.key,
@@ -69,14 +49,15 @@ function toPluginConfigField(field: RuntimeRequestConfigField): PluginConfigFiel
         description: field.description,
         group: field.group,
         depends_on: field.depends_on,
-        // Merge ui into props
-        props: field.ui ? {
+        visible: (field as any).visible, // 保留字段级 visible
+        // 优先使用 props，回退到 ui
+        props: (field as any).props ?? (field.ui ? {
             placeholder: field.ui.placeholder,
             step: field.ui.step,
             rows: field.ui.rows,
             min: field.ui.min ?? field.min,
             max: field.ui.max ?? field.max,
-        } : undefined,
+        } : undefined),
         options: options && options.length > 0 ? options : undefined,
     };
 }

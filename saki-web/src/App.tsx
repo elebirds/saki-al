@@ -17,6 +17,7 @@ import DatasetImportWorkspace from './pages/import/DatasetImportWorkspace';
 import ProjectImportWorkspace from './pages/import/ProjectImportWorkspace';
 import ProjectLoopOverview from './pages/project/loops/ProjectLoopOverview';
 import ProjectLoopDetail from './pages/project/loops/ProjectLoopDetail';
+import ProjectLoopConfig from './pages/project/loops/ProjectLoopConfig';
 import ProjectLoopRoundDetail from './pages/project/loops/ProjectLoopRoundDetail';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
@@ -74,6 +75,7 @@ const App: React.FC = () => {
                                     <Route path="export" element={<ProjectExportWorkspace/>}/>
                                     <Route path="loops" element={<ProjectLoopOverview/>}/>
                                     <Route path="loops/:loopId" element={<ProjectLoopDetail/>}/>
+                                    <Route path="loops/:loopId/config" element={<ProjectLoopConfig/>}/>
                                     <Route path="loops/:loopId/rounds/:roundId" element={<ProjectLoopRoundDetail/>}/>
                                     <Route path="insights" element={<ProjectInsights/>}/>
                                     <Route path="settings" element={<ProjectSettings/>}/>

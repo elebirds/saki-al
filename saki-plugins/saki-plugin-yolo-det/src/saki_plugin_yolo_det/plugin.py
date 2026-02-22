@@ -1,8 +1,20 @@
+"""YOLO Detection Plugin for Saki.
+
+A production-ready plugin for training and inference with YOLO models,
+supporting both standard detection (detect) and oriented bounding boxes (OBB).
+"""
+
 from __future__ import annotations
 
 from typing import Any
 
-from saki_plugin_sdk import EventCallback, ExecutorPlugin, PluginConfig, TrainOutput, Workspace
+from saki_plugin_sdk import (
+    EventCallback,
+    ExecutorPlugin,
+    PluginLogger,
+    TrainOutput,
+    Workspace,
+)
 from saki_plugin_yolo_det.internal import (
     YoloDetectionInternal,
     _infer_image_hw as _internal_infer_image_hw,
@@ -13,52 +25,66 @@ _infer_image_hw = _internal_infer_image_hw
 
 
 class YoloDetectionPlugin(ExecutorPlugin):
+    """YOLO Detection Plugin.
+
+    Supports:
+    - Standard object detection (detect)
+    - Oriented bounding box detection (OBB)
+    - Multiple accelerator backends (CUDA, MPS, CPU)
+    - Active learning strategies (uncertainty, IoU disagreement, random)
+
+    Metadata (plugin_id, version, etc.) is automatically loaded from plugin.yml
+    via the ExecutorPlugin base class.
+    """
+
     def __init__(self) -> None:
+        # Initialize base class (sets up logger and loads manifest)
+        super().__init__()
+        # Load manifest from plugin.yml
+        self._manifest = self._load_manifest()
+        # Initialize internal implementation
         self._internal = YoloDetectionInternal()
 
-    @property
-    def plugin_id(self) -> str:
-        return self._internal.plugin_id
+    # -------------------------------------------------------------------
+    # Lifecycle hooks (optional overrides with logging)
+    # -------------------------------------------------------------------
 
-    @property
-    def version(self) -> str:
-        return self._internal.version
+    async def on_load(self, context: dict[str, Any]) -> None:
+        """Plugin initialization hook.
 
-    @property
-    def display_name(self) -> str:
-        return self._internal.display_name
+        Called when worker process starts. Log plugin version and capabilities.
+        """
+        self.logger.info(
+            f"YOLO Detection Plugin v{self.version} loaded. "
+            f"Supported strategies: {self.supported_strategies}"
+        )
 
-    @property
-    def supported_step_types(self) -> list[str]:
-        return self._internal.supported_step_types
+    async def on_start(self, step_id: str, workspace: Workspace) -> None:
+        """Step start hook.
 
-    @property
-    def supported_strategies(self) -> list[str]:
-        return self._internal.supported_strategies
+        Called before step execution. Ensures workspace directories exist.
+        """
+        await super().on_start(step_id, workspace)
+        workspace.ensure()
+        self.logger.debug(f"Step {step_id} workspace prepared at {workspace.root}")
 
-    @property
-    def supported_accelerators(self) -> list[str]:
-        return self._internal.supported_accelerators
+    async def on_stop(self, step_id: str, workspace: Workspace) -> None:
+        """Step completion hook.
 
-    @property
-    def supports_auto_fallback(self) -> bool:
-        return self._internal.supports_auto_fallback
+        Called after step execution (success or failure).
+        """
+        self.logger.debug(f"Step {step_id} completed")
 
-    @property
-    def request_config_schema(self) -> dict[str, Any]:
-        m = self._internal.manifest
-        return dict(m.config_schema) if m.config_schema else {}
+    async def on_unload(self) -> None:
+        """Plugin cleanup hook.
 
-    @property
-    def default_request_config(self) -> dict[str, Any]:
-        m = self._internal.manifest
-        return dict(m.default_config) if m.default_config else {}
+        Called when worker process shuts down.
+        """
+        self.logger.info("YOLO Detection Plugin unloading")
 
-    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> PluginConfig:
-        return self._internal.resolve_config(mode=mode, raw_config=raw_config)
-
-    def validate_params(self, params: dict[str, Any]) -> None:
-        self._internal.validate_params(params)
+    # -------------------------------------------------------------------
+    # Execution methods
+    # -------------------------------------------------------------------
 
     async def prepare_data(
             self,
@@ -69,6 +95,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             dataset_ir: Any,
             splits: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
+        self.logger.info(f"Preparing dataset with {len(samples)} samples")
         await self._internal.prepare_data(
             workspace=workspace,
             labels=labels,
@@ -78,6 +105,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             infer_image_hw=_infer_image_hw,
             splits=splits,
         )
+        self.logger.info("Dataset preparation completed")
 
     async def train(
             self,
@@ -85,27 +113,59 @@ class YoloDetectionPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit: EventCallback,
     ) -> TrainOutput:
+        """Execute training step.
+
+        Args:
+            workspace: Step workspace directory
+            params: Resolved configuration parameters
+            emit: Event callback for progress/metrics
+
+        Returns:
+            Training output with metrics and artifacts
+        """
+        self.logger.info(f"Starting training with params: {list(params.keys())}")
         return await self._internal.train(workspace, params, emit)
 
     async def predict_unlabeled(
-            self,
-            workspace: Workspace,
-            unlabeled_samples: list[dict[str, Any]],
-            strategy: str,
-            params: dict[str, Any],
+        self,
+        workspace: Workspace,
+        unlabeled_samples: list[dict[str, Any]],
+        strategy: str,
+        params: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        return await self._internal.predict_unlabeled(workspace, unlabeled_samples, strategy, params)
+        """Run prediction on unlabeled samples.
+
+        Args:
+            workspace: Step workspace directory
+            unlabeled_samples: Samples to predict
+            strategy: Sampling strategy name
+            params: Resolved configuration parameters
+
+        Returns:
+            Prediction results with scores
+        """
+        self.logger.info(
+            f"Running {strategy} prediction on {len(unlabeled_samples)} samples"
+        )
+        return await self._internal.predict_unlabeled(
+            workspace, unlabeled_samples, strategy, params
+        )
 
     async def predict_unlabeled_batch(
-            self,
-            workspace: Workspace,
-            unlabeled_samples: list[dict[str, Any]],
-            strategy: str,
-            params: dict[str, Any],
+        self,
+        workspace: Workspace,
+        unlabeled_samples: list[dict[str, Any]],
+        strategy: str,
+        params: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        return await self._internal.predict_unlabeled_batch(workspace, unlabeled_samples, strategy, params)
+        """Batch prediction (delegates to predict_unlabeled)."""
+        return await self._internal.predict_unlabeled_batch(
+            workspace, unlabeled_samples, strategy, params
+        )
 
     async def stop(self, step_id: str) -> None:
+        """Request graceful training stop."""
+        self.logger.info(f"Stop requested for step {step_id}")
         await self._internal.stop(step_id)
 
 

@@ -11,3 +11,7 @@ export {
     ResourceAuthorized,
     withAuthorization,
 } from './Authorized';
+
+// Form components
+export {DynamicConfigForm} from './DynamicConfigForm';
+export type {PluginConfigFormProps} from '../../types/plugin';

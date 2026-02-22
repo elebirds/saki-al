@@ -352,6 +352,15 @@ export interface RuntimeRequestConfigField {
     min?: number;
     max?: number;
     options?: RuntimeRequestConfigFieldOption[];
+    // 新增可选字段（用于增强配置表单）
+    description?: string;
+    group?: string;
+    depends_on?: string[];
+    ui?: {
+        placeholder?: string;
+        step?: number;
+        rows?: number;
+    };
 }
 
 export interface RuntimeRequestConfigSchema {

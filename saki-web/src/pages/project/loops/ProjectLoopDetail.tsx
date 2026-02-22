@@ -29,8 +29,10 @@ import {
     RuntimeRound,
     RuntimePluginCatalogItem,
     RuntimeRequestConfigField,
-    RuntimeRequestConfigFieldOption,
+    PluginConfigSchema,
+    PluginConfigField,
 } from '../../../types';
+import {DynamicConfigForm} from '../../../components/common';
 
 const {Title, Text} = Typography;
 
@@ -70,46 +72,66 @@ type LoopConfigForm = {
 };
 
 // ---------------------------------------------------------------------------
-// cond evaluation helpers
+// Helper: Convert RuntimeRequestConfigField to PluginConfigField
 // ---------------------------------------------------------------------------
 
-/**
- * Check whether an option's `cond` is satisfied.
- *
- * Supported cond types:
- * - `annotation_types.subset_of` – project annotation types must be a
- *   subset of the given set.
- * - `when_field` – a sibling field's current value must match.
- */
-function evaluateOptionCond(
-    option: RuntimeRequestConfigFieldOption,
-    projectAnnotationTypes: string[],
-    fieldValues: Record<string, any>,
-): boolean {
-    const cond = option.cond;
-    if (!cond) return true;
+function toPluginConfigField(field: RuntimeRequestConfigField): PluginConfigField {
+    // Convert cond to visible expression for options
+    const options = field.options?.map((opt) => {
+        const result: any = {
+            label: opt.label,
+            value: opt.value,
+        };
 
-    if (cond.annotation_types?.subset_of) {
-        const allowed = new Set(cond.annotation_types.subset_of.map((s) => s.toLowerCase()));
-        const actual = projectAnnotationTypes.map((s) => s.toLowerCase());
-        if (!actual.every((t) => allowed.has(t))) return false;
-    }
-
-    if (cond.when_field) {
-        for (const [fieldKey, expected] of Object.entries(cond.when_field)) {
-            if (String(fieldValues[fieldKey] ?? '') !== String(expected)) return false;
+        // Convert cond to visible expression if present
+        if (opt.cond) {
+            const condParts: string[] = [];
+            if (opt.cond.annotation_types?.subset_of) {
+                const types = opt.cond.annotation_types.subset_of;
+                condParts.push(`ctx.annotation_types.includes('${types[0]}')`);
+            }
+            if (opt.cond.when_field) {
+                for (const [key, val] of Object.entries(opt.cond.when_field)) {
+                    condParts.push(`form.${key} === '${val}'`);
+                }
+            }
+            if (condParts.length > 0) {
+                result.visible = condParts.join(' && ');
+            }
         }
-    }
 
-    return true;
+        return result;
+    });
+
+    return {
+        key: field.key,
+        label: field.label,
+        type: field.type as any,
+        required: field.required,
+        min: field.min,
+        max: field.max,
+        default: field.default,
+        description: field.description,
+        group: field.group,
+        depends_on: field.depends_on,
+        // Merge ui into props
+        props: field.ui ? {
+            placeholder: field.ui.placeholder,
+            step: field.ui.step,
+            rows: field.ui.rows,
+            min: field.ui.min ?? field.min,
+            max: field.ui.max ?? field.max,
+        } : undefined,
+        options: options && options.length > 0 ? options : undefined,
+    };
 }
 
-function filterFieldOptions(
-    options: RuntimeRequestConfigFieldOption[],
-    projectAnnotationTypes: string[],
-    fieldValues: Record<string, any>,
-): RuntimeRequestConfigFieldOption[] {
-    return options.filter((opt) => evaluateOptionCond(opt, projectAnnotationTypes, fieldValues));
+function toPluginConfigSchema(schema: {title?: string; description?: string; fields?: RuntimeRequestConfigField[]} | undefined): PluginConfigSchema {
+    return {
+        title: schema?.title,
+        description: schema?.description,
+        fields: (schema?.fields || []).map(toPluginConfigField),
+    };
 }
 
 const ProjectLoopDetail: React.FC = () => {
@@ -140,69 +162,7 @@ const ProjectLoopDetail: React.FC = () => {
         [plugins, selectedPluginId],
     );
 
-    // Auto-reset dependent fields when a parent field value changes
-    const requestConfigFields = selectedPlugin?.requestConfigSchema?.fields || [];
-    useEffect(() => {
-        if (!requestConfigFields.length) return;
-        const currentConfig = configForm.getFieldValue('pluginConfig') || {};
-        const patches: Record<string, any> = {};
-
-        for (const field of requestConfigFields) {
-            if (field.type !== 'select' || !field.options?.length) continue;
-            const visible = filterFieldOptions(field.options, projectAnnotationTypes, currentConfig);
-            const currentVal = currentConfig[field.key];
-            const stillValid = visible.some((opt) => opt.value === currentVal);
-            if (!stillValid && visible.length > 0) {
-                patches[field.key] = visible[0].value;
-            }
-        }
-
-        if (Object.keys(patches).length > 0) {
-            configForm.setFieldsValue({pluginConfig: {...currentConfig, ...patches}});
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pluginConfigValues, projectAnnotationTypes]);
-
-    const renderDynamicField = (field: RuntimeRequestConfigField) => {
-        const keyPath: (string | number)[] = ['pluginConfig', field.key];
-        const rules = field.required ? [{required: true, message: `${field.label} 必填`}] : undefined;
-        if (field.type === 'boolean') {
-            return (
-                <Form.Item key={field.key} name={keyPath} label={field.label} valuePropName="checked">
-                    <Switch/>
-                </Form.Item>
-            );
-        }
-        if (field.type === 'integer' || field.type === 'number') {
-            return (
-                <Form.Item key={field.key} name={keyPath} label={field.label} rules={rules}>
-                    <InputNumber
-                        className="w-full"
-                        min={field.min}
-                        max={field.max}
-                        step={field.type === 'integer' ? 1 : 0.0001}
-                    />
-                </Form.Item>
-            );
-        }
-        if (field.type === 'select') {
-            const visibleOptions = filterFieldOptions(
-                field.options || [],
-                projectAnnotationTypes,
-                pluginConfigValues,
-            );
-            return (
-                <Form.Item key={field.key} name={keyPath} label={field.label} rules={rules}>
-                    <Select options={visibleOptions.map((item) => ({label: item.label, value: item.value}))}/>
-                </Form.Item>
-            );
-        }
-        return (
-            <Form.Item key={field.key} name={keyPath} label={field.label} rules={rules}>
-                <Input/>
-            </Form.Item>
-        );
-    };
+    // DynamicConfigForm now handles field dependency reset internally
 
     const refreshLoopData = useCallback(async () => {
         if (!loopId || !projectId) return;
@@ -339,6 +299,16 @@ const ProjectLoopDetail: React.FC = () => {
             setCleaningRound(null);
         }
     };
+
+    // Handle plugin config changes
+    const handlePluginConfigChange = useCallback((newValues: Record<string, any>) => {
+        configForm.setFieldsValue({ pluginConfig: newValues });
+    }, [configForm]);
+
+    // Plugin config schema for DynamicConfigForm
+    const pluginConfigSchema = useMemo((): PluginConfigSchema => {
+        return toPluginConfigSchema(selectedPlugin?.requestConfigSchema);
+    }, [selectedPlugin]);
 
     if (loading) {
         return (
@@ -538,14 +508,20 @@ const ProjectLoopDetail: React.FC = () => {
                     ) : null}
 
                     <Card size="small" className="!border-github-border !bg-github-panel" title={selectedPlugin?.requestConfigSchema?.title || '模型请求参数'}>
-                        {(selectedPlugin?.requestConfigSchema?.fields || []).length === 0 ? (
+                        {pluginConfigSchema.fields.length === 0 ? (
                             <Alert type="info" showIcon message="当前插件未定义动态参数 schema"/>
                         ) : (
-                            <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
-                                {(selectedPlugin?.requestConfigSchema?.fields || []).map((field) => (
-                                    <div key={field.key}>{renderDynamicField(field)}</div>
-                                ))}
-                            </div>
+                            <DynamicConfigForm
+                                schema={pluginConfigSchema}
+                                values={pluginConfigValues}
+                                onChange={handlePluginConfigChange}
+                                context={{
+                                    annotationTypes: projectAnnotationTypes,
+                                    fieldValues: pluginConfigValues,
+                                }}
+                                form={configForm}
+                                namePrefix="pluginConfig"
+                            />
                         )}
                     </Card>
                 </Form>

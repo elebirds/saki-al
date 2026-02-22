@@ -1,32 +1,32 @@
 """
-Condition evaluation for plugin.yml ``cond`` directives.
+Expression-based visibility evaluation for plugin.yml.
 
-Two condition types are supported:
+This module provides a simple, safe expression evaluator for dynamic field
+and option visibility in plugin configurations.
 
-1. ``annotation_types.subset_of``
-   Evaluates to True when the project's ``enabled_annotation_types``
-   is a *subset* of the given set.
+Inspired by Gemini's design pattern:
+- ``ctx.*``: Project-level context (e.g., annotation_types)
+- ``form.*``: Form field values (user input)
+- Expression strings: ``"form.yolo_task === 'detect'"``
 
-   Example YAML::
+Example YAML::
 
-       cond:
-         annotation_types:
-           subset_of: [rect, obb]
+    fields:
+      - key: model_preset
+        type: select
+        options:
+          - label: "YOLOv8n"
+            value: "yolov8n.pt"
+            visible: "form.yolo_task === 'detect'"
+          - label: "YOLOv8n-OBB"
+            value: "yolov8n-obb.pt"
+            visible: "form.yolo_task === 'obb'"
 
-2. ``when_field``
-   Evaluates to True when a sibling field has the specified value.
-
-   Example YAML::
-
-       cond:
-         when_field:
-           yolo_task: detect
-
-Context dict expected shape::
+Context dict format::
 
     {
-        "annotation_types": ["rect"],          # project context
-        "field_values":     {"yolo_task": "obb"}  # current form values
+        "annotationTypes": ["rect"],  # or "annotation_types"
+        "fieldValues": {"yolo_task": "detect"},  # or "field_values"
     }
 """
 
@@ -35,165 +35,150 @@ from __future__ import annotations
 from typing import Any
 
 
-def evaluate_cond(cond: dict[str, Any] | None, context: dict[str, Any]) -> bool:
-    """Return *True* if *cond* is satisfied (or absent/empty).
+def _evaluate_expression(expr: str, context: dict[str, Any]) -> Any:
+    """Safely evaluate a visible expression.
 
-    An absent or ``None`` condition is treated as *always True*.
-    All sub-conditions must pass (logical AND).
+    Supports a restricted subset of Python/JS-like expressions:
+    - Comparisons: ``===``, ``!==``, ``==``, ``!=``, ``<``, ``>``, ``<=``, ``>=``
+    - Logical: ``and``, ``or``, ``&&``, ``||``
+    - Method calls: ``ctx.annotation_types.includes('x')``
+    - Attribute access: ``form.field_name``, ``ctx.var_name``
+
+    Args:
+        expr: Expression string to evaluate
+        context: Context dict with ``annotationTypes`` and ``fieldValues`` namespaces
+
+    Returns:
+        Evaluation result (typically boolean for visibility)
     """
-    if not cond or not isinstance(cond, dict):
+    if not expr or not isinstance(expr, str):
         return True
 
-    # --- annotation_types.subset_of ---
-    ann_cond = cond.get("annotation_types")
-    if isinstance(ann_cond, dict):
-        subset_of = ann_cond.get("subset_of")
-        if isinstance(subset_of, list):
-            allowed = {str(v).strip().lower() for v in subset_of}
-            project_types = _extract_annotation_types(context)
-            if not project_types.issubset(allowed):
-                return False
+    expr = expr.strip()
+    if not expr:
+        return True
 
-    # --- when_field ---
-    when = cond.get("when_field")
-    if isinstance(when, dict):
-        field_values = context.get("field_values") or {}
-        for field_key, expected in when.items():
-            actual = field_values.get(field_key)
-            if str(actual).strip().lower() != str(expected).strip().lower():
-                return False
+    try:
+        # Normalize context keys (camelCase -> snake_case for internal use)
+        normalized_context = {
+            "annotation_types": context.get("annotation_types") or context.get("annotationTypes", []),
+            "field_values": context.get("field_values") or context.get("fieldValues", {}),
+        }
 
-    return True
+        # Convert JS-style operators to Python
+        py_expr = expr.replace("===", "==").replace("!==", "!=")
+        py_expr = py_expr.replace("&&", " and ").replace("||", " or ")
+
+        # Build safe evaluation context
+        safe_ctx = _build_safe_context(normalized_context)
+        # Use eval with restricted globals
+        return eval(py_expr, {"__builtins__": {}}, safe_ctx)
+    except Exception as exc:
+        import warnings
+        warnings.warn(f"Failed to evaluate expression '{expr}': {exc}")
+        return False
 
 
-def resolve_conditional_default(
-    entries: list[dict[str, Any]],
-    context: dict[str, Any],
-) -> Any:
-    """Pick the first matching conditional default entry, or *fallback*.
+def _build_safe_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Build a safe evaluation context for expressions.
 
-    *entries* format (from plugin.yml ``default_config``)::
-
-        [
-            {"value": "detect", "cond": {"annotation_types": {"subset_of": ["rect"]}}},
-            {"value": "obb", "fallback": true},
-        ]
-
-    Returns the ``value`` of the first entry whose ``cond`` passes, or the
-    entry marked ``fallback: true``.  Returns ``None`` if nothing matches.
+    Creates ``ctx`` and ``form`` namespaces.
     """
-    fallback_value: Any = None
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("fallback"):
-            fallback_value = entry.get("value")
-        cond = entry.get("cond")
-        if evaluate_cond(cond, context):
-            return entry.get("value")
-    return fallback_value
+    annotation_types = context.get("annotation_types", [])
+
+    # Create a list-like object with includes() method
+    class SafeList(list):
+        """List wrapper with includes() method for JS-like syntax."""
+
+        def includes(self, value: Any) -> bool:
+            """Check if value is in the list (case-insensitive for strings)."""
+            return any(
+                str(self_item).lower() == str(value).lower()
+                for self_item in self
+            )
+
+    safe_list = SafeList(annotation_types)
+
+    class ContextNamespace:
+        """Project-level context (ctx.*)."""
+
+        @property
+        def annotation_types(self) -> SafeList:
+            """Return annotation types list with includes() method."""
+            return safe_list
+
+    field_values = context.get("field_values", {})
+
+    class FormNamespace:
+        """Form values namespace (form.*)."""
+
+        def __init__(self, values: dict[str, Any]):
+            self._values = values
+
+        def __getattr__(self, key: str) -> Any:
+            return self._values.get(key, "")
+
+    ctx_instance = ContextNamespace()
+    form_instance = FormNamespace(field_values)
+
+    return {
+        "ctx": ctx_instance,
+        "form": form_instance,
+    }
+
+
+def evaluate_visible(visible: str | bool | None, context: dict[str, Any]) -> bool:
+    """Evaluate a ``visible`` expression or boolean.
+
+    Args:
+        visible: Visibility expression string or boolean value
+        context: Context dict with ``annotationTypes`` and ``fieldValues``
+
+    Returns:
+        True if visible/expression is True, False otherwise
+
+    Examples:
+        >>> evaluate_visible("ctx.annotation_types.includes('rect')",
+        ...                  {'annotationTypes': ['rect'], 'fieldValues': {}})
+        True
+        >>> evaluate_visible("form.yolo_task === 'detect'",
+        ...                  {'annotationTypes': [], 'fieldValues': {'yolo_task': 'detect'}})
+        True
+    """
+    if not visible:
+        return True
+    if isinstance(visible, bool):
+        return visible
+    if isinstance(visible, str):
+        result = _evaluate_expression(visible, context)
+        return bool(result)
+    return True
 
 
 def filter_options(
     options: list[dict[str, Any]],
     context: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Return only the options whose ``cond`` is satisfied."""
-    return [opt for opt in options if evaluate_cond(opt.get("cond"), context)]
+    """Return only the options whose ``visible`` expression is satisfied.
 
+    Args:
+        options: List of option dicts with optional ``visible`` attribute
+        context: Context dict with ``annotationTypes`` and ``fieldValues``
 
-def resolve_default_config(
-    default_config: dict[str, Any],
-    context: dict[str, Any],
-) -> dict[str, Any]:
-    """Resolve a ``default_config`` section from plugin.yml.
-
-    Scalar values are returned as-is.  List values are treated as
-    conditional default entries and resolved via
-    :func:`resolve_conditional_default`.
+    Returns:
+        Filtered list of options
     """
-    result: dict[str, Any] = {}
-    for key, value in default_config.items():
-        if isinstance(value, list):
-            resolved = resolve_conditional_default(value, context)
-            if resolved is not None:
-                result[key] = resolved
-        else:
-            result[key] = value
-    return result
-
-
-def _is_cond_list(value: Any) -> bool:
-    """Return True if *value* looks like a conditional-default list."""
-    return (
-        isinstance(value, list)
-        and len(value) > 0
-        and isinstance(value[0], dict)
-        and "value" in value[0]
-    )
-
-
-def resolve_config_cond_values(
-    config: dict[str, Any],
-    context: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Resolve any leftover conditional-default lists inside *config*.
-
-    After merging ``default_request_config`` with ``raw_config``,
-    some values may still be conditional-default lists (the user or
-    API did not override them with scalar values).  This function
-    resolves them in-place (two passes to handle ``when_field``
-    dependencies on sibling values that are themselves conditional).
-
-    *context* may contain ``"annotation_types"`` for project-level
-    filtering.  ``field_values`` is populated automatically from
-    the already-resolved scalars in *config*.
-    """
-    ctx: dict[str, Any] = dict(context) if context else {}
-
-    # --- Pass 1: resolve entries that don't use when_field ---
-    scalars: dict[str, Any] = {}
-    pending_when_field: dict[str, list[dict[str, Any]]] = {}
-
-    for key, value in config.items():
-        if not _is_cond_list(value):
-            scalars[key] = value
-            continue
-
-        # Check if any entry uses when_field
-        uses_when_field = any(
-            isinstance(e.get("cond"), dict) and "when_field" in e["cond"]
-            for e in value
-            if isinstance(e, dict)
-        )
-        if uses_when_field:
-            # Defer to pass 2 — but try fallback first
-            pending_when_field[key] = value
-        else:
-            resolved = resolve_conditional_default(value, ctx)
-            if resolved is not None:
-                scalars[key] = resolved
-                config[key] = resolved
-
-    # --- Pass 2: resolve when_field entries using pass-1 scalars ---
-    ctx.setdefault("field_values", {})
-    ctx["field_values"].update(scalars)
-
-    for key, cond_list in pending_when_field.items():
-        resolved = resolve_conditional_default(cond_list, ctx)
-        if resolved is not None:
-            config[key] = resolved
-
-    return config
+    return [
+        opt for opt in options
+        if evaluate_visible(opt.get("visible"), context)
+    ]
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Public API
 # ---------------------------------------------------------------------------
 
-def _extract_annotation_types(context: dict[str, Any]) -> set[str]:
-    """Extract the set of annotation type strings from context."""
-    raw = context.get("annotation_types")
-    if isinstance(raw, (list, tuple, set, frozenset)):
-        return {str(v).strip().lower() for v in raw}
-    return set()
+__all__ = [
+    "evaluate_visible",
+    "filter_options",
+]

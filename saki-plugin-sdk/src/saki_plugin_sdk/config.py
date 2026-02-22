@@ -2,35 +2,128 @@
 Strongly-typed, schema-driven plugin configuration.
 
 ``PluginConfig`` is the SDK's unified configuration object.  It is
-constructed automatically from ``config_schema`` + ``default_config``
-(either from a ``PluginManifest`` or supplied directly), and provides:
+constructed automatically from ``config_schema`` (from ``plugin.yml``),
+and provides:
 
 * attribute-style access (``config.epochs``)
 * type coercion driven by ``config_schema.fields[*].type``
 * ``required`` / ``min`` / ``max`` / ``options`` validation
-* conditional-default resolution (``cond`` protocol)
 * passthrough of extra keys not declared in the schema
+* Pydantic-based validation and serialization
 
 Typical usage inside a plugin::
 
     config = PluginConfig.resolve(
-        default_config=self.default_request_config,
-        config_schema=self.request_config_schema,
+        schema=config_schema,
         raw_config=raw_params,
+        context={"annotationTypes": ["rect"]},
     )
     model = YOLO(config.model_preset, task=config.yolo_task)
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeVar
+import warnings
 
-from saki_plugin_sdk.cond import resolve_config_cond_values
+from pydantic import BaseModel, Field
+from pydantic import field_validator as pyd_field_validator
+
+from saki_plugin_sdk.exceptions import PluginValidationError
 
 
-# -----------------------------------------------------------------------
-# Schema field type coercion
-# -----------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Schema field type definitions (Pydantic models)
+# ---------------------------------------------------------------------------
+
+class ConfigFieldUI(BaseModel):
+    """UI rendering hints for a configuration field.
+
+    Note: This is being deprecated in favor of the ``props`` pattern
+    where UI attributes are declared directly in a props object.
+    """
+    placeholder: str | None = None
+    step: float | None = None
+    rows: int | None = None
+    min: float | None = None
+    max: float | None = None
+
+
+class ConfigFieldProps(BaseModel):
+    """UI component props (v-bind style).
+
+    A flat mapping of UI attributes that can be directly bound to
+    component props. This follows the pattern shown in Gemini's design
+    where constraints are declared as props rather than separate fields.
+
+    Examples::
+        props: { min: 1, max: 5000, step: 1 }
+        props: { placeholder: "Enter path...", rows: 3 }
+    """
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    placeholder: str | None = None
+    rows: int | None = None
+    # Allow additional arbitrary props for extensibility
+    model_config = {"extra": "allow"}
+
+
+class ConfigFieldOptionCond(BaseModel):
+    """Deprecated: Use ``visible`` expression on the option instead.
+
+    This class is kept for type compatibility but should not be used.
+    """
+    annotation_types: dict[str, Any] | None = None
+    when_field: dict[str, str] | None = None
+    visible: str | None = None
+
+
+class ConfigFieldOption(BaseModel):
+    """Option definition for select-type fields."""
+    label: str
+    value: Any
+    cond: ConfigFieldOptionCond | None = None  # Deprecated
+    visible: str | None = None  # Use this instead
+
+
+class ConfigField(BaseModel):
+    """Configuration field definition from plugin.yml.
+
+    New simplified pattern:
+    - ``visible``: Expression string for dynamic visibility (e.g., "form.yolo_task === 'detect'")
+    - ``props``: UI component props (min, max, step, placeholder, etc.)
+    - ``options``: List of options for select fields, each with optional ``visible``
+    """
+    key: str
+    label: str
+    type: str  # 'integer', 'number', 'string', 'boolean', 'select', 'textarea', 'integer_array'
+    required: bool = False
+    # Field-level constraints (can also use props)
+    min: float | None = None
+    max: float | None = None
+    default: Any = None
+    description: str | None = None
+    group: str | None = None
+    depends_on: list[str] | None = None
+    # UI hints (deprecated - use props instead)
+    ui: ConfigFieldUI | None = None
+    # New simplified pattern
+    props: ConfigFieldProps | None = None
+    visible: str | None = None  # Expression string for dynamic visibility
+    options: list[ConfigFieldOption] | None = None
+
+
+class ConfigSchema(BaseModel):
+    """Configuration schema from plugin.yml."""
+    title: str | None = None
+    description: str | None = None
+    fields: list[ConfigField] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Type coercion helpers
+# ---------------------------------------------------------------------------
 
 _COERCE_MAP: dict[str, type] = {
     "integer": int,
@@ -38,6 +131,8 @@ _COERCE_MAP: dict[str, type] = {
     "boolean": bool,
     "string": str,
     "select": str,
+    "textarea": str,
+    "integer_array": list,
 }
 
 
@@ -54,132 +149,107 @@ def _coerce(value: Any, field_type: str) -> Any:
         return value
     if target is bool and isinstance(value, str):
         return value.lower() in ("true", "1", "yes")
+    if target is list and isinstance(value, str):
+        return [v.strip() for v in value.split(",") if v.strip()]
     try:
         return target(value)
     except (ValueError, TypeError):
         return value
 
 
-# -----------------------------------------------------------------------
-# Validation helpers
-# -----------------------------------------------------------------------
+def _is_conditional_list(value: Any) -> bool:
+    """Return True if *value* looks like a conditional-default list (old format).
 
-def _validate_field(key: str, value: Any, field_def: dict[str, Any]) -> None:
-    """Validate a single field value against its schema definition."""
+    This is used to skip old-style conditional defaults during config resolution.
+    """
+    return (
+        isinstance(value, list)
+        and len(value) > 0
+        and isinstance(value[0], dict)
+        and "value" in value[0]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers
+# ---------------------------------------------------------------------------
+
+def _validate_field(key: str, value: Any, field_def: ConfigField) -> list[str]:
+    """Validate a single field value against its schema definition.
+
+    Returns a list of error messages (empty if valid).
+    """
+    errors: list[str] = []
+
     # --- required ---
-    if field_def.get("required") and (value is None or (isinstance(value, str) and not value.strip())):
-        raise ValueError(f"config field '{key}' is required")
+    if field_def.required and (value is None or (isinstance(value, str) and not value.strip())):
+        errors.append(f"config field '{key}' is required")
 
     if value is None:
-        return
+        return errors
 
     # --- min / max ---
-    field_type = field_def.get("type", "string")
+    field_type = field_def.type
     if field_type in ("integer", "number"):
-        num_val = value if isinstance(value, (int, float)) else None
+        try:
+            num_val = float(value)
+        except (TypeError, ValueError):
+            num_val = None
         if num_val is not None:
-            if "min" in field_def and num_val < field_def["min"]:
-                raise ValueError(f"config field '{key}' = {num_val} is below minimum {field_def['min']}")
-            if "max" in field_def and num_val > field_def["max"]:
-                raise ValueError(f"config field '{key}' = {num_val} exceeds maximum {field_def['max']}")
+            if field_def.min is not None and num_val < field_def.min:
+                errors.append(f"config field '{key}' = {num_val} is below minimum {field_def.min}")
+            if field_def.max is not None and num_val > field_def.max:
+                errors.append(f"config field '{key}' = {num_val} exceeds maximum {field_def.max}")
 
-    # --- select options (only declared-value options, ignoring cond) ---
+    # --- select options ---
     if field_type == "select":
-        options = field_def.get("options")
-        if options and isinstance(options, list):
+        options = field_def.options or []
+        if options:
             allowed = {
-                str(o["value"]).strip().lower()
+                str(o.value).strip().lower()
                 for o in options
-                if isinstance(o, dict) and "value" in o
+                if isinstance(o, ConfigFieldOption)
             }
             if allowed and str(value).strip().lower() not in allowed:
-                raise ValueError(
+                errors.append(
                     f"config field '{key}' = {value!r} is not one of "
                     f"the allowed options: {sorted(allowed)}"
                 )
 
+    return errors
 
-# -----------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # PluginConfig
-# -----------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
-class PluginConfig:
+T = TypeVar("T", bound="PluginConfig")
+
+
+class PluginConfig(BaseModel):
     """Immutable, attribute-accessible plugin configuration.
+
+    Features:
+    - Attribute-style access (Pydantic native)
+    - Type validation (Pydantic automatic)
+    - Serialization/deserialization (model_dump, model_validate)
+    - JSON Schema export (model_json_schema)
+    - Dictionary compatibility methods (get, keys, values, items)
 
     Parameters
     ----------
-    data : dict[str, Any]
+    **data : dict[str, Any]
         Fully resolved key-value pairs.
-    schema_fields : list[dict[str, Any]]
-        The ``config_schema.fields`` list from ``plugin.yml`` (optional,
-        used for repr / introspection).
+
+    Notes
+    -----
+    The model is configured with ``extra="allow"`` to support passthrough
+    of extra keys not declared in the schema.
     """
 
-    __slots__ = ("_data", "_schema_fields")
+    _schema: ConfigSchema | None = None
 
-    def __init__(self, data: dict[str, Any], schema_fields: list[dict[str, Any]] | None = None) -> None:
-        object.__setattr__(self, "_data", dict(data))
-        object.__setattr__(self, "_schema_fields", list(schema_fields or []))
-
-    # --- attribute access ---
-
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self._data[name]
-        except KeyError:
-            raise AttributeError(f"PluginConfig has no field '{name}'") from None
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        raise AttributeError("PluginConfig is immutable")
-
-    def __delattr__(self, name: str) -> None:
-        raise AttributeError("PluginConfig is immutable")
-
-    # --- dict-like helpers ---
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self._data.get(key, default)
-
-    def __contains__(self, key: str) -> bool:
-        return key in self._data
-
-    def __getitem__(self, key: str) -> Any:
-        return self._data[key]
-
-    def keys(self):
-        return self._data.keys()
-
-    def values(self):
-        return self._data.values()
-
-    def items(self):
-        return self._data.items()
-
-    def to_dict(self) -> dict[str, Any]:
-        """Return a shallow copy of the underlying mapping."""
-        return dict(self._data)
-
-    def with_updates(self, **kwargs: Any) -> "PluginConfig":
-        """Return a *new* ``PluginConfig`` with additional / overridden keys.
-
-        The original instance is not mutated.
-        """
-        merged = dict(self._data)
-        merged.update(kwargs)
-        return PluginConfig(merged, schema_fields=self._schema_fields)
-
-    # --- repr ---
-
-    def __repr__(self) -> str:
-        schema_keys = [f["key"] for f in self._schema_fields] if self._schema_fields else []
-        parts: list[str] = []
-        for key in schema_keys:
-            if key in self._data:
-                parts.append(f"{key}={self._data[key]!r}")
-        extra = set(self._data) - set(schema_keys)
-        for key in sorted(extra):
-            parts.append(f"{key}={self._data[key]!r}")
-        return f"PluginConfig({', '.join(parts)})"
+    model_config = {"extra": "allow"}
 
     # -------------------------------------------------------------------
     # Factory: the primary entry point
@@ -187,94 +257,282 @@ class PluginConfig:
 
     @classmethod
     def resolve(
-        cls,
+        cls: type[T],
         *,
-        default_config: dict[str, Any] | None = None,
-        config_schema: dict[str, Any] | None = None,
+        schema: ConfigSchema,
         raw_config: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
         validate: bool = True,
-    ) -> "PluginConfig":
-        """Build a ``PluginConfig`` from schema + defaults + user overrides.
+    ) -> T:
+        """Build a ``PluginConfig`` from schema + user overrides.
 
         Steps:
-        1. Start with *default_config*.
-        2. Overlay *raw_config* (user / API values).
-        3. Resolve conditional-default lists (``cond`` protocol).
-        4. Coerce values to schema-declared types.
-        5. Optionally validate constraints.
+        1. Extract defaults from ``schema.fields`` (field-level defaults only)
+        2. Override with ``raw_config``
+        3. Coerce values to schema-declared types
+        4. Optionally validate constraints
 
         Parameters
         ----------
-        default_config :
-            Default values from ``plugin.yml`` ``default_config`` section.
-        config_schema :
-            The ``config_schema`` dict containing a ``fields`` list.
+        schema :
+            The ``config_schema`` from plugin.yml.
         raw_config :
             User-supplied overrides (may be ``None``).
         context :
-            Optional dict with ``"annotation_types"`` etc. for cond.
+            Optional dict with ``"annotationTypes"`` for visible evaluation.
+            Note: Context is NOT used for default resolution, only for
+            runtime visibility evaluation in the UI.
         validate :
             If ``True`` (default), run constraint validation.
+
+        Returns
+        -------
+        PluginConfig
+            Resolved and validated configuration.
         """
-        schema_fields: list[dict[str, Any]] = (
-            config_schema.get("fields", [])
-            if isinstance(config_schema, dict)
-            else []
-        )
+        # 1. Build initial config from field-level defaults
+        config: dict[str, Any] = {}
 
-        # 1. merge defaults + overrides
-        merged: dict[str, Any] = dict(default_config) if default_config else {}
+        for field in schema.fields:
+            # Field-level default (scalar values only)
+            if field.default is not None:
+                # Skip conditional-default lists (old format, no longer supported)
+                if not _is_conditional_list(field.default):
+                    config[field.key] = field.default
+
+        # 2. Overlay user config
         if isinstance(raw_config, dict):
-            merged.update(raw_config)
+            config.update(raw_config)
 
-        # 2. resolve cond lists
-        resolve_config_cond_values(merged, context)
+        # 3. Coerce declared field types
+        for field in schema.fields:
+            if field.key in config:
+                config[field.key] = _coerce(config[field.key], field.type)
 
-        # 3. build a lookup for schema field defs
-        field_defs: dict[str, dict[str, Any]] = {f["key"]: f for f in schema_fields if "key" in f}
-
-        # 4. coerce declared fields
-        for key, field_def in field_defs.items():
-            if key in merged:
-                merged[key] = _coerce(merged[key], field_def.get("type", "string"))
-
-        # 5. validate
+        # 4. Validate
         if validate:
-            for key, field_def in field_defs.items():
-                _validate_field(key, merged.get(key), field_def)
+            all_errors: list[str] = []
+            for field in schema.fields:
+                all_errors.extend(_validate_field(field.key, config.get(field.key), field))
+            if all_errors:
+                raise PluginValidationError(
+                    f"Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in all_errors)
+                )
 
-        return cls(merged, schema_fields=schema_fields)
+        result = cls(**config)
+        object.__setattr__(result, "_schema", schema)
+        return result
 
     @classmethod
     def from_manifest(
-        cls,
-        manifest: "PluginManifest",
+        cls: type[T],
+        manifest: Any,  # PluginManifest (circular import avoidance)
         raw_config: dict[str, Any] | None = None,
         *,
         context: dict[str, Any] | None = None,
         validate: bool = True,
-    ) -> "PluginConfig":
-        """Convenience wrapper: build from a ``PluginManifest``."""
-        from saki_plugin_sdk.manifest import PluginManifest as _PM  # noqa: F811
+    ) -> T:
+        """Convenience wrapper: build from a ``PluginManifest``.
 
+        Parameters
+        ----------
+        manifest :
+            PluginManifest instance with ``config_schema`` attribute.
+        raw_config :
+            User-supplied overrides.
+        context :
+            Optional dict with ``"annotation_types"`` etc.
+        validate :
+            If ``True`` (default), run constraint validation.
+        """
+        schema_dict = getattr(manifest, "config_schema", {})
+        schema = ConfigSchema.model_validate(schema_dict)
         return cls.resolve(
-            default_config=manifest.default_config,
-            config_schema=manifest.config_schema,
+            schema=schema,
             raw_config=raw_config,
             context=context,
             validate=validate,
         )
 
     @classmethod
+    def merge(cls: type[T], *configs: T) -> T:
+        """Merge multiple configs (later configs override earlier ones).
+
+        Parameters
+        ----------
+        *configs : PluginConfig
+            Variable number of PluginConfig instances to merge.
+
+        Returns
+        -------
+        PluginConfig
+            New instance with merged values.
+        """
+        merged: dict[str, Any] = {}
+        schema: ConfigSchema | None = None
+
+        for config in configs:
+            merged.update(config.model_dump())
+            if config._schema is not None:
+                schema = config._schema
+
+        result = cls(**merged)
+        if schema is not None:
+            object.__setattr__(result, "_schema", schema)
+        return result
+
+    # -------------------------------------------------------------------
+    # Utility methods
+    # -------------------------------------------------------------------
+
+    def diff(self, other: PluginConfig) -> dict[str, tuple[Any, Any]]:
+        """Compare this config with another, return changed fields.
+
+        Parameters
+        ----------
+        other : PluginConfig
+            Another PluginConfig instance to compare against.
+
+        Returns
+        -------
+        dict[str, tuple[Any, Any]]
+            Dictionary mapping field keys to (self_value, other_value) tuples.
+        """
+        diff_result: dict[str, tuple[Any, Any]] = {}
+        all_keys = set(list(self.model_dump().keys()) + list(other.model_dump().keys()))
+        for key in all_keys:
+            self_val = self.get(key, None)
+            other_val = other.get(key, None)
+            if self_val != other_val:
+                diff_result[key] = (self_val, other_val)
+        return diff_result
+
+    def validate_fields(self) -> list[str]:
+        """Validate all fields against the schema.
+
+        Returns
+        -------
+        list[str]
+            List of error messages (empty if all valid).
+        """
+        if self._schema is None:
+            return []
+        errors: list[str] = []
+        for field in self._schema.fields:
+            errors.extend(_validate_field(field.key, self.get(field.key), field))
+        return errors
+
+    def get_grouped_fields(self) -> dict[str, list[ConfigField]]:
+        """Return fields grouped by the ``group`` attribute.
+
+        Returns
+        -------
+        dict[str, list[ConfigField]]
+            Dictionary mapping group names to field lists.
+            Fields without a group are placed under ``"default"``.
+        """
+        if self._schema is None:
+            return {}
+        groups: dict[str, list[ConfigField]] = {}
+        for field in self._schema.fields:
+            group = field.group or "default"
+            if group not in groups:
+                groups[group] = []
+            groups[group].append(field)
+        return groups
+
+    # -------------------------------------------------------------------
+    # Dictionary compatibility methods
+    # -------------------------------------------------------------------
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a field value, returning *default* if not found."""
+        return getattr(self, key, default)
+
+    def keys(self):
+        """Return configuration keys."""
+        return self.model_dump().keys()
+
+    def values(self):
+        """Return configuration values."""
+        return self.model_dump().values()
+
+    def items(self):
+        """Return (key, value) pairs."""
+        return self.model_dump().items()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a shallow copy of the underlying mapping."""
+        return self.model_dump()
+
+    # -------------------------------------------------------------------
+    # Deprecated: backward compatibility with old config.py
+    # -------------------------------------------------------------------
+
+    @classmethod
+    def _resolve_deprecated(
+        cls: type[T],
+        *,
+        default_config: dict[str, Any] | None = None,
+        config_schema: dict[str, Any] | None = None,
+        raw_config: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+        validate: bool = True,
+    ) -> T:
+        """Deprecated resolve method for backward compatibility.
+
+        .. deprecated::
+            Use :meth:`resolve` with a ``ConfigSchema`` instance instead.
+        """
+        warnings.warn(
+            "PluginConfig._resolve_deprecated is deprecated. "
+            "Use PluginConfig.resolve with a ConfigSchema instance.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        # Build schema from old-style config_schema dict
+        schema_dict = dict(config_schema) if config_schema else {}
+        schema = ConfigSchema.model_validate(schema_dict)
+
+        # Merge in default_config (old style)
+        config = cls.resolve(schema=schema, raw_config=raw_config, context=context, validate=validate)
+
+        # Apply old-style default_config on top (for backward compatibility)
+        if default_config:
+            from saki_plugin_sdk.cond import resolve_default_config
+            resolved_defaults = resolve_default_config(default_config, context or {})
+            for key, value in resolved_defaults.items():
+                if key not in raw_config or raw_config.get(key) is None:
+                    # Set default if not overridden
+                    config_dict = config.model_dump()
+                    config_dict[key] = value
+                    config = cls(**config_dict)
+                    object.__setattr__(config, "_schema", schema)
+
+        return config
+
+    @classmethod
     def from_dict(
-        cls,
+        cls: type[T],
         data: dict[str, Any],
         schema_fields: list[dict[str, Any]] | None = None,
-    ) -> "PluginConfig":
+    ) -> T:
         """Wrap an already-resolved dict into a ``PluginConfig``.
 
         No coercion or validation is performed – the data is trusted
         to be already resolved (e.g. received from IPC serialisation).
+
+        .. deprecated::
+            Use :meth:`model_validate` instead.
         """
-        return cls(data, schema_fields=schema_fields)
+        warnings.warn(
+            "PluginConfig.from_dict is deprecated. Use PluginConfig.model_validate instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        result = cls.model_validate(data)
+        if schema_fields:
+            schema = ConfigSchema(fields=[ConfigField.model_validate(f) for f in schema_fields])
+            object.__setattr__(result, "_schema", schema)
+        return result

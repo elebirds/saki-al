@@ -1,7 +1,7 @@
 plugin_id: "yolo_det_v1"
-version: "0.2.0"
+version: "0.3.0"
 display_name: "YOLO Detection"
-sdk_version: ">=0.1.0"
+sdk_version: ">=0.2.0"
 
 supported_step_types:
   - train
@@ -23,154 +23,156 @@ supported_accelerators:
 
 supports_auto_fallback: true
 
-# ---------------------------------------------------------------
-# Condition (cond) protocol:
-#
-#   annotation_types.subset_of: [rect]
-#     → option visible only when project's enabled_annotation_types
-#       is a subset of the given set.
-#
-#   when_field:
-#     yolo_task: detect
-#     → option visible only when sibling field `yolo_task` == "detect".
-#
-#   fallback: true
-#     → used as default when no other conditional default matches.
-# ---------------------------------------------------------------
+# -------------------------------------------------------------------
+# 简化版配置 Schema
+# -------------------------------------------------------------------
+# 条件表达式语法：
+#   visible: "form.field_name === 'value'"      # 字段依赖
+#   visible: "ctx.annotation_types.includes('rect')"  # 上下文依赖
+#   props: { min: 1, max: 5000, step: 1 }        # UI 属性映射
+# -------------------------------------------------------------------
 config_schema:
   title: "YOLO Detection Request Config"
+  description: "YOLO 检测模型配置，支持 detect 和 OBB 两种任务模式"
+
   fields:
+    # YOLO Task Mode - 使用上下文条件
     - key: yolo_task
       label: YOLO Task Mode
       type: select
       required: true
-      description: >
-        Training task mode. 'detect' for axis-aligned bounding boxes,
-        'obb' for oriented bounding boxes.
+      default: "detect"
       options:
-        - label: Standard Detection (detect)
-          value: detect
-          cond:
-            annotation_types:
-              subset_of: [rect]
-        - label: Oriented Bounding Box (OBB)
-          value: obb
-          cond:
-            annotation_types:
-              subset_of: [rect, obb]
-    - key: epochs
-      label: Epochs
-      type: integer
-      required: true
-      min: 1
-      max: 5000
-    - key: batch
-      label: Batch Size
-      type: integer
-      required: true
-      min: 1
-      max: 2048
-    - key: imgsz
-      label: Image Size
-      type: integer
-      required: true
-      min: 64
-      max: 4096
-    - key: patience
-      label: Patience
-      type: integer
-      required: false
-      min: 1
-      max: 1000
-    - key: predict_conf
-      label: Predict Conf
-      type: number
-      required: false
-      min: 0.0
-      max: 1.0
-    - key: val_split_ratio
-      label: Val Split Ratio
-      type: number
-      required: false
-      min: 0.05
-      max: 0.5
-    - key: model_source
-      label: Model Source
-      type: select
-      required: true
-      options:
-        - label: Preset
-          value: preset
-        - label: Custom Local
-          value: custom_local
-        - label: Custom URL
-          value: custom_url
-    - key: model_preset
-      label: Preset Model
-      type: select
-      required: false
-      options:
-        # Standard detection models (when yolo_task == detect)
-        - label: yolov8n.pt
-          value: yolov8n.pt
-          cond: { when_field: { yolo_task: detect } }
-        - label: yolov8s.pt
-          value: yolov8s.pt
-          cond: { when_field: { yolo_task: detect } }
-        - label: yolov8m.pt
-          value: yolov8m.pt
-          cond: { when_field: { yolo_task: detect } }
-        - label: yolov8l.pt
-          value: yolov8l.pt
-          cond: { when_field: { yolo_task: detect } }
-        - label: yolov8x.pt
-          value: yolov8x.pt
-          cond: { when_field: { yolo_task: detect } }
-        # OBB models (when yolo_task == obb)
-        - label: yolov8n-obb.pt
-          value: yolov8n-obb.pt
-          cond: { when_field: { yolo_task: obb } }
-        - label: yolov8s-obb.pt
-          value: yolov8s-obb.pt
-          cond: { when_field: { yolo_task: obb } }
-        - label: yolov8m-obb.pt
-          value: yolov8m-obb.pt
-          cond: { when_field: { yolo_task: obb } }
-        - label: yolov8l-obb.pt
-          value: yolov8l-obb.pt
-          cond: { when_field: { yolo_task: obb } }
-        - label: yolov8x-obb.pt
-          value: yolov8x-obb.pt
-          cond: { when_field: { yolo_task: obb } }
-    - key: model_custom_ref
-      label: Custom Model Ref
-      type: string
-      required: false
-    - key: device
-      label: Device
-      type: string
-      required: false
+        - label: "Standard Detection (detect)"
+          value: "detect"
+          visible: "ctx.annotation_types.includes('rect')"
+        - label: "Oriented Bounding Box (OBB)"
+          value: "obb"
+          visible: "ctx.annotation_types.includes('obb')"
 
-default_config:
-  epochs: 30
-  batch: 16
-  imgsz: 640
-  patience: 20
-  predict_conf: 0.1
-  val_split_ratio: 0.2
-  model_source: preset
-  model_custom_ref: ""
-  device: auto
-  # Conditional defaults — first matching cond wins; fallback used otherwise.
-  yolo_task:
-    - value: detect
-      cond: { annotation_types: { subset_of: [rect] } }
-    - value: obb
-      fallback: true
-  model_preset:
-    - value: yolov8n.pt
-      cond: { when_field: { yolo_task: detect } }
-    - value: yolov8n-obb.pt
-      cond: { when_field: { yolo_task: obb } }
+    # 训练参数组
+    - key: epochs
+      label: 训练轮数
+      type: integer
+      default: 30
+      props:
+        min: 1
+        max: 5000
+        step: 1
+
+    - key: batch
+      label: 批量大小
+      type: integer
+      default: 16
+      props:
+        min: 1
+        max: 2048
+
+    - key: imgsz
+      label: 图像尺寸
+      type: integer
+      default: 640
+      props:
+        min: 64
+        max: 4096
+        step: 32
+
+    - key: patience
+      label: 早停耐心值
+      type: integer
+      default: 20
+      props:
+        min: 1
+        max: 1000
+
+    # 预测参数组
+    - key: predict_conf
+      label: 预测置信度
+      type: number
+      default: 0.1
+      props:
+        min: 0.0
+        max: 1.0
+        step: 0.05
+
+    - key: val_split_ratio
+      label: 验证集比例
+      type: number
+      default: 0.2
+      props:
+        min: 0.05
+        max: 0.5
+        step: 0.05
+
+    # 模型配置
+    - key: model_source
+      label: 模型来源
+      type: select
+      required: true
+      default: "preset"
+      options:
+        - label: 预设模型
+          value: "preset"
+        - label: 本地自定义
+          value: "custom_local"
+        - label: URL 自定义
+          value: "custom_url"
+
+    # 模型预设 - 依赖 yolo_task，使用 visible 表达式
+    - key: model_preset
+      label: 预设模型
+      type: select
+      options:
+        # detect 专用
+        - label: "YOLOv8n"
+          value: "yolov8n.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8s"
+          value: "yolov8s.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8m"
+          value: "yolov8m.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8l"
+          value: "yolov8l.pt"
+          visible: "form.yolo_task === 'detect'"
+        - label: "YOLOv8x"
+          value: "yolov8x.pt"
+          visible: "form.yolo_task === 'detect'"
+        # obb 专用
+        - label: "YOLOv8n-OBB"
+          value: "yolov8n-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8s-OBB"
+          value: "yolov8s-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8m-OBB"
+          value: "yolov8m-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8l-OBB"
+          value: "yolov8l-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+        - label: "YOLOv8x-OBB"
+          value: "yolov8x-obb.pt"
+          visible: "form.yolo_task === 'obb'"
+      # 默认值需要根据 yolo_task 动态选择
+      # 这里设置为 null，由前端或运行时根据上下文选择
+      default: null
+
+    # 自定义模型路径 - 仅在非预设模式时可见
+    - key: model_custom_ref
+      label: 自定义模型路径
+      type: string
+      default: ""
+      props:
+        placeholder: "/path/to/model.pt 或 https://..."
+      visible: "form.model_source !== 'preset'"
+
+    - key: device
+      label: 设备
+      type: string
+      default: "auto"
+      props:
+        placeholder: "auto, cpu, 0, 1, mps"
 
 entrypoint: "saki_plugin_yolo_det.worker:main"

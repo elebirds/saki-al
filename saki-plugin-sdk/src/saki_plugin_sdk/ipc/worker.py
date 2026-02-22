@@ -181,6 +181,18 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
     pub_socket = context.socket(zmq.PUB)
     rep_socket.bind(args.command_endpoint)
     pub_socket.bind(args.event_endpoint)
+
+    # Build context for on_load
+    load_context = {
+        "plugin_id": args.plugin_id,
+        "step_id": args.step_id,
+        "command_endpoint": args.command_endpoint,
+        "event_endpoint": args.event_endpoint,
+    }
+
+    # Call on_load lifecycle hook
+    asyncio.run(plugin.on_load(load_context))
+
     _publish_event(
         pub_socket=pub_socket,
         event_type="worker",
@@ -196,99 +208,121 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
     )
 
     running = True
-    while running:
-        raw = rep_socket.recv_json()
-        envelope = protocol.WorkerReplyEnvelope(
-            request_id="",
-            ok=False,
-            error_code="INTERNAL",
-            error_message="unknown error",
-            result_path="",
-        )
-        try:
-            cmd, payload = protocol.parse_command_payload(raw)
+    try:
+        while running:
+            raw = rep_socket.recv_json()
             envelope = protocol.WorkerReplyEnvelope(
-                request_id=cmd.request_id,
-                ok=True,
-                error_code="",
-                error_message="",
+                request_id="",
+                ok=False,
+                error_code="INTERNAL",
+                error_message="unknown error",
                 result_path="",
             )
-            action = str(cmd.action or "").strip()
-
-            if action == "ping":
-                rep_socket.send_json(envelope.to_dict())
-                continue
-            if action == "prepare_data":
-                asyncio.run(
-                    _run_prepare_data(
-                        plugin=plugin,
-                        payload=payload,
-                    )
-                )
-                rep_socket.send_json(envelope.to_dict())
-                continue
-            if action == "train":
-                result_path = asyncio.run(
-                    _run_train(
-                        plugin=plugin,
-                        payload=payload,
-                        step_id=args.step_id,
-                        request_id=cmd.request_id,
-                        pub_socket=pub_socket,
-                    )
-                )
-                rep_socket.send_json(
-                    protocol.WorkerReplyEnvelope(
-                        request_id=cmd.request_id,
-                        ok=True,
-                        error_code="",
-                        error_message="",
-                        result_path=result_path,
-                    ).to_dict()
-                )
-                continue
-            if action == "predict_unlabeled_batch":
-                result_path = asyncio.run(
-                    _run_predict(
-                        plugin=plugin,
-                        payload=payload,
-                    )
-                )
-                rep_socket.send_json(
-                    protocol.WorkerReplyEnvelope(
-                        request_id=cmd.request_id,
-                        ok=True,
-                        error_code="",
-                        error_message="",
-                        result_path=result_path,
-                    ).to_dict()
-                )
-                continue
-            if action == "shutdown":
-                running = False
-                rep_socket.send_json(envelope.to_dict())
-                continue
-            raise RuntimeError(f"unsupported worker action: {action or '<empty>'}")
-        except Exception as exc:
-            logger.exception("worker command failed step_id={} error={}", args.step_id, exc)
-            error_message = str(exc)
-            _publish_event(
-                pub_socket=pub_socket,
-                event_type="worker",
-                step_id=args.step_id,
-                payload={"level": "ERROR", "message": error_message},
-                request_id=envelope.request_id,
-            )
-            rep_socket.send_json(
-                protocol.WorkerReplyEnvelope(
-                    request_id=envelope.request_id,
-                    ok=False,
-                    error_code=type(exc).__name__,
-                    error_message=error_message,
+            try:
+                cmd, payload = protocol.parse_command_payload(raw)
+                envelope = protocol.WorkerReplyEnvelope(
+                    request_id=cmd.request_id,
+                    ok=True,
+                    error_code="",
+                    error_message="",
                     result_path="",
-                ).to_dict()
-            )
+                )
+                action = str(cmd.action or "").strip()
+
+                if action == "ping":
+                    rep_socket.send_json(envelope.to_dict())
+                    continue
+
+                if action == "prepare_data":
+                    workspace = _build_workspace(str(payload.get("workspace_root") or ""))
+                    await plugin.on_start(args.step_id, workspace)
+                    try:
+                        await _run_prepare_data(
+                            plugin=plugin,
+                            payload=payload,
+                        )
+                    finally:
+                        await plugin.on_stop(args.step_id, workspace)
+                    rep_socket.send_json(envelope.to_dict())
+                    continue
+
+                if action == "train":
+                    workspace = _build_workspace(str(payload.get("workspace_root") or ""))
+                    await plugin.on_start(args.step_id, workspace)
+                    try:
+                        result_path = asyncio.run(
+                            _run_train(
+                                plugin=plugin,
+                                payload=payload,
+                                step_id=args.step_id,
+                                request_id=cmd.request_id,
+                                pub_socket=pub_socket,
+                            )
+                        )
+                        rep_socket.send_json(
+                            protocol.WorkerReplyEnvelope(
+                                request_id=cmd.request_id,
+                                ok=True,
+                                error_code="",
+                                error_message="",
+                                result_path=result_path,
+                            ).to_dict()
+                        )
+                    finally:
+                        await plugin.on_stop(args.step_id, workspace)
+                    continue
+
+                if action == "predict_unlabeled_batch":
+                    workspace = _build_workspace(str(payload.get("workspace_root") or ""))
+                    await plugin.on_start(args.step_id, workspace)
+                    try:
+                        result_path = asyncio.run(
+                            _run_predict(
+                                plugin=plugin,
+                                payload=payload,
+                            )
+                        )
+                        rep_socket.send_json(
+                            protocol.WorkerReplyEnvelope(
+                                request_id=cmd.request_id,
+                                ok=True,
+                                error_code="",
+                                error_message="",
+                                result_path=result_path,
+                            ).to_dict()
+                        )
+                    finally:
+                        await plugin.on_stop(args.step_id, workspace)
+                    continue
+
+                if action == "shutdown":
+                    running = False
+                    rep_socket.send_json(envelope.to_dict())
+                    continue
+
+                raise RuntimeError(f"unsupported worker action: {action or '<empty>'}")
+            except Exception as exc:
+                logger.exception("worker command failed step_id={} error={}", args.step_id, exc)
+                error_message = str(exc)
+                _publish_event(
+                    pub_socket=pub_socket,
+                    event_type="worker",
+                    step_id=args.step_id,
+                    payload={"level": "ERROR", "message": error_message},
+                    request_id=envelope.request_id,
+                )
+                rep_socket.send_json(
+                    protocol.WorkerReplyEnvelope(
+                        request_id=envelope.request_id,
+                        ok=False,
+                        error_code=type(exc).__name__,
+                        error_message=error_message,
+                        result_path="",
+                    ).to_dict()
+                )
+    finally:
+        # Call on_unload lifecycle hook
+        asyncio.run(plugin.on_unload())
 
     rep_socket.close(linger=0)
     pub_socket.close(linger=0)

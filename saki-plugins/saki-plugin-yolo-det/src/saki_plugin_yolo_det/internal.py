@@ -197,20 +197,29 @@ class YoloDetectionInternal:
         )
 
         # --- plugin-specific cross-field validation ---
+        return self._validate_and_normalize_config(config)
+
+    def _validate_and_normalize_config(self, config: "PluginConfig") -> "PluginConfig":
+        """Internal method for plugin-specific cross-field validation."""
+        # --- plugin-specific cross-field validation ---
         yolo_task = str(config.yolo_task).strip().lower()
         if yolo_task not in self._VALID_YOLO_TASKS:
             raise ValueError(f"unsupported yolo_task: {yolo_task!r}, must be one of {self._VALID_YOLO_TASKS}")
         allowed_presets = self._presets_for_task(yolo_task)
 
         source = str(config.model_source).strip().lower()
-        preset = str(config.get("model_preset") or allowed_presets[0]).strip()
+        # model_preset may not be in schema, use safe access
+        preset_val = config.model_preset if "model_preset" in config else None
+        preset = str(preset_val or allowed_presets[0]).strip()
         if preset not in allowed_presets:
             if preset in self._DETECT_PRESETS or preset in self._OBB_PRESETS:
                 preset = allowed_presets[0]
             else:
                 raise ValueError(f"unsupported model_preset: {preset or '<empty>'} for yolo_task={yolo_task}")
 
-        custom_ref = str(config.get("model_custom_ref") or "").strip()
+        # model_custom_ref may not be in schema, use safe access
+        custom_ref_val = config.model_custom_ref if "model_custom_ref" in config else None
+        custom_ref = str(custom_ref_val or "").strip()
         if source != "preset" and not custom_ref:
             raise ValueError("model_custom_ref is required for custom model source")
 
@@ -426,11 +435,13 @@ class YoloDetectionInternal:
     ) -> list[dict[str, Any]]:
         self._stop_flag.clear()
         cfg = self.resolve_config(mode="manual", raw_config=params)
-        topk = max(1, _to_int(cfg.get("topk", cfg.get("sampling_topk", 200)), 200))
-        conf = _to_float(cfg.get("predict_conf", 0.1), 0.1)
-        imgsz = _to_int(cfg.get("imgsz", 640), 640)
-        random_seed = max(0, _to_int(cfg.get("sampling_seed", cfg.get("random_seed", 0)), 0))
-        round_index = max(1, _to_int(cfg.get("round_index", 1), 1))
+
+        # Use direct attribute access for schema-defined fields with defaults
+        topk = max(1, _to_int(cfg.topk if "topk" in cfg else cfg.sampling_topk if "sampling_topk" in cfg else 200), 200)
+        conf = _to_float(cfg.predict_conf, 0.1)
+        imgsz = _to_int(cfg.imgsz, 640)
+        random_seed = max(0, _to_int(cfg.sampling_seed if "sampling_seed" in cfg else cfg.random_seed if "random_seed" in cfg else 0), 0)
+        round_index = max(1, _to_int(cfg.round_index if "round_index" in cfg else 1), 1)
         device, _requested_device, _resolved_backend = self._resolve_device(cfg)
 
         best_path = workspace.artifacts_dir / "best.pt"

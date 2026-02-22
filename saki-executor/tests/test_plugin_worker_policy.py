@@ -1,57 +1,25 @@
+"""Test that tasks for unknown plugins fail gracefully."""
+
 import asyncio
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.plugins.base import ExecutorPlugin, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
 from saki_executor.steps.manager import StepManager
 
 
-class _NonLoadablePlugin(ExecutorPlugin):
-    @property
-    def plugin_id(self) -> str:
-        return "non_loadable_plugin"
-
-    @property
-    def version(self) -> str:
-        return "0.1.0"
-
-    @property
-    def supported_step_types(self) -> list[str]:
-        return ["train"]
-
-    @property
-    def supported_strategies(self) -> list[str]:
-        return ["random_baseline"]
-
-    async def train(self, workspace, params: dict[str, Any], emit) -> TrainOutput:
-        del workspace, params, emit
-        raise AssertionError("train should not be called when plugin is not loadable")
-
-    async def predict_unlabeled(
-            self,
-            workspace,
-            unlabeled_samples: list[dict[str, Any]],
-            strategy: str,
-            params: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        del workspace, unlabeled_samples, strategy, params
-        return []
-
-
 def _build_manager(tmp_path: Path) -> StepManager:
     registry = PluginRegistry()
-    registry.register(_NonLoadablePlugin())
+    # intentionally empty — no plugins registered
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
     return StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
 
 
 @pytest.mark.anyio
-async def test_non_loadable_plugin_fails_without_fallback(tmp_path: Path):
+async def test_unregistered_plugin_fails(tmp_path: Path):
     manager = _build_manager(tmp_path)
     sent_messages: list[pb.RuntimeMessage] = []
 
@@ -70,7 +38,7 @@ async def test_non_loadable_plugin_fails_without_fallback(tmp_path: Path):
             "round_id": "job-unknown-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
-            "plugin_id": "non_loadable_plugin",
+            "plugin_id": "non_existent_plugin",
             "mode": "simulation",
             "step_type": "train",
             "dispatch_kind": "dispatchable",
@@ -87,4 +55,4 @@ async def test_non_loadable_plugin_fails_without_fallback(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].step_result
     assert result.status == pb.FAILED
-    assert "not loadable" in result.error_message
+    assert "not found" in result.error_message.lower() or "not loadable" in result.error_message.lower()

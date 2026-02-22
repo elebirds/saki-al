@@ -149,7 +149,11 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
                 session=session,
                 current_user_id=current_user_id,
             )
-            assert created.config.get("plugin") == {"epochs": 24, "batch": 16}
+            plugin_cfg = created.config.get("plugin") or {}
+            assert plugin_cfg.get("epochs") == 24
+            assert plugin_cfg.get("batch") == 16
+            # annotation_types is injected from the project's enabled_annotation_types
+            assert isinstance(plugin_cfg.get("annotation_types"), list)
 
             listed = await loop_query_endpoint.list_project_loops(
                 project_id=project.id,

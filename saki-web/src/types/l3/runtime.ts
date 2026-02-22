@@ -333,6 +333,17 @@ export interface ProjectModel {
     updatedAt: string;
 }
 
+export interface RuntimeRequestConfigFieldOptionCond {
+    annotation_types?: { subset_of: string[] };
+    when_field?: Record<string, string>;
+}
+
+export interface RuntimeRequestConfigFieldOption {
+    label: string;
+    value: string | number | boolean;
+    cond?: RuntimeRequestConfigFieldOptionCond;
+}
+
 export interface RuntimeRequestConfigField {
     key: string;
     label: string;
@@ -340,7 +351,7 @@ export interface RuntimeRequestConfigField {
     required?: boolean;
     min?: number;
     max?: number;
-    options?: Array<{ label: string; value: string | number | boolean }>;
+    options?: RuntimeRequestConfigFieldOption[];
 }
 
 export interface RuntimeRequestConfigSchema {

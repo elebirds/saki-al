@@ -21,6 +21,13 @@ class IRLabelWriteStats:
     warning_count: int
 
 
+# yolo_task → saki-ir label format mapping
+_YOLO_TASK_FORMAT_MAP: dict[str, str] = {
+    "detect": "det",
+    "obb": "obb_poly8",
+}
+
+
 def prepare_yolo_dataset(
     *,
     workspace: Workspace,
@@ -30,6 +37,7 @@ def prepare_yolo_dataset(
     to_int: Callable[[Any, int], int],
     dataset_ir: irpb.DataBatchIR,
     splits: dict[str, list[dict[str, Any]]] | None = None,
+    yolo_task: str = "obb",
 ) -> PreparedDataset:
     data_root = workspace.data_dir
     images_train_dir = data_root / "images" / "train"
@@ -87,6 +95,7 @@ def prepare_yolo_dataset(
         labels_val_dir=labels_val_dir,
         data_root=data_root,
         dataset_ir=dataset_ir,
+        yolo_task=yolo_task,
     )
 
     _write_dataset_yaml(
@@ -111,7 +120,7 @@ def prepare_yolo_dataset(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    return PreparedDataset(manifest=manifest)
+    return PreparedDataset(manifest=manifest, yolo_task=yolo_task)
 
 
 def _resolve_split_from_core(
@@ -212,6 +221,7 @@ def _write_dataset_files(
     labels_val_dir: Path,
     data_root: Path,
     dataset_ir: irpb.DataBatchIR,
+    yolo_task: str = "obb",
 ) -> IRLabelWriteStats:
     for sample_id, item in sample_map.items():
         target_images_dir = images_train_dir
@@ -232,6 +242,7 @@ def _write_dataset_files(
         train_ids=train_ids,
         val_ids=val_ids,
         val_degraded=val_degraded,
+        yolo_task=yolo_task,
     )
 
 
@@ -242,13 +253,15 @@ def _write_label_files_with_ir(
     train_ids: set[str],
     val_ids: set[str],
     val_degraded: bool,
+    yolo_task: str = "obb",
 ) -> IRLabelWriteStats:
+    yolo_label_format = _YOLO_TASK_FORMAT_MAP.get(yolo_task, "obb_poly8")
     ctx = ConversionContext(
         strict=False,
         include_external_ref=False,
         emit_labels=True,
         yolo_is_normalized=True,
-        yolo_label_format="obb_poly8",
+        yolo_label_format=yolo_label_format,
         yolo_obb_angle_unit="deg",
         yolo_write_empty_label_files=True,
         naming="uuid",

@@ -32,9 +32,6 @@ class TypeInfo(BaseModel):
     allowed_annotation_types: list[str] = Field(default_factory=list)
     must_annotation_types: list[str] = Field(default_factory=list)
     banned_annotation_types: list[str] = Field(default_factory=list)
-    # Backward compatible fields (deprecated)
-    annotation_types: list[str] = Field(default_factory=list)
-    default_annotation_types: list[str] = Field(default_factory=list)
 
 
 class AvailableTypesResponse(BaseModel):

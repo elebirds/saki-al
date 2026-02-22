@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover - optional dependency
 
 from saki_plugin_sdk import Workspace, TrainArtifact, TrainOutput
 from saki_plugin_sdk.base import EventCallback
+from saki_plugin_sdk.manifest import PluginManifest
 from saki_plugin_yolo_det.hardware import (
     available_accelerators,
     normalize_accelerator_name,
@@ -112,11 +113,33 @@ class YoloDetectionInternal:
         "yolov8l-obb.pt",
         "yolov8x-obb.pt",
     )
+    _DETECT_PRESETS = (
+        "yolov8n.pt",
+        "yolov8s.pt",
+        "yolov8m.pt",
+        "yolov8l.pt",
+        "yolov8x.pt",
+    )
+    _OBB_PRESETS = (
+        "yolov8n-obb.pt",
+        "yolov8s-obb.pt",
+        "yolov8m-obb.pt",
+        "yolov8l-obb.pt",
+        "yolov8x-obb.pt",
+    )
+    _VALID_YOLO_TASKS = ("detect", "obb")
 
     def __init__(self) -> None:
         self._stop_flag = threading.Event()
         self._font_setup_lock = threading.Lock()
         self._font_setup_done = False
+        self._manifest = PluginManifest.from_yaml(
+            Path(__file__).resolve().parents[2] / "plugin.yml"
+        )
+
+    @property
+    def manifest(self) -> PluginManifest:
+        return self._manifest
 
     @property
     def plugin_id(self) -> str:
@@ -124,11 +147,11 @@ class YoloDetectionInternal:
 
     @property
     def version(self) -> str:
-        return "0.1.0"
+        return "0.2.0"
 
     @property
     def display_name(self) -> str:
-        return "YOLO Detection (OBB)"
+        return "YOLO Detection"
 
     @property
     def supported_step_types(self) -> list[str]:
@@ -157,94 +180,51 @@ class YoloDetectionInternal:
     def supports_auto_fallback(self) -> bool:
         return True
 
-    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
-        del mode
-        model_preset_options = [{"label": item, "value": item} for item in self._MODEL_PRESETS]
-        return {
-            "title": "YOLO Detection Request Config",
-            "fields": [
-                {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1, "max": 5000},
-                {"key": "batch", "label": "Batch Size", "type": "integer", "required": True, "min": 1, "max": 2048},
-                {"key": "imgsz", "label": "Image Size", "type": "integer", "required": True, "min": 64, "max": 4096},
-                {"key": "patience", "label": "Patience", "type": "integer", "required": False, "min": 1, "max": 1000},
-                {"key": "predict_conf", "label": "Predict Conf", "type": "number", "required": False, "min": 0.0, "max": 1.0},
-                {"key": "val_split_ratio", "label": "Val Split Ratio", "type": "number", "required": False, "min": 0.05, "max": 0.5},
-                {
-                    "key": "model_source",
-                    "label": "Model Source",
-                    "type": "select",
-                    "required": True,
-                    "options": [
-                        {"label": "Preset", "value": "preset"},
-                        {"label": "Custom Local", "value": "custom_local"},
-                        {"label": "Custom URL", "value": "custom_url"},
-                    ],
-                },
-                {
-                    "key": "model_preset",
-                    "label": "Preset Model",
-                    "type": "select",
-                    "required": False,
-                    "options": model_preset_options,
-                },
-                {"key": "model_custom_ref", "label": "Custom Model Ref", "type": "string", "required": False},
-                {"key": "device", "label": "Device", "type": "string", "required": False},
-            ],
-        }
+    def _presets_for_task(self, yolo_task: str) -> tuple[str, ...]:
+        """Return the model preset tuple for a given yolo_task."""
+        if yolo_task == "detect":
+            return self._DETECT_PRESETS
+        return self._OBB_PRESETS
 
-    def default_config(self, mode: str | None = None) -> dict[str, Any]:
-        del mode
-        return {
-            "epochs": 30,
-            "batch": 16,
-            "imgsz": 640,
-            "patience": 20,
-            "predict_conf": 0.1,
-            "val_split_ratio": 0.2,
-            "model_source": "preset",
-            "model_preset": "yolov8n-obb.pt",
-            "model_custom_ref": "",
-            "device": "auto",
-        }
+    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> "PluginConfig":
+        from saki_plugin_sdk.config import PluginConfig
 
-    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
-        config = dict(self.default_config(mode=mode))
-        if isinstance(raw_config, dict):
-            config.update(raw_config)
+        # SDK handles: merge defaults, resolve cond, coerce types, schema validation
+        config = PluginConfig.from_manifest(
+            self._manifest,
+            raw_config if isinstance(raw_config, dict) else None,
+            validate=True,
+        )
 
-        source = str(config.get("model_source") or "preset").strip().lower()
-        if source not in {"preset", "custom_local", "custom_url"}:
-            raise ValueError(f"unsupported model_source: {source or '<empty>'}")
-        config["model_source"] = source
+        # --- plugin-specific cross-field validation ---
+        yolo_task = str(config.yolo_task).strip().lower()
+        if yolo_task not in self._VALID_YOLO_TASKS:
+            raise ValueError(f"unsupported yolo_task: {yolo_task!r}, must be one of {self._VALID_YOLO_TASKS}")
+        allowed_presets = self._presets_for_task(yolo_task)
 
-        preset = str(config.get("model_preset") or self._MODEL_PRESETS[0]).strip()
-        if preset not in self._MODEL_PRESETS:
-            raise ValueError(f"unsupported model_preset: {preset or '<empty>'}")
-        config["model_preset"] = preset
+        source = str(config.model_source).strip().lower()
+        preset = str(config.get("model_preset") or allowed_presets[0]).strip()
+        if preset not in allowed_presets:
+            if preset in self._DETECT_PRESETS or preset in self._OBB_PRESETS:
+                preset = allowed_presets[0]
+            else:
+                raise ValueError(f"unsupported model_preset: {preset or '<empty>'} for yolo_task={yolo_task}")
 
         custom_ref = str(config.get("model_custom_ref") or "").strip()
-        if source == "preset":
-            config["model_custom_ref"] = ""
-        else:
-            if not custom_ref:
-                raise ValueError("model_custom_ref is required for custom model source")
-            config["model_custom_ref"] = custom_ref
+        if source != "preset" and not custom_ref:
+            raise ValueError("model_custom_ref is required for custom model source")
 
-        return config
+        return config.with_updates(
+            yolo_task=yolo_task,
+            model_source=source,
+            model_preset=preset,
+            model_custom_ref="" if source == "preset" else custom_ref,
+        )
 
     def validate_params(self, params: dict[str, Any]) -> None:
         self.resolve_config(mode="manual", raw_config=params)
-        epochs = _to_int(params.get("epochs", 30), 30)
-        batch = _to_int(params.get("batch", params.get("batch_size", 16)), 16)
-        imgsz = _to_int(params.get("imgsz", 640), 640)
-        if epochs <= 0:
-            raise ValueError("epochs must be > 0")
-        if batch <= 0:
-            raise ValueError("batch must be > 0")
-        if imgsz <= 0:
-            raise ValueError("imgsz must be > 0")
 
-    def _resolve_device(self, params: dict[str, Any]) -> tuple[Any, str, str]:
+    def _resolve_device(self, params: Any) -> tuple[Any, str, str]:
         requested_raw = params.get("device", "auto")
         requested = normalize_accelerator_name(requested_raw) or "auto"
         preferred_backend = normalize_accelerator_name(params.get("_resolved_device_backend"))
@@ -273,7 +253,6 @@ class YoloDetectionInternal:
                     f"Requested device '{requested_raw}' is not available on this executor. "
                     f"available={sorted(available)} supported={sorted(supported)}"
                 )
-            params["_resolved_device_backend"] = requested
             if requested == "cuda":
                 raw = str(requested_raw).strip()
                 if raw and (raw.isdigit() or raw.startswith("cuda:") or "," in raw):
@@ -293,7 +272,6 @@ class YoloDetectionInternal:
             raise ValueError(
                 f"No available accelerator for auto mode. available={sorted(available)} supported={sorted(supported)}"
             )
-        params["_resolved_device_backend"] = resolved_backend
         if resolved_backend == "cuda":
             return "0", str(requested_raw), resolved_backend
         if resolved_backend == "mps":
@@ -311,6 +289,10 @@ class YoloDetectionInternal:
         splits: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         del annotations
+        # Extract yolo_task from splits if injected by runner
+        yolo_task = "obb"
+        if isinstance(splits, dict) and "yolo_task" in splits:
+            yolo_task = str(splits.pop("yolo_task"))
         prepare_yolo_dataset(
             workspace=workspace,
             labels=labels,
@@ -319,6 +301,7 @@ class YoloDetectionInternal:
             to_int=_to_int,
             dataset_ir=dataset_ir,
             splits=splits,
+            yolo_task=yolo_task,
         )
 
     async def train(
@@ -331,8 +314,7 @@ class YoloDetectionInternal:
         resolved_params = self.resolve_config(mode="manual", raw_config=params)
         config = await resolve_train_config(
             workspace=workspace,
-            params=resolved_params,
-            to_int=_to_int,
+            plugin_config=resolved_params,
             resolve_device=self._resolve_device,
             resolve_model_ref=self._resolve_model_ref,
         )
@@ -342,7 +324,7 @@ class YoloDetectionInternal:
                 "level": "INFO",
                 "message": (
                     f"training reproducibility train_seed={config.train_seed} "
-                    f"deterministic={config.deterministic} split_seed={_to_int(resolved_params.get('split_seed'), 0)}"
+                    f"deterministic={config.deterministic} split_seed={resolved_params.get('split_seed', 0)}"
                 ),
             },
         )
@@ -443,16 +425,16 @@ class YoloDetectionInternal:
         params: dict[str, Any],
     ) -> list[dict[str, Any]]:
         self._stop_flag.clear()
-        resolved_params = self.resolve_config(mode="manual", raw_config=params)
-        topk = max(1, _to_int(params.get("topk", params.get("sampling_topk", 200)), 200))
-        conf = _to_float(params.get("predict_conf", 0.1), 0.1)
-        imgsz = _to_int(params.get("imgsz", 640), 640)
-        random_seed = max(0, _to_int(params.get("sampling_seed", params.get("random_seed", 0)), 0))
-        round_index = max(1, _to_int(params.get("round_index", 1), 1))
-        device, _requested_device, _resolved_backend = self._resolve_device(resolved_params)
+        cfg = self.resolve_config(mode="manual", raw_config=params)
+        topk = max(1, _to_int(cfg.get("topk", cfg.get("sampling_topk", 200)), 200))
+        conf = _to_float(cfg.get("predict_conf", 0.1), 0.1)
+        imgsz = _to_int(cfg.get("imgsz", 640), 640)
+        random_seed = max(0, _to_int(cfg.get("sampling_seed", cfg.get("random_seed", 0)), 0))
+        round_index = max(1, _to_int(cfg.get("round_index", 1), 1))
+        device, _requested_device, _resolved_backend = self._resolve_device(cfg)
 
         best_path = workspace.artifacts_dir / "best.pt"
-        fallback_model = await self._resolve_model_ref(workspace=workspace, params=resolved_params)
+        fallback_model = await self._resolve_model_ref(workspace=workspace, params=cfg)
         model_path = str(best_path if best_path.exists() else fallback_model)
 
         candidates = await asyncio.to_thread(
@@ -477,13 +459,16 @@ class YoloDetectionInternal:
         self,
         *,
         workspace: Workspace,
-        params: dict[str, Any],
+        params: Any,
     ) -> str:
         source = str(params.get("model_source") or "preset").strip().lower()
+        yolo_task = str(params.get("yolo_task") or "obb").strip().lower()
+        allowed_presets = self._presets_for_task(yolo_task)
+
         if source == "preset":
-            preset = str(params.get("model_preset") or self._MODEL_PRESETS[0]).strip()
-            if preset not in self._MODEL_PRESETS:
-                raise RuntimeError(f"unsupported model preset: {preset or '<empty>'}")
+            preset = str(params.get("model_preset") or "").strip()
+            if not preset or preset not in allowed_presets:
+                preset = allowed_presets[0]
             return preset
 
         custom_ref = str(params.get("model_custom_ref") or "").strip()
@@ -538,6 +523,7 @@ class YoloDetectionInternal:
         device: Any,
         train_seed: int,
         deterministic: bool,
+        yolo_task: str = "obb",
         epoch_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         return run_train_sync(
@@ -557,6 +543,7 @@ class YoloDetectionInternal:
             normalize_metrics=self._normalize_metrics,
             to_float=_to_float,
             to_int=_to_int,
+            yolo_task=yolo_task,
             epoch_callback=epoch_callback,
         )
 

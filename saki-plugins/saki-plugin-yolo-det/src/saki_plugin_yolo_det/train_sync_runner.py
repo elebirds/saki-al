@@ -38,6 +38,7 @@ def run_train_sync(
     normalize_metrics: NormalizeMetricsFn,
     to_float: ToFloatFn,
     to_int: ToIntFn,
+    yolo_task: str = "obb",
     epoch_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     if stop_flag.is_set():
@@ -45,7 +46,8 @@ def run_train_sync(
 
     YOLO = load_yolo()
     ensure_cjk_plot_font()
-    model = YOLO(base_model)
+    # Pass task= so YOLO knows whether to train detect or obb.
+    model = YOLO(base_model, task=yolo_task)
     model.add_callback(
         "on_fit_epoch_end",
         _build_epoch_update_callback(

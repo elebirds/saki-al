@@ -13,7 +13,7 @@ from runtime_data_test_helper import build_data_response_message
 
 
 class _InProcessProxy(ExecutorPlugin):
-    def __init__(self, *, metadata_plugin: ExecutorPlugin, step_id: str, emit):
+    def __init__(self, *, metadata_plugin: ExecutorPlugin, step_id: str, emit, **_kwargs):
         del step_id
         self._plugin = metadata_plugin
         self._emit = emit
@@ -83,7 +83,6 @@ class _InProcessProxy(ExecutorPlugin):
 
 @pytest.fixture(autouse=True)
 def _patch_subprocess_proxy(monkeypatch):
-    monkeypatch.setattr("saki_executor.plugins.registry.is_plugin_loadable", lambda plugin_id: True)
     monkeypatch.setattr("saki_executor.steps.orchestration.runner.SubprocessPluginProxy", _InProcessProxy)
 
 

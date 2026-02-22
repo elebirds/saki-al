@@ -88,23 +88,6 @@ class ExternalPluginHandle(ExecutorPlugin):
     def entrypoint(self) -> str:
         return self._manifest.entrypoint
 
-    # ------------------------------------------------------------------
-    # Config helpers — basic pass-through using manifest defaults.
-    # Full validation happens in the worker process.
-    # ------------------------------------------------------------------
-
-    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
-        return self.request_config_schema
-
-    def default_config(self, mode: str | None = None) -> dict[str, Any]:
-        return self.default_request_config
-
-    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
-        merged = dict(self.default_request_config)
-        if isinstance(raw_config, dict):
-            merged.update(raw_config)
-        return merged
-
     def validate_params(self, params: dict[str, Any]) -> None:
         # Lightweight host-side validation; full validation happens in worker.
         pass

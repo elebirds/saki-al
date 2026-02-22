@@ -25,9 +25,11 @@ import {
     Loop,
     LoopSummary,
     LoopUpdateRequest,
+    Project,
     RuntimeRound,
     RuntimePluginCatalogItem,
     RuntimeRequestConfigField,
+    RuntimeRequestConfigFieldOption,
 } from '../../../types';
 
 const {Title, Text} = Typography;
@@ -67,6 +69,49 @@ type LoopConfigForm = {
     };
 };
 
+// ---------------------------------------------------------------------------
+// cond evaluation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether an option's `cond` is satisfied.
+ *
+ * Supported cond types:
+ * - `annotation_types.subset_of` – project annotation types must be a
+ *   subset of the given set.
+ * - `when_field` – a sibling field's current value must match.
+ */
+function evaluateOptionCond(
+    option: RuntimeRequestConfigFieldOption,
+    projectAnnotationTypes: string[],
+    fieldValues: Record<string, any>,
+): boolean {
+    const cond = option.cond;
+    if (!cond) return true;
+
+    if (cond.annotation_types?.subset_of) {
+        const allowed = new Set(cond.annotation_types.subset_of.map((s) => s.toLowerCase()));
+        const actual = projectAnnotationTypes.map((s) => s.toLowerCase());
+        if (!actual.every((t) => allowed.has(t))) return false;
+    }
+
+    if (cond.when_field) {
+        for (const [fieldKey, expected] of Object.entries(cond.when_field)) {
+            if (String(fieldValues[fieldKey] ?? '') !== String(expected)) return false;
+        }
+    }
+
+    return true;
+}
+
+function filterFieldOptions(
+    options: RuntimeRequestConfigFieldOption[],
+    projectAnnotationTypes: string[],
+    fieldValues: Record<string, any>,
+): RuntimeRequestConfigFieldOption[] {
+    return options.filter((opt) => evaluateOptionCond(opt, projectAnnotationTypes, fieldValues));
+}
+
 const ProjectLoopDetail: React.FC = () => {
     const {projectId, loopId} = useParams<{ projectId: string; loopId: string }>();
     const navigate = useNavigate();
@@ -77,6 +122,7 @@ const ProjectLoopDetail: React.FC = () => {
     const [controlLoading, setControlLoading] = useState(false);
     const [cleaningRound, setCleaningRound] = useState<number | null>(null);
     const [loop, setLoop] = useState<Loop | null>(null);
+    const [project, setProject] = useState<Project | null>(null);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
     const [rounds, setRounds] = useState<RuntimeRound[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
@@ -84,10 +130,38 @@ const ProjectLoopDetail: React.FC = () => {
 
     const selectedPluginId = Form.useWatch('modelArch', configForm);
     const selectedMode = Form.useWatch('mode', configForm) || 'active_learning';
+    const pluginConfigValues: Record<string, any> = Form.useWatch('pluginConfig', configForm) || {};
+    const projectAnnotationTypes = useMemo(
+        () => project?.enabledAnnotationTypes ?? [],
+        [project],
+    );
     const selectedPlugin = useMemo(
         () => plugins.find((item) => item.pluginId === selectedPluginId),
         [plugins, selectedPluginId],
     );
+
+    // Auto-reset dependent fields when a parent field value changes
+    const requestConfigFields = selectedPlugin?.requestConfigSchema?.fields || [];
+    useEffect(() => {
+        if (!requestConfigFields.length) return;
+        const currentConfig = configForm.getFieldValue('pluginConfig') || {};
+        const patches: Record<string, any> = {};
+
+        for (const field of requestConfigFields) {
+            if (field.type !== 'select' || !field.options?.length) continue;
+            const visible = filterFieldOptions(field.options, projectAnnotationTypes, currentConfig);
+            const currentVal = currentConfig[field.key];
+            const stillValid = visible.some((opt) => opt.value === currentVal);
+            if (!stillValid && visible.length > 0) {
+                patches[field.key] = visible[0].value;
+            }
+        }
+
+        if (Object.keys(patches).length > 0) {
+            configForm.setFieldsValue({pluginConfig: {...currentConfig, ...patches}});
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pluginConfigValues, projectAnnotationTypes]);
 
     const renderDynamicField = (field: RuntimeRequestConfigField) => {
         const keyPath: (string | number)[] = ['pluginConfig', field.key];
@@ -112,9 +186,14 @@ const ProjectLoopDetail: React.FC = () => {
             );
         }
         if (field.type === 'select') {
+            const visibleOptions = filterFieldOptions(
+                field.options || [],
+                projectAnnotationTypes,
+                pluginConfigValues,
+            );
             return (
                 <Form.Item key={field.key} name={keyPath} label={field.label} rules={rules}>
-                    <Select options={(field.options || []).map((item) => ({label: item.label, value: item.value}))}/>
+                    <Select options={visibleOptions.map((item) => ({label: item.label, value: item.value}))}/>
                 </Form.Item>
             );
         }
@@ -126,17 +205,19 @@ const ProjectLoopDetail: React.FC = () => {
     };
 
     const refreshLoopData = useCallback(async () => {
-        if (!loopId) return;
-        const [loopRow, summaryRow, roundRows, pluginCatalog] = await Promise.all([
+        if (!loopId || !projectId) return;
+        const [loopRow, summaryRow, roundRows, pluginCatalog, projectRow] = await Promise.all([
             api.getLoopById(loopId),
             api.getLoopSummary(loopId),
             api.getLoopRounds(loopId, 100),
             api.getRuntimePlugins(),
+            api.getProject(projectId),
         ]);
         setLoop(loopRow);
         setSummary(summaryRow);
         setRounds(roundRows);
         setPlugins(pluginCatalog.items || []);
+        setProject(projectRow);
 
         const plugin = pluginCatalog.items.find((item) => item.pluginId === loopRow.modelArch);
         const loopConfig = loopRow.config || ({} as any);
@@ -160,7 +241,7 @@ const ProjectLoopDetail: React.FC = () => {
                 seeds: loopModeConfig.seeds ?? [0, 1, 2, 3, 4],
             },
         });
-    }, [loopId, configForm]);
+    }, [loopId, projectId, configForm]);
 
     const loadData = useCallback(async () => {
         if (!canManageLoops) return;

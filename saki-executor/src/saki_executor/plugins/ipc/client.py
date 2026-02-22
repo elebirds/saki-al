@@ -43,7 +43,7 @@ class PluginWorkerClient:
         self._step_id = step_id
         self._event_handler = event_handler
         self._python_executable = str(python_executable) if python_executable else sys.executable
-        self._entrypoint_module = entrypoint_module or "saki_executor.plugins.ipc.worker_main"
+        self._entrypoint_module = entrypoint_module
         self._ctx = zmq.asyncio.Context.instance()
         self._process: asyncio.subprocess.Process | None = None
         self._req_socket: zmq.asyncio.Socket | None = None
@@ -167,6 +167,11 @@ class PluginWorkerClient:
         # Resolve entrypoint module: the part before ":" is the module,
         # e.g. "saki_plugin_yolo_det.worker:main" → module = "saki_plugin_yolo_det.worker"
         module = self._entrypoint_module
+        if not module:
+            raise RuntimeError(
+                f"entrypoint_module is not set for plugin {self._plugin_id}; "
+                "external plugins must declare 'entrypoint' in plugin.yml"
+            )
         if ":" in module:
             module = module.split(":")[0]
 

@@ -36,6 +36,20 @@ class LoopCommandMixin:
 
         mode_text = str(payload.mode.value if hasattr(payload.mode, "value") else payload.mode)
         normalized_config = self._normalize_loop_config(payload.config, mode=mode_text)
+
+        # Inject project's enabled_annotation_types into the plugin config
+        # section so it flows through dispatcher → executor → plugin for
+        # conditional logic (e.g. detect vs obb in YOLO plugin).
+        project = await self.project_gateway.get_project(project_id)
+        if project and getattr(project, "enabled_annotation_types", None):
+            annotation_types = [
+                str(t.value if hasattr(t, "value") else t)
+                for t in project.enabled_annotation_types
+            ]
+            plugin_section = normalized_config.get("plugin")
+            if isinstance(plugin_section, dict):
+                plugin_section["annotation_types"] = annotation_types
+
         max_rounds = self._derive_loop_max_rounds(mode=mode_text, config=normalized_config)
         query_batch_size = self._derive_query_batch_size(mode=mode_text, config=normalized_config)
 

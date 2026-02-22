@@ -16,8 +16,10 @@ class TrainConfig:
     resolved_base_model: str
     train_seed: int
     deterministic: bool
+    yolo_task: str = "obb"
 
 
 @dataclass(frozen=True)
 class PreparedDataset:
     manifest: dict[str, Any]
+    yolo_task: str = "obb"

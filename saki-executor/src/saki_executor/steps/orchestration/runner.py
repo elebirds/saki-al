@@ -129,7 +129,10 @@ class StepPipelineRunner:
         raw_plugin_config = self._request.resolved_params.get("plugin")
         if not isinstance(raw_plugin_config, dict):
             raw_plugin_config = dict(self._request.resolved_params)
-        effective_plugin_params = plugin.resolve_config(self._request.mode, raw_plugin_config)
+        plugin_config = plugin.resolve_config(self._request.mode, raw_plugin_config)
+        # Inject runtime seeds / round metadata – produce a plain dict for
+        # IPC-serialisable downstream consumption.
+        effective_plugin_params = plugin_config.to_dict()
         for key in ("split_seed", "train_seed", "sampling_seed", "round_index", "deterministic"):
             if key in self._request.resolved_params and key not in effective_plugin_params:
                 effective_plugin_params[key] = self._request.resolved_params.get(key)
@@ -201,6 +204,7 @@ class StepPipelineRunner:
         emitter: StepEventEmitter,
     ) -> set[str]:
         params_snapshot = {
+            "yolo_task": self._effective_plugin_params.get("yolo_task"),
             "epochs": self._effective_plugin_params.get("epochs"),
             "batch": self._effective_plugin_params.get("batch", self._effective_plugin_params.get("batch_size")),
             "imgsz": self._effective_plugin_params.get("imgsz"),
@@ -226,6 +230,12 @@ class StepPipelineRunner:
             emit=emitter.emit,
         )
         prepare_data = getattr(plugin, "prepare_data")
+        # Inject plugin-specific config into splits for prepare_data.
+        # This avoids changing the prepare_data interface across the entire chain.
+        splits = dict(data_bundle.splits)
+        for _inject_key in ("yolo_task",):
+            if _inject_key in self._effective_plugin_params:
+                splits[_inject_key] = self._effective_plugin_params[_inject_key]
         try:
             await prepare_data(
                 workspace=workspace,
@@ -233,7 +243,7 @@ class StepPipelineRunner:
                 samples=data_bundle.samples,
                 annotations=data_bundle.train_annotations,
                 dataset_ir=data_bundle.ir_batch,
-                splits=data_bundle.splits,
+                splits=splits,
             )
         except TypeError:
             await prepare_data(

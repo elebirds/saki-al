@@ -6,47 +6,46 @@ from pathlib import Path
 import threading
 from typing import Any, Awaitable, Callable
 
-from saki_plugin_sdk import Workspace
+from saki_plugin_sdk import PluginConfig, Workspace
 from saki_plugin_yolo_det.types import TrainConfig
 from saki_plugin_sdk.base import EventCallback
 
 
 ToIntFn = Callable[[Any, int], int]
 ToBoolFn = Callable[[Any, bool], bool]
-ResolveDeviceFn = Callable[[dict[str, Any]], tuple[Any, str, str]]
+ResolveDeviceFn = Callable[[Any], tuple[Any, str, str]]
 ResolveModelRefFn = Callable[..., Awaitable[str]]
 
 
 async def resolve_train_config(
     *,
     workspace: Workspace,
-    params: dict[str, Any],
-    to_int: ToIntFn,
+    plugin_config: PluginConfig,
     resolve_device: ResolveDeviceFn,
     resolve_model_ref: ResolveModelRefFn,
 ) -> TrainConfig:
-    epochs = to_int(params.get("epochs", 30), 30)
-    batch = to_int(params.get("batch", params.get("batch_size", 16)), 16)
-    imgsz = to_int(params.get("imgsz", 640), 640)
-    patience = to_int(params.get("patience", 20), 20)
-    device, requested_device, resolved_backend = resolve_device(params)
+    """Build a ``TrainConfig`` from a resolved ``PluginConfig``.
+
+    All type coercion / defaults are already handled by ``PluginConfig``,
+    so we can access fields directly.
+    """
+    device, requested_device, resolved_backend = resolve_device(plugin_config)
     resolved_base_model = await resolve_model_ref(
         workspace=workspace,
-        params=params,
+        params=plugin_config,
     )
-    train_seed = max(0, to_int(params.get("train_seed"), 0))
-    deterministic = bool(params.get("deterministic", False))
     return TrainConfig(
-        epochs=epochs,
-        batch=batch,
-        imgsz=imgsz,
-        patience=patience,
+        epochs=int(plugin_config.epochs),
+        batch=int(plugin_config.batch),
+        imgsz=int(plugin_config.imgsz),
+        patience=int(plugin_config.get("patience", 20)),
         device=device,
         requested_device=requested_device,
         resolved_backend=resolved_backend,
         resolved_base_model=resolved_base_model,
-        train_seed=train_seed,
-        deterministic=deterministic,
+        train_seed=max(0, int(plugin_config.get("train_seed", 0) or 0)),
+        deterministic=bool(plugin_config.get("deterministic", False)),
+        yolo_task=str(plugin_config.yolo_task),
     )
 
 
@@ -100,6 +99,7 @@ async def run_train_with_epoch_stream(
                 device=config.device,
                 train_seed=config.train_seed,
                 deterministic=config.deterministic,
+                yolo_task=config.yolo_task,
                 epoch_callback=_on_epoch_update,
             )
         except BaseException as exc:  # pragma: no cover - delegated to caller path

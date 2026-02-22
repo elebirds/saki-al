@@ -38,12 +38,6 @@ class DemoDetectionPlugin(ExecutorPlugin):
     def default_request_config(self) -> dict[str, Any]:
         return self._internal.default_config()
 
-    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
-        return self._internal.config_schema(mode=mode)
-
-    def default_config(self, mode: str | None = None) -> dict[str, Any]:
-        return self._internal.default_config(mode=mode)
-
     def validate_params(self, params: dict[str, Any]) -> None:
         self._internal.validate_params(params)
 

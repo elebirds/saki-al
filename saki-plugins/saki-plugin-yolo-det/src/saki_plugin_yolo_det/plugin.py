@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from saki_plugin_sdk import EventCallback, ExecutorPlugin, TrainOutput, Workspace
+from saki_plugin_sdk import EventCallback, ExecutorPlugin, PluginConfig, TrainOutput, Workspace
 from saki_plugin_yolo_det.internal import (
     YoloDetectionInternal,
     _infer_image_hw as _internal_infer_image_hw,
@@ -46,19 +46,15 @@ class YoloDetectionPlugin(ExecutorPlugin):
 
     @property
     def request_config_schema(self) -> dict[str, Any]:
-        return self._internal.config_schema()
+        m = self._internal.manifest
+        return dict(m.config_schema) if m.config_schema else {}
 
     @property
     def default_request_config(self) -> dict[str, Any]:
-        return self._internal.default_config()
+        m = self._internal.manifest
+        return dict(m.default_config) if m.default_config else {}
 
-    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
-        return self._internal.config_schema(mode=mode)
-
-    def default_config(self, mode: str | None = None) -> dict[str, Any]:
-        return self._internal.default_config(mode=mode)
-
-    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
+    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> PluginConfig:
         return self._internal.resolve_config(mode=mode, raw_config=raw_config)
 
     def validate_params(self, params: dict[str, Any]) -> None:

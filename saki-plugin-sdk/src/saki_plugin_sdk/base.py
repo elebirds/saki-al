@@ -56,25 +56,35 @@ class ExecutorPlugin(ABC):
 
     @property
     def request_config_schema(self) -> dict[str, Any]:
-        return self.config_schema(mode=None)
+        return {}
 
     @property
     def default_request_config(self) -> dict[str, Any]:
-        return self.default_config(mode=None)
-
-    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
-        del mode
         return {}
 
-    def default_config(self, mode: str | None = None) -> dict[str, Any]:
-        del mode
-        return {}
+    def resolve_config(
+        self,
+        mode: str,
+        raw_config: dict[str, Any] | None,
+        *,
+        context: dict[str, Any] | None = None,
+        validate: bool = True,
+    ) -> "PluginConfig":
+        """Build a :class:`PluginConfig` from defaults + user overrides.
 
-    def resolve_config(self, mode: str, raw_config: dict[str, Any] | None) -> dict[str, Any]:
-        base = dict(self.default_config(mode=mode))
-        if isinstance(raw_config, dict):
-            base.update(raw_config)
-        return base
+        Merges ``default_request_config`` with *raw_config*, resolves
+        any conditional-default lists, coerces values to their
+        schema-declared types, and (optionally) validates constraints.
+        """
+        from saki_plugin_sdk.config import PluginConfig
+
+        return PluginConfig.resolve(
+            default_config=self.default_request_config,
+            config_schema=self.request_config_schema,
+            raw_config=raw_config,
+            context=context,
+            validate=validate,
+        )
 
     @property
     def supported_accelerators(self) -> list[str]:

@@ -11,7 +11,6 @@ from saki_executor.plugins.registry import PluginRegistry
 
 def _build_client(tmp_path):
     registry = PluginRegistry()
-    registry.load_builtin()
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
     manager = StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
     return AgentClient(plugin_registry=registry, step_manager=manager)

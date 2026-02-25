@@ -4,12 +4,14 @@ WORKDIR /app
 
 RUN apk add --no-cache ca-certificates git
 
-COPY go.mod ./
-COPY go.sum ./
+# 复制 proto 目录用于 gRPC 代码生成
+COPY proto /tmp/proto
+COPY saki-dispatcher/go.mod ./
+COPY saki-dispatcher/go.sum ./
 RUN go mod download
 
-COPY cmd ./cmd
-COPY internal ./internal
+COPY saki-dispatcher/cmd ./cmd
+COPY saki-dispatcher/internal ./internal
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /bin/saki-dispatcher ./cmd/dispatcher
 
@@ -20,7 +22,7 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
 COPY --from=builder /bin/saki-dispatcher /usr/local/bin/saki-dispatcher
-COPY db/migrations ./db/migrations
+COPY saki-dispatcher/db ./db
 
 EXPOSE 50051 50052
 

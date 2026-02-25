@@ -41,7 +41,7 @@
 - 如果端点已经返回ApiResponse，路由会检测到并跳过（避免重复包装）
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional, Generic, TypeVar, Any
 
 from pydantic import BaseModel, Field
@@ -55,7 +55,7 @@ T = TypeVar('T')
 class ApiResponse(BaseModel, Generic[T]):
     """
     统一的API响应格式（ResultVO）。
-    
+
     字段说明：
     - success: 请求是否成功
     - code: 业务错误码（ErrorCode枚举值）
@@ -66,7 +66,7 @@ class ApiResponse(BaseModel, Generic[T]):
     success: bool = Field(..., description="请求是否成功")
     code: int = Field(..., description="业务错误码（ErrorCode枚举值）")
     message: str = Field(..., description="响应消息")
-    timestamp: datetime = Field(default_factory=datetime.now, description="响应时间戳")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC), description="响应时间戳")
     data: Optional[T] = Field(None, description="响应数据")
 
     @classmethod

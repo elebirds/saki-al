@@ -3,7 +3,7 @@ User Service - Business logic for User operations.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from fastapi import UploadFile
@@ -242,7 +242,7 @@ class UserService(CrudServiceBase[User, UserRepository, UserCreate, UserUpdate])
             self,
             user_id: uuid.UUID,
     ):
-        await self.repository.update(user_id, {"last_login_at": datetime.utcnow()})
+        await self.repository.update(user_id, {"last_login_at": datetime.now(UTC)})
 
     @transactional
     async def change_password(

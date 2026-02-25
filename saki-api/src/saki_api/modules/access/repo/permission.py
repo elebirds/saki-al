@@ -2,7 +2,7 @@
 Permission Repository - Data access layer for Permission operations.
 """
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List, Set, Optional
 
 from sqlmodel import select
@@ -53,23 +53,22 @@ class PermissionRepository(BaseRepository[RolePermission]):
     ) -> Set[str]:
         """
         Efficiently get all system-level permissions for a user using SQL JOIN.
-        
+
         This method uses a single SQL query with JOIN to get all permissions
         from active system roles, avoiding the need to first fetch role IDs.
-        
+
         Args:
             user_id: User ID
             now: Date to filter expired roles. If None, uses current time.
-            
+
         Returns:
             Set of permission strings
         """
-        from datetime import datetime
         from saki_api.modules.access.domain.rbac import UserSystemRole, Role
         from saki_api.modules.access.domain.rbac import RoleType
 
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
 
         # Single SQL query with JOIN to get all permissions from active roles
         statement = (

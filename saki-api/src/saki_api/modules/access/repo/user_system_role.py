@@ -3,7 +3,7 @@ User System Role Repository - Data access layer for User-(Sys)Role association o
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List, Optional
 
 from sqlmodel import select
@@ -55,13 +55,13 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
     ) -> UserSystemRole:
         """
         Assign a system role to a user.
-        
+
         Audit fields (created_by, updated_by) are automatically populated
         by event listeners from the current user context.
-        
+
         Args:
             role_in: UserSystemRoleCreate schema with user_id, role_id, and optional expires_at
-            
+
         Returns:
             Created UserSystemRole association
         """
@@ -70,11 +70,11 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
     async def revoke(self, user_id: uuid.UUID, role_id: uuid.UUID) -> bool:
         """
         Revoke a system role from a user.
-        
+
         Args:
             user_id: User ID
             role_id: Role ID to revoke
-            
+
         Returns:
             True if revoked, False if not found
         """
@@ -87,14 +87,14 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
     async def get_system_roles(self, user_id: uuid.UUID, now: Optional[datetime] = None) -> List[Role]:
         """
         Get all system roles assigned to a user (Role objects).
-        
+
         This method performs a join query to get Role objects directly.
         For UserSystemRole objects, use get_user_system_roles instead.
-        
+
         Args:
             user_id: User ID
             now: Date to filter expired roles. If provided, only returns roles that haven't expired.
-            
+
         Returns:
             List of Role objects assigned to the user
         """
@@ -132,16 +132,16 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
     async def get_active_role_ids(self, user_id: uuid.UUID, now: Optional[datetime] = None) -> List[uuid.UUID]:
         """
         Get all active system role IDs for a user.
-        
+
         Args:
             user_id: User ID
             now: Date to filter expired roles. If None, uses current time.
-            
+
         Returns:
             List of active role IDs
         """
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
         user_roles = await self.list(filters=[
             UserSystemRole.user_id == user_id,
             (UserSystemRole.expires_at == None) | (UserSystemRole.expires_at > now)
@@ -151,18 +151,18 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
     async def has_super_admin_role(self, user_id: uuid.UUID, now: Optional[datetime] = None) -> bool:
         """
         Efficiently check if user has super admin role using SQL JOIN.
-        
+
         This is much more efficient than fetching all roles and checking individually.
-        
+
         Args:
             user_id: User ID
             now: Date to filter expired roles. If None, uses current time.
-            
+
         Returns:
             True if user has super admin role, False otherwise
         """
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
 
         # Use EXISTS query for maximum efficiency - stops at first match
         from sqlalchemy import exists
@@ -184,18 +184,18 @@ class UserSystemRoleRepository(BaseRepository[UserSystemRole]):
     async def has_admin_role(self, user_id: uuid.UUID, now: Optional[datetime] = None) -> bool:
         """
         Efficiently check if user has admin role (including super admin) using SQL JOIN.
-        
+
         This is much more efficient than fetching all roles and checking individually.
-        
+
         Args:
             user_id: User ID
             now: Date to filter expired roles. If None, uses current time.
-            
+
         Returns:
             True if user has admin or super admin role, False otherwise
         """
         if now is None:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
 
         # Use EXISTS query for maximum efficiency - stops at first match
         from sqlalchemy import exists

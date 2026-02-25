@@ -7,7 +7,7 @@ This service handles all token-related operations including:
 - Token payload extraction
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Dict, Any, Optional
 
 from jose import jwt, JWTError
@@ -24,18 +24,18 @@ class TokenService:
     def create_access_token(user_id: uuid.UUID, expires_delta: Optional[timedelta] = None) -> str:
         """
         Create an access token for a user.
-        
+
         Args:
             user_id: User ID to encode in token
             expires_delta: Optional expiration delta. If None, uses default from settings.
-            
+
         Returns:
             Encoded JWT access token
         """
         if expires_delta:
-            expire = datetime.utcnow() + expires_delta
+            expire = datetime.now(UTC) + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
         to_encode = {"exp": expire, "sub": str(user_id), "type": "access"}
         encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -45,21 +45,21 @@ class TokenService:
     def create_refresh_token(user_id: uuid.UUID, expires_delta: Optional[timedelta] = None) -> str:
         """
         Create a refresh token for a user.
-        
+
         Refresh tokens have a longer expiration time than access tokens.
-        
+
         Args:
             user_id: User ID to encode in token
             expires_delta: Optional expiration delta. Defaults to 7 days.
-            
+
         Returns:
             Encoded JWT refresh token
         """
         if expires_delta:
-            expire = datetime.utcnow() + expires_delta
+            expire = datetime.now(UTC) + expires_delta
         else:
             # Default refresh token expiration: 7 days
-            expire = datetime.utcnow() + timedelta(days=7)
+            expire = datetime.now(UTC) + timedelta(days=7)
 
         to_encode = {"exp": expire, "sub": str(user_id), "type": "refresh"}
         encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

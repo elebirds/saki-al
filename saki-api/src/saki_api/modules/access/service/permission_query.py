@@ -6,7 +6,7 @@ Uses PermissionService which follows the new architecture pattern.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List, Optional
 
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -54,12 +54,12 @@ class PermissionQueryService:
     async def get_system_permissions(self, user_id: uuid.UUID) -> SystemPermissionsResponse:
         """
         Get system-level permissions for a user.
-        
+
         Returns only permissions from system roles, not resource roles.
-        
+
         Args:
             user_id: User ID
-            
+
         Returns:
             SystemPermissionsResponse with system roles and permissions
         """
@@ -67,7 +67,7 @@ class PermissionQueryService:
         system_roles: List[RoleReadMinimal] = []
         is_super_admin = False
         permissions: set[str] = set()
-        for each in await self.user_role_repo.get_system_roles(user_id, datetime.utcnow()):
+        for each in await self.user_role_repo.get_system_roles(user_id, datetime.now(UTC)):
             system_roles.append(RoleReadMinimal.model_validate(each))
             is_super_admin |= each.is_super_admin
             permissions.update(await self.permission_service.get_role_permissions(each.id))

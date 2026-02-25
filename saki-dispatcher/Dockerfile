@@ -4,6 +4,10 @@ WORKDIR /app
 
 RUN apk add --no-cache ca-certificates git
 
+# 配置 Go 国内镜像源（适用于腾讯云等国内服务器）
+ENV GOPROXY=https://goproxy.cn,direct \
+    GO111MODULE=on
+
 # 复制 proto 目录用于 gRPC 代码生成
 COPY proto /tmp/proto
 COPY saki-dispatcher/go.mod ./

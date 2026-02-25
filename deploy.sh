@@ -266,6 +266,10 @@ create_directories() {
 build_images() {
     log_step "构建 Docker 镜像（这可能需要几分钟）..."
 
+    # 禁用 provenance metadata 以避免网络超时（特别是在国内服务器）
+    export BUILDKIT_METADATA_PROVENANCE=none
+    export DOCKER_BUILDKIT=1
+
     if ! "${COMPOSE_CMD[@]}" build; then
         log_error "镜像构建失败"
         log_warn "提示：如遇网络问题，可配置 Docker 镜像加速"
@@ -277,19 +281,35 @@ build_images() {
 
 # 启动服务
 start_services() {
-    log_step "启动核心服务..."
+    log_step "启动基础服务..."
 
-    # 启动核心服务
-    "${COMPOSE_CMD[@]}" up -d saki-api saki-dispatcher saki-web postgres redis
+    # 首先启动基础服务（postgres, redis）
+    "${COMPOSE_CMD[@]}" up -d postgres redis
 
     # 检查是否需要启动内置 MinIO
     if grep -q "MINIO_ENDPOINT=minio:9000" .env 2>/dev/null; then
         log_info "检测到内置 MinIO 配置，启动 MinIO..."
         "${COMPOSE_CMD[@]}" --profile minio up -d minio
         log_info "MinIO 控制台: http://localhost:9001 (minioadmin/minioadmin)"
+        # 等待 MinIO 就绪
+        log_info "等待 MinIO 启动..."
+        local max_wait=30
+        local waited=0
+        while [ $waited -lt $max_wait ]; do
+            if docker ps | grep -q "saki-minio.*healthy"; then
+                log_info "MinIO 已就绪"
+                break
+            fi
+            sleep 2
+            waited=$((waited + 2))
+        done
     else
         log_info "使用外部对象存储，跳过内置 MinIO"
     fi
+
+    log_step "启动应用服务..."
+    # 启动应用服务（saki-api 依赖 MinIO，saki-dispatcher 依赖 saki-api）
+    "${COMPOSE_CMD[@]}" up -d saki-api saki-dispatcher saki-web
 
     # 检查是否需要启动数据库备份服务
     if grep -q "BACKUP_ENABLED=true" .env 2>/dev/null; then

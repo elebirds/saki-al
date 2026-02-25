@@ -25,9 +25,15 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
+# 复制 entrypoint 脚本
+COPY saki-dispatcher/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 COPY --from=builder /bin/saki-dispatcher /usr/local/bin/saki-dispatcher
 COPY saki-dispatcher/db ./db
 
 EXPOSE 50051 50052
 
-ENTRYPOINT ["saki-dispatcher"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+CMD ["saki-dispatcher"]

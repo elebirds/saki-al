@@ -39,8 +39,15 @@ RUN uv sync --no-dev
 # 创建数据目录
 RUN mkdir -p /app/data/uploads
 
+# 复制 entrypoint 脚本
+COPY saki-api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # 暴露端口
 EXPOSE 8000
+
+# 使用 entrypoint 脚本
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # 启动命令
 CMD ["uv", "run", "uvicorn", "saki_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

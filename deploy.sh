@@ -15,7 +15,7 @@ log_warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$*" >&2; }
 log_error() { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 log_step() { printf "${BLUE}[STEP]${NC} %s\n" "$*"; }
 
-# 生成随机密钥
+# 生成随机密钥（URL 安全，仅包含字母数字）
 generate_secret_key() {
     if command -v openssl >/dev/null 2>&1; then
         openssl rand -hex 32
@@ -24,7 +24,8 @@ generate_secret_key() {
     elif command -v shasum >/dev/null 2>&1; then
         date +%s%N | shasum -a 256 | awk '{print $1}'
     else
-        printf "saki-secret-%s" "$(date +%s)"
+        # 回退方案：只使用字母数字
+        printf "saki-%s" "$(date +%s | md5sum 2>/dev/null | awk '{print $1}' || echo "$(date +%s)$(RANDOM)")"
     fi
 }
 
@@ -87,7 +88,7 @@ generate_env() {
     printf "========================================\n"
     printf "数据库配置\n"
     printf "========================================\n"
-    read -r -p "数据库密码 [默认: 自动生成]: " db_password
+    read -r -p "数据库密码 [默认: 自动生成，支持任意字符]: " db_password
     if [ -z "$db_password" ]; then
         db_password="$(generate_secret_key)"
         log_info "已生成数据库密码: $db_password"
@@ -189,7 +190,8 @@ generate_env() {
     # 更新数据库密码和 SECRET_KEY
     if command -v sed >/dev/null 2>&1; then
         sed -i.bak "s/SAKI_POSTGRES_PASSWORD=.*/SAKI_POSTGRES_PASSWORD=$db_password/" .env
-        sed -i.bak "s/SECRET_KEY=.*/SECRET_KEY=$secret_key/" .env
+        # 精确匹配 SECRET_KEY，避免匹配到 MINIO_SECRET_KEY
+        sed -i.bak "s/^SECRET_KEY=.*/SECRET_KEY=$secret_key/" .env
         rm -f .env.bak
     fi
 

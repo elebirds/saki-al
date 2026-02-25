@@ -193,21 +193,73 @@ generate_env() {
         rm -f .env.bak
     fi
 
+    # 数据目录配置
+    echo ""
+    printf "========================================\n"
+    printf "数据目录配置\n"
+    printf "========================================\n"
+    read -r -p "数据存储目录 [默认: ~/saki/data]: " data_dir
+    if [ -z "$data_dir" ]; then
+        data_dir="~/saki/data"
+    fi
+    # 展开 ~
+    data_dir="${data_dir/#\~/$HOME}"
+    if command -v sed >/dev/null 2>&1; then
+        sed -i.bak "s|SAKI_DATA_DIR=.*|SAKI_DATA_DIR=$data_dir|" .env
+        rm -f .env.bak
+    fi
+    log_info "数据目录: $data_dir"
+
+    # 数据库备份配置
+    echo ""
+    printf "========================================\n"
+    printf "数据库备份配置\n"
+    printf "========================================\n"
+    read -r -p "是否启用数据库自动备份到对象存储? (y/N): " enable_backup
+    if [[ "$enable_backup" =~ ^[Yy]$ ]]; then
+        read -r -p "备份周期 (cron 格式, 默认: 每天 2:00 AM): " backup_schedule
+        backup_schedule="${backup_schedule:-0 2 * * *}"
+        read -r -p "保留天数 [默认: 7]: " retention_days
+        retention_days="${retention_days:-7}"
+
+        if command -v sed >/dev/null 2>&1; then
+            sed -i.bak "s/BACKUP_ENABLED=.*/BACKUP_ENABLED=true/" .env
+            sed -i.bak "s/BACKUP_SCHEDULE=.*/BACKUP_SCHEDULE=$backup_schedule/" .env
+            sed -i.bak "s/BACKUP_RETENTION_DAYS=.*/BACKUP_RETENTION_DAYS=$retention_days/" .env
+            rm -f .env.bak
+        fi
+        log_info "已启用数据库自动备份"
+        log_info "   备份周期: $backup_schedule"
+        log_info "   保留天数: $retention_days 天"
+    else
+        if command -v sed >/dev/null 2>&1; then
+            sed -i.bak "s/BACKUP_ENABLED=.*/BACKUP_ENABLED=false/" .env
+            rm -f .env.bak
+        fi
+        log_info "未启用数据库备份"
+    fi
+
     log_info ".env 配置完成"
 }
 
 # 创建数据目录
 create_directories() {
     log_step "创建数据目录..."
-    mkdir -p \
-        data/postgres \
-        data/minio \
-        saki-api/data \
-        saki-api/logs \
-        saki-executor/runs \
-        saki-executor/cache \
-        saki-executor/logs
-    log_info "数据目录创建完成"
+
+    # 从 .env 读取 SAKI_DATA_DIR
+    local data_dir="${SAKI_DATA_DIR:-./data}"
+    # 展开 ~
+    data_dir="${data_dir/#\~/$HOME}"
+
+    mkdir -p "$data_dir/postgres"
+    mkdir -p "$data_dir/minio"
+    mkdir -p "$data_dir/saki-api/data"
+    mkdir -p "$data_dir/saki-api/logs"
+    mkdir -p "$data_dir/saki-executor/runs"
+    mkdir -p "$data_dir/saki-executor/cache"
+    mkdir -p "$data_dir/saki-executor/logs"
+
+    log_info "数据目录创建完成: $data_dir"
 }
 
 # 构建 Docker 镜像
@@ -237,6 +289,13 @@ start_services() {
         log_info "MinIO 控制台: http://localhost:9001 (minioadmin/minioadmin)"
     else
         log_info "使用外部对象存储，跳过内置 MinIO"
+    fi
+
+    # 检查是否需要启动数据库备份服务
+    if grep -q "BACKUP_ENABLED=true" .env 2>/dev/null; then
+        log_info "检测到已启用数据库备份，启动备份服务..."
+        "${COMPOSE_CMD[@]}" --profile backup up -d db-backup
+        log_info "数据库备份服务已启动，日志: docker compose logs -f db-backup"
     fi
 
     log_info "核心服务启动完成"
@@ -285,6 +344,12 @@ show_access_info() {
     printf "   API 文档:   http://localhost:8000/docs\n"
     printf "   MinIO 控制台: http://localhost:9001 (如果已启动)\n"
     echo ""
+    printf "📂 数据存储:\n"
+    local data_dir="${SAKI_DATA_DIR:-~/saki/data}"
+    data_dir="${data_dir/#\~/$HOME}"
+    printf "   数据目录: $data_dir\n"
+    printf "   请定期备份此目录，或启用自动备份服务\n"
+    echo ""
     printf "📝 常用命令:\n"
     printf "   查看日志:   ${COMPOSE_CMD[*]} logs -f\n"
     printf "   查看日志:   ${COMPOSE_CMD[*]} logs -f [服务名]\n"
@@ -292,6 +357,10 @@ show_access_info() {
     printf "   重启服务:   ${COMPOSE_CMD[*]} restart\n"
     printf "   删除服务:   ${COMPOSE_CMD[*]} down\n"
     printf "   启动 Executor: ${COMPOSE_CMD[*]} --profile saki-executor up -d saki-executor\n"
+    if grep -q "BACKUP_ENABLED=true" .env 2>/dev/null; then
+        printf "   备份日志:   ${COMPOSE_CMD[*]} logs -f db-backup\n"
+        printf "   手动备份:  ${COMPOSE_CMD[*]} exec db-backup /backup/backup-db.sh\n"
+    fi
     echo ""
     printf "========================================\n"
 }

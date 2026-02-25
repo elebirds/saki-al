@@ -35,9 +35,9 @@ services:
       - MINIO_SECURE=${MINIO_SECURE:-false}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-saki-data}
     volumes:
-      # 持久化数据库和上传文件
-      - ./saki-api/data:/app/data
-      - ./saki-api/logs:/app/logs
+      # 持久化数据库和上传文件 (使用 SAKI_DATA_DIR 环境变量)
+      - ${SAKI_DATA_DIR:-./saki-api/data}:/app/data
+      - ${SAKI_DATA_DIR:-./saki-api/logs}:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +101,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
   postgres:
     image: postgres:16-alpine
     container_name: saki-postgres
@@ -111,7 +112,8 @@ services:
       POSTGRES_USER: ${SAKI_POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${SAKI_POSTGRES_PASSWORD:-postgres}
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      # 持久化数据库数据 (使用 SAKI_DATA_DIR 环境变量)
+      - ${SAKI_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - saki-network
@@ -133,13 +135,51 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
-      - ./data/minio:/data
+      # 持久化 MinIO 数据 (使用 SAKI_DATA_DIR 环境变量)
+      - ${SAKI_DATA_DIR:-./data/minio}:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - saki-network
+
+  # 数据库备份服务
+  db-backup:
+    image: postgres:16-alpine
+    container_name: saki-db-backup
+    profiles:
+      - backup
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${SAKI_POSTGRES_DB:-saki}
+      - POSTGRES_USER=${SAKI_POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${SAKI_POSTGRES_PASSWORD:-postgres}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_SECURE=${MINIO_SECURE}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
+      - BACKUP_COS_PREFIX=${BACKUP_COS_PREFIX:-saki-backups/db}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
+    volumes:
+      - ./scripts/backup-db.sh:/backup/backup-db.sh:ro
+      - ./.env:/backup/.env:ro
+    working_dir: /backup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache postgresql-client aws-cli
+        echo "配置备份周期: ${BACKUP_SCHEDULE:-0 2 * * *}"
+        echo "${BACKUP_SCHEDULE:-0 2 * * *} /backup/backup-db.sh >> /backup/backup.log 2>&1" | crond -f -
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - saki-network
 
@@ -171,15 +211,16 @@ services:
       - ENABLE_COMMAND_STDIN=${ENABLE_COMMAND_STDIN:-true}
       - DISCONNECT_FORCE_WAIT_SEC=${DISCONNECT_FORCE_WAIT_SEC:-20}
     volumes:
-      - ./saki-executor/runs:/app/runs
-      - ./saki-executor/cache:/app/cache
-      - ./saki-executor/logs:/app/logs
+      - ${SAKI_DATA_DIR:-./saki-executor/runs}:/app/runs
+      - ${SAKI_DATA_DIR:-./saki-executor/cache}:/app/cache
+      - ${SAKI_DATA_DIR:-./saki-executor/logs}:/app/logs
     depends_on:
       saki-dispatcher:
         condition: service_started
     restart: unless-stopped
     networks:
       - saki-network
+
   redis:
     image: redis:7-alpine
     container_name: saki-redis
@@ -193,6 +234,7 @@ services:
     restart: unless-stopped
     networks:
       - saki-network
+
 networks:
   saki-network:
     driver: bridge

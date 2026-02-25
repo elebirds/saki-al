@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
@@ -237,19 +238,17 @@ func toResourceSummary(raw []byte) *runtimecontrolv1.ResourceSummary {
 		return &runtimecontrolv1.ResourceSummary{}
 	}
 	summary := &runtimecontrolv1.ResourceSummary{}
-	if value, ok := payload["gpu_count"].(float64); ok {
-		summary.GpuCount = int32(value)
-	}
-	if value, ok := payload["cpu_workers"].(float64); ok {
-		summary.CpuWorkers = int32(value)
-	}
-	if value, ok := payload["memory_mb"].(float64); ok {
-		summary.MemoryMb = int32(value)
-	}
+
+	// 使用 cast 简化 float64 -> int32 转换
+	summary.GpuCount = cast.ToInt32(payload["gpu_count"])
+	summary.CpuWorkers = cast.ToInt32(payload["cpu_workers"])
+	summary.MemoryMb = cast.ToInt32(payload["memory_mb"])
+
 	if ids, ok := payload["gpu_device_ids"].([]any); ok {
 		for _, item := range ids {
-			if numeric, ok := item.(float64); ok {
-				summary.GpuDeviceIds = append(summary.GpuDeviceIds, int32(numeric))
+			id := cast.ToInt32(item)
+			if id != 0 {
+				summary.GpuDeviceIds = append(summary.GpuDeviceIds, id)
 			}
 		}
 	}
@@ -423,20 +422,6 @@ func cancelAttemptCommandID(stepID uuid.UUID, attempt int) string {
 	return "cancel_attempt:" + hex.EncodeToString(sum[:])
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func max64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 func loopAdvisoryKey(loopID uuid.UUID) (int64, bool) {
 	value := int64(0)
 	for i := 0; i < 8; i++ {
@@ -449,4 +434,33 @@ func loopAdvisoryKey(loopID uuid.UUID) (int64, bool) {
 		value = 1
 	}
 	return value, true
+}
+
+// uuidSliceToStringSlice 将 []uuid.UUID 转换为 []string
+func uuidSliceToStringSlice(ids []uuid.UUID) []string {
+	if len(ids) == 0 {
+		return []string{}
+	}
+	result := make([]string, len(ids))
+	for i, id := range ids {
+		result[i] = id.String()
+	}
+	return result
+}
+
+// stringSliceToUUIDSlice 将 []string 转换为 []uuid.UUID，跳过无效值
+func stringSliceToUUIDSlice(items []string) []uuid.UUID {
+	result := make([]uuid.UUID, 0, len(items))
+	for _, item := range items {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		parsed, err := uuid.Parse(value)
+		if err != nil {
+			continue
+		}
+		result = append(result, parsed)
+	}
+	return result
 }

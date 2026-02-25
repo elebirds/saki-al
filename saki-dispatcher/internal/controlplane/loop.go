@@ -881,7 +881,7 @@ func (s *Service) countNewLabels(
 			return 0, nil, err
 		}
 	}
-	return max64(0, latestCount-sinceCount), headCommitID, nil
+	return max(0, latestCount-sinceCount), headCommitID, nil
 }
 
 func (s *Service) maybeCleanupPredictionRows(ctx context.Context) {

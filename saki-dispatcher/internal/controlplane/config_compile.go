@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
@@ -162,33 +162,14 @@ func cloneMap(value map[string]any) map[string]any {
 }
 
 func toString(value any) string {
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case fmt.Stringer:
-		return typed.String()
-	default:
-		return strings.TrimSpace(fmt.Sprintf("%v", value))
-	}
+	result := cast.ToString(value)
+	return strings.TrimSpace(result)
 }
 
 func toInt(value any, defaultValue int) int {
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int32:
-		return int(typed)
-	case int64:
-		return int(typed)
-	case float32:
-		return int(typed)
-	case float64:
-		return int(typed)
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
-		if err == nil {
-			return parsed
-		}
+	result, err := cast.ToIntE(value)
+	if err != nil {
+		return defaultValue
 	}
-	return defaultValue
+	return result
 }

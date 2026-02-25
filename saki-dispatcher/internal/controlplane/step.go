@@ -259,10 +259,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	if stepPayload.InputCommitID != nil {
 		inputCommitID = stepPayload.InputCommitID.String()
 	}
-	dependsOnStepIDs := make([]string, 0, len(stepPayload.DependsOnStepIDs))
-	for _, item := range stepPayload.DependsOnStepIDs {
-		dependsOnStepIDs = append(dependsOnStepIDs, item.String())
-	}
+	dependsOnStepIDs := uuidSliceToStringSlice(stepPayload.DependsOnStepIDs)
 	message := &runtimecontrolv1.StepPayload{
 		StepId:           stepPayload.StepID.String(),
 		RoundId:          stepPayload.RoundID.String(),

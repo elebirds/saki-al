@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
     Alert,
     Button,
@@ -19,7 +19,6 @@ import {api} from '../../../services/api';
 import {
     Loop,
     LoopSummary,
-    Project,
     RuntimeRound,
 } from '../../../types';
 

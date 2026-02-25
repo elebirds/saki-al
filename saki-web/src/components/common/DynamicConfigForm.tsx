@@ -17,7 +17,6 @@ import {
   Switch,
   Typography,
 } from 'antd';
-import type { FormInstance } from 'antd';
 import { PluginConfigFormProps, PluginConfigField } from '../../types/plugin';
 
 const { Text } = Typography;
@@ -132,7 +131,7 @@ function toFormValue(field: PluginConfigField, value: unknown): unknown {
 /**
  * 表单值转换：表单 -> 后端
  */
-function normalizeSubmitValue(field: PluginConfigField, value: unknown): unknown {
+export function normalizeSubmitValue(field: PluginConfigField, value: unknown): unknown {
   if (field.type === 'integer_array') {
     const source = Array.isArray(value) ? value : [];
     const result: number[] = [];

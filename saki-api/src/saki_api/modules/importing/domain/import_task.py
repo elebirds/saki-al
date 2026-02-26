@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import Column
 from sqlmodel import Field, SQLModel
 
@@ -36,5 +37,5 @@ class ImportTask(UUIDMixin, TimestampMixin, SQLModel, table=True):
     summary: dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     error: str | None = Field(default=None, max_length=2000)
 
-    started_at: datetime | None = Field(default=None, index=True)
-    finished_at: datetime | None = Field(default=None, index=True)
+    started_at: datetime | None = Field(default=None, index=True, sa_type=sa.DateTime(timezone=True))
+    finished_at: datetime | None = Field(default=None, index=True, sa_type=sa.DateTime(timezone=True))

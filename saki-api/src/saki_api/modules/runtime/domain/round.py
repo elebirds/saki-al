@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+import sqlalchemy as sa
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -35,8 +36,8 @@ class RoundBase(SQLModel):
     output_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id")
 
     assigned_executor_id: Optional[str] = Field(default=None, index=True)
-    started_at: Optional[datetime] = Field(default=None)
-    ended_at: Optional[datetime] = Field(default=None)
+    started_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
+    ended_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
     retry_count: int = Field(default=0)
     terminal_reason: Optional[str] = Field(default=None, max_length=4000)
 

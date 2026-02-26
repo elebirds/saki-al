@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
@@ -16,7 +17,11 @@ class ImportTaskEvent(UUIDMixin, SQLModel, table=True):
 
     task_id: uuid.UUID = Field(foreign_key="import_task.id", index=True)
     seq: int = Field(index=True, ge=1)
-    ts: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
+    ts: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        index=True,
+        sa_type=sa.DateTime(timezone=True),
+    )
 
     event_type: str = Field(max_length=32, index=True)
     event_subtype: str | None = Field(default=None, max_length=64)

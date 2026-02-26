@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 
+import sqlalchemy as sa
 from sqlalchemy import Column
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -30,7 +31,7 @@ class Model(UUIDMixin, TimestampMixin, SQLModel, table=True):
     status: str = Field(default="candidate")  # candidate, production, archived
     metrics: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
-    promoted_at: datetime | None = Field(default=None)
+    promoted_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     created_by: uuid.UUID | None = Field(default=None, foreign_key="user.id")
 
     # 关系

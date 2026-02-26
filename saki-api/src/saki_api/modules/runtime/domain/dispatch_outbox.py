@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict
 
+import sqlalchemy as sa
 from sqlalchemy import Column, Index
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -25,9 +26,9 @@ class DispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
     payload: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     status: str = Field(max_length=32)
     attempt_count: int = Field(ge=0)
-    next_attempt_at: datetime = Field()
-    locked_at: datetime | None = Field(default=None)
-    sent_at: datetime | None = Field(default=None)
+    next_attempt_at: datetime = Field(sa_type=sa.DateTime(timezone=True))
+    locked_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
+    sent_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     last_error: str | None = Field(default=None, max_length=4000)
 
     step: "Step" = Relationship(back_populates="dispatch_outboxes")

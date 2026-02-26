@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+import sqlalchemy as sa
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -43,8 +44,8 @@ class Step(UUIDMixin, TimestampMixin, SQLModel, table=True):
     state_version: int = Field(default=0, ge=0)
     attempt: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=2, ge=1)
-    started_at: Optional[datetime] = Field(default=None)
-    ended_at: Optional[datetime] = Field(default=None)
+    started_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
+    ended_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
     last_error: Optional[str] = Field(default=None, max_length=4000)
 
     round: "Round" = Relationship(back_populates="steps")

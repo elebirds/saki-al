@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.modules.shared.modeling.base import UUIDMixin, TimestampMixin, AuditMixin
@@ -31,7 +32,8 @@ class UserSystemRoleBase(SQLModel):
     # Optional expiration
     expires_at: Optional[datetime] = Field(
         default=None,
-        description="When this role assignment expires (null = never)"
+        description="When this role assignment expires (null = never)",
+        sa_type=sa.DateTime(timezone=True),
     )
 
 

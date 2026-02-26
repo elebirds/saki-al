@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+import sqlalchemy as sa
 from sqlalchemy import Column, Integer
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -21,7 +22,7 @@ class StepMetricPoint(UUIDMixin, TimestampMixin, SQLModel, table=True):
     epoch: Optional[int] = Field(default=None, index=True)
     metric_name: str = Field(index=True, max_length=128)
     metric_value: float
-    ts: datetime = Field(index=True)
+    ts: datetime = Field(index=True, sa_type=sa.DateTime(timezone=True))
 
     step: "Step" = Relationship(
         back_populates="metric_points",

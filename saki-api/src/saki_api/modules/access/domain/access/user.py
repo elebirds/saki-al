@@ -7,6 +7,7 @@ Updated to use the new RBAC system with system roles and resource memberships.
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
+import sqlalchemy as sa
 from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin
@@ -44,7 +45,8 @@ class InitedUserBase(UserBase):
     # Last login tracking
     last_login_at: Optional[datetime] = Field(
         default=None,
-        description="Last login timestamp"
+        description="Last login timestamp",
+        sa_type=sa.DateTime(timezone=True),
     )
 
 

@@ -66,6 +66,38 @@ def test_job_execution_request_requires_step_type_and_dispatch_kind():
         )
 
 
+def test_sampling_params_required_only_for_sampling_steps():
+    # eval step in AL mode should not require sampling.strategy/topk
+    eval_request = StepExecutionRequest.from_payload(
+        {
+            "step_id": "step-eval-1",
+            "round_id": "round-1",
+            "plugin_id": "demo_det_v1",
+            "round_index": 1,
+            "mode": "active_learning",
+            "step_type": "eval",
+            "dispatch_kind": "dispatchable",
+            "resolved_params": {},
+        }
+    )
+    assert eval_request.step_type == "eval"
+
+    # score step in AL mode must still provide sampling.strategy/topk
+    with pytest.raises(ValueError, match="sampling.strategy is required for active_learning/simulation"):
+        StepExecutionRequest.from_payload(
+            {
+                "step_id": "step-score-1",
+                "round_id": "round-1",
+                "plugin_id": "demo_det_v1",
+                "round_index": 1,
+                "mode": "active_learning",
+                "step_type": "score",
+                "dispatch_kind": "dispatchable",
+                "resolved_params": {},
+            }
+        )
+
+
 @pytest.mark.anyio
 async def test_assign_step_passes_typed_request_to_run_step(tmp_path: Path):
     manager = _build_manager(tmp_path)

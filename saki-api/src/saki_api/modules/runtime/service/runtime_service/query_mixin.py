@@ -26,6 +26,7 @@ from saki_api.modules.shared.modeling.enums import RoundStatus, StepStatus
 @dataclass(slots=True)
 class LoopSummaryStatsVO:
     rounds_total: int
+    attempts_total: int
     rounds_succeeded: int
     steps_total: int
     steps_succeeded: int
@@ -120,6 +121,7 @@ class RuntimeQueryMixin:
         if not rounds:
             return LoopSummaryStatsVO(
                 rounds_total=0,
+                attempts_total=0,
                 rounds_succeeded=0,
                 steps_total=0,
                 steps_succeeded=0,
@@ -130,9 +132,15 @@ class RuntimeQueryMixin:
         steps = await self.step_repo.list_by_round_ids(round_ids)
         latest_round = rounds[-1]
 
+        logical_round_ids = {int(item.round_index) for item in rounds}
+        succeeded_logical_round_ids = {
+            int(item.round_index) for item in rounds if item.state == RoundStatus.COMPLETED
+        }
+
         return LoopSummaryStatsVO(
-            rounds_total=len(rounds),
-            rounds_succeeded=sum(1 for item in rounds if item.state == RoundStatus.COMPLETED),
+            rounds_total=len(logical_round_ids),
+            attempts_total=len(rounds),
+            rounds_succeeded=len(succeeded_logical_round_ids),
             steps_total=len(steps),
             steps_succeeded=sum(1 for item in steps if item.state == StepStatus.SUCCEEDED),
             metrics_latest=dict(latest_round.final_metrics or {}),

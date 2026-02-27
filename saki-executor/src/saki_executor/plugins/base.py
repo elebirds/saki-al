@@ -74,11 +74,10 @@ class ExecutorPlugin(ABC):
         any conditional-default lists, coerces values to their
         schema-declared types, and (optionally) validates constraints.
         """
-        from saki_plugin_sdk.config import PluginConfig
+        from saki_plugin_sdk.config import ConfigSchema, PluginConfig
 
         return PluginConfig.resolve(
-            default_config=self.default_request_config,
-            config_schema=self.request_config_schema,
+            schema=ConfigSchema.model_validate(self.request_config_schema or {}),
             raw_config=raw_config,
             context=context,
             validate=validate,
@@ -138,6 +137,33 @@ class ExecutorPlugin(ABC):
             strategy=strategy,
             params=params,
         )
+
+    async def eval(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        del workspace, params, emit
+        raise NotImplementedError("eval step is not implemented by this plugin")
+
+    async def export(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        del workspace, params, emit
+        raise NotImplementedError("export step is not implemented by this plugin")
+
+    async def upload_artifact(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        del workspace, params, emit
+        raise NotImplementedError("upload_artifact step is not implemented by this plugin")
 
     async def stop(self, step_id: str) -> None:
         del step_id

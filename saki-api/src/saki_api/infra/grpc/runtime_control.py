@@ -9,6 +9,7 @@ import grpc
 from loguru import logger
 from sqlmodel import select
 
+from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.core.config import settings
 from saki_api.grpc_gen import runtime_control_pb2 as pb
 from saki_api.grpc_gen import runtime_domain_pb2 as domain_pb
@@ -24,6 +25,7 @@ from saki_api.modules.project.service.commit_hash import refresh_commit_hash
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.runtime.service.ingress.control_ingress_service import RuntimeControlIngressService
 from saki_api.modules.shared.modeling.enums import AuthorType, CommitSampleReviewState, StepType
 
@@ -123,6 +125,65 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.CountNewLabelsSinceCommitResponse(
                 new_label_count=max(0, latest_count - since_count),
                 latest_commit_id=str(latest_commit_id),
+            )
+
+    async def ResolveRoundReveal(self, request, context):  # noqa: N802
+        loop_id = _parse_uuid(request.loop_id)
+        branch_id = _parse_uuid(request.branch_id)
+        round_index = int(request.round_index or 0)
+        min_required = max(1, int(request.min_required or 1))
+        force = bool(request.force)
+        if loop_id is None or round_index <= 0:
+            return domain_pb.ResolveRoundRevealResponse(
+                revealed_count=0,
+                selected_count=0,
+                missing_count=0,
+                latest_commit_id="",
+                revealable_sample_ids_hash="",
+            )
+
+        async with SessionLocal() as session:
+            runtime_service = RuntimeService(session)
+            try:
+                result = await runtime_service.resolve_round_reveal(
+                    loop_id=loop_id,
+                    round_index=round_index,
+                    branch_id=branch_id,
+                    force=force,
+                    min_required=min_required,
+                )
+                await session.commit()
+            except (BadRequestAppException, NotFoundAppException) as exc:
+                await session.rollback()
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details(str(exc))
+                return domain_pb.ResolveRoundRevealResponse(
+                    revealed_count=0,
+                    selected_count=0,
+                    missing_count=0,
+                    latest_commit_id="",
+                    revealable_sample_ids_hash="",
+                )
+            except Exception as exc:
+                await session.rollback()
+                logger.exception("resolve round reveal failed loop_id={} round_index={} error={}", loop_id, round_index, exc)
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details("resolve round reveal failed")
+                return domain_pb.ResolveRoundRevealResponse(
+                    revealed_count=0,
+                    selected_count=0,
+                    missing_count=0,
+                    latest_commit_id="",
+                    revealable_sample_ids_hash="",
+                )
+
+            latest_commit_id = result.get("latest_commit_id")
+            return domain_pb.ResolveRoundRevealResponse(
+                revealed_count=int(result.get("revealed_count", 0)),
+                selected_count=int(result.get("selected_count", 0)),
+                missing_count=int(result.get("missing_count", 0)),
+                latest_commit_id=str(latest_commit_id or ""),
+                revealable_sample_ids_hash=str(result.get("revealable_sample_ids_hash") or ""),
             )
 
     async def _create_simulation_commit_tx(

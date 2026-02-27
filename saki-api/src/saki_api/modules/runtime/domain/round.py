@@ -22,6 +22,7 @@ class RoundBase(SQLModel):
     loop_id: uuid.UUID = Field(foreign_key="loop.id", index=True)
 
     round_index: int = Field(index=True)
+    attempt_index: int = Field(default=1, ge=1, index=True)
     mode: LoopMode = Field(default=LoopMode.ACTIVE_LEARNING)
 
     state: RoundStatus = Field(default=RoundStatus.PENDING, index=True)
@@ -34,6 +35,8 @@ class RoundBase(SQLModel):
 
     input_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id")
     output_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id")
+    retry_of_round_id: Optional[uuid.UUID] = Field(default=None, foreign_key="round.id")
+    retry_reason: Optional[str] = Field(default=None, max_length=4000)
 
     assigned_executor_id: Optional[str] = Field(default=None, index=True)
     started_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
@@ -48,7 +51,9 @@ class RoundBase(SQLModel):
 
 class Round(RoundBase, TimestampMixin, UUIDMixin, table=True):
     __tablename__ = "round"
-    __table_args__ = (UniqueConstraint("loop_id", "round_index", name="uq_round_loop_round"),)
+    __table_args__ = (
+        UniqueConstraint("loop_id", "round_index", "attempt_index", name="uq_round_loop_round_attempt"),
+    )
 
     project: "Project" = Relationship(back_populates="rounds")
     loop: "Loop" = Relationship(

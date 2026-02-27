@@ -103,6 +103,21 @@ func (q *Queries) CountLoopActiveSteps(ctx context.Context, loopID uuid.UUID) (i
 	return count, err
 }
 
+const countLoopInFlightSteps = `-- name: CountLoopInFlightSteps :one
+SELECT COUNT(*)::int AS count
+FROM step t
+JOIN round j ON j.id = t.round_id
+WHERE j.loop_id = $1::uuid
+  AND t.state IN ('DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus)
+`
+
+func (q *Queries) CountLoopInFlightSteps(ctx context.Context, loopID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countLoopInFlightSteps, loopID)
+	var count int32
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countStepStatesByRound = `-- name: CountStepStatesByRound :many
 SELECT state, COUNT(*)::int AS count
 FROM step
@@ -175,17 +190,19 @@ const getLatestRoundByLoop = `-- name: GetLatestRoundByLoop :one
 SELECT
   id,
   round_index,
+  attempt_index,
   state AS summary_status,
   ended_at
 FROM round
 WHERE loop_id = $1::uuid
-ORDER BY round_index DESC, created_at DESC
+ORDER BY round_index DESC, attempt_index DESC, created_at DESC
 LIMIT 1
 `
 
 type GetLatestRoundByLoopRow struct {
 	ID            uuid.UUID
 	RoundIndex    int32
+	AttemptIndex  int32
 	SummaryStatus Roundstatus
 	EndedAt       pgtype.Timestamp
 }
@@ -196,6 +213,7 @@ func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (G
 	err := row.Scan(
 		&i.ID,
 		&i.RoundIndex,
+		&i.AttemptIndex,
 		&i.SummaryStatus,
 		&i.EndedAt,
 	)
@@ -213,6 +231,7 @@ SELECT
   current_iteration,
   max_rounds,
   query_batch_size,
+  min_new_labels_per_round,
   model_arch,
   config,
   last_confirmed_commit_id
@@ -231,6 +250,7 @@ type GetLoopForUpdateRow struct {
 	CurrentIteration      int32
 	MaxRounds             int32
 	QueryBatchSize        int32
+	MinNewLabelsPerRound  int32
 	ModelArch             string
 	Config                []byte
 	LastConfirmedCommitID *uuid.UUID
@@ -249,6 +269,7 @@ func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLo
 		&i.CurrentIteration,
 		&i.MaxRounds,
 		&i.QueryBatchSize,
+		&i.MinNewLabelsPerRound,
 		&i.ModelArch,
 		&i.Config,
 		&i.LastConfirmedCommitID,
@@ -269,6 +290,25 @@ func (q *Queries) GetLoopStatus(ctx context.Context, loopID uuid.UUID) (Loopstat
 	return status, err
 }
 
+const getNextRoundAttemptIndex = `-- name: GetNextRoundAttemptIndex :one
+SELECT COALESCE(MAX(attempt_index), 0)::int + 1 AS next_attempt_index
+FROM round
+WHERE loop_id = $1::uuid
+  AND round_index = $2
+`
+
+type GetNextRoundAttemptIndexParams struct {
+	LoopID     uuid.UUID
+	RoundIndex int32
+}
+
+func (q *Queries) GetNextRoundAttemptIndex(ctx context.Context, arg GetNextRoundAttemptIndexParams) (int32, error) {
+	row := q.db.QueryRow(ctx, getNextRoundAttemptIndex, arg.LoopID, arg.RoundIndex)
+	var next_attempt_index int32
+	err := row.Scan(&next_attempt_index)
+	return next_attempt_index, err
+}
+
 const getNextRoundIndex = `-- name: GetNextRoundIndex :one
 SELECT COALESCE(MAX(round_index), 0)::int + 1 AS next_round_index
 FROM round
@@ -280,6 +320,39 @@ func (q *Queries) GetNextRoundIndex(ctx context.Context, loopID uuid.UUID) (int3
 	var next_round_index int32
 	err := row.Scan(&next_round_index)
 	return next_round_index, err
+}
+
+const getRoundForRetry = `-- name: GetRoundForRetry :one
+SELECT
+  id,
+  loop_id,
+  round_index,
+  attempt_index,
+  state
+FROM round
+WHERE id = $1::uuid
+FOR UPDATE
+`
+
+type GetRoundForRetryRow struct {
+	ID           uuid.UUID
+	LoopID       uuid.UUID
+	RoundIndex   int32
+	AttemptIndex int32
+	State        Roundstatus
+}
+
+func (q *Queries) GetRoundForRetry(ctx context.Context, roundID uuid.UUID) (GetRoundForRetryRow, error) {
+	row := q.db.QueryRow(ctx, getRoundForRetry, roundID)
+	var i GetRoundForRetryRow
+	err := row.Scan(
+		&i.ID,
+		&i.LoopID,
+		&i.RoundIndex,
+		&i.AttemptIndex,
+		&i.State,
+	)
+	return i, err
 }
 
 const getRoundState = `-- name: GetRoundState :one
@@ -346,22 +419,25 @@ func (q *Queries) InsertCommandLog(ctx context.Context, arg InsertCommandLogPara
 
 const insertRound = `-- name: InsertRound :exec
 INSERT INTO round(
-  id, project_id, loop_id, round_index, mode, state, step_counts, round_type, plugin_id,
-  resolved_params, resources, input_commit_id, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
+  id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, round_type, plugin_id,
+  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
   created_at, updated_at
 ) VALUES (
   $1::uuid,
   $2::uuid,
   $3::uuid,
   $4,
-  $5::loopmode,
-  $6::roundstatus,
-  $7::jsonb,
+  $5,
+  $6::loopmode,
+  $7::roundstatus,
+  $8::jsonb,
   'loop_round',
-  $8,
-  $9::jsonb,
+  $9,
   $10::jsonb,
-  $11::uuid,
+  $11::jsonb,
+  $12::uuid,
+  $13::uuid,
+  $14::text,
   0,
   NULL,
   '{}'::jsonb,
@@ -377,6 +453,7 @@ type InsertRoundParams struct {
 	ProjectID      uuid.UUID
 	LoopID         uuid.UUID
 	RoundIndex     int32
+	AttemptIndex   int32
 	Mode           Loopmode
 	State          Roundstatus
 	StepCounts     []byte
@@ -384,6 +461,8 @@ type InsertRoundParams struct {
 	ResolvedParams []byte
 	Resources      []byte
 	InputCommitID  *uuid.UUID
+	RetryOfRoundID *uuid.UUID
+	RetryReason    pgtype.Text
 }
 
 func (q *Queries) InsertRound(ctx context.Context, arg InsertRoundParams) error {
@@ -392,6 +471,7 @@ func (q *Queries) InsertRound(ctx context.Context, arg InsertRoundParams) error 
 		arg.ProjectID,
 		arg.LoopID,
 		arg.RoundIndex,
+		arg.AttemptIndex,
 		arg.Mode,
 		arg.State,
 		arg.StepCounts,
@@ -399,6 +479,8 @@ func (q *Queries) InsertRound(ctx context.Context, arg InsertRoundParams) error 
 		arg.ResolvedParams,
 		arg.Resources,
 		arg.InputCommitID,
+		arg.RetryOfRoundID,
+		arg.RetryReason,
 	)
 	return err
 }

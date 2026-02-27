@@ -1,8 +1,12 @@
 """Runtime domain exports (entities + state-machine rules)."""
 
 from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
+from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
+from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
 from saki_api.modules.runtime.domain.loop_mode import (
     phase_for_mode,
+    stage_for_mode,
 )
 from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.model import Model
@@ -26,6 +30,9 @@ from saki_api.modules.runtime.domain.state_machine import (
 
 __all__ = [
     "Loop",
+    "ALSnapshotVersion",
+    "ALSnapshotSample",
+    "ALLoopVisibility",
     "Round",
     "Step",
     "DispatchOutbox",
@@ -38,6 +45,7 @@ __all__ = [
     "StepEvent",
     "StepMetricPoint",
     "phase_for_mode",
+    "stage_for_mode",
     "RUNNING_ROUND_STATES",
     "RUNNING_STEP_STATES",
     "TERMINAL_ROUND_STATES",

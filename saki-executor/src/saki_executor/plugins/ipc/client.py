@@ -236,6 +236,7 @@ class PluginWorkerClient:
                 return
             except Exception as exc:
                 last_error = str(exc)
+                self._reset_request_socket()
                 await asyncio.sleep(poll_sec)
         raise RuntimeError(
             f"worker startup timeout plugin_id={self._plugin_id} "
@@ -255,6 +256,7 @@ class PluginWorkerClient:
                     timeout=max(1, int(timeout_sec)),
                 )
             except asyncio.TimeoutError as exc:
+                self._reset_request_socket()
                 if self._process and self._process.returncode is not None:
                     raise RuntimeError(
                         f"worker process exited plugin_id={self._plugin_id} "
@@ -264,6 +266,19 @@ class PluginWorkerClient:
         if not isinstance(raw, dict):
             raise RuntimeError("invalid worker reply payload")
         return raw
+
+    def _reset_request_socket(self) -> None:
+        if not self._command_endpoint:
+            return
+        old_socket = self._req_socket
+        self._req_socket = None
+        if old_socket is not None:
+            try:
+                old_socket.close(0)
+            except Exception:
+                pass
+        self._req_socket = self._ctx.socket(zmq.REQ)
+        self._req_socket.connect(self._command_endpoint)
 
     async def _shutdown_gracefully(self) -> None:
         if not self._started:

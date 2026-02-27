@@ -6,6 +6,7 @@ import pytest
 
 from saki_executor.plugins.ipc.client import PluginWorkerClient
 from saki_executor.plugins.ipc import protocol
+from saki_executor.plugins.registry import PluginRegistry
 from saki_executor.steps.workspace import Workspace
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
@@ -21,10 +22,18 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
     async def on_event(event_type: str, payload: dict[str, Any]) -> None:
         event_rows.append((event_type, payload))
 
+    plugins_root = Path(__file__).resolve().parents[2] / "saki-plugins"
+    registry = PluginRegistry()
+    registry.discover_plugins(plugins_root, auto_sync=True)
+    handle = registry.get("demo_det_v1")
+    assert handle is not None
+
     client = PluginWorkerClient(
         plugin_id="demo_det_v1",
         step_id=step_id,
         event_handler=on_event,
+        python_executable=handle.python_path,
+        entrypoint_module=handle.entrypoint,
     )
 
     payload_dir = workspace.cache_dir / "ipc_test_payloads"

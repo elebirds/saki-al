@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 
 from jose import JWTError, jwt
@@ -74,26 +75,63 @@ async def stream_step_events_loop(
     parsed_step_id: uuid.UUID,
     cursor: int,
 ) -> int:
-    while True:
-        if websocket.client_state != WebSocketState.CONNECTED:
-            break
+    disconnect_task: asyncio.Task[dict] | None = None
+    sleep_task: asyncio.Task[None] | None = None
+    try:
+        disconnect_task = asyncio.create_task(websocket.receive())
+        while True:
+            if websocket.client_state != WebSocketState.CONNECTED:
+                break
 
-        async with SessionLocal() as session:  # type: AsyncSession
-            runtime_service = RuntimeService(session=session)
-            events = await runtime_service.list_step_events(parsed_step_id, after_seq=cursor, limit=500)
+            async with SessionLocal() as session:  # type: AsyncSession
+                runtime_service = RuntimeService(session=session)
+                events = await runtime_service.list_step_events(parsed_step_id, after_seq=cursor, limit=500)
 
-        if events:
-            for event in events:
-                await websocket.send_json(
-                    {
-                        "seq": event.seq,
-                        "ts": event.ts.isoformat(),
-                        "eventType": event.event_type,
-                        "event_type": event.event_type,
-                        "payload": event.payload,
-                    }
-                )
-                cursor = max(cursor, event.seq)
+            if events:
+                for event in events:
+                    await websocket.send_json(
+                        {
+                            "seq": event.seq,
+                            "ts": event.ts.isoformat(),
+                            "eventType": event.event_type,
+                            "event_type": event.event_type,
+                            "payload": event.payload,
+                        }
+                    )
+                    cursor = max(cursor, event.seq)
 
-        await asyncio.sleep(1)
+            if disconnect_task is None:
+                disconnect_task = asyncio.create_task(websocket.receive())
+
+            sleep_task = asyncio.create_task(asyncio.sleep(1))
+            done, pending = await asyncio.wait(
+                {disconnect_task, sleep_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if disconnect_task in done:
+                try:
+                    message = disconnect_task.result()
+                except asyncio.CancelledError:
+                    break
+                except Exception:
+                    break
+                if message.get("type") == "websocket.disconnect":
+                    break
+                disconnect_task = asyncio.create_task(websocket.receive())
+
+            if sleep_task in pending:
+                sleep_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await sleep_task
+            sleep_task = None
+    finally:
+        if sleep_task is not None and not sleep_task.done():
+            sleep_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sleep_task
+        if disconnect_task is not None and not disconnect_task.done():
+            disconnect_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await disconnect_task
     return cursor

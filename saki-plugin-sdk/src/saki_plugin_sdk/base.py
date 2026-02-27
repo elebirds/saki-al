@@ -104,7 +104,7 @@ class ExecutorPlugin(ABC):
         Returns:
             PluginManifest instance or None if not loaded
         """
-        return self._manifest
+        return getattr(self, "_manifest", None)
 
     # -------------------------------------------------------------------
     # Metadata properties (auto-loaded from manifest if available)
@@ -117,8 +117,9 @@ class ExecutorPlugin(ABC):
         Default implementation reads from manifest. Subclasses may override
         if they need to compute this dynamically.
         """
-        if self._manifest:
-            return self._manifest.plugin_id
+        manifest = self.manifest
+        if manifest:
+            return manifest.plugin_id
         raise NotImplementedError(
             "plugin_id not implemented. Either set self._manifest in __init__() "
             "by calling self._load_manifest(), or override this property."
@@ -130,8 +131,9 @@ class ExecutorPlugin(ABC):
 
         Default implementation reads from manifest.
         """
-        if self._manifest:
-            return self._manifest.version
+        manifest = self.manifest
+        if manifest:
+            return manifest.version
         return "0.0.0"
 
     @property
@@ -140,8 +142,9 @@ class ExecutorPlugin(ABC):
 
         Default implementation reads from manifest, falling back to plugin_id.
         """
-        if self._manifest and self._manifest.display_name:
-            return self._manifest.display_name
+        manifest = self.manifest
+        if manifest and manifest.display_name:
+            return manifest.display_name
         return self.plugin_id
 
     @property
@@ -150,8 +153,9 @@ class ExecutorPlugin(ABC):
 
         Default implementation reads from manifest.
         """
-        if self._manifest:
-            return self._manifest.supported_step_types
+        manifest = self.manifest
+        if manifest:
+            return manifest.supported_step_types
         return []
 
     @property
@@ -160,8 +164,9 @@ class ExecutorPlugin(ABC):
 
         Default implementation reads from manifest.
         """
-        if self._manifest:
-            return self._manifest.supported_strategies
+        manifest = self.manifest
+        if manifest:
+            return manifest.supported_strategies
         return []
 
     @property
@@ -170,8 +175,9 @@ class ExecutorPlugin(ABC):
 
         Default implementation reads from manifest, falling back to [\"cpu\"].
         """
-        if self._manifest:
-            return self._manifest.supported_accelerators
+        manifest = self.manifest
+        if manifest:
+            return manifest.supported_accelerators
         return ["cpu"]
 
     @property
@@ -180,8 +186,9 @@ class ExecutorPlugin(ABC):
 
         Default implementation reads from manifest, falling back to True.
         """
-        if self._manifest:
-            return self._manifest.supports_auto_fallback
+        manifest = self.manifest
+        if manifest:
+            return manifest.supports_auto_fallback
         return True
 
     # -------------------------------------------------------------------
@@ -214,9 +221,10 @@ class ExecutorPlugin(ABC):
         workspace : Workspace
             The step workspace directory.
         """
-        self._step_id = step_id
-        if self._logger and hasattr(self._logger, "step_id"):
-            self._logger.step_id = step_id
+        setattr(self, "_step_id", step_id)
+        logger = getattr(self, "_logger", None)
+        if logger and hasattr(logger, "step_id"):
+            logger.step_id = step_id
 
     async def on_stop(self, step_id: str, workspace: Workspace) -> None:
         """Called after step execution completes (success or failure).
@@ -252,13 +260,15 @@ class ExecutorPlugin(ABC):
         Returns a :class:`PluginLogger` instance with the plugin's
         ``plugin_id`` and current ``step_id`` as context prefix.
         """
-        if self._logger is None:
+        logger = getattr(self, "_logger", None)
+        if logger is None:
             from saki_plugin_sdk.logger import PluginLogger
-            self._logger = PluginLogger(
+            logger = PluginLogger(
                 plugin_id=self.plugin_id,
-                step_id=self._step_id,
+                step_id=getattr(self, "_step_id", None),
             )
-        return self._logger
+            setattr(self, "_logger", logger)
+        return logger
 
     # -------------------------------------------------------------------
     # Abstract execution methods
@@ -350,6 +360,45 @@ class ExecutorPlugin(ABC):
             strategy=strategy,
             params=params,
         )
+
+    async def eval(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        """Execute evaluation step.
+
+        Plugins that declare ``eval`` in ``supported_step_types`` should override.
+        """
+        del workspace, params, emit
+        raise NotImplementedError("eval step is not implemented by this plugin")
+
+    async def export(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        """Execute model export step.
+
+        Plugins that declare ``export`` in ``supported_step_types`` should override.
+        """
+        del workspace, params, emit
+        raise NotImplementedError("export step is not implemented by this plugin")
+
+    async def upload_artifact(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        """Execute artifact preparation/upload step.
+
+        Plugins that declare ``upload_artifact`` in ``supported_step_types`` should override.
+        """
+        del workspace, params, emit
+        raise NotImplementedError("upload_artifact step is not implemented by this plugin")
 
     async def stop(self, step_id: str) -> None:
         """Request graceful stop (optional override).

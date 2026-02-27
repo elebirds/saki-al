@@ -109,5 +109,16 @@ class ExternalPluginHandle(ExecutorPlugin):
     async def predict_unlabeled_batch(self, workspace, unlabeled_samples, strategy, params):
         raise RuntimeError("ExternalPluginHandle.predict_unlabeled_batch must not be called directly")
 
+    async def eval(self, workspace: Workspace, params: dict[str, Any], emit: EventCallback) -> TrainOutput:
+        raise RuntimeError("ExternalPluginHandle.eval must not be called directly; use SubprocessPluginProxy")
+
+    async def export(self, workspace: Workspace, params: dict[str, Any], emit: EventCallback) -> TrainOutput:
+        raise RuntimeError("ExternalPluginHandle.export must not be called directly; use SubprocessPluginProxy")
+
+    async def upload_artifact(self, workspace: Workspace, params: dict[str, Any], emit: EventCallback) -> TrainOutput:
+        raise RuntimeError(
+            "ExternalPluginHandle.upload_artifact must not be called directly; use SubprocessPluginProxy"
+        )
+
     async def stop(self, step_id: str) -> None:
         pass

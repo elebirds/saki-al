@@ -133,6 +133,89 @@ class DemoDetectionInternal:
             ],
         )
 
+    async def eval(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        del params
+        await emit("log", {"level": "INFO", "message": "eval step started"})
+        manifest_path = workspace.data_dir / "dataset_manifest.json"
+        sample_count = 0
+        if manifest_path.exists():
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                sample_count = int(payload.get("sample_count") or 0)
+            except Exception:
+                sample_count = 0
+        metrics = {
+            "eval_map50": 0.55,
+            "eval_recall": 0.61,
+            "eval_sample_count": float(sample_count),
+        }
+        await emit("metric", {"step": 1, "epoch": 0, "metrics": metrics})
+        report_path = workspace.artifacts_dir / "eval_report.json"
+        report_path.write_text(json.dumps({"metrics": metrics}, ensure_ascii=False, indent=2), encoding="utf-8")
+        return TrainOutput(
+            metrics=metrics,
+            artifacts=[
+                TrainArtifact(
+                    kind="report",
+                    name="eval_report.json",
+                    path=report_path,
+                    content_type="application/json",
+                    required=True,
+                )
+            ],
+        )
+
+    async def export(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        del params
+        await emit("log", {"level": "INFO", "message": "export step started"})
+        export_path = workspace.artifacts_dir / "model.onnx"
+        export_path.write_text("demo-exported-onnx", encoding="utf-8")
+        return TrainOutput(
+            metrics={"exported": 1.0},
+            artifacts=[
+                TrainArtifact(
+                    kind="model_export",
+                    name="model.onnx",
+                    path=export_path,
+                    content_type="application/octet-stream",
+                    required=True,
+                )
+            ],
+        )
+
+    async def upload_artifact(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        del params
+        await emit("log", {"level": "INFO", "message": "upload_artifact step started"})
+        manifest_path = workspace.artifacts_dir / "upload_manifest.json"
+        manifest_path.write_text(json.dumps({"status": "ready"}, ensure_ascii=False, indent=2), encoding="utf-8")
+        return TrainOutput(
+            metrics={"upload_manifest_ready": 1.0},
+            artifacts=[
+                TrainArtifact(
+                    kind="report",
+                    name="upload_manifest.json",
+                    path=manifest_path,
+                    content_type="application/json",
+                    required=True,
+                )
+            ],
+        )
+
     async def predict_unlabeled(
             self,
             workspace: Workspace,

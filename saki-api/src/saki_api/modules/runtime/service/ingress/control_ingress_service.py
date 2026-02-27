@@ -23,6 +23,12 @@ from saki_api.modules.annotation.domain.annotation import Annotation
 from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import ProjectDataset
+from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
+from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
+from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
+from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeDataRequestDTO,
     RuntimeUploadTicketRequestDTO,
@@ -36,7 +42,12 @@ from saki_api.modules.runtime.service.application.event_dto import (
 from saki_api.modules.runtime.service.persistence.step_runtime_persistence_service import (
     RuntimeStepPersistenceService,
 )
-from saki_api.modules.shared.modeling.enums import StepStatus
+from saki_api.modules.shared.modeling.enums import (
+    LoopMode,
+    SnapshotPartition,
+    SnapshotValPolicy,
+    StepStatus,
+)
 from saki_api.modules.storage.domain.asset import Asset
 from saki_api.modules.storage.domain.sample import Sample
 
@@ -91,6 +102,7 @@ class RuntimeControlIngressService:
         try:
             batch, next_cursor = await self._query_data_batch(
                 query_type=request.query_type,
+                step_id=request.step_id,
                 project_id=request.project_id,
                 commit_id=request.commit_id,
                 limit=request.limit,
@@ -190,7 +202,7 @@ class RuntimeControlIngressService:
         event_dto = RuntimeStepEventDTO(
             step_id=step_id,
             seq=int(message.seq),
-            ts=self._to_datetime_millis(int(message.ts)),
+            ts=self._to_datetime_seconds(int(message.ts)),
             event_type=event_type,
             payload=payload,
             status=mapped_status,
@@ -292,6 +304,7 @@ class RuntimeControlIngressService:
             self,
             *,
             query_type: int,
+            step_id: str,
             project_id: uuid.UUID,
             commit_id: uuid.UUID,
             limit: int,
@@ -323,6 +336,63 @@ class RuntimeControlIngressService:
                 ]
                 return irpb.DataBatchIR(items=items), next_cursor
 
+            snapshot_scope_sample_ids: set[uuid.UUID] | None = None
+            snapshot_split_hints: dict[str, str] | None = None
+            if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES, pb.ANNOTATIONS}:
+                loop_id, mode, snapshot = await self._resolve_step_snapshot_scope(
+                    session=session,
+                    step_id=step_id,
+                    project_id=project_id,
+                )
+                if (
+                    loop_id is not None
+                    and mode == LoopMode.ACTIVE_LEARNING
+                    and snapshot is not None
+                ):
+                    visible_ids = {
+                        row[0] if isinstance(row, (tuple, list)) else row
+                        for row in (
+                            await session.exec(
+                                select(ALLoopVisibility.sample_id)
+                                .where(
+                                    ALLoopVisibility.loop_id == loop_id,
+                                    ALLoopVisibility.visible_in_train.is_(True),
+                                )
+                            )
+                        ).all()
+                    }
+                    if query_type == pb.UNLABELED_SAMPLES:
+                        pool_ids = {
+                            row[0] if isinstance(row, (tuple, list)) else row
+                            for row in (
+                                await session.exec(
+                                    select(ALSnapshotSample.sample_id).where(
+                                        ALSnapshotSample.snapshot_version_id == snapshot.id,
+                                        ALSnapshotSample.partition == SnapshotPartition.TRAIN_POOL,
+                                    )
+                                )
+                            ).all()
+                        }
+                        snapshot_scope_sample_ids = pool_ids.difference(visible_ids)
+                    else:
+                        val_partitions = [SnapshotPartition.VAL_ANCHOR]
+                        if snapshot.val_policy == SnapshotValPolicy.EXPAND_WITH_BATCH_VAL:
+                            val_partitions.append(SnapshotPartition.VAL_BATCH)
+                        val_ids = {
+                            row[0] if isinstance(row, (tuple, list)) else row
+                            for row in (
+                                await session.exec(
+                                    select(ALSnapshotSample.sample_id).where(
+                                        ALSnapshotSample.snapshot_version_id == snapshot.id,
+                                        ALSnapshotSample.partition.in_(val_partitions),
+                                    )
+                                )
+                            ).all()
+                        }
+                        snapshot_scope_sample_ids = visible_ids.union(val_ids)
+                        snapshot_split_hints = {str(sample_id): "train" for sample_id in visible_ids}
+                        snapshot_split_hints.update({str(sample_id): "val" for sample_id in val_ids})
+
             if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES}:
                 dataset_ids = [
                     row[0] if isinstance(row, (tuple, list)) else row
@@ -336,7 +406,11 @@ class RuntimeControlIngressService:
                     return irpb.DataBatchIR(), None
 
                 base_stmt = select(Sample).where(Sample.dataset_id.in_(dataset_ids))
-                if query_type == pb.UNLABELED_SAMPLES:
+                if snapshot_scope_sample_ids is not None:
+                    if not snapshot_scope_sample_ids:
+                        return irpb.DataBatchIR(), None
+                    base_stmt = base_stmt.where(Sample.id.in_(list(snapshot_scope_sample_ids)))
+                elif query_type == pb.UNLABELED_SAMPLES:
                     labeled_ids = [
                         row[0] if isinstance(row, (tuple, list)) else row
                         for row in (
@@ -358,83 +432,144 @@ class RuntimeControlIngressService:
                     ).all()
                 )
                 page, next_cursor = self._paginate(rows, limit=limit, offset=offset)
-
-                items: list[irpb.DataItemIR] = []
-                for sample in page:
-                    width = int((sample.meta_info or {}).get("width") or 0)
-                    height = int((sample.meta_info or {}).get("height") or 0)
-                    download_url = ""
-                    asset_hash = ""
-                    if sample.primary_asset_id:
-                        asset = await session.get(Asset, sample.primary_asset_id)
-                        if asset:
-                            asset_hash = str(asset.hash or "")
-                            try:
-                                download_url = self.storage.get_presigned_url(
-                                    object_name=str(asset.path),
-                                    expires_delta=timedelta(hours=settings.RUNTIME_UPLOAD_URL_EXPIRE_HOURS),
-                                )
-                            except Exception:
-                                download_url = ""
-                    items.append(
-                        irpb.DataItemIR(
-                            sample=irpb.SampleRecord(
-                                id=str(sample.id),
-                                asset_hash=asset_hash,
-                                download_url=download_url,
-                                width=width,
-                                height=height,
-                                meta=runtime_codec.dict_to_struct(sample.meta_info or {}),
-                            )
-                        )
-                    )
+                items = await self._to_sample_items(
+                    session=session,
+                    samples=page,
+                    snapshot_split_hints=snapshot_split_hints,
+                )
                 return irpb.DataBatchIR(items=items), next_cursor
 
             if query_type == pb.ANNOTATIONS:
+                base_stmt = select(Annotation).join(
+                    CommitAnnotationMap,
+                    (CommitAnnotationMap.annotation_id == Annotation.id)
+                    & (CommitAnnotationMap.commit_id == commit_id),
+                )
+                if snapshot_scope_sample_ids is not None:
+                    if not snapshot_scope_sample_ids:
+                        return irpb.DataBatchIR(), None
+                    base_stmt = base_stmt.where(Annotation.sample_id.in_(list(snapshot_scope_sample_ids)))
                 rows = list(
                     (
                         await session.exec(
-                            select(Annotation)
-                            .join(
-                                CommitAnnotationMap,
-                                (CommitAnnotationMap.annotation_id == Annotation.id)
-                                & (CommitAnnotationMap.commit_id == commit_id),
-                            )
-                            .order_by(Annotation.id)
-                            .offset(offset)
-                            .limit(limit + 1)
+                            base_stmt.order_by(Annotation.id).offset(offset).limit(limit + 1)
                         )
                     ).all()
                 )
                 page, next_cursor = self._paginate(rows, limit=limit, offset=offset)
-                items: list[irpb.DataItemIR] = []
-                for ann in page:
-                    geometry = irpb.Geometry()
-                    try:
-                        ParseDict(dict(ann.geometry or {}), geometry, ignore_unknown_fields=False)
-                    except Exception as exc:
-                        raise RuntimeError(f"invalid annotation geometry id={ann.id}") from exc
-
-                    items.append(
-                        irpb.DataItemIR(
-                            annotation=irpb.AnnotationRecord(
-                                id=str(ann.id),
-                                sample_id=str(ann.sample_id),
-                                label_id=str(ann.label_id),
-                                geometry=geometry,
-                                source=self._annotation_source_to_ir_enum(
-                                    str(ann.source.value if hasattr(ann.source, "value") else ann.source)
-                                ),
-                                confidence=float(ann.confidence or 0.0),
-                                attrs=runtime_codec.dict_to_struct(
-                                    ann.attrs if isinstance(ann.attrs, dict) else {}
-                                ),
-                            )
-                        )
-                    )
+                items = self._to_annotation_items(page)
                 return irpb.DataBatchIR(items=items), next_cursor
 
             raise RuntimeError(f"unsupported query_type={query_type}")
+
+    async def _resolve_step_snapshot_scope(
+            self,
+            *,
+            session,
+            step_id: str,
+            project_id: uuid.UUID,
+    ) -> tuple[uuid.UUID | None, LoopMode | None, ALSnapshotVersion | None]:
+        try:
+            step_uuid = uuid.UUID(str(step_id or "").strip())
+        except Exception:
+            return None, None, None
+        row = (
+            await session.exec(
+                select(
+                    Round.loop_id,
+                    Loop.mode,
+                    Loop.active_snapshot_version_id,
+                )
+                .select_from(Step)
+                .join(Round, Round.id == Step.round_id)
+                .join(Loop, Loop.id == Round.loop_id)
+                .where(
+                    Step.id == step_uuid,
+                    Round.project_id == project_id,
+                )
+                .limit(1)
+            )
+        ).first()
+        if not row:
+            return None, None, None
+        loop_id, mode, snapshot_version_id = row
+        if mode != LoopMode.ACTIVE_LEARNING or not snapshot_version_id:
+            return loop_id, mode, None
+        snapshot = await session.get(ALSnapshotVersion, snapshot_version_id)
+        if not snapshot:
+            return loop_id, mode, None
+        return loop_id, mode, snapshot
+
+    async def _to_sample_items(
+        self,
+        *,
+        session,
+        samples: list[Sample],
+        snapshot_split_hints: dict[str, str] | None = None,
+    ) -> list[irpb.DataItemIR]:
+        items: list[irpb.DataItemIR] = []
+        for sample in samples:
+            width = int((sample.meta_info or {}).get("width") or 0)
+            height = int((sample.meta_info or {}).get("height") or 0)
+            download_url = ""
+            asset_hash = ""
+            if sample.primary_asset_id:
+                asset = await session.get(Asset, sample.primary_asset_id)
+                if asset:
+                    asset_hash = str(asset.hash or "")
+                    try:
+                        download_url = self.storage.get_presigned_url(
+                            object_name=str(asset.path),
+                            expires_delta=timedelta(hours=settings.RUNTIME_UPLOAD_URL_EXPIRE_HOURS),
+                        )
+                    except Exception:
+                        download_url = ""
+            meta_payload = dict(sample.meta_info or {})
+            if snapshot_split_hints:
+                split_hint = snapshot_split_hints.get(str(sample.id))
+                if split_hint in {"train", "val"}:
+                    meta_payload["_snapshot_split"] = split_hint
+            items.append(
+                irpb.DataItemIR(
+                    sample=irpb.SampleRecord(
+                        id=str(sample.id),
+                        asset_hash=asset_hash,
+                        download_url=download_url,
+                        width=width,
+                        height=height,
+                        meta=runtime_codec.dict_to_struct(meta_payload),
+                    )
+                )
+            )
+        return items
+
+    def _to_annotation_items(self, annotations: list[Annotation]) -> list[irpb.DataItemIR]:
+        items: list[irpb.DataItemIR] = []
+        for ann in annotations:
+            geometry = irpb.Geometry()
+            try:
+                ParseDict(dict(ann.geometry or {}), geometry, ignore_unknown_fields=False)
+            except Exception as exc:
+                raise RuntimeError(f"invalid annotation geometry id={ann.id}") from exc
+
+            items.append(
+                irpb.DataItemIR(
+                    annotation=irpb.AnnotationRecord(
+                        id=str(ann.id),
+                        sample_id=str(ann.sample_id),
+                        label_id=str(ann.label_id),
+                        geometry=geometry,
+                        source=self._annotation_source_to_ir_enum(
+                            str(ann.source.value if hasattr(ann.source, "value") else ann.source)
+                        ),
+                        confidence=float(ann.confidence or 0.0),
+                        attrs=runtime_codec.dict_to_struct(
+                            ann.attrs if isinstance(ann.attrs, dict) else {}
+                        ),
+                    )
+                )
+            )
+        return items
 
     @staticmethod
     def _annotation_source_to_ir_enum(source: str) -> irpb.AnnotationSource:
@@ -480,10 +615,10 @@ class RuntimeControlIngressService:
         return mapping.get(int(status), StepStatus.PENDING)
 
     @staticmethod
-    def _to_datetime_millis(ts: int) -> datetime:
+    def _to_datetime_seconds(ts: int) -> datetime:
         if int(ts) <= 0:
             return datetime.now(UTC)
-        return datetime.fromtimestamp(float(ts) / 1000.0, tz=UTC)
+        return datetime.fromtimestamp(float(ts), tz=UTC)
 
     @staticmethod
     def _parse_cursor(cursor: str | None) -> int:

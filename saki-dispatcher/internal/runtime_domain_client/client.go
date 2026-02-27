@@ -286,6 +286,31 @@ func (c *Client) CountNewLabelsSinceCommit(
 	return resp, callErr
 }
 
+func (c *Client) ResolveRoundReveal(
+	ctx context.Context,
+	loopID string,
+	roundIndex int32,
+	branchID string,
+	force bool,
+	minRequired int32,
+) (*runtimedomainv1.ResolveRoundRevealResponse, error) {
+	client, token, timeout, err := c.clientForCall()
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
+	defer cancel()
+	resp, callErr := client.ResolveRoundReveal(callCtx, &runtimedomainv1.ResolveRoundRevealRequest{
+		LoopId:      loopID,
+		RoundIndex:  roundIndex,
+		BranchId:    branchID,
+		Force:       force,
+		MinRequired: minRequired,
+	})
+	c.handleCallError(callErr)
+	return resp, callErr
+}
+
 func (c *Client) ActivateSamples(
 	ctx context.Context,
 	req *runtimedomainv1.ActivateSamplesRequest,

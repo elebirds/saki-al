@@ -112,14 +112,68 @@ class SubprocessPluginProxy(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
     ) -> TrainOutput:
+        return await self._run_train_output_action(
+            action="train",
+            workspace=workspace,
+            params=params,
+            emit=emit,
+        )
+
+    async def eval(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        return await self._run_train_output_action(
+            action="eval",
+            workspace=workspace,
+            params=params,
+            emit=emit,
+        )
+
+    async def export(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        return await self._run_train_output_action(
+            action="export",
+            workspace=workspace,
+            params=params,
+            emit=emit,
+        )
+
+    async def upload_artifact(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        return await self._run_train_output_action(
+            action="upload_artifact",
+            workspace=workspace,
+            params=params,
+            emit=emit,
+        )
+
+    async def _run_train_output_action(
+        self,
+        *,
+        action: str,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
         self._emit = emit
         await self._worker.start()
         payload_dir = self._payload_dir(workspace)
-        params_path = payload_dir / "train_params.json"
-        result_path = payload_dir / f"train_result_{uuid.uuid4().hex}.json"
+        params_path = payload_dir / f"{action}_params.json"
+        result_path = payload_dir / f"{action}_result_{uuid.uuid4().hex}.json"
         protocol.write_json(params_path, params)
         reply = await self._worker.request(
-            action="train",
+            action=action,
             payload={
                 "workspace_root": str(workspace.root),
                 "params_path": str(params_path),

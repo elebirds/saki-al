@@ -105,6 +105,23 @@ func (s *Server) StopRound(ctx context.Context, req *dispatcheradminv1.RoundComm
 	return convertCommandResult(result), nil
 }
 
+func (s *Server) RetryRound(ctx context.Context, req *dispatcheradminv1.RetryRoundRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetRoundId(), "round_id"); err != nil {
+		return nil, err
+	}
+	result, err := s.commands.RetryRound(
+		ctx,
+		req.GetCommandId(),
+		req.GetRoundId(),
+		req.GetReason(),
+		req.GetUseLatestInputs(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return convertCommandResult(result), nil
+}
+
 func (s *Server) StopStep(ctx context.Context, req *dispatcheradminv1.StepCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
 	if err := validateUUIDField(req.GetStepId(), "step_id"); err != nil {
 		return nil, err

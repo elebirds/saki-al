@@ -44,6 +44,11 @@ class RuntimeDomainStub(object):
                 request_serializer=runtime__domain__pb2.CountNewLabelsSinceCommitRequest.SerializeToString,
                 response_deserializer=runtime__domain__pb2.CountNewLabelsSinceCommitResponse.FromString,
                 _registered_method=True)
+        self.ResolveRoundReveal = channel.unary_unary(
+                '/saki.runtime.domain.v1.RuntimeDomain/ResolveRoundReveal',
+                request_serializer=runtime__domain__pb2.ResolveRoundRevealRequest.SerializeToString,
+                response_deserializer=runtime__domain__pb2.ResolveRoundRevealResponse.FromString,
+                _registered_method=True)
         self.ActivateSamples = channel.unary_unary(
                 '/saki.runtime.domain.v1.RuntimeDomain/ActivateSamples',
                 request_serializer=runtime__domain__pb2.ActivateSamplesRequest.SerializeToString,
@@ -76,6 +81,12 @@ class RuntimeDomainServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def CountNewLabelsSinceCommit(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResolveRoundReveal(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -117,6 +128,11 @@ def add_RuntimeDomainServicer_to_server(servicer, server):
                     servicer.CountNewLabelsSinceCommit,
                     request_deserializer=runtime__domain__pb2.CountNewLabelsSinceCommitRequest.FromString,
                     response_serializer=runtime__domain__pb2.CountNewLabelsSinceCommitResponse.SerializeToString,
+            ),
+            'ResolveRoundReveal': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveRoundReveal,
+                    request_deserializer=runtime__domain__pb2.ResolveRoundRevealRequest.FromString,
+                    response_serializer=runtime__domain__pb2.ResolveRoundRevealResponse.SerializeToString,
             ),
             'ActivateSamples': grpc.unary_unary_rpc_method_handler(
                     servicer.ActivateSamples,
@@ -193,6 +209,33 @@ class RuntimeDomain(object):
             '/saki.runtime.domain.v1.RuntimeDomain/CountNewLabelsSinceCommit',
             runtime__domain__pb2.CountNewLabelsSinceCommitRequest.SerializeToString,
             runtime__domain__pb2.CountNewLabelsSinceCommitResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolveRoundReveal(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.runtime.domain.v1.RuntimeDomain/ResolveRoundReveal',
+            runtime__domain__pb2.ResolveRoundRevealRequest.SerializeToString,
+            runtime__domain__pb2.ResolveRoundRevealResponse.FromString,
             options,
             channel_credentials,
             insecure,

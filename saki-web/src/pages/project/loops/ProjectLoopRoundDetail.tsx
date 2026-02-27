@@ -135,9 +135,13 @@ const isImageArtifact = (artifact: RuntimeStepArtifact): boolean => {
 
 const pickDefaultStep = (steps: RuntimeStep[]): RuntimeStep | null => {
     if (steps.length === 0) return null;
+    const sortByStepIndexDesc = (left: RuntimeStep, right: RuntimeStep) => (right.stepIndex || 0) - (left.stepIndex || 0);
+    const latestFailed = [...steps].filter((item) => item.state === 'failed').sort(sortByStepIndexDesc)[0];
     return (
-        steps.find((item) => ['running', 'dispatching', 'retrying', 'ready'].includes(item.state))
-        || steps.find((item) => !TERMINAL_STEP_STATE.has(item.state))
+        steps.find((item) => ['running', 'dispatching', 'retrying'].includes(item.state))
+        || latestFailed
+        || steps.find((item) => item.state === 'ready')
+        || steps.find((item) => item.state === 'pending')
         || steps[steps.length - 1]
     );
 };
@@ -151,6 +155,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [retrying, setRetrying] = useState(false);
     const [round, setRound] = useState<RuntimeRound | null>(null);
     const [steps, setSteps] = useState<RuntimeStep[]>([]);
     const [selectedStepId, setSelectedStepId] = useState<string>('');
@@ -262,6 +267,24 @@ const ProjectLoopRoundDetail: React.FC = () => {
             setRefreshing(false);
         }
     }, [roundId, loadRoundDashboard, canManageLoops]);
+
+    const handleRetryRound = useCallback(async () => {
+        if (!round) return;
+        setRetrying(true);
+        try {
+            const result = await api.retryRound(round.id);
+            message.success('已触发重跑');
+            if (result.roundId && result.roundId !== round.id) {
+                navigate(`/projects/${projectId}/loops/${loopId}/rounds/${result.roundId}`);
+                return;
+            }
+            await loadData(false);
+        } catch (error: any) {
+            message.error(error?.message || '重跑失败');
+        } finally {
+            setRetrying(false);
+        }
+    }, [round, navigate, projectId, loopId, loadData]);
 
     useEffect(() => {
         if (!canManageLoops) return;
@@ -380,13 +403,18 @@ const ProjectLoopRoundDetail: React.FC = () => {
                     <div className="flex min-w-0 flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回 Loop 详情</Button>
-                            <Title level={4} className="!mb-0">Round #{round.roundIndex}</Title>
+                            <Title level={4} className="!mb-0">Round #{round.roundIndex} · Attempt {round.attemptIndex || 1}</Title>
                             <Tag color={ROUND_STATE_COLOR[round.state] || 'default'}>{round.state}</Tag>
                         </div>
                         <Text type="secondary">{round.id}</Text>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'}</Tag>
+                        {round.state === 'failed' ? (
+                            <Button type="primary" loading={retrying} onClick={handleRetryRound}>
+                                重跑本轮
+                            </Button>
+                        ) : null}
                         <Button loading={refreshing} onClick={() => loadData(true)}>刷新</Button>
                     </div>
                 </div>
@@ -397,10 +425,13 @@ const ProjectLoopRoundDetail: React.FC = () => {
                     <Descriptions.Item label="插件">{round.pluginId}</Descriptions.Item>
                     <Descriptions.Item label="采样策略">{round.resolvedParams?.sampling?.strategy || '-'}</Descriptions.Item>
                     <Descriptions.Item label="模式">{round.mode}</Descriptions.Item>
+                    <Descriptions.Item label="Attempt">{round.attemptIndex || 1}</Descriptions.Item>
                     <Descriptions.Item label="开始时间">{formatDateTime(round.startedAt)}</Descriptions.Item>
                     <Descriptions.Item label="结束时间">{formatDateTime(round.endedAt)}</Descriptions.Item>
                     <Descriptions.Item label="Step 数量">{steps.length}</Descriptions.Item>
                     <Descriptions.Item label="Step 聚合">{JSON.stringify(round.stepCounts || {})}</Descriptions.Item>
+                    <Descriptions.Item label="Retry From">{round.retryOfRoundId || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Retry Reason">{round.retryReason || '-'}</Descriptions.Item>
                 </Descriptions>
                 {round.lastError ? (
                     <Alert className="!mt-3" type="error" showIcon message={round.lastError}/>

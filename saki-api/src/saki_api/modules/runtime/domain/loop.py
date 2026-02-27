@@ -5,7 +5,7 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field, Relationship, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
-from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopStatus
+from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopStage, LoopStatus
 
 if TYPE_CHECKING:
     from saki_api.modules.project.domain.branch import Branch
@@ -25,7 +25,9 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     name: str = Field(max_length=100)
     mode: LoopMode = Field(default=LoopMode.ACTIVE_LEARNING, index=True)
     phase: LoopPhase = Field(default=LoopPhase.AL_BOOTSTRAP, index=True)
+    stage: LoopStage = Field(default=LoopStage.SNAPSHOT_REQUIRED, index=True)
     phase_meta: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    stage_meta: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     model_arch: str
     experiment_group_id: uuid.UUID | None = Field(default=None, index=True)
@@ -42,6 +44,11 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     stop_min_gain: float = Field(default=0.002)
     auto_register_model: bool = Field(default=True)
 
+    active_snapshot_version_id: Optional[uuid.UUID] = Field(
+        default=None,
+        foreign_key="al_snapshot_version.id",
+        index=True,
+    )
     last_confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)
     terminal_reason: str | None = Field(default=None, max_length=4000)
 

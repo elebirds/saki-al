@@ -195,11 +195,11 @@ func decodeStepEvent(event *runtimecontrolv1.StepEvent) (string, map[string]any,
 	}
 }
 
-func stepEventTime(tsMillis int64) time.Time {
-	if tsMillis <= 0 {
+func stepEventTime(tsSeconds int64) time.Time {
+	if tsSeconds <= 0 {
 		return time.Now().UTC()
 	}
-	return time.UnixMilli(tsMillis).UTC()
+	return time.Unix(tsSeconds, 0).UTC()
 }
 
 func ptrInt(value int) *int {

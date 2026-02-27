@@ -230,6 +230,7 @@ async def get_loop_summary(
         status=loop.status,
         phase=loop.phase,
         rounds_total=summary.rounds_total,
+        attempts_total=summary.attempts_total,
         rounds_succeeded=summary.rounds_succeeded,
         steps_total=summary.steps_total,
         steps_succeeded=summary.steps_succeeded,

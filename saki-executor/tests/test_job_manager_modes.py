@@ -56,6 +56,33 @@ class _InProcessProxy(ExecutorPlugin):
         del emit
         return await self._plugin.train(workspace, params, self._emit)
 
+    async def eval(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del emit
+        return await self._plugin.eval(workspace, params, self._emit)
+
+    async def export(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del emit
+        return await self._plugin.export(workspace, params, self._emit)
+
+    async def upload_artifact(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del emit
+        return await self._plugin.upload_artifact(workspace, params, self._emit)
+
     async def predict_unlabeled(
             self,
             workspace,
@@ -91,6 +118,9 @@ class _ModeAwarePlugin(ExecutorPlugin):
         self.prepare_samples_count = 0
         self.prepare_annotations_count = 0
         self.train_calls = 0
+        self.eval_calls = 0
+        self.export_calls = 0
+        self.upload_artifact_calls = 0
         self.predict_calls = 0
 
     @property
@@ -135,6 +165,37 @@ class _ModeAwarePlugin(ExecutorPlugin):
         self.train_calls += 1
         await emit("metric", {"step": 1, "epoch": 1, "metrics": {"loss": 0.1}})
         return TrainOutput(metrics={"loss": 0.1}, artifacts=[])
+
+    async def eval(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del workspace, params
+        self.eval_calls += 1
+        await emit("metric", {"step": 1, "epoch": 1, "metrics": {"eval_loss": 0.12}})
+        return TrainOutput(metrics={"eval_loss": 0.12}, artifacts=[])
+
+    async def export(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del workspace, params, emit
+        self.export_calls += 1
+        return TrainOutput(metrics={}, artifacts=[])
+
+    async def upload_artifact(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        del workspace, params, emit
+        self.upload_artifact_calls += 1
+        return TrainOutput(metrics={}, artifacts=[])
 
     async def predict_unlabeled(
             self,
@@ -264,6 +325,14 @@ class _SlowTrainPlugin(ExecutorPlugin):
             await asyncio.sleep(0.02)
             await emit("metric", {"step": index, "epoch": index, "metrics": {"loss": 0.5}})
         return TrainOutput(metrics={"loss": 0.5}, artifacts=[])
+
+    async def eval(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+    ) -> TrainOutput:
+        return await self.train(workspace, params, emit)
 
     async def predict_unlabeled(
             self,
@@ -568,7 +637,8 @@ async def test_eval_step_trains_without_sampling(tmp_path: Path):
     result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 0
-    assert plugin.train_calls == 1
+    assert plugin.train_calls == 0
+    assert plugin.eval_calls == 1
     assert plugin.predict_calls == 0
 
 

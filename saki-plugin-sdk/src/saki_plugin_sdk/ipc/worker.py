@@ -118,13 +118,14 @@ async def _run_prepare_data(
     )
 
 
-async def _run_train(
+async def _run_train_like(
     *,
     plugin: ExecutorPlugin,
     payload: dict[str, Any],
     step_id: str,
     request_id: str,
     pub_socket,
+    method_name: str,
 ) -> str:
     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
     params = protocol.read_json(Path(str(payload.get("params_path") or "")))
@@ -140,7 +141,10 @@ async def _run_train(
             request_id=request_id,
         )
 
-    output = await plugin.train(
+    method = getattr(plugin, method_name, None)
+    if not callable(method):
+        raise RuntimeError(f"plugin method not found: {method_name}")
+    output = await method(
         workspace=workspace,
         params=params,
         emit=_emit,
@@ -181,34 +185,39 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
     pub_socket = context.socket(zmq.PUB)
     rep_socket.bind(args.command_endpoint)
     pub_socket.bind(args.event_endpoint)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    # Build context for on_load
-    load_context = {
-        "plugin_id": args.plugin_id,
-        "step_id": args.step_id,
-        "command_endpoint": args.command_endpoint,
-        "event_endpoint": args.event_endpoint,
-    }
+    def _await(coro):
+        return loop.run_until_complete(coro)
 
-    # Call on_load lifecycle hook
-    asyncio.run(plugin.on_load(load_context))
-
-    _publish_event(
-        pub_socket=pub_socket,
-        event_type="worker",
-        step_id=args.step_id,
-        payload={
-            "level": "INFO",
-            "message": (
-                f"worker started plugin_id={args.plugin_id} "
-                f"command_endpoint={args.command_endpoint} "
-                f"event_endpoint={args.event_endpoint}"
-            ),
-        },
-    )
-
-    running = True
     try:
+        # Build context for on_load
+        load_context = {
+            "plugin_id": args.plugin_id,
+            "step_id": args.step_id,
+            "command_endpoint": args.command_endpoint,
+            "event_endpoint": args.event_endpoint,
+        }
+
+        # Call on_load lifecycle hook
+        _await(plugin.on_load(load_context))
+
+        _publish_event(
+            pub_socket=pub_socket,
+            event_type="worker",
+            step_id=args.step_id,
+            payload={
+                "level": "INFO",
+                "message": (
+                    f"worker started plugin_id={args.plugin_id} "
+                    f"command_endpoint={args.command_endpoint} "
+                    f"event_endpoint={args.event_endpoint}"
+                ),
+            },
+        )
+
+        running = True
         while running:
             raw = rep_socket.recv_json()
             envelope = protocol.WorkerReplyEnvelope(
@@ -235,28 +244,31 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
 
                 if action == "prepare_data":
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
-                    await plugin.on_start(args.step_id, workspace)
+                    _await(plugin.on_start(args.step_id, workspace))
                     try:
-                        await _run_prepare_data(
-                            plugin=plugin,
-                            payload=payload,
+                        _await(
+                            _run_prepare_data(
+                                plugin=plugin,
+                                payload=payload,
+                            )
                         )
                     finally:
-                        await plugin.on_stop(args.step_id, workspace)
+                        _await(plugin.on_stop(args.step_id, workspace))
                     rep_socket.send_json(envelope.to_dict())
                     continue
 
-                if action == "train":
+                if action in {"train", "eval", "export", "upload_artifact"}:
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
-                    await plugin.on_start(args.step_id, workspace)
+                    _await(plugin.on_start(args.step_id, workspace))
                     try:
-                        result_path = asyncio.run(
-                            _run_train(
+                        result_path = _await(
+                            _run_train_like(
                                 plugin=plugin,
                                 payload=payload,
                                 step_id=args.step_id,
                                 request_id=cmd.request_id,
                                 pub_socket=pub_socket,
+                                method_name=action,
                             )
                         )
                         rep_socket.send_json(
@@ -269,14 +281,14 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                             ).to_dict()
                         )
                     finally:
-                        await plugin.on_stop(args.step_id, workspace)
+                        _await(plugin.on_stop(args.step_id, workspace))
                     continue
 
                 if action == "predict_unlabeled_batch":
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
-                    await plugin.on_start(args.step_id, workspace)
+                    _await(plugin.on_start(args.step_id, workspace))
                     try:
-                        result_path = asyncio.run(
+                        result_path = _await(
                             _run_predict(
                                 plugin=plugin,
                                 payload=payload,
@@ -292,7 +304,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                             ).to_dict()
                         )
                     finally:
-                        await plugin.on_stop(args.step_id, workspace)
+                        _await(plugin.on_stop(args.step_id, workspace))
                     continue
 
                 if action == "shutdown":
@@ -322,11 +334,17 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                 )
     finally:
         # Call on_unload lifecycle hook
-        asyncio.run(plugin.on_unload())
+        try:
+            _await(plugin.on_unload())
+        except Exception:
+            logger.exception("worker on_unload failed step_id={}", args.step_id)
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
 
-    rep_socket.close(linger=0)
-    pub_socket.close(linger=0)
-    context.term()
+        rep_socket.close(linger=0)
+        pub_socket.close(linger=0)
+        context.term()
     return 0
 
 

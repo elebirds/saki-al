@@ -20,6 +20,7 @@ type loopRow struct {
 	CurrentIteration      int
 	MaxRounds             int
 	QueryBatchSize        int
+	MinNewLabelsPerRound  int
 	ModelArch             string
 	Config                []byte
 	LastConfirmedCommitID *uuid.UUID
@@ -28,6 +29,7 @@ type loopRow struct {
 type roundRow struct {
 	ID            uuid.UUID
 	RoundIndex    int
+	AttemptIndex  int
 	SummaryStatus db.Roundstatus
 	EndedAt       *time.Time
 }
@@ -109,6 +111,7 @@ func mapLoopForUpdate(record db.GetLoopForUpdateRow) loopRow {
 		CurrentIteration:      int(record.CurrentIteration),
 		MaxRounds:             int(record.MaxRounds),
 		QueryBatchSize:        int(record.QueryBatchSize),
+		MinNewLabelsPerRound:  int(record.MinNewLabelsPerRound),
 		ModelArch:             record.ModelArch,
 		Config:                record.Config,
 		LastConfirmedCommitID: record.LastConfirmedCommitID,
@@ -119,6 +122,7 @@ func mapLatestRound(record db.GetLatestRoundByLoopRow) roundRow {
 	return roundRow{
 		ID:            record.ID,
 		RoundIndex:    int(record.RoundIndex),
+		AttemptIndex:  int(record.AttemptIndex),
 		SummaryStatus: record.SummaryStatus,
 		EndedAt:       timestampPtr(record.EndedAt),
 	}

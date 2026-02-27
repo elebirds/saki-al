@@ -20,6 +20,13 @@ message RoundCommandRequest {
   string reason = 3;
 }
 
+message RetryRoundRequest {
+  string command_id = 1;
+  string round_id = 2;
+  string reason = 3;
+  bool use_latest_inputs = 4;
+}
+
 message StepCommandRequest {
   string command_id = 1;
   string step_id = 2;
@@ -99,6 +106,7 @@ service DispatcherAdmin {
   rpc StopLoop(LoopCommandRequest) returns (CommandResponse);
   rpc ConfirmLoop(ConfirmLoopRequest) returns (CommandResponse);
   rpc StopRound(RoundCommandRequest) returns (CommandResponse);
+  rpc RetryRound(RetryRoundRequest) returns (CommandResponse);
   rpc StopStep(StepCommandRequest) returns (CommandResponse);
   rpc GetRuntimeSummary(RuntimeSummaryRequest) returns (RuntimeSummaryResponse);
   rpc GetExecutor(ExecutorReadRequest) returns (ExecutorReadResponse);

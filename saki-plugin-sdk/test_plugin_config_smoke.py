@@ -1,29 +1,28 @@
 """Smoke test for PluginConfig."""
 from saki_plugin_sdk import PluginConfig
-from saki_plugin_sdk.config import _coerce
+from saki_plugin_sdk.config import ConfigSchema, _coerce
+from saki_plugin_sdk.exceptions import PluginValidationError
 
 # Test resolve with coercion
+schema = ConfigSchema.model_validate(
+    {
+        "fields": [
+            {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1, "max": 5000, "default": 30},
+            {"key": "batch", "label": "Batch", "type": "integer", "required": True, "min": 1, "default": 16},
+            {"key": "yolo_task", "label": "Task", "type": "select", "default": "obb"},
+        ]
+    }
+)
 cfg = PluginConfig.resolve(
-    default_config={"epochs": 30, "batch": 16, "yolo_task": "obb"},
-    config_schema={"fields": [
-        {"key": "epochs", "type": "integer", "required": True, "min": 1, "max": 5000},
-        {"key": "batch", "type": "integer", "required": True, "min": 1},
-    ]},
+    schema=schema,
     raw_config={"epochs": "50"},
 )
 assert cfg.epochs == 50 and type(cfg.epochs) is int, f"got {cfg.epochs!r}"
 assert cfg.batch == 16
 assert cfg.yolo_task == "obb"
 
-# Test immutability
-try:
-    cfg.epochs = 99
-    assert False, "should raise"
-except AttributeError:
-    pass
-
-# Test with_updates
-cfg2 = cfg.with_updates(epochs=100)
+# Test model_copy update
+cfg2 = cfg.model_copy(update={"epochs": 100})
 assert cfg2.epochs == 100 and cfg.epochs == 50
 
 # Test to_dict
@@ -43,26 +42,31 @@ assert _coerce("false", "boolean") is False
 # Test validation error: required
 try:
     PluginConfig.resolve(
-        default_config={},
-        config_schema={"fields": [{"key": "x", "type": "integer", "required": True}]},
+        schema=ConfigSchema.model_validate(
+            {"fields": [{"key": "x", "label": "x", "type": "integer", "required": True}]}
+        ),
     )
     assert False, "should raise"
 except ValueError as e:
+    assert "required" in str(e)
+except PluginValidationError as e:
     assert "required" in str(e)
 
 # Test min validation
 try:
     PluginConfig.resolve(
-        default_config={"x": 0},
-        config_schema={"fields": [{"key": "x", "type": "integer", "min": 1}]},
+        schema=ConfigSchema.model_validate(
+            {"fields": [{"key": "x", "label": "x", "type": "integer", "min": 1, "default": 0}]}
+        ),
     )
     assert False, "should raise"
 except ValueError as e:
     assert "minimum" in str(e)
+except PluginValidationError as e:
+    assert "minimum" in str(e)
 
 # Test dict-like access
-assert "epochs" in cfg
-assert cfg["epochs"] == 50
+assert "epochs" in cfg.to_dict()
 assert cfg.get("missing", 42) == 42
 
 print("ALL PASS")

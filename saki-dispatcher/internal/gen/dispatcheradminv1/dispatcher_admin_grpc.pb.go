@@ -25,6 +25,7 @@ const (
 	DispatcherAdmin_StopLoop_FullMethodName                = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopLoop"
 	DispatcherAdmin_ConfirmLoop_FullMethodName             = "/saki.dispatcher.admin.v1.DispatcherAdmin/ConfirmLoop"
 	DispatcherAdmin_StopRound_FullMethodName               = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopRound"
+	DispatcherAdmin_RetryRound_FullMethodName              = "/saki.dispatcher.admin.v1.DispatcherAdmin/RetryRound"
 	DispatcherAdmin_StopStep_FullMethodName                = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep"
 	DispatcherAdmin_GetRuntimeSummary_FullMethodName       = "/saki.dispatcher.admin.v1.DispatcherAdmin/GetRuntimeSummary"
 	DispatcherAdmin_GetExecutor_FullMethodName             = "/saki.dispatcher.admin.v1.DispatcherAdmin/GetExecutor"
@@ -44,6 +45,7 @@ type DispatcherAdminClient interface {
 	StopLoop(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	ConfirmLoop(ctx context.Context, in *ConfirmLoopRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	StopRound(ctx context.Context, in *RoundCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	RetryRound(ctx context.Context, in *RetryRoundRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	StopStep(ctx context.Context, in *StepCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	GetRuntimeSummary(ctx context.Context, in *RuntimeSummaryRequest, opts ...grpc.CallOption) (*RuntimeSummaryResponse, error)
 	GetExecutor(ctx context.Context, in *ExecutorReadRequest, opts ...grpc.CallOption) (*ExecutorReadResponse, error)
@@ -115,6 +117,16 @@ func (c *dispatcherAdminClient) StopRound(ctx context.Context, in *RoundCommandR
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CommandResponse)
 	err := c.cc.Invoke(ctx, DispatcherAdmin_StopRound_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dispatcherAdminClient) RetryRound(ctx context.Context, in *RetryRoundRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DispatcherAdmin_RetryRound_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +213,7 @@ type DispatcherAdminServer interface {
 	StopLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error)
 	ConfirmLoop(context.Context, *ConfirmLoopRequest) (*CommandResponse, error)
 	StopRound(context.Context, *RoundCommandRequest) (*CommandResponse, error)
+	RetryRound(context.Context, *RetryRoundRequest) (*CommandResponse, error)
 	StopStep(context.Context, *StepCommandRequest) (*CommandResponse, error)
 	GetRuntimeSummary(context.Context, *RuntimeSummaryRequest) (*RuntimeSummaryResponse, error)
 	GetExecutor(context.Context, *ExecutorReadRequest) (*ExecutorReadResponse, error)
@@ -235,6 +248,9 @@ func (UnimplementedDispatcherAdminServer) ConfirmLoop(context.Context, *ConfirmL
 }
 func (UnimplementedDispatcherAdminServer) StopRound(context.Context, *RoundCommandRequest) (*CommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopRound not implemented")
+}
+func (UnimplementedDispatcherAdminServer) RetryRound(context.Context, *RetryRoundRequest) (*CommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RetryRound not implemented")
 }
 func (UnimplementedDispatcherAdminServer) StopStep(context.Context, *StepCommandRequest) (*CommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopStep not implemented")
@@ -382,6 +398,24 @@ func _DispatcherAdmin_StopRound_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DispatcherAdminServer).StopRound(ctx, req.(*RoundCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DispatcherAdmin_RetryRound_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetryRoundRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherAdminServer).RetryRound(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DispatcherAdmin_RetryRound_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherAdminServer).RetryRound(ctx, req.(*RetryRoundRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -542,6 +576,10 @@ var DispatcherAdmin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StopRound",
 			Handler:    _DispatcherAdmin_StopRound_Handler,
+		},
+		{
+			MethodName: "RetryRound",
+			Handler:    _DispatcherAdmin_RetryRound_Handler,
 		},
 		{
 			MethodName: "StopStep",

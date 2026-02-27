@@ -41,9 +41,13 @@ class StepPipelineRunner:
     _SCORE_ONLY_STEP_TYPES = {
         "score",
     }
-    _TRAIN_ONLY_STEP_TYPES = {
+    _EVAL_ONLY_STEP_TYPES = {
         "eval",
+    }
+    _EXPORT_ONLY_STEP_TYPES = {
         "export",
+    }
+    _UPLOAD_ARTIFACT_ONLY_STEP_TYPES = {
         "upload_artifact",
     }
 
@@ -72,8 +76,22 @@ class StepPipelineRunner:
                     workspace=workspace,
                     emitter=emitter,
                 )
-            elif self._request.step_type in self._TRAIN_ONLY_STEP_TYPES:
-                metrics, artifacts, candidates, optional_upload_failures = await self._run_train_only_pipeline(
+            elif self._request.step_type in self._EVAL_ONLY_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_eval_pipeline(
+                    plugin=plugin,
+                    workspace=workspace,
+                    emitter=emitter,
+                    reporter=reporter,
+                )
+            elif self._request.step_type in self._EXPORT_ONLY_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_export_pipeline(
+                    plugin=plugin,
+                    workspace=workspace,
+                    emitter=emitter,
+                    reporter=reporter,
+                )
+            elif self._request.step_type in self._UPLOAD_ARTIFACT_ONLY_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_upload_artifact_pipeline(
                     plugin=plugin,
                     workspace=workspace,
                     emitter=emitter,
@@ -136,6 +154,8 @@ class StepPipelineRunner:
         for key in ("split_seed", "train_seed", "sampling_seed", "round_index", "deterministic"):
             if key in self._request.resolved_params and key not in effective_plugin_params:
                 effective_plugin_params[key] = self._request.resolved_params.get(key)
+        effective_plugin_params["step_type"] = self._request.step_type
+        effective_plugin_params["mode"] = self._request.mode
         plugin.validate_params(effective_plugin_params)
         self._effective_plugin_params = effective_plugin_params
         return plugin
@@ -280,7 +300,7 @@ class StepPipelineRunner:
         )
         return output.metrics, artifacts, candidates, optional_upload_failures
 
-    async def _run_train_only_pipeline(
+    async def _run_eval_pipeline(
         self,
         *,
         plugin: Any,
@@ -288,11 +308,42 @@ class StepPipelineRunner:
         emitter: StepEventEmitter,
         reporter: StepReporter,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
-        output, _protected = await self._run_training_pipeline(
+        await self._prepare_plugin_data(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
         )
+        output = await plugin.eval(workspace, self._effective_plugin_params, emitter.emit)
+        artifacts, optional_upload_failures = await self._upload_artifacts(
+            output_artifacts=output.artifacts,
+            reporter=reporter,
+        )
+        return output.metrics, artifacts, [], optional_upload_failures
+
+    async def _run_export_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        reporter: StepReporter,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+        output = await plugin.export(workspace, self._effective_plugin_params, emitter.emit)
+        artifacts, optional_upload_failures = await self._upload_artifacts(
+            output_artifacts=output.artifacts,
+            reporter=reporter,
+        )
+        return output.metrics, artifacts, [], optional_upload_failures
+
+    async def _run_upload_artifact_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        reporter: StepReporter,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+        output = await plugin.upload_artifact(workspace, self._effective_plugin_params, emitter.emit)
         artifacts, optional_upload_failures = await self._upload_artifacts(
             output_artifacts=output.artifacts,
             reporter=reporter,

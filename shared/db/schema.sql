@@ -666,6 +666,7 @@ CREATE TABLE public.round (
     project_id uuid NOT NULL,
     loop_id uuid NOT NULL,
     round_index integer NOT NULL,
+    attempt_index integer NOT NULL,
     mode public.loopmode NOT NULL,
     state public.roundstatus NOT NULL,
     step_counts jsonb,
@@ -675,6 +676,8 @@ CREATE TABLE public.round (
     resources jsonb,
     input_commit_id uuid,
     output_commit_id uuid,
+    retry_of_round_id uuid,
+    retry_reason text,
     assigned_executor_id character varying,
     started_at timestamp without time zone,
     ended_at timestamp without time zone,
@@ -1205,11 +1208,11 @@ ALTER TABLE ONLY public.resource_member
 
 
 --
--- Name: round uq_round_loop_round; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: round uq_round_loop_round_attempt; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.round
-    ADD CONSTRAINT uq_round_loop_round UNIQUE (loop_id, round_index);
+    ADD CONSTRAINT uq_round_loop_round_attempt UNIQUE (loop_id, round_index, attempt_index);
 
 
 --
@@ -1750,6 +1753,13 @@ CREATE INDEX ix_round_assigned_executor_id ON public.round USING btree (assigned
 
 
 --
+-- Name: ix_round_attempt_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_attempt_index ON public.round USING btree (attempt_index);
+
+
+--
 -- Name: ix_round_loop_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1782,6 +1792,20 @@ CREATE INDEX ix_round_round_index ON public.round USING btree (round_index);
 --
 
 CREATE INDEX ix_round_round_type ON public.round USING btree (round_type);
+
+
+--
+-- Name: ix_round_retry_of_round_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_retry_of_round_id ON public.round USING btree (retry_of_round_id);
+
+
+--
+-- Name: idx_round_loop_round_attempt; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_round_loop_round_attempt ON public.round USING btree (loop_id, round_index DESC, attempt_index DESC, created_at DESC);
 
 
 --
@@ -2328,6 +2352,14 @@ ALTER TABLE ONLY public.round
 
 
 --
+-- Name: round fk_round_retry_of_round_id_round; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT fk_round_retry_of_round_id_round FOREIGN KEY (retry_of_round_id) REFERENCES public.round(id);
+
+
+--
 -- Name: round fk_round_project_id_project; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2530,5 +2562,4 @@ ALTER TABLE ONLY public.user_system_role
 --
 -- PostgreSQL database dump complete
 --
-
 

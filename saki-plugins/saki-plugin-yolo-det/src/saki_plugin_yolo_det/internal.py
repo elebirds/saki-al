@@ -223,11 +223,13 @@ class YoloDetectionInternal:
         if source != "preset" and not custom_ref:
             raise ValueError("model_custom_ref is required for custom model source")
 
-        return config.with_updates(
-            yolo_task=yolo_task,
-            model_source=source,
-            model_preset=preset,
-            model_custom_ref="" if source == "preset" else custom_ref,
+        return config.model_copy(
+            update={
+                "yolo_task": yolo_task,
+                "model_source": source,
+                "model_preset": preset,
+                "model_custom_ref": "" if source == "preset" else custom_ref,
+            }
         )
 
     def validate_params(self, params: dict[str, Any]) -> None:
@@ -361,6 +363,182 @@ class YoloDetectionInternal:
             metrics=metrics,
             train_result=train_result,
             report_path=report_path,
+        )
+
+    async def eval(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        self._stop_flag.clear()
+        cfg = self.resolve_config(mode="manual", raw_config=params)
+        dataset_yaml = workspace.data_dir / "dataset.yaml"
+        if not dataset_yaml.exists():
+            raise RuntimeError(f"dataset file not found: {dataset_yaml}")
+
+        device, requested_device, resolved_backend = self._resolve_device(cfg)
+        model_path = await self._resolve_best_or_fallback_model(workspace=workspace, params=cfg)
+        imgsz = _to_int(cfg.imgsz, 640)
+        batch = _to_int(cfg.batch, 16)
+
+        await emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    f"YOLO eval started model={model_path} imgsz={imgsz} batch={batch} "
+                    f"requested_device={requested_device} resolved_backend={resolved_backend} device={device}"
+                ),
+            },
+        )
+
+        eval_result = await asyncio.to_thread(
+            self._run_eval_sync,
+            workspace=workspace,
+            model_path=model_path,
+            dataset_yaml=dataset_yaml,
+            imgsz=imgsz,
+            batch=batch,
+            device=device,
+        )
+        metrics = self._normalize_metrics(eval_result.get("metrics", {}))
+        await emit("metric", {"step": 1, "epoch": 0, "metrics": metrics})
+
+        report_path = workspace.artifacts_dir / "eval_report.json"
+        report_path.write_text(
+            json.dumps(
+                {
+                    "metrics": metrics,
+                    "raw_metrics": eval_result.get("metrics", {}),
+                    "save_dir": eval_result.get("save_dir", ""),
+                    "model_path": model_path,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        artifacts: list[TrainArtifact] = [
+            TrainArtifact(
+                kind="report",
+                name="eval_report.json",
+                path=report_path,
+                content_type="application/json",
+                required=True,
+            )
+        ]
+        for item in eval_result.get("extra_artifacts", []):
+            path = Path(str(item))
+            if not path.exists():
+                continue
+            artifacts.append(
+                TrainArtifact(
+                    kind="eval_artifact",
+                    name=path.name,
+                    path=path,
+                    content_type="application/octet-stream",
+                    required=False,
+                )
+            )
+        return TrainOutput(metrics=metrics, artifacts=artifacts)
+
+    async def export(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        self._stop_flag.clear()
+        cfg = self.resolve_config(mode="manual", raw_config=params)
+        device, requested_device, resolved_backend = self._resolve_device(cfg)
+        model_path = await self._resolve_best_or_fallback_model(workspace=workspace, params=cfg)
+        export_format = str(params.get("export_format") or params.get("format") or "onnx").strip().lower() or "onnx"
+        imgsz = _to_int(cfg.imgsz, 640)
+
+        await emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    f"YOLO export started model={model_path} format={export_format} imgsz={imgsz} "
+                    f"requested_device={requested_device} resolved_backend={resolved_backend} device={device}"
+                ),
+            },
+        )
+
+        exported_path = await asyncio.to_thread(
+            self._run_export_sync,
+            model_path=model_path,
+            export_format=export_format,
+            imgsz=imgsz,
+            device=device,
+        )
+        export_file = Path(exported_path)
+        if not export_file.exists():
+            raise RuntimeError(f"export output not found: {export_file}")
+
+        report_path = workspace.artifacts_dir / "export_report.json"
+        report_path.write_text(
+            json.dumps(
+                {
+                    "model_path": model_path,
+                    "export_format": export_format,
+                    "exported_path": str(export_file),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        return TrainOutput(
+            metrics={"export_success": 1.0},
+            artifacts=[
+                TrainArtifact(
+                    kind="model_export",
+                    name=export_file.name,
+                    path=export_file,
+                    content_type="application/octet-stream",
+                    required=True,
+                ),
+                TrainArtifact(
+                    kind="report",
+                    name="export_report.json",
+                    path=report_path,
+                    content_type="application/json",
+                    required=True,
+                ),
+            ],
+        )
+
+    async def upload_artifact(
+        self,
+        workspace: Workspace,
+        params: dict[str, Any],
+        emit: EventCallback,
+    ) -> TrainOutput:
+        del params
+        await emit("log", {"level": "INFO", "message": "upload_artifact step started"})
+        files = [item for item in workspace.artifacts_dir.iterdir() if item.is_file()]
+        manifest = {
+            "artifact_count": len(files),
+            "artifacts": [item.name for item in files],
+        }
+        manifest_path = workspace.artifacts_dir / "upload_manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return TrainOutput(
+            metrics={"artifact_count": float(len(files))},
+            artifacts=[
+                TrainArtifact(
+                    kind="report",
+                    name="upload_manifest.json",
+                    path=manifest_path,
+                    content_type="application/json",
+                    required=True,
+                )
+            ],
         )
 
     def _write_training_report(
@@ -501,6 +679,12 @@ class YoloDetectionInternal:
 
         raise RuntimeError(f"unsupported model_source: {source or '<empty>'}")
 
+    async def _resolve_best_or_fallback_model(self, *, workspace: Workspace, params: Any) -> str:
+        best_path = workspace.artifacts_dir / "best.pt"
+        if best_path.exists():
+            return str(best_path)
+        return await self._resolve_model_ref(workspace=workspace, params=params)
+
     async def _download_to_file(self, url: str, target: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         async with httpx.AsyncClient(timeout=300, follow_redirects=True) as client:
@@ -516,6 +700,69 @@ class YoloDetectionInternal:
                 "ultralytics is required for yolo_det_v1 plugin, please install it in the plugin environment"
             ) from exc
         return YOLO
+
+    def _run_eval_sync(
+        self,
+        *,
+        workspace: Workspace,
+        model_path: str,
+        dataset_yaml: Path,
+        imgsz: int,
+        batch: int,
+        device: Any,
+    ) -> dict[str, Any]:
+        YOLO = self._load_yolo()
+        model = YOLO(model_path)
+        result = model.val(
+            data=str(dataset_yaml),
+            imgsz=imgsz,
+            batch=batch,
+            device=device,
+            plots=True,
+            verbose=False,
+            project=str(workspace.artifacts_dir),
+            name="eval",
+            exist_ok=True,
+        )
+        metrics_raw = getattr(result, "results_dict", {}) or {}
+        save_dir_raw = getattr(result, "save_dir", "")
+        save_dir = Path(str(save_dir_raw)) if save_dir_raw else None
+        extra_artifacts: list[str] = []
+        if save_dir and save_dir.exists():
+            for filename in (
+                "confusion_matrix.png",
+                "confusion_matrix_normalized.png",
+                "F1_curve.png",
+                "P_curve.png",
+                "R_curve.png",
+                "PR_curve.png",
+            ):
+                path = save_dir / filename
+                if path.exists():
+                    extra_artifacts.append(str(path))
+        return {
+            "metrics": dict(metrics_raw) if isinstance(metrics_raw, dict) else {},
+            "save_dir": str(save_dir) if save_dir else "",
+            "extra_artifacts": extra_artifacts,
+        }
+
+    def _run_export_sync(
+        self,
+        *,
+        model_path: str,
+        export_format: str,
+        imgsz: int,
+        device: Any,
+    ) -> str:
+        YOLO = self._load_yolo()
+        model = YOLO(model_path)
+        exported = model.export(
+            format=export_format,
+            imgsz=imgsz,
+            device=device,
+            verbose=False,
+        )
+        return str(exported or "")
 
     def _ensure_image_deps(self) -> None:
         if Image is None or np is None:

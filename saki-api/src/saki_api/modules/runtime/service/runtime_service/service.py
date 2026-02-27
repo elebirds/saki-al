@@ -9,6 +9,9 @@ from saki_api.modules.annotation.contracts import AnnotationReadGateway
 from saki_api.modules.project.contracts import ProjectReadGateway
 from saki_api.modules.runtime.api.round_step import RoundUpdate
 from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.repo.al_loop_visibility import ALLoopVisibilityRepository
+from saki_api.modules.runtime.repo.al_snapshot_sample import ALSnapshotSampleRepository
+from saki_api.modules.runtime.repo.al_snapshot_version import ALSnapshotVersionRepository
 from saki_api.modules.runtime.repo.loop import LoopRepository
 from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.runtime_executor import RuntimeExecutorRepository
@@ -31,6 +34,7 @@ from saki_api.modules.runtime.service.runtime_service.query_mixin import (
 )
 from saki_api.modules.runtime.service.runtime_service.round_command_mixin import RoundCommandMixin
 from saki_api.modules.runtime.service.runtime_service.simulation_config_mixin import SimulationConfigMixin
+from saki_api.modules.runtime.service.runtime_service.snapshot_mixin import SnapshotMixin
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 
 
@@ -38,6 +42,7 @@ class RuntimeService(
     RuntimeServiceCommonMixin,
     SimulationConfigMixin,
     LoopCommandMixin,
+    SnapshotMixin,
     RoundCommandMixin,
     RuntimeQueryMixin,
     CrudServiceBase[Round, RoundRepository, RoundUpdate, RoundUpdate],
@@ -60,6 +65,9 @@ class RuntimeService(
         self.step_event_repo = StepEventRepository(session)
         self.step_metric_repo = StepMetricPointRepository(session)
         self.step_candidate_repo = StepCandidateItemRepository(session)
+        self.al_snapshot_version_repo = ALSnapshotVersionRepository(session)
+        self.al_snapshot_sample_repo = ALSnapshotSampleRepository(session)
+        self.al_loop_visibility_repo = ALLoopVisibilityRepository(session)
         self._storage = None
 
     @property

@@ -88,11 +88,17 @@ class TrainingDataService:
             val_ratio = 0.2
         val_ratio = min(0.5, max(0.05, val_ratio))
 
-        train_ids, val_ids, val_degraded = self._split_samples(
-            sample_ids=[str(item.get("id") or "") for item in supervised_samples if str(item.get("id") or "")],
-            split_seed=split_seed,
-            val_ratio=val_ratio,
-        )
+        split_source = "random"
+        snapshot_split = self._split_samples_from_snapshot(samples=supervised_samples)
+        if snapshot_split is not None:
+            train_ids, val_ids, val_degraded = snapshot_split
+            split_source = "snapshot"
+        else:
+            train_ids, val_ids, val_degraded = self._split_samples(
+                sample_ids=[str(item.get("id") or "") for item in supervised_samples if str(item.get("id") or "")],
+                split_seed=split_seed,
+                val_ratio=val_ratio,
+            )
         splits: dict[str, list[dict[str, Any]]] = {
             "train": [],
             "val": [],
@@ -105,6 +111,7 @@ class TrainingDataService:
             item["_split"] = split
             item["_split_seed"] = split_seed
             item["_val_split_ratio"] = val_ratio
+            item["_split_source"] = split_source
             splits[split].append(item)
 
         await emit(
@@ -113,6 +120,7 @@ class TrainingDataService:
                 "level": "INFO",
                 "message": (
                     f"training split resolved round_index={request.round_index} "
+                    f"source={split_source} "
                     f"seed={split_seed} val_ratio={val_ratio:.3f} "
                     f"train={len(splits['train'])} val={len(splits['val'])} "
                     f"val_degraded={val_degraded}"
@@ -165,6 +173,35 @@ class TrainingDataService:
             protected=protected,
             splits=splits,
         )
+
+    @staticmethod
+    def _split_samples_from_snapshot(
+        *,
+        samples: list[dict[str, Any]],
+    ) -> tuple[set[str], set[str], bool] | None:
+        train_ids: set[str] = set()
+        val_ids: set[str] = set()
+        hinted_count = 0
+        total = 0
+        for item in samples:
+            sample_id = str(item.get("id") or "")
+            if not sample_id:
+                continue
+            total += 1
+            meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+            split_hint = str(meta.get("_snapshot_split") or "").strip().lower()
+            if split_hint not in {"train", "val"}:
+                continue
+            hinted_count += 1
+            if split_hint == "val":
+                val_ids.add(sample_id)
+            else:
+                train_ids.add(sample_id)
+        if total == 0 or hinted_count == 0 or hinted_count != total:
+            return None
+        if not train_ids:
+            return None
+        return train_ids, val_ids, len(val_ids) == 0
 
     @staticmethod
     def _split_samples(

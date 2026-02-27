@@ -309,6 +309,158 @@ func (x *CountNewLabelsSinceCommitResponse) GetLatestCommitId() string {
 	return ""
 }
 
+type ResolveRoundRevealRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LoopId        string                 `protobuf:"bytes,1,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
+	RoundIndex    int32                  `protobuf:"varint,2,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
+	BranchId      string                 `protobuf:"bytes,3,opt,name=branch_id,json=branchId,proto3" json:"branch_id,omitempty"`
+	Force         bool                   `protobuf:"varint,4,opt,name=force,proto3" json:"force,omitempty"`
+	MinRequired   int32                  `protobuf:"varint,5,opt,name=min_required,json=minRequired,proto3" json:"min_required,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveRoundRevealRequest) Reset() {
+	*x = ResolveRoundRevealRequest{}
+	mi := &file_runtime_domain_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveRoundRevealRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveRoundRevealRequest) ProtoMessage() {}
+
+func (x *ResolveRoundRevealRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveRoundRevealRequest.ProtoReflect.Descriptor instead.
+func (*ResolveRoundRevealRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ResolveRoundRevealRequest) GetLoopId() string {
+	if x != nil {
+		return x.LoopId
+	}
+	return ""
+}
+
+func (x *ResolveRoundRevealRequest) GetRoundIndex() int32 {
+	if x != nil {
+		return x.RoundIndex
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealRequest) GetBranchId() string {
+	if x != nil {
+		return x.BranchId
+	}
+	return ""
+}
+
+func (x *ResolveRoundRevealRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
+}
+
+func (x *ResolveRoundRevealRequest) GetMinRequired() int32 {
+	if x != nil {
+		return x.MinRequired
+	}
+	return 0
+}
+
+type ResolveRoundRevealResponse struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	RevealedCount           int32                  `protobuf:"varint,1,opt,name=revealed_count,json=revealedCount,proto3" json:"revealed_count,omitempty"`
+	SelectedCount           int32                  `protobuf:"varint,2,opt,name=selected_count,json=selectedCount,proto3" json:"selected_count,omitempty"`
+	MissingCount            int32                  `protobuf:"varint,3,opt,name=missing_count,json=missingCount,proto3" json:"missing_count,omitempty"`
+	LatestCommitId          string                 `protobuf:"bytes,4,opt,name=latest_commit_id,json=latestCommitId,proto3" json:"latest_commit_id,omitempty"`
+	RevealableSampleIdsHash string                 `protobuf:"bytes,5,opt,name=revealable_sample_ids_hash,json=revealableSampleIdsHash,proto3" json:"revealable_sample_ids_hash,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *ResolveRoundRevealResponse) Reset() {
+	*x = ResolveRoundRevealResponse{}
+	mi := &file_runtime_domain_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveRoundRevealResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveRoundRevealResponse) ProtoMessage() {}
+
+func (x *ResolveRoundRevealResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveRoundRevealResponse.ProtoReflect.Descriptor instead.
+func (*ResolveRoundRevealResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ResolveRoundRevealResponse) GetRevealedCount() int32 {
+	if x != nil {
+		return x.RevealedCount
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealResponse) GetSelectedCount() int32 {
+	if x != nil {
+		return x.SelectedCount
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealResponse) GetMissingCount() int32 {
+	if x != nil {
+		return x.MissingCount
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealResponse) GetLatestCommitId() string {
+	if x != nil {
+		return x.LatestCommitId
+	}
+	return ""
+}
+
+func (x *ResolveRoundRevealResponse) GetRevealableSampleIdsHash() string {
+	if x != nil {
+		return x.RevealableSampleIdsHash
+	}
+	return ""
+}
+
 type ActivateSamplesRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	CommandId      string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
@@ -326,7 +478,7 @@ type ActivateSamplesRequest struct {
 
 func (x *ActivateSamplesRequest) Reset() {
 	*x = ActivateSamplesRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[4]
+	mi := &file_runtime_domain_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -338,7 +490,7 @@ func (x *ActivateSamplesRequest) String() string {
 func (*ActivateSamplesRequest) ProtoMessage() {}
 
 func (x *ActivateSamplesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[4]
+	mi := &file_runtime_domain_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -351,7 +503,7 @@ func (x *ActivateSamplesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivateSamplesRequest.ProtoReflect.Descriptor instead.
 func (*ActivateSamplesRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{4}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ActivateSamplesRequest) GetCommandId() string {
@@ -427,7 +579,7 @@ type ActivateSamplesResponse struct {
 
 func (x *ActivateSamplesResponse) Reset() {
 	*x = ActivateSamplesResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[5]
+	mi := &file_runtime_domain_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -439,7 +591,7 @@ func (x *ActivateSamplesResponse) String() string {
 func (*ActivateSamplesResponse) ProtoMessage() {}
 
 func (x *ActivateSamplesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[5]
+	mi := &file_runtime_domain_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -452,7 +604,7 @@ func (x *ActivateSamplesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActivateSamplesResponse.ProtoReflect.Descriptor instead.
 func (*ActivateSamplesResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{5}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ActivateSamplesResponse) GetCreated() bool {
@@ -481,7 +633,7 @@ type AdvanceBranchHeadRequest struct {
 
 func (x *AdvanceBranchHeadRequest) Reset() {
 	*x = AdvanceBranchHeadRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[6]
+	mi := &file_runtime_domain_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -493,7 +645,7 @@ func (x *AdvanceBranchHeadRequest) String() string {
 func (*AdvanceBranchHeadRequest) ProtoMessage() {}
 
 func (x *AdvanceBranchHeadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[6]
+	mi := &file_runtime_domain_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +658,7 @@ func (x *AdvanceBranchHeadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceBranchHeadRequest.ProtoReflect.Descriptor instead.
 func (*AdvanceBranchHeadRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{6}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AdvanceBranchHeadRequest) GetCommandId() string {
@@ -548,7 +700,7 @@ type AdvanceBranchHeadResponse struct {
 
 func (x *AdvanceBranchHeadResponse) Reset() {
 	*x = AdvanceBranchHeadResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[7]
+	mi := &file_runtime_domain_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -560,7 +712,7 @@ func (x *AdvanceBranchHeadResponse) String() string {
 func (*AdvanceBranchHeadResponse) ProtoMessage() {}
 
 func (x *AdvanceBranchHeadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[7]
+	mi := &file_runtime_domain_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,7 +725,7 @@ func (x *AdvanceBranchHeadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceBranchHeadResponse.ProtoReflect.Descriptor instead.
 func (*AdvanceBranchHeadResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{7}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *AdvanceBranchHeadResponse) GetAdvanced() bool {
@@ -614,7 +766,7 @@ type DataRequest struct {
 
 func (x *DataRequest) Reset() {
 	*x = DataRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[8]
+	mi := &file_runtime_domain_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -626,7 +778,7 @@ func (x *DataRequest) String() string {
 func (*DataRequest) ProtoMessage() {}
 
 func (x *DataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[8]
+	mi := &file_runtime_domain_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -639,7 +791,7 @@ func (x *DataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataRequest.ProtoReflect.Descriptor instead.
 func (*DataRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{8}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DataRequest) GetRequestId() string {
@@ -716,7 +868,7 @@ type LabelItem struct {
 
 func (x *LabelItem) Reset() {
 	*x = LabelItem{}
-	mi := &file_runtime_domain_proto_msgTypes[9]
+	mi := &file_runtime_domain_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -728,7 +880,7 @@ func (x *LabelItem) String() string {
 func (*LabelItem) ProtoMessage() {}
 
 func (x *LabelItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[9]
+	mi := &file_runtime_domain_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -741,7 +893,7 @@ func (x *LabelItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LabelItem.ProtoReflect.Descriptor instead.
 func (*LabelItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{9}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *LabelItem) GetId() string {
@@ -779,7 +931,7 @@ type SampleItem struct {
 
 func (x *SampleItem) Reset() {
 	*x = SampleItem{}
-	mi := &file_runtime_domain_proto_msgTypes[10]
+	mi := &file_runtime_domain_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -791,7 +943,7 @@ func (x *SampleItem) String() string {
 func (*SampleItem) ProtoMessage() {}
 
 func (x *SampleItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[10]
+	mi := &file_runtime_domain_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -804,7 +956,7 @@ func (x *SampleItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SampleItem.ProtoReflect.Descriptor instead.
 func (*SampleItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{10}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SampleItem) GetId() string {
@@ -864,7 +1016,7 @@ type AnnotationItem struct {
 
 func (x *AnnotationItem) Reset() {
 	*x = AnnotationItem{}
-	mi := &file_runtime_domain_proto_msgTypes[11]
+	mi := &file_runtime_domain_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -876,7 +1028,7 @@ func (x *AnnotationItem) String() string {
 func (*AnnotationItem) ProtoMessage() {}
 
 func (x *AnnotationItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[11]
+	mi := &file_runtime_domain_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -889,7 +1041,7 @@ func (x *AnnotationItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnnotationItem.ProtoReflect.Descriptor instead.
 func (*AnnotationItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{11}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AnnotationItem) GetId() string {
@@ -955,7 +1107,7 @@ type DataItem struct {
 
 func (x *DataItem) Reset() {
 	*x = DataItem{}
-	mi := &file_runtime_domain_proto_msgTypes[12]
+	mi := &file_runtime_domain_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -967,7 +1119,7 @@ func (x *DataItem) String() string {
 func (*DataItem) ProtoMessage() {}
 
 func (x *DataItem) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[12]
+	mi := &file_runtime_domain_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -980,7 +1132,7 @@ func (x *DataItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataItem.ProtoReflect.Descriptor instead.
 func (*DataItem) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{12}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DataItem) GetItem() isDataItem_Item {
@@ -1061,7 +1213,7 @@ type DataResponse struct {
 
 func (x *DataResponse) Reset() {
 	*x = DataResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[13]
+	mi := &file_runtime_domain_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1073,7 +1225,7 @@ func (x *DataResponse) String() string {
 func (*DataResponse) ProtoMessage() {}
 
 func (x *DataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[13]
+	mi := &file_runtime_domain_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1086,7 +1238,7 @@ func (x *DataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataResponse.ProtoReflect.Descriptor instead.
 func (*DataResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{13}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DataResponse) GetRequestId() string {
@@ -1199,7 +1351,7 @@ type UploadTicketRequest struct {
 
 func (x *UploadTicketRequest) Reset() {
 	*x = UploadTicketRequest{}
-	mi := &file_runtime_domain_proto_msgTypes[14]
+	mi := &file_runtime_domain_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1211,7 +1363,7 @@ func (x *UploadTicketRequest) String() string {
 func (*UploadTicketRequest) ProtoMessage() {}
 
 func (x *UploadTicketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[14]
+	mi := &file_runtime_domain_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1224,7 +1376,7 @@ func (x *UploadTicketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadTicketRequest.ProtoReflect.Descriptor instead.
 func (*UploadTicketRequest) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{14}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *UploadTicketRequest) GetRequestId() string {
@@ -1269,7 +1421,7 @@ type UploadTicketResponse struct {
 
 func (x *UploadTicketResponse) Reset() {
 	*x = UploadTicketResponse{}
-	mi := &file_runtime_domain_proto_msgTypes[15]
+	mi := &file_runtime_domain_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1281,7 +1433,7 @@ func (x *UploadTicketResponse) String() string {
 func (*UploadTicketResponse) ProtoMessage() {}
 
 func (x *UploadTicketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_runtime_domain_proto_msgTypes[15]
+	mi := &file_runtime_domain_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1294,7 +1446,7 @@ func (x *UploadTicketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadTicketResponse.ProtoReflect.Descriptor instead.
 func (*UploadTicketResponse) Descriptor() ([]byte, []int) {
-	return file_runtime_domain_proto_rawDescGZIP(), []int{15}
+	return file_runtime_domain_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *UploadTicketResponse) GetRequestId() string {
@@ -1361,7 +1513,20 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x0fsince_commit_id\x18\x03 \x01(\tR\rsinceCommitId\"u\n" +
 	"!CountNewLabelsSinceCommitResponse\x12&\n" +
 	"\x0fnew_label_count\x18\x01 \x01(\x03R\rnewLabelCount\x12(\n" +
-	"\x10latest_commit_id\x18\x02 \x01(\tR\x0elatestCommitId\"\xbc\x02\n" +
+	"\x10latest_commit_id\x18\x02 \x01(\tR\x0elatestCommitId\"\xab\x01\n" +
+	"\x19ResolveRoundRevealRequest\x12\x17\n" +
+	"\aloop_id\x18\x01 \x01(\tR\x06loopId\x12\x1f\n" +
+	"\vround_index\x18\x02 \x01(\x05R\n" +
+	"roundIndex\x12\x1b\n" +
+	"\tbranch_id\x18\x03 \x01(\tR\bbranchId\x12\x14\n" +
+	"\x05force\x18\x04 \x01(\bR\x05force\x12!\n" +
+	"\fmin_required\x18\x05 \x01(\x05R\vminRequired\"\xf6\x01\n" +
+	"\x1aResolveRoundRevealResponse\x12%\n" +
+	"\x0erevealed_count\x18\x01 \x01(\x05R\rrevealedCount\x12%\n" +
+	"\x0eselected_count\x18\x02 \x01(\x05R\rselectedCount\x12#\n" +
+	"\rmissing_count\x18\x03 \x01(\x05R\fmissingCount\x12(\n" +
+	"\x10latest_commit_id\x18\x04 \x01(\tR\x0elatestCommitId\x12;\n" +
+	"\x1arevealable_sample_ids_hash\x18\x05 \x01(\tR\x17revealableSampleIdsHash\"\xbc\x02\n" +
 	"\x16ActivateSamplesRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
@@ -1480,10 +1645,11 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x06LABELS\x10\x01\x12\v\n" +
 	"\aSAMPLES\x10\x02\x12\x0f\n" +
 	"\vANNOTATIONS\x10\x03\x12\x15\n" +
-	"\x11UNLABELED_SAMPLES\x10\x042\xc9\x05\n" +
+	"\x11UNLABELED_SAMPLES\x10\x042\xc6\x06\n" +
 	"\rRuntimeDomain\x12l\n" +
 	"\rGetBranchHead\x12,.saki.runtime.domain.v1.GetBranchHeadRequest\x1a-.saki.runtime.domain.v1.GetBranchHeadResponse\x12\x90\x01\n" +
-	"\x19CountNewLabelsSinceCommit\x128.saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest\x1a9.saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse\x12r\n" +
+	"\x19CountNewLabelsSinceCommit\x128.saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest\x1a9.saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse\x12{\n" +
+	"\x12ResolveRoundReveal\x121.saki.runtime.domain.v1.ResolveRoundRevealRequest\x1a2.saki.runtime.domain.v1.ResolveRoundRevealResponse\x12r\n" +
 	"\x0fActivateSamples\x12..saki.runtime.domain.v1.ActivateSamplesRequest\x1a/.saki.runtime.domain.v1.ActivateSamplesResponse\x12x\n" +
 	"\x11AdvanceBranchHead\x120.saki.runtime.domain.v1.AdvanceBranchHeadRequest\x1a1.saki.runtime.domain.v1.AdvanceBranchHeadResponse\x12X\n" +
 	"\tQueryData\x12#.saki.runtime.domain.v1.DataRequest\x1a$.saki.runtime.domain.v1.DataResponse0\x01\x12o\n" +
@@ -1502,51 +1668,55 @@ func file_runtime_domain_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_domain_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_runtime_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_runtime_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_runtime_domain_proto_goTypes = []any{
 	(RuntimeQueryType)(0),                     // 0: saki.runtime.domain.v1.RuntimeQueryType
 	(*GetBranchHeadRequest)(nil),              // 1: saki.runtime.domain.v1.GetBranchHeadRequest
 	(*GetBranchHeadResponse)(nil),             // 2: saki.runtime.domain.v1.GetBranchHeadResponse
 	(*CountNewLabelsSinceCommitRequest)(nil),  // 3: saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
 	(*CountNewLabelsSinceCommitResponse)(nil), // 4: saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
-	(*ActivateSamplesRequest)(nil),            // 5: saki.runtime.domain.v1.ActivateSamplesRequest
-	(*ActivateSamplesResponse)(nil),           // 6: saki.runtime.domain.v1.ActivateSamplesResponse
-	(*AdvanceBranchHeadRequest)(nil),          // 7: saki.runtime.domain.v1.AdvanceBranchHeadRequest
-	(*AdvanceBranchHeadResponse)(nil),         // 8: saki.runtime.domain.v1.AdvanceBranchHeadResponse
-	(*DataRequest)(nil),                       // 9: saki.runtime.domain.v1.DataRequest
-	(*LabelItem)(nil),                         // 10: saki.runtime.domain.v1.LabelItem
-	(*SampleItem)(nil),                        // 11: saki.runtime.domain.v1.SampleItem
-	(*AnnotationItem)(nil),                    // 12: saki.runtime.domain.v1.AnnotationItem
-	(*DataItem)(nil),                          // 13: saki.runtime.domain.v1.DataItem
-	(*DataResponse)(nil),                      // 14: saki.runtime.domain.v1.DataResponse
-	(*UploadTicketRequest)(nil),               // 15: saki.runtime.domain.v1.UploadTicketRequest
-	(*UploadTicketResponse)(nil),              // 16: saki.runtime.domain.v1.UploadTicketResponse
-	nil,                                       // 17: saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
-	(*structpb.Struct)(nil),                   // 18: google.protobuf.Struct
+	(*ResolveRoundRevealRequest)(nil),         // 5: saki.runtime.domain.v1.ResolveRoundRevealRequest
+	(*ResolveRoundRevealResponse)(nil),        // 6: saki.runtime.domain.v1.ResolveRoundRevealResponse
+	(*ActivateSamplesRequest)(nil),            // 7: saki.runtime.domain.v1.ActivateSamplesRequest
+	(*ActivateSamplesResponse)(nil),           // 8: saki.runtime.domain.v1.ActivateSamplesResponse
+	(*AdvanceBranchHeadRequest)(nil),          // 9: saki.runtime.domain.v1.AdvanceBranchHeadRequest
+	(*AdvanceBranchHeadResponse)(nil),         // 10: saki.runtime.domain.v1.AdvanceBranchHeadResponse
+	(*DataRequest)(nil),                       // 11: saki.runtime.domain.v1.DataRequest
+	(*LabelItem)(nil),                         // 12: saki.runtime.domain.v1.LabelItem
+	(*SampleItem)(nil),                        // 13: saki.runtime.domain.v1.SampleItem
+	(*AnnotationItem)(nil),                    // 14: saki.runtime.domain.v1.AnnotationItem
+	(*DataItem)(nil),                          // 15: saki.runtime.domain.v1.DataItem
+	(*DataResponse)(nil),                      // 16: saki.runtime.domain.v1.DataResponse
+	(*UploadTicketRequest)(nil),               // 17: saki.runtime.domain.v1.UploadTicketRequest
+	(*UploadTicketResponse)(nil),              // 18: saki.runtime.domain.v1.UploadTicketResponse
+	nil,                                       // 19: saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
+	(*structpb.Struct)(nil),                   // 20: google.protobuf.Struct
 }
 var file_runtime_domain_proto_depIdxs = []int32{
 	0,  // 0: saki.runtime.domain.v1.DataRequest.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
-	18, // 1: saki.runtime.domain.v1.SampleItem.meta:type_name -> google.protobuf.Struct
-	18, // 2: saki.runtime.domain.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
-	10, // 3: saki.runtime.domain.v1.DataItem.label_item:type_name -> saki.runtime.domain.v1.LabelItem
-	11, // 4: saki.runtime.domain.v1.DataItem.sample_item:type_name -> saki.runtime.domain.v1.SampleItem
-	12, // 5: saki.runtime.domain.v1.DataItem.annotation_item:type_name -> saki.runtime.domain.v1.AnnotationItem
+	20, // 1: saki.runtime.domain.v1.SampleItem.meta:type_name -> google.protobuf.Struct
+	20, // 2: saki.runtime.domain.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
+	12, // 3: saki.runtime.domain.v1.DataItem.label_item:type_name -> saki.runtime.domain.v1.LabelItem
+	13, // 4: saki.runtime.domain.v1.DataItem.sample_item:type_name -> saki.runtime.domain.v1.SampleItem
+	14, // 5: saki.runtime.domain.v1.DataItem.annotation_item:type_name -> saki.runtime.domain.v1.AnnotationItem
 	0,  // 6: saki.runtime.domain.v1.DataResponse.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
-	17, // 7: saki.runtime.domain.v1.UploadTicketResponse.headers:type_name -> saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
+	19, // 7: saki.runtime.domain.v1.UploadTicketResponse.headers:type_name -> saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
 	1,  // 8: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:input_type -> saki.runtime.domain.v1.GetBranchHeadRequest
 	3,  // 9: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:input_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
-	5,  // 10: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:input_type -> saki.runtime.domain.v1.ActivateSamplesRequest
-	7,  // 11: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:input_type -> saki.runtime.domain.v1.AdvanceBranchHeadRequest
-	9,  // 12: saki.runtime.domain.v1.RuntimeDomain.QueryData:input_type -> saki.runtime.domain.v1.DataRequest
-	15, // 13: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:input_type -> saki.runtime.domain.v1.UploadTicketRequest
-	2,  // 14: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:output_type -> saki.runtime.domain.v1.GetBranchHeadResponse
-	4,  // 15: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:output_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
-	6,  // 16: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:output_type -> saki.runtime.domain.v1.ActivateSamplesResponse
-	8,  // 17: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:output_type -> saki.runtime.domain.v1.AdvanceBranchHeadResponse
-	14, // 18: saki.runtime.domain.v1.RuntimeDomain.QueryData:output_type -> saki.runtime.domain.v1.DataResponse
-	16, // 19: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:output_type -> saki.runtime.domain.v1.UploadTicketResponse
-	14, // [14:20] is the sub-list for method output_type
-	8,  // [8:14] is the sub-list for method input_type
+	5,  // 10: saki.runtime.domain.v1.RuntimeDomain.ResolveRoundReveal:input_type -> saki.runtime.domain.v1.ResolveRoundRevealRequest
+	7,  // 11: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:input_type -> saki.runtime.domain.v1.ActivateSamplesRequest
+	9,  // 12: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:input_type -> saki.runtime.domain.v1.AdvanceBranchHeadRequest
+	11, // 13: saki.runtime.domain.v1.RuntimeDomain.QueryData:input_type -> saki.runtime.domain.v1.DataRequest
+	17, // 14: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:input_type -> saki.runtime.domain.v1.UploadTicketRequest
+	2,  // 15: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:output_type -> saki.runtime.domain.v1.GetBranchHeadResponse
+	4,  // 16: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:output_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
+	6,  // 17: saki.runtime.domain.v1.RuntimeDomain.ResolveRoundReveal:output_type -> saki.runtime.domain.v1.ResolveRoundRevealResponse
+	8,  // 18: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:output_type -> saki.runtime.domain.v1.ActivateSamplesResponse
+	10, // 19: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:output_type -> saki.runtime.domain.v1.AdvanceBranchHeadResponse
+	16, // 20: saki.runtime.domain.v1.RuntimeDomain.QueryData:output_type -> saki.runtime.domain.v1.DataResponse
+	18, // 21: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:output_type -> saki.runtime.domain.v1.UploadTicketResponse
+	15, // [15:22] is the sub-list for method output_type
+	8,  // [8:15] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1557,7 +1727,7 @@ func file_runtime_domain_proto_init() {
 	if File_runtime_domain_proto != nil {
 		return
 	}
-	file_runtime_domain_proto_msgTypes[12].OneofWrappers = []any{
+	file_runtime_domain_proto_msgTypes[14].OneofWrappers = []any{
 		(*DataItem_LabelItem)(nil),
 		(*DataItem_SampleItem)(nil),
 		(*DataItem_AnnotationItem)(nil),
@@ -1568,7 +1738,7 @@ func file_runtime_domain_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_domain_proto_rawDesc), len(file_runtime_domain_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

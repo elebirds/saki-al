@@ -42,6 +42,19 @@ const LOOP_STATE_COLOR: Record<string, string> = {
     failed: 'error',
 };
 
+const LOOP_STAGE_COLOR: Record<string, string> = {
+    snapshot_required: 'default',
+    label_gap_required: 'warning',
+    ready_to_start: 'processing',
+    running_round: 'processing',
+    waiting_round_label: 'warning',
+    ready_to_confirm: 'success',
+    failed_retryable: 'error',
+    completed: 'success',
+    stopped: 'default',
+    failed: 'error',
+};
+
 type CreateLoopFormValues = LoopCreateRequest & {
     samplingStrategy?: string;
     queryBatchSize?: number;
@@ -389,6 +402,7 @@ const ProjectLoopOverview: React.FC = () => {
                                         <Text type="secondary">分支：{branchName}</Text>
                                         <Text type="secondary">模式：{loop.mode}</Text>
                                         <Text type="secondary">Phase：{loop.phase}</Text>
+                                        {loop.stage ? <Tag color={LOOP_STAGE_COLOR[loop.stage] || 'default'}>{loop.stage}</Tag> : null}
                                         <Text type="secondary">插件：{loop.modelArch}</Text>
                                         <Text type="secondary">策略：{loop.config?.sampling?.strategy || '-'}</Text>
                                         <div className="grid grid-cols-2 gap-2 text-xs text-github-muted">

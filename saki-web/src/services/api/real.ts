@@ -27,6 +27,7 @@ import {
     ProjectSample,
     RuntimeRound,
     RuntimeRoundCommandResponse,
+    RuntimeRoundRetryResponse,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
@@ -36,6 +37,13 @@ import {
     StepArtifactDownload,
     LoopCreateRequest,
     LoopConfirmResponse,
+    LoopContinueResponse,
+    LoopSnapshotRead,
+    LoopStageResponse,
+    LoopAnnotationGapsResponse,
+    SnapshotInitRequest,
+    SnapshotMutationResponse,
+    SnapshotUpdateRequest,
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
     LoopSummary,
@@ -266,6 +274,7 @@ function normalizeLoop(loop: Loop): Loop {
     return {
         ...loop,
         state: (loop as any).state ?? (loop as any).status ?? 'draft',
+        stage: (loop as any).stage ?? undefined,
         lastRoundId: (loop as any).lastRoundId ?? null,
         config: (loop as any).config ?? {plugin: {}},
     };
@@ -276,6 +285,7 @@ function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
         ...summary,
         state: (summary as any).state ?? (summary as any).status ?? 'draft',
         roundsTotal: (summary as any).roundsTotal ?? 0,
+        attemptsTotal: (summary as any).attemptsTotal ?? 0,
         roundsSucceeded: (summary as any).roundsSucceeded ?? 0,
         stepsTotal: (summary as any).stepsTotal ?? 0,
         stepsSucceeded: (summary as any).stepsSucceeded ?? 0,
@@ -286,10 +296,14 @@ function normalizeRound(round: RuntimeRound): RuntimeRound {
     return {
         ...round,
         state: (round as any).state ?? 'pending',
+        attemptIndex: Number((round as any).attemptIndex ?? 1),
         stepCounts: (round as any).stepCounts ?? {},
         roundType: (round as any).roundType ?? 'loop_round',
         inputCommitId: (round as any).inputCommitId ?? null,
         outputCommitId: (round as any).outputCommitId ?? null,
+        retryOfRoundId: (round as any).retryOfRoundId ?? null,
+        retryReason: (round as any).retryReason ?? null,
+        lastError: (round as any).lastError ?? (round as any).terminalReason ?? null,
         resolvedParams: (round as any).resolvedParams ?? {},
     };
 }
@@ -312,6 +326,14 @@ function normalizeStep(step: RuntimeStep): RuntimeStep {
 function normalizeRoundCommandResponse(response: RuntimeRoundCommandResponse): RuntimeRoundCommandResponse {
     return {
         ...response,
+        roundId: (response as any).roundId,
+    };
+}
+
+function normalizeRoundRetryResponse(response: RuntimeRoundRetryResponse): RuntimeRoundRetryResponse {
+    return {
+        ...response,
+        sourceRoundId: (response as any).sourceRoundId,
         roundId: (response as any).roundId,
     };
 }
@@ -920,6 +942,47 @@ export class RealApiService implements ApiService {
         };
     }
 
+    async continueLoop(loopId: string, force: boolean = false): Promise<LoopContinueResponse> {
+        const response = await this.client.post<LoopContinueResponse>(`/loops/${loopId}:continue`, null, {
+            params: {force},
+        });
+        return {
+            ...response.data,
+            state: (response.data as any).state ?? (response.data as any).status,
+            actions: (response.data as any).actions ?? [],
+            primaryAction: (response.data as any).primaryAction ?? null,
+        };
+    }
+
+    async initLoopSnapshot(loopId: string, payload: SnapshotInitRequest): Promise<SnapshotMutationResponse> {
+        const response = await this.client.post<SnapshotMutationResponse>(`/loops/${loopId}/snapshot:init`, payload);
+        return response.data;
+    }
+
+    async updateLoopSnapshot(loopId: string, payload: SnapshotUpdateRequest): Promise<SnapshotMutationResponse> {
+        const response = await this.client.post<SnapshotMutationResponse>(`/loops/${loopId}/snapshot:update`, payload);
+        return response.data;
+    }
+
+    async getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead> {
+        const response = await this.client.get<LoopSnapshotRead>(`/loops/${loopId}/snapshot`);
+        return response.data;
+    }
+
+    async getLoopStage(loopId: string): Promise<LoopStageResponse> {
+        const response = await this.client.get<LoopStageResponse>(`/loops/${loopId}/stage`);
+        return {
+            ...response.data,
+            actions: (response.data as any).actions ?? [],
+            primaryAction: (response.data as any).primaryAction ?? null,
+        };
+    }
+
+    async getLoopAnnotationGaps(loopId: string): Promise<LoopAnnotationGapsResponse> {
+        const response = await this.client.get<LoopAnnotationGapsResponse>(`/loops/${loopId}/annotation-gaps`);
+        return response.data;
+    }
+
     async pauseLoop(loopId: string): Promise<Loop> {
         const response = await this.client.post<Loop>(`/loops/${loopId}:pause`);
         return normalizeLoop(response.data);
@@ -982,6 +1045,17 @@ export class RealApiService implements ApiService {
     async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeRoundCommandResponse> {
         const response = await this.client.post<RuntimeRoundCommandResponse>(`/rounds/${roundId}:stop`, null, {params: {reason}});
         return normalizeRoundCommandResponse(response.data);
+    }
+
+    async retryRound(
+        roundId: string,
+        reason: string = 'user requested retry',
+        useLatestInputs: boolean = true,
+    ): Promise<RuntimeRoundRetryResponse> {
+        const response = await this.client.post<RuntimeRoundRetryResponse>(`/rounds/${roundId}:retry`, null, {
+            params: {reason, use_latest_inputs: useLatestInputs},
+        });
+        return normalizeRoundRetryResponse(response.data);
     }
 
     async getRound(roundId: string): Promise<RuntimeRound> {

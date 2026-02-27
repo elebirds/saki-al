@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x64ispatcher_admin.proto\x12\x18saki.dispatcher.admin.v1\"9\n\x12LoopCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07loop_id\x18\x02 \x01(\t\"H\n\x12\x43onfirmLoopRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07loop_id\x18\x02 \x01(\t\x12\r\n\x05\x66orce\x18\x03 \x01(\x08\"K\n\x13RoundCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x10\n\x08round_id\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\"I\n\x12StepCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07step_id\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\"Z\n\x0f\x43ommandResponse\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x12\n\nrequest_id\x18\x04 \x01(\t\"\x17\n\x15RuntimeSummaryRequest\"\xbc\x01\n\x16RuntimeSummaryResponse\x12\x18\n\x10online_executors\x18\x01 \x01(\x03\x12\x16\n\x0e\x62usy_executors\x18\x02 \x01(\x03\x12\x1c\n\x14pending_assign_count\x18\x03 \x01(\x03\x12\x1a\n\x12pending_stop_count\x18\x04 \x01(\x03\x12\x19\n\x11queued_step_count\x18\x05 \x01(\x03\x12\x1b\n\x13latest_heartbeat_at\x18\x06 \x01(\t\"*\n\x13\x45xecutorReadRequest\x12\x13\n\x0b\x65xecutor_id\x18\x01 \x01(\t\"\x15\n\x13\x45xecutorListRequest\"\xd4\x01\n\x0c\x45xecutorRead\x12\x13\n\x0b\x65xecutor_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x0e\n\x06status\x18\x03 \x01(\t\x12\x11\n\tis_online\x18\x04 \x01(\x08\x12\x17\n\x0f\x63urrent_step_id\x18\x05 \x01(\t\x12\x14\n\x0clast_seen_at\x18\x06 \x01(\t\x12\x12\n\nlast_error\x18\x07 \x01(\t\x12\x1c\n\x14pending_assign_count\x18\x08 \x01(\x03\x12\x1a\n\x12pending_stop_count\x18\t \x01(\x03\"L\n\x14\x45xecutorReadResponse\x12\x34\n\x04item\x18\x01 \x01(\x0b\x32&.saki.dispatcher.admin.v1.ExecutorRead\"M\n\x14\x45xecutorListResponse\x12\x35\n\x05items\x18\x01 \x03(\x0b\x32&.saki.dispatcher.admin.v1.ExecutorRead\"\x1c\n\x1aRuntimeDomainStatusRequest\"\xc5\x01\n\x1bRuntimeDomainStatusResponse\x12\x12\n\nconfigured\x18\x01 \x01(\x08\x12\x0f\n\x07\x65nabled\x18\x02 \x01(\x08\x12\r\n\x05state\x18\x03 \x01(\t\x12\x0e\n\x06target\x18\x04 \x01(\t\x12\x1c\n\x14\x63onsecutive_failures\x18\x05 \x01(\x03\x12\x12\n\nlast_error\x18\x06 \x01(\t\x12\x19\n\x11last_connected_at\x18\x07 \x01(\t\x12\x15\n\rnext_retry_at\x18\x08 \x01(\t\"E\n\x1eSetRuntimeDomainEnabledRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07\x65nabled\x18\x02 \x01(\x08\"3\n\x1dReconnectRuntimeDomainRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t2\xb9\x0b\n\x0f\x44ispatcherAdmin\x12\x64\n\tStartLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x64\n\tPauseLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x65\n\nResumeLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x63\n\x08StopLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x66\n\x0b\x43onfirmLoop\x12,.saki.dispatcher.admin.v1.ConfirmLoopRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x65\n\tStopRound\x12-.saki.dispatcher.admin.v1.RoundCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x63\n\x08StopStep\x12,.saki.dispatcher.admin.v1.StepCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12v\n\x11GetRuntimeSummary\x12/.saki.dispatcher.admin.v1.RuntimeSummaryRequest\x1a\x30.saki.dispatcher.admin.v1.RuntimeSummaryResponse\x12l\n\x0bGetExecutor\x12-.saki.dispatcher.admin.v1.ExecutorReadRequest\x1a..saki.dispatcher.admin.v1.ExecutorReadResponse\x12n\n\rListExecutors\x12-.saki.dispatcher.admin.v1.ExecutorListRequest\x1a..saki.dispatcher.admin.v1.ExecutorListResponse\x12\x85\x01\n\x16GetRuntimeDomainStatus\x12\x34.saki.dispatcher.admin.v1.RuntimeDomainStatusRequest\x1a\x35.saki.dispatcher.admin.v1.RuntimeDomainStatusResponse\x12~\n\x17SetRuntimeDomainEnabled\x12\x38.saki.dispatcher.admin.v1.SetRuntimeDomainEnabledRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12|\n\x16ReconnectRuntimeDomain\x12\x37.saki.dispatcher.admin.v1.ReconnectRuntimeDomainRequest\x1a).saki.dispatcher.admin.v1.CommandResponseB[ZYgithub.com/elebirds/saki/saki-dispatcher/internal/gen/dispatcheradminv1;dispatcheradminv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x64ispatcher_admin.proto\x12\x18saki.dispatcher.admin.v1\"9\n\x12LoopCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07loop_id\x18\x02 \x01(\t\"H\n\x12\x43onfirmLoopRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07loop_id\x18\x02 \x01(\t\x12\r\n\x05\x66orce\x18\x03 \x01(\x08\"K\n\x13RoundCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x10\n\x08round_id\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\"d\n\x11RetryRoundRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x10\n\x08round_id\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x19\n\x11use_latest_inputs\x18\x04 \x01(\x08\"I\n\x12StepCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07step_id\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\"Z\n\x0f\x43ommandResponse\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x12\n\nrequest_id\x18\x04 \x01(\t\"\x17\n\x15RuntimeSummaryRequest\"\xbc\x01\n\x16RuntimeSummaryResponse\x12\x18\n\x10online_executors\x18\x01 \x01(\x03\x12\x16\n\x0e\x62usy_executors\x18\x02 \x01(\x03\x12\x1c\n\x14pending_assign_count\x18\x03 \x01(\x03\x12\x1a\n\x12pending_stop_count\x18\x04 \x01(\x03\x12\x19\n\x11queued_step_count\x18\x05 \x01(\x03\x12\x1b\n\x13latest_heartbeat_at\x18\x06 \x01(\t\"*\n\x13\x45xecutorReadRequest\x12\x13\n\x0b\x65xecutor_id\x18\x01 \x01(\t\"\x15\n\x13\x45xecutorListRequest\"\xd4\x01\n\x0c\x45xecutorRead\x12\x13\n\x0b\x65xecutor_id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x0e\n\x06status\x18\x03 \x01(\t\x12\x11\n\tis_online\x18\x04 \x01(\x08\x12\x17\n\x0f\x63urrent_step_id\x18\x05 \x01(\t\x12\x14\n\x0clast_seen_at\x18\x06 \x01(\t\x12\x12\n\nlast_error\x18\x07 \x01(\t\x12\x1c\n\x14pending_assign_count\x18\x08 \x01(\x03\x12\x1a\n\x12pending_stop_count\x18\t \x01(\x03\"L\n\x14\x45xecutorReadResponse\x12\x34\n\x04item\x18\x01 \x01(\x0b\x32&.saki.dispatcher.admin.v1.ExecutorRead\"M\n\x14\x45xecutorListResponse\x12\x35\n\x05items\x18\x01 \x03(\x0b\x32&.saki.dispatcher.admin.v1.ExecutorRead\"\x1c\n\x1aRuntimeDomainStatusRequest\"\xc5\x01\n\x1bRuntimeDomainStatusResponse\x12\x12\n\nconfigured\x18\x01 \x01(\x08\x12\x0f\n\x07\x65nabled\x18\x02 \x01(\x08\x12\r\n\x05state\x18\x03 \x01(\t\x12\x0e\n\x06target\x18\x04 \x01(\t\x12\x1c\n\x14\x63onsecutive_failures\x18\x05 \x01(\x03\x12\x12\n\nlast_error\x18\x06 \x01(\t\x12\x19\n\x11last_connected_at\x18\x07 \x01(\t\x12\x15\n\rnext_retry_at\x18\x08 \x01(\t\"E\n\x1eSetRuntimeDomainEnabledRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t\x12\x0f\n\x07\x65nabled\x18\x02 \x01(\x08\"3\n\x1dReconnectRuntimeDomainRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\t2\x9f\x0c\n\x0f\x44ispatcherAdmin\x12\x64\n\tStartLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x64\n\tPauseLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x65\n\nResumeLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x63\n\x08StopLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x66\n\x0b\x43onfirmLoop\x12,.saki.dispatcher.admin.v1.ConfirmLoopRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x65\n\tStopRound\x12-.saki.dispatcher.admin.v1.RoundCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x64\n\nRetryRound\x12+.saki.dispatcher.admin.v1.RetryRoundRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12\x63\n\x08StopStep\x12,.saki.dispatcher.admin.v1.StepCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12v\n\x11GetRuntimeSummary\x12/.saki.dispatcher.admin.v1.RuntimeSummaryRequest\x1a\x30.saki.dispatcher.admin.v1.RuntimeSummaryResponse\x12l\n\x0bGetExecutor\x12-.saki.dispatcher.admin.v1.ExecutorReadRequest\x1a..saki.dispatcher.admin.v1.ExecutorReadResponse\x12n\n\rListExecutors\x12-.saki.dispatcher.admin.v1.ExecutorListRequest\x1a..saki.dispatcher.admin.v1.ExecutorListResponse\x12\x85\x01\n\x16GetRuntimeDomainStatus\x12\x34.saki.dispatcher.admin.v1.RuntimeDomainStatusRequest\x1a\x35.saki.dispatcher.admin.v1.RuntimeDomainStatusResponse\x12~\n\x17SetRuntimeDomainEnabled\x12\x38.saki.dispatcher.admin.v1.SetRuntimeDomainEnabledRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12|\n\x16ReconnectRuntimeDomain\x12\x37.saki.dispatcher.admin.v1.ReconnectRuntimeDomainRequest\x1a).saki.dispatcher.admin.v1.CommandResponseB[ZYgithub.com/elebirds/saki/saki-dispatcher/internal/gen/dispatcheradminv1;dispatcheradminv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,32 +38,34 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CONFIRMLOOPREQUEST']._serialized_end=183
   _globals['_ROUNDCOMMANDREQUEST']._serialized_start=185
   _globals['_ROUNDCOMMANDREQUEST']._serialized_end=260
-  _globals['_STEPCOMMANDREQUEST']._serialized_start=262
-  _globals['_STEPCOMMANDREQUEST']._serialized_end=335
-  _globals['_COMMANDRESPONSE']._serialized_start=337
-  _globals['_COMMANDRESPONSE']._serialized_end=427
-  _globals['_RUNTIMESUMMARYREQUEST']._serialized_start=429
-  _globals['_RUNTIMESUMMARYREQUEST']._serialized_end=452
-  _globals['_RUNTIMESUMMARYRESPONSE']._serialized_start=455
-  _globals['_RUNTIMESUMMARYRESPONSE']._serialized_end=643
-  _globals['_EXECUTORREADREQUEST']._serialized_start=645
-  _globals['_EXECUTORREADREQUEST']._serialized_end=687
-  _globals['_EXECUTORLISTREQUEST']._serialized_start=689
-  _globals['_EXECUTORLISTREQUEST']._serialized_end=710
-  _globals['_EXECUTORREAD']._serialized_start=713
-  _globals['_EXECUTORREAD']._serialized_end=925
-  _globals['_EXECUTORREADRESPONSE']._serialized_start=927
-  _globals['_EXECUTORREADRESPONSE']._serialized_end=1003
-  _globals['_EXECUTORLISTRESPONSE']._serialized_start=1005
-  _globals['_EXECUTORLISTRESPONSE']._serialized_end=1082
-  _globals['_RUNTIMEDOMAINSTATUSREQUEST']._serialized_start=1084
-  _globals['_RUNTIMEDOMAINSTATUSREQUEST']._serialized_end=1112
-  _globals['_RUNTIMEDOMAINSTATUSRESPONSE']._serialized_start=1115
-  _globals['_RUNTIMEDOMAINSTATUSRESPONSE']._serialized_end=1312
-  _globals['_SETRUNTIMEDOMAINENABLEDREQUEST']._serialized_start=1314
-  _globals['_SETRUNTIMEDOMAINENABLEDREQUEST']._serialized_end=1383
-  _globals['_RECONNECTRUNTIMEDOMAINREQUEST']._serialized_start=1385
-  _globals['_RECONNECTRUNTIMEDOMAINREQUEST']._serialized_end=1436
-  _globals['_DISPATCHERADMIN']._serialized_start=1439
-  _globals['_DISPATCHERADMIN']._serialized_end=2904
+  _globals['_RETRYROUNDREQUEST']._serialized_start=262
+  _globals['_RETRYROUNDREQUEST']._serialized_end=362
+  _globals['_STEPCOMMANDREQUEST']._serialized_start=364
+  _globals['_STEPCOMMANDREQUEST']._serialized_end=437
+  _globals['_COMMANDRESPONSE']._serialized_start=439
+  _globals['_COMMANDRESPONSE']._serialized_end=529
+  _globals['_RUNTIMESUMMARYREQUEST']._serialized_start=531
+  _globals['_RUNTIMESUMMARYREQUEST']._serialized_end=554
+  _globals['_RUNTIMESUMMARYRESPONSE']._serialized_start=557
+  _globals['_RUNTIMESUMMARYRESPONSE']._serialized_end=745
+  _globals['_EXECUTORREADREQUEST']._serialized_start=747
+  _globals['_EXECUTORREADREQUEST']._serialized_end=789
+  _globals['_EXECUTORLISTREQUEST']._serialized_start=791
+  _globals['_EXECUTORLISTREQUEST']._serialized_end=812
+  _globals['_EXECUTORREAD']._serialized_start=815
+  _globals['_EXECUTORREAD']._serialized_end=1027
+  _globals['_EXECUTORREADRESPONSE']._serialized_start=1029
+  _globals['_EXECUTORREADRESPONSE']._serialized_end=1105
+  _globals['_EXECUTORLISTRESPONSE']._serialized_start=1107
+  _globals['_EXECUTORLISTRESPONSE']._serialized_end=1184
+  _globals['_RUNTIMEDOMAINSTATUSREQUEST']._serialized_start=1186
+  _globals['_RUNTIMEDOMAINSTATUSREQUEST']._serialized_end=1214
+  _globals['_RUNTIMEDOMAINSTATUSRESPONSE']._serialized_start=1217
+  _globals['_RUNTIMEDOMAINSTATUSRESPONSE']._serialized_end=1414
+  _globals['_SETRUNTIMEDOMAINENABLEDREQUEST']._serialized_start=1416
+  _globals['_SETRUNTIMEDOMAINENABLEDREQUEST']._serialized_end=1485
+  _globals['_RECONNECTRUNTIMEDOMAINREQUEST']._serialized_start=1487
+  _globals['_RECONNECTRUNTIMEDOMAINREQUEST']._serialized_end=1538
+  _globals['_DISPATCHERADMIN']._serialized_start=1541
+  _globals['_DISPATCHERADMIN']._serialized_end=3108
 # @@protoc_insertion_point(module_scope)

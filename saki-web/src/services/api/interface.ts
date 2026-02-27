@@ -26,6 +26,7 @@ import {
     ProjectSample,
     RuntimeRound,
     RuntimeRoundCommandResponse,
+    RuntimeRoundRetryResponse,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
@@ -38,6 +39,13 @@ import {
     LoopConfirmResponse,
     LoopUpdateRequest,
     LoopSummary,
+    LoopSnapshotRead,
+    LoopStageResponse,
+    LoopAnnotationGapsResponse,
+    LoopContinueResponse,
+    SnapshotInitRequest,
+    SnapshotMutationResponse,
+    SnapshotUpdateRequest,
     SimulationComparison,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
@@ -239,6 +247,12 @@ export interface ApiService {
     startLoop(loopId: string): Promise<Loop>;
 
     confirmLoop(loopId: string, force?: boolean): Promise<LoopConfirmResponse>;
+    continueLoop(loopId: string, force?: boolean): Promise<LoopContinueResponse>;
+    initLoopSnapshot(loopId: string, payload: SnapshotInitRequest): Promise<SnapshotMutationResponse>;
+    updateLoopSnapshot(loopId: string, payload: SnapshotUpdateRequest): Promise<SnapshotMutationResponse>;
+    getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;
+    getLoopStage(loopId: string): Promise<LoopStageResponse>;
+    getLoopAnnotationGaps(loopId: string): Promise<LoopAnnotationGapsResponse>;
 
     pauseLoop(loopId: string): Promise<Loop>;
 
@@ -261,6 +275,7 @@ export interface ApiService {
     getLoopRounds(loopId: string, limit?: number): Promise<RuntimeRound[]>;
 
     stopRound(roundId: string, reason?: string): Promise<RuntimeRoundCommandResponse>;
+    retryRound(roundId: string, reason?: string, useLatestInputs?: boolean): Promise<RuntimeRoundRetryResponse>;
 
     getRound(roundId: string): Promise<RuntimeRound>;
 

@@ -1,5 +1,20 @@
 export type LoopState = 'draft' | 'running' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed';
 export type LoopMode = 'active_learning' | 'simulation' | 'manual';
+export type LoopStage =
+    | 'snapshot_required'
+    | 'label_gap_required'
+    | 'ready_to_start'
+    | 'running_round'
+    | 'waiting_round_label'
+    | 'ready_to_confirm'
+    | 'failed_retryable'
+    | 'completed'
+    | 'stopped'
+    | 'failed';
+
+export type SnapshotUpdateMode = 'init' | 'append_all_to_pool' | 'append_split';
+export type SnapshotValPolicy = 'anchor_only' | 'expand_with_batch_val';
+export type SnapshotPartition = 'train_seed' | 'train_pool' | 'val_anchor' | 'val_batch' | 'test_anchor' | 'test_batch';
 
 export type LoopPhase =
     | 'al_bootstrap'
@@ -71,9 +86,12 @@ export interface Loop {
     name: string;
     mode: LoopMode;
     phase: LoopPhase;
+    stage?: LoopStage;
     phaseMeta: Record<string, any>;
+    stageMeta?: Record<string, any>;
     modelArch: string;
     config: LoopRuntimeConfig;
+    activeSnapshotVersionId?: string | null;
     experimentGroupId?: string | null;
     currentIteration: number;
     state: LoopState;
@@ -98,6 +116,7 @@ export interface RuntimeRound {
     projectId: string;
     loopId: string;
     roundIndex: number;
+    attemptIndex: number;
     mode: LoopMode;
     state: RuntimeRoundState;
     stepCounts: Record<string, number>;
@@ -105,6 +124,8 @@ export interface RuntimeRound {
     pluginId: string;
     inputCommitId?: string | null;
     outputCommitId?: string | null;
+    retryOfRoundId?: string | null;
+    retryReason?: string | null;
     assignedExecutorId?: string | null;
     startedAt?: string | null;
     endedAt?: string | null;
@@ -193,6 +214,13 @@ export interface RuntimeRoundCommandResponse {
     status: string;
 }
 
+export interface RuntimeRoundRetryResponse {
+    requestId: string;
+    sourceRoundId: string;
+    roundId: string;
+    status: string;
+}
+
 export interface RuntimeStepCommandResponse {
     requestId: string;
     stepId: string;
@@ -246,6 +274,7 @@ export interface LoopSummary {
     state: LoopState;
     phase: LoopPhase;
     roundsTotal: number;
+    attemptsTotal: number;
     roundsSucceeded: number;
     stepsTotal: number;
     stepsSucceeded: number;
@@ -295,6 +324,108 @@ export interface LoopConfirmResponse {
     loopId: string;
     phase: LoopPhase;
     state: LoopState;
+}
+
+export interface LoopContinueResponse {
+    loopId: string;
+    stage: LoopStage;
+    stageMeta: Record<string, any>;
+    primaryAction?: LoopActionSpec | null;
+    actions: LoopActionSpec[];
+    executedAction?: string | null;
+    message: string;
+    phase: LoopPhase;
+    state: LoopState;
+}
+
+export interface LoopActionSpec {
+    key: string;
+    label: string;
+    runnable: boolean;
+    requiresConfirm: boolean;
+    payload: Record<string, any>;
+}
+
+export interface SnapshotInitRequest {
+    seed?: string;
+    trainSeedRatio?: number;
+    valRatio?: number;
+    testRatio?: number;
+    valPolicy?: SnapshotValPolicy;
+    sampleIds?: string[];
+}
+
+export interface SnapshotUpdateRequest {
+    mode?: Exclude<SnapshotUpdateMode, 'init'>;
+    seed?: string;
+    sampleIds?: string[];
+    batchTestRatio?: number;
+    batchValRatio?: number;
+    valPolicy?: SnapshotValPolicy;
+}
+
+export interface SnapshotVersionRead {
+    id: string;
+    loopId: string;
+    versionIndex: number;
+    parentVersionId?: string | null;
+    updateMode: SnapshotUpdateMode;
+    valPolicy: SnapshotValPolicy;
+    seed: string;
+    ruleJson: Record<string, any>;
+    manifestHash: string;
+    sampleCount: number;
+    createdBy?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface SnapshotVersionSummaryRead {
+    id: string;
+    versionIndex: number;
+    updateMode: SnapshotUpdateMode;
+    valPolicy: SnapshotValPolicy;
+    sampleCount: number;
+    manifestHash: string;
+    createdAt: string;
+}
+
+export interface LoopSnapshotRead {
+    loopId: string;
+    activeSnapshotVersionId?: string | null;
+    active?: SnapshotVersionRead | null;
+    history: SnapshotVersionSummaryRead[];
+    partitionCounts: Record<string, number>;
+}
+
+export interface SnapshotMutationResponse {
+    loopId: string;
+    stage: LoopStage;
+    activeSnapshotVersionId: string;
+    versionIndex: number;
+    created: boolean;
+    sampleCount: number;
+}
+
+export interface LoopStageResponse {
+    loopId: string;
+    stage: LoopStage;
+    stageMeta: Record<string, any>;
+    primaryAction?: LoopActionSpec | null;
+    actions: LoopActionSpec[];
+}
+
+export interface AnnotationGapBucket {
+    partition: SnapshotPartition;
+    total: number;
+    missingCount: number;
+    sampleIds: string[];
+}
+
+export interface LoopAnnotationGapsResponse {
+    loopId: string;
+    commitId?: string | null;
+    buckets: AnnotationGapBucket[];
 }
 
 export interface RoundPredictionCleanupResponse {

@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 )
@@ -138,6 +140,14 @@ func (s *Service) ConfirmLoop(
 			if loop.Phase != phaseALWaitAnnotation {
 				return "rejected", "active-learning loop is not waiting for annotation", nil
 			}
+			latestRound, found, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
+			if err != nil {
+				return "", "", err
+			}
+			if !found {
+				return "rejected", "no round found for active-learning confirm", nil
+			}
+
 			nextRound, err := s.getNextRoundIndexTx(ctx, tx, loop.ID)
 			if err != nil {
 				return "", "", err
@@ -158,19 +168,65 @@ func (s *Service) ConfirmLoop(
 			}
 
 			latestCommitID := loop.LastConfirmedCommitID
-			if !force {
-				newLabels, latestCommit, err := s.countNewLabels(ctx, loop.ProjectID, loop.BranchID, loop.LastConfirmedCommitID)
+			minRequired := loop.MinNewLabelsPerRound
+			if minRequired <= 0 {
+				minRequired = 1
+			}
+			revealedCount := 0
+			effectiveMinRequired := minRequired
+			if s.domainClient != nil && s.domainClient.Enabled() {
+				response, err := s.domainClient.ResolveRoundReveal(
+					ctx,
+					loop.ID.String(),
+					int32(latestRound.RoundIndex),
+					loop.BranchID.String(),
+					force,
+					int32(minRequired),
+				)
 				if err != nil {
+					if st, ok := grpcstatus.FromError(err); ok && st.Code() == codes.InvalidArgument {
+						return "rejected", st.Message(), nil
+					}
 					return "", "", err
 				}
-				if newLabels <= 0 {
-					return "rejected", "no new labels since last confirmation", nil
+				revealedCount = int(response.GetRevealedCount())
+				selectedCount := int(response.GetSelectedCount())
+				if selectedCount > 0 && selectedCount < effectiveMinRequired {
+					effectiveMinRequired = selectedCount
 				}
-				latestCommitID = latestCommit
+				if !force && revealedCount < effectiveMinRequired {
+					return "rejected", fmt.Sprintf(
+						"revealed samples %d < min_required %d (configured=%d, selected=%d)",
+						revealedCount,
+						effectiveMinRequired,
+						minRequired,
+						selectedCount,
+					), nil
+				}
+				latestCommitRaw := strings.TrimSpace(response.GetLatestCommitId())
+				if latestCommitRaw != "" {
+					parsedCommitID, parseErr := parseUUID(latestCommitRaw)
+					if parseErr != nil {
+						return "", "", parseErr
+					}
+					latestCommitID = &parsedCommitID
+				}
 			} else {
-				headCommitID, _, err := s.resolveBranchHead(ctx, loop.BranchID)
-				if err == nil {
-					latestCommitID = headCommitID
+				if !force {
+					newLabels, latestCommit, err := s.countNewLabels(ctx, loop.ProjectID, loop.BranchID, loop.LastConfirmedCommitID)
+					if err != nil {
+						return "", "", err
+					}
+					if int(newLabels) < minRequired {
+						return "rejected", fmt.Sprintf("new labels %d < min_required %d", newLabels, minRequired), nil
+					}
+					latestCommitID = latestCommit
+					revealedCount = int(newLabels)
+				} else {
+					headCommitID, _, err := s.resolveBranchHead(ctx, loop.BranchID)
+					if err == nil {
+						latestCommitID = headCommitID
+					}
 				}
 			}
 
@@ -189,7 +245,7 @@ func (s *Service) ConfirmLoop(
 					return "", "", err
 				}
 			}
-			return "applied", "active-learning confirm accepted", nil
+			return "applied", fmt.Sprintf("active-learning confirm accepted (revealed=%d)", revealedCount), nil
 
 		case modeSIM:
 			return "rejected", "simulation loop does not require manual confirm", nil
@@ -247,6 +303,92 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 			s.dispatcher.StopStep(stepID.String(), reason)
 		}
 		return "applied", "stop_round applied", nil
+	})
+}
+
+func (s *Service) RetryRound(
+	ctx context.Context,
+	commandID string,
+	roundID string,
+	reason string,
+	useLatestInputs bool,
+) (CommandResult, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "user requested retry"
+	}
+	return s.withCommand(ctx, commandID, "retry_round", roundID, func(tx pgx.Tx, _ string) (string, string, error) {
+		roundPGID, err := parseUUID(roundID)
+		if err != nil {
+			return "rejected", "round not found", nil
+		}
+
+		targetRound, err := s.qtx(tx).GetRoundForRetry(ctx, roundPGID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return "rejected", "round not found", nil
+			}
+			return "", "", err
+		}
+		if targetRound.State != roundFailed {
+			return "rejected", fmt.Sprintf("round in state %s cannot retry", targetRound.State), nil
+		}
+
+		loop, ok, err := s.lockLoop(ctx, tx, targetRound.LoopID)
+		if err != nil {
+			return "", "", err
+		}
+		if !ok {
+			return "conflict", "loop is busy, please retry", nil
+		}
+		if loop.Status != statusFailed && loop.Status != statusStopped {
+			return "rejected", fmt.Sprintf("loop in status %s cannot retry round", loop.Status), nil
+		}
+
+		latestRound, found, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
+		if err != nil {
+			return "", "", err
+		}
+		if !found || latestRound.ID != targetRound.ID {
+			return "rejected", "only latest failed round can be retried", nil
+		}
+		if latestRound.SummaryStatus != roundFailed {
+			return "rejected", "latest round is not failed", nil
+		}
+
+		// BUGFIX(2026-02-27): retry guard should only check in-flight steps.
+		// Failed rounds keep downstream steps in PENDING; treating them as active blocks all retries.
+		activeSteps, err := s.qtx(tx).CountLoopInFlightSteps(ctx, loop.ID)
+		if err != nil {
+			return "", "", err
+		}
+		if int(activeSteps) > 0 {
+			return "rejected", "loop still has active steps", nil
+		}
+
+		nextAttempt, err := s.getNextRoundAttemptIndexTx(ctx, tx, loop.ID, int(targetRound.RoundIndex))
+		if err != nil {
+			return "", "", err
+		}
+		createdRoundID, err := s.createRoundAttemptTx(
+			ctx,
+			tx,
+			loop,
+			int(targetRound.RoundIndex),
+			nextAttempt,
+			&targetRound.ID,
+			reason,
+		)
+		if err != nil {
+			return "", "", err
+		}
+		if createdRoundID == nil {
+			return "rejected", "failed to create retry attempt", nil
+		}
+		if !useLatestInputs {
+			// 当前实现固定按最新分支头与最新 loop 配置重跑，参数保留用于协议兼容。
+		}
+		return "applied", createdRoundID.String(), nil
 	})
 }
 
@@ -558,6 +700,22 @@ func (s *Service) getNextRoundIndexTx(ctx context.Context, tx pgx.Tx, loopID uui
 	return int(next), nil
 }
 
+func (s *Service) getNextRoundAttemptIndexTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	loopID uuid.UUID,
+	roundIndex int,
+) (int, error) {
+	next, err := s.qtx(tx).GetNextRoundAttemptIndex(ctx, db.GetNextRoundAttemptIndexParams{
+		LoopID:     loopID,
+		RoundIndex: int32(roundIndex),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int(next), nil
+}
+
 func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow, commandID string) (bool, error) {
 	nextRound, err := s.getNextRoundIndexTx(ctx, tx, loop.ID)
 	if err != nil {
@@ -566,6 +724,37 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 	if nextRound > loop.MaxRounds {
 		return false, nil
 	}
+	createdRoundID, err := s.createRoundAttemptTx(
+		ctx,
+		tx,
+		loop,
+		nextRound,
+		1,
+		nil,
+		"",
+	)
+	if err != nil {
+		return false, err
+	}
+	return createdRoundID != nil, nil
+}
+
+func (s *Service) createRoundAttemptTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	loop loopRow,
+	roundIndex int,
+	attemptIndex int,
+	retryOfRoundID *uuid.UUID,
+	retryReason string,
+) (*uuid.UUID, error) {
+	if roundIndex <= 0 {
+		return nil, fmt.Errorf("invalid round_index: %d", roundIndex)
+	}
+	if attemptIndex <= 0 {
+		return nil, fmt.Errorf("invalid attempt_index: %d", attemptIndex)
+	}
+
 	sourceCommitID, projectIDFromBranch, err := s.resolveBranchHead(ctx, loop.BranchID)
 	if err != nil {
 		s.logger.Warn().Err(err).Str("loop_id", loop.ID.String()).Msg("解析分支头失败，继续使用空 source commit")
@@ -576,15 +765,15 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 	}
 
 	roundID := uuid.New()
-	roundConfig := compileRoundConfig(loop, nextRound)
+	roundConfig := compileRoundConfig(loop, roundIndex)
 	paramsJSON, err := marshalJSON(roundConfig)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	resourcesJSON := "{}"
 	if resourcePayload := extractRoundResources(loop.Config); resourcePayload != nil {
 		if resourcesJSON, err = marshalJSON(resourcePayload); err != nil {
-			return false, err
+			return nil, err
 		}
 	}
 
@@ -592,7 +781,8 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		RoundID:        roundID,
 		ProjectID:      projectID,
 		LoopID:         loop.ID,
-		RoundIndex:     int32(nextRound),
+		RoundIndex:     int32(roundIndex),
+		AttemptIndex:   int32(attemptIndex),
 		Mode:           loop.Mode,
 		State:          roundPending,
 		StepCounts:     []byte(`{}`),
@@ -600,13 +790,15 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		ResolvedParams: []byte(paramsJSON),
 		Resources:      []byte(resourcesJSON),
 		InputCommitID:  sourceCommitID,
+		RetryOfRoundID: retryOfRoundID,
+		RetryReason:    toNullablePGText(retryReason),
 	}); err != nil {
-		return false, err
+		return nil, err
 	}
 
 	stepPlan := stepPlanByMode(loop.Mode)
 	if len(stepPlan) == 0 {
-		return false, fmt.Errorf("unsupported loop mode for step plan: %s", loop.Mode)
+		return nil, fmt.Errorf("unsupported loop mode for step plan: %s", loop.Mode)
 	}
 	var previousStepID *uuid.UUID
 	for idx, stepSpec := range stepPlan {
@@ -617,25 +809,25 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 		}
 		dependsOnJSON, err := marshalJSON(dependsOn)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		stepConfig := compileStepConfig(roundConfig, stepSpec.StepType, loop.Mode)
 		stepParamsJSON, err := marshalJSON(stepConfig)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 		if err := s.qtx(tx).InsertStep(ctx, db.InsertStepParams{
 			StepID:           stepID,
 			RoundID:          roundID,
 			StepType:         stepSpec.StepType,
 			DispatchKind:     stepSpec.DispatchKind,
-			RoundIndex:       int32(nextRound),
+			RoundIndex:       int32(roundIndex),
 			StepIndex:        int32(idx + 1),
 			DependsOnStepIds: []byte(dependsOnJSON),
 			ResolvedParams:   []byte(stepParamsJSON),
 			InputCommitID:    sourceCommitID,
 		}); err != nil {
-			return false, err
+			return nil, err
 		}
 		previousStepID = &stepID
 		if idx == 0 {
@@ -646,13 +838,13 @@ func (s *Service) createNextRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow
 	phase := stepPlan[0].Phase
 
 	if err := s.qtx(tx).UpdateLoopAfterRoundCreated(ctx, db.UpdateLoopAfterRoundCreatedParams{
-		CurrentIteration: int32(nextRound),
+		CurrentIteration: int32(roundIndex),
 		Phase:            phase,
 		LoopID:           loop.ID,
 	}); err != nil {
-		return false, err
+		return nil, err
 	}
-	return true, nil
+	return &roundID, nil
 }
 
 func (s *Service) refreshRoundAggregateTx(ctx context.Context, tx pgx.Tx, roundID uuid.UUID) (db.Roundstatus, error) {

@@ -126,6 +126,33 @@ class YoloDetectionPlugin(ExecutorPlugin):
         self.logger.info(f"Starting training with params: {list(params.keys())}")
         return await self._internal.train(workspace, params, emit)
 
+    async def eval(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        self.logger.info(f"Starting eval with params: {list(params.keys())}")
+        return await self._internal.eval(workspace, params, emit)
+
+    async def export(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        self.logger.info(f"Starting export with params: {list(params.keys())}")
+        return await self._internal.export(workspace, params, emit)
+
+    async def upload_artifact(
+            self,
+            workspace: Workspace,
+            params: dict[str, Any],
+            emit: EventCallback,
+    ) -> TrainOutput:
+        self.logger.info(f"Starting upload_artifact with params: {list(params.keys())}")
+        return await self._internal.upload_artifact(workspace, params, emit)
+
     async def predict_unlabeled(
         self,
         workspace: Workspace,

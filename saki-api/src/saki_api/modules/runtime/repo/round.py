@@ -22,18 +22,21 @@ class RoundRepository(BaseRepository[Round]):
     async def get_latest_by_loop(self, loop_id: uuid.UUID) -> Optional[Round]:
         rounds = await self.list(
             filters=[Round.loop_id == loop_id],
-            order_by=[Round.round_index.desc(), Round.created_at.desc()],
+            order_by=[Round.round_index.desc(), Round.attempt_index.desc(), Round.created_at.desc()],
         )
         return rounds[0] if rounds else None
 
     async def list_by_loop(self, loop_id: uuid.UUID) -> List[Round]:
-        return await self.list(filters=[Round.loop_id == loop_id], order_by=[Round.round_index.asc()])
+        return await self.list(
+            filters=[Round.loop_id == loop_id],
+            order_by=[Round.round_index.asc(), Round.attempt_index.asc(), Round.created_at.asc()],
+        )
 
     async def list_by_loop_desc(self, loop_id: uuid.UUID, *, limit: int = 50) -> List[Round]:
         stmt = (
             select(Round)
             .where(Round.loop_id == loop_id)
-            .order_by(Round.round_index.desc(), Round.created_at.desc())
+            .order_by(Round.round_index.desc(), Round.attempt_index.desc(), Round.created_at.desc())
             .limit(max(1, limit))
         )
         rows = await self.session.exec(stmt)

@@ -135,6 +135,22 @@ class LoopMode(str, Enum):
     MANUAL = "manual"
 
 
+class LoopStage(str, Enum):
+    """
+    Enum for user-facing loop stage.
+    """
+    SNAPSHOT_REQUIRED = "snapshot_required"
+    LABEL_GAP_REQUIRED = "label_gap_required"
+    READY_TO_START = "ready_to_start"
+    RUNNING_ROUND = "running_round"
+    WAITING_ROUND_LABEL = "waiting_round_label"
+    READY_TO_CONFIRM = "ready_to_confirm"
+    FAILED_RETRYABLE = "failed_retryable"
+    COMPLETED = "completed"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
 class LoopPhase(str, Enum):
     """
     Enum for loop phase state machine.
@@ -160,6 +176,45 @@ class LoopPhase(str, Enum):
     MANUAL_EVAL = "manual_eval"
     MANUAL_EXPORT = "manual_export"
     MANUAL_FINALIZE = "manual_finalize"
+
+
+class SnapshotUpdateMode(str, Enum):
+    """
+    Enum for snapshot version update mode.
+    """
+    INIT = "init"
+    APPEND_ALL_TO_POOL = "append_all_to_pool"
+    APPEND_SPLIT = "append_split"
+
+
+class SnapshotValPolicy(str, Enum):
+    """
+    Enum for validation policy in AL snapshot.
+    """
+    ANCHOR_ONLY = "anchor_only"
+    EXPAND_WITH_BATCH_VAL = "expand_with_batch_val"
+
+
+class SnapshotPartition(str, Enum):
+    """
+    Enum for snapshot sample partition.
+    """
+    TRAIN_SEED = "train_seed"
+    TRAIN_POOL = "train_pool"
+    VAL_ANCHOR = "val_anchor"
+    VAL_BATCH = "val_batch"
+    TEST_ANCHOR = "test_anchor"
+    TEST_BATCH = "test_batch"
+
+
+class VisibilitySource(str, Enum):
+    """
+    Enum for AL loop visibility source.
+    """
+    SNAPSHOT_INIT = "snapshot_init"
+    SEED_INIT = "seed_init"
+    ROUND_REVEAL = "round_reveal"
+    FORCE_REVEAL = "force_reveal"
 
 
 class RoundStatus(str, Enum):

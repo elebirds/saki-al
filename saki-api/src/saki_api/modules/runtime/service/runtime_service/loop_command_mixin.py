@@ -15,7 +15,7 @@ from saki_api.modules.runtime.api.round_step import (
     LoopUpdateRequest,
     SimulationExperimentCreateRequest,
 )
-from saki_api.modules.runtime.domain import phase_for_mode
+from saki_api.modules.runtime.domain import phase_for_mode, stage_for_mode
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.shared.modeling.enums import LoopMode
 
@@ -59,7 +59,9 @@ class LoopCommandMixin:
             name=payload.name,
             mode=payload.mode,
             phase=phase_for_mode(payload.mode),
+            stage=stage_for_mode(payload.mode),
             phase_meta={},
+            stage_meta={},
             model_arch=payload.model_arch,
             experiment_group_id=payload.experiment_group_id,
             config=normalized_config,
@@ -72,6 +74,7 @@ class LoopCommandMixin:
             stop_patience_rounds=2,
             stop_min_gain=0.002,
             auto_register_model=True,
+            active_snapshot_version_id=None,
         )
         return await self.loop_repo.create(create_data.model_dump(exclude_none=True))
 
@@ -96,6 +99,7 @@ class LoopCommandMixin:
         if payload.mode is not None:
             patch.mode = payload.mode
             patch.phase = phase_for_mode(payload.mode)
+            patch.stage = stage_for_mode(payload.mode)
 
         if payload.config is not None or payload.mode is not None:
             mode_text = str(next_mode.value if hasattr(next_mode, "value") else next_mode)

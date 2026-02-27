@@ -18,6 +18,7 @@ SELECT
   current_iteration,
   max_rounds,
   query_batch_size,
+  min_new_labels_per_round,
   model_arch,
   config,
   last_confirmed_commit_id
@@ -29,28 +30,47 @@ FOR UPDATE;
 SELECT
   id,
   round_index,
+  attempt_index,
   state AS summary_status,
   ended_at
 FROM round
 WHERE loop_id = sqlc.arg(loop_id)::uuid
-ORDER BY round_index DESC, created_at DESC
+ORDER BY round_index DESC, attempt_index DESC, created_at DESC
 LIMIT 1;
+
+-- name: GetRoundForRetry :one
+SELECT
+  id,
+  loop_id,
+  round_index,
+  attempt_index,
+  state
+FROM round
+WHERE id = sqlc.arg(round_id)::uuid
+FOR UPDATE;
 
 -- name: GetNextRoundIndex :one
 SELECT COALESCE(MAX(round_index), 0)::int + 1 AS next_round_index
 FROM round
 WHERE loop_id = sqlc.arg(loop_id)::uuid;
 
+-- name: GetNextRoundAttemptIndex :one
+SELECT COALESCE(MAX(attempt_index), 0)::int + 1 AS next_attempt_index
+FROM round
+WHERE loop_id = sqlc.arg(loop_id)::uuid
+  AND round_index = sqlc.arg(round_index);
+
 -- name: InsertRound :exec
 INSERT INTO round(
-  id, project_id, loop_id, round_index, mode, state, step_counts, round_type, plugin_id,
-  resolved_params, resources, input_commit_id, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
+  id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, round_type, plugin_id,
+  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
   created_at, updated_at
 ) VALUES (
   sqlc.arg(round_id)::uuid,
   sqlc.arg(project_id)::uuid,
   sqlc.arg(loop_id)::uuid,
   sqlc.arg(round_index),
+  sqlc.arg(attempt_index),
   sqlc.arg(mode)::loopmode,
   sqlc.arg(state)::roundstatus,
   sqlc.arg(step_counts)::jsonb,
@@ -59,6 +79,8 @@ INSERT INTO round(
   sqlc.arg(resolved_params)::jsonb,
   sqlc.arg(resources)::jsonb,
   sqlc.narg(input_commit_id)::uuid,
+  sqlc.narg(retry_of_round_id)::uuid,
+  sqlc.narg(retry_reason)::text,
   0,
   NULL,
   '{}'::jsonb,
@@ -255,6 +277,13 @@ FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE j.loop_id = sqlc.arg(loop_id)::uuid
   AND t.state IN ('PENDING'::stepstatus, 'READY'::stepstatus, 'DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
+
+-- name: CountLoopInFlightSteps :one
+SELECT COUNT(*)::int AS count
+FROM step t
+JOIN round j ON j.id = t.round_id
+WHERE j.loop_id = sqlc.arg(loop_id)::uuid
+  AND t.state IN ('DISPATCHING'::stepstatus, 'RUNNING'::stepstatus, 'RETRYING'::stepstatus);
 
 -- name: FindRoundIDByStep :one
 SELECT round_id

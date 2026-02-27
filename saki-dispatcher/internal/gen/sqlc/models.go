@@ -1110,6 +1110,7 @@ type Round struct {
 	ProjectID          uuid.UUID
 	LoopID             uuid.UUID
 	RoundIndex         int32
+	AttemptIndex       int32
 	Mode               Loopmode
 	State              Roundstatus
 	StepCounts         []byte
@@ -1119,6 +1120,8 @@ type Round struct {
 	Resources          []byte
 	InputCommitID      *uuid.UUID
 	OutputCommitID     *uuid.UUID
+	RetryOfRoundID     *uuid.UUID
+	RetryReason        pgtype.Text
 	AssignedExecutorID pgtype.Text
 	StartedAt          pgtype.Timestamp
 	EndedAt            pgtype.Timestamp

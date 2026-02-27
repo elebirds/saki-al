@@ -8,8 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from saki_api.modules.shared.modeling.enums import (
     LoopMode,
+    LoopStage,
     LoopStatus,
     RoundStatus,
+    SnapshotPartition,
+    SnapshotUpdateMode,
+    SnapshotValPolicy,
     StepDispatchKind,
     StepStatus,
     StepType,
@@ -51,7 +55,9 @@ class LoopCreateData(BaseModel):
     name: str
     mode: LoopMode = LoopMode.ACTIVE_LEARNING
     phase: LoopPhase = LoopPhase.AL_BOOTSTRAP
+    stage: LoopStage = LoopStage.SNAPSHOT_REQUIRED
     phase_meta: Dict[str, Any] = Field(default_factory=dict)
+    stage_meta: Dict[str, Any] = Field(default_factory=dict)
     model_arch: str
     experiment_group_id: Optional[uuid.UUID] = None
     config: Dict[str, Any] = Field(default_factory=dict)
@@ -64,6 +70,7 @@ class LoopCreateData(BaseModel):
     stop_patience_rounds: int = Field(default=2, ge=1)
     stop_min_gain: float = Field(default=0.002)
     auto_register_model: bool = True
+    active_snapshot_version_id: Optional[uuid.UUID] = None
     terminal_reason: Optional[str] = None
 
 
@@ -71,7 +78,9 @@ class LoopPatch(BaseModel):
     name: Optional[str] = None
     mode: Optional[LoopMode] = None
     phase: Optional[LoopPhase] = None
+    stage: Optional[LoopStage] = None
     phase_meta: Optional[Dict[str, Any]] = None
+    stage_meta: Optional[Dict[str, Any]] = None
     model_arch: Optional[str] = None
     experiment_group_id: Optional[uuid.UUID] = None
     config: Optional[Dict[str, Any]] = None
@@ -84,6 +93,7 @@ class LoopPatch(BaseModel):
     stop_patience_rounds: Optional[int] = Field(default=None, ge=1)
     stop_min_gain: Optional[float] = None
     auto_register_model: Optional[bool] = None
+    active_snapshot_version_id: Optional[uuid.UUID] = None
     terminal_reason: Optional[str] = None
 
 
@@ -96,9 +106,12 @@ class LoopRead(BaseModel):
     name: str
     mode: LoopMode
     phase: LoopPhase
+    stage: LoopStage
     phase_meta: Dict[str, Any]
+    stage_meta: Dict[str, Any]
     model_arch: str
     config: Dict[str, Any]
+    active_snapshot_version_id: Optional[uuid.UUID] = None
     experiment_group_id: Optional[uuid.UUID] = None
     current_iteration: int
     status: LoopStatus
@@ -135,6 +148,7 @@ class RoundRead(BaseModel):
     project_id: uuid.UUID
     loop_id: uuid.UUID
     round_index: int
+    attempt_index: int
     mode: LoopMode
     state: RoundStatus
     step_counts: Dict[str, int]
@@ -142,6 +156,8 @@ class RoundRead(BaseModel):
     plugin_id: str
     input_commit_id: Optional[uuid.UUID] = None
     output_commit_id: Optional[uuid.UUID] = None
+    retry_of_round_id: Optional[uuid.UUID] = None
+    retry_reason: Optional[str] = None
     assigned_executor_id: Optional[str] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
@@ -158,6 +174,13 @@ class RoundRead(BaseModel):
 
 class RoundCommandResponse(BaseModel):
     request_id: str
+    round_id: uuid.UUID
+    status: str
+
+
+class RoundRetryResponse(BaseModel):
+    request_id: str
+    source_round_id: uuid.UUID
     round_id: uuid.UUID
     status: str
 
@@ -241,6 +264,7 @@ class LoopSummaryRead(BaseModel):
     status: LoopStatus
     phase: LoopPhase
     rounds_total: int
+    attempts_total: int
     rounds_succeeded: int
     steps_total: int
     steps_succeeded: int
@@ -290,6 +314,108 @@ class LoopConfirmResponse(BaseModel):
     loop_id: uuid.UUID
     phase: LoopPhase
     state: LoopStatus
+
+
+class LoopActionSpec(BaseModel):
+    key: str
+    label: str
+    runnable: bool = True
+    requires_confirm: bool = False
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LoopContinueResponse(BaseModel):
+    loop_id: uuid.UUID
+    stage: LoopStage
+    stage_meta: Dict[str, Any] = Field(default_factory=dict)
+    primary_action: Optional[LoopActionSpec] = None
+    actions: List[LoopActionSpec] = Field(default_factory=list)
+    executed_action: Optional[str] = None
+    message: str = ""
+    phase: LoopPhase
+    state: LoopStatus
+
+
+class SnapshotInitRequest(BaseModel):
+    seed: Optional[str] = None
+    train_seed_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    val_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    test_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    val_policy: SnapshotValPolicy = SnapshotValPolicy.ANCHOR_ONLY
+    sample_ids: Optional[List[uuid.UUID]] = None
+
+
+class SnapshotUpdateRequest(BaseModel):
+    mode: SnapshotUpdateMode = SnapshotUpdateMode.APPEND_ALL_TO_POOL
+    seed: Optional[str] = None
+    sample_ids: Optional[List[uuid.UUID]] = None
+    batch_test_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    batch_val_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    val_policy: Optional[SnapshotValPolicy] = None
+
+
+class SnapshotVersionRead(BaseModel):
+    id: uuid.UUID
+    loop_id: uuid.UUID
+    version_index: int
+    parent_version_id: Optional[uuid.UUID] = None
+    update_mode: SnapshotUpdateMode
+    val_policy: SnapshotValPolicy
+    seed: str
+    rule_json: Dict[str, Any]
+    manifest_hash: str
+    sample_count: int
+    created_by: Optional[uuid.UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SnapshotVersionSummaryRead(BaseModel):
+    id: uuid.UUID
+    version_index: int
+    update_mode: SnapshotUpdateMode
+    val_policy: SnapshotValPolicy
+    sample_count: int
+    manifest_hash: str
+    created_at: datetime
+
+
+class LoopSnapshotRead(BaseModel):
+    loop_id: uuid.UUID
+    active_snapshot_version_id: Optional[uuid.UUID] = None
+    active: Optional[SnapshotVersionRead] = None
+    history: List[SnapshotVersionSummaryRead] = Field(default_factory=list)
+    partition_counts: Dict[str, int] = Field(default_factory=dict)
+
+
+class SnapshotMutationResponse(BaseModel):
+    loop_id: uuid.UUID
+    stage: LoopStage
+    active_snapshot_version_id: uuid.UUID
+    version_index: int
+    created: bool = True
+    sample_count: int = 0
+
+
+class LoopStageResponse(BaseModel):
+    loop_id: uuid.UUID
+    stage: LoopStage
+    stage_meta: Dict[str, Any] = Field(default_factory=dict)
+    primary_action: Optional[LoopActionSpec] = None
+    actions: List[LoopActionSpec] = Field(default_factory=list)
+
+
+class AnnotationGapBucket(BaseModel):
+    partition: SnapshotPartition
+    total: int
+    missing_count: int
+    sample_ids: List[uuid.UUID] = Field(default_factory=list)
+
+
+class LoopAnnotationGapsResponse(BaseModel):
+    loop_id: uuid.UUID
+    commit_id: Optional[uuid.UUID] = None
+    buckets: List[AnnotationGapBucket] = Field(default_factory=list)
 
 
 class RoundPredictionCleanupResponse(BaseModel):

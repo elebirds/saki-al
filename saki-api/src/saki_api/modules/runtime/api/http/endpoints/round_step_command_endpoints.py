@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -80,41 +80,16 @@ async def retry_round(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    round_item = await runtime_service.get_by_id_or_raise(round_id)
-    await ensure_project_permission(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=round_item.project_id,
-        required_permission=Permissions.ROUND_MANAGE,
-        fallback_permissions=(Permissions.PROJECT_UPDATE,),
+    del reason, use_latest_inputs, runtime_service, dispatcher_admin_client, session, current_user_id
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail={
+            "message": "POST /rounds/{round_id}:retry has been removed; use POST /api/v1/loops/{loop_id}:act",
+            "replacement": "/api/v1/loops/{loop_id}:act",
+            "action": "retry_round",
+            "round_id": str(round_id),
+        },
     )
-
-    if not dispatcher_admin_client.enabled:
-        raise InternalServerErrorAppException("dispatcher_admin is not configured")
-
-    try:
-        response = await dispatcher_admin_client.retry_round(
-            str(round_id),
-            reason=reason,
-            use_latest_inputs=use_latest_inputs,
-        )
-        status = str(response.status or "").strip().lower() or "accepted"
-        target_round_raw = str(response.message or "").strip()
-        target_round_id = round_id
-        if target_round_raw:
-            try:
-                target_round_id = uuid.UUID(target_round_raw)
-            except Exception:
-                target_round_id = round_id
-        return RoundRetryResponse(
-            request_id=str(response.request_id or response.command_id or uuid.uuid4()),
-            source_round_id=round_id,
-            round_id=target_round_id,
-            status="restarting" if status == "accepted" else status,
-        )
-    except Exception as exc:
-        logger.warning("dispatcher retry_round failed round_id={} error={}", round_id, exc)
-        raise InternalServerErrorAppException("dispatcher retry_round failed") from exc
 
 
 @router.post("/steps/{step_id}:stop", response_model=StepCommandResponse)

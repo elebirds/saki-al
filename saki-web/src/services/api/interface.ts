@@ -26,7 +26,6 @@ import {
     ProjectSample,
     RuntimeRound,
     RuntimeRoundCommandResponse,
-    RuntimeRoundRetryResponse,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
@@ -36,16 +35,13 @@ import {
     StepArtifactDownload,
     RoundPredictionCleanupResponse,
     LoopCreateRequest,
-    LoopConfirmResponse,
+    LoopActionRequest,
+    LoopActionResponse,
     LoopUpdateRequest,
     LoopSummary,
     LoopSnapshotRead,
     LoopStageResponse,
     LoopAnnotationGapsResponse,
-    LoopContinueResponse,
-    SnapshotInitRequest,
-    SnapshotMutationResponse,
-    SnapshotUpdateRequest,
     SimulationComparison,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
@@ -244,21 +240,10 @@ export interface ApiService {
 
     updateLoop(loopId: string, payload: LoopUpdateRequest): Promise<Loop>;
 
-    startLoop(loopId: string): Promise<Loop>;
-
-    confirmLoop(loopId: string, force?: boolean): Promise<LoopConfirmResponse>;
-    continueLoop(loopId: string, force?: boolean): Promise<LoopContinueResponse>;
-    initLoopSnapshot(loopId: string, payload: SnapshotInitRequest): Promise<SnapshotMutationResponse>;
-    updateLoopSnapshot(loopId: string, payload: SnapshotUpdateRequest): Promise<SnapshotMutationResponse>;
+    actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse>;
     getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;
     getLoopStage(loopId: string): Promise<LoopStageResponse>;
     getLoopAnnotationGaps(loopId: string): Promise<LoopAnnotationGapsResponse>;
-
-    pauseLoop(loopId: string): Promise<Loop>;
-
-    resumeLoop(loopId: string): Promise<Loop>;
-
-    stopLoop(loopId: string): Promise<Loop>;
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
@@ -275,7 +260,6 @@ export interface ApiService {
     getLoopRounds(loopId: string, limit?: number): Promise<RuntimeRound[]>;
 
     stopRound(roundId: string, reason?: string): Promise<RuntimeRoundCommandResponse>;
-    retryRound(roundId: string, reason?: string, useLatestInputs?: boolean): Promise<RuntimeRoundRetryResponse>;
 
     getRound(roundId: string): Promise<RuntimeRound>;
 

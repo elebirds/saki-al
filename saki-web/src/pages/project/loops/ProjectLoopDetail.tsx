@@ -154,23 +154,58 @@ const ProjectLoopDetail: React.FC = () => {
         void loadData();
     }, [canManageLoops, loadData]);
 
-    const handleLoopControl = async (action: 'start' | 'pause' | 'resume' | 'stop' | 'confirm') => {
-        if (!loopId) return;
-        setControlLoading(true);
-        try {
-            if (action === 'start') await api.startLoop(loopId);
-            if (action === 'pause') await api.pauseLoop(loopId);
-            if (action === 'resume') await api.resumeLoop(loopId);
-            if (action === 'stop') await api.stopLoop(loopId);
-            if (action === 'confirm') await api.confirmLoop(loopId);
-            await refreshLoopData();
-            message.success(`Loop 已${action}`);
-        } catch (error: any) {
-            message.error(error?.message || 'Loop 控制失败');
-        } finally {
-            setControlLoading(false);
-        }
-    };
+    const executeLoopAction = useCallback(
+        async (
+            action?: string,
+            payload: Record<string, any> = {},
+            opts: { force?: boolean; refresh?: boolean } = {},
+        ) => {
+            if (!loopId) return null;
+            setControlLoading(true);
+            try {
+                const result = await api.actLoop(loopId, {
+                    action: action as any,
+                    force: Boolean(opts.force),
+                    decisionToken: stageInfo?.decisionToken || undefined,
+                    payload,
+                });
+                setStageInfo({
+                    loopId: result.loopId,
+                    stage: result.stage,
+                    stageMeta: result.stageMeta || {},
+                    primaryAction: result.primaryAction || null,
+                    actions: result.actions || [],
+                    decisionToken: result.decisionToken || '',
+                    blockingReasons: result.blockingReasons || [],
+                });
+                const actionKeys = new Set((result.actions || []).map((item) => item.key));
+                if (actionKeys.has('snapshot_init') && loop?.mode === 'active_learning') {
+                    initForm.resetFields();
+                    initForm.setFieldsValue(SNAPSHOT_INIT_DEFAULTS);
+                    setSnapshotInitOpen(true);
+                }
+                if (loop?.mode === 'active_learning' && (actionKeys.has('view_annotation_gaps') || actionKeys.has('annotate'))) {
+                    const gaps = await api.getLoopAnnotationGaps(loopId).catch(() => null);
+                    setGapInfo(gaps);
+                }
+                if (result.executedAction) {
+                    message.success(result.message || `已执行 ${result.executedAction}`);
+                } else {
+                    message.info(result.message || `当前阶段无需执行：${result.stage}`);
+                }
+                if (opts.refresh !== false) {
+                    await refreshLoopData();
+                }
+                return result;
+            } catch (error: any) {
+                message.error(error?.message || 'Loop 动作执行失败');
+                return null;
+            } finally {
+                setControlLoading(false);
+            }
+        },
+        [loopId, stageInfo?.decisionToken, loop?.mode, refreshLoopData],
+    );
 
     const handleCleanupRoundPredictions = async (roundIndex: number) => {
         if (!loopId) return;
@@ -211,11 +246,10 @@ const ProjectLoopDetail: React.FC = () => {
                 valPolicy: values.valPolicy,
                 sampleIds: parseSampleIds((values as any).sampleIdsText),
             };
-            await api.initLoopSnapshot(loopId, payload);
+            await executeLoopAction('snapshot_init', payload, {refresh: true});
             message.success('Snapshot 初始化成功');
             setSnapshotInitOpen(false);
             initForm.resetFields();
-            await refreshLoopData();
         } catch (error: any) {
             if (error?.errorFields) return;
             message.error(error?.message || 'Snapshot 初始化失败');
@@ -237,11 +271,10 @@ const ProjectLoopDetail: React.FC = () => {
                 valPolicy: values.valPolicy,
                 sampleIds: parseSampleIds((values as any).sampleIdsText),
             };
-            await api.updateLoopSnapshot(loopId, payload);
+            await executeLoopAction('snapshot_update', payload, {refresh: true});
             message.success('Snapshot 更新成功');
             setSnapshotUpdateOpen(false);
             updateForm.resetFields();
-            await refreshLoopData();
         } catch (error: any) {
             if (error?.errorFields) return;
             message.error(error?.message || 'Snapshot 更新失败');
@@ -263,90 +296,31 @@ const ProjectLoopDetail: React.FC = () => {
     };
 
     const handleContinue = async () => {
-        if (!loopId) return;
-        setControlLoading(true);
-        try {
-            const result = await api.continueLoop(loopId);
-            setStageInfo({
-                loopId: result.loopId,
-                stage: result.stage,
-                stageMeta: result.stageMeta || {},
-                primaryAction: result.primaryAction || null,
-                actions: result.actions || [],
-            });
-            const actionKeys = new Set((result.actions || []).map((item) => item.key));
-            if (actionKeys.has('snapshot_init') && loop?.mode === 'active_learning') {
-                openSnapshotInitModal();
-            }
-            if (loop?.mode === 'active_learning' && (actionKeys.has('view_annotation_gaps') || actionKeys.has('annotate'))) {
-                const gaps = await api.getLoopAnnotationGaps(loopId).catch(() => null);
-                setGapInfo(gaps);
-            }
-            if (result.executedAction) {
-                message.success(result.message || `已执行 ${result.executedAction}`);
-            } else {
-                message.info(result.message || `当前阶段无需继续：${result.stage}`);
-            }
-            await refreshLoopData();
-        } catch (error: any) {
-            message.error(error?.message || 'Continue 失败');
-        } finally {
-            setControlLoading(false);
-        }
+        await executeLoopAction(primaryAction?.key || undefined);
     };
 
-    const stageActionKeys = new Set((stageInfo?.actions || []).map((item) => item.key));
     const primaryAction = stageInfo?.primaryAction || null;
     const continueLabel = primaryAction ? `Continue · ${primaryAction.label}` : 'Continue';
     const continueDisabled = !primaryAction || !primaryAction.runnable;
-    const loopState = loop?.state;
-    const loopMode = loop?.mode;
-
-    const advancedActionItems = [
-        {
-            key: 'start',
-            label: 'Start',
-            disabled: !stageActionKeys.has('start'),
-            onClick: () => handleLoopControl('start'),
-        },
-        {
-            key: 'pause',
-            label: 'Pause',
-            disabled: loopState !== 'running',
-            onClick: () => handleLoopControl('pause'),
-        },
-        {
-            key: 'resume',
-            label: 'Resume',
-            disabled: loopState !== 'paused' && loopState !== 'draft',
-            onClick: () => handleLoopControl('resume'),
-        },
-        {
-            key: 'confirm',
-            label: 'Confirm Round',
-            disabled: loopMode !== 'active_learning' || !stageActionKeys.has('confirm'),
-            onClick: () => handleLoopControl('confirm'),
-        },
-        {
-            key: 'snapshot_init',
-            label: 'Init Snapshot',
-            disabled: loopMode !== 'active_learning',
-            onClick: openSnapshotInitModal,
-        },
-        {
-            key: 'snapshot_update',
-            label: 'Update Snapshot',
-            disabled: loopMode !== 'active_learning' || !snapshotInfo?.activeSnapshotVersionId,
-            onClick: openSnapshotUpdateModal,
-        },
-        {
-            key: 'stop',
-            label: 'Stop',
-            disabled: loopState === 'stopped' || loopState === 'stopping' || loopState === 'completed',
-            onClick: () => handleLoopControl('stop'),
-            danger: true,
-        },
-    ];
+    const advancedActionItems = (stageInfo?.actions || [])
+        .filter((item) => item.key !== primaryAction?.key)
+        .map((item) => ({
+            key: item.key,
+            label: item.label,
+            disabled: !item.runnable,
+            onClick: () => {
+                if (item.key === 'snapshot_init') {
+                    openSnapshotInitModal();
+                    return;
+                }
+                if (item.key === 'snapshot_update') {
+                    openSnapshotUpdateModal();
+                    return;
+                }
+                void executeLoopAction(item.key);
+            },
+            danger: item.key === 'stop',
+        }));
 
     if (loading) {
         return (

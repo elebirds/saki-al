@@ -269,22 +269,21 @@ const ProjectLoopRoundDetail: React.FC = () => {
     }, [roundId, loadRoundDashboard, canManageLoops]);
 
     const handleRetryRound = useCallback(async () => {
-        if (!round) return;
+        if (!round || !loopId) return;
         setRetrying(true);
         try {
-            const result = await api.retryRound(round.id);
+            await api.actLoop(loopId, {
+                action: 'retry_round',
+                payload: {roundId: round.id, reason: 'round detail retry'},
+            });
             message.success('已触发重跑');
-            if (result.roundId && result.roundId !== round.id) {
-                navigate(`/projects/${projectId}/loops/${loopId}/rounds/${result.roundId}`);
-                return;
-            }
             await loadData(false);
         } catch (error: any) {
             message.error(error?.message || '重跑失败');
         } finally {
             setRetrying(false);
         }
-    }, [round, navigate, projectId, loopId, loadData]);
+    }, [round, loopId, loadData]);
 
     useEffect(() => {
         if (!canManageLoops) return;

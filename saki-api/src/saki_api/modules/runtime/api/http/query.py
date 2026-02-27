@@ -58,7 +58,10 @@ async def _ensure_project_perm(
     )
 
 
-def _build_loop_read(loop) -> LoopRead:
+async def _build_loop_read(runtime_service: RuntimeServiceDep, loop) -> LoopRead:
+    decision = await runtime_service.get_loop_stage(loop_id=loop.id)
+    loop.stage = decision["stage"]
+    loop.stage_meta = decision.get("stage_meta") or {}
     return build_loop_read(loop)
 
 
@@ -107,7 +110,7 @@ async def list_project_loops(
         required=Permissions.LOOP_READ,
     )
     loops = await runtime_service.list_loops(project_id)
-    return [_build_loop_read(item) for item in loops]
+    return [await _build_loop_read(runtime_service, item) for item in loops]
 
 
 @router.post("/projects/{project_id}/simulation-experiments", response_model=SimulationExperimentCreateResponse)
@@ -128,7 +131,7 @@ async def create_simulation_experiment(
     group_id, loops = await runtime_service.create_simulation_experiment(project_id=project_id, payload=payload)
     return SimulationExperimentCreateResponse(
         experiment_group_id=group_id,
-        loops=[_build_loop_read(item) for item in loops],
+        loops=[await _build_loop_read(runtime_service, item) for item in loops],
     )
 
 
@@ -148,7 +151,7 @@ async def create_project_loop(
         required=Permissions.LOOP_MANAGE,
     )
     loop = await runtime_service.create_loop(project_id, payload)
-    return _build_loop_read(loop)
+    return await _build_loop_read(runtime_service, loop)
 
 
 @router.get("/loops/{loop_id}", response_model=LoopRead)
@@ -166,7 +169,7 @@ async def get_loop(
         project_id=loop.project_id,
         required=Permissions.LOOP_READ,
     )
-    return _build_loop_read(loop)
+    return await _build_loop_read(runtime_service, loop)
 
 
 @router.patch("/loops/{loop_id}", response_model=LoopRead)
@@ -186,7 +189,7 @@ async def update_loop(
         required=Permissions.LOOP_MANAGE,
     )
     updated = await runtime_service.update_loop(loop_id, payload)
-    return _build_loop_read(updated)
+    return await _build_loop_read(runtime_service, updated)
 
 
 @router.get("/loops/{loop_id}/rounds", response_model=List[RoundRead])

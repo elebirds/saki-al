@@ -14,6 +14,7 @@ from sqlalchemy import distinct
 from sqlmodel import select
 
 from saki_api.core.exceptions import BadRequestAppException
+from saki_api.core.exceptions import ConflictAppException
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.project.domain.branch import Branch
@@ -56,7 +57,7 @@ class SnapshotMixin:
         configured = max(1, int(configured_min_required or 1))
         selected = max(0, int(selected_count or 0))
         if selected <= 0:
-            return configured
+            return 0
         return min(configured, selected)
 
     def _compute_seed(self, *, loop_id: uuid.UUID, version_index: int, requested_seed: str | None) -> str:
@@ -108,6 +109,134 @@ class SnapshotMixin:
             for item in actions
             if str(item.get("key") or "").strip()
         }
+
+    @staticmethod
+    def _enum_text(raw: Any) -> str:
+        if hasattr(raw, "value"):
+            return str(raw.value)
+        return str(raw)
+
+    @staticmethod
+    def _decision_token_payload(
+        *,
+        loop: Any,
+        stage: LoopStage,
+        stage_meta: dict[str, Any],
+        actions: list[dict[str, Any]],
+        latest_round: Any | None,
+        branch_head_commit_id: uuid.UUID | None,
+    ) -> dict[str, Any]:
+        return {
+            "loop_id": str(loop.id),
+            "loop_updated_at": str(getattr(loop, "updated_at", "")),
+            "loop_status": SnapshotMixin._enum_text(loop.status),
+            "loop_phase": SnapshotMixin._enum_text(loop.phase),
+            "loop_mode": SnapshotMixin._enum_text(loop.mode),
+            "active_snapshot_version_id": str(loop.active_snapshot_version_id or ""),
+            "stage": SnapshotMixin._enum_text(stage),
+            "stage_meta": stage_meta,
+            "actions": [
+                {
+                    "key": str(item.get("key") or ""),
+                    "runnable": bool(item.get("runnable", True)),
+                    "requires_confirm": bool(item.get("requires_confirm", False)),
+                    "payload": item.get("payload") if isinstance(item.get("payload"), dict) else {},
+                }
+                for item in actions
+            ],
+            "latest_round": {
+                "id": str(getattr(latest_round, "id", "") or ""),
+                "round_index": int(getattr(latest_round, "round_index", 0) or 0),
+                "attempt_index": int(getattr(latest_round, "attempt_index", 0) or 0),
+                "state": SnapshotMixin._enum_text(getattr(latest_round, "state", "") or ""),
+                "updated_at": str(getattr(latest_round, "updated_at", "") or ""),
+            }
+            if latest_round
+            else None,
+            "branch_head_commit_id": str(branch_head_commit_id or ""),
+        }
+
+    @staticmethod
+    def _make_decision_token(payload: dict[str, Any]) -> str:
+        digest = hashlib.sha256(str(payload).encode("utf-8"))
+        return digest.hexdigest()
+
+    def _merge_stage_actions(
+        self,
+        *,
+        loop: Any,
+        stage: LoopStage,
+        actions: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = list(actions)
+        keys = self._action_keys(merged)
+
+        def _append(action: dict[str, Any]) -> None:
+            key = str(action.get("key") or "").strip()
+            if not key or key in keys:
+                return
+            merged.append(action)
+            keys.add(key)
+
+        lifecycle_stage_allowlist = {
+            LoopStage.READY_TO_START,
+            LoopStage.RUNNING_ROUND,
+            LoopStage.WAITING_ROUND_LABEL,
+            LoopStage.READY_TO_CONFIRM,
+            LoopStage.FAILED_RETRYABLE,
+        }
+        if stage in lifecycle_stage_allowlist:
+            status_text = str(loop.status.value if hasattr(loop.status, "value") else loop.status).strip().lower()
+            if status_text == LoopStatus.DRAFT.value and stage == LoopStage.READY_TO_START:
+                _append(self._action("start", label="Start"))
+            elif status_text == LoopStatus.RUNNING.value:
+                _append(self._action("pause", label="Pause"))
+                _append(self._action("stop", label="Stop"))
+            elif status_text == LoopStatus.PAUSED.value:
+                _append(self._action("resume", label="Resume"))
+                _append(self._action("stop", label="Stop"))
+            elif status_text == LoopStatus.STOPPING.value:
+                _append(self._action("observe", label="Observe", runnable=False))
+
+        if (
+            loop.mode == LoopMode.ACTIVE_LEARNING
+            and loop.active_snapshot_version_id
+            and stage
+            in {
+                LoopStage.READY_TO_START,
+                LoopStage.RUNNING_ROUND,
+                LoopStage.WAITING_ROUND_LABEL,
+                LoopStage.READY_TO_CONFIRM,
+            }
+        ):
+            _append(self._action("snapshot_update", label="Update Snapshot"))
+        return merged
+
+    def _build_blocking_reasons(
+        self,
+        *,
+        stage: LoopStage,
+        stage_meta: dict[str, Any],
+        primary_action: dict[str, Any] | None,
+    ) -> list[str]:
+        reasons: list[str] = []
+        if not primary_action:
+            reasons.append("no_primary_action")
+        elif not bool(primary_action.get("runnable", True)):
+            reasons.append(f"primary_action_not_runnable:{primary_action.get('key')}")
+
+        if stage == LoopStage.SNAPSHOT_REQUIRED:
+            reasons.append("snapshot_required")
+        if stage == LoopStage.LABEL_GAP_REQUIRED:
+            reasons.append(f"annotation_gap:{int(stage_meta.get('gap_count') or 0)}")
+        if stage == LoopStage.WAITING_ROUND_LABEL:
+            reasons.append(
+                f"need_more_labels:{int(stage_meta.get('revealed_count') or 0)}/"
+                f"{int(stage_meta.get('min_required') or 0)}"
+            )
+        if stage == LoopStage.FAILED:
+            reasons.append("loop_failed")
+        return reasons
 
     async def _get_branch_head_commit_id(self, branch_id: uuid.UUID) -> uuid.UUID | None:
         stmt = select(Branch.head_commit_id).where(Branch.id == branch_id)
@@ -961,13 +1090,24 @@ class SnapshotMixin:
         }
 
     async def get_loop_stage(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
-        stage, stage_meta, primary_action, actions = await self._compute_loop_stage(loop_id)
-        await self.loop_repo.update_or_raise(
-            loop_id,
-            {
-                "stage": stage,
-                "stage_meta": stage_meta,
-            },
+        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
+        stage, stage_meta, primary_action, stage_actions = await self._compute_loop_stage(loop_id)
+        actions = self._merge_stage_actions(loop=loop, stage=stage, actions=stage_actions)
+        latest_round = await self.repository.get_latest_by_loop(loop_id)
+        branch_head_commit_id = await self._get_branch_head_commit_id(loop.branch_id)
+        token_payload = self._decision_token_payload(
+            loop=loop,
+            stage=stage,
+            stage_meta=stage_meta,
+            actions=actions,
+            latest_round=latest_round,
+            branch_head_commit_id=branch_head_commit_id,
+        )
+        decision_token = self._make_decision_token(token_payload)
+        blocking_reasons = self._build_blocking_reasons(
+            stage=stage,
+            stage_meta=stage_meta,
+            primary_action=primary_action,
         )
         return {
             "loop_id": loop_id,
@@ -975,7 +1115,44 @@ class SnapshotMixin:
             "stage_meta": stage_meta,
             "primary_action": primary_action,
             "actions": actions,
+            "decision_token": decision_token,
+            "blocking_reasons": blocking_reasons,
         }
+
+    async def resolve_loop_action_request(
+        self,
+        *,
+        loop_id: uuid.UUID,
+        requested_action: str | None,
+        decision_token: str | None,
+    ) -> tuple[dict[str, Any], str, dict[str, Any]]:
+        decision = await self.get_loop_stage(loop_id=loop_id)
+        latest_token = str(decision.get("decision_token") or "")
+        if decision_token and latest_token and str(decision_token) != latest_token:
+            raise ConflictAppException(
+                message="decision token is stale",
+                data={"expected": latest_token, "provided": str(decision_token)},
+            )
+
+        action_key = str(requested_action or "").strip().lower()
+        if not action_key:
+            primary_action = decision.get("primary_action")
+            action_key = str((primary_action or {}).get("key") or "").strip().lower()
+        if not action_key:
+            raise BadRequestAppException("no actionable transition for current stage")
+
+        actions = decision.get("actions") or []
+        matched = None
+        for item in actions:
+            key = str((item or {}).get("key") or "").strip().lower()
+            if key == action_key:
+                matched = item
+                break
+        if matched is None:
+            raise BadRequestAppException(f"action not allowed in current stage: {action_key}")
+        if not bool(matched.get("runnable", True)):
+            raise BadRequestAppException(f"action is not runnable in current stage: {action_key}")
+        return decision, action_key, matched
 
     async def get_loop_annotation_gaps(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
         return await self._compute_annotation_gaps_internal(loop_id)

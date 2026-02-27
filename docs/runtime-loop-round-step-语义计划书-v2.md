@@ -1,5 +1,7 @@
 # Saki Runtime 语义计划书 v2（Loop / Round / Step）
 
+> 注意：本文件为历史计划文档。若与当前实现冲突，请以 [`runtime-loop-decision-action-strategy-v1.md`](./runtime-loop-decision-action-strategy-v1.md) 为准。
+
 ## 0. 文档目的
 
 本文件定义 **saki-api / saki-dispatcher / saki-executor** 的统一运行时语义，作为后续代码重构、数据库命名重构、Proto 契约调整和前端交互实现的唯一依据。

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -12,10 +12,11 @@ from saki_api.app.deps import DispatcherAdminClientDep, RuntimeServiceDep
 from saki_api.core.exceptions import BadRequestAppException, InternalServerErrorAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
-from saki_api.modules.project.repo.branch import BranchRepository
-from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import (
+    LoopActionRequest,
+    LoopActionResponse,
+    LoopActionSpec,
     LoopAnnotationGapsResponse,
     LoopContinueResponse,
     LoopConfirmResponse,
@@ -23,14 +24,12 @@ from saki_api.modules.runtime.api.round_step import (
     LoopSnapshotRead,
     LoopStageResponse,
     RoundPredictionCleanupResponse,
-    SnapshotInitRequest,
     SnapshotMutationResponse,
-    SnapshotUpdateRequest,
     SnapshotVersionRead,
     SnapshotVersionSummaryRead,
 )
 from saki_api.modules.access.domain.rbac import Permissions
-from saki_api.modules.shared.modeling.enums import LoopMode, SnapshotPartition
+from saki_api.modules.shared.modeling.enums import LoopActionKey
 
 router = APIRouter()
 
@@ -51,11 +50,6 @@ async def _ensure_project_perm(
         fallback_permissions=fallback,
     )
 
-
-def _build_loop_read(loop) -> LoopRead:
-    return build_loop_read(loop)
-
-
 async def _dispatch_loop_command(
         *,
         command: str,
@@ -65,39 +59,154 @@ async def _dispatch_loop_command(
         use_latest_inputs: bool = True,
         force: bool = False,
         dispatcher_admin_client: DispatcherAdminClientDep,
-) -> None:
+) -> object:
     if not dispatcher_admin_client.enabled:
         raise InternalServerErrorAppException("dispatcher_admin is not configured")
 
     loop_id_text = str(loop_id)
     try:
         if command == "start":
-            await dispatcher_admin_client.start_loop(loop_id_text)
-            return
+            return await dispatcher_admin_client.start_loop(loop_id_text)
         if command == "pause":
-            await dispatcher_admin_client.pause_loop(loop_id_text)
-            return
+            return await dispatcher_admin_client.pause_loop(loop_id_text)
         if command == "resume":
-            await dispatcher_admin_client.resume_loop(loop_id_text)
-            return
+            return await dispatcher_admin_client.resume_loop(loop_id_text)
         if command == "stop":
-            await dispatcher_admin_client.stop_loop(loop_id_text)
-            return
+            return await dispatcher_admin_client.stop_loop(loop_id_text)
         if command == "confirm":
-            await dispatcher_admin_client.confirm_loop(loop_id_text, force=force)
-            return
+            return await dispatcher_admin_client.confirm_loop(loop_id_text, force=force)
         if command == "retry_round":
             if not round_id:
                 raise BadRequestAppException("round_id is required for retry_round")
-            await dispatcher_admin_client.retry_round(
+            return await dispatcher_admin_client.retry_round(
                 str(round_id),
                 reason=reason,
                 use_latest_inputs=use_latest_inputs,
             )
-            return
+        raise BadRequestAppException(f"unsupported dispatcher command: {command}")
     except Exception as exc:
         logger.warning("dispatcher loop command failed command={} loop_id={} error={}", command, loop_id, exc)
         raise InternalServerErrorAppException("dispatcher loop command failed") from exc
+
+
+def _deprecated_action_error(*, endpoint: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail={
+            "message": f"{endpoint} has been removed; use POST /api/v1/loops/{{loop_id}}:act",
+            "replacement": "/api/v1/loops/{loop_id}:act",
+        },
+    )
+
+
+@router.post("/loops/{loop_id}:act", response_model=LoopActionResponse)
+async def act_loop(
+    *,
+    loop_id: uuid.UUID,
+    payload: LoopActionRequest,
+    runtime_service: RuntimeServiceDep,
+    dispatcher_admin_client: DispatcherAdminClientDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+
+    _decision, action_key, matched = await runtime_service.resolve_loop_action_request(
+        loop_id=loop_id,
+        requested_action=(payload.action.value if payload.action else None),
+        decision_token=payload.decision_token,
+    )
+    action_payload = {}
+    if isinstance(matched.get("payload"), dict):
+        action_payload.update(matched["payload"])
+    if payload.payload:
+        action_payload.update(payload.payload)
+
+    executed_action: LoopActionKey | None = None
+    command_id: str | None = None
+    message_text = f"{action_key} executed"
+
+    if action_key == LoopActionKey.SNAPSHOT_INIT.value:
+        result = await runtime_service.init_loop_snapshot(
+            loop_id=loop_id,
+            payload=action_payload,
+            actor_user_id=current_user_id,
+        )
+        executed_action = LoopActionKey.SNAPSHOT_INIT
+        message_text = (
+            f"snapshot initialized: v{int(result.get('version_index') or 0)} "
+            f"sample_count={int(result.get('sample_count') or 0)}"
+        )
+    elif action_key == LoopActionKey.SNAPSHOT_UPDATE.value:
+        result = await runtime_service.update_loop_snapshot(
+            loop_id=loop_id,
+            payload=action_payload,
+            actor_user_id=current_user_id,
+        )
+        executed_action = LoopActionKey.SNAPSHOT_UPDATE
+        message_text = (
+            f"snapshot updated: v{int(result.get('version_index') or 0)} "
+            f"sample_count={int(result.get('sample_count') or 0)}"
+        )
+    elif action_key == LoopActionKey.RETRY_ROUND.value:
+        retry_round_raw = action_payload.get("round_id")
+        retry_round_id = uuid.UUID(str(retry_round_raw)) if retry_round_raw else None
+        if retry_round_id is None:
+            raise BadRequestAppException("retry_round action missing round_id")
+        response = await _dispatch_loop_command(
+            command="retry_round",
+            loop_id=loop_id,
+            round_id=retry_round_id,
+            reason=str(action_payload.get("reason") or "act retry latest failed round"),
+            use_latest_inputs=bool(action_payload.get("use_latest_inputs", True)),
+            dispatcher_admin_client=dispatcher_admin_client,
+        )
+        executed_action = LoopActionKey.RETRY_ROUND
+        command_id = str(getattr(response, "command_id", "") or getattr(response, "request_id", "") or "")
+        message_text = str(getattr(response, "message", "") or "retry_round dispatched")
+    elif action_key in {
+        LoopActionKey.START.value,
+        LoopActionKey.PAUSE.value,
+        LoopActionKey.RESUME.value,
+        LoopActionKey.STOP.value,
+        LoopActionKey.CONFIRM.value,
+    }:
+        response = await _dispatch_loop_command(
+            command=action_key,
+            loop_id=loop_id,
+            force=bool(payload.force),
+            dispatcher_admin_client=dispatcher_admin_client,
+        )
+        executed_action = LoopActionKey(action_key)
+        command_id = str(getattr(response, "command_id", "") or getattr(response, "request_id", "") or "")
+        message_text = str(getattr(response, "message", "") or f"{action_key} dispatched")
+    else:
+        raise BadRequestAppException(f"unsupported action: {action_key}")
+
+    stage_payload = await runtime_service.get_loop_stage(loop_id=loop_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
+    return LoopActionResponse(
+        loop_id=loop.id,
+        executed_action=executed_action,
+        command_id=command_id,
+        message=message_text,
+        stage=stage_payload["stage"],
+        stage_meta=stage_payload.get("stage_meta") or {},
+        primary_action=LoopActionSpec.model_validate(stage_payload.get("primary_action"))
+        if stage_payload.get("primary_action")
+        else None,
+        actions=[LoopActionSpec.model_validate(item) for item in stage_payload.get("actions") or []],
+        decision_token=str(stage_payload.get("decision_token") or ""),
+        blocking_reasons=list(stage_payload.get("blocking_reasons") or []),
+        phase=loop.phase,
+        state=loop.status,
+    )
 
 
 @router.post("/loops/{loop_id}:start", response_model=LoopRead)
@@ -109,20 +218,8 @@ async def start_loop(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    await _dispatch_loop_command(
-        command="start",
-        loop_id=loop_id,
-        dispatcher_admin_client=dispatcher_admin_client,
-    )
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    return _build_loop_read(loop)
+    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}:start")
 
 
 @router.post("/loops/{loop_id}:pause", response_model=LoopRead)
@@ -134,20 +231,8 @@ async def pause_loop(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    await _dispatch_loop_command(
-        command="pause",
-        loop_id=loop_id,
-        dispatcher_admin_client=dispatcher_admin_client,
-    )
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    return _build_loop_read(loop)
+    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}:pause")
 
 
 @router.post("/loops/{loop_id}:resume", response_model=LoopRead)
@@ -159,20 +244,8 @@ async def resume_loop(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    await _dispatch_loop_command(
-        command="resume",
-        loop_id=loop_id,
-        dispatcher_admin_client=dispatcher_admin_client,
-    )
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    return _build_loop_read(loop)
+    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}:resume")
 
 
 @router.post("/loops/{loop_id}:stop", response_model=LoopRead)
@@ -184,212 +257,62 @@ async def stop_loop(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    await _dispatch_loop_command(
-        command="stop",
-        loop_id=loop_id,
-        dispatcher_admin_client=dispatcher_admin_client,
-    )
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    return _build_loop_read(loop)
+    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}:stop")
 
 
 @router.post("/loops/{loop_id}:confirm", response_model=LoopConfirmResponse)
 async def confirm_loop(
     *,
     loop_id: uuid.UUID,
-    force: bool = Query(default=False),
+    force: bool = False,
     runtime_service: RuntimeServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    if loop.mode == LoopMode.MANUAL:
-        raise BadRequestAppException("manual mode is single-run and does not require confirm")
-    if loop.mode == LoopMode.SIMULATION:
-        raise BadRequestAppException("simulation mode does not require confirm")
-
-    await _dispatch_loop_command(
-        command="confirm",
-        loop_id=loop_id,
-        force=force,
-        dispatcher_admin_client=dispatcher_admin_client,
-    )
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    return LoopConfirmResponse(loop_id=loop.id, phase=loop.phase, state=loop.status)
+    del loop_id, force, runtime_service, dispatcher_admin_client, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}:confirm")
 
 
 @router.post("/loops/{loop_id}:continue", response_model=LoopContinueResponse)
 async def continue_loop(
     *,
     loop_id: uuid.UUID,
-    force: bool = Query(default=False),
+    force: bool = False,
     runtime_service: RuntimeServiceDep,
     dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-
-    stage_payload = await runtime_service.get_loop_stage(loop_id=loop_id)
-    # BUGFIX(2026-02-27): release DB row lock before dispatcher RPC.
-    # get_loop_stage writes loop.stage/stage_meta; without this commit, the same request
-    # can hold loop row lock while dispatcher needs FOR UPDATE on loop, causing 5s timeout.
-    await session.commit()
-    actions = list(stage_payload.get("actions") or [])
-    primary_action = stage_payload.get("primary_action") or {}
-    executed_action: str | None = None
-    message_text = "no actionable transition for current stage"
-
-    action_key = str(primary_action.get("key") or "").strip().lower()
-    action_payload = primary_action.get("payload") if isinstance(primary_action.get("payload"), dict) else {}
-    if not action_key:
-        for item in actions:
-            if not isinstance(item, dict):
-                continue
-            key = str(item.get("key") or "").strip().lower()
-            runnable = bool(item.get("runnable", True))
-            if key and runnable:
-                action_key = key
-                action_payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-                break
-
-    if action_key == "start":
-        await _dispatch_loop_command(
-            command="start",
-            loop_id=loop_id,
-            dispatcher_admin_client=dispatcher_admin_client,
-        )
-        executed_action = "start"
-        message_text = "start dispatched"
-    elif action_key == "confirm":
-        await _dispatch_loop_command(
-            command="confirm",
-            loop_id=loop_id,
-            force=force,
-            dispatcher_admin_client=dispatcher_admin_client,
-        )
-        executed_action = "confirm"
-        message_text = "confirm dispatched"
-    elif action_key == "retry_round":
-        retry_round_raw = action_payload.get("round_id") or stage_payload.get("stage_meta", {}).get("retry_round_id")
-        retry_round_id = uuid.UUID(str(retry_round_raw)) if retry_round_raw else None
-        if retry_round_id is None:
-            raise BadRequestAppException("retry_round action missing round_id")
-        await _dispatch_loop_command(
-            command="retry_round",
-            loop_id=loop_id,
-            round_id=retry_round_id,
-            reason="continue retry latest failed round",
-            use_latest_inputs=True,
-            dispatcher_admin_client=dispatcher_admin_client,
-        )
-        executed_action = "retry_round"
-        message_text = "retry_round dispatched"
-    elif action_key == "snapshot_init":
-        message_text = "snapshot initialization required"
-    elif action_key == "view_annotation_gaps":
-        branch = await BranchRepository(session).get_by_id(loop.branch_id)
-        branch_name = branch.name if branch else str(loop.branch_id)
-        gaps_payload = await runtime_service.get_loop_annotation_gaps(loop_id=loop_id)
-        critical_missing = 0
-        for bucket in gaps_payload.get("buckets") or []:
-            partition = bucket.get("partition")
-            partition_value = str(partition.value if hasattr(partition, "value") else partition)
-            if partition_value in {
-                SnapshotPartition.TRAIN_SEED.value,
-                SnapshotPartition.VAL_ANCHOR.value,
-                SnapshotPartition.TEST_ANCHOR.value,
-            }:
-                critical_missing += int(bucket.get("missing_count") or 0)
-        head_commit_id = gaps_payload.get("commit_id")
-        message_text = (
-            f"annotation gaps must be resolved before continue "
-            f"(branch={branch_name}, head_commit={head_commit_id}, missing={critical_missing})"
-        )
-    elif action_key == "annotate":
-        message_text = "more annotations are required before continue"
-
-    stage_payload = await runtime_service.get_loop_stage(loop_id=loop_id)
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    return LoopContinueResponse(
-        loop_id=loop.id,
-        stage=stage_payload["stage"],
-        stage_meta=stage_payload.get("stage_meta") or {},
-        primary_action=stage_payload.get("primary_action"),
-        actions=stage_payload.get("actions") or [],
-        executed_action=executed_action,
-        message=message_text,
-        phase=loop.phase,
-        state=loop.status,
-    )
+    del loop_id, force, runtime_service, dispatcher_admin_client, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}:continue")
 
 
 @router.post("/loops/{loop_id}/snapshot:init", response_model=SnapshotMutationResponse)
 async def init_loop_snapshot(
     *,
     loop_id: uuid.UUID,
-    payload: SnapshotInitRequest,
+    payload: dict | None = None,
     runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    result = await runtime_service.init_loop_snapshot(
-        loop_id=loop_id,
-        payload=payload.model_dump(exclude_none=True),
-        actor_user_id=current_user_id,
-    )
-    return SnapshotMutationResponse(**result)
+    del loop_id, payload, runtime_service, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}/snapshot:init")
 
 
 @router.post("/loops/{loop_id}/snapshot:update", response_model=SnapshotMutationResponse)
 async def update_loop_snapshot(
     *,
     loop_id: uuid.UUID,
-    payload: SnapshotUpdateRequest,
+    payload: dict | None = None,
     runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop.project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    result = await runtime_service.update_loop_snapshot(
-        loop_id=loop_id,
-        payload=payload.model_dump(exclude_none=True),
-        actor_user_id=current_user_id,
-    )
-    return SnapshotMutationResponse(**result)
+    del loop_id, payload, runtime_service, session, current_user_id
+    _deprecated_action_error(endpoint="POST /loops/{loop_id}/snapshot:update")
 
 
 @router.get("/loops/{loop_id}/snapshot", response_model=LoopSnapshotRead)

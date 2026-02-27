@@ -151,6 +151,23 @@ class LoopStage(str, Enum):
     FAILED = "failed"
 
 
+class LoopActionKey(str, Enum):
+    """Enum for loop-level action dispatch."""
+
+    START = "start"
+    PAUSE = "pause"
+    RESUME = "resume"
+    STOP = "stop"
+    CONFIRM = "confirm"
+    RETRY_ROUND = "retry_round"
+    SNAPSHOT_INIT = "snapshot_init"
+    SNAPSHOT_UPDATE = "snapshot_update"
+    READ = "read"
+    OBSERVE = "observe"
+    VIEW_ANNOTATION_GAPS = "view_annotation_gaps"
+    ANNOTATE = "annotate"
+
+
 class LoopPhase(str, Enum):
     """
     Enum for loop phase state machine.

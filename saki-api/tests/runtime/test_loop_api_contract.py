@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import uuid
 
+from fastapi import HTTPException
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
@@ -16,8 +17,10 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.session import _session_ctx
 from saki_api.modules.shared.modeling.enums import (
     AuthorType,
+    LoopActionKey,
     LoopMode,
     LoopPhase,
+    LoopStage,
     LoopStatus,
     RoundStatus,
     StepDispatchKind,
@@ -33,6 +36,7 @@ from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_event import StepEvent
 from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
 from saki_api.modules.runtime.api.round_step import (
+    LoopActionRequest,
     LoopCreateRequest,
     LoopRead,
     LoopUpdateRequest,
@@ -227,7 +231,83 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
 
 
 @pytest.mark.anyio
-async def test_loop_control_confirm_rejects_manual_mode(loop_api_env, monkeypatch):
+async def test_loop_control_confirm_endpoint_gone(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+
+    class _DispatcherAdminStub:
+        enabled = True
+
+    dispatcher_admin_stub = _DispatcherAdminStub()
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-manual",
+                    branch_id=branch.id,
+                    mode=LoopMode.MANUAL,
+                    model_arch="yolo_det_v1",
+                    config={"plugin": {"epochs": 1}},
+                    status=LoopStatus.RUNNING,
+                ),
+            )
+            with pytest.raises(HTTPException) as exc:
+                await loop_control_endpoint.confirm_loop(
+                    loop_id=loop.id,
+                    runtime_service=service,
+                    dispatcher_admin_client=dispatcher_admin_stub,
+                    session=session,
+                    current_user_id=current_user_id,
+                )
+            assert exc.value.status_code == 410
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_loop_stage_snapshot_required_does_not_offer_start_action(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-al-snapshot-required",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    status=LoopStatus.DRAFT,
+                ),
+            )
+            stage = await service.get_loop_stage(loop_id=loop.id)
+            assert stage["stage"] == LoopStage.SNAPSHOT_REQUIRED
+            action_keys = {str(item.get("key")) for item in stage.get("actions") or []}
+            assert "snapshot_init" in action_keys
+            assert "start" not in action_keys
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_loop_control_act_confirm_rejects_manual_mode(loop_api_env, monkeypatch):
     session_local = loop_api_env
 
     async def _allow(*args, **kwargs) -> None:
@@ -270,8 +350,9 @@ async def test_loop_control_confirm_rejects_manual_mode(loop_api_env, monkeypatc
             await session.refresh(loop)
 
             with pytest.raises(BadRequestAppException):
-                await loop_control_endpoint.confirm_loop(
+                await loop_control_endpoint.act_loop(
                     loop_id=loop.id,
+                    payload=LoopActionRequest(action=LoopActionKey.CONFIRM),
                     runtime_service=service,
                     dispatcher_admin_client=dispatcher_admin_stub,
                     session=session,
@@ -283,7 +364,7 @@ async def test_loop_control_confirm_rejects_manual_mode(loop_api_env, monkeypatc
 
 
 @pytest.mark.anyio
-async def test_loop_control_confirm_forwards_force_flag(loop_api_env, monkeypatch):
+async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkeypatch):
     session_local = loop_api_env
 
     async def _allow(*args, **kwargs) -> None:
@@ -299,6 +380,12 @@ async def test_loop_control_confirm_forwards_force_flag(loop_api_env, monkeypatc
 
         async def confirm_loop(self, loop_id: str, force: bool = False):
             self.confirm_calls.append((loop_id, force))
+
+            class _Resp:
+                command_id = "cmd-confirm"
+                message = "confirm dispatched"
+
+            return _Resp()
 
     dispatcher_admin_stub = _DispatcherAdminStub()
 
@@ -321,9 +408,32 @@ async def test_loop_control_confirm_forwards_force_flag(loop_api_env, monkeypatc
                 ),
             )
 
-            await loop_control_endpoint.confirm_loop(
+            async def _resolve_loop_action_request(**kwargs):
+                del kwargs
+                return (
+                    {"loop_id": loop.id},
+                    LoopActionKey.CONFIRM.value,
+                    {"key": LoopActionKey.CONFIRM.value, "runnable": True, "payload": {}},
+                )
+
+            async def _get_loop_stage(**kwargs):
+                del kwargs
+                return {
+                    "loop_id": loop.id,
+                    "stage": "running_round",
+                    "stage_meta": {},
+                    "primary_action": None,
+                    "actions": [],
+                    "decision_token": "token",
+                    "blocking_reasons": [],
+                }
+
+            monkeypatch.setattr(service, "resolve_loop_action_request", _resolve_loop_action_request)
+            monkeypatch.setattr(service, "get_loop_stage", _get_loop_stage)
+
+            await loop_control_endpoint.act_loop(
                 loop_id=loop.id,
-                force=True,
+                payload=LoopActionRequest(action=LoopActionKey.CONFIRM, force=True),
                 runtime_service=service,
                 dispatcher_admin_client=dispatcher_admin_stub,
                 session=session,

@@ -11,6 +11,19 @@ export type LoopStage =
     | 'completed'
     | 'stopped'
     | 'failed';
+export type LoopActionKey =
+    | 'start'
+    | 'pause'
+    | 'resume'
+    | 'stop'
+    | 'confirm'
+    | 'retry_round'
+    | 'snapshot_init'
+    | 'snapshot_update'
+    | 'read'
+    | 'observe'
+    | 'view_annotation_gaps'
+    | 'annotate';
 
 export type SnapshotUpdateMode = 'init' | 'append_all_to_pool' | 'append_split';
 export type SnapshotValPolicy = 'anchor_only' | 'expand_with_batch_val';
@@ -339,11 +352,33 @@ export interface LoopContinueResponse {
 }
 
 export interface LoopActionSpec {
-    key: string;
+    key: LoopActionKey;
     label: string;
     runnable: boolean;
     requiresConfirm: boolean;
     payload: Record<string, any>;
+}
+
+export interface LoopActionRequest {
+    action?: LoopActionKey;
+    force?: boolean;
+    decisionToken?: string;
+    payload?: Record<string, any>;
+}
+
+export interface LoopActionResponse {
+    loopId: string;
+    executedAction?: LoopActionKey | null;
+    commandId?: string | null;
+    message: string;
+    stage: LoopStage;
+    stageMeta: Record<string, any>;
+    primaryAction?: LoopActionSpec | null;
+    actions: LoopActionSpec[];
+    decisionToken: string;
+    blockingReasons: string[];
+    phase: LoopPhase;
+    state: LoopState;
 }
 
 export interface SnapshotInitRequest {
@@ -413,6 +448,8 @@ export interface LoopStageResponse {
     stageMeta: Record<string, any>;
     primaryAction?: LoopActionSpec | null;
     actions: LoopActionSpec[];
+    decisionToken: string;
+    blockingReasons: string[];
 }
 
 export interface AnnotationGapBucket {

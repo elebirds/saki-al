@@ -27,7 +27,6 @@ import {
     ProjectSample,
     RuntimeRound,
     RuntimeRoundCommandResponse,
-    RuntimeRoundRetryResponse,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
@@ -36,14 +35,11 @@ import {
     RuntimeStepMetricPoint,
     StepArtifactDownload,
     LoopCreateRequest,
-    LoopConfirmResponse,
-    LoopContinueResponse,
+    LoopActionRequest,
+    LoopActionResponse,
     LoopSnapshotRead,
     LoopStageResponse,
     LoopAnnotationGapsResponse,
-    SnapshotInitRequest,
-    SnapshotMutationResponse,
-    SnapshotUpdateRequest,
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
     LoopSummary,
@@ -326,14 +322,6 @@ function normalizeStep(step: RuntimeStep): RuntimeStep {
 function normalizeRoundCommandResponse(response: RuntimeRoundCommandResponse): RuntimeRoundCommandResponse {
     return {
         ...response,
-        roundId: (response as any).roundId,
-    };
-}
-
-function normalizeRoundRetryResponse(response: RuntimeRoundRetryResponse): RuntimeRoundRetryResponse {
-    return {
-        ...response,
-        sourceRoundId: (response as any).sourceRoundId,
         roundId: (response as any).roundId,
     };
 }
@@ -927,41 +915,18 @@ export class RealApiService implements ApiService {
         return normalizeLoop(response.data);
     }
 
-    async startLoop(loopId: string): Promise<Loop> {
-        const response = await this.client.post<Loop>(`/loops/${loopId}:start`);
-        return normalizeLoop(response.data);
-    }
-
-    async confirmLoop(loopId: string, force: boolean = false): Promise<LoopConfirmResponse> {
-        const response = await this.client.post<LoopConfirmResponse>(`/loops/${loopId}:confirm`, null, {
-            params: {force},
-        });
-        return {
-            ...response.data,
-            state: (response.data as any).state ?? (response.data as any).status,
-        };
-    }
-
-    async continueLoop(loopId: string, force: boolean = false): Promise<LoopContinueResponse> {
-        const response = await this.client.post<LoopContinueResponse>(`/loops/${loopId}:continue`, null, {
-            params: {force},
-        });
+    async actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse> {
+        const response = await this.client.post<LoopActionResponse>(`/loops/${loopId}:act`, payload ?? {});
         return {
             ...response.data,
             state: (response.data as any).state ?? (response.data as any).status,
             actions: (response.data as any).actions ?? [],
             primaryAction: (response.data as any).primaryAction ?? null,
+            executedAction: (response.data as any).executedAction ?? null,
+            commandId: (response.data as any).commandId ?? null,
+            decisionToken: (response.data as any).decisionToken ?? '',
+            blockingReasons: (response.data as any).blockingReasons ?? [],
         };
-    }
-
-    async initLoopSnapshot(loopId: string, payload: SnapshotInitRequest): Promise<SnapshotMutationResponse> {
-        const response = await this.client.post<SnapshotMutationResponse>(`/loops/${loopId}/snapshot:init`, payload);
-        return response.data;
-    }
-
-    async updateLoopSnapshot(loopId: string, payload: SnapshotUpdateRequest): Promise<SnapshotMutationResponse> {
-        const response = await this.client.post<SnapshotMutationResponse>(`/loops/${loopId}/snapshot:update`, payload);
-        return response.data;
     }
 
     async getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead> {
@@ -975,27 +940,14 @@ export class RealApiService implements ApiService {
             ...response.data,
             actions: (response.data as any).actions ?? [],
             primaryAction: (response.data as any).primaryAction ?? null,
+            decisionToken: (response.data as any).decisionToken ?? '',
+            blockingReasons: (response.data as any).blockingReasons ?? [],
         };
     }
 
     async getLoopAnnotationGaps(loopId: string): Promise<LoopAnnotationGapsResponse> {
         const response = await this.client.get<LoopAnnotationGapsResponse>(`/loops/${loopId}/annotation-gaps`);
         return response.data;
-    }
-
-    async pauseLoop(loopId: string): Promise<Loop> {
-        const response = await this.client.post<Loop>(`/loops/${loopId}:pause`);
-        return normalizeLoop(response.data);
-    }
-
-    async resumeLoop(loopId: string): Promise<Loop> {
-        const response = await this.client.post<Loop>(`/loops/${loopId}:resume`);
-        return normalizeLoop(response.data);
-    }
-
-    async stopLoop(loopId: string): Promise<Loop> {
-        const response = await this.client.post<Loop>(`/loops/${loopId}:stop`);
-        return normalizeLoop(response.data);
     }
 
     async cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse> {
@@ -1045,17 +997,6 @@ export class RealApiService implements ApiService {
     async stopRound(roundId: string, reason: string = 'user requested stop'): Promise<RuntimeRoundCommandResponse> {
         const response = await this.client.post<RuntimeRoundCommandResponse>(`/rounds/${roundId}:stop`, null, {params: {reason}});
         return normalizeRoundCommandResponse(response.data);
-    }
-
-    async retryRound(
-        roundId: string,
-        reason: string = 'user requested retry',
-        useLatestInputs: boolean = true,
-    ): Promise<RuntimeRoundRetryResponse> {
-        const response = await this.client.post<RuntimeRoundRetryResponse>(`/rounds/${roundId}:retry`, null, {
-            params: {reason, use_latest_inputs: useLatestInputs},
-        });
-        return normalizeRoundRetryResponse(response.data);
     }
 
     async getRound(roundId: string): Promise<RuntimeRound> {

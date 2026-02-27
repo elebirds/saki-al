@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from saki_api.modules.shared.modeling.enums import (
+    LoopActionKey,
     LoopMode,
     LoopStage,
     LoopStatus,
@@ -317,7 +318,7 @@ class LoopConfirmResponse(BaseModel):
 
 
 class LoopActionSpec(BaseModel):
-    key: str
+    key: LoopActionKey | str
     label: str
     runnable: bool = True
     requires_confirm: bool = False
@@ -403,6 +404,30 @@ class LoopStageResponse(BaseModel):
     stage_meta: Dict[str, Any] = Field(default_factory=dict)
     primary_action: Optional[LoopActionSpec] = None
     actions: List[LoopActionSpec] = Field(default_factory=list)
+    decision_token: str = ""
+    blocking_reasons: List[str] = Field(default_factory=list)
+
+
+class LoopActionRequest(BaseModel):
+    action: Optional[LoopActionKey] = None
+    force: bool = False
+    decision_token: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LoopActionResponse(BaseModel):
+    loop_id: uuid.UUID
+    executed_action: Optional[LoopActionKey] = None
+    command_id: Optional[str] = None
+    message: str = ""
+    stage: LoopStage
+    stage_meta: Dict[str, Any] = Field(default_factory=dict)
+    primary_action: Optional[LoopActionSpec] = None
+    actions: List[LoopActionSpec] = Field(default_factory=list)
+    decision_token: str = ""
+    blocking_reasons: List[str] = Field(default_factory=list)
+    phase: LoopPhase
+    state: LoopStatus
 
 
 class AnnotationGapBucket(BaseModel):

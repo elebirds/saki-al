@@ -191,7 +191,9 @@ func (s *Service) ConfirmLoop(
 				}
 				revealedCount = int(response.GetRevealedCount())
 				selectedCount := int(response.GetSelectedCount())
-				if selectedCount > 0 && selectedCount < effectiveMinRequired {
+				if selectedCount <= 0 {
+					effectiveMinRequired = 0
+				} else if selectedCount < effectiveMinRequired {
 					effectiveMinRequired = selectedCount
 				}
 				if !force && revealedCount < effectiveMinRequired {

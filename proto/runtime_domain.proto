@@ -42,6 +42,7 @@ message ResolveRoundRevealResponse {
   int32 missing_count = 3;
   string latest_commit_id = 4;
   string revealable_sample_ids_hash = 5;
+  int32 effective_min_required = 6;
 }
 
 message ActivateSamplesRequest {

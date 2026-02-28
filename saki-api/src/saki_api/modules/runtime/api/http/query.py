@@ -60,9 +60,11 @@ async def _ensure_project_perm(
 
 async def _build_loop_read(runtime_service: RuntimeServiceDep, loop) -> LoopRead:
     decision = await runtime_service.get_loop_stage(loop_id=loop.id)
-    loop.stage = decision["stage"]
-    loop.stage_meta = decision.get("stage_meta") or {}
-    return build_loop_read(loop)
+    return build_loop_read(
+        loop=loop,
+        stage=decision["stage"],
+        stage_meta=decision.get("stage_meta") or {},
+    )
 
 
 async def _authenticate_stream_token(websocket: WebSocket) -> uuid.UUID | None:

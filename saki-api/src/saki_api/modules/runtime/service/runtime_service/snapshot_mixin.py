@@ -616,20 +616,13 @@ class SnapshotMixin:
             ]
             await self.al_loop_visibility_repo.upsert_rows(rows)
 
-        stage, stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop_id)
-        await self.loop_repo.update_or_raise(
-            loop_id,
-            {
-                "stage": stage,
-                "stage_meta": stage_meta,
-            },
-        )
         return {
             "loop_id": loop_id,
             "round_index": round_index,
             "revealed_count": len(revealed_ids),
             "selected_count": int(probe.selected_count),
             "missing_count": int(probe.missing_count),
+            "effective_min_required": int(threshold),
             "latest_commit_id": probe.latest_commit_id,
             "revealable_sample_ids_hash": self._hash_sample_ids(revealed_ids),
         }
@@ -899,15 +892,13 @@ class SnapshotMixin:
             )
         await self.al_loop_visibility_repo.upsert_rows(visibility_rows)
 
-        stage, stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
         await self.loop_repo.update_or_raise(
             loop.id,
             {
                 "active_snapshot_version_id": snapshot.id,
-                "stage": stage,
-                "stage_meta": stage_meta,
             },
         )
+        stage, _stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
         return {
             "loop_id": loop.id,
             "stage": stage,
@@ -946,14 +937,7 @@ class SnapshotMixin:
             candidate_ids = [sample_id for sample_id in all_sample_ids if sample_id not in existing_sample_ids]
         new_sample_ids = [sample_id for sample_id in candidate_ids if sample_id not in existing_sample_ids]
         if not new_sample_ids:
-            stage, stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
-            await self.loop_repo.update_or_raise(
-                loop.id,
-                {
-                    "stage": stage,
-                    "stage_meta": stage_meta,
-                },
-            )
+            stage, _stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
             return {
                 "loop_id": loop.id,
                 "stage": stage,
@@ -1050,15 +1034,13 @@ class SnapshotMixin:
         ]
         await self.al_loop_visibility_repo.upsert_rows(visibility_rows)
 
-        stage, stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
         await self.loop_repo.update_or_raise(
             loop.id,
             {
                 "active_snapshot_version_id": snapshot.id,
-                "stage": stage,
-                "stage_meta": stage_meta,
             },
         )
+        stage, _stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
         return {
             "loop_id": loop.id,
             "stage": stage,

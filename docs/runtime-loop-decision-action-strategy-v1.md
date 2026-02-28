@@ -49,7 +49,7 @@
 
 ## 3. 旧入口处理策略
 
-以下旧接口保留路由但**不再执行业务**，统一返回 `410 Gone` 并指向 `:act`：
+旧动作入口已全部从 API 路由删除，不再保留兼容路由：
 
 1. `/loops/{id}:start`
 2. `/loops/{id}:pause`
@@ -132,20 +132,39 @@
 
 ### 7.2 Dispatcher（Go）
 
-`confirm` 路径采用与 API 一致的 `effective_min_required` 规则，确保：
+`confirm` 路径的阈值不再本地重复推导，而是直接使用 RuntimeDomain 返回的 `effective_min_required`，确保：
 
 1. `selected_count=0` 不阻塞推进
 2. reveal 阈值判断与 API 侧一致
+3. 规则单一来源，避免双端漂移
+
+`confirm` 执行流程采用“两阶段”：
+
+1. 预探测（无 loop 行锁）：先调用 RuntimeDomain 计算 reveal 结果  
+2. 持锁复核（事务内）：锁定 loop 后校验 round/branch/min_required 是否仍匹配；匹配则复用预探测结果，不匹配再事务内重算  
+
+该策略的目标是缩短持锁时间，降低 `DeadlineExceeded` 概率，同时保持并发正确性。
+
+`start/retry` 的分支头解析采用 **DB 优先**（domain 仅兜底），避免命令链路被跨服务 RPC 卡住导致 `DeadlineExceeded`。
+
+### 7.3 Executor（Python）
+
+执行语义按 step_type 严格分流，不再“都走训练”：
+
+1. `train/custom`：训练后可选采样
+2. `score`：仅打分采样
+3. `eval`：仅评估
+4. `export`：仅导出
+5. `upload_artifact`：仅上传制品
+
+采样参数约束统一为：`active_learning/simulation` 仅 `score/custom` 强制要求 `sampling.strategy/topk`；`train/eval/export/upload_artifact` 不强制。
 
 ---
 
-## 8. 过渡项（已知且可接受）
+## 8. 过渡项
 
-以下属于过渡期兼容，不影响“实时决策为真值”：
-
-1. `loop.stage/stage_meta` 字段仍保留（模型与库结构兼容）
-2. 部分写路径会同步写这两个字段作为缓存
-3. Query/页面展示不依赖其持久值，统一使用实时决策结果覆盖
+无。  
+当前策略不保留旧入口兼容层，也不保留 `stage/stage_meta` 的写库缓存路径。
 
 ---
 
@@ -157,11 +176,10 @@
 
 1. Web 侧已无旧动作 API 调用，统一 `actLoop`
 2. API 侧动作统一入口为 `:act`
-3. 旧接口均为 410 引导，不再执行业务
+3. 旧动作接口已从路由层删除
 4. `stage` 查询无写库副作用
 5. `selected_count=0` 在 API 与 dispatcher 双侧均可 confirm 推进
 
 附注：
 
 1. 历史规划文档仍可能出现旧接口示例；以本文件为准
-

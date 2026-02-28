@@ -26,6 +26,24 @@ FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid
 FOR UPDATE;
 
+-- name: GetLoopByID :one
+SELECT
+  id,
+  project_id,
+  branch_id,
+  mode,
+  phase,
+  status,
+  current_iteration,
+  max_rounds,
+  query_batch_size,
+  min_new_labels_per_round,
+  model_arch,
+  config,
+  last_confirmed_commit_id
+FROM loop
+WHERE id = sqlc.arg(loop_id)::uuid;
+
 -- name: GetLatestRoundByLoop :one
 SELECT
   id,

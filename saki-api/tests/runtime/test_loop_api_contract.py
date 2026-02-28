@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import uuid
 
-from fastapi import HTTPException
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
@@ -38,7 +37,6 @@ from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
 from saki_api.modules.runtime.api.round_step import (
     LoopActionRequest,
     LoopCreateRequest,
-    LoopRead,
     LoopUpdateRequest,
     SimulationExperimentCreateRequest,
 )
@@ -91,7 +89,7 @@ async def _seed_project_branch(session: AsyncSession) -> tuple[Project, Branch]:
 
 
 @pytest.mark.anyio
-async def test_loop_read_model_validate_accepts_orm_instance(loop_api_env):
+async def test_loop_read_builder_injects_realtime_stage(loop_api_env):
     session_local = loop_api_env
 
     async with session_local() as session:
@@ -115,7 +113,7 @@ async def test_loop_read_model_validate_accepts_orm_instance(loop_api_env):
         finally:
             _session_ctx.reset(token)
 
-        parsed = LoopRead.model_validate(loop)
+        parsed = await loop_query_endpoint._build_loop_read(service, loop)
         assert parsed.id == loop.id
         assert parsed.project_id == project.id
         assert parsed.phase == LoopPhase.AL_BOOTSTRAP
@@ -230,50 +228,13 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
             _session_ctx.reset(token)
 
 
-@pytest.mark.anyio
-async def test_loop_control_confirm_endpoint_gone(loop_api_env, monkeypatch):
-    session_local = loop_api_env
-
-    async def _allow(*args, **kwargs) -> None:
-        del args, kwargs
-        return None
-
-    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
-
-    class _DispatcherAdminStub:
-        enabled = True
-
-    dispatcher_admin_stub = _DispatcherAdminStub()
-
-    async with session_local() as session:
-        project, branch = await _seed_project_branch(session)
-        service = RuntimeService(session)
-        current_user_id = uuid.uuid4()
-
-        token = _session_ctx.set(session)
-        try:
-            loop = await service.create_loop(
-                project.id,
-                LoopCreateRequest(
-                    name="loop-manual",
-                    branch_id=branch.id,
-                    mode=LoopMode.MANUAL,
-                    model_arch="yolo_det_v1",
-                    config={"plugin": {"epochs": 1}},
-                    status=LoopStatus.RUNNING,
-                ),
-            )
-            with pytest.raises(HTTPException) as exc:
-                await loop_control_endpoint.confirm_loop(
-                    loop_id=loop.id,
-                    runtime_service=service,
-                    dispatcher_admin_client=dispatcher_admin_stub,
-                    session=session,
-                    current_user_id=current_user_id,
-                )
-            assert exc.value.status_code == 410
-        finally:
-            _session_ctx.reset(token)
+def test_loop_control_legacy_entrypoints_removed():
+    assert not hasattr(loop_control_endpoint, "confirm_loop")
+    assert not hasattr(loop_control_endpoint, "continue_loop")
+    assert not hasattr(loop_control_endpoint, "start_loop")
+    assert not hasattr(loop_control_endpoint, "pause_loop")
+    assert not hasattr(loop_control_endpoint, "resume_loop")
+    assert not hasattr(loop_control_endpoint, "stop_loop")
 
 
 @pytest.mark.anyio

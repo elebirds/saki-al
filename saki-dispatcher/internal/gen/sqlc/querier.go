@@ -33,6 +33,7 @@ type Querier interface {
 	GetLatestActivateOutputCommitByRound(ctx context.Context, roundID uuid.UUID) (*uuid.UUID, error)
 	GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (GetLatestRoundByLoopRow, error)
 	GetLoopBranchID(ctx context.Context, loopID uuid.UUID) (uuid.UUID, error)
+	GetLoopByID(ctx context.Context, loopID uuid.UUID) (GetLoopByIDRow, error)
 	GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLoopForUpdateRow, error)
 	GetLoopQueryBatchSize(ctx context.Context, loopID uuid.UUID) (int32, error)
 	GetLoopRuntimeConfig(ctx context.Context, loopID uuid.UUID) (GetLoopRuntimeConfigRow, error)

@@ -140,6 +140,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 missing_count=0,
                 latest_commit_id="",
                 revealable_sample_ids_hash="",
+                effective_min_required=0,
             )
 
         async with SessionLocal() as session:
@@ -163,6 +164,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     missing_count=0,
                     latest_commit_id="",
                     revealable_sample_ids_hash="",
+                    effective_min_required=0,
                 )
             except Exception as exc:
                 await session.rollback()
@@ -175,6 +177,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     missing_count=0,
                     latest_commit_id="",
                     revealable_sample_ids_hash="",
+                    effective_min_required=0,
                 )
 
             latest_commit_id = result.get("latest_commit_id")
@@ -184,6 +187,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 missing_count=int(result.get("missing_count", 0)),
                 latest_commit_id=str(latest_commit_id or ""),
                 revealable_sample_ids_hash=str(result.get("revealable_sample_ids_hash") or ""),
+                effective_min_required=int(result.get("effective_min_required", 0)),
             )
 
     async def _create_simulation_commit_tx(

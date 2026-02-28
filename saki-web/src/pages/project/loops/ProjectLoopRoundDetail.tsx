@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
+    App,
     Alert,
     Button,
     Card,
@@ -12,7 +13,6 @@ import {
     Table,
     Tag,
     Typography,
-    message,
 } from 'antd';
 import {
     CartesianGrid,
@@ -149,6 +149,7 @@ const pickDefaultStep = (steps: RuntimeStep[]): RuntimeStep | null => {
 const ProjectLoopRoundDetail: React.FC = () => {
     const {projectId, loopId, roundId} = useParams<{ projectId: string; loopId: string; roundId: string }>();
     const navigate = useNavigate();
+    const {message: messageApi} = App.useApp();
     const token = useAuthStore((state) => state.token);
     const {can: canProject} = useResourcePermission('project', projectId);
     const canManageLoops = canProject('loop:manage:assigned');
@@ -261,7 +262,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
         try {
             await loadRoundDashboard();
         } catch (error: any) {
-            message.error(error?.message || '加载 Round 详情失败');
+            messageApi.error(error?.message || '加载 Round 详情失败');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -276,14 +277,14 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 action: 'retry_round',
                 payload: {roundId: round.id, reason: 'round detail retry'},
             });
-            message.success('已触发重跑');
+            messageApi.success('已触发重跑');
             await loadData(false);
         } catch (error: any) {
-            message.error(error?.message || '重跑失败');
+            messageApi.error(error?.message || '重跑失败');
         } finally {
             setRetrying(false);
         }
-    }, [round, loopId, loadData]);
+    }, [round, loopId, loadData, messageApi]);
 
     useEffect(() => {
         if (!canManageLoops) return;

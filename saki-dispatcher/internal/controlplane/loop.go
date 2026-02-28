@@ -15,6 +15,16 @@ import (
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 )
 
+type alConfirmRevealProbe struct {
+	roundIndex            int
+	branchID              uuid.UUID
+	configuredMinRequired int
+	revealedCount         int
+	selectedCount         int
+	effectiveMinRequired  int
+	latestCommitID        *uuid.UUID
+}
+
 func (s *Service) StartLoop(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
 	return s.withCommand(ctx, commandID, "start_loop", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
 		loopUUID, err := parseUUID(loopID)
@@ -119,11 +129,34 @@ func (s *Service) ConfirmLoop(
 	loopID string,
 	force bool,
 ) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, "confirm_loop", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
-		loopUUID, err := parseUUID(loopID)
+	loopUUID, parseErr := parseUUID(loopID)
+	var (
+		preflightProbe      *alConfirmRevealProbe
+		preflightRejectHint string
+	)
+	if parseErr == nil && s.domainClient != nil && s.domainClient.Enabled() {
+		preflightCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		probe, err := s.preflightALConfirmReveal(preflightCtx, loopUUID, force)
 		if err != nil {
+			if st, ok := grpcstatus.FromError(err); ok && st.Code() == codes.InvalidArgument {
+				preflightRejectHint = st.Message()
+			} else {
+				s.logger.Warn().Err(err).Str("loop_id", loopID).Msg("confirm 预探测失败，回退事务内判定")
+			}
+		} else {
+			preflightProbe = probe
+		}
+	}
+
+	return s.withCommand(ctx, commandID, "confirm_loop", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
+		if parseErr != nil {
 			return "rejected", "loop not found", nil
 		}
+		if preflightRejectHint != "" {
+			return "rejected", preflightRejectHint, nil
+		}
+		var err error
 		loop, ok, err := s.lockLoop(ctx, tx, loopUUID)
 		if err != nil {
 			return "", "", err
@@ -175,43 +208,67 @@ func (s *Service) ConfirmLoop(
 			revealedCount := 0
 			effectiveMinRequired := minRequired
 			if s.domainClient != nil && s.domainClient.Enabled() {
-				response, err := s.domainClient.ResolveRoundReveal(
-					ctx,
-					loop.ID.String(),
-					int32(latestRound.RoundIndex),
-					loop.BranchID.String(),
-					force,
-					int32(minRequired),
-				)
-				if err != nil {
-					if st, ok := grpcstatus.FromError(err); ok && st.Code() == codes.InvalidArgument {
-						return "rejected", st.Message(), nil
+				usedPreflight := false
+				if preflightProbe != nil &&
+					preflightProbe.roundIndex == latestRound.RoundIndex &&
+					preflightProbe.branchID == loop.BranchID &&
+					preflightProbe.configuredMinRequired == minRequired {
+					usedPreflight = true
+					revealedCount = preflightProbe.revealedCount
+					effectiveMinRequired = preflightProbe.effectiveMinRequired
+					if effectiveMinRequired < 0 {
+						effectiveMinRequired = 0
 					}
-					return "", "", err
-				}
-				revealedCount = int(response.GetRevealedCount())
-				selectedCount := int(response.GetSelectedCount())
-				if selectedCount <= 0 {
-					effectiveMinRequired = 0
-				} else if selectedCount < effectiveMinRequired {
-					effectiveMinRequired = selectedCount
-				}
-				if !force && revealedCount < effectiveMinRequired {
-					return "rejected", fmt.Sprintf(
-						"revealed samples %d < min_required %d (configured=%d, selected=%d)",
-						revealedCount,
-						effectiveMinRequired,
-						minRequired,
-						selectedCount,
-					), nil
-				}
-				latestCommitRaw := strings.TrimSpace(response.GetLatestCommitId())
-				if latestCommitRaw != "" {
-					parsedCommitID, parseErr := parseUUID(latestCommitRaw)
-					if parseErr != nil {
-						return "", "", parseErr
+					latestCommitID = preflightProbe.latestCommitID
+					if !force && revealedCount < effectiveMinRequired {
+						return "rejected", fmt.Sprintf(
+							"revealed samples %d < min_required %d (configured=%d, selected=%d)",
+							revealedCount,
+							effectiveMinRequired,
+							minRequired,
+							preflightProbe.selectedCount,
+						), nil
 					}
-					latestCommitID = &parsedCommitID
+				}
+
+				if !usedPreflight {
+					response, err := s.domainClient.ResolveRoundReveal(
+						ctx,
+						loop.ID.String(),
+						int32(latestRound.RoundIndex),
+						loop.BranchID.String(),
+						force,
+						int32(minRequired),
+					)
+					if err != nil {
+						if st, ok := grpcstatus.FromError(err); ok && st.Code() == codes.InvalidArgument {
+							return "rejected", st.Message(), nil
+						}
+						return "", "", err
+					}
+					revealedCount = int(response.GetRevealedCount())
+					selectedCount := int(response.GetSelectedCount())
+					effectiveMinRequired = int(response.GetEffectiveMinRequired())
+					if effectiveMinRequired < 0 {
+						effectiveMinRequired = 0
+					}
+					if !force && revealedCount < effectiveMinRequired {
+						return "rejected", fmt.Sprintf(
+							"revealed samples %d < min_required %d (configured=%d, selected=%d)",
+							revealedCount,
+							effectiveMinRequired,
+							minRequired,
+							selectedCount,
+						), nil
+					}
+					latestCommitRaw := strings.TrimSpace(response.GetLatestCommitId())
+					if latestCommitRaw != "" {
+						parsedCommitID, parseErr := parseUUID(latestCommitRaw)
+						if parseErr != nil {
+							return "", "", parseErr
+						}
+						latestCommitID = &parsedCommitID
+					}
 				}
 			} else {
 				if !force {
@@ -511,6 +568,11 @@ func (s *Service) handleNonTerminalRoundByModeTx(
 	roundStatus db.Roundstatus,
 ) error {
 	if loop.Mode == modeAL && roundStatus == roundWaitUser {
+		// Keep wait_user stable: avoid rewriting the same loop state every tick,
+		// otherwise loop.updated_at changes continuously and decision tokens churn.
+		if loop.Status == statusRunning && loop.Phase == phaseALWaitAnnotation {
+			return nil
+		}
 		return s.updateLoopState(ctx, tx, loop.ID, statusRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
 	}
 	return nil
@@ -1004,7 +1066,91 @@ func (s *Service) lockLoop(ctx context.Context, tx pgx.Tx, loopID uuid.UUID) (lo
 	return mapLoopForUpdate(record), true, nil
 }
 
+func (s *Service) getLoopByID(ctx context.Context, loopID uuid.UUID) (loopRow, bool, error) {
+	if !s.dbEnabled() {
+		return loopRow{}, false, nil
+	}
+	record, err := s.queries.GetLoopByID(ctx, loopID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return loopRow{}, false, nil
+		}
+		return loopRow{}, false, err
+	}
+	return mapLoopByID(record), true, nil
+}
+
+func (s *Service) preflightALConfirmReveal(
+	ctx context.Context,
+	loopID uuid.UUID,
+	force bool,
+) (*alConfirmRevealProbe, error) {
+	if s.domainClient == nil || !s.domainClient.Enabled() {
+		return nil, nil
+	}
+	loop, found, err := s.getLoopByID(ctx, loopID)
+	if err != nil || !found {
+		return nil, err
+	}
+	if loop.Mode != modeAL || loop.Phase != phaseALWaitAnnotation {
+		return nil, nil
+	}
+
+	latestRoundRecord, err := s.queries.GetLatestRoundByLoop(ctx, loopID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	minRequired := loop.MinNewLabelsPerRound
+	if minRequired <= 0 {
+		minRequired = 1
+	}
+	response, err := s.domainClient.ResolveRoundReveal(
+		ctx,
+		loop.ID.String(),
+		latestRoundRecord.RoundIndex,
+		loop.BranchID.String(),
+		force,
+		int32(minRequired),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var latestCommitID *uuid.UUID
+	latestCommitRaw := strings.TrimSpace(response.GetLatestCommitId())
+	if latestCommitRaw != "" {
+		parsedCommitID, parseErr := parseUUID(latestCommitRaw)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		latestCommitID = &parsedCommitID
+	}
+	return &alConfirmRevealProbe{
+		roundIndex:            int(latestRoundRecord.RoundIndex),
+		branchID:              loop.BranchID,
+		configuredMinRequired: minRequired,
+		revealedCount:         int(response.GetRevealedCount()),
+		selectedCount:         int(response.GetSelectedCount()),
+		effectiveMinRequired:  int(response.GetEffectiveMinRequired()),
+		latestCommitID:        latestCommitID,
+	}, nil
+}
+
 func (s *Service) resolveBranchHead(ctx context.Context, branchID uuid.UUID) (headCommitID *uuid.UUID, projectID *uuid.UUID, err error) {
+	if s.dbEnabled() {
+		row, queryErr := s.queries.ResolveBranchHeadFromDB(ctx, branchID)
+		if queryErr == nil {
+			return &row.HeadCommitID, &row.ProjectID, nil
+		}
+		if queryErr != pgx.ErrNoRows {
+			return nil, nil, queryErr
+		}
+	}
+
 	if s.domainClient != nil && s.domainClient.Enabled() {
 		response, callErr := s.domainClient.GetBranchHead(ctx, branchID.String())
 		if callErr == nil && response.GetFound() {
@@ -1024,17 +1170,7 @@ func (s *Service) resolveBranchHead(ctx context.Context, branchID uuid.UUID) (he
 			return &parsedHead, &parsedProject, nil
 		}
 	}
-	if !s.dbEnabled() {
-		return nil, nil, nil
-	}
-	row, err := s.queries.ResolveBranchHeadFromDB(ctx, branchID)
-	if err == pgx.ErrNoRows {
-		return nil, nil, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	return &row.HeadCommitID, &row.ProjectID, nil
+	return nil, nil, nil
 }
 
 func (s *Service) countNewLabels(

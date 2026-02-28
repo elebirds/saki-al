@@ -56,9 +56,7 @@ class LoopCreateData(BaseModel):
     name: str
     mode: LoopMode = LoopMode.ACTIVE_LEARNING
     phase: LoopPhase = LoopPhase.AL_BOOTSTRAP
-    stage: LoopStage = LoopStage.SNAPSHOT_REQUIRED
     phase_meta: Dict[str, Any] = Field(default_factory=dict)
-    stage_meta: Dict[str, Any] = Field(default_factory=dict)
     model_arch: str
     experiment_group_id: Optional[uuid.UUID] = None
     config: Dict[str, Any] = Field(default_factory=dict)
@@ -79,9 +77,7 @@ class LoopPatch(BaseModel):
     name: Optional[str] = None
     mode: Optional[LoopMode] = None
     phase: Optional[LoopPhase] = None
-    stage: Optional[LoopStage] = None
     phase_meta: Optional[Dict[str, Any]] = None
-    stage_meta: Optional[Dict[str, Any]] = None
     model_arch: Optional[str] = None
     experiment_group_id: Optional[uuid.UUID] = None
     config: Optional[Dict[str, Any]] = None
@@ -175,13 +171,6 @@ class RoundRead(BaseModel):
 
 class RoundCommandResponse(BaseModel):
     request_id: str
-    round_id: uuid.UUID
-    status: str
-
-
-class RoundRetryResponse(BaseModel):
-    request_id: str
-    source_round_id: uuid.UUID
     round_id: uuid.UUID
     status: str
 
@@ -311,30 +300,12 @@ class SimulationComparisonRead(BaseModel):
     delta_vs_baseline: Dict[str, float]
 
 
-class LoopConfirmResponse(BaseModel):
-    loop_id: uuid.UUID
-    phase: LoopPhase
-    state: LoopStatus
-
-
 class LoopActionSpec(BaseModel):
     key: LoopActionKey | str
     label: str
     runnable: bool = True
     requires_confirm: bool = False
     payload: Dict[str, Any] = Field(default_factory=dict)
-
-
-class LoopContinueResponse(BaseModel):
-    loop_id: uuid.UUID
-    stage: LoopStage
-    stage_meta: Dict[str, Any] = Field(default_factory=dict)
-    primary_action: Optional[LoopActionSpec] = None
-    actions: List[LoopActionSpec] = Field(default_factory=list)
-    executed_action: Optional[str] = None
-    message: str = ""
-    phase: LoopPhase
-    state: LoopStatus
 
 
 class SnapshotInitRequest(BaseModel):

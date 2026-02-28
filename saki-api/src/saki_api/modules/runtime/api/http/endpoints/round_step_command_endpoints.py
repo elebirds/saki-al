@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -15,7 +15,6 @@ from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import (
     RoundCommandResponse,
-    RoundRetryResponse,
     StepCommandResponse,
 )
 from saki_api.modules.access.domain.rbac import Permissions
@@ -67,30 +66,6 @@ async def stop_round(
     except Exception as exc:
         logger.warning("dispatcher stop_round failed round_id={} error={}", round_id, exc)
         raise InternalServerErrorAppException("dispatcher stop_round failed") from exc
-
-
-@router.post("/rounds/{round_id}:retry", response_model=RoundRetryResponse)
-async def retry_round(
-    *,
-    round_id: uuid.UUID,
-    reason: str = Query(default="user requested retry"),
-    use_latest_inputs: bool = Query(default=True),
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del reason, use_latest_inputs, runtime_service, dispatcher_admin_client, session, current_user_id
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail={
-            "message": "POST /rounds/{round_id}:retry has been removed; use POST /api/v1/loops/{loop_id}:act",
-            "replacement": "/api/v1/loops/{loop_id}:act",
-            "action": "retry_round",
-            "round_id": str(round_id),
-        },
-    )
-
 
 @router.post("/steps/{step_id}:stop", response_model=StepCommandResponse)
 async def stop_step(

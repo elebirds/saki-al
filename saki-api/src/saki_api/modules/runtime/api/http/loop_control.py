@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -18,13 +18,9 @@ from saki_api.modules.runtime.api.round_step import (
     LoopActionResponse,
     LoopActionSpec,
     LoopAnnotationGapsResponse,
-    LoopContinueResponse,
-    LoopConfirmResponse,
-    LoopRead,
     LoopSnapshotRead,
     LoopStageResponse,
     RoundPredictionCleanupResponse,
-    SnapshotMutationResponse,
     SnapshotVersionRead,
     SnapshotVersionSummaryRead,
 )
@@ -87,16 +83,6 @@ async def _dispatch_loop_command(
     except Exception as exc:
         logger.warning("dispatcher loop command failed command={} loop_id={} error={}", command, loop_id, exc)
         raise InternalServerErrorAppException("dispatcher loop command failed") from exc
-
-
-def _deprecated_action_error(*, endpoint: str) -> None:
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail={
-            "message": f"{endpoint} has been removed; use POST /api/v1/loops/{{loop_id}}:act",
-            "replacement": "/api/v1/loops/{loop_id}:act",
-        },
-    )
 
 
 @router.post("/loops/{loop_id}:act", response_model=LoopActionResponse)
@@ -207,112 +193,6 @@ async def act_loop(
         phase=loop.phase,
         state=loop.status,
     )
-
-
-@router.post("/loops/{loop_id}:start", response_model=LoopRead)
-async def start_loop(
-    *,
-    loop_id: uuid.UUID,
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}:start")
-
-
-@router.post("/loops/{loop_id}:pause", response_model=LoopRead)
-async def pause_loop(
-    *,
-    loop_id: uuid.UUID,
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}:pause")
-
-
-@router.post("/loops/{loop_id}:resume", response_model=LoopRead)
-async def resume_loop(
-    *,
-    loop_id: uuid.UUID,
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}:resume")
-
-
-@router.post("/loops/{loop_id}:stop", response_model=LoopRead)
-async def stop_loop(
-    *,
-    loop_id: uuid.UUID,
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, runtime_service, dispatcher_admin_client, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}:stop")
-
-
-@router.post("/loops/{loop_id}:confirm", response_model=LoopConfirmResponse)
-async def confirm_loop(
-    *,
-    loop_id: uuid.UUID,
-    force: bool = False,
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, force, runtime_service, dispatcher_admin_client, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}:confirm")
-
-
-@router.post("/loops/{loop_id}:continue", response_model=LoopContinueResponse)
-async def continue_loop(
-    *,
-    loop_id: uuid.UUID,
-    force: bool = False,
-    runtime_service: RuntimeServiceDep,
-    dispatcher_admin_client: DispatcherAdminClientDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, force, runtime_service, dispatcher_admin_client, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}:continue")
-
-
-@router.post("/loops/{loop_id}/snapshot:init", response_model=SnapshotMutationResponse)
-async def init_loop_snapshot(
-    *,
-    loop_id: uuid.UUID,
-    payload: dict | None = None,
-    runtime_service: RuntimeServiceDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, payload, runtime_service, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}/snapshot:init")
-
-
-@router.post("/loops/{loop_id}/snapshot:update", response_model=SnapshotMutationResponse)
-async def update_loop_snapshot(
-    *,
-    loop_id: uuid.UUID,
-    payload: dict | None = None,
-    runtime_service: RuntimeServiceDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    del loop_id, payload, runtime_service, session, current_user_id
-    _deprecated_action_error(endpoint="POST /loops/{loop_id}/snapshot:update")
 
 
 @router.get("/loops/{loop_id}/snapshot", response_model=LoopSnapshotRead)

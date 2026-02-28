@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
+    App,
     Alert,
     Button,
     Card,
@@ -17,7 +18,6 @@ import {
     Table,
     Tag,
     Typography,
-    message,
 } from 'antd';
 import {useNavigate, useParams} from 'react-router-dom';
 
@@ -93,6 +93,7 @@ const SNAPSHOT_UPDATE_DEFAULTS: SnapshotUpdateRequest = {
 const ProjectLoopDetail: React.FC = () => {
     const {projectId, loopId} = useParams<{ projectId: string; loopId: string }>();
     const navigate = useNavigate();
+    const {message: messageApi} = App.useApp();
     const {can: canProject} = useResourcePermission('project', projectId);
     const canManageLoops = canProject('loop:manage:assigned');
     const [loading, setLoading] = useState(true);
@@ -143,7 +144,7 @@ const ProjectLoopDetail: React.FC = () => {
         try {
             await refreshLoopData();
         } catch (error: any) {
-            message.error(error?.message || '加载 Loop 详情失败');
+            messageApi.error(error?.message || '加载 Loop 详情失败');
         } finally {
             setLoading(false);
         }
@@ -163,12 +164,38 @@ const ProjectLoopDetail: React.FC = () => {
             if (!loopId) return null;
             setControlLoading(true);
             try {
-                const result = await api.actLoop(loopId, {
-                    action: action as any,
-                    force: Boolean(opts.force),
-                    decisionToken: stageInfo?.decisionToken || undefined,
-                    payload,
-                });
+                const submit = async (decisionToken?: string) => {
+                    return await api.actLoop(loopId, {
+                        action: action as any,
+                        force: Boolean(opts.force),
+                        decisionToken,
+                        payload,
+                    });
+                };
+                const isDecisionTokenStale = (error: any): boolean => {
+                    const statusCode = Number(
+                        error?.statusCode
+                        ?? error?.originalError?.response?.status
+                        ?? error?.response?.status
+                        ?? 0,
+                    );
+                    const messageText = String(error?.message || '').toLowerCase();
+                    return statusCode === 409 && messageText.includes('decision token is stale');
+                };
+                let result;
+                try {
+                    result = await submit(stageInfo?.decisionToken || undefined);
+                } catch (error: any) {
+                    if (!isDecisionTokenStale(error)) {
+                        throw error;
+                    }
+                    const latestStage = await api.getLoopStage(loopId).catch(() => null);
+                    if (!latestStage?.decisionToken) {
+                        throw error;
+                    }
+                    setStageInfo(latestStage);
+                    result = await submit(latestStage.decisionToken);
+                }
                 setStageInfo({
                     loopId: result.loopId,
                     stage: result.stage,
@@ -189,22 +216,22 @@ const ProjectLoopDetail: React.FC = () => {
                     setGapInfo(gaps);
                 }
                 if (result.executedAction) {
-                    message.success(result.message || `已执行 ${result.executedAction}`);
+                    messageApi.success(result.message || `已执行 ${result.executedAction}`);
                 } else {
-                    message.info(result.message || `当前阶段无需执行：${result.stage}`);
+                    messageApi.info(result.message || `当前阶段无需执行：${result.stage}`);
                 }
                 if (opts.refresh !== false) {
                     await refreshLoopData();
                 }
                 return result;
             } catch (error: any) {
-                message.error(error?.message || 'Loop 动作执行失败');
+                messageApi.error(error?.message || 'Loop 动作执行失败');
                 return null;
             } finally {
                 setControlLoading(false);
             }
         },
-        [loopId, stageInfo?.decisionToken, loop?.mode, refreshLoopData],
+        [loopId, stageInfo?.decisionToken, loop?.mode, refreshLoopData, messageApi],
     );
 
     const handleCleanupRoundPredictions = async (roundIndex: number) => {
@@ -212,12 +239,12 @@ const ProjectLoopDetail: React.FC = () => {
         setCleaningRound(roundIndex);
         try {
             const response = await api.cleanupRoundPredictions(loopId, roundIndex);
-            message.success(
+            messageApi.success(
                 `已清理 Round ${roundIndex}：score-steps=${response.scoreSteps}，候选=${response.candidateRowsDeleted}，事件=${response.eventRowsDeleted}，指标=${response.metricRowsDeleted}`
             );
             await refreshLoopData();
         } catch (error: any) {
-            message.error(error?.message || '清理 Round 预测数据失败');
+            messageApi.error(error?.message || '清理 Round 预测数据失败');
         } finally {
             setCleaningRound(null);
         }
@@ -247,12 +274,12 @@ const ProjectLoopDetail: React.FC = () => {
                 sampleIds: parseSampleIds((values as any).sampleIdsText),
             };
             await executeLoopAction('snapshot_init', payload, {refresh: true});
-            message.success('Snapshot 初始化成功');
+            messageApi.success('Snapshot 初始化成功');
             setSnapshotInitOpen(false);
             initForm.resetFields();
         } catch (error: any) {
             if (error?.errorFields) return;
-            message.error(error?.message || 'Snapshot 初始化失败');
+            messageApi.error(error?.message || 'Snapshot 初始化失败');
         } finally {
             setSnapshotSubmitting(false);
         }
@@ -272,12 +299,12 @@ const ProjectLoopDetail: React.FC = () => {
                 sampleIds: parseSampleIds((values as any).sampleIdsText),
             };
             await executeLoopAction('snapshot_update', payload, {refresh: true});
-            message.success('Snapshot 更新成功');
+            messageApi.success('Snapshot 更新成功');
             setSnapshotUpdateOpen(false);
             updateForm.resetFields();
         } catch (error: any) {
             if (error?.errorFields) return;
-            message.error(error?.message || 'Snapshot 更新失败');
+            messageApi.error(error?.message || 'Snapshot 更新失败');
         } finally {
             setSnapshotSubmitting(false);
         }
@@ -484,7 +511,7 @@ const ProjectLoopDetail: React.FC = () => {
                     {gapInfo ? (
                         <Table
                             size="small"
-                            rowKey={(_row, idx) => idx ?? 0}
+                            rowKey={(row) => String(row.partition || '')}
                             dataSource={gapInfo.buckets || []}
                             pagination={false}
                             columns={[
@@ -574,7 +601,7 @@ const ProjectLoopDetail: React.FC = () => {
                 onCancel={() => setSnapshotInitOpen(false)}
                 onOk={handleInitSnapshot}
                 okButtonProps={{loading: snapshotSubmitting}}
-                destroyOnClose
+                destroyOnHidden
             >
                 <Form form={initForm} layout="vertical">
                     <Form.Item name="seed" label="Seed">
@@ -610,7 +637,7 @@ const ProjectLoopDetail: React.FC = () => {
                 onCancel={() => setSnapshotUpdateOpen(false)}
                 onOk={handleUpdateSnapshot}
                 okButtonProps={{loading: snapshotSubmitting}}
-                destroyOnClose
+                destroyOnHidden
             >
                 <Form form={updateForm} layout="vertical">
                     <Form.Item name="mode" label="Update Mode">

@@ -227,13 +227,6 @@ export interface RuntimeRoundCommandResponse {
     status: string;
 }
 
-export interface RuntimeRoundRetryResponse {
-    requestId: string;
-    sourceRoundId: string;
-    roundId: string;
-    status: string;
-}
-
 export interface RuntimeStepCommandResponse {
     requestId: string;
     stepId: string;
@@ -331,24 +324,6 @@ export interface SimulationComparison {
 export interface SimulationExperimentCreateResponse {
     experimentGroupId: string;
     loops: Loop[];
-}
-
-export interface LoopConfirmResponse {
-    loopId: string;
-    phase: LoopPhase;
-    state: LoopState;
-}
-
-export interface LoopContinueResponse {
-    loopId: string;
-    stage: LoopStage;
-    stageMeta: Record<string, any>;
-    primaryAction?: LoopActionSpec | null;
-    actions: LoopActionSpec[];
-    executedAction?: string | null;
-    message: string;
-    phase: LoopPhase;
-    state: LoopState;
 }
 
 export interface LoopActionSpec {

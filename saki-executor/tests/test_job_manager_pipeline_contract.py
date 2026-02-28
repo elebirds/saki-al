@@ -67,6 +67,21 @@ def test_job_execution_request_requires_step_type_and_dispatch_kind():
 
 
 def test_sampling_params_required_only_for_sampling_steps():
+    # train step in AL mode should not require sampling.strategy/topk
+    train_request = StepExecutionRequest.from_payload(
+        {
+            "step_id": "step-train-1",
+            "round_id": "round-1",
+            "plugin_id": "demo_det_v1",
+            "round_index": 1,
+            "mode": "active_learning",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
+            "resolved_params": {},
+        }
+    )
+    assert train_request.step_type == "train"
+
     # eval step in AL mode should not require sampling.strategy/topk
     eval_request = StepExecutionRequest.from_payload(
         {

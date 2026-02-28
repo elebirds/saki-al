@@ -118,6 +118,24 @@ func mapLoopForUpdate(record db.GetLoopForUpdateRow) loopRow {
 	}
 }
 
+func mapLoopByID(record db.GetLoopByIDRow) loopRow {
+	return loopRow{
+		ID:                    record.ID,
+		ProjectID:             record.ProjectID,
+		BranchID:              record.BranchID,
+		Mode:                  record.Mode,
+		Phase:                 record.Phase,
+		Status:                record.Status,
+		CurrentIteration:      int(record.CurrentIteration),
+		MaxRounds:             int(record.MaxRounds),
+		QueryBatchSize:        int(record.QueryBatchSize),
+		MinNewLabelsPerRound:  int(record.MinNewLabelsPerRound),
+		ModelArch:             record.ModelArch,
+		Config:                record.Config,
+		LastConfirmedCommitID: record.LastConfirmedCommitID,
+	}
+}
+
 func mapLatestRound(record db.GetLatestRoundByLoopRow) roundRow {
 	return roundRow{
 		ID:            record.ID,

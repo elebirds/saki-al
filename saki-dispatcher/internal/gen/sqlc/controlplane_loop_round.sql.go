@@ -220,6 +220,62 @@ func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (G
 	return i, err
 }
 
+const getLoopByID = `-- name: GetLoopByID :one
+SELECT
+  id,
+  project_id,
+  branch_id,
+  mode,
+  phase,
+  status,
+  current_iteration,
+  max_rounds,
+  query_batch_size,
+  min_new_labels_per_round,
+  model_arch,
+  config,
+  last_confirmed_commit_id
+FROM loop
+WHERE id = $1::uuid
+`
+
+type GetLoopByIDRow struct {
+	ID                    uuid.UUID
+	ProjectID             uuid.UUID
+	BranchID              uuid.UUID
+	Mode                  Loopmode
+	Phase                 Loopphase
+	Status                Loopstatus
+	CurrentIteration      int32
+	MaxRounds             int32
+	QueryBatchSize        int32
+	MinNewLabelsPerRound  int32
+	ModelArch             string
+	Config                []byte
+	LastConfirmedCommitID *uuid.UUID
+}
+
+func (q *Queries) GetLoopByID(ctx context.Context, loopID uuid.UUID) (GetLoopByIDRow, error) {
+	row := q.db.QueryRow(ctx, getLoopByID, loopID)
+	var i GetLoopByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.BranchID,
+		&i.Mode,
+		&i.Phase,
+		&i.Status,
+		&i.CurrentIteration,
+		&i.MaxRounds,
+		&i.QueryBatchSize,
+		&i.MinNewLabelsPerRound,
+		&i.ModelArch,
+		&i.Config,
+		&i.LastConfirmedCommitID,
+	)
+	return i, err
+}
+
 const getLoopForUpdate = `-- name: GetLoopForUpdate :one
 SELECT
   id,

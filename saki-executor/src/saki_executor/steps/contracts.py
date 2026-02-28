@@ -6,7 +6,7 @@ from typing import Any
 from saki_executor.steps.state import StepStatus
 
 SUPPORTED_LOOP_MODES = {"active_learning", "simulation", "manual"}
-SAMPLING_REQUIRED_STEP_TYPES = {"train", "score", "custom"}
+SAMPLING_REQUIRED_STEP_TYPES = {"score", "custom"}
 
 
 @dataclass(frozen=True)

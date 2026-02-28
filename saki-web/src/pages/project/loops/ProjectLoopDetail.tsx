@@ -63,6 +63,7 @@ const LOOP_STAGE_COLOR: Record<string, string> = {
     running_round: 'processing',
     waiting_round_label: 'warning',
     ready_to_confirm: 'success',
+    ready_next_round: 'processing',
     failed_retryable: 'error',
     completed: 'success',
     stopped: 'default',
@@ -577,8 +578,18 @@ const ProjectLoopDetail: React.FC = () => {
                                 <Descriptions.Item label="样本总数">{snapshotInfo.active.sampleCount}</Descriptions.Item>
                             </Descriptions>
                             <div className="flex flex-wrap items-center gap-2">
-                                {Object.entries(snapshotInfo.partitionCounts || {}).map(([key, value]) => (
+                                {Object.entries(snapshotInfo.frozenPartitionCounts || {}).map(([key, value]) => (
                                     <Tag key={key}>{PARTITION_LABEL[key] || key}: {value}</Tag>
+                                ))}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {Object.entries(snapshotInfo.virtualVisibilityCounts || {}).map(([key, value]) => (
+                                    <Tag key={key} color="green">{key}: {value}</Tag>
+                                ))}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {Object.entries(snapshotInfo.effectiveSplitCounts || {}).map(([key, value]) => (
+                                    <Tag key={key} color="blue">{key}: {value}</Tag>
                                 ))}
                             </div>
                             <Divider className="!my-2"/>

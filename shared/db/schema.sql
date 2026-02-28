@@ -683,6 +683,11 @@ CREATE TABLE public.round (
     ended_at timestamp without time zone,
     retry_count integer NOT NULL,
     terminal_reason character varying(4000),
+    confirmed_at timestamp without time zone,
+    confirmed_commit_id uuid,
+    confirmed_revealed_count integer DEFAULT 0 NOT NULL,
+    confirmed_selected_count integer DEFAULT 0 NOT NULL,
+    confirmed_effective_min_required integer DEFAULT 0 NOT NULL,
     final_metrics jsonb,
     final_artifacts jsonb,
     strategy_params jsonb
@@ -1760,6 +1765,20 @@ CREATE INDEX ix_round_attempt_index ON public.round USING btree (attempt_index);
 
 
 --
+-- Name: ix_round_confirmed_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_confirmed_at ON public.round USING btree (confirmed_at);
+
+
+--
+-- Name: ix_round_confirmed_commit_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_round_confirmed_commit_id ON public.round USING btree (confirmed_commit_id);
+
+
+--
 -- Name: ix_round_loop_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2336,6 +2355,14 @@ ALTER TABLE ONLY public.round
 
 
 --
+-- Name: round fk_round_confirmed_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT fk_round_confirmed_commit_id_commit FOREIGN KEY (confirmed_commit_id) REFERENCES public.commit(id);
+
+
+--
 -- Name: round fk_round_loop_id_loop; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2562,4 +2589,3 @@ ALTER TABLE ONLY public.user_system_role
 --
 -- PostgreSQL database dump complete
 --
-

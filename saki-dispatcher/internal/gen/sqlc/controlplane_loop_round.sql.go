@@ -192,7 +192,12 @@ SELECT
   round_index,
   attempt_index,
   state AS summary_status,
-  ended_at
+  ended_at,
+  confirmed_at,
+  confirmed_commit_id,
+  confirmed_revealed_count,
+  confirmed_selected_count,
+  confirmed_effective_min_required
 FROM round
 WHERE loop_id = $1::uuid
 ORDER BY round_index DESC, attempt_index DESC, created_at DESC
@@ -200,11 +205,16 @@ LIMIT 1
 `
 
 type GetLatestRoundByLoopRow struct {
-	ID            uuid.UUID
-	RoundIndex    int32
-	AttemptIndex  int32
-	SummaryStatus Roundstatus
-	EndedAt       pgtype.Timestamp
+	ID                            uuid.UUID
+	RoundIndex                    int32
+	AttemptIndex                  int32
+	SummaryStatus                 Roundstatus
+	EndedAt                       pgtype.Timestamp
+	ConfirmedAt                   pgtype.Timestamp
+	ConfirmedCommitID             *uuid.UUID
+	ConfirmedRevealedCount        int32
+	ConfirmedSelectedCount        int32
+	ConfirmedEffectiveMinRequired int32
 }
 
 func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (GetLatestRoundByLoopRow, error) {
@@ -216,6 +226,11 @@ func (q *Queries) GetLatestRoundByLoop(ctx context.Context, loopID uuid.UUID) (G
 		&i.AttemptIndex,
 		&i.SummaryStatus,
 		&i.EndedAt,
+		&i.ConfirmedAt,
+		&i.ConfirmedCommitID,
+		&i.ConfirmedRevealedCount,
+		&i.ConfirmedSelectedCount,
+		&i.ConfirmedEffectiveMinRequired,
 	)
 	return i, err
 }
@@ -692,6 +707,41 @@ func (q *Queries) ListTickLoopIDs(ctx context.Context, limitCount int32) ([]uuid
 		return nil, err
 	}
 	return items, nil
+}
+
+const markRoundConfirmed = `-- name: MarkRoundConfirmed :execrows
+UPDATE round
+SET confirmed_at = now(),
+    confirmed_commit_id = $1::uuid,
+    confirmed_revealed_count = $2,
+    confirmed_selected_count = $3,
+    confirmed_effective_min_required = $4,
+    updated_at = now()
+WHERE id = $5::uuid
+  AND state = 'COMPLETED'::roundstatus
+  AND confirmed_at IS NULL
+`
+
+type MarkRoundConfirmedParams struct {
+	ConfirmedCommitID             *uuid.UUID
+	ConfirmedRevealedCount        int32
+	ConfirmedSelectedCount        int32
+	ConfirmedEffectiveMinRequired int32
+	RoundID                       uuid.UUID
+}
+
+func (q *Queries) MarkRoundConfirmed(ctx context.Context, arg MarkRoundConfirmedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRoundConfirmed,
+		arg.ConfirmedCommitID,
+		arg.ConfirmedRevealedCount,
+		arg.ConfirmedSelectedCount,
+		arg.ConfirmedEffectiveMinRequired,
+		arg.RoundID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const releaseDispatchAdvisoryLock = `-- name: ReleaseDispatchAdvisoryLock :one

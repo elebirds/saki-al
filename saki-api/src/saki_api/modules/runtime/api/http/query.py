@@ -222,6 +222,7 @@ async def list_loop_rounds(
             and latest_round is not None
             and latest_round.id == row.id
             and row.state.value == "completed"
+            and row.confirmed_at is None
         )
         payload = RoundRead.model_validate(row).model_dump()
         payload["awaiting_confirm"] = bool(awaiting_confirm)

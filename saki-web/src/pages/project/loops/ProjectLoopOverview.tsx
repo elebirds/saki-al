@@ -49,6 +49,7 @@ const LOOP_STAGE_COLOR: Record<string, string> = {
     running_round: 'processing',
     waiting_round_label: 'warning',
     ready_to_confirm: 'success',
+    ready_next_round: 'processing',
     failed_retryable: 'error',
     completed: 'success',
     stopped: 'default',

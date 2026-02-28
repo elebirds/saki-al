@@ -51,6 +51,81 @@ func (s *Service) StartLoop(ctx context.Context, commandID string, loopID string
 	})
 }
 
+func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
+	return s.withCommand(ctx, commandID, "start_next_round", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
+		loopUUID, err := parseUUID(loopID)
+		if err != nil {
+			return "rejected", "loop not found", nil
+		}
+		loop, ok, err := s.lockLoop(ctx, tx, loopUUID)
+		if err != nil {
+			return "", "", err
+		}
+		if !ok {
+			return "rejected", "loop not found", nil
+		}
+		if loop.Mode != modeAL {
+			return "rejected", "start_next_round only supports active-learning loop", nil
+		}
+		if loop.Phase != phaseALWaitAnnotation {
+			return "rejected", "loop is not in al_wait_user phase", nil
+		}
+		if loop.Status != statusRunning && loop.Status != statusPaused {
+			return "rejected", fmt.Sprintf("loop in status %s cannot start next round", loop.Status), nil
+		}
+
+		latestRound, found, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
+		if err != nil {
+			return "", "", err
+		}
+		if !found {
+			return "rejected", "no latest round found", nil
+		}
+		if latestRound.SummaryStatus != roundCompleted {
+			return "rejected", fmt.Sprintf("latest round is not completed: %s", latestRound.SummaryStatus), nil
+		}
+		if latestRound.ConfirmedAt == nil {
+			return "rejected", "latest round is not confirmed", nil
+		}
+
+		inFlightCount, err := s.qtx(tx).CountLoopInFlightSteps(ctx, loop.ID)
+		if err != nil {
+			return "", "", err
+		}
+		if inFlightCount > 0 {
+			return "rejected", fmt.Sprintf("loop has %d in-flight steps", inFlightCount), nil
+		}
+
+		nextRound, err := s.getNextRoundIndexTx(ctx, tx, loop.ID)
+		if err != nil {
+			return "", "", err
+		}
+		if nextRound > loop.MaxRounds {
+			if err := s.updateLoopState(
+				ctx,
+				tx,
+				loop.ID,
+				statusCompleted,
+				phaseALFinalize,
+				terminalReasonSuccess,
+				loop.LastConfirmedCommitID,
+			); err != nil {
+				return "", "", err
+			}
+			return "applied", "active-learning loop completed", nil
+		}
+
+		created, err := s.createNextRoundTx(ctx, tx, loop, commandID)
+		if err != nil {
+			return "", "", err
+		}
+		if !created {
+			return "rejected", "cannot create next round for active-learning loop", nil
+		}
+		return "applied", "start_next_round applied", nil
+	})
+}
+
 func (s *Service) PauseLoop(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
 	return s.withCommand(ctx, commandID, "pause_loop", loopID, func(tx pgx.Tx, _ string) (string, string, error) {
 		loopUUID, err := parseUUID(loopID)
@@ -180,24 +255,11 @@ func (s *Service) ConfirmLoop(
 			if !found {
 				return "rejected", "no round found for active-learning confirm", nil
 			}
-
-			nextRound, err := s.getNextRoundIndexTx(ctx, tx, loop.ID)
-			if err != nil {
-				return "", "", err
+			if latestRound.SummaryStatus != roundCompleted {
+				return "rejected", fmt.Sprintf("latest round is not completed: %s", latestRound.SummaryStatus), nil
 			}
-			if nextRound > loop.MaxRounds {
-				if err := s.updateLoopState(
-					ctx,
-					tx,
-					loop.ID,
-					statusCompleted,
-					phaseALFinalize,
-					terminalReasonSuccess,
-					loop.LastConfirmedCommitID,
-				); err != nil {
-					return "", "", err
-				}
-				return "applied", "active-learning loop completed", nil
+			if latestRound.ConfirmedAt != nil {
+				return "rejected", "latest round already confirmed", nil
 			}
 
 			latestCommitID := loop.LastConfirmedCommitID
@@ -206,6 +268,7 @@ func (s *Service) ConfirmLoop(
 				minRequired = 1
 			}
 			revealedCount := 0
+			selectedCount := 0
 			effectiveMinRequired := minRequired
 			if s.domainClient != nil && s.domainClient.Enabled() {
 				usedPreflight := false
@@ -215,6 +278,7 @@ func (s *Service) ConfirmLoop(
 					preflightProbe.configuredMinRequired == minRequired {
 					usedPreflight = true
 					revealedCount = preflightProbe.revealedCount
+					selectedCount = preflightProbe.selectedCount
 					effectiveMinRequired = preflightProbe.effectiveMinRequired
 					if effectiveMinRequired < 0 {
 						effectiveMinRequired = 0
@@ -247,7 +311,7 @@ func (s *Service) ConfirmLoop(
 						return "", "", err
 					}
 					revealedCount = int(response.GetRevealedCount())
-					selectedCount := int(response.GetSelectedCount())
+					selectedCount = int(response.GetSelectedCount())
 					effectiveMinRequired = int(response.GetEffectiveMinRequired())
 					if effectiveMinRequired < 0 {
 						effectiveMinRequired = 0
@@ -289,12 +353,18 @@ func (s *Service) ConfirmLoop(
 				}
 			}
 
-			created, err := s.createNextRoundTx(ctx, tx, loop, commandID)
+			confirmedRows, err := s.qtx(tx).MarkRoundConfirmed(ctx, db.MarkRoundConfirmedParams{
+				ConfirmedCommitID:             latestCommitID,
+				ConfirmedRevealedCount:        int32(revealedCount),
+				ConfirmedSelectedCount:        int32(selectedCount),
+				ConfirmedEffectiveMinRequired: int32(effectiveMinRequired),
+				RoundID:                       latestRound.ID,
+			})
 			if err != nil {
 				return "", "", err
 			}
-			if !created {
-				return "rejected", "cannot create next round for active-learning loop", nil
+			if confirmedRows == 0 {
+				return "rejected", "latest round is already confirmed or not completed", nil
 			}
 			if latestCommitID != nil {
 				if err := s.qtx(tx).UpdateLoopLastConfirmedCommit(ctx, db.UpdateLoopLastConfirmedCommitParams{

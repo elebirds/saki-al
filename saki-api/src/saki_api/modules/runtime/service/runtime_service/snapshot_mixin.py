@@ -162,6 +162,7 @@ class SnapshotMixin:
                 "round_index": int(getattr(latest_round, "round_index", 0) or 0),
                 "attempt_index": int(getattr(latest_round, "attempt_index", 0) or 0),
                 "state": SnapshotMixin._enum_text(getattr(latest_round, "state", "") or ""),
+                "confirmed_at": str(getattr(latest_round, "confirmed_at", "") or ""),
                 "updated_at": str(getattr(latest_round, "updated_at", "") or ""),
             }
             if latest_round
@@ -196,6 +197,7 @@ class SnapshotMixin:
             LoopStage.RUNNING_ROUND,
             LoopStage.WAITING_ROUND_LABEL,
             LoopStage.READY_TO_CONFIRM,
+            LoopStage.READY_NEXT_ROUND,
             LoopStage.FAILED_RETRYABLE,
         }
         if stage in lifecycle_stage_allowlist:
@@ -220,6 +222,7 @@ class SnapshotMixin:
                 LoopStage.RUNNING_ROUND,
                 LoopStage.WAITING_ROUND_LABEL,
                 LoopStage.READY_TO_CONFIRM,
+                LoopStage.READY_NEXT_ROUND,
             }
         ):
             _append(self._action("snapshot_update", label="Update Snapshot"))
@@ -685,6 +688,8 @@ class SnapshotMixin:
                 raise BadRequestAppException("round selection override requires loop in running/paused/stopping status")
             if round_row.state != RoundStatus.COMPLETED:
                 raise BadRequestAppException("round selection override requires round in completed state")
+            if round_row.confirmed_at is not None:
+                raise BadRequestAppException("round selection override is locked after round confirm")
 
         steps = await self.step_repo.list_by_round(round_row.id)
         score_steps = [item for item in steps if item.step_type == StepType.SCORE]
@@ -1031,6 +1036,23 @@ class SnapshotMixin:
                         annotate_action,
                         [annotate_action, selection_adjust_action],
                     )
+                if latest_round.state != RoundStatus.COMPLETED:
+                    return LoopStage.RUNNING_ROUND, {"phase": str(loop.phase)}, None, [observe_action]
+                if latest_round.confirmed_at is not None:
+                    start_next_round_action = self._action("start_next_round", label="Start Next Round")
+                    return (
+                        LoopStage.READY_NEXT_ROUND,
+                        {
+                            "round_index": round_index,
+                            "attempt_index": int(latest_round.attempt_index),
+                            "confirmed_at": latest_round.confirmed_at.isoformat() if latest_round.confirmed_at else None,
+                            "confirmed_revealed_count": int(latest_round.confirmed_revealed_count or 0),
+                            "confirmed_selected_count": int(latest_round.confirmed_selected_count or 0),
+                            "confirmed_effective_min_required": int(latest_round.confirmed_effective_min_required or 0),
+                        },
+                        start_next_round_action,
+                        [start_next_round_action],
+                    )
                 probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
                 configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
                 effective_min_required = self._effective_round_min_required(
@@ -1038,7 +1060,7 @@ class SnapshotMixin:
                     configured_min_required=configured_min_required,
                 )
                 if probe.revealable_count >= effective_min_required:
-                    confirm_action = self._action("confirm", label="Confirm Round")
+                    confirm_action = self._action("confirm", label="Confirm Reveal")
                     selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
                     return (
                         LoopStage.READY_TO_CONFIRM,
@@ -1322,17 +1344,61 @@ class SnapshotMixin:
         active = None
         if loop.active_snapshot_version_id:
             active = await self.al_snapshot_version_repo.get_by_id(loop.active_snapshot_version_id)
-        partition_counts: dict[str, int] = {}
+        frozen_partition_counts: dict[str, int] = {}
+        virtual_visibility_counts: dict[str, int] = {}
+        effective_split_counts: dict[str, int] = {}
         if active:
             rows = await self.al_snapshot_sample_repo.list_by_snapshot(active.id)
             counter = Counter([str(row.partition.value if hasattr(row.partition, "value") else row.partition) for row in rows])
-            partition_counts = {key: int(value) for key, value in counter.items()}
+            frozen_partition_counts = {key: int(value) for key, value in counter.items()}
+
+            partition_by_sample_id: dict[uuid.UUID, SnapshotPartition] = {row.sample_id: row.partition for row in rows}
+            visible_sample_ids = set(await self.al_loop_visibility_repo.list_visible_sample_ids(loop_id))
+            train_visible_total = int(len(visible_sample_ids))
+            train_visible_seed = int(
+                sum(
+                    1
+                    for sample_id in visible_sample_ids
+                    if partition_by_sample_id.get(sample_id) == SnapshotPartition.TRAIN_SEED
+                )
+            )
+            train_visible_revealed_from_pool = int(
+                sum(
+                    1
+                    for sample_id in visible_sample_ids
+                    if partition_by_sample_id.get(sample_id) == SnapshotPartition.TRAIN_POOL
+                )
+            )
+            train_pool_total = int(
+                sum(1 for partition in partition_by_sample_id.values() if partition == SnapshotPartition.TRAIN_POOL)
+            )
+            train_pool_hidden = max(0, train_pool_total - train_visible_revealed_from_pool)
+            virtual_visibility_counts = {
+                "train_visible_total": train_visible_total,
+                "train_visible_seed": train_visible_seed,
+                "train_visible_revealed_from_pool": train_visible_revealed_from_pool,
+                "train_pool_hidden": int(train_pool_hidden),
+            }
+
+            val_effective = int(counter.get(SnapshotPartition.VAL_ANCHOR.value, 0))
+            if active.val_policy == SnapshotValPolicy.EXPAND_WITH_BATCH_VAL:
+                val_effective += int(counter.get(SnapshotPartition.VAL_BATCH.value, 0))
+            test_effective = int(counter.get(SnapshotPartition.TEST_ANCHOR.value, 0)) + int(
+                counter.get(SnapshotPartition.TEST_BATCH.value, 0)
+            )
+            effective_split_counts = {
+                "train_effective": train_visible_total,
+                "val_effective": int(val_effective),
+                "test_effective": int(test_effective),
+            }
         return {
             "loop_id": loop.id,
             "active_snapshot_version_id": loop.active_snapshot_version_id,
             "active": active,
             "history": history,
-            "partition_counts": partition_counts,
+            "frozen_partition_counts": frozen_partition_counts,
+            "virtual_visibility_counts": virtual_visibility_counts,
+            "effective_split_counts": effective_split_counts,
         }
 
     async def get_loop_stage(self, *, loop_id: uuid.UUID) -> dict[str, Any]:

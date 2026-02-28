@@ -52,6 +52,7 @@ async def get_round(
         and latest_round is not None
         and latest_round.id == round_item.id
         and round_item.state.value == "completed"
+        and round_item.confirmed_at is None
     )
     payload = RoundRead.model_validate(round_item).model_dump()
     payload["awaiting_confirm"] = bool(awaiting_confirm)

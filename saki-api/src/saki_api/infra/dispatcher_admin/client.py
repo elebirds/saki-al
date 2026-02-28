@@ -69,6 +69,14 @@ class DispatcherAdminClient:
             metadata=self._metadata(),
         )
 
+    async def start_next_round(self, loop_id: str, *, command_id: str | None = None) -> pb.CommandResponse:
+        stub = await self._get_stub()
+        return await stub.StartNextRound(
+            pb.LoopCommandRequest(command_id=command_id or str(uuid.uuid4()), loop_id=str(loop_id)),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )
+
     async def resume_loop(self, loop_id: str, *, command_id: str | None = None) -> pb.CommandResponse:
         stub = await self._get_stub()
         return await stub.ResumeLoop(

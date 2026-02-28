@@ -303,6 +303,11 @@ function normalizeRound(round: RuntimeRound): RuntimeRound {
         outputCommitId: (round as any).outputCommitId ?? null,
         retryOfRoundId: (round as any).retryOfRoundId ?? null,
         retryReason: (round as any).retryReason ?? null,
+        confirmedAt: (round as any).confirmedAt ?? null,
+        confirmedCommitId: (round as any).confirmedCommitId ?? null,
+        confirmedRevealedCount: Number((round as any).confirmedRevealedCount ?? 0),
+        confirmedSelectedCount: Number((round as any).confirmedSelectedCount ?? 0),
+        confirmedEffectiveMinRequired: Number((round as any).confirmedEffectiveMinRequired ?? 0),
         lastError: (round as any).lastError ?? (round as any).terminalReason ?? null,
         resolvedParams: (round as any).resolvedParams ?? {},
     };

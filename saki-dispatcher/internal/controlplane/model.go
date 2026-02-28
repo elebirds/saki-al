@@ -27,11 +27,16 @@ type loopRow struct {
 }
 
 type roundRow struct {
-	ID            uuid.UUID
-	RoundIndex    int
-	AttemptIndex  int
-	SummaryStatus db.Roundstatus
-	EndedAt       *time.Time
+	ID                            uuid.UUID
+	RoundIndex                    int
+	AttemptIndex                  int
+	SummaryStatus                 db.Roundstatus
+	EndedAt                       *time.Time
+	ConfirmedAt                   *time.Time
+	ConfirmedCommitID             *uuid.UUID
+	ConfirmedRevealedCount        int
+	ConfirmedSelectedCount        int
+	ConfirmedEffectiveMinRequired int
 }
 
 type commandLogEntry struct {
@@ -139,11 +144,16 @@ func mapLoopByID(record db.GetLoopByIDRow) loopRow {
 
 func mapLatestRound(record db.GetLatestRoundByLoopRow) roundRow {
 	return roundRow{
-		ID:            record.ID,
-		RoundIndex:    int(record.RoundIndex),
-		AttemptIndex:  int(record.AttemptIndex),
-		SummaryStatus: record.SummaryStatus,
-		EndedAt:       timestampPtr(record.EndedAt),
+		ID:                            record.ID,
+		RoundIndex:                    int(record.RoundIndex),
+		AttemptIndex:                  int(record.AttemptIndex),
+		SummaryStatus:                 record.SummaryStatus,
+		EndedAt:                       timestampPtr(record.EndedAt),
+		ConfirmedAt:                   timestampPtr(record.ConfirmedAt),
+		ConfirmedCommitID:             record.ConfirmedCommitID,
+		ConfirmedRevealedCount:        int(record.ConfirmedRevealedCount),
+		ConfirmedSelectedCount:        int(record.ConfirmedSelectedCount),
+		ConfirmedEffectiveMinRequired: int(record.ConfirmedEffectiveMinRequired),
 	}
 }
 

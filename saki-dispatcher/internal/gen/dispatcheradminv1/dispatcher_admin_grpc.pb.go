@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	DispatcherAdmin_StartLoop_FullMethodName               = "/saki.dispatcher.admin.v1.DispatcherAdmin/StartLoop"
+	DispatcherAdmin_StartNextRound_FullMethodName          = "/saki.dispatcher.admin.v1.DispatcherAdmin/StartNextRound"
 	DispatcherAdmin_PauseLoop_FullMethodName               = "/saki.dispatcher.admin.v1.DispatcherAdmin/PauseLoop"
 	DispatcherAdmin_ResumeLoop_FullMethodName              = "/saki.dispatcher.admin.v1.DispatcherAdmin/ResumeLoop"
 	DispatcherAdmin_StopLoop_FullMethodName                = "/saki.dispatcher.admin.v1.DispatcherAdmin/StopLoop"
@@ -40,6 +41,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DispatcherAdminClient interface {
 	StartLoop(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	StartNextRound(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	PauseLoop(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	ResumeLoop(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	StopLoop(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error)
@@ -67,6 +69,16 @@ func (c *dispatcherAdminClient) StartLoop(ctx context.Context, in *LoopCommandRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CommandResponse)
 	err := c.cc.Invoke(ctx, DispatcherAdmin_StartLoop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dispatcherAdminClient) StartNextRound(ctx context.Context, in *LoopCommandRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DispatcherAdmin_StartNextRound_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +220,7 @@ func (c *dispatcherAdminClient) ReconnectRuntimeDomain(ctx context.Context, in *
 // for forward compatibility.
 type DispatcherAdminServer interface {
 	StartLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error)
+	StartNextRound(context.Context, *LoopCommandRequest) (*CommandResponse, error)
 	PauseLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error)
 	ResumeLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error)
 	StopLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error)
@@ -233,6 +246,9 @@ type UnimplementedDispatcherAdminServer struct{}
 
 func (UnimplementedDispatcherAdminServer) StartLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StartLoop not implemented")
+}
+func (UnimplementedDispatcherAdminServer) StartNextRound(context.Context, *LoopCommandRequest) (*CommandResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartNextRound not implemented")
 }
 func (UnimplementedDispatcherAdminServer) PauseLoop(context.Context, *LoopCommandRequest) (*CommandResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PauseLoop not implemented")
@@ -308,6 +324,24 @@ func _DispatcherAdmin_StartLoop_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DispatcherAdminServer).StartLoop(ctx, req.(*LoopCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DispatcherAdmin_StartNextRound_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LoopCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DispatcherAdminServer).StartNextRound(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DispatcherAdmin_StartNextRound_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DispatcherAdminServer).StartNextRound(ctx, req.(*LoopCommandRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -556,6 +590,10 @@ var DispatcherAdmin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StartLoop",
 			Handler:    _DispatcherAdmin_StartLoop_Handler,
+		},
+		{
+			MethodName: "StartNextRound",
+			Handler:    _DispatcherAdmin_StartNextRound_Handler,
 		},
 		{
 			MethodName: "PauseLoop",

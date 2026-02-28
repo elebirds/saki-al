@@ -71,6 +71,8 @@ async def _dispatch_loop_command(
             return await dispatcher_admin_client.stop_loop(loop_id_text)
         if command == "confirm":
             return await dispatcher_admin_client.confirm_loop(loop_id_text, force=force)
+        if command == "start_next_round":
+            return await dispatcher_admin_client.start_next_round(loop_id_text)
         if command == "retry_round":
             if not round_id:
                 raise BadRequestAppException("round_id is required for retry_round")
@@ -156,6 +158,7 @@ async def act_loop(
         message_text = str(getattr(response, "message", "") or "retry_round dispatched")
     elif action_key in {
         LoopActionKey.START.value,
+        LoopActionKey.START_NEXT_ROUND.value,
         LoopActionKey.PAUSE.value,
         LoopActionKey.RESUME.value,
         LoopActionKey.STOP.value,
@@ -216,7 +219,9 @@ async def get_loop_snapshot(
         active_snapshot_version_id=payload.get("active_snapshot_version_id"),
         active=SnapshotVersionRead.model_validate(active, from_attributes=True) if active else None,
         history=[SnapshotVersionSummaryRead.model_validate(item, from_attributes=True) for item in history],
-        partition_counts=payload.get("partition_counts") or {},
+        frozen_partition_counts=payload.get("frozen_partition_counts") or {},
+        virtual_visibility_counts=payload.get("virtual_visibility_counts") or {},
+        effective_split_counts=payload.get("effective_split_counts") or {},
     )
 
 

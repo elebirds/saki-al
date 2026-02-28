@@ -50,6 +50,17 @@ func (s *Server) StartLoop(ctx context.Context, req *dispatcheradminv1.LoopComma
 	return convertCommandResult(result), nil
 }
 
+func (s *Server) StartNextRound(ctx context.Context, req *dispatcheradminv1.LoopCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetLoopId(), "loop_id"); err != nil {
+		return nil, err
+	}
+	result, err := s.commands.StartNextRound(ctx, req.GetCommandId(), req.GetLoopId())
+	if err != nil {
+		return nil, err
+	}
+	return convertCommandResult(result), nil
+}
+
 func (s *Server) PauseLoop(ctx context.Context, req *dispatcheradminv1.LoopCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
 	if err := validateUUIDField(req.GetLoopId(), "loop_id"); err != nil {
 		return nil, err

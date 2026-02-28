@@ -7,6 +7,7 @@ export type LoopStage =
     | 'running_round'
     | 'waiting_round_label'
     | 'ready_to_confirm'
+    | 'ready_next_round'
     | 'failed_retryable'
     | 'completed'
     | 'stopped'
@@ -17,6 +18,7 @@ export type LoopActionKey =
     | 'resume'
     | 'stop'
     | 'confirm'
+    | 'start_next_round'
     | 'retry_round'
     | 'snapshot_init'
     | 'snapshot_update'
@@ -145,6 +147,11 @@ export interface RuntimeRound {
     startedAt?: string | null;
     endedAt?: string | null;
     retryCount: number;
+    confirmedAt?: string | null;
+    confirmedCommitId?: string | null;
+    confirmedRevealedCount?: number;
+    confirmedSelectedCount?: number;
+    confirmedEffectiveMinRequired?: number;
     lastError?: string | null;
     finalMetrics: Record<string, any>;
     finalArtifacts: Record<string, any>;
@@ -443,7 +450,9 @@ export interface LoopSnapshotRead {
     activeSnapshotVersionId?: string | null;
     active?: SnapshotVersionRead | null;
     history: SnapshotVersionSummaryRead[];
-    partitionCounts: Record<string, number>;
+    frozenPartitionCounts: Record<string, number>;
+    virtualVisibilityCounts: Record<string, number>;
+    effectiveSplitCounts: Record<string, number>;
 }
 
 export interface SnapshotMutationResponse {

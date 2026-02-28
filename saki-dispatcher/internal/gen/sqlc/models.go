@@ -1104,32 +1104,37 @@ type RolePermission struct {
 }
 
 type Round struct {
-	ID                 uuid.UUID
-	CreatedAt          pgtype.Timestamp
-	UpdatedAt          pgtype.Timestamp
-	ProjectID          uuid.UUID
-	LoopID             uuid.UUID
-	RoundIndex         int32
-	AttemptIndex       int32
-	Mode               Loopmode
-	State              Roundstatus
-	StepCounts         []byte
-	RoundType          string
-	PluginID           string
-	ResolvedParams     []byte
-	Resources          []byte
-	InputCommitID      *uuid.UUID
-	OutputCommitID     *uuid.UUID
-	RetryOfRoundID     *uuid.UUID
-	RetryReason        pgtype.Text
-	AssignedExecutorID pgtype.Text
-	StartedAt          pgtype.Timestamp
-	EndedAt            pgtype.Timestamp
-	RetryCount         int32
-	TerminalReason     pgtype.Text
-	FinalMetrics       []byte
-	FinalArtifacts     []byte
-	StrategyParams     []byte
+	ID                            uuid.UUID
+	CreatedAt                     pgtype.Timestamp
+	UpdatedAt                     pgtype.Timestamp
+	ProjectID                     uuid.UUID
+	LoopID                        uuid.UUID
+	RoundIndex                    int32
+	AttemptIndex                  int32
+	Mode                          Loopmode
+	State                         Roundstatus
+	StepCounts                    []byte
+	RoundType                     string
+	PluginID                      string
+	ResolvedParams                []byte
+	Resources                     []byte
+	InputCommitID                 *uuid.UUID
+	OutputCommitID                *uuid.UUID
+	RetryOfRoundID                *uuid.UUID
+	RetryReason                   pgtype.Text
+	AssignedExecutorID            pgtype.Text
+	StartedAt                     pgtype.Timestamp
+	EndedAt                       pgtype.Timestamp
+	RetryCount                    int32
+	TerminalReason                pgtype.Text
+	ConfirmedAt                   pgtype.Timestamp
+	ConfirmedCommitID             *uuid.UUID
+	ConfirmedRevealedCount        int32
+	ConfirmedSelectedCount        int32
+	ConfirmedEffectiveMinRequired int32
+	FinalMetrics                  []byte
+	FinalArtifacts                []byte
+	StrategyParams                []byte
 }
 
 type RoundSampleMetric struct {

@@ -1093,9 +1093,10 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\">\n" +
 	"\x1dReconnectRuntimeDomainRequest\x12\x1d\n" +
 	"\n" +
-	"command_id\x18\x01 \x01(\tR\tcommandId2\x9f\f\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId2\x8a\r\n" +
 	"\x0fDispatcherAdmin\x12d\n" +
-	"\tStartLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12d\n" +
+	"\tStartLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12i\n" +
+	"\x0eStartNextRound\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12d\n" +
 	"\tPauseLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12e\n" +
 	"\n" +
 	"ResumeLoop\x12,.saki.dispatcher.admin.v1.LoopCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12c\n" +
@@ -1148,35 +1149,37 @@ var file_dispatcher_admin_proto_depIdxs = []int32{
 	10, // 0: saki.dispatcher.admin.v1.ExecutorReadResponse.item:type_name -> saki.dispatcher.admin.v1.ExecutorRead
 	10, // 1: saki.dispatcher.admin.v1.ExecutorListResponse.items:type_name -> saki.dispatcher.admin.v1.ExecutorRead
 	0,  // 2: saki.dispatcher.admin.v1.DispatcherAdmin.StartLoop:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
-	0,  // 3: saki.dispatcher.admin.v1.DispatcherAdmin.PauseLoop:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
-	0,  // 4: saki.dispatcher.admin.v1.DispatcherAdmin.ResumeLoop:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
-	0,  // 5: saki.dispatcher.admin.v1.DispatcherAdmin.StopLoop:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
-	1,  // 6: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:input_type -> saki.dispatcher.admin.v1.ConfirmLoopRequest
-	2,  // 7: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:input_type -> saki.dispatcher.admin.v1.RoundCommandRequest
-	3,  // 8: saki.dispatcher.admin.v1.DispatcherAdmin.RetryRound:input_type -> saki.dispatcher.admin.v1.RetryRoundRequest
-	4,  // 9: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:input_type -> saki.dispatcher.admin.v1.StepCommandRequest
-	6,  // 10: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:input_type -> saki.dispatcher.admin.v1.RuntimeSummaryRequest
-	8,  // 11: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:input_type -> saki.dispatcher.admin.v1.ExecutorReadRequest
-	9,  // 12: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:input_type -> saki.dispatcher.admin.v1.ExecutorListRequest
-	13, // 13: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeDomainStatus:input_type -> saki.dispatcher.admin.v1.RuntimeDomainStatusRequest
-	15, // 14: saki.dispatcher.admin.v1.DispatcherAdmin.SetRuntimeDomainEnabled:input_type -> saki.dispatcher.admin.v1.SetRuntimeDomainEnabledRequest
-	16, // 15: saki.dispatcher.admin.v1.DispatcherAdmin.ReconnectRuntimeDomain:input_type -> saki.dispatcher.admin.v1.ReconnectRuntimeDomainRequest
-	5,  // 16: saki.dispatcher.admin.v1.DispatcherAdmin.StartLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 17: saki.dispatcher.admin.v1.DispatcherAdmin.PauseLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 18: saki.dispatcher.admin.v1.DispatcherAdmin.ResumeLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 19: saki.dispatcher.admin.v1.DispatcherAdmin.StopLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 20: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 21: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 22: saki.dispatcher.admin.v1.DispatcherAdmin.RetryRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 23: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	7,  // 24: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:output_type -> saki.dispatcher.admin.v1.RuntimeSummaryResponse
-	11, // 25: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:output_type -> saki.dispatcher.admin.v1.ExecutorReadResponse
-	12, // 26: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:output_type -> saki.dispatcher.admin.v1.ExecutorListResponse
-	14, // 27: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeDomainStatus:output_type -> saki.dispatcher.admin.v1.RuntimeDomainStatusResponse
-	5,  // 28: saki.dispatcher.admin.v1.DispatcherAdmin.SetRuntimeDomainEnabled:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	5,  // 29: saki.dispatcher.admin.v1.DispatcherAdmin.ReconnectRuntimeDomain:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	16, // [16:30] is the sub-list for method output_type
-	2,  // [2:16] is the sub-list for method input_type
+	0,  // 3: saki.dispatcher.admin.v1.DispatcherAdmin.StartNextRound:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
+	0,  // 4: saki.dispatcher.admin.v1.DispatcherAdmin.PauseLoop:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
+	0,  // 5: saki.dispatcher.admin.v1.DispatcherAdmin.ResumeLoop:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
+	0,  // 6: saki.dispatcher.admin.v1.DispatcherAdmin.StopLoop:input_type -> saki.dispatcher.admin.v1.LoopCommandRequest
+	1,  // 7: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:input_type -> saki.dispatcher.admin.v1.ConfirmLoopRequest
+	2,  // 8: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:input_type -> saki.dispatcher.admin.v1.RoundCommandRequest
+	3,  // 9: saki.dispatcher.admin.v1.DispatcherAdmin.RetryRound:input_type -> saki.dispatcher.admin.v1.RetryRoundRequest
+	4,  // 10: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:input_type -> saki.dispatcher.admin.v1.StepCommandRequest
+	6,  // 11: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:input_type -> saki.dispatcher.admin.v1.RuntimeSummaryRequest
+	8,  // 12: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:input_type -> saki.dispatcher.admin.v1.ExecutorReadRequest
+	9,  // 13: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:input_type -> saki.dispatcher.admin.v1.ExecutorListRequest
+	13, // 14: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeDomainStatus:input_type -> saki.dispatcher.admin.v1.RuntimeDomainStatusRequest
+	15, // 15: saki.dispatcher.admin.v1.DispatcherAdmin.SetRuntimeDomainEnabled:input_type -> saki.dispatcher.admin.v1.SetRuntimeDomainEnabledRequest
+	16, // 16: saki.dispatcher.admin.v1.DispatcherAdmin.ReconnectRuntimeDomain:input_type -> saki.dispatcher.admin.v1.ReconnectRuntimeDomainRequest
+	5,  // 17: saki.dispatcher.admin.v1.DispatcherAdmin.StartLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 18: saki.dispatcher.admin.v1.DispatcherAdmin.StartNextRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 19: saki.dispatcher.admin.v1.DispatcherAdmin.PauseLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 20: saki.dispatcher.admin.v1.DispatcherAdmin.ResumeLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 21: saki.dispatcher.admin.v1.DispatcherAdmin.StopLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 22: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 23: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 24: saki.dispatcher.admin.v1.DispatcherAdmin.RetryRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 25: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	7,  // 26: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:output_type -> saki.dispatcher.admin.v1.RuntimeSummaryResponse
+	11, // 27: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:output_type -> saki.dispatcher.admin.v1.ExecutorReadResponse
+	12, // 28: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:output_type -> saki.dispatcher.admin.v1.ExecutorListResponse
+	14, // 29: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeDomainStatus:output_type -> saki.dispatcher.admin.v1.RuntimeDomainStatusResponse
+	5,  // 30: saki.dispatcher.admin.v1.DispatcherAdmin.SetRuntimeDomainEnabled:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	5,  // 31: saki.dispatcher.admin.v1.DispatcherAdmin.ReconnectRuntimeDomain:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	17, // [17:32] is the sub-list for method output_type
+	2,  // [2:17] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name

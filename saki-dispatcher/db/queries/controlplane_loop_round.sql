@@ -50,7 +50,12 @@ SELECT
   round_index,
   attempt_index,
   state AS summary_status,
-  ended_at
+  ended_at,
+  confirmed_at,
+  confirmed_commit_id,
+  confirmed_revealed_count,
+  confirmed_selected_count,
+  confirmed_effective_min_required
 FROM round
 WHERE loop_id = sqlc.arg(loop_id)::uuid
 ORDER BY round_index DESC, attempt_index DESC, created_at DESC
@@ -228,6 +233,18 @@ SET state = sqlc.arg(state)::roundstatus,
     updated_at = now()
 WHERE id = sqlc.arg(round_id)::uuid
   AND state = sqlc.arg(from_state)::roundstatus;
+
+-- name: MarkRoundConfirmed :execrows
+UPDATE round
+SET confirmed_at = now(),
+    confirmed_commit_id = sqlc.narg(confirmed_commit_id)::uuid,
+    confirmed_revealed_count = sqlc.arg(confirmed_revealed_count),
+    confirmed_selected_count = sqlc.arg(confirmed_selected_count),
+    confirmed_effective_min_required = sqlc.arg(confirmed_effective_min_required),
+    updated_at = now()
+WHERE id = sqlc.arg(round_id)::uuid
+  AND state = 'COMPLETED'::roundstatus
+  AND confirmed_at IS NULL;
 
 -- name: ListRoundActiveStepIDs :many
 SELECT id

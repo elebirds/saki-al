@@ -100,6 +100,7 @@ message ReconnectRuntimeDomainRequest {
 
 service DispatcherAdmin {
   rpc StartLoop(LoopCommandRequest) returns (CommandResponse);
+  rpc StartNextRound(LoopCommandRequest) returns (CommandResponse);
   rpc PauseLoop(LoopCommandRequest) returns (CommandResponse);
   rpc ResumeLoop(LoopCommandRequest) returns (CommandResponse);
   rpc StopLoop(LoopCommandRequest) returns (CommandResponse);

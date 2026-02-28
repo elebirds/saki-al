@@ -39,6 +39,11 @@ class DispatcherAdminStub(object):
                 request_serializer=dispatcher__admin__pb2.LoopCommandRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
                 _registered_method=True)
+        self.StartNextRound = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/StartNextRound',
+                request_serializer=dispatcher__admin__pb2.LoopCommandRequest.SerializeToString,
+                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
+                _registered_method=True)
         self.PauseLoop = channel.unary_unary(
                 '/saki.dispatcher.admin.v1.DispatcherAdmin/PauseLoop',
                 request_serializer=dispatcher__admin__pb2.LoopCommandRequest.SerializeToString,
@@ -110,6 +115,12 @@ class DispatcherAdminServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def StartLoop(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartNextRound(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -198,6 +209,11 @@ def add_DispatcherAdminServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'StartLoop': grpc.unary_unary_rpc_method_handler(
                     servicer.StartLoop,
+                    request_deserializer=dispatcher__admin__pb2.LoopCommandRequest.FromString,
+                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
+            ),
+            'StartNextRound': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartNextRound,
                     request_deserializer=dispatcher__admin__pb2.LoopCommandRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
@@ -292,6 +308,33 @@ class DispatcherAdmin(object):
             request,
             target,
             '/saki.dispatcher.admin.v1.DispatcherAdmin/StartLoop',
+            dispatcher__admin__pb2.LoopCommandRequest.SerializeToString,
+            dispatcher__admin__pb2.CommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartNextRound(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/StartNextRound',
             dispatcher__admin__pb2.LoopCommandRequest.SerializeToString,
             dispatcher__admin__pb2.CommandResponse.FromString,
             options,

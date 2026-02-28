@@ -162,6 +162,11 @@ class RoundRead(BaseModel):
     ended_at: Optional[datetime] = None
     retry_count: int
     terminal_reason: Optional[str] = None
+    confirmed_at: Optional[datetime] = None
+    confirmed_commit_id: Optional[uuid.UUID] = None
+    confirmed_revealed_count: int = 0
+    confirmed_selected_count: int = 0
+    confirmed_effective_min_required: int = 0
     final_metrics: Dict[str, Any]
     final_artifacts: Dict[str, Any]
     resolved_params: Dict[str, Any]
@@ -395,7 +400,9 @@ class LoopSnapshotRead(BaseModel):
     active_snapshot_version_id: Optional[uuid.UUID] = None
     active: Optional[SnapshotVersionRead] = None
     history: List[SnapshotVersionSummaryRead] = Field(default_factory=list)
-    partition_counts: Dict[str, int] = Field(default_factory=dict)
+    frozen_partition_counts: Dict[str, int] = Field(default_factory=dict)
+    virtual_visibility_counts: Dict[str, int] = Field(default_factory=dict)
+    effective_split_counts: Dict[str, int] = Field(default_factory=dict)
 
 
 class SnapshotMutationResponse(BaseModel):

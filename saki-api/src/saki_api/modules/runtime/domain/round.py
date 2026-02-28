@@ -43,6 +43,11 @@ class RoundBase(SQLModel):
     ended_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True))
     retry_count: int = Field(default=0)
     terminal_reason: Optional[str] = Field(default=None, max_length=4000)
+    confirmed_at: Optional[datetime] = Field(default=None, sa_type=sa.DateTime(timezone=True), index=True)
+    confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id")
+    confirmed_revealed_count: int = Field(default=0, ge=0)
+    confirmed_selected_count: int = Field(default=0, ge=0)
+    confirmed_effective_min_required: int = Field(default=0, ge=0)
 
     final_metrics: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     final_artifacts: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))

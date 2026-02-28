@@ -69,6 +69,7 @@ type Querier interface {
 	MarkDispatchOutboxSent(ctx context.Context, outboxID uuid.UUID) (int64, error)
 	MarkOrchestratorStepRetrying(ctx context.Context, arg MarkOrchestratorStepRetryingParams) (int64, error)
 	MarkOrchestratorStepRunning(ctx context.Context, stepID uuid.UUID) (int64, error)
+	MarkRoundConfirmed(ctx context.Context, arg MarkRoundConfirmedParams) (int64, error)
 	MarkStepDispatching(ctx context.Context, arg MarkStepDispatchingParams) (int64, error)
 	PromoteRetryingStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error)
 	PromoteStepToReady(ctx context.Context, stepID uuid.UUID) (int64, error)

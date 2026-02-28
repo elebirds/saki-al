@@ -17,7 +17,7 @@ from saki_api.modules.runtime.api.round_step import (
     LoopActionRequest,
     LoopActionResponse,
     LoopActionSpec,
-    LoopAnnotationGapsResponse,
+    LoopLabelReadinessResponse,
     LoopSnapshotRead,
     LoopGateResponse,
     RoundPredictionCleanupResponse,
@@ -219,9 +219,8 @@ async def get_loop_snapshot(
         active_snapshot_version_id=payload.get("active_snapshot_version_id"),
         active=SnapshotVersionRead.model_validate(active, from_attributes=True) if active else None,
         history=[SnapshotVersionSummaryRead.model_validate(item, from_attributes=True) for item in history],
-        frozen_partition_counts=payload.get("frozen_partition_counts") or {},
-        virtual_visibility_counts=payload.get("virtual_visibility_counts") or {},
-        effective_split_counts=payload.get("effective_split_counts") or {},
+        primary_view=payload.get("primary_view") or {},
+        advanced_view=payload.get("advanced_view") or {},
     )
 
 
@@ -244,8 +243,8 @@ async def get_loop_gate(
     return LoopGateResponse(**payload)
 
 
-@router.get("/loops/{loop_id}/annotation-gaps", response_model=LoopAnnotationGapsResponse)
-async def get_loop_annotation_gaps(
+@router.get("/loops/{loop_id}/label-readiness", response_model=LoopLabelReadinessResponse)
+async def get_loop_label_readiness(
     *,
     loop_id: uuid.UUID,
     runtime_service: RuntimeServiceDep,
@@ -259,8 +258,8 @@ async def get_loop_annotation_gaps(
         project_id=loop.project_id,
         required=Permissions.LOOP_READ,
     )
-    payload = await runtime_service.get_loop_annotation_gaps(loop_id=loop_id)
-    return LoopAnnotationGapsResponse(**payload)
+    payload = await runtime_service.get_loop_label_readiness(loop_id=loop_id)
+    return LoopLabelReadinessResponse(**payload)
 
 
 @router.post("/loops/{loop_id}/rounds/{round_index}:cleanup-predictions", response_model=RoundPredictionCleanupResponse)

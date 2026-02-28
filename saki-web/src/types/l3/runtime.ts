@@ -27,7 +27,7 @@ export type LoopActionKey =
     | 'selection_adjust'
     | 'read'
     | 'observe'
-    | 'view_annotation_gaps'
+    | 'view_label_readiness'
     | 'annotate';
 
 export type SnapshotUpdateMode = 'init' | 'append_all_to_pool' | 'append_split';
@@ -452,9 +452,23 @@ export interface LoopSnapshotRead {
     activeSnapshotVersionId?: string | null;
     active?: SnapshotVersionRead | null;
     history: SnapshotVersionSummaryRead[];
-    frozenPartitionCounts: Record<string, number>;
-    virtualVisibilityCounts: Record<string, number>;
-    effectiveSplitCounts: Record<string, number>;
+    primaryView: {
+        train: { count: number; semantics: 'effective_train' };
+        pool: { count: number; semantics: 'hidden_label_pool' };
+        val: { count: number; semantics: 'effective_val' };
+        test: { count: number; semantics: 'anchor_test' };
+    };
+    advancedView: {
+        bootstrapSeed: number;
+        revealedFromPool: number;
+        poolHidden: number;
+        valAnchor: number;
+        valBatch: number;
+        testAnchor: number;
+        testBatch: number;
+        testComposite: number;
+        manifest: Record<string, number>;
+    };
 }
 
 export interface SnapshotMutationResponse {
@@ -476,17 +490,26 @@ export interface LoopGateResponse {
     blockingReasons: string[];
 }
 
-export interface AnnotationGapBucket {
-    partition: SnapshotPartition;
+export type LabelCheckpointKey = 'seed' | 'val_anchor' | 'test_anchor' | 'query';
+export interface LoopLabelReadinessCheckpoint {
+    checkpointId: string;
+    scope: 'setup' | 'round';
+    roundIndex: number;
+    key: LabelCheckpointKey;
+    blocking: boolean;
     total: number;
     missingCount: number;
-    sampleIds: string[];
+    selectedCount?: number;
+    revealedCount?: number;
+    missingSampleIdsPreview: string[];
+    previewTruncated: boolean;
 }
 
-export interface LoopAnnotationGapsResponse {
+export interface LoopLabelReadinessResponse {
     loopId: string;
     commitId?: string | null;
-    buckets: AnnotationGapBucket[];
+    activeCheckpointId?: string | null;
+    checkpoints: LoopLabelReadinessCheckpoint[];
 }
 
 export interface RoundPredictionCleanupResponse {

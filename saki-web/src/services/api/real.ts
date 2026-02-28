@@ -42,7 +42,7 @@ import {
     LoopActionResponse,
     LoopSnapshotRead,
     LoopGateResponse,
-    LoopAnnotationGapsResponse,
+    LoopLabelReadinessResponse,
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
     LoopSummary,
@@ -954,8 +954,8 @@ export class RealApiService implements ApiService {
         };
     }
 
-    async getLoopAnnotationGaps(loopId: string): Promise<LoopAnnotationGapsResponse> {
-        const response = await this.client.get<LoopAnnotationGapsResponse>(`/loops/${loopId}/annotation-gaps`);
+    async getLoopLabelReadiness(loopId: string): Promise<LoopLabelReadinessResponse> {
+        const response = await this.client.get<LoopLabelReadinessResponse>(`/loops/${loopId}/label-readiness`);
         return response.data;
     }
 

@@ -44,7 +44,7 @@ import {
     LoopSummary,
     LoopSnapshotRead,
     LoopGateResponse,
-    LoopAnnotationGapsResponse,
+    LoopLabelReadinessResponse,
     SimulationComparison,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
@@ -246,7 +246,7 @@ export interface ApiService {
     actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse>;
     getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;
     getLoopGate(loopId: string): Promise<LoopGateResponse>;
-    getLoopAnnotationGaps(loopId: string): Promise<LoopAnnotationGapsResponse>;
+    getLoopLabelReadiness(loopId: string): Promise<LoopLabelReadinessResponse>;
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;

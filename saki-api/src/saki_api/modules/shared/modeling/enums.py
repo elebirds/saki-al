@@ -169,7 +169,7 @@ class LoopActionKey(str, Enum):
     SELECTION_ADJUST = "selection_adjust"
     READ = "read"
     OBSERVE = "observe"
-    VIEW_ANNOTATION_GAPS = "view_annotation_gaps"
+    VIEW_LABEL_READINESS = "view_label_readiness"
     ANNOTATE = "annotate"
 
 

@@ -4,6 +4,7 @@ import {
     Alert,
     Button,
     Card,
+    Collapse,
     Descriptions,
     Divider,
     Dropdown,
@@ -15,6 +16,8 @@ import {
     Popconfirm,
     Progress,
     Select,
+    Steps,
+    Statistic,
     Spin,
     Table,
     Tag,
@@ -26,7 +29,8 @@ import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {
     Loop,
-    LoopAnnotationGapsResponse,
+    LoopLabelReadinessResponse,
+    LoopLabelReadinessCheckpoint,
     LoopSnapshotRead,
     LoopGateResponse,
     RoundSelectionRead,
@@ -72,13 +76,41 @@ const LOOP_GATE_COLOR: Record<string, string> = {
     failed: 'error',
 };
 
-const PARTITION_LABEL: Record<string, string> = {
+const MANIFEST_LABEL: Record<string, string> = {
     train_seed: 'TRAIN_SEED',
     train_pool: 'TRAIN_POOL',
     val_anchor: 'VAL_ANCHOR',
     val_batch: 'VAL_BATCH',
     test_anchor: 'TEST_ANCHOR',
     test_batch: 'TEST_BATCH',
+};
+
+const CHECKPOINT_LABEL: Record<string, string> = {
+    seed: 'Seed 标注',
+    val_anchor: 'Anchor Val 标注',
+    test_anchor: 'Anchor Test 标注',
+    query: 'Query 标注',
+};
+
+const PRIMARY_VIEW_LABEL: Record<string, string> = {
+    train: 'Train',
+    pool: 'Pool',
+    val: 'Val',
+    test: 'Test',
+};
+
+const PRIMARY_VIEW_DESC: Record<string, string> = {
+    train: '当前可训练集合',
+    pool: '候选池（隐藏标签）',
+    val: '当前有效验证集',
+    test: 'Anchor Test（固定口径）',
+};
+
+const PRIMARY_VIEW_COLOR: Record<string, string> = {
+    train: '#1f9d55',
+    pool: '#d89c00',
+    val: '#1677ff',
+    test: '#13a8a8',
 };
 
 const SNAPSHOT_INIT_DEFAULTS: SnapshotInitRequest = {
@@ -107,6 +139,37 @@ const buildRoundProgressSummary = (round: RuntimeRound): { percent: number; text
     return {percent, text: `${done}/${total} 完成 · ${running} 运行中`};
 };
 
+const checkpointOrder = (checkpoint: LoopLabelReadinessCheckpoint): number => {
+    const keyOrder: Record<string, number> = {
+        seed: 0,
+        val_anchor: 1,
+        test_anchor: 2,
+        query: 3,
+    };
+    return checkpoint.roundIndex * 10 + (keyOrder[checkpoint.key] ?? 9);
+};
+
+const formatGateHint = (gateInfo: LoopGateResponse | null): string => {
+    if (!gateInfo) return '暂无 Gate 决策信息。';
+    const gate = gateInfo.gate;
+    const meta = gateInfo.gateMeta || {};
+    if (gate === 'need_snapshot') return '需要先初始化 Snapshot，才能进入主动学习流程。';
+    if (gate === 'need_labels') return `Round 0 就绪未完成，仍缺 ${Number(meta.gap_count || 0)} 个标注。`;
+    if (gate === 'need_round_labels') {
+        return `本轮 Query 仍需补标：${Number(meta.revealed_count || 0)}/${Number(meta.min_required || 0)}。`;
+    }
+    if (gate === 'can_confirm') return '本轮已满足确认条件，可执行 Confirm Reveal。';
+    if (gate === 'can_next_round') return '本轮已确认，可启动下一轮。';
+    if (gate === 'can_retry') return '最新失败轮可重试。';
+    if (gate === 'running') return '当前 Loop 正在执行中。';
+    if (gate === 'paused') return '当前 Loop 已暂停，可恢复。';
+    if (gate === 'stopping') return '当前 Loop 正在停止中，请等待收敛。';
+    if (gate === 'completed') return 'Loop 已完成。';
+    if (gate === 'stopped') return 'Loop 已停止（终态，不可重启）。';
+    if (gate === 'failed') return 'Loop 已失败，请查看失败轮详情。';
+    return `当前 Gate：${gate}`;
+};
+
 const ProjectLoopDetail: React.FC = () => {
     const {projectId, loopId} = useParams<{ projectId: string; loopId: string }>();
     const navigate = useNavigate();
@@ -121,7 +184,7 @@ const ProjectLoopDetail: React.FC = () => {
     const [rounds, setRounds] = useState<RuntimeRound[]>([]);
     const [gateInfo, setGateInfo] = useState<LoopGateResponse | null>(null);
     const [snapshotInfo, setSnapshotInfo] = useState<LoopSnapshotRead | null>(null);
-    const [gapInfo, setGapInfo] = useState<LoopAnnotationGapsResponse | null>(null);
+    const [labelReadiness, setLabelReadiness] = useState<LoopLabelReadinessResponse | null>(null);
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
     const [snapshotUpdateOpen, setSnapshotUpdateOpen] = useState(false);
     const [selectionAdjustOpen, setSelectionAdjustOpen] = useState(false);
@@ -153,15 +216,15 @@ const ProjectLoopDetail: React.FC = () => {
         setGateInfo(gateRow);
         if (loopRow.mode === 'active_learning') {
             const snapshotRow = await api.getLoopSnapshot(loopId).catch(() => null);
-            let gapRow: LoopAnnotationGapsResponse | null = null;
+            let readinessRow: LoopLabelReadinessResponse | null = null;
             if (snapshotRow?.activeSnapshotVersionId) {
-                gapRow = await api.getLoopAnnotationGaps(loopId).catch(() => null);
+                readinessRow = await api.getLoopLabelReadiness(loopId).catch(() => null);
             }
             setSnapshotInfo(snapshotRow);
-            setGapInfo(gapRow);
+            setLabelReadiness(readinessRow);
         } else {
             setSnapshotInfo(null);
-            setGapInfo(null);
+            setLabelReadiness(null);
         }
     }, [loopId, projectId]);
 
@@ -237,10 +300,6 @@ const ProjectLoopDetail: React.FC = () => {
                     initForm.resetFields();
                     initForm.setFieldsValue(SNAPSHOT_INIT_DEFAULTS);
                     setSnapshotInitOpen(true);
-                }
-                if (loop?.mode === 'active_learning' && (actionKeys.has('view_annotation_gaps') || actionKeys.has('annotate'))) {
-                    const gaps = await api.getLoopAnnotationGaps(loopId).catch(() => null);
-                    setGapInfo(gaps);
                 }
                 if (result.executedAction) {
                     messageApi.success(result.message || `已执行 ${result.executedAction}`);
@@ -424,6 +483,14 @@ const ProjectLoopDetail: React.FC = () => {
     };
 
     const handleContinue = async () => {
+        if (primaryAction?.key === 'snapshot_init') {
+            openSnapshotInitModal();
+            return;
+        }
+        if (primaryAction?.key === 'snapshot_update') {
+            openSnapshotUpdateModal();
+            return;
+        }
         if (primaryAction?.key === 'selection_adjust') {
             await openSelectionAdjustModal();
             return;
@@ -457,6 +524,16 @@ const ProjectLoopDetail: React.FC = () => {
             },
             danger: item.key === 'stop',
         }));
+
+    const checkpointRows = [...(labelReadiness?.checkpoints || [])].sort((a, b) => checkpointOrder(a) - checkpointOrder(b));
+    const activeCheckpointId = labelReadiness?.activeCheckpointId || null;
+    const activeCheckpoint = checkpointRows.find((item) => item.checkpointId === activeCheckpointId) || null;
+    const primaryView = snapshotInfo?.primaryView || {
+        train: {count: 0, semantics: 'effective_train' as const},
+        pool: {count: 0, semantics: 'hidden_label_pool' as const},
+        val: {count: 0, semantics: 'effective_val' as const},
+        test: {count: 0, semantics: 'anchor_test' as const},
+    };
 
     if (loading) {
         return (
@@ -547,30 +624,131 @@ const ProjectLoopDetail: React.FC = () => {
             </Card>
 
             {loop.mode === 'active_learning' ? (
-                <Card className="!border-github-border !bg-github-panel" title="AL Gate 面板">
-                    {gateInfo ? (
-                        <div className="flex flex-col gap-3">
+                <Card className="!border-github-border !bg-github-panel" title="Active Learning 面板">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_1fr]">
+                        <div className="flex flex-col gap-3 rounded-lg border border-github-border/80 bg-github-bg p-4">
                             <div className="flex flex-wrap items-center gap-2">
-                                <Tag color={LOOP_GATE_COLOR[gateInfo.gate] || 'default'}>{gateInfo.gate}</Tag>
-                                {gateInfo.primaryAction ? (
-                                    <Tag color="green">primary: {gateInfo.primaryAction.key}</Tag>
+                                <Tag color={LOOP_GATE_COLOR[gateInfo?.gate || loop.gate || ''] || 'default'}>
+                                    {gateInfo?.gate || loop.gate || '-'}
+                                </Tag>
+                                {gateInfo?.primaryAction ? <Tag color="blue">下一步: {gateInfo.primaryAction.label}</Tag> : null}
+                                {activeCheckpoint ? (
+                                    <Tag color={activeCheckpoint.blocking ? 'warning' : 'success'}>
+                                        当前焦点: {activeCheckpoint.checkpointId}
+                                    </Tag>
                                 ) : null}
-                                {(gateInfo.actions || []).map((action) => (
+                            </div>
+                            <Text type="secondary">{formatGateHint(gateInfo)}</Text>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {(gateInfo?.actions || []).map((action) => (
                                     <Tag key={action.key} color={action.runnable ? 'blue' : 'default'}>
-                                        {action.key}
+                                        {action.label}
                                     </Tag>
                                 ))}
                             </div>
-                            <Text type="secondary">gateMeta: {JSON.stringify(gateInfo.gateMeta || {})}</Text>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {(['train', 'pool', 'val', 'test'] as const).map((key) => (
+                                <Card
+                                    key={key}
+                                    size="small"
+                                    className="!border-github-border/80 !bg-github-bg"
+                                    styles={{
+                                        header: {
+                                            borderBottom: `2px solid ${PRIMARY_VIEW_COLOR[key]}`,
+                                        },
+                                    }}
+                                    title={<span className="font-semibold">{PRIMARY_VIEW_LABEL[key]}</span>}
+                                >
+                                    <Statistic value={Number(primaryView[key]?.count || 0)} valueStyle={{fontSize: 24}} />
+                                    <Text type="secondary" className="text-xs">
+                                        {PRIMARY_VIEW_DESC[key]}
+                                    </Text>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                </Card>
+            ) : null}
+
+            {loop.mode === 'active_learning' ? (
+                <Card className="!border-github-border !bg-github-panel" title="Label Readiness">
+                    {labelReadiness ? (
+                        <div className="flex flex-col gap-4">
+                            <Steps
+                                current={Math.max(0, checkpointRows.findIndex((item) => item.checkpointId === activeCheckpointId))}
+                                items={checkpointRows.map((checkpoint) => ({
+                                    title: checkpoint.checkpointId,
+                                    description: CHECKPOINT_LABEL[checkpoint.key] || checkpoint.key,
+                                    status: checkpoint.blocking ? 'error' : 'finish',
+                                }))}
+                                responsive
+                                size="small"
+                            />
+                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                {checkpointRows.map((checkpoint) => {
+                                    const isActive = checkpoint.checkpointId === activeCheckpointId;
+                                    const missingPreview = (checkpoint.missingSampleIdsPreview || []).slice(0, 5);
+                                    return (
+                                        <Card
+                                            key={checkpoint.checkpointId}
+                                            size="small"
+                                            className={`!border-github-border/80 !bg-github-bg ${isActive ? 'ring-1 ring-blue-500/50' : ''}`}
+                                            title={
+                                                <div className="flex items-center gap-2">
+                                                    <Text strong>{checkpoint.checkpointId}</Text>
+                                                    <Tag color={checkpoint.blocking ? 'warning' : 'success'}>
+                                                        {checkpoint.blocking ? 'Blocking' : 'Ready'}
+                                                    </Tag>
+                                                </div>
+                                            }
+                                        >
+                                            <div className="flex flex-col gap-2">
+                                                <Text type="secondary">{CHECKPOINT_LABEL[checkpoint.key] || checkpoint.key}</Text>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <Tag>Total: {checkpoint.total}</Tag>
+                                                    <Tag color={checkpoint.blocking ? 'warning' : 'green'}>
+                                                        Missing: {checkpoint.missingCount}
+                                                    </Tag>
+                                                    {typeof checkpoint.selectedCount === 'number' ? (
+                                                        <Tag color="blue">Selected: {checkpoint.selectedCount}</Tag>
+                                                    ) : null}
+                                                    {typeof checkpoint.revealedCount === 'number' ? (
+                                                        <Tag color="cyan">Revealed: {checkpoint.revealedCount}</Tag>
+                                                    ) : null}
+                                                </div>
+                                                <Text type="secondary" className="text-xs">
+                                                    {checkpoint.blocking
+                                                        ? (checkpoint.key === 'query'
+                                                            ? '请先补齐本轮 Query 样本标注后再继续。'
+                                                            : '请先补齐此检查点标注。')
+                                                        : (checkpoint.key === 'query'
+                                                            ? '该轮 Query 标注就绪，可继续流程。'
+                                                            : '该检查点已就绪。')}
+                                                </Text>
+                                                <Text className="text-xs">
+                                                    缺失样本预览: {missingPreview.length > 0 ? missingPreview.join(', ') : '-'}
+                                                    {checkpoint.previewTruncated ? ' ...' : ''}
+                                                </Text>
+                                            </div>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
                         </div>
                     ) : (
-                        <Empty description="暂无 gate 信息"/>
+                        <Alert
+                            type="info"
+                            showIcon
+                            message="当前暂无 Label Readiness 数据"
+                            description="初始化 Snapshot 后会出现 Round 0 与当前轮的标注就绪检查点。"
+                        />
                     )}
                 </Card>
             ) : null}
 
             {loop.mode === 'active_learning' ? (
-                <Card className="!border-github-border !bg-github-panel" title="Snapshot 信息">
+                <Card className="!border-github-border !bg-github-panel" title="Snapshot 概览">
                     {snapshotInfo?.active ? (
                         <div className="flex flex-col gap-3">
                             <Descriptions size="small" column={4}>
@@ -579,22 +757,37 @@ const ProjectLoopDetail: React.FC = () => {
                                 <Descriptions.Item label="Val Policy">{snapshotInfo.active.valPolicy}</Descriptions.Item>
                                 <Descriptions.Item label="样本总数">{snapshotInfo.active.sampleCount}</Descriptions.Item>
                             </Descriptions>
-                            <div className="flex flex-wrap items-center gap-2">
-                                {Object.entries(snapshotInfo.frozenPartitionCounts || {}).map(([key, value]) => (
-                                    <Tag key={key}>{PARTITION_LABEL[key] || key}: {value}</Tag>
-                                ))}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                {Object.entries(snapshotInfo.virtualVisibilityCounts || {}).map(([key, value]) => (
-                                    <Tag key={key} color="green">{key}: {value}</Tag>
-                                ))}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                {Object.entries(snapshotInfo.effectiveSplitCounts || {}).map(([key, value]) => (
-                                    <Tag key={key} color="blue">{key}: {value}</Tag>
-                                ))}
-                            </div>
-                            <Divider className="!my-2"/>
+                            <Collapse
+                                size="small"
+                                items={[
+                                    {
+                                        key: 'advanced',
+                                        label: '查看技术细节（Advanced）',
+                                        children: (
+                                            <div className="flex flex-col gap-3">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <Tag>bootstrapSeed: {snapshotInfo.advancedView?.bootstrapSeed ?? 0}</Tag>
+                                                    <Tag color="green">revealedFromPool: {snapshotInfo.advancedView?.revealedFromPool ?? 0}</Tag>
+                                                    <Tag color="gold">poolHidden: {snapshotInfo.advancedView?.poolHidden ?? 0}</Tag>
+                                                    <Tag color="blue">valAnchor: {snapshotInfo.advancedView?.valAnchor ?? 0}</Tag>
+                                                    <Tag color="blue">valBatch: {snapshotInfo.advancedView?.valBatch ?? 0}</Tag>
+                                                    <Tag color="cyan">testAnchor: {snapshotInfo.advancedView?.testAnchor ?? 0}</Tag>
+                                                    <Tag color="cyan">testBatch: {snapshotInfo.advancedView?.testBatch ?? 0}</Tag>
+                                                    <Tag color="purple">testComposite: {snapshotInfo.advancedView?.testComposite ?? 0}</Tag>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {Object.entries(snapshotInfo.advancedView?.manifest || {}).map(([key, value]) => (
+                                                        <Tag key={key}>
+                                                            {MANIFEST_LABEL[key] || key}: {Number(value || 0)}
+                                                        </Tag>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ),
+                                    },
+                                ]}
+                            />
+                            <Divider className="!my-1" />
                             <Text strong>历史版本（最近 5 个）</Text>
                             <Table
                                 size="small"
@@ -621,36 +814,6 @@ const ProjectLoopDetail: React.FC = () => {
                             message="当前尚未初始化 Snapshot"
                             description="请先执行“初始化 Snapshot”，再开始主动学习循环。"
                         />
-                    )}
-                </Card>
-            ) : null}
-
-            {loop.mode === 'active_learning' ? (
-                <Card className="!border-github-border !bg-github-panel" title="Annotation Gaps">
-                    {gapInfo ? (
-                        <Table
-                            size="small"
-                            rowKey={(row) => String(row.partition || '')}
-                            dataSource={gapInfo.buckets || []}
-                            pagination={false}
-                            columns={[
-                                {
-                                    title: 'Partition',
-                                    dataIndex: 'partition',
-                                    width: 180,
-                                    render: (value: string) => PARTITION_LABEL[value] || value,
-                                },
-                                {title: 'Total', dataIndex: 'total', width: 110},
-                                {title: 'Missing', dataIndex: 'missingCount', width: 120},
-                                {
-                                    title: '缺失样本（前 5）',
-                                    render: (_value: unknown, row: { partition?: string; sampleIds?: string[] }) =>
-                                        (row.sampleIds || []).slice(0, 5).join(', ') || '-',
-                                },
-                            ]}
-                        />
-                    ) : (
-                        <Empty description="暂无 gap 信息"/>
                     )}
                 </Card>
             ) : null}

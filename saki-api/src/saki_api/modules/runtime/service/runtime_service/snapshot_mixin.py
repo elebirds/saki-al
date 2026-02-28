@@ -898,7 +898,7 @@ class SnapshotMixin:
         payload.pop("_effective_selected_ids", None)
         return payload
 
-    async def _compute_annotation_gaps_internal(self, loop_id: uuid.UUID) -> dict[str, Any]:
+    async def _compute_label_readiness_internal(self, loop_id: uuid.UUID) -> dict[str, Any]:
         loop, snapshot = await self._get_active_snapshot_or_raise(loop_id)
         commit_id = await self._get_branch_head_commit_id(loop.branch_id)
         rows = await self.al_snapshot_sample_repo.list_by_snapshot(snapshot.id)
@@ -907,46 +907,94 @@ class SnapshotMixin:
             partition_map.setdefault(row.partition, []).append(row.sample_id)
 
         seed_ids = partition_map.get(SnapshotPartition.TRAIN_SEED, [])
-        val_ids = list(partition_map.get(SnapshotPartition.VAL_ANCHOR, []))
-        if snapshot.val_policy == SnapshotValPolicy.EXPAND_WITH_BATCH_VAL:
-            val_ids.extend(partition_map.get(SnapshotPartition.VAL_BATCH, []))
-        test_ids = list(partition_map.get(SnapshotPartition.TEST_ANCHOR, []))
-        test_ids.extend(partition_map.get(SnapshotPartition.TEST_BATCH, []))
+        val_anchor_ids = list(partition_map.get(SnapshotPartition.VAL_ANCHOR, []))
+        test_anchor_ids = list(partition_map.get(SnapshotPartition.TEST_ANCHOR, []))
 
         labeled_ids: set[uuid.UUID] = set()
         if commit_id:
-            check_ids = list({*seed_ids, *val_ids, *test_ids})
+            check_ids = list({*seed_ids, *val_anchor_ids, *test_anchor_ids})
             labeled_ids = await self._count_labeled_samples(commit_id=commit_id, sample_ids=check_ids)
 
-        def _bucket(partition: SnapshotPartition, sample_ids: list[uuid.UUID]) -> dict[str, Any]:
+        def _checkpoint(
+            *,
+            checkpoint_id: str,
+            scope: str,
+            round_index: int,
+            key: str,
+            sample_ids: list[uuid.UUID],
+            selected_count: int | None = None,
+            revealed_count: int | None = None,
+        ) -> dict[str, Any]:
             missing = [sample_id for sample_id in sample_ids if sample_id not in labeled_ids]
+            preview = list(missing[:50])
             return {
-                "partition": partition,
+                "checkpoint_id": checkpoint_id,
+                "scope": scope,
+                "round_index": int(round_index),
+                "key": key,
+                "blocking": bool(len(missing) > 0),
                 "total": len(sample_ids),
                 "missing_count": len(missing),
-                "sample_ids": missing,
+                "selected_count": selected_count,
+                "revealed_count": revealed_count,
+                "missing_sample_ids_preview": preview,
+                "preview_truncated": len(missing) > len(preview),
             }
 
-        query_bucket = {"partition": SnapshotPartition.TRAIN_POOL, "total": 0, "missing_count": 0, "sample_ids": []}
+        checkpoints: list[dict[str, Any]] = [
+            _checkpoint(
+                checkpoint_id="r0:seed",
+                scope="setup",
+                round_index=0,
+                key="seed",
+                sample_ids=seed_ids,
+            ),
+            _checkpoint(
+                checkpoint_id="r0:val_anchor",
+                scope="setup",
+                round_index=0,
+                key="val_anchor",
+                sample_ids=val_anchor_ids,
+            ),
+            _checkpoint(
+                checkpoint_id="r0:test_anchor",
+                scope="setup",
+                round_index=0,
+                key="test_anchor",
+                sample_ids=test_anchor_ids,
+            ),
+        ]
+
         latest_round = await self.repository.get_latest_by_loop(loop_id)
         if latest_round and int(latest_round.round_index) > 0:
             probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
-            query_bucket = {
-                "partition": SnapshotPartition.TRAIN_POOL,
-                "total": int(probe.selected_count),
-                "missing_count": int(probe.missing_count),
-                "sample_ids": list(probe.missing_sample_ids),
-            }
+            configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
+            effective_min_required = self._effective_round_min_required(
+                selected_count=probe.selected_count,
+                configured_min_required=configured_min_required,
+            )
+            query_blocking = latest_round.confirmed_at is None and probe.revealable_count < effective_min_required
+            preview = list(probe.missing_sample_ids[:50])
+            checkpoints.append(
+                {
+                    "checkpoint_id": f"r{int(latest_round.round_index)}:query",
+                    "scope": "round",
+                    "round_index": int(latest_round.round_index),
+                    "key": "query",
+                    "blocking": bool(query_blocking),
+                    "total": int(probe.selected_count),
+                    "missing_count": int(probe.missing_count),
+                    "selected_count": int(probe.selected_count),
+                    "revealed_count": int(probe.revealable_count),
+                    "missing_sample_ids_preview": preview,
+                    "preview_truncated": int(probe.missing_count) > len(preview),
+                }
+            )
 
         return {
             "loop_id": loop_id,
             "commit_id": commit_id,
-            "buckets": [
-                _bucket(SnapshotPartition.TRAIN_SEED, seed_ids),
-                _bucket(SnapshotPartition.VAL_ANCHOR, val_ids),
-                _bucket(SnapshotPartition.TEST_ANCHOR, test_ids),
-                query_bucket,
-            ],
+            "checkpoints": checkpoints,
         }
 
     async def _compute_loop_gate(
@@ -1096,19 +1144,22 @@ class SnapshotMixin:
                 snapshot_action = self._action("snapshot_init", label="Init Snapshot")
                 return LoopGate.NEED_SNAPSHOT, {"missing": "snapshot"}, snapshot_action, [snapshot_action, read_action]
 
-            gaps = await self._compute_annotation_gaps_internal(loop_id)
-            gap_total = 0
-            for bucket in gaps["buckets"]:
-                partition = bucket["partition"]
-                if partition in {
-                    SnapshotPartition.TRAIN_SEED,
-                    SnapshotPartition.VAL_ANCHOR,
-                    SnapshotPartition.TEST_ANCHOR,
-                }:
-                    gap_total += int(bucket["missing_count"])
+            readiness = await self._compute_label_readiness_internal(loop_id)
+            setup_checkpoints = [item for item in readiness.get("checkpoints", []) if item.get("scope") == "setup"]
+            gap_total = int(sum(int(item.get("missing_count") or 0) for item in setup_checkpoints))
             if gap_total > 0:
-                gap_action = self._action("view_annotation_gaps", label="Resolve Annotation Gaps", runnable=False)
-                return LoopGate.NEED_LABELS, {"gap_count": gap_total}, gap_action, [gap_action, read_action]
+                active_checkpoint_id = None
+                for item in setup_checkpoints:
+                    if bool(item.get("blocking")):
+                        active_checkpoint_id = str(item.get("checkpoint_id") or "")
+                        break
+                gap_action = self._action("view_label_readiness", label="Resolve Label Readiness", runnable=False)
+                return (
+                    LoopGate.NEED_LABELS,
+                    {"gap_count": gap_total, "active_checkpoint_id": active_checkpoint_id},
+                    gap_action,
+                    [gap_action, read_action],
+                )
             return LoopGate.CAN_START, {"mode": str(loop.mode)}, start_action, [start_action]
 
         # Safety fallback for unexpected lifecycle values.
@@ -1364,24 +1415,31 @@ class SnapshotMixin:
         active = None
         if loop.active_snapshot_version_id:
             active = await self.al_snapshot_version_repo.get_by_id(loop.active_snapshot_version_id)
-        frozen_partition_counts: dict[str, int] = {}
-        virtual_visibility_counts: dict[str, int] = {}
-        effective_split_counts: dict[str, int] = {}
+        primary_view: dict[str, dict[str, Any]] = {
+            "train": {"count": 0, "semantics": "effective_train"},
+            "pool": {"count": 0, "semantics": "hidden_label_pool"},
+            "val": {"count": 0, "semantics": "effective_val"},
+            "test": {"count": 0, "semantics": "anchor_test"},
+        }
+        advanced_view: dict[str, Any] = {
+            "bootstrap_seed": 0,
+            "revealed_from_pool": 0,
+            "pool_hidden": 0,
+            "val_anchor": 0,
+            "val_batch": 0,
+            "test_anchor": 0,
+            "test_batch": 0,
+            "test_composite": 0,
+            "manifest": {},
+        }
         if active:
             rows = await self.al_snapshot_sample_repo.list_by_snapshot(active.id)
             counter = Counter([str(row.partition.value if hasattr(row.partition, "value") else row.partition) for row in rows])
-            frozen_partition_counts = {key: int(value) for key, value in counter.items()}
+            manifest = {key: int(value) for key, value in counter.items()}
 
             partition_by_sample_id: dict[uuid.UUID, SnapshotPartition] = {row.sample_id: row.partition for row in rows}
             visible_sample_ids = set(await self.al_loop_visibility_repo.list_visible_sample_ids(loop_id))
             train_visible_total = int(len(visible_sample_ids))
-            train_visible_seed = int(
-                sum(
-                    1
-                    for sample_id in visible_sample_ids
-                    if partition_by_sample_id.get(sample_id) == SnapshotPartition.TRAIN_SEED
-                )
-            )
             train_visible_revealed_from_pool = int(
                 sum(
                     1
@@ -1393,32 +1451,37 @@ class SnapshotMixin:
                 sum(1 for partition in partition_by_sample_id.values() if partition == SnapshotPartition.TRAIN_POOL)
             )
             train_pool_hidden = max(0, train_pool_total - train_visible_revealed_from_pool)
-            virtual_visibility_counts = {
-                "train_visible_total": train_visible_total,
-                "train_visible_seed": train_visible_seed,
-                "train_visible_revealed_from_pool": train_visible_revealed_from_pool,
-                "train_pool_hidden": int(train_pool_hidden),
-            }
-
-            val_effective = int(counter.get(SnapshotPartition.VAL_ANCHOR.value, 0))
+            val_anchor = int(counter.get(SnapshotPartition.VAL_ANCHOR.value, 0))
+            val_batch = int(counter.get(SnapshotPartition.VAL_BATCH.value, 0))
+            test_anchor = int(counter.get(SnapshotPartition.TEST_ANCHOR.value, 0))
+            test_batch = int(counter.get(SnapshotPartition.TEST_BATCH.value, 0))
+            val_effective = val_anchor
             if active.val_policy == SnapshotValPolicy.EXPAND_WITH_BATCH_VAL:
-                val_effective += int(counter.get(SnapshotPartition.VAL_BATCH.value, 0))
-            test_effective = int(counter.get(SnapshotPartition.TEST_ANCHOR.value, 0)) + int(
-                counter.get(SnapshotPartition.TEST_BATCH.value, 0)
-            )
-            effective_split_counts = {
-                "train_effective": train_visible_total,
-                "val_effective": int(val_effective),
-                "test_effective": int(test_effective),
+                val_effective += val_batch
+            primary_view = {
+                "train": {"count": train_visible_total, "semantics": "effective_train"},
+                "pool": {"count": int(train_pool_hidden), "semantics": "hidden_label_pool"},
+                "val": {"count": int(val_effective), "semantics": "effective_val"},
+                "test": {"count": int(test_anchor), "semantics": "anchor_test"},
+            }
+            advanced_view = {
+                "bootstrap_seed": int(counter.get(SnapshotPartition.TRAIN_SEED.value, 0)),
+                "revealed_from_pool": int(train_visible_revealed_from_pool),
+                "pool_hidden": int(train_pool_hidden),
+                "val_anchor": int(val_anchor),
+                "val_batch": int(val_batch),
+                "test_anchor": int(test_anchor),
+                "test_batch": int(test_batch),
+                "test_composite": int(test_anchor + test_batch),
+                "manifest": manifest,
             }
         return {
             "loop_id": loop.id,
             "active_snapshot_version_id": loop.active_snapshot_version_id,
             "active": active,
             "history": history,
-            "frozen_partition_counts": frozen_partition_counts,
-            "virtual_visibility_counts": virtual_visibility_counts,
-            "effective_split_counts": effective_split_counts,
+            "primary_view": primary_view,
+            "advanced_view": advanced_view,
         }
 
     async def get_loop_gate(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
@@ -1486,5 +1549,28 @@ class SnapshotMixin:
             raise BadRequestAppException(f"action is not runnable in current gate: {action_key}")
         return decision, action_key, matched
 
-    async def get_loop_annotation_gaps(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
-        return await self._compute_annotation_gaps_internal(loop_id)
+    async def get_loop_label_readiness(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
+        payload = await self._compute_label_readiness_internal(loop_id)
+        gate_payload = await self.get_loop_gate(loop_id=loop_id)
+        checkpoints = list(payload.get("checkpoints") or [])
+        active_checkpoint_id: str | None = None
+        gate = gate_payload.get("gate")
+
+        if gate == LoopGate.NEED_LABELS:
+            for item in checkpoints:
+                if item.get("scope") == "setup" and bool(item.get("blocking")):
+                    active_checkpoint_id = str(item.get("checkpoint_id") or "")
+                    break
+        elif gate in {LoopGate.NEED_ROUND_LABELS, LoopGate.CAN_CONFIRM, LoopGate.CAN_NEXT_ROUND}:
+            for item in checkpoints:
+                if item.get("key") == "query":
+                    active_checkpoint_id = str(item.get("checkpoint_id") or "")
+                    break
+        if not active_checkpoint_id:
+            for item in checkpoints:
+                if bool(item.get("blocking")):
+                    active_checkpoint_id = str(item.get("checkpoint_id") or "")
+                    break
+
+        payload["active_checkpoint_id"] = active_checkpoint_id
+        return payload

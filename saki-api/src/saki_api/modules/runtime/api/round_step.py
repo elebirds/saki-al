@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,7 +13,6 @@ from saki_api.modules.shared.modeling.enums import (
     LoopLifecycle,
     RoundSelectionOverrideOp,
     RoundStatus,
-    SnapshotPartition,
     SnapshotUpdateMode,
     SnapshotValPolicy,
     StepDispatchKind,
@@ -400,9 +399,8 @@ class LoopSnapshotRead(BaseModel):
     active_snapshot_version_id: Optional[uuid.UUID] = None
     active: Optional[SnapshotVersionRead] = None
     history: List[SnapshotVersionSummaryRead] = Field(default_factory=list)
-    frozen_partition_counts: Dict[str, int] = Field(default_factory=dict)
-    virtual_visibility_counts: Dict[str, int] = Field(default_factory=dict)
-    effective_split_counts: Dict[str, int] = Field(default_factory=dict)
+    primary_view: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    advanced_view: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SnapshotMutationResponse(BaseModel):
@@ -446,17 +444,25 @@ class LoopActionResponse(BaseModel):
     lifecycle: LoopLifecycle
 
 
-class AnnotationGapBucket(BaseModel):
-    partition: SnapshotPartition
+class LoopLabelReadinessCheckpoint(BaseModel):
+    checkpoint_id: str
+    scope: Literal["setup", "round"]
+    round_index: int
+    key: Literal["seed", "val_anchor", "test_anchor", "query"]
+    blocking: bool
     total: int
     missing_count: int
-    sample_ids: List[uuid.UUID] = Field(default_factory=list)
+    selected_count: Optional[int] = None
+    revealed_count: Optional[int] = None
+    missing_sample_ids_preview: List[uuid.UUID] = Field(default_factory=list)
+    preview_truncated: bool = False
 
 
-class LoopAnnotationGapsResponse(BaseModel):
+class LoopLabelReadinessResponse(BaseModel):
     loop_id: uuid.UUID
     commit_id: Optional[uuid.UUID] = None
-    buckets: List[AnnotationGapBucket] = Field(default_factory=list)
+    active_checkpoint_id: Optional[str] = None
+    checkpoints: List[LoopLabelReadinessCheckpoint] = Field(default_factory=list)
 
 
 class RoundPredictionCleanupResponse(BaseModel):

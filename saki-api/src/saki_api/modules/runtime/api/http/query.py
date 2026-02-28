@@ -59,11 +59,11 @@ async def _ensure_project_perm(
 
 
 async def _build_loop_read(runtime_service: RuntimeServiceDep, loop) -> LoopRead:
-    decision = await runtime_service.get_loop_stage(loop_id=loop.id)
+    decision = await runtime_service.get_loop_gate(loop_id=loop.id)
     return build_loop_read(
         loop=loop,
-        stage=decision["stage"],
-        stage_meta=decision.get("stage_meta") or {},
+        gate=decision["gate"],
+        gate_meta=decision.get("gate_meta") or {},
     )
 
 
@@ -248,7 +248,7 @@ async def get_loop_summary(
     summary = await runtime_service.summarize_loop(loop_id)
     return LoopSummaryRead(
         loop_id=loop.id,
-        state=loop.status,
+        lifecycle=loop.lifecycle,
         phase=loop.phase,
         rounds_total=summary.rounds_total,
         attempts_total=summary.attempts_total,

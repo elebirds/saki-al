@@ -50,16 +50,16 @@ def downgrade() -> None:
 
     if dialect == "postgresql":
         loopstage_enum = postgresql.ENUM(
-            "SNAPSHOT_REQUIRED",
-            "LABEL_GAP_REQUIRED",
-            "READY_TO_START",
-            "RUNNING_ROUND",
-            "WAITING_ROUND_LABEL",
-            "READY_TO_CONFIRM",
+            "NEED_SNAPSHOT",
+            "NEED_LABELS",
+            "CAN_START",
+            "RUNNING",
+            "NEED_ROUND_LABELS",
+            "CAN_CONFIRM",
             "COMPLETED",
             "STOPPED",
             "FAILED",
-            "FAILED_RETRYABLE",
+            "CAN_RETRY",
             name="loopstage",
         )
         loopstage_enum.create(op.get_bind(), checkfirst=True)
@@ -75,7 +75,7 @@ def downgrade() -> None:
             "stage",
             stage_column_type,
             nullable=False,
-            server_default=sa.text("'SNAPSHOT_REQUIRED'"),
+            server_default=sa.text("'NEED_SNAPSHOT'"),
         ),
     )
     op.add_column(

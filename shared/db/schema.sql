@@ -145,10 +145,10 @@ CREATE TYPE public.loopphase AS ENUM (
 
 
 --
--- Name: loopstatus; Type: TYPE; Schema: public; Owner: -
+-- Name: looplifecycle; Type: TYPE; Schema: public; Owner: -
 --
 
-CREATE TYPE public.loopstatus AS ENUM (
+CREATE TYPE public.looplifecycle AS ENUM (
     'DRAFT',
     'RUNNING',
     'PAUSED',
@@ -538,7 +538,7 @@ CREATE TABLE public.loop (
     experiment_group_id uuid,
     config jsonb,
     current_iteration integer NOT NULL,
-    status public.loopstatus NOT NULL,
+    lifecycle public.looplifecycle NOT NULL,
     max_rounds integer NOT NULL,
     query_batch_size integer NOT NULL,
     min_seed_labeled integer NOT NULL,
@@ -1646,10 +1646,10 @@ CREATE INDEX ix_loop_project_id ON public.loop USING btree (project_id);
 
 
 --
--- Name: ix_loop_status; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_loop_lifecycle; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_loop_status ON public.loop USING btree (status);
+CREATE INDEX ix_loop_lifecycle ON public.loop USING btree (lifecycle);
 
 
 --

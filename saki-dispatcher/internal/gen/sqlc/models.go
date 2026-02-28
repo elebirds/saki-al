@@ -279,6 +279,53 @@ func (ns NullDatasettype) Value() (driver.Value, error) {
 	return string(ns.Datasettype), nil
 }
 
+type Looplifecycle string
+
+const (
+	LooplifecycleDRAFT     Looplifecycle = "DRAFT"
+	LooplifecycleRUNNING   Looplifecycle = "RUNNING"
+	LooplifecyclePAUSED    Looplifecycle = "PAUSED"
+	LooplifecycleSTOPPING  Looplifecycle = "STOPPING"
+	LooplifecycleSTOPPED   Looplifecycle = "STOPPED"
+	LooplifecycleCOMPLETED Looplifecycle = "COMPLETED"
+	LooplifecycleFAILED    Looplifecycle = "FAILED"
+)
+
+func (e *Looplifecycle) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Looplifecycle(s)
+	case string:
+		*e = Looplifecycle(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Looplifecycle: %T", src)
+	}
+	return nil
+}
+
+type NullLooplifecycle struct {
+	Looplifecycle Looplifecycle
+	Valid         bool // Valid is true if Looplifecycle is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLooplifecycle) Scan(value interface{}) error {
+	if value == nil {
+		ns.Looplifecycle, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Looplifecycle.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLooplifecycle) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Looplifecycle), nil
+}
+
 type Loopmode string
 
 const (
@@ -379,53 +426,6 @@ func (ns NullLoopphase) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.Loopphase), nil
-}
-
-type Loopstatus string
-
-const (
-	LoopstatusDRAFT     Loopstatus = "DRAFT"
-	LoopstatusRUNNING   Loopstatus = "RUNNING"
-	LoopstatusPAUSED    Loopstatus = "PAUSED"
-	LoopstatusSTOPPING  Loopstatus = "STOPPING"
-	LoopstatusSTOPPED   Loopstatus = "STOPPED"
-	LoopstatusCOMPLETED Loopstatus = "COMPLETED"
-	LoopstatusFAILED    Loopstatus = "FAILED"
-)
-
-func (e *Loopstatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = Loopstatus(s)
-	case string:
-		*e = Loopstatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for Loopstatus: %T", src)
-	}
-	return nil
-}
-
-type NullLoopstatus struct {
-	Loopstatus Loopstatus
-	Valid      bool // Valid is true if Loopstatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullLoopstatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.Loopstatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.Loopstatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullLoopstatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.Loopstatus), nil
 }
 
 type Projectstatus string
@@ -1017,7 +1017,7 @@ type Loop struct {
 	ExperimentGroupID     *uuid.UUID
 	Config                []byte
 	CurrentIteration      int32
-	Status                Loopstatus
+	Lifecycle             Looplifecycle
 	MaxRounds             int32
 	QueryBatchSize        int32
 	MinSeedLabeled        int32

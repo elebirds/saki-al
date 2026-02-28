@@ -20,12 +20,12 @@ depends_on = None
 
 
 loopstage_enum = postgresql.ENUM(
-    "SNAPSHOT_REQUIRED",
-    "LABEL_GAP_REQUIRED",
-    "READY_TO_START",
-    "RUNNING_ROUND",
-    "WAITING_ROUND_LABEL",
-    "READY_TO_CONFIRM",
+    "NEED_SNAPSHOT",
+    "NEED_LABELS",
+    "CAN_START",
+    "RUNNING",
+    "NEED_ROUND_LABELS",
+    "CAN_CONFIRM",
     "COMPLETED",
     "STOPPED",
     "FAILED",
@@ -91,7 +91,7 @@ def upgrade() -> None:
             "stage",
             loopstage_enum,
             nullable=False,
-            server_default=sa.text("'SNAPSHOT_REQUIRED'"),
+            server_default=sa.text("'NEED_SNAPSHOT'"),
         ),
     )
     op.add_column(
@@ -105,7 +105,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_loop_stage"), "loop", ["stage"], unique=False)
 
-    op.execute("UPDATE loop SET stage = 'READY_TO_START' WHERE mode IN ('SIMULATION', 'MANUAL')")
+    op.execute("UPDATE loop SET stage = 'CAN_START' WHERE mode IN ('SIMULATION', 'MANUAL')")
     op.alter_column("loop", "stage", server_default=None)
     op.alter_column("loop", "stage_meta", server_default=None)
 

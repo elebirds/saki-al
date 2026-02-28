@@ -381,7 +381,7 @@ FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
 WHERE s.state = 'PENDING'::stepstatus
-  AND l.status = 'RUNNING'::loopstatus
+  AND l.lifecycle = 'RUNNING'::looplifecycle
 ORDER BY s.created_at ASC
 LIMIT $1
 `
@@ -412,7 +412,7 @@ FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
 WHERE s.state = 'READY'::stepstatus
-  AND l.status = 'RUNNING'::loopstatus
+  AND l.lifecycle = 'RUNNING'::looplifecycle
 ORDER BY s.created_at ASC
 LIMIT $1
 FOR UPDATE OF s SKIP LOCKED
@@ -444,7 +444,7 @@ FROM step s
 JOIN round r ON r.id = s.round_id
 JOIN loop l ON l.id = r.loop_id
 WHERE s.state = 'RETRYING'::stepstatus
-  AND l.status = 'RUNNING'::loopstatus
+  AND l.lifecycle = 'RUNNING'::looplifecycle
   AND s.updated_at <= now() - (
     CASE
       WHEN s.attempt <= 1 THEN interval '1 second'

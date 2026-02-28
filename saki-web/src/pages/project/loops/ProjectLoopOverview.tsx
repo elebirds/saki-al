@@ -32,7 +32,7 @@ import {
 
 const {Title, Text} = Typography;
 
-const LOOP_STATE_COLOR: Record<string, string> = {
+const LOOP_LIFECYCLE_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
@@ -42,15 +42,17 @@ const LOOP_STATE_COLOR: Record<string, string> = {
     failed: 'error',
 };
 
-const LOOP_STAGE_COLOR: Record<string, string> = {
-    snapshot_required: 'default',
-    label_gap_required: 'warning',
-    ready_to_start: 'processing',
-    running_round: 'processing',
-    waiting_round_label: 'warning',
-    ready_to_confirm: 'success',
-    ready_next_round: 'processing',
-    failed_retryable: 'error',
+const LOOP_GATE_COLOR: Record<string, string> = {
+    need_snapshot: 'default',
+    need_labels: 'warning',
+    can_start: 'processing',
+    running: 'processing',
+    paused: 'warning',
+    stopping: 'warning',
+    need_round_labels: 'warning',
+    can_confirm: 'success',
+    can_next_round: 'processing',
+    can_retry: 'error',
     completed: 'success',
     stopped: 'default',
     failed: 'error',
@@ -203,7 +205,7 @@ const ProjectLoopOverview: React.FC = () => {
             simulationExperimentName: '',
             simulationStrategies: defaultSimulationStrategies,
             queryBatchSize: 200,
-            state: 'draft',
+            lifecycle: 'draft',
             simulationConfig: {
                 oracleCommitId: undefined,
                 seedRatio: 0.05,
@@ -264,7 +266,7 @@ const ProjectLoopOverview: React.FC = () => {
                             seeds: seeds.length > 0 ? seeds : [0, 1, 2, 3, 4],
                         },
                     },
-                    state: values.state || 'draft',
+                    lifecycle: values.lifecycle || 'draft',
                 };
                 const created = await api.createSimulationExperiment(projectId, simulationPayload);
                 message.success(`Simulation 实验创建成功，共 ${created.loops.length} 条 Loop`);
@@ -295,7 +297,7 @@ const ProjectLoopOverview: React.FC = () => {
                 branchId: loopValues.branchId,
                 mode: loopValues.mode,
                 modelArch: loopValues.modelArch,
-                state: loopValues.state,
+                lifecycle: loopValues.lifecycle,
                 config,
             };
             const created = await api.createProjectLoop(projectId, payload);
@@ -398,12 +400,12 @@ const ProjectLoopOverview: React.FC = () => {
                                     <div className="flex w-full flex-col gap-2.5">
                                         <div className="flex w-full items-center justify-between gap-2">
                                             <Text strong>{loop.name}</Text>
-                                            <Tag color={LOOP_STATE_COLOR[loop.state] || 'default'}>{loop.state}</Tag>
+                                            <Tag color={LOOP_LIFECYCLE_COLOR[loop.lifecycle] || 'default'}>{loop.lifecycle}</Tag>
                                         </div>
                                         <Text type="secondary">分支：{branchName}</Text>
                                         <Text type="secondary">模式：{loop.mode}</Text>
                                         <Text type="secondary">Phase：{loop.phase}</Text>
-                                        {loop.stage ? <Tag color={LOOP_STAGE_COLOR[loop.stage] || 'default'}>{loop.stage}</Tag> : null}
+                                        {loop.gate ? <Tag color={LOOP_GATE_COLOR[loop.gate] || 'default'}>{loop.gate}</Tag> : null}
                                         <Text type="secondary">插件：{loop.modelArch}</Text>
                                         <Text type="secondary">策略：{loop.config?.sampling?.strategy || '-'}</Text>
                                         <div className="grid grid-cols-2 gap-2 text-xs text-github-muted">

@@ -37,9 +37,9 @@ type Querier interface {
 	GetLoopBranchID(ctx context.Context, loopID uuid.UUID) (uuid.UUID, error)
 	GetLoopByID(ctx context.Context, loopID uuid.UUID) (GetLoopByIDRow, error)
 	GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLoopForUpdateRow, error)
+	GetLoopLifecycle(ctx context.Context, loopID uuid.UUID) (Looplifecycle, error)
 	GetLoopQueryBatchSize(ctx context.Context, loopID uuid.UUID) (int32, error)
 	GetLoopRuntimeConfig(ctx context.Context, loopID uuid.UUID) (GetLoopRuntimeConfigRow, error)
-	GetLoopStatus(ctx context.Context, loopID uuid.UUID) (Loopstatus, error)
 	GetNextRoundAttemptIndex(ctx context.Context, arg GetNextRoundAttemptIndexParams) (int32, error)
 	GetNextRoundIndex(ctx context.Context, loopID uuid.UUID) (int32, error)
 	GetRoundForRetry(ctx context.Context, roundID uuid.UUID) (GetRoundForRetryRow, error)
@@ -83,11 +83,11 @@ type Querier interface {
 	UpdateCommandLogStatusDetail(ctx context.Context, arg UpdateCommandLogStatusDetailParams) error
 	UpdateLoopAfterRoundCreated(ctx context.Context, arg UpdateLoopAfterRoundCreatedParams) error
 	UpdateLoopLastConfirmedCommit(ctx context.Context, arg UpdateLoopLastConfirmedCommitParams) error
+	UpdateLoopLifecycle(ctx context.Context, arg UpdateLoopLifecycleParams) error
+	UpdateLoopLifecycleGuarded(ctx context.Context, arg UpdateLoopLifecycleGuardedParams) (int64, error)
 	UpdateLoopPhaseIfRunning(ctx context.Context, arg UpdateLoopPhaseIfRunningParams) (int64, error)
-	UpdateLoopState(ctx context.Context, arg UpdateLoopStateParams) error
-	UpdateLoopStateGuarded(ctx context.Context, arg UpdateLoopStateGuardedParams) (int64, error)
-	UpdateLoopStatus(ctx context.Context, arg UpdateLoopStatusParams) error
-	UpdateLoopStatusGuarded(ctx context.Context, arg UpdateLoopStatusGuardedParams) (int64, error)
+	UpdateLoopRuntime(ctx context.Context, arg UpdateLoopRuntimeParams) error
+	UpdateLoopRuntimeGuarded(ctx context.Context, arg UpdateLoopRuntimeGuardedParams) (int64, error)
 	UpdateRoundAggregate(ctx context.Context, arg UpdateRoundAggregateParams) error
 	UpdateRoundOutputCommit(ctx context.Context, arg UpdateRoundOutputCommitParams) error
 	UpdateRoundStateWithReason(ctx context.Context, arg UpdateRoundStateWithReasonParams) error

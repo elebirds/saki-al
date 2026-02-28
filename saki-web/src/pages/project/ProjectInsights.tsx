@@ -16,7 +16,7 @@ import {Loop, LoopSummary, ProjectModel, RuntimeRound} from '../../types';
 
 const {Text} = Typography;
 
-const LOOP_STATE_COLOR: Record<string, string> = {
+const LOOP_LIFECYCLE_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
@@ -127,12 +127,12 @@ const ProjectInsights: React.FC = () => {
                             await loadLoopDetail(value);
                         }}
                         options={loops.map((item) => ({
-                            label: `${item.name} (${item.state} / ${item.phase})`,
+                            label: `${item.name} (${item.lifecycle} / ${item.phase})`,
                             value: item.id,
                         }))}
                     />
                     {selectedLoop ? (
-                        <Tag color={LOOP_STATE_COLOR[selectedLoop.state] || 'default'}>{selectedLoop.state}</Tag>
+                        <Tag color={LOOP_LIFECYCLE_COLOR[selectedLoop.lifecycle] || 'default'}>{selectedLoop.lifecycle}</Tag>
                     ) : null}
                 </div>
             </Card>

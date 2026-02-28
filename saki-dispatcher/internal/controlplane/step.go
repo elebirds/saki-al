@@ -159,14 +159,14 @@ func (s *Service) promotePendingStepIfReady(ctx context.Context, stepID uuid.UUI
 	if !ok || stepPayload.Status != stepPending {
 		return false, tx.Commit(ctx)
 	}
-	loopStatus, err := s.qtx(tx).GetLoopStatus(ctx, stepPayload.LoopID)
+	loopLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, stepPayload.LoopID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return false, tx.Commit(ctx)
 		}
 		return false, err
 	}
-	if loopStatus != db.LoopstatusRUNNING {
+	if loopLifecycle != db.LooplifecycleRUNNING {
 		return false, tx.Commit(ctx)
 	}
 	depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)
@@ -202,14 +202,14 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	}
 
 	if stepPayload.Status == stepPending {
-		loopStatus, err := s.qtx(tx).GetLoopStatus(ctx, stepPayload.LoopID)
+		loopLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, stepPayload.LoopID)
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return false, tx.Commit(ctx)
 			}
 			return false, err
 		}
-		if loopStatus != db.LoopstatusRUNNING {
+		if loopLifecycle != db.LooplifecycleRUNNING {
 			return false, tx.Commit(ctx)
 		}
 		depsOK, err := s.dependenciesSatisfiedTx(ctx, tx, stepPayload.DependsOnStepIDs)

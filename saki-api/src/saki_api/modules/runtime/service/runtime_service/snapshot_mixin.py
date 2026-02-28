@@ -1,8 +1,9 @@
-"""Snapshot and stage mixin for active-learning runtime."""
+"""Snapshot and gate mixin for active-learning runtime."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 import uuid
 from collections import Counter
@@ -28,8 +29,8 @@ from saki_api.modules.shared.modeling.enums import (
     LoopPhase,
     LoopMode,
     RoundSelectionOverrideOp,
-    LoopStage,
-    LoopStatus,
+    LoopGate,
+    LoopLifecycle,
     RoundStatus,
     SnapshotPartition,
     SnapshotUpdateMode,
@@ -133,8 +134,8 @@ class SnapshotMixin:
     def _decision_token_payload(
         *,
         loop: Any,
-        stage: LoopStage,
-        stage_meta: dict[str, Any],
+        gate: LoopGate,
+        gate_meta: dict[str, Any],
         actions: list[dict[str, Any]],
         latest_round: Any | None,
         branch_head_commit_id: uuid.UUID | None,
@@ -142,12 +143,12 @@ class SnapshotMixin:
         return {
             "loop_id": str(loop.id),
             "loop_updated_at": str(getattr(loop, "updated_at", "")),
-            "loop_status": SnapshotMixin._enum_text(loop.status),
+            "loop_lifecycle": SnapshotMixin._enum_text(loop.lifecycle),
             "loop_phase": SnapshotMixin._enum_text(loop.phase),
             "loop_mode": SnapshotMixin._enum_text(loop.mode),
             "active_snapshot_version_id": str(loop.active_snapshot_version_id or ""),
-            "stage": SnapshotMixin._enum_text(stage),
-            "stage_meta": stage_meta,
+            "gate": SnapshotMixin._enum_text(gate),
+            "gate_meta": gate_meta,
             "actions": [
                 {
                     "key": str(item.get("key") or ""),
@@ -172,14 +173,15 @@ class SnapshotMixin:
 
     @staticmethod
     def _make_decision_token(payload: dict[str, Any]) -> str:
-        digest = hashlib.sha256(str(payload).encode("utf-8"))
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        digest = hashlib.sha256(canonical.encode("utf-8"))
         return digest.hexdigest()
 
-    def _merge_stage_actions(
+    def _merge_gate_actions(
         self,
         *,
         loop: Any,
-        stage: LoopStage,
+        gate: LoopGate,
         actions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = list(actions)
@@ -193,36 +195,39 @@ class SnapshotMixin:
             keys.add(key)
 
         lifecycle_stage_allowlist = {
-            LoopStage.READY_TO_START,
-            LoopStage.RUNNING_ROUND,
-            LoopStage.WAITING_ROUND_LABEL,
-            LoopStage.READY_TO_CONFIRM,
-            LoopStage.READY_NEXT_ROUND,
-            LoopStage.FAILED_RETRYABLE,
+            LoopGate.CAN_START,
+            LoopGate.RUNNING,
+            LoopGate.PAUSED,
+            LoopGate.STOPPING,
+            LoopGate.NEED_ROUND_LABELS,
+            LoopGate.CAN_CONFIRM,
+            LoopGate.CAN_NEXT_ROUND,
+            LoopGate.CAN_RETRY,
         }
-        if stage in lifecycle_stage_allowlist:
-            status_text = str(loop.status.value if hasattr(loop.status, "value") else loop.status).strip().lower()
-            if status_text == LoopStatus.DRAFT.value and stage == LoopStage.READY_TO_START:
+        if gate in lifecycle_stage_allowlist:
+            lifecycle_text = str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+            if lifecycle_text == LoopLifecycle.DRAFT.value and gate == LoopGate.CAN_START:
                 _append(self._action("start", label="Start"))
-            elif status_text == LoopStatus.RUNNING.value:
+            elif lifecycle_text == LoopLifecycle.RUNNING.value:
                 _append(self._action("pause", label="Pause"))
                 _append(self._action("stop", label="Stop"))
-            elif status_text == LoopStatus.PAUSED.value:
+            elif lifecycle_text == LoopLifecycle.PAUSED.value:
                 _append(self._action("resume", label="Resume"))
                 _append(self._action("stop", label="Stop"))
-            elif status_text == LoopStatus.STOPPING.value:
+            elif lifecycle_text == LoopLifecycle.STOPPING.value:
                 _append(self._action("observe", label="Observe", runnable=False))
 
         if (
             loop.mode == LoopMode.ACTIVE_LEARNING
             and loop.active_snapshot_version_id
-            and stage
+            and gate
             in {
-                LoopStage.READY_TO_START,
-                LoopStage.RUNNING_ROUND,
-                LoopStage.WAITING_ROUND_LABEL,
-                LoopStage.READY_TO_CONFIRM,
-                LoopStage.READY_NEXT_ROUND,
+                LoopGate.CAN_START,
+                LoopGate.RUNNING,
+                LoopGate.PAUSED,
+                LoopGate.STOPPING,
+                LoopGate.NEED_ROUND_LABELS,
+                LoopGate.CAN_CONFIRM,
             }
         ):
             _append(self._action("snapshot_update", label="Update Snapshot"))
@@ -231,8 +236,8 @@ class SnapshotMixin:
     def _build_blocking_reasons(
         self,
         *,
-        stage: LoopStage,
-        stage_meta: dict[str, Any],
+        gate: LoopGate,
+        gate_meta: dict[str, Any],
         primary_action: dict[str, Any] | None,
     ) -> list[str]:
         reasons: list[str] = []
@@ -241,16 +246,16 @@ class SnapshotMixin:
         elif not bool(primary_action.get("runnable", True)):
             reasons.append(f"primary_action_not_runnable:{primary_action.get('key')}")
 
-        if stage == LoopStage.SNAPSHOT_REQUIRED:
-            reasons.append("snapshot_required")
-        if stage == LoopStage.LABEL_GAP_REQUIRED:
-            reasons.append(f"annotation_gap:{int(stage_meta.get('gap_count') or 0)}")
-        if stage == LoopStage.WAITING_ROUND_LABEL:
+        if gate == LoopGate.NEED_SNAPSHOT:
+            reasons.append("need_snapshot")
+        if gate == LoopGate.NEED_LABELS:
+            reasons.append(f"need_labels:{int(gate_meta.get('gap_count') or 0)}")
+        if gate == LoopGate.NEED_ROUND_LABELS:
             reasons.append(
-                f"need_more_labels:{int(stage_meta.get('revealed_count') or 0)}/"
-                f"{int(stage_meta.get('min_required') or 0)}"
+                f"need_more_labels:{int(gate_meta.get('revealed_count') or 0)}/"
+                f"{int(gate_meta.get('min_required') or 0)}"
             )
-        if stage == LoopStage.FAILED:
+        if gate == LoopGate.FAILED:
             reasons.append("loop_failed")
         return reasons
 
@@ -684,8 +689,8 @@ class SnapshotMixin:
         if require_wait_phase:
             if loop.phase != LoopPhase.AL_WAIT_USER:
                 raise BadRequestAppException("round selection override requires loop phase al_wait_user")
-            if loop.status not in {LoopStatus.RUNNING, LoopStatus.PAUSED, LoopStatus.STOPPING}:
-                raise BadRequestAppException("round selection override requires loop in running/paused/stopping status")
+            if loop.lifecycle not in {LoopLifecycle.RUNNING, LoopLifecycle.PAUSED, LoopLifecycle.STOPPING}:
+                raise BadRequestAppException("round selection override requires loop in running/paused/stopping lifecycle")
             if round_row.state != RoundStatus.COMPLETED:
                 raise BadRequestAppException("round selection override requires round in completed state")
             if round_row.confirmed_at is not None:
@@ -944,16 +949,19 @@ class SnapshotMixin:
             ],
         }
 
-    async def _compute_loop_stage(
+    async def _compute_loop_gate(
         self,
         loop_id: uuid.UUID,
-    ) -> tuple[LoopStage, dict[str, Any], dict[str, Any] | None, list[dict[str, Any]]]:
+    ) -> tuple[LoopGate, dict[str, Any], dict[str, Any] | None, list[dict[str, Any]]]:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
         read_action = self._action("read", label="Read", runnable=False)
         observe_action = self._action("observe", label="Observe", runnable=False)
         start_action = self._action("start", label="Start")
+        lifecycle_text = str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+        phase_text = str(loop.phase.value if hasattr(loop.phase, "value") else loop.phase).strip().lower()
 
-        if loop.status == LoopStatus.FAILED:
+        # Terminal lifecycle first.
+        if loop.lifecycle == LoopLifecycle.FAILED:
             latest_round = await self.repository.get_latest_by_loop(loop_id)
             # BUGFIX(2026-02-27): normalize enum/text status to avoid missing retryable stage
             # when DB stores uppercase enum while API enums are lowercase values.
@@ -985,100 +993,73 @@ class SnapshotMixin:
                             "attempt_index": int(latest_round.attempt_index),
                         },
                     )
-                    stage_meta = {
+                    gate_meta = {
                         "reason": "latest_round_failed",
                         "retry_round_id": str(latest_round.id),
                         "retry_round_index": int(latest_round.round_index),
                         "retry_attempt_index": int(latest_round.attempt_index),
                         "retry_reason_hint": str(latest_round.terminal_reason or ""),
                     }
-                    return LoopStage.FAILED_RETRYABLE, stage_meta, retry_action, [retry_action, read_action]
-            return LoopStage.FAILED, {"reason": "terminal"}, None, [read_action]
+                    return LoopGate.CAN_RETRY, gate_meta, retry_action, [retry_action, read_action]
+            return LoopGate.FAILED, {"reason": "terminal"}, None, [read_action]
+        if loop.lifecycle == LoopLifecycle.COMPLETED:
+            return LoopGate.COMPLETED, {"reason": "terminal"}, None, [read_action]
+        if loop.lifecycle == LoopLifecycle.STOPPED:
+            return LoopGate.STOPPED, {"reason": "terminal"}, None, [read_action]
 
-        if loop.status == LoopStatus.COMPLETED:
-            return LoopStage.COMPLETED, {"reason": "terminal"}, None, [read_action]
-        if loop.status == LoopStatus.STOPPED:
-            return LoopStage.STOPPED, {"reason": "terminal"}, None, [read_action]
+        # Running lifecycle gates: running/paused/stopping are explicit and never
+        # downgraded by setup checks such as snapshot/gap.
+        if loop.lifecycle == LoopLifecycle.PAUSED:
+            return LoopGate.PAUSED, {"phase": phase_text}, None, [observe_action]
+        if loop.lifecycle == LoopLifecycle.STOPPING:
+            return LoopGate.STOPPING, {"phase": phase_text}, None, [observe_action]
+        if loop.lifecycle == LoopLifecycle.RUNNING:
+            if loop.mode != LoopMode.ACTIVE_LEARNING:
+                return LoopGate.RUNNING, {"mode": str(loop.mode), "phase": phase_text}, None, [observe_action]
 
-        if loop.mode != LoopMode.ACTIVE_LEARNING:
-            if loop.status in {LoopStatus.RUNNING, LoopStatus.PAUSED, LoopStatus.STOPPING}:
-                return LoopStage.RUNNING_ROUND, {"mode": str(loop.mode)}, None, [observe_action]
-            return LoopStage.READY_TO_START, {"mode": str(loop.mode)}, start_action, [start_action]
+            if phase_text != LoopPhase.AL_WAIT_USER.value:
+                return LoopGate.RUNNING, {"phase": phase_text}, None, [observe_action]
 
-        if not loop.active_snapshot_version_id:
-            snapshot_action = self._action("snapshot_init", label="Init Snapshot")
-            return LoopStage.SNAPSHOT_REQUIRED, {"missing": "snapshot"}, snapshot_action, [snapshot_action, read_action]
-
-        gaps = await self._compute_annotation_gaps_internal(loop_id)
-        gap_total = 0
-        for bucket in gaps["buckets"]:
-            partition = bucket["partition"]
-            if partition in {
-                SnapshotPartition.TRAIN_SEED,
-                SnapshotPartition.VAL_ANCHOR,
-                SnapshotPartition.TEST_ANCHOR,
-            }:
-                gap_total += int(bucket["missing_count"])
-        if gap_total > 0:
-            gap_action = self._action("view_annotation_gaps", label="Resolve Annotation Gaps", runnable=False)
-            return LoopStage.LABEL_GAP_REQUIRED, {"gap_count": gap_total}, gap_action, [gap_action, read_action]
-
-        if loop.status in {LoopStatus.RUNNING, LoopStatus.PAUSED, LoopStatus.STOPPING}:
-            if str(loop.phase.value if hasattr(loop.phase, "value") else loop.phase) == "al_wait_user":
-                latest_round = await self.repository.get_latest_by_loop(loop_id)
-                round_index = int(latest_round.round_index) if latest_round else 0
-                if round_index <= 0:
-                    annotate_action = self._action("annotate", label="Annotate Query Samples", runnable=False)
-                    selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
-                    return (
-                        LoopStage.WAITING_ROUND_LABEL,
-                        {"round_index": 0, "revealed_count": 0},
-                        annotate_action,
-                        [annotate_action, selection_adjust_action],
-                    )
-                if latest_round.state != RoundStatus.COMPLETED:
-                    return LoopStage.RUNNING_ROUND, {"phase": str(loop.phase)}, None, [observe_action]
-                if latest_round.confirmed_at is not None:
-                    start_next_round_action = self._action("start_next_round", label="Start Next Round")
-                    return (
-                        LoopStage.READY_NEXT_ROUND,
-                        {
-                            "round_index": round_index,
-                            "attempt_index": int(latest_round.attempt_index),
-                            "confirmed_at": latest_round.confirmed_at.isoformat() if latest_round.confirmed_at else None,
-                            "confirmed_revealed_count": int(latest_round.confirmed_revealed_count or 0),
-                            "confirmed_selected_count": int(latest_round.confirmed_selected_count or 0),
-                            "confirmed_effective_min_required": int(latest_round.confirmed_effective_min_required or 0),
-                        },
-                        start_next_round_action,
-                        [start_next_round_action],
-                    )
-                probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
-                configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
-                effective_min_required = self._effective_round_min_required(
-                    selected_count=probe.selected_count,
-                    configured_min_required=configured_min_required,
-                )
-                if probe.revealable_count >= effective_min_required:
-                    confirm_action = self._action("confirm", label="Confirm Reveal")
-                    selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
-                    return (
-                        LoopStage.READY_TO_CONFIRM,
-                        {
-                            "round_index": round_index,
-                            "revealed_count": probe.revealable_count,
-                            "selected_count": probe.selected_count,
-                            "missing_count": probe.missing_count,
-                            "min_required": effective_min_required,
-                            "configured_min_required": configured_min_required,
-                        },
-                        confirm_action,
-                        [confirm_action, selection_adjust_action],
-                    )
+            latest_round = await self.repository.get_latest_by_loop(loop_id)
+            round_index = int(latest_round.round_index) if latest_round else 0
+            if round_index <= 0:
                 annotate_action = self._action("annotate", label="Annotate Query Samples", runnable=False)
                 selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
                 return (
-                    LoopStage.WAITING_ROUND_LABEL,
+                    LoopGate.NEED_ROUND_LABELS,
+                    {"round_index": 0, "revealed_count": 0},
+                    annotate_action,
+                    [annotate_action, selection_adjust_action],
+                )
+            if latest_round.state != RoundStatus.COMPLETED:
+                return LoopGate.RUNNING, {"phase": phase_text}, None, [observe_action]
+            if latest_round.confirmed_at is not None:
+                start_next_round_action = self._action("start_next_round", label="Start Next Round")
+                return (
+                    LoopGate.CAN_NEXT_ROUND,
+                    {
+                        "round_index": round_index,
+                        "attempt_index": int(latest_round.attempt_index),
+                        "confirmed_at": latest_round.confirmed_at.isoformat() if latest_round.confirmed_at else None,
+                        "confirmed_revealed_count": int(latest_round.confirmed_revealed_count or 0),
+                        "confirmed_selected_count": int(latest_round.confirmed_selected_count or 0),
+                        "confirmed_effective_min_required": int(latest_round.confirmed_effective_min_required or 0),
+                    },
+                    start_next_round_action,
+                    [start_next_round_action],
+                )
+
+            probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
+            configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
+            effective_min_required = self._effective_round_min_required(
+                selected_count=probe.selected_count,
+                configured_min_required=configured_min_required,
+            )
+            if probe.revealable_count >= effective_min_required:
+                confirm_action = self._action("confirm", label="Confirm Reveal")
+                selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
+                return (
+                    LoopGate.CAN_CONFIRM,
                     {
                         "round_index": round_index,
                         "revealed_count": probe.revealable_count,
@@ -1087,12 +1068,51 @@ class SnapshotMixin:
                         "min_required": effective_min_required,
                         "configured_min_required": configured_min_required,
                     },
-                    annotate_action,
-                    [annotate_action, selection_adjust_action],
+                    confirm_action,
+                    [confirm_action, selection_adjust_action],
                 )
-            return LoopStage.RUNNING_ROUND, {"phase": str(loop.phase)}, None, [observe_action]
+            annotate_action = self._action("annotate", label="Annotate Query Samples", runnable=False)
+            selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
+            return (
+                LoopGate.NEED_ROUND_LABELS,
+                {
+                    "round_index": round_index,
+                    "revealed_count": probe.revealable_count,
+                    "selected_count": probe.selected_count,
+                    "missing_count": probe.missing_count,
+                    "min_required": effective_min_required,
+                    "configured_min_required": configured_min_required,
+                },
+                annotate_action,
+                [annotate_action, selection_adjust_action],
+            )
 
-        return LoopStage.READY_TO_START, {"phase": str(loop.phase)}, start_action, [start_action]
+        # Draft/setup gates.
+        if loop.lifecycle == LoopLifecycle.DRAFT:
+            if loop.mode != LoopMode.ACTIVE_LEARNING:
+                return LoopGate.CAN_START, {"mode": str(loop.mode)}, start_action, [start_action]
+
+            if not loop.active_snapshot_version_id:
+                snapshot_action = self._action("snapshot_init", label="Init Snapshot")
+                return LoopGate.NEED_SNAPSHOT, {"missing": "snapshot"}, snapshot_action, [snapshot_action, read_action]
+
+            gaps = await self._compute_annotation_gaps_internal(loop_id)
+            gap_total = 0
+            for bucket in gaps["buckets"]:
+                partition = bucket["partition"]
+                if partition in {
+                    SnapshotPartition.TRAIN_SEED,
+                    SnapshotPartition.VAL_ANCHOR,
+                    SnapshotPartition.TEST_ANCHOR,
+                }:
+                    gap_total += int(bucket["missing_count"])
+            if gap_total > 0:
+                gap_action = self._action("view_annotation_gaps", label="Resolve Annotation Gaps", runnable=False)
+                return LoopGate.NEED_LABELS, {"gap_count": gap_total}, gap_action, [gap_action, read_action]
+            return LoopGate.CAN_START, {"mode": str(loop.mode)}, start_action, [start_action]
+
+        # Safety fallback for unexpected lifecycle values.
+        return LoopGate.CAN_START, {"phase": phase_text}, start_action, [start_action]
 
     @transactional
     async def init_loop_snapshot(
@@ -1184,10 +1204,10 @@ class SnapshotMixin:
                 "active_snapshot_version_id": snapshot.id,
             },
         )
-        stage, _stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
+        gate, _gate_meta, _primary_action, _actions = await self._compute_loop_gate(loop.id)
         return {
             "loop_id": loop.id,
-            "stage": stage,
+            "gate": gate,
             "active_snapshot_version_id": snapshot.id,
             "version_index": version_index,
             "created": True,
@@ -1223,10 +1243,10 @@ class SnapshotMixin:
             candidate_ids = [sample_id for sample_id in all_sample_ids if sample_id not in existing_sample_ids]
         new_sample_ids = [sample_id for sample_id in candidate_ids if sample_id not in existing_sample_ids]
         if not new_sample_ids:
-            stage, _stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
+            gate, _gate_meta, _primary_action, _actions = await self._compute_loop_gate(loop.id)
             return {
                 "loop_id": loop.id,
-                "stage": stage,
+                "gate": gate,
                 "active_snapshot_version_id": parent.id,
                 "version_index": int(parent.version_index),
                 "created": False,
@@ -1326,10 +1346,10 @@ class SnapshotMixin:
                 "active_snapshot_version_id": snapshot.id,
             },
         )
-        stage, _stage_meta, _primary_action, _actions = await self._compute_loop_stage(loop.id)
+        gate, _gate_meta, _primary_action, _actions = await self._compute_loop_gate(loop.id)
         return {
             "loop_id": loop.id,
-            "stage": stage,
+            "gate": gate,
             "active_snapshot_version_id": snapshot.id,
             "version_index": version_index,
             "created": True,
@@ -1401,30 +1421,30 @@ class SnapshotMixin:
             "effective_split_counts": effective_split_counts,
         }
 
-    async def get_loop_stage(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
+    async def get_loop_gate(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        stage, stage_meta, primary_action, stage_actions = await self._compute_loop_stage(loop_id)
-        actions = self._merge_stage_actions(loop=loop, stage=stage, actions=stage_actions)
+        gate, gate_meta, primary_action, gate_actions = await self._compute_loop_gate(loop_id)
+        actions = self._merge_gate_actions(loop=loop, gate=gate, actions=gate_actions)
         latest_round = await self.repository.get_latest_by_loop(loop_id)
         branch_head_commit_id = await self._get_branch_head_commit_id(loop.branch_id)
         token_payload = self._decision_token_payload(
             loop=loop,
-            stage=stage,
-            stage_meta=stage_meta,
+            gate=gate,
+            gate_meta=gate_meta,
             actions=actions,
             latest_round=latest_round,
             branch_head_commit_id=branch_head_commit_id,
         )
         decision_token = self._make_decision_token(token_payload)
         blocking_reasons = self._build_blocking_reasons(
-            stage=stage,
-            stage_meta=stage_meta,
+            gate=gate,
+            gate_meta=gate_meta,
             primary_action=primary_action,
         )
         return {
             "loop_id": loop_id,
-            "stage": stage,
-            "stage_meta": stage_meta,
+            "gate": gate,
+            "gate_meta": gate_meta,
             "primary_action": primary_action,
             "actions": actions,
             "decision_token": decision_token,
@@ -1438,7 +1458,7 @@ class SnapshotMixin:
         requested_action: str | None,
         decision_token: str | None,
     ) -> tuple[dict[str, Any], str, dict[str, Any]]:
-        decision = await self.get_loop_stage(loop_id=loop_id)
+        decision = await self.get_loop_gate(loop_id=loop_id)
         latest_token = str(decision.get("decision_token") or "")
         if decision_token and latest_token and str(decision_token) != latest_token:
             raise ConflictAppException(
@@ -1451,7 +1471,7 @@ class SnapshotMixin:
             primary_action = decision.get("primary_action")
             action_key = str((primary_action or {}).get("key") or "").strip().lower()
         if not action_key:
-            raise BadRequestAppException("no actionable transition for current stage")
+            raise BadRequestAppException("no actionable transition for current gate")
 
         actions = decision.get("actions") or []
         matched = None
@@ -1461,9 +1481,9 @@ class SnapshotMixin:
                 matched = item
                 break
         if matched is None:
-            raise BadRequestAppException(f"action not allowed in current stage: {action_key}")
+            raise BadRequestAppException(f"action not allowed in current gate: {action_key}")
         if not bool(matched.get("runnable", True)):
-            raise BadRequestAppException(f"action is not runnable in current stage: {action_key}")
+            raise BadRequestAppException(f"action is not runnable in current gate: {action_key}")
         return decision, action_key, matched
 
     async def get_loop_annotation_gaps(self, *, loop_id: uuid.UUID) -> dict[str, Any]:

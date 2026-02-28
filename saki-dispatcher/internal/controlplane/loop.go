@@ -38,10 +38,10 @@ func (s *Service) StartLoop(ctx context.Context, commandID string, loopID string
 		if !ok {
 			return "rejected", "loop not found", nil
 		}
-		if loop.Status != statusDraft && loop.Status != statusStopped {
-			return "rejected", fmt.Sprintf("loop in status %s cannot be started", loop.Status), nil
+		if loop.Lifecycle != lifecycleDraft {
+			return "rejected", fmt.Sprintf("loop in lifecycle %s cannot be started", loop.Lifecycle), nil
 		}
-		if err := s.updateLoopStatus(ctx, tx, loop.ID, statusRunning); err != nil {
+		if err := s.updateLoopLifecycle(ctx, tx, loop.ID, lifecycleRunning); err != nil {
 			return "", "", err
 		}
 		if _, err := s.ensureLoopHasRound(ctx, tx, loop, commandID); err != nil {
@@ -70,8 +70,8 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 		if loop.Phase != phaseALWaitAnnotation {
 			return "rejected", "loop is not in al_wait_user phase", nil
 		}
-		if loop.Status != statusRunning && loop.Status != statusPaused {
-			return "rejected", fmt.Sprintf("loop in status %s cannot start next round", loop.Status), nil
+		if loop.Lifecycle != lifecycleRunning {
+			return "rejected", fmt.Sprintf("loop in lifecycle %s cannot start next round", loop.Lifecycle), nil
 		}
 
 		latestRound, found, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
@@ -101,11 +101,11 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 			return "", "", err
 		}
 		if nextRound > loop.MaxRounds {
-			if err := s.updateLoopState(
+			if err := s.updateLoopRuntime(
 				ctx,
 				tx,
 				loop.ID,
-				statusCompleted,
+				lifecycleCompleted,
 				phaseALFinalize,
 				terminalReasonSuccess,
 				loop.LastConfirmedCommitID,
@@ -139,10 +139,10 @@ func (s *Service) PauseLoop(ctx context.Context, commandID string, loopID string
 		if !ok {
 			return "rejected", "loop not found", nil
 		}
-		if loop.Status != statusRunning {
-			return "rejected", fmt.Sprintf("loop in status %s cannot be paused", loop.Status), nil
+		if loop.Lifecycle != lifecycleRunning {
+			return "rejected", fmt.Sprintf("loop in lifecycle %s cannot be paused", loop.Lifecycle), nil
 		}
-		if err := s.updateLoopStatus(ctx, tx, loop.ID, statusPaused); err != nil {
+		if err := s.updateLoopLifecycle(ctx, tx, loop.ID, lifecyclePaused); err != nil {
 			return "", "", err
 		}
 		return "applied", "pause_loop applied", nil
@@ -162,10 +162,10 @@ func (s *Service) ResumeLoop(ctx context.Context, commandID string, loopID strin
 		if !ok {
 			return "rejected", "loop not found", nil
 		}
-		if loop.Status != statusPaused {
-			return "rejected", fmt.Sprintf("loop in status %s cannot be resumed", loop.Status), nil
+		if loop.Lifecycle != lifecyclePaused {
+			return "rejected", fmt.Sprintf("loop in lifecycle %s cannot be resumed", loop.Lifecycle), nil
 		}
-		if err := s.updateLoopStatus(ctx, tx, loop.ID, statusRunning); err != nil {
+		if err := s.updateLoopLifecycle(ctx, tx, loop.ID, lifecycleRunning); err != nil {
 			return "", "", err
 		}
 		if _, err := s.ensureLoopHasRound(ctx, tx, loop, commandID); err != nil {
@@ -188,10 +188,10 @@ func (s *Service) StopLoop(ctx context.Context, commandID string, loopID string)
 		if !ok {
 			return "rejected", "loop not found", nil
 		}
-		if loop.Status != statusRunning && loop.Status != statusPaused {
-			return "rejected", fmt.Sprintf("loop in status %s cannot be stopped", loop.Status), nil
+		if loop.Lifecycle != lifecycleRunning && loop.Lifecycle != lifecyclePaused {
+			return "rejected", fmt.Sprintf("loop in lifecycle %s cannot be stopped", loop.Lifecycle), nil
 		}
-		if err := s.updateLoopStatus(ctx, tx, loop.ID, statusStopping); err != nil {
+		if err := s.updateLoopLifecycle(ctx, tx, loop.ID, lifecycleStopping); err != nil {
 			return "", "", err
 		}
 		return "applied", "stop_loop accepted (stopping)", nil
@@ -394,15 +394,15 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 		if err != nil {
 			return "rejected", "round not found", nil
 		}
-		currentStatusRaw, err := s.qtx(tx).GetRoundState(ctx, roundPGID)
+		currentLifecycleRaw, err := s.qtx(tx).GetRoundState(ctx, roundPGID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return "rejected", "round not found", nil
 			}
 			return "", "", err
 		}
-		currentStatus := currentStatusRaw
-		if _, ok := terminalRoundStatuses[currentStatus]; ok {
+		currentLifecycle := currentLifecycleRaw
+		if _, ok := terminalRoundStatuses[currentLifecycle]; ok {
 			return "applied", "round already in terminal state", nil
 		}
 
@@ -410,7 +410,7 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 			State:          roundCancelled,
 			TerminalReason: toPGText(reason),
 			RoundID:        roundPGID,
-			FromState:      currentStatus,
+			FromState:      currentLifecycle,
 		})
 		if err != nil {
 			return "", "", err
@@ -469,8 +469,8 @@ func (s *Service) RetryRound(
 		if !ok {
 			return "conflict", "loop is busy, please retry", nil
 		}
-		if loop.Status != statusFailed && loop.Status != statusStopped {
-			return "rejected", fmt.Sprintf("loop in status %s cannot retry round", loop.Status), nil
+		if loop.Lifecycle != lifecycleFailed {
+			return "rejected", fmt.Sprintf("loop in lifecycle %s cannot retry round", loop.Lifecycle), nil
 		}
 
 		latestRound, found, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
@@ -527,15 +527,15 @@ func (s *Service) StopStep(ctx context.Context, commandID string, stepID string,
 		if err != nil {
 			return "rejected", "step not found", nil
 		}
-		currentStatusRaw, err := s.qtx(tx).GetStepState(ctx, stepPGID)
-		currentStatus := currentStatusRaw
+		currentLifecycleRaw, err := s.qtx(tx).GetStepState(ctx, stepPGID)
+		currentLifecycle := currentLifecycleRaw
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return "rejected", "step not found", nil
 			}
 			return "", "", err
 		}
-		if currentStatus == stepSucceeded || currentStatus == stepFailed || currentStatus == stepCancelled || currentStatus == stepSkipped {
+		if currentLifecycle == stepSucceeded || currentLifecycle == stepFailed || currentLifecycle == stepCancelled || currentLifecycle == stepSkipped {
 			return "applied", "step already in terminal state", nil
 		}
 
@@ -569,10 +569,10 @@ func (s *Service) processLoop(ctx context.Context, loopID uuid.UUID) error {
 		return tx.Commit(ctx)
 	}
 
-	switch loop.Status {
-	case statusStopping:
+	switch loop.Lifecycle {
+	case lifecycleStopping:
 		return s.processStoppingLoopTx(ctx, tx, loop)
-	case statusRunning:
+	case lifecycleRunning:
 		if err := s.processRunningLoopTx(ctx, tx, loop); err != nil {
 			return err
 		}
@@ -639,11 +639,11 @@ func (s *Service) handleNonTerminalRoundByModeTx(
 }
 
 func (s *Service) markLoopFailedByRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow) error {
-	return s.updateLoopState(
+	return s.updateLoopRuntime(
 		ctx,
 		tx,
 		loop.ID,
-		statusFailed,
+		lifecycleFailed,
 		loop.Phase,
 		terminalReasonSystemError,
 		loop.LastConfirmedCommitID,
@@ -659,20 +659,20 @@ func (s *Service) handleTerminalRoundByModeTx(
 	switch loop.Mode {
 	case modeAL:
 		if latestRound.SummaryStatus == roundCompleted {
-			if loop.Status == statusRunning && loop.Phase == phaseALWaitAnnotation {
+			if loop.Lifecycle == lifecycleRunning && loop.Phase == phaseALWaitAnnotation {
 				return nil
 			}
-			return s.updateLoopState(ctx, tx, loop.ID, statusRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
+			return s.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
 		}
 		return nil
 	case modeSIM:
 		return s.handleSimulationTerminalRoundTx(ctx, tx, loop, latestRound)
 	case modeManual:
-		return s.updateLoopState(
+		return s.updateLoopRuntime(
 			ctx,
 			tx,
 			loop.ID,
-			statusCompleted,
+			lifecycleCompleted,
 			phaseManualFinalize,
 			terminalReasonSuccess,
 			loop.LastConfirmedCommitID,
@@ -689,11 +689,11 @@ func (s *Service) handleSimulationTerminalRoundTx(
 	latestRound roundRow,
 ) error {
 	if latestRound.RoundIndex >= loop.MaxRounds {
-		return s.updateLoopState(
+		return s.updateLoopRuntime(
 			ctx,
 			tx,
 			loop.ID,
-			statusCompleted,
+			lifecycleCompleted,
 			phaseSimFinalize,
 			terminalReasonSuccess,
 			loop.LastConfirmedCommitID,
@@ -769,11 +769,11 @@ func (s *Service) processStoppingLoopTx(ctx context.Context, tx pgx.Tx, loop loo
 		}
 	}
 
-	if err := s.updateLoopState(
+	if err := s.updateLoopRuntime(
 		ctx,
 		tx,
 		loop.ID,
-		statusStopped,
+		lifecycleStopped,
 		loop.Phase,
 		terminalReasonUserStop,
 		loop.LastConfirmedCommitID,
@@ -1058,59 +1058,59 @@ func summarizeRoundState(counts map[db.Stepstatus]int, total int) db.Roundstatus
 	return roundPending
 }
 
-func (s *Service) updateLoopStatus(ctx context.Context, tx pgx.Tx, loopID uuid.UUID, status db.Loopstatus) error {
-	currentStatus, err := s.qtx(tx).GetLoopStatus(ctx, loopID)
+func (s *Service) updateLoopLifecycle(ctx context.Context, tx pgx.Tx, loopID uuid.UUID, lifecycle db.Looplifecycle) error {
+	currentLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, loopID)
 	if err != nil {
 		return err
 	}
-	target := status
-	if !canLoopTransition(currentStatus, target) {
-		return fmt.Errorf("非法 loop 状态迁移: %s -> %s", currentStatus, target)
+	target := lifecycle
+	if !canLoopLifecycleTransition(currentLifecycle, target) {
+		return fmt.Errorf("非法 loop lifecycle迁移: %s -> %s", currentLifecycle, target)
 	}
-	affected, err := s.qtx(tx).UpdateLoopStatusGuarded(ctx, db.UpdateLoopStatusGuardedParams{
-		Status:     target,
-		LoopID:     loopID,
-		FromStatus: currentStatus,
+	affected, err := s.qtx(tx).UpdateLoopLifecycleGuarded(ctx, db.UpdateLoopLifecycleGuardedParams{
+		Lifecycle:     target,
+		LoopID:        loopID,
+		FromLifecycle: currentLifecycle,
 	})
 	if err != nil {
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("loop 状态迁移冲突: %s -> %s", currentStatus, target)
+		return fmt.Errorf("loop lifecycle迁移冲突: %s -> %s", currentLifecycle, target)
 	}
 	return nil
 }
 
-func (s *Service) updateLoopState(
+func (s *Service) updateLoopRuntime(
 	ctx context.Context,
 	tx pgx.Tx,
 	loopID uuid.UUID,
-	status db.Loopstatus,
+	lifecycle db.Looplifecycle,
 	phase db.Loopphase,
 	terminalReason string,
 	lastConfirmedCommitID *uuid.UUID,
 ) error {
-	currentStatus, err := s.qtx(tx).GetLoopStatus(ctx, loopID)
+	currentLifecycle, err := s.qtx(tx).GetLoopLifecycle(ctx, loopID)
 	if err != nil {
 		return err
 	}
-	target := status
-	if !canLoopTransition(currentStatus, target) {
-		return fmt.Errorf("非法 loop 状态迁移: %s -> %s", currentStatus, target)
+	target := lifecycle
+	if !canLoopLifecycleTransition(currentLifecycle, target) {
+		return fmt.Errorf("非法 loop lifecycle迁移: %s -> %s", currentLifecycle, target)
 	}
-	affected, err := s.qtx(tx).UpdateLoopStateGuarded(ctx, db.UpdateLoopStateGuardedParams{
-		Status:                target,
+	affected, err := s.qtx(tx).UpdateLoopRuntimeGuarded(ctx, db.UpdateLoopRuntimeGuardedParams{
+		Lifecycle:             target,
 		Phase:                 phase,
 		TerminalReason:        toNullablePGText(terminalReason),
 		LastConfirmedCommitID: lastConfirmedCommitID,
 		LoopID:                loopID,
-		FromStatus:            currentStatus,
+		FromLifecycle:         currentLifecycle,
 	})
 	if err != nil {
 		return err
 	}
 	if affected == 0 {
-		return fmt.Errorf("loop 状态写入冲突: %s -> %s", currentStatus, target)
+		return fmt.Errorf("loop lifecycle写入冲突: %s -> %s", currentLifecycle, target)
 	}
 	return nil
 }

@@ -59,21 +59,21 @@ func shouldApplyRuntimeStatus(target db.Stepstatus) bool {
 	}
 }
 
-func canLoopTransition(from db.Loopstatus, to db.Loopstatus) bool {
+func canLoopLifecycleTransition(from db.Looplifecycle, to db.Looplifecycle) bool {
 	if from == to {
 		return true
 	}
 	switch from {
-	case db.LoopstatusDRAFT:
-		return to == db.LoopstatusRUNNING
-	case db.LoopstatusRUNNING:
-		return to == db.LoopstatusPAUSED || to == db.LoopstatusSTOPPING || to == db.LoopstatusCOMPLETED || to == db.LoopstatusFAILED
-	case db.LoopstatusPAUSED:
-		return to == db.LoopstatusRUNNING || to == db.LoopstatusSTOPPING
-	case db.LoopstatusSTOPPING:
-		return to == db.LoopstatusSTOPPED || to == db.LoopstatusFAILED
-	case db.LoopstatusSTOPPED:
-		return to == db.LoopstatusRUNNING
+	case db.LooplifecycleDRAFT:
+		return to == db.LooplifecycleRUNNING
+	case db.LooplifecycleRUNNING:
+		return to == db.LooplifecyclePAUSED || to == db.LooplifecycleSTOPPING || to == db.LooplifecycleCOMPLETED || to == db.LooplifecycleFAILED
+	case db.LooplifecyclePAUSED:
+		return to == db.LooplifecycleRUNNING || to == db.LooplifecycleSTOPPING
+	case db.LooplifecycleSTOPPING:
+		return to == db.LooplifecycleSTOPPED || to == db.LooplifecycleFAILED
+	case db.LooplifecycleSTOPPED:
+		return false
 	default:
 		return false
 	}

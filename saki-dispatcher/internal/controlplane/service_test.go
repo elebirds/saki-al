@@ -196,12 +196,15 @@ func TestShouldApplyRuntimeStatus(t *testing.T) {
 	}
 }
 
-func TestCanLoopTransitionMatrix(t *testing.T) {
-	if !canLoopTransition(db.LoopstatusPAUSED, db.LoopstatusRUNNING) {
+func TestCanLoopLifecycleTransitionMatrix(t *testing.T) {
+	if !canLoopLifecycleTransition(db.LooplifecyclePAUSED, db.LooplifecycleRUNNING) {
 		t.Fatal("PAUSED -> RUNNING should be allowed")
 	}
-	if canLoopTransition(db.LoopstatusCOMPLETED, db.LoopstatusRUNNING) {
+	if canLoopLifecycleTransition(db.LooplifecycleCOMPLETED, db.LooplifecycleRUNNING) {
 		t.Fatal("COMPLETED -> RUNNING should not be allowed")
+	}
+	if canLoopLifecycleTransition(db.LooplifecycleSTOPPED, db.LooplifecycleRUNNING) {
+		t.Fatal("STOPPED -> RUNNING should not be allowed")
 	}
 }
 
@@ -219,8 +222,8 @@ func TestDispatchOutboxRetryBackoffCapsAtSixtySeconds(t *testing.T) {
 
 func TestStepStatusCountsForAPINormalizesToLowercase(t *testing.T) {
 	counts := map[db.Stepstatus]int{
-		db.StepstatusSUCCEEDED: 4,
-		db.StepstatusRUNNING:   1,
+		db.StepstatusSUCCEEDED:     4,
+		db.StepstatusRUNNING:       1,
 		db.Stepstatus("succeeded"): 2,
 		db.Stepstatus(" "):         7,
 	}

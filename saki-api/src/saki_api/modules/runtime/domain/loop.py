@@ -5,7 +5,7 @@ from sqlalchemy import UniqueConstraint
 from sqlmodel import Column, Field, Relationship, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
-from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopStatus
+from saki_api.modules.shared.modeling.enums import LoopMode, LoopPhase, LoopLifecycle
 
 if TYPE_CHECKING:
     from saki_api.modules.project.domain.branch import Branch
@@ -33,7 +33,7 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     current_iteration: int = Field(default=0)
-    status: LoopStatus = Field(default=LoopStatus.DRAFT, index=True)
+    lifecycle: LoopLifecycle = Field(default=LoopLifecycle.DRAFT, index=True)
     max_rounds: int = Field(default=5, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
     min_seed_labeled: int = Field(default=100, ge=1)

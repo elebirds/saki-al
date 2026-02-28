@@ -41,7 +41,7 @@ import {
     LoopActionRequest,
     LoopActionResponse,
     LoopSnapshotRead,
-    LoopStageResponse,
+    LoopGateResponse,
     LoopAnnotationGapsResponse,
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
@@ -272,8 +272,8 @@ async function withOptionalPasswordHashing<T>(
 function normalizeLoop(loop: Loop): Loop {
     return {
         ...loop,
-        state: (loop as any).state,
-        stage: (loop as any).stage ?? undefined,
+        lifecycle: (loop as any).lifecycle,
+        gate: (loop as any).gate ?? undefined,
         lastRoundId: (loop as any).lastRoundId ?? null,
         config: (loop as any).config ?? {plugin: {}},
     };
@@ -282,7 +282,7 @@ function normalizeLoop(loop: Loop): Loop {
 function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
     return {
         ...summary,
-        state: (summary as any).state,
+        lifecycle: (summary as any).lifecycle,
         roundsTotal: (summary as any).roundsTotal ?? 0,
         attemptsTotal: (summary as any).attemptsTotal ?? 0,
         roundsSucceeded: (summary as any).roundsSucceeded ?? 0,
@@ -928,7 +928,7 @@ export class RealApiService implements ApiService {
         const response = await this.client.post<LoopActionResponse>(`/loops/${loopId}:act`, payload ?? {});
         return {
             ...response.data,
-            state: (response.data as any).state,
+            lifecycle: (response.data as any).lifecycle,
             actions: (response.data as any).actions ?? [],
             primaryAction: (response.data as any).primaryAction ?? null,
             executedAction: (response.data as any).executedAction ?? null,
@@ -943,8 +943,8 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getLoopStage(loopId: string): Promise<LoopStageResponse> {
-        const response = await this.client.get<LoopStageResponse>(`/loops/${loopId}/stage`);
+    async getLoopGate(loopId: string): Promise<LoopGateResponse> {
+        const response = await this.client.get<LoopGateResponse>(`/loops/${loopId}/gate`);
         return {
             ...response.data,
             actions: (response.data as any).actions ?? [],

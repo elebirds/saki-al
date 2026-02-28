@@ -28,7 +28,7 @@ import {
     Loop,
     LoopAnnotationGapsResponse,
     LoopSnapshotRead,
-    LoopStageResponse,
+    LoopGateResponse,
     RoundSelectionRead,
     SnapshotInitRequest,
     SnapshotUpdateRequest,
@@ -38,7 +38,7 @@ import {
 
 const {Title, Text} = Typography;
 
-const LOOP_STATE_COLOR: Record<string, string> = {
+const LOOP_LIFECYCLE_COLOR: Record<string, string> = {
     draft: 'default',
     running: 'processing',
     paused: 'warning',
@@ -56,15 +56,17 @@ const ROUND_STATE_COLOR: Record<string, string> = {
     cancelled: 'warning',
 };
 
-const LOOP_STAGE_COLOR: Record<string, string> = {
-    snapshot_required: 'default',
-    label_gap_required: 'warning',
-    ready_to_start: 'processing',
-    running_round: 'processing',
-    waiting_round_label: 'warning',
-    ready_to_confirm: 'success',
-    ready_next_round: 'processing',
-    failed_retryable: 'error',
+const LOOP_GATE_COLOR: Record<string, string> = {
+    need_snapshot: 'default',
+    need_labels: 'warning',
+    can_start: 'processing',
+    running: 'processing',
+    paused: 'warning',
+    stopping: 'warning',
+    need_round_labels: 'warning',
+    can_confirm: 'success',
+    can_next_round: 'processing',
+    can_retry: 'error',
     completed: 'success',
     stopped: 'default',
     failed: 'error',
@@ -117,7 +119,7 @@ const ProjectLoopDetail: React.FC = () => {
     const [loop, setLoop] = useState<Loop | null>(null);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
     const [rounds, setRounds] = useState<RuntimeRound[]>([]);
-    const [stageInfo, setStageInfo] = useState<LoopStageResponse | null>(null);
+    const [gateInfo, setGateInfo] = useState<LoopGateResponse | null>(null);
     const [snapshotInfo, setSnapshotInfo] = useState<LoopSnapshotRead | null>(null);
     const [gapInfo, setGapInfo] = useState<LoopAnnotationGapsResponse | null>(null);
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
@@ -147,8 +149,8 @@ const ProjectLoopDetail: React.FC = () => {
         setLoop(loopRow);
         setSummary(summaryRow);
         setRounds(roundRows);
-        const stageRow = await api.getLoopStage(loopId).catch(() => null);
-        setStageInfo(stageRow);
+        const gateRow = await api.getLoopGate(loopId).catch(() => null);
+        setGateInfo(gateRow);
         if (loopRow.mode === 'active_learning') {
             const snapshotRow = await api.getLoopSnapshot(loopId).catch(() => null);
             let gapRow: LoopAnnotationGapsResponse | null = null;
@@ -209,22 +211,22 @@ const ProjectLoopDetail: React.FC = () => {
                 };
                 let result;
                 try {
-                    result = await submit(stageInfo?.decisionToken || undefined);
+                    result = await submit(gateInfo?.decisionToken || undefined);
                 } catch (error: any) {
                     if (!isDecisionTokenStale(error)) {
                         throw error;
                     }
-                    const latestStage = await api.getLoopStage(loopId).catch(() => null);
-                    if (!latestStage?.decisionToken) {
+                    const latestGate = await api.getLoopGate(loopId).catch(() => null);
+                    if (!latestGate?.decisionToken) {
                         throw error;
                     }
-                    setStageInfo(latestStage);
-                    result = await submit(latestStage.decisionToken);
+                    setGateInfo(latestGate);
+                    result = await submit(latestGate.decisionToken);
                 }
-                setStageInfo({
+                setGateInfo({
                     loopId: result.loopId,
-                    stage: result.stage,
-                    stageMeta: result.stageMeta || {},
+                    gate: result.gate,
+                    gateMeta: result.gateMeta || {},
                     primaryAction: result.primaryAction || null,
                     actions: result.actions || [],
                     decisionToken: result.decisionToken || '',
@@ -243,7 +245,7 @@ const ProjectLoopDetail: React.FC = () => {
                 if (result.executedAction) {
                     messageApi.success(result.message || `已执行 ${result.executedAction}`);
                 } else {
-                    messageApi.info(result.message || `当前阶段无需执行：${result.stage}`);
+                    messageApi.info(result.message || `当前网关无需执行：${result.gate}`);
                 }
                 if (opts.refresh !== false) {
                     await refreshLoopData();
@@ -256,7 +258,7 @@ const ProjectLoopDetail: React.FC = () => {
                 setControlLoading(false);
             }
         },
-        [loopId, stageInfo?.decisionToken, loop?.mode, refreshLoopData, messageApi],
+        [loopId, gateInfo?.decisionToken, loop?.mode, refreshLoopData, messageApi],
     );
 
     const handleCleanupRoundPredictions = async (roundIndex: number) => {
@@ -429,10 +431,10 @@ const ProjectLoopDetail: React.FC = () => {
         await executeLoopAction(primaryAction?.key || undefined);
     };
 
-    const primaryAction = stageInfo?.primaryAction || null;
+    const primaryAction = gateInfo?.primaryAction || null;
     const continueLabel = primaryAction ? `Continue · ${primaryAction.label}` : 'Continue';
     const continueDisabled = !primaryAction || !primaryAction.runnable;
-    const advancedActionItems = (stageInfo?.actions || [])
+    const advancedActionItems = (gateInfo?.actions || [])
         .filter((item) => item.key !== primaryAction?.key)
         .map((item) => ({
             key: item.key,
@@ -488,7 +490,7 @@ const ProjectLoopDetail: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-2">
                             <Button onClick={() => navigate(`/projects/${projectId}/loops`)}>返回概览</Button>
                             <Title level={4} className="!mb-0">{loop.name}</Title>
-                            <Tag color={LOOP_STATE_COLOR[loop.state] || 'default'}>{loop.state}</Tag>
+                            <Tag color={LOOP_LIFECYCLE_COLOR[loop.lifecycle] || 'default'}>{loop.lifecycle}</Tag>
                             <Tag>{loop.phase}</Tag>
                         </div>
                         <Text type="secondary">Loop ID: {loop.id}</Text>
@@ -532,8 +534,8 @@ const ProjectLoopDetail: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel" title="Loop 摘要">
                 <Descriptions size="small" column={4}>
                     <Descriptions.Item label="模式">{loop.mode}</Descriptions.Item>
-                    <Descriptions.Item label="Stage">
-                        {loop.stage ? <Tag color={LOOP_STAGE_COLOR[loop.stage] || 'default'}>{loop.stage}</Tag> : '-'}
+                    <Descriptions.Item label="Gate">
+                        {loop.gate ? <Tag color={LOOP_GATE_COLOR[loop.gate] || 'default'}>{loop.gate}</Tag> : '-'}
                     </Descriptions.Item>
                     <Descriptions.Item label="Rounds 总数">{summary?.roundsTotal ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="Attempts 总数">{summary?.attemptsTotal ?? 0}</Descriptions.Item>
@@ -545,24 +547,24 @@ const ProjectLoopDetail: React.FC = () => {
             </Card>
 
             {loop.mode === 'active_learning' ? (
-                <Card className="!border-github-border !bg-github-panel" title="AL Stage 面板">
-                    {stageInfo ? (
+                <Card className="!border-github-border !bg-github-panel" title="AL Gate 面板">
+                    {gateInfo ? (
                         <div className="flex flex-col gap-3">
                             <div className="flex flex-wrap items-center gap-2">
-                                <Tag color={LOOP_STAGE_COLOR[stageInfo.stage] || 'default'}>{stageInfo.stage}</Tag>
-                                {stageInfo.primaryAction ? (
-                                    <Tag color="green">primary: {stageInfo.primaryAction.key}</Tag>
+                                <Tag color={LOOP_GATE_COLOR[gateInfo.gate] || 'default'}>{gateInfo.gate}</Tag>
+                                {gateInfo.primaryAction ? (
+                                    <Tag color="green">primary: {gateInfo.primaryAction.key}</Tag>
                                 ) : null}
-                                {(stageInfo.actions || []).map((action) => (
+                                {(gateInfo.actions || []).map((action) => (
                                     <Tag key={action.key} color={action.runnable ? 'blue' : 'default'}>
                                         {action.key}
                                     </Tag>
                                 ))}
                             </div>
-                            <Text type="secondary">stageMeta: {JSON.stringify(stageInfo.stageMeta || {})}</Text>
+                            <Text type="secondary">gateMeta: {JSON.stringify(gateInfo.gateMeta || {})}</Text>
                         </div>
                     ) : (
-                        <Empty description="暂无 stage 信息"/>
+                        <Empty description="暂无 gate 信息"/>
                     )}
                 </Card>
             ) : null}

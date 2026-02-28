@@ -64,7 +64,7 @@ class LoopCommandMixin:
             experiment_group_id=payload.experiment_group_id,
             config=normalized_config,
             current_iteration=0,
-            status=payload.status,
+            lifecycle=payload.lifecycle,
             max_rounds=max_rounds,
             query_batch_size=query_batch_size,
             min_seed_labeled=100,
@@ -90,8 +90,8 @@ class LoopCommandMixin:
             patch.model_arch = payload.model_arch
         if payload.experiment_group_id is not None:
             patch.experiment_group_id = payload.experiment_group_id
-        if payload.status is not None:
-            patch.status = payload.status
+        if payload.lifecycle is not None:
+            patch.lifecycle = payload.lifecycle
 
         next_mode = payload.mode if payload.mode is not None else loop.mode
         if payload.mode is not None:
@@ -188,7 +188,7 @@ class LoopCommandMixin:
                     model_arch=payload.model_arch,
                     config=config,
                     experiment_group_id=group_id,
-                    status=payload.status,
+                    lifecycle=payload.lifecycle,
                 )
                 loop = await self.create_loop(project_id=project_id, payload=loop_payload)
                 loops.append(loop)

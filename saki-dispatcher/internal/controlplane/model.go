@@ -16,7 +16,7 @@ type loopRow struct {
 	BranchID              uuid.UUID
 	Mode                  db.Loopmode
 	Phase                 db.Loopphase
-	Status                db.Loopstatus
+	Lifecycle             db.Looplifecycle
 	CurrentIteration      int
 	MaxRounds             int
 	QueryBatchSize        int
@@ -113,7 +113,7 @@ func mapLoopForUpdate(record db.GetLoopForUpdateRow) loopRow {
 		BranchID:              record.BranchID,
 		Mode:                  record.Mode,
 		Phase:                 record.Phase,
-		Status:                record.Status,
+		Lifecycle:             record.Lifecycle,
 		CurrentIteration:      int(record.CurrentIteration),
 		MaxRounds:             int(record.MaxRounds),
 		QueryBatchSize:        int(record.QueryBatchSize),
@@ -131,7 +131,7 @@ func mapLoopByID(record db.GetLoopByIDRow) loopRow {
 		BranchID:              record.BranchID,
 		Mode:                  record.Mode,
 		Phase:                 record.Phase,
-		Status:                record.Status,
+		Lifecycle:             record.Lifecycle,
 		CurrentIteration:      int(record.CurrentIteration),
 		MaxRounds:             int(record.MaxRounds),
 		QueryBatchSize:        int(record.QueryBatchSize),

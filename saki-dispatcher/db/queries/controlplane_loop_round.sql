@@ -14,7 +14,7 @@ SELECT
   branch_id,
   mode,
   phase,
-  status,
+  lifecycle,
   current_iteration,
   max_rounds,
   query_batch_size,
@@ -33,7 +33,7 @@ SELECT
   branch_id,
   mode,
   phase,
-  status,
+  lifecycle,
   current_iteration,
   max_rounds,
   query_batch_size,
@@ -86,7 +86,9 @@ WHERE loop_id = sqlc.arg(loop_id)::uuid
 -- name: InsertRound :exec
 INSERT INTO round(
   id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, round_type, plugin_id,
-  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
+  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason,
+  confirmed_revealed_count, confirmed_selected_count, confirmed_effective_min_required,
+  final_metrics, final_artifacts, strategy_params,
   created_at, updated_at
 ) VALUES (
   sqlc.arg(round_id)::uuid,
@@ -106,6 +108,9 @@ INSERT INTO round(
   sqlc.narg(retry_reason)::text,
   0,
   NULL,
+  0,
+  0,
+  0,
   '{}'::jsonb,
   '{}'::jsonb,
   '{}'::jsonb,
@@ -141,7 +146,6 @@ INSERT INTO step(
 -- name: UpdateLoopAfterRoundCreated :exec
 UPDATE loop
 SET current_iteration = sqlc.arg(current_iteration),
-    status = 'RUNNING'::loopstatus,
     phase = sqlc.arg(phase)::loopphase,
     terminal_reason = NULL,
     updated_at = now()
@@ -152,39 +156,39 @@ UPDATE loop
 SET phase = sqlc.arg(phase)::loopphase,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid
-  AND status = 'RUNNING'::loopstatus;
+  AND lifecycle = 'RUNNING'::looplifecycle;
 
--- name: UpdateLoopStatus :exec
+-- name: UpdateLoopLifecycle :exec
 UPDATE loop
-SET status = sqlc.arg(status)::loopstatus,
+SET lifecycle = sqlc.arg(lifecycle)::looplifecycle,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid;
 
--- name: UpdateLoopStatusGuarded :execrows
+-- name: UpdateLoopLifecycleGuarded :execrows
 UPDATE loop
-SET status = sqlc.arg(status)::loopstatus,
+SET lifecycle = sqlc.arg(lifecycle)::looplifecycle,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid
-  AND status = sqlc.arg(from_status)::loopstatus;
+  AND lifecycle = sqlc.arg(from_lifecycle)::looplifecycle;
 
--- name: UpdateLoopState :exec
+-- name: UpdateLoopRuntime :exec
 UPDATE loop
-SET status = sqlc.arg(status)::loopstatus,
+SET lifecycle = sqlc.arg(lifecycle)::looplifecycle,
     phase = sqlc.arg(phase)::loopphase,
     terminal_reason = sqlc.narg(terminal_reason)::text,
     last_confirmed_commit_id = sqlc.narg(last_confirmed_commit_id)::uuid,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid;
 
--- name: UpdateLoopStateGuarded :execrows
+-- name: UpdateLoopRuntimeGuarded :execrows
 UPDATE loop
-SET status = sqlc.arg(status)::loopstatus,
+SET lifecycle = sqlc.arg(lifecycle)::looplifecycle,
     phase = sqlc.arg(phase)::loopphase,
     terminal_reason = sqlc.narg(terminal_reason)::text,
     last_confirmed_commit_id = sqlc.narg(last_confirmed_commit_id)::uuid,
     updated_at = now()
 WHERE id = sqlc.arg(loop_id)::uuid
-  AND status = sqlc.arg(from_status)::loopstatus;
+  AND lifecycle = sqlc.arg(from_lifecycle)::looplifecycle;
 
 -- name: UpdateLoopLastConfirmedCommit :exec
 UPDATE loop
@@ -195,7 +199,7 @@ WHERE id = sqlc.arg(loop_id)::uuid;
 -- name: ListTickLoopIDs :many
 SELECT id
 FROM loop
-WHERE status IN ('RUNNING'::loopstatus, 'STOPPING'::loopstatus)
+WHERE lifecycle IN ('RUNNING'::looplifecycle, 'STOPPING'::looplifecycle)
 ORDER BY updated_at ASC
 LIMIT sqlc.arg(limit_count);
 
@@ -330,8 +334,8 @@ SELECT COUNT(*)::bigint AS count
 FROM commit_annotation_map
 WHERE commit_id = sqlc.arg(commit_id)::uuid;
 
--- name: GetLoopStatus :one
-SELECT status
+-- name: GetLoopLifecycle :one
+SELECT lifecycle
 FROM loop
 WHERE id = sqlc.arg(loop_id)::uuid;
 

@@ -19,8 +19,8 @@ from saki_api.modules.shared.modeling.enums import (
     LoopActionKey,
     LoopMode,
     LoopPhase,
-    LoopStage,
-    LoopStatus,
+    LoopGate,
+    LoopLifecycle,
     RoundStatus,
     StepDispatchKind,
     StepStatus,
@@ -255,12 +255,12 @@ async def test_loop_stage_snapshot_required_does_not_offer_start_action(loop_api
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
                     config={"sampling": {"strategy": "random_baseline", "topk": 200}},
-                    status=LoopStatus.DRAFT,
+                    lifecycle=LoopLifecycle.DRAFT,
                 ),
             )
-            stage = await service.get_loop_stage(loop_id=loop.id)
-            assert stage["stage"] == LoopStage.SNAPSHOT_REQUIRED
-            action_keys = {str(item.get("key")) for item in stage.get("actions") or []}
+            gate = await service.get_loop_gate(loop_id=loop.id)
+            assert gate["gate"] == LoopGate.NEED_SNAPSHOT
+            action_keys = {str(item.get("key")) for item in gate.get("actions") or []}
             assert "snapshot_init" in action_keys
             assert "start" not in action_keys
         finally:
@@ -302,7 +302,7 @@ async def test_loop_control_act_confirm_rejects_manual_mode(loop_api_env, monkey
                     mode=LoopMode.MANUAL,
                     model_arch="yolo_det_v1",
                     config={"plugin": {"epochs": 1}},
-                    status=LoopStatus.RUNNING,
+                    lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
             loop.phase = LoopPhase.MANUAL_EVAL
@@ -365,7 +365,7 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
                     config={"sampling": {"strategy": "random_baseline", "topk": 200}},
-                    status=LoopStatus.RUNNING,
+                    lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
 
@@ -377,12 +377,12 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
                     {"key": LoopActionKey.CONFIRM.value, "runnable": True, "payload": {}},
                 )
 
-            async def _get_loop_stage(**kwargs):
+            async def _get_loop_gate(**kwargs):
                 del kwargs
                 return {
                     "loop_id": loop.id,
-                    "stage": "running_round",
-                    "stage_meta": {},
+                    "gate": "running",
+                    "gate_meta": {},
                     "primary_action": None,
                     "actions": [],
                     "decision_token": "token",
@@ -390,7 +390,7 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
                 }
 
             monkeypatch.setattr(service, "resolve_loop_action_request", _resolve_loop_action_request)
-            monkeypatch.setattr(service, "get_loop_stage", _get_loop_stage)
+            monkeypatch.setattr(service, "get_loop_gate", _get_loop_gate)
 
             await loop_control_endpoint.act_loop(
                 loop_id=loop.id,
@@ -433,7 +433,7 @@ async def test_loop_control_act_rejects_selection_adjust(loop_api_env, monkeypat
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
                     config={"sampling": {"strategy": "random_baseline", "topk": 200}},
-                    status=LoopStatus.RUNNING,
+                    lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
 
@@ -485,7 +485,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
                     config={"sampling": {"strategy": "random_baseline", "topk": 200}},
-                    status=LoopStatus.RUNNING,
+                    lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
             loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}

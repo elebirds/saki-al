@@ -1,14 +1,16 @@
-export type LoopState = 'draft' | 'running' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed';
+export type LoopLifecycle = 'draft' | 'running' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed';
 export type LoopMode = 'active_learning' | 'simulation' | 'manual';
-export type LoopStage =
-    | 'snapshot_required'
-    | 'label_gap_required'
-    | 'ready_to_start'
-    | 'running_round'
-    | 'waiting_round_label'
-    | 'ready_to_confirm'
-    | 'ready_next_round'
-    | 'failed_retryable'
+export type LoopGate =
+    | 'need_snapshot'
+    | 'need_labels'
+    | 'can_start'
+    | 'running'
+    | 'paused'
+    | 'stopping'
+    | 'need_round_labels'
+    | 'can_confirm'
+    | 'can_next_round'
+    | 'can_retry'
     | 'completed'
     | 'stopped'
     | 'failed';
@@ -102,15 +104,15 @@ export interface Loop {
     name: string;
     mode: LoopMode;
     phase: LoopPhase;
-    stage?: LoopStage;
+    gate?: LoopGate;
     phaseMeta: Record<string, any>;
-    stageMeta?: Record<string, any>;
+    gateMeta?: Record<string, any>;
     modelArch: string;
     config: LoopRuntimeConfig;
     activeSnapshotVersionId?: string | null;
     experimentGroupId?: string | null;
     currentIteration: number;
-    state: LoopState;
+    lifecycle: LoopLifecycle;
     maxRounds: number;
     queryBatchSize: number;
     minSeedLabeled: number;
@@ -218,7 +220,7 @@ export interface LoopCreateRequest {
     modelArch: string;
     config?: LoopRuntimeConfig;
     experimentGroupId?: string;
-    state?: LoopState;
+    lifecycle?: LoopLifecycle;
 }
 
 export interface LoopUpdateRequest {
@@ -227,7 +229,7 @@ export interface LoopUpdateRequest {
     modelArch?: string;
     config?: LoopRuntimeConfig;
     experimentGroupId?: string;
-    state?: LoopState;
+    lifecycle?: LoopLifecycle;
 }
 
 export interface RuntimeRoundCommandResponse {
@@ -322,7 +324,7 @@ export interface StepArtifactDownload {
 
 export interface LoopSummary {
     loopId: string;
-    state: LoopState;
+    lifecycle: LoopLifecycle;
     phase: LoopPhase;
     roundsTotal: number;
     attemptsTotal: number;
@@ -338,7 +340,7 @@ export interface SimulationExperimentCreateRequest {
     modelArch: string;
     strategies: string[];
     config?: LoopRuntimeConfig;
-    state?: LoopState;
+    lifecycle?: LoopLifecycle;
 }
 
 export interface SimulationCurvePoint {
@@ -391,14 +393,14 @@ export interface LoopActionResponse {
     executedAction?: LoopActionKey | null;
     commandId?: string | null;
     message: string;
-    stage: LoopStage;
-    stageMeta: Record<string, any>;
+    gate: LoopGate;
+    gateMeta: Record<string, any>;
     primaryAction?: LoopActionSpec | null;
     actions: LoopActionSpec[];
     decisionToken: string;
     blockingReasons: string[];
     phase: LoopPhase;
-    state: LoopState;
+    lifecycle: LoopLifecycle;
 }
 
 export interface SnapshotInitRequest {
@@ -457,17 +459,17 @@ export interface LoopSnapshotRead {
 
 export interface SnapshotMutationResponse {
     loopId: string;
-    stage: LoopStage;
+    gate: LoopGate;
     activeSnapshotVersionId: string;
     versionIndex: number;
     created: boolean;
     sampleCount: number;
 }
 
-export interface LoopStageResponse {
+export interface LoopGateResponse {
     loopId: string;
-    stage: LoopStage;
-    stageMeta: Record<string, any>;
+    gate: LoopGate;
+    gateMeta: Record<string, any>;
     primaryAction?: LoopActionSpec | null;
     actions: LoopActionSpec[];
     decisionToken: string;

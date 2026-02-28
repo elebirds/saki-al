@@ -242,7 +242,7 @@ SELECT
   branch_id,
   mode,
   phase,
-  status,
+  lifecycle,
   current_iteration,
   max_rounds,
   query_batch_size,
@@ -260,7 +260,7 @@ type GetLoopByIDRow struct {
 	BranchID              uuid.UUID
 	Mode                  Loopmode
 	Phase                 Loopphase
-	Status                Loopstatus
+	Lifecycle             Looplifecycle
 	CurrentIteration      int32
 	MaxRounds             int32
 	QueryBatchSize        int32
@@ -279,7 +279,7 @@ func (q *Queries) GetLoopByID(ctx context.Context, loopID uuid.UUID) (GetLoopByI
 		&i.BranchID,
 		&i.Mode,
 		&i.Phase,
-		&i.Status,
+		&i.Lifecycle,
 		&i.CurrentIteration,
 		&i.MaxRounds,
 		&i.QueryBatchSize,
@@ -298,7 +298,7 @@ SELECT
   branch_id,
   mode,
   phase,
-  status,
+  lifecycle,
   current_iteration,
   max_rounds,
   query_batch_size,
@@ -317,7 +317,7 @@ type GetLoopForUpdateRow struct {
 	BranchID              uuid.UUID
 	Mode                  Loopmode
 	Phase                 Loopphase
-	Status                Loopstatus
+	Lifecycle             Looplifecycle
 	CurrentIteration      int32
 	MaxRounds             int32
 	QueryBatchSize        int32
@@ -336,7 +336,7 @@ func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLo
 		&i.BranchID,
 		&i.Mode,
 		&i.Phase,
-		&i.Status,
+		&i.Lifecycle,
 		&i.CurrentIteration,
 		&i.MaxRounds,
 		&i.QueryBatchSize,
@@ -348,17 +348,17 @@ func (q *Queries) GetLoopForUpdate(ctx context.Context, loopID uuid.UUID) (GetLo
 	return i, err
 }
 
-const getLoopStatus = `-- name: GetLoopStatus :one
-SELECT status
+const getLoopLifecycle = `-- name: GetLoopLifecycle :one
+SELECT lifecycle
 FROM loop
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetLoopStatus(ctx context.Context, loopID uuid.UUID) (Loopstatus, error) {
-	row := q.db.QueryRow(ctx, getLoopStatus, loopID)
-	var status Loopstatus
-	err := row.Scan(&status)
-	return status, err
+func (q *Queries) GetLoopLifecycle(ctx context.Context, loopID uuid.UUID) (Looplifecycle, error) {
+	row := q.db.QueryRow(ctx, getLoopLifecycle, loopID)
+	var lifecycle Looplifecycle
+	err := row.Scan(&lifecycle)
+	return lifecycle, err
 }
 
 const getNextRoundAttemptIndex = `-- name: GetNextRoundAttemptIndex :one
@@ -491,7 +491,9 @@ func (q *Queries) InsertCommandLog(ctx context.Context, arg InsertCommandLogPara
 const insertRound = `-- name: InsertRound :exec
 INSERT INTO round(
   id, project_id, loop_id, round_index, attempt_index, mode, state, step_counts, round_type, plugin_id,
-  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason, final_metrics, final_artifacts, strategy_params,
+  resolved_params, resources, input_commit_id, retry_of_round_id, retry_reason, retry_count, terminal_reason,
+  confirmed_revealed_count, confirmed_selected_count, confirmed_effective_min_required,
+  final_metrics, final_artifacts, strategy_params,
   created_at, updated_at
 ) VALUES (
   $1::uuid,
@@ -511,6 +513,9 @@ INSERT INTO round(
   $14::text,
   0,
   NULL,
+  0,
+  0,
+  0,
   '{}'::jsonb,
   '{}'::jsonb,
   '{}'::jsonb,
@@ -684,7 +689,7 @@ func (q *Queries) ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID)
 const listTickLoopIDs = `-- name: ListTickLoopIDs :many
 SELECT id
 FROM loop
-WHERE status IN ('RUNNING'::loopstatus, 'STOPPING'::loopstatus)
+WHERE lifecycle IN ('RUNNING'::looplifecycle, 'STOPPING'::looplifecycle)
 ORDER BY updated_at ASC
 LIMIT $1
 `
@@ -819,7 +824,6 @@ func (q *Queries) UpdateCommandLogStatusDetail(ctx context.Context, arg UpdateCo
 const updateLoopAfterRoundCreated = `-- name: UpdateLoopAfterRoundCreated :exec
 UPDATE loop
 SET current_iteration = $1,
-    status = 'RUNNING'::loopstatus,
     phase = $2::loopphase,
     terminal_reason = NULL,
     updated_at = now()
@@ -854,12 +858,51 @@ func (q *Queries) UpdateLoopLastConfirmedCommit(ctx context.Context, arg UpdateL
 	return err
 }
 
+const updateLoopLifecycle = `-- name: UpdateLoopLifecycle :exec
+UPDATE loop
+SET lifecycle = $1::looplifecycle,
+    updated_at = now()
+WHERE id = $2::uuid
+`
+
+type UpdateLoopLifecycleParams struct {
+	Lifecycle Looplifecycle
+	LoopID    uuid.UUID
+}
+
+func (q *Queries) UpdateLoopLifecycle(ctx context.Context, arg UpdateLoopLifecycleParams) error {
+	_, err := q.db.Exec(ctx, updateLoopLifecycle, arg.Lifecycle, arg.LoopID)
+	return err
+}
+
+const updateLoopLifecycleGuarded = `-- name: UpdateLoopLifecycleGuarded :execrows
+UPDATE loop
+SET lifecycle = $1::looplifecycle,
+    updated_at = now()
+WHERE id = $2::uuid
+  AND lifecycle = $3::looplifecycle
+`
+
+type UpdateLoopLifecycleGuardedParams struct {
+	Lifecycle     Looplifecycle
+	LoopID        uuid.UUID
+	FromLifecycle Looplifecycle
+}
+
+func (q *Queries) UpdateLoopLifecycleGuarded(ctx context.Context, arg UpdateLoopLifecycleGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateLoopLifecycleGuarded, arg.Lifecycle, arg.LoopID, arg.FromLifecycle)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateLoopPhaseIfRunning = `-- name: UpdateLoopPhaseIfRunning :execrows
 UPDATE loop
 SET phase = $1::loopphase,
     updated_at = now()
 WHERE id = $2::uuid
-  AND status = 'RUNNING'::loopstatus
+  AND lifecycle = 'RUNNING'::looplifecycle
 `
 
 type UpdateLoopPhaseIfRunningParams struct {
@@ -875,9 +918,9 @@ func (q *Queries) UpdateLoopPhaseIfRunning(ctx context.Context, arg UpdateLoopPh
 	return result.RowsAffected(), nil
 }
 
-const updateLoopState = `-- name: UpdateLoopState :exec
+const updateLoopRuntime = `-- name: UpdateLoopRuntime :exec
 UPDATE loop
-SET status = $1::loopstatus,
+SET lifecycle = $1::looplifecycle,
     phase = $2::loopphase,
     terminal_reason = $3::text,
     last_confirmed_commit_id = $4::uuid,
@@ -885,17 +928,17 @@ SET status = $1::loopstatus,
 WHERE id = $5::uuid
 `
 
-type UpdateLoopStateParams struct {
-	Status                Loopstatus
+type UpdateLoopRuntimeParams struct {
+	Lifecycle             Looplifecycle
 	Phase                 Loopphase
 	TerminalReason        pgtype.Text
 	LastConfirmedCommitID *uuid.UUID
 	LoopID                uuid.UUID
 }
 
-func (q *Queries) UpdateLoopState(ctx context.Context, arg UpdateLoopStateParams) error {
-	_, err := q.db.Exec(ctx, updateLoopState,
-		arg.Status,
+func (q *Queries) UpdateLoopRuntime(ctx context.Context, arg UpdateLoopRuntimeParams) error {
+	_, err := q.db.Exec(ctx, updateLoopRuntime,
+		arg.Lifecycle,
 		arg.Phase,
 		arg.TerminalReason,
 		arg.LastConfirmedCommitID,
@@ -904,74 +947,35 @@ func (q *Queries) UpdateLoopState(ctx context.Context, arg UpdateLoopStateParams
 	return err
 }
 
-const updateLoopStateGuarded = `-- name: UpdateLoopStateGuarded :execrows
+const updateLoopRuntimeGuarded = `-- name: UpdateLoopRuntimeGuarded :execrows
 UPDATE loop
-SET status = $1::loopstatus,
+SET lifecycle = $1::looplifecycle,
     phase = $2::loopphase,
     terminal_reason = $3::text,
     last_confirmed_commit_id = $4::uuid,
     updated_at = now()
 WHERE id = $5::uuid
-  AND status = $6::loopstatus
+  AND lifecycle = $6::looplifecycle
 `
 
-type UpdateLoopStateGuardedParams struct {
-	Status                Loopstatus
+type UpdateLoopRuntimeGuardedParams struct {
+	Lifecycle             Looplifecycle
 	Phase                 Loopphase
 	TerminalReason        pgtype.Text
 	LastConfirmedCommitID *uuid.UUID
 	LoopID                uuid.UUID
-	FromStatus            Loopstatus
+	FromLifecycle         Looplifecycle
 }
 
-func (q *Queries) UpdateLoopStateGuarded(ctx context.Context, arg UpdateLoopStateGuardedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateLoopStateGuarded,
-		arg.Status,
+func (q *Queries) UpdateLoopRuntimeGuarded(ctx context.Context, arg UpdateLoopRuntimeGuardedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateLoopRuntimeGuarded,
+		arg.Lifecycle,
 		arg.Phase,
 		arg.TerminalReason,
 		arg.LastConfirmedCommitID,
 		arg.LoopID,
-		arg.FromStatus,
+		arg.FromLifecycle,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const updateLoopStatus = `-- name: UpdateLoopStatus :exec
-UPDATE loop
-SET status = $1::loopstatus,
-    updated_at = now()
-WHERE id = $2::uuid
-`
-
-type UpdateLoopStatusParams struct {
-	Status Loopstatus
-	LoopID uuid.UUID
-}
-
-func (q *Queries) UpdateLoopStatus(ctx context.Context, arg UpdateLoopStatusParams) error {
-	_, err := q.db.Exec(ctx, updateLoopStatus, arg.Status, arg.LoopID)
-	return err
-}
-
-const updateLoopStatusGuarded = `-- name: UpdateLoopStatusGuarded :execrows
-UPDATE loop
-SET status = $1::loopstatus,
-    updated_at = now()
-WHERE id = $2::uuid
-  AND status = $3::loopstatus
-`
-
-type UpdateLoopStatusGuardedParams struct {
-	Status     Loopstatus
-	LoopID     uuid.UUID
-	FromStatus Loopstatus
-}
-
-func (q *Queries) UpdateLoopStatusGuarded(ctx context.Context, arg UpdateLoopStatusGuardedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateLoopStatusGuarded, arg.Status, arg.LoopID, arg.FromStatus)
 	if err != nil {
 		return 0, err
 	}

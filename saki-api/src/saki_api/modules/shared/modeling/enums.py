@@ -113,7 +113,7 @@ class TrainingJobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class LoopStatus(str, Enum):
+class LoopLifecycle(str, Enum):
     """
     Enum for loop lifecycle.
     """
@@ -135,18 +135,20 @@ class LoopMode(str, Enum):
     MANUAL = "manual"
 
 
-class LoopStage(str, Enum):
+class LoopGate(str, Enum):
     """
-    Enum for user-facing loop stage.
+    Enum for user-facing loop interaction gate.
     """
-    SNAPSHOT_REQUIRED = "snapshot_required"
-    LABEL_GAP_REQUIRED = "label_gap_required"
-    READY_TO_START = "ready_to_start"
-    RUNNING_ROUND = "running_round"
-    WAITING_ROUND_LABEL = "waiting_round_label"
-    READY_TO_CONFIRM = "ready_to_confirm"
-    READY_NEXT_ROUND = "ready_next_round"
-    FAILED_RETRYABLE = "failed_retryable"
+    NEED_SNAPSHOT = "need_snapshot"
+    NEED_LABELS = "need_labels"
+    CAN_START = "can_start"
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPING = "stopping"
+    NEED_ROUND_LABELS = "need_round_labels"
+    CAN_CONFIRM = "can_confirm"
+    CAN_NEXT_ROUND = "can_next_round"
+    CAN_RETRY = "can_retry"
     COMPLETED = "completed"
     STOPPED = "stopped"
     FAILED = "failed"

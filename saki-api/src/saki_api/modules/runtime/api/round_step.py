@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from saki_api.modules.shared.modeling.enums import (
     LoopActionKey,
     LoopMode,
-    LoopStage,
-    LoopStatus,
+    LoopGate,
+    LoopLifecycle,
     RoundSelectionOverrideOp,
     RoundStatus,
     SnapshotPartition,
@@ -39,7 +39,7 @@ class LoopCreateRequest(BaseModel):
     model_arch: str
     config: Dict[str, Any] = Field(default_factory=dict)
     experiment_group_id: Optional[uuid.UUID] = None
-    status: LoopStatus = LoopStatus.DRAFT
+    lifecycle: LoopLifecycle = LoopLifecycle.DRAFT
 
 
 class LoopUpdateRequest(BaseModel):
@@ -48,7 +48,7 @@ class LoopUpdateRequest(BaseModel):
     model_arch: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
     experiment_group_id: Optional[uuid.UUID] = None
-    status: Optional[LoopStatus] = None
+    lifecycle: Optional[LoopLifecycle] = None
 
 
 class LoopCreateData(BaseModel):
@@ -62,7 +62,7 @@ class LoopCreateData(BaseModel):
     experiment_group_id: Optional[uuid.UUID] = None
     config: Dict[str, Any] = Field(default_factory=dict)
     current_iteration: int = Field(default=0, ge=0)
-    status: LoopStatus = LoopStatus.DRAFT
+    lifecycle: LoopLifecycle = LoopLifecycle.DRAFT
     max_rounds: int = Field(default=20, ge=1)
     query_batch_size: int = Field(default=200, ge=1)
     min_seed_labeled: int = Field(default=100, ge=1)
@@ -83,7 +83,7 @@ class LoopPatch(BaseModel):
     experiment_group_id: Optional[uuid.UUID] = None
     config: Optional[Dict[str, Any]] = None
     current_iteration: Optional[int] = Field(default=None, ge=0)
-    status: Optional[LoopStatus] = None
+    lifecycle: Optional[LoopLifecycle] = None
     max_rounds: Optional[int] = Field(default=None, ge=1)
     query_batch_size: Optional[int] = Field(default=None, ge=1)
     min_seed_labeled: Optional[int] = Field(default=None, ge=1)
@@ -104,15 +104,15 @@ class LoopRead(BaseModel):
     name: str
     mode: LoopMode
     phase: LoopPhase
-    stage: LoopStage
+    gate: LoopGate
     phase_meta: Dict[str, Any]
-    stage_meta: Dict[str, Any]
+    gate_meta: Dict[str, Any]
     model_arch: str
     config: Dict[str, Any]
     active_snapshot_version_id: Optional[uuid.UUID] = None
     experiment_group_id: Optional[uuid.UUID] = None
     current_iteration: int
-    state: LoopStatus
+    lifecycle: LoopLifecycle
     max_rounds: int
     query_batch_size: int
     min_seed_labeled: int
@@ -294,7 +294,7 @@ class StepArtifactDownloadResponse(BaseModel):
 
 class LoopSummaryRead(BaseModel):
     loop_id: uuid.UUID
-    state: LoopStatus
+    lifecycle: LoopLifecycle
     phase: LoopPhase
     rounds_total: int
     attempts_total: int
@@ -310,7 +310,7 @@ class SimulationExperimentCreateRequest(BaseModel):
     model_arch: str
     strategies: List[str]
     config: Dict[str, Any] = Field(default_factory=dict)
-    status: LoopStatus = LoopStatus.DRAFT
+    lifecycle: LoopLifecycle = LoopLifecycle.DRAFT
 
 
 class SimulationExperimentCreateResponse(BaseModel):
@@ -407,17 +407,17 @@ class LoopSnapshotRead(BaseModel):
 
 class SnapshotMutationResponse(BaseModel):
     loop_id: uuid.UUID
-    stage: LoopStage
+    gate: LoopGate
     active_snapshot_version_id: uuid.UUID
     version_index: int
     created: bool = True
     sample_count: int = 0
 
 
-class LoopStageResponse(BaseModel):
+class LoopGateResponse(BaseModel):
     loop_id: uuid.UUID
-    stage: LoopStage
-    stage_meta: Dict[str, Any] = Field(default_factory=dict)
+    gate: LoopGate
+    gate_meta: Dict[str, Any] = Field(default_factory=dict)
     primary_action: Optional[LoopActionSpec] = None
     actions: List[LoopActionSpec] = Field(default_factory=list)
     decision_token: str = ""
@@ -436,14 +436,14 @@ class LoopActionResponse(BaseModel):
     executed_action: Optional[LoopActionKey] = None
     command_id: Optional[str] = None
     message: str = ""
-    stage: LoopStage
-    stage_meta: Dict[str, Any] = Field(default_factory=dict)
+    gate: LoopGate
+    gate_meta: Dict[str, Any] = Field(default_factory=dict)
     primary_action: Optional[LoopActionSpec] = None
     actions: List[LoopActionSpec] = Field(default_factory=list)
     decision_token: str = ""
     blocking_reasons: List[str] = Field(default_factory=list)
     phase: LoopPhase
-    state: LoopStatus
+    lifecycle: LoopLifecycle
 
 
 class AnnotationGapBucket(BaseModel):

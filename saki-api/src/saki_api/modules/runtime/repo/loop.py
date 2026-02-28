@@ -8,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
 from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.shared.modeling.enums import LoopStatus
+from saki_api.modules.shared.modeling.enums import LoopLifecycle
 
 
 class LoopRepository(BaseRepository[Loop]):
@@ -19,7 +19,7 @@ class LoopRepository(BaseRepository[Loop]):
 
     async def get_active_by_branch(self, branch_id: uuid.UUID) -> Optional[Loop]:
         return await self.get_one(
-            filters=[Loop.branch_id == branch_id, Loop.status == LoopStatus.RUNNING]
+            filters=[Loop.branch_id == branch_id, Loop.lifecycle == LoopLifecycle.RUNNING]
         )
 
     async def list_by_project(self, project_id: uuid.UUID) -> List[Loop]:
@@ -30,7 +30,7 @@ class LoopRepository(BaseRepository[Loop]):
 
     async def list_running_ids(self) -> List[uuid.UUID]:
         rows = await self.session.exec(
-            select(Loop.id).where(Loop.status == LoopStatus.RUNNING)
+            select(Loop.id).where(Loop.lifecycle == LoopLifecycle.RUNNING)
         )
         return [item for item in rows.all()]
 

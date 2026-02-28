@@ -19,7 +19,7 @@ from saki_api.modules.runtime.api.round_step import (
     LoopActionSpec,
     LoopAnnotationGapsResponse,
     LoopSnapshotRead,
-    LoopStageResponse,
+    LoopGateResponse,
     RoundPredictionCleanupResponse,
     SnapshotVersionRead,
     SnapshotVersionSummaryRead,
@@ -176,23 +176,23 @@ async def act_loop(
     else:
         raise BadRequestAppException(f"unsupported action: {action_key}")
 
-    stage_payload = await runtime_service.get_loop_stage(loop_id=loop_id)
+    gate_payload = await runtime_service.get_loop_gate(loop_id=loop_id)
     loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     return LoopActionResponse(
         loop_id=loop.id,
         executed_action=executed_action,
         command_id=command_id,
         message=message_text,
-        stage=stage_payload["stage"],
-        stage_meta=stage_payload.get("stage_meta") or {},
-        primary_action=LoopActionSpec.model_validate(stage_payload.get("primary_action"))
-        if stage_payload.get("primary_action")
+        gate=gate_payload["gate"],
+        gate_meta=gate_payload.get("gate_meta") or {},
+        primary_action=LoopActionSpec.model_validate(gate_payload.get("primary_action"))
+        if gate_payload.get("primary_action")
         else None,
-        actions=[LoopActionSpec.model_validate(item) for item in stage_payload.get("actions") or []],
-        decision_token=str(stage_payload.get("decision_token") or ""),
-        blocking_reasons=list(stage_payload.get("blocking_reasons") or []),
+        actions=[LoopActionSpec.model_validate(item) for item in gate_payload.get("actions") or []],
+        decision_token=str(gate_payload.get("decision_token") or ""),
+        blocking_reasons=list(gate_payload.get("blocking_reasons") or []),
         phase=loop.phase,
-        state=loop.status,
+        lifecycle=loop.lifecycle,
     )
 
 
@@ -225,8 +225,8 @@ async def get_loop_snapshot(
     )
 
 
-@router.get("/loops/{loop_id}/stage", response_model=LoopStageResponse)
-async def get_loop_stage(
+@router.get("/loops/{loop_id}/gate", response_model=LoopGateResponse)
+async def get_loop_gate(
     *,
     loop_id: uuid.UUID,
     runtime_service: RuntimeServiceDep,
@@ -240,8 +240,8 @@ async def get_loop_stage(
         project_id=loop.project_id,
         required=Permissions.LOOP_READ,
     )
-    payload = await runtime_service.get_loop_stage(loop_id=loop_id)
-    return LoopStageResponse(**payload)
+    payload = await runtime_service.get_loop_gate(loop_id=loop_id)
+    return LoopGateResponse(**payload)
 
 
 @router.get("/loops/{loop_id}/annotation-gaps", response_model=LoopAnnotationGapsResponse)

@@ -3,13 +3,13 @@ package controlplane
 import db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 
 const (
-	statusDraft     db.Loopstatus = db.LoopstatusDRAFT
-	statusRunning   db.Loopstatus = db.LoopstatusRUNNING
-	statusPaused    db.Loopstatus = db.LoopstatusPAUSED
-	statusStopping  db.Loopstatus = db.LoopstatusSTOPPING
-	statusStopped   db.Loopstatus = db.LoopstatusSTOPPED
-	statusCompleted db.Loopstatus = db.LoopstatusCOMPLETED
-	statusFailed    db.Loopstatus = db.LoopstatusFAILED
+	lifecycleDraft     db.Looplifecycle = db.LooplifecycleDRAFT
+	lifecycleRunning   db.Looplifecycle = db.LooplifecycleRUNNING
+	lifecyclePaused    db.Looplifecycle = db.LooplifecyclePAUSED
+	lifecycleStopping  db.Looplifecycle = db.LooplifecycleSTOPPING
+	lifecycleStopped   db.Looplifecycle = db.LooplifecycleSTOPPED
+	lifecycleCompleted db.Looplifecycle = db.LooplifecycleCOMPLETED
+	lifecycleFailed    db.Looplifecycle = db.LooplifecycleFAILED
 
 	phaseALTrain          db.Loopphase = db.LoopphaseALTRAIN
 	phaseALScore          db.Loopphase = db.LoopphaseALSCORE

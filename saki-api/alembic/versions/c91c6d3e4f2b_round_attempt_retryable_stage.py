@@ -20,7 +20,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE loopstage ADD VALUE IF NOT EXISTS 'FAILED_RETRYABLE'")
+    op.execute("ALTER TYPE loopstage ADD VALUE IF NOT EXISTS 'CAN_RETRY'")
 
     op.add_column(
         "round",

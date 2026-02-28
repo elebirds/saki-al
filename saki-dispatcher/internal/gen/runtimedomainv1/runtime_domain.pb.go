@@ -1499,6 +1499,158 @@ func (x *UploadTicketResponse) GetHeaders() map[string]string {
 	return nil
 }
 
+type DownloadTicketRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	ArtifactName  string                 `protobuf:"bytes,3,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadTicketRequest) Reset() {
+	*x = DownloadTicketRequest{}
+	mi := &file_runtime_domain_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadTicketRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadTicketRequest) ProtoMessage() {}
+
+func (x *DownloadTicketRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadTicketRequest.ProtoReflect.Descriptor instead.
+func (*DownloadTicketRequest) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *DownloadTicketRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *DownloadTicketRequest) GetStepId() string {
+	if x != nil {
+		return x.StepId
+	}
+	return ""
+}
+
+func (x *DownloadTicketRequest) GetArtifactName() string {
+	if x != nil {
+		return x.ArtifactName
+	}
+	return ""
+}
+
+type DownloadTicketResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	ReplyTo       string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
+	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	ArtifactName  string                 `protobuf:"bytes,4,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
+	DownloadUrl   string                 `protobuf:"bytes,5,opt,name=download_url,json=downloadUrl,proto3" json:"download_url,omitempty"`
+	StorageUri    string                 `protobuf:"bytes,6,opt,name=storage_uri,json=storageUri,proto3" json:"storage_uri,omitempty"`
+	Headers       map[string]string      `protobuf:"bytes,7,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadTicketResponse) Reset() {
+	*x = DownloadTicketResponse{}
+	mi := &file_runtime_domain_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadTicketResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadTicketResponse) ProtoMessage() {}
+
+func (x *DownloadTicketResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_runtime_domain_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadTicketResponse.ProtoReflect.Descriptor instead.
+func (*DownloadTicketResponse) Descriptor() ([]byte, []int) {
+	return file_runtime_domain_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *DownloadTicketResponse) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *DownloadTicketResponse) GetReplyTo() string {
+	if x != nil {
+		return x.ReplyTo
+	}
+	return ""
+}
+
+func (x *DownloadTicketResponse) GetStepId() string {
+	if x != nil {
+		return x.StepId
+	}
+	return ""
+}
+
+func (x *DownloadTicketResponse) GetArtifactName() string {
+	if x != nil {
+		return x.ArtifactName
+	}
+	return ""
+}
+
+func (x *DownloadTicketResponse) GetDownloadUrl() string {
+	if x != nil {
+		return x.DownloadUrl
+	}
+	return ""
+}
+
+func (x *DownloadTicketResponse) GetStorageUri() string {
+	if x != nil {
+		return x.StorageUri
+	}
+	return ""
+}
+
+func (x *DownloadTicketResponse) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
 var File_runtime_domain_proto protoreflect.FileDescriptor
 
 const file_runtime_domain_proto_rawDesc = "" +
@@ -1646,6 +1798,24 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\aheaders\x18\x06 \x03(\v29.saki.runtime.domain.v1.UploadTicketResponse.HeadersEntryR\aheaders\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"t\n" +
+	"\x15DownloadTicketRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
+	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12#\n" +
+	"\rartifact_name\x18\x03 \x01(\tR\fartifactName\"\xe7\x02\n" +
+	"\x16DownloadTicketResponse\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
+	"\breply_to\x18\x02 \x01(\tR\areplyTo\x12\x17\n" +
+	"\astep_id\x18\x03 \x01(\tR\x06stepId\x12#\n" +
+	"\rartifact_name\x18\x04 \x01(\tR\fartifactName\x12!\n" +
+	"\fdownload_url\x18\x05 \x01(\tR\vdownloadUrl\x12\x1f\n" +
+	"\vstorage_uri\x18\x06 \x01(\tR\n" +
+	"storageUri\x12U\n" +
+	"\aheaders\x18\a \x03(\v2;.saki.runtime.domain.v1.DownloadTicketResponse.HeadersEntryR\aheaders\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*w\n" +
 	"\x10RuntimeQueryType\x12\"\n" +
 	"\x1eRUNTIME_QUERY_TYPE_UNSPECIFIED\x10\x00\x12\n" +
@@ -1653,7 +1823,7 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x06LABELS\x10\x01\x12\v\n" +
 	"\aSAMPLES\x10\x02\x12\x0f\n" +
 	"\vANNOTATIONS\x10\x03\x12\x15\n" +
-	"\x11UNLABELED_SAMPLES\x10\x042\xc6\x06\n" +
+	"\x11UNLABELED_SAMPLES\x10\x042\xbd\a\n" +
 	"\rRuntimeDomain\x12l\n" +
 	"\rGetBranchHead\x12,.saki.runtime.domain.v1.GetBranchHeadRequest\x1a-.saki.runtime.domain.v1.GetBranchHeadResponse\x12\x90\x01\n" +
 	"\x19CountNewLabelsSinceCommit\x128.saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest\x1a9.saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse\x12{\n" +
@@ -1661,7 +1831,8 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x0fActivateSamples\x12..saki.runtime.domain.v1.ActivateSamplesRequest\x1a/.saki.runtime.domain.v1.ActivateSamplesResponse\x12x\n" +
 	"\x11AdvanceBranchHead\x120.saki.runtime.domain.v1.AdvanceBranchHeadRequest\x1a1.saki.runtime.domain.v1.AdvanceBranchHeadResponse\x12X\n" +
 	"\tQueryData\x12#.saki.runtime.domain.v1.DataRequest\x1a$.saki.runtime.domain.v1.DataResponse0\x01\x12o\n" +
-	"\x12CreateUploadTicket\x12+.saki.runtime.domain.v1.UploadTicketRequest\x1a,.saki.runtime.domain.v1.UploadTicketResponseBWZUgithub.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1;runtimedomainv1b\x06proto3"
+	"\x12CreateUploadTicket\x12+.saki.runtime.domain.v1.UploadTicketRequest\x1a,.saki.runtime.domain.v1.UploadTicketResponse\x12u\n" +
+	"\x14CreateDownloadTicket\x12-.saki.runtime.domain.v1.DownloadTicketRequest\x1a..saki.runtime.domain.v1.DownloadTicketResponseBWZUgithub.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1;runtimedomainv1b\x06proto3"
 
 var (
 	file_runtime_domain_proto_rawDescOnce sync.Once
@@ -1676,7 +1847,7 @@ func file_runtime_domain_proto_rawDescGZIP() []byte {
 }
 
 var file_runtime_domain_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_runtime_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_runtime_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_runtime_domain_proto_goTypes = []any{
 	(RuntimeQueryType)(0),                     // 0: saki.runtime.domain.v1.RuntimeQueryType
 	(*GetBranchHeadRequest)(nil),              // 1: saki.runtime.domain.v1.GetBranchHeadRequest
@@ -1697,37 +1868,43 @@ var file_runtime_domain_proto_goTypes = []any{
 	(*DataResponse)(nil),                      // 16: saki.runtime.domain.v1.DataResponse
 	(*UploadTicketRequest)(nil),               // 17: saki.runtime.domain.v1.UploadTicketRequest
 	(*UploadTicketResponse)(nil),              // 18: saki.runtime.domain.v1.UploadTicketResponse
-	nil,                                       // 19: saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
-	(*structpb.Struct)(nil),                   // 20: google.protobuf.Struct
+	(*DownloadTicketRequest)(nil),             // 19: saki.runtime.domain.v1.DownloadTicketRequest
+	(*DownloadTicketResponse)(nil),            // 20: saki.runtime.domain.v1.DownloadTicketResponse
+	nil,                                       // 21: saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
+	nil,                                       // 22: saki.runtime.domain.v1.DownloadTicketResponse.HeadersEntry
+	(*structpb.Struct)(nil),                   // 23: google.protobuf.Struct
 }
 var file_runtime_domain_proto_depIdxs = []int32{
 	0,  // 0: saki.runtime.domain.v1.DataRequest.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
-	20, // 1: saki.runtime.domain.v1.SampleItem.meta:type_name -> google.protobuf.Struct
-	20, // 2: saki.runtime.domain.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
+	23, // 1: saki.runtime.domain.v1.SampleItem.meta:type_name -> google.protobuf.Struct
+	23, // 2: saki.runtime.domain.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
 	12, // 3: saki.runtime.domain.v1.DataItem.label_item:type_name -> saki.runtime.domain.v1.LabelItem
 	13, // 4: saki.runtime.domain.v1.DataItem.sample_item:type_name -> saki.runtime.domain.v1.SampleItem
 	14, // 5: saki.runtime.domain.v1.DataItem.annotation_item:type_name -> saki.runtime.domain.v1.AnnotationItem
 	0,  // 6: saki.runtime.domain.v1.DataResponse.query_type:type_name -> saki.runtime.domain.v1.RuntimeQueryType
-	19, // 7: saki.runtime.domain.v1.UploadTicketResponse.headers:type_name -> saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
-	1,  // 8: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:input_type -> saki.runtime.domain.v1.GetBranchHeadRequest
-	3,  // 9: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:input_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
-	5,  // 10: saki.runtime.domain.v1.RuntimeDomain.ResolveRoundReveal:input_type -> saki.runtime.domain.v1.ResolveRoundRevealRequest
-	7,  // 11: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:input_type -> saki.runtime.domain.v1.ActivateSamplesRequest
-	9,  // 12: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:input_type -> saki.runtime.domain.v1.AdvanceBranchHeadRequest
-	11, // 13: saki.runtime.domain.v1.RuntimeDomain.QueryData:input_type -> saki.runtime.domain.v1.DataRequest
-	17, // 14: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:input_type -> saki.runtime.domain.v1.UploadTicketRequest
-	2,  // 15: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:output_type -> saki.runtime.domain.v1.GetBranchHeadResponse
-	4,  // 16: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:output_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
-	6,  // 17: saki.runtime.domain.v1.RuntimeDomain.ResolveRoundReveal:output_type -> saki.runtime.domain.v1.ResolveRoundRevealResponse
-	8,  // 18: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:output_type -> saki.runtime.domain.v1.ActivateSamplesResponse
-	10, // 19: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:output_type -> saki.runtime.domain.v1.AdvanceBranchHeadResponse
-	16, // 20: saki.runtime.domain.v1.RuntimeDomain.QueryData:output_type -> saki.runtime.domain.v1.DataResponse
-	18, // 21: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:output_type -> saki.runtime.domain.v1.UploadTicketResponse
-	15, // [15:22] is the sub-list for method output_type
-	8,  // [8:15] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	21, // 7: saki.runtime.domain.v1.UploadTicketResponse.headers:type_name -> saki.runtime.domain.v1.UploadTicketResponse.HeadersEntry
+	22, // 8: saki.runtime.domain.v1.DownloadTicketResponse.headers:type_name -> saki.runtime.domain.v1.DownloadTicketResponse.HeadersEntry
+	1,  // 9: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:input_type -> saki.runtime.domain.v1.GetBranchHeadRequest
+	3,  // 10: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:input_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitRequest
+	5,  // 11: saki.runtime.domain.v1.RuntimeDomain.ResolveRoundReveal:input_type -> saki.runtime.domain.v1.ResolveRoundRevealRequest
+	7,  // 12: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:input_type -> saki.runtime.domain.v1.ActivateSamplesRequest
+	9,  // 13: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:input_type -> saki.runtime.domain.v1.AdvanceBranchHeadRequest
+	11, // 14: saki.runtime.domain.v1.RuntimeDomain.QueryData:input_type -> saki.runtime.domain.v1.DataRequest
+	17, // 15: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:input_type -> saki.runtime.domain.v1.UploadTicketRequest
+	19, // 16: saki.runtime.domain.v1.RuntimeDomain.CreateDownloadTicket:input_type -> saki.runtime.domain.v1.DownloadTicketRequest
+	2,  // 17: saki.runtime.domain.v1.RuntimeDomain.GetBranchHead:output_type -> saki.runtime.domain.v1.GetBranchHeadResponse
+	4,  // 18: saki.runtime.domain.v1.RuntimeDomain.CountNewLabelsSinceCommit:output_type -> saki.runtime.domain.v1.CountNewLabelsSinceCommitResponse
+	6,  // 19: saki.runtime.domain.v1.RuntimeDomain.ResolveRoundReveal:output_type -> saki.runtime.domain.v1.ResolveRoundRevealResponse
+	8,  // 20: saki.runtime.domain.v1.RuntimeDomain.ActivateSamples:output_type -> saki.runtime.domain.v1.ActivateSamplesResponse
+	10, // 21: saki.runtime.domain.v1.RuntimeDomain.AdvanceBranchHead:output_type -> saki.runtime.domain.v1.AdvanceBranchHeadResponse
+	16, // 22: saki.runtime.domain.v1.RuntimeDomain.QueryData:output_type -> saki.runtime.domain.v1.DataResponse
+	18, // 23: saki.runtime.domain.v1.RuntimeDomain.CreateUploadTicket:output_type -> saki.runtime.domain.v1.UploadTicketResponse
+	20, // 24: saki.runtime.domain.v1.RuntimeDomain.CreateDownloadTicket:output_type -> saki.runtime.domain.v1.DownloadTicketResponse
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_runtime_domain_proto_init() }
@@ -1746,7 +1923,7 @@ func file_runtime_domain_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_runtime_domain_proto_rawDesc), len(file_runtime_domain_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   19,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

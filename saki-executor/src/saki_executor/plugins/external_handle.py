@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from saki_plugin_sdk.manifest import PluginManifest
-from saki_executor.plugins.base import EventCallback, ExecutorPlugin, TrainOutput
+from saki_executor.plugins.base import EventCallback, ExecutorPlugin, StepRuntimeRequirements, TrainOutput
 from saki_executor.steps.workspace import Workspace
 
 
@@ -91,6 +91,29 @@ class ExternalPluginHandle(ExecutorPlugin):
     def validate_params(self, params: dict[str, Any]) -> None:
         # Lightweight host-side validation; full validation happens in worker.
         pass
+
+    def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
+        default = super().get_step_runtime_requirements(step_type)
+        requirements_map = getattr(self._manifest, "step_runtime_requirements", {}) or {}
+        if not isinstance(requirements_map, dict):
+            return default
+
+        normalized = str(step_type or "").strip().lower()
+        raw = requirements_map.get(normalized)
+        if raw is None:
+            raw = requirements_map.get(step_type)
+        if not isinstance(raw, dict):
+            return default
+
+        artifact_name = str(
+            raw.get("primary_model_artifact_name", default.primary_model_artifact_name)
+            or default.primary_model_artifact_name
+        ).strip()
+        return StepRuntimeRequirements(
+            requires_prepare_data=bool(raw.get("requires_prepare_data", default.requires_prepare_data)),
+            requires_trained_model=bool(raw.get("requires_trained_model", default.requires_trained_model)),
+            primary_model_artifact_name=artifact_name,
+        )
 
     # ------------------------------------------------------------------
     # Execution stubs — these should never be called directly.

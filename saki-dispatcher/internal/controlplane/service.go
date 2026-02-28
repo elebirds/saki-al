@@ -37,6 +37,8 @@ type Service struct {
 	stopForceCancelAfter    time.Duration
 	predictionTTLDays       int
 	predictionTTLKeepRounds int
+	roundAffinityWait       time.Duration
+	strictModelHandoff      bool
 	lastTTLCleanupAt        time.Time
 	ttlCleanupInterval      time.Duration
 	logger                  zerolog.Logger
@@ -51,6 +53,8 @@ func NewService(
 	stoppingForceCancelSec int,
 	predictionTTLDays int,
 	predictionTTLKeepRounds int,
+	roundAffinityWaitSec int,
+	strictTrainModelHandoff bool,
 	logger zerolog.Logger,
 ) *Service {
 	if simulationCooldownSec < 0 {
@@ -64,6 +68,9 @@ func NewService(
 	}
 	if predictionTTLKeepRounds < 0 {
 		predictionTTLKeepRounds = 0
+	}
+	if roundAffinityWaitSec < 0 {
+		roundAffinityWaitSec = 0
 	}
 	var (
 		pool    *pgxpool.Pool
@@ -84,6 +91,8 @@ func NewService(
 		stopForceCancelAfter:    time.Duration(stoppingForceCancelSec) * time.Second,
 		predictionTTLDays:       predictionTTLDays,
 		predictionTTLKeepRounds: predictionTTLKeepRounds,
+		roundAffinityWait:       time.Duration(roundAffinityWaitSec) * time.Second,
+		strictModelHandoff:      strictTrainModelHandoff,
 		ttlCleanupInterval:      time.Hour,
 		logger:                  logger,
 	}

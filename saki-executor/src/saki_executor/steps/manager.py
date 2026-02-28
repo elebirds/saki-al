@@ -30,6 +30,9 @@ class StepManager:
         runs_dir: str,
         cache: AssetCache,
         plugin_registry: PluginRegistry,
+        *,
+        round_shared_cache_enabled: bool = True,
+        strict_train_model_handoff: bool = True,
         send_message: SendFn | None = None,
         request_message: RequestFn | None = None,
         http_client_factory: HttpClientFactory | None = None,
@@ -37,6 +40,8 @@ class StepManager:
         self.runs_dir = runs_dir
         self.cache = cache
         self.plugin_registry = plugin_registry
+        self.round_shared_cache_enabled = bool(round_shared_cache_enabled)
+        self.strict_train_model_handoff = bool(strict_train_model_handoff)
         self._send_message = send_message
         self._request_message = request_message
 
@@ -137,7 +142,12 @@ class StepManager:
             await self._reset_after_task(request.step_id, final_status)
 
     def _ensure_reporter(self, request: StepExecutionRequest) -> StepReporter:
-        workspace = Workspace(self.runs_dir, request.step_id)
+        workspace = Workspace(
+            self.runs_dir,
+            request.step_id,
+            round_id=request.round_id,
+            attempt=request.attempt,
+        )
         workspace.ensure()
         if not workspace.config_path.exists():
             workspace.write_config(request.raw_payload)

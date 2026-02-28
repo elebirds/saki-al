@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from datetime import timedelta
 
 import grpc
 from loguru import logger
@@ -530,6 +531,141 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             storage_uri=str(upload_ticket.storage_uri or ""),
             headers=dict(upload_ticket.headers),
         )
+
+    async def CreateDownloadTicket(self, request, context):  # noqa: N802
+        request_id = str(request.request_id or "") or str(uuid.uuid4())
+        step_id = _parse_uuid(request.step_id)
+        artifact_name = str(request.artifact_name or "").strip()
+        if step_id is None or not artifact_name:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("step_id/artifact_name are required")
+            return domain_pb.DownloadTicketResponse(
+                request_id=request_id,
+                reply_to=request_id,
+                step_id=str(request.step_id or ""),
+                artifact_name=artifact_name,
+                download_url="",
+                storage_uri="",
+                headers={},
+            )
+
+        async with SessionLocal() as session:
+            step = await session.get(Step, step_id)
+            if step is None:
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                context.set_details("step not found")
+                return domain_pb.DownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    step_id=str(step_id),
+                    artifact_name=artifact_name,
+                    download_url="",
+                    storage_uri="",
+                    headers={},
+                )
+
+            artifact_map = step.artifacts if isinstance(step.artifacts, dict) else {}
+            artifact = artifact_map.get(artifact_name)
+            if not isinstance(artifact, dict):
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                context.set_details("artifact not found")
+                return domain_pb.DownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    step_id=str(step_id),
+                    artifact_name=artifact_name,
+                    download_url="",
+                    storage_uri="",
+                    headers={},
+                )
+
+            uri = str(artifact.get("uri") or "").strip()
+            if not uri:
+                context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+                context.set_details("artifact uri is empty")
+                return domain_pb.DownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    step_id=str(step_id),
+                    artifact_name=artifact_name,
+                    download_url="",
+                    storage_uri="",
+                    headers={},
+                )
+
+            if uri.startswith("http://") or uri.startswith("https://"):
+                return domain_pb.DownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    step_id=str(step_id),
+                    artifact_name=artifact_name,
+                    download_url=uri,
+                    storage_uri=uri,
+                    headers={},
+                )
+
+            if not uri.startswith("s3://"):
+                context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+                context.set_details("unsupported artifact uri")
+                return domain_pb.DownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    step_id=str(step_id),
+                    artifact_name=artifact_name,
+                    download_url="",
+                    storage_uri=uri,
+                    headers={},
+                )
+
+            _, _, bucket_and_path = uri.partition("s3://")
+            _, _, object_path = bucket_and_path.partition("/")
+            object_path = object_path.strip()
+            if not object_path:
+                context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+                context.set_details("invalid s3 uri")
+                return domain_pb.DownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    step_id=str(step_id),
+                    artifact_name=artifact_name,
+                    download_url="",
+                    storage_uri=uri,
+                    headers={},
+                )
+
+            try:
+                download_url = self.storage.get_presigned_url(
+                    object_name=object_path,
+                    expires_delta=timedelta(hours=settings.RUNTIME_DOWNLOAD_URL_EXPIRE_HOURS),
+                )
+            except Exception as exc:
+                logger.exception(
+                    "failed to issue download ticket step_id={} artifact={} error={}",
+                    step_id,
+                    artifact_name,
+                    exc,
+                )
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details("failed to issue download ticket")
+                return domain_pb.DownloadTicketResponse(
+                    request_id=request_id,
+                    reply_to=request_id,
+                    step_id=str(step_id),
+                    artifact_name=artifact_name,
+                    download_url="",
+                    storage_uri=uri,
+                    headers={},
+                )
+
+            return domain_pb.DownloadTicketResponse(
+                request_id=request_id,
+                reply_to=request_id,
+                step_id=str(step_id),
+                artifact_name=artifact_name,
+                download_url=download_url,
+                storage_uri=uri,
+                headers={},
+            )
 
 
 class RuntimeGrpcServer:

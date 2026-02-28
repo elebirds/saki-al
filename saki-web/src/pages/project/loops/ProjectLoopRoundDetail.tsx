@@ -70,6 +70,26 @@ const formatDateTime = (value?: string | null) => {
     }
 };
 
+const computeDurationMs = (startedAt?: string | null, endedAt?: string | null): number => {
+    if (!startedAt) return 0;
+    const start = new Date(startedAt).getTime();
+    if (!Number.isFinite(start) || start <= 0) return 0;
+    const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+    if (!Number.isFinite(end) || end <= 0) return 0;
+    return Math.max(0, end - start);
+};
+
+const formatDuration = (durationMs: number): string => {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return '-';
+    const totalSec = Math.floor(durationMs / 1000);
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
+};
+
 const buildWsUrl = (stepId: string, afterSeq: number, token: string): string => {
     const apiBaseUrlRaw = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
     const apiBaseUrl = apiBaseUrlRaw.endsWith('/') ? apiBaseUrlRaw.slice(0, -1) : apiBaseUrlRaw;
@@ -187,6 +207,26 @@ const ProjectLoopRoundDetail: React.FC = () => {
     }, [metricPoints]);
 
     const imageArtifacts = useMemo(() => artifacts.filter((item) => isImageArtifact(item)), [artifacts]);
+    const roundDurationText = useMemo(
+        () => formatDuration(computeDurationMs(round?.startedAt, round?.endedAt)),
+        [round?.startedAt, round?.endedAt],
+    );
+    const roundProgressPercent = useMemo(() => {
+        const stepCounts = round?.stepCounts || {};
+        const total = steps.length || Object.values(stepCounts).reduce((sum, item) => sum + Number(item || 0), 0);
+        if (!total) return 0;
+        const done = ['succeeded', 'failed', 'cancelled', 'skipped']
+            .reduce((sum, key) => sum + Number((stepCounts as Record<string, number>)[key] || 0), 0);
+        return Math.max(0, Math.min(100, Number(((done / total) * 100).toFixed(2))));
+    }, [round?.stepCounts, steps]);
+    const finalMetricPairs = useMemo(
+        () => Object.entries(round?.finalMetrics || {}).slice(0, 8),
+        [round?.finalMetrics],
+    );
+    const finalArtifactNames = useMemo(
+        () => Object.keys(round?.finalArtifacts || {}).slice(0, 8),
+        [round?.finalArtifacts],
+    );
 
     const ensureArtifactUrls = useCallback(async (stepId: string, items: RuntimeStepArtifact[]) => {
         if (!stepId || items.length === 0) return;
@@ -420,220 +460,276 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 </div>
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel" title="Round 概览">
-                <Descriptions size="small" column={4}>
-                    <Descriptions.Item label="插件">{round.pluginId}</Descriptions.Item>
-                    <Descriptions.Item label="采样策略">{round.resolvedParams?.sampling?.strategy || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="模式">{round.mode}</Descriptions.Item>
-                    <Descriptions.Item label="Attempt">{round.attemptIndex || 1}</Descriptions.Item>
-                    <Descriptions.Item label="开始时间">{formatDateTime(round.startedAt)}</Descriptions.Item>
-                    <Descriptions.Item label="结束时间">{formatDateTime(round.endedAt)}</Descriptions.Item>
-                    <Descriptions.Item label="Step 数量">{steps.length}</Descriptions.Item>
-                    <Descriptions.Item label="Step 聚合">{JSON.stringify(round.stepCounts || {})}</Descriptions.Item>
-                    <Descriptions.Item label="Retry From">{round.retryOfRoundId || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Retry Reason">{round.retryReason || '-'}</Descriptions.Item>
-                </Descriptions>
-                {round.lastError ? (
-                    <Alert className="!mt-3" type="error" showIcon message={round.lastError}/>
-                ) : null}
-            </Card>
-
-            <Card className="!border-github-border !bg-github-panel" title="Step 时间线">
-                <Table
-                    size="small"
-                    rowKey={(item) => item.id}
-                    pagination={false}
-                    dataSource={steps}
-                    rowClassName={(row) => (row.id === selectedStepId ? 'bg-github-surface' : '')}
-                    onRow={(row) => ({
-                        onClick: () => {
-                            setSelectedStepId(row.id);
-                            void loadStepDashboard(row.id);
-                        },
-                    })}
-                    columns={[
-                        {title: '#', dataIndex: 'stepIndex', width: 60},
-                        {title: 'Type', dataIndex: 'stepType', width: 180},
-                        {
-                            title: 'Status',
-                            dataIndex: 'state',
-                            width: 140,
-                            render: (value: string) => <Tag color={STEP_STATE_COLOR[value] || 'default'}>{value}</Tag>,
-                        },
-                        {title: 'Executor', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
-                        {title: 'Attempt', dataIndex: 'attempt', width: 90},
-                        {title: 'Error', dataIndex: 'lastError', render: (v: string | null) => v || '-'},
-                    ]}
-                />
-            </Card>
-
-            {!selectedStep ? (
-                <Card className="!border-github-border !bg-github-panel">
-                    <Empty description="当前 Round 没有可查看的 Step"/>
-                </Card>
-            ) : (
-                <>
-                    <Card className="!border-github-border !bg-github-panel" title={`当前 Step: ${selectedStep.stepType} (#${selectedStep.stepIndex})`}>
-                        <Descriptions size="small" column={4}>
-                            <Descriptions.Item label="状态">
-                                <Tag color={STEP_STATE_COLOR[selectedStep.state] || 'default'}>{selectedStep.state}</Tag>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                <div className="min-w-0 xl:sticky xl:top-3 xl:col-span-4 xl:self-start">
+                    <Card className="!border-github-border !bg-github-panel" title="Round 概览">
+                        <Descriptions size="small" column={1}>
+                            <Descriptions.Item label="插件">{round.pluginId}</Descriptions.Item>
+                            <Descriptions.Item label="采样策略">{round.resolvedParams?.sampling?.strategy || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="模式">{round.mode}</Descriptions.Item>
+                            <Descriptions.Item label="Attempt">{round.attemptIndex || 1}</Descriptions.Item>
+                            <Descriptions.Item label="开始时间">{formatDateTime(round.startedAt)}</Descriptions.Item>
+                            <Descriptions.Item label="结束时间">{formatDateTime(round.endedAt)}</Descriptions.Item>
+                            <Descriptions.Item label="耗时">{roundDurationText}</Descriptions.Item>
+                            <Descriptions.Item label="Step 数量">{steps.length}</Descriptions.Item>
+                            <Descriptions.Item label="Retry From">{round.retryOfRoundId || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="Retry Reason">{round.retryReason || '-'}</Descriptions.Item>
+                            <Descriptions.Item label="Final Metrics">
+                                {finalMetricPairs.length === 0
+                                    ? '-'
+                                    : finalMetricPairs.map(([key, value]) => (
+                                        <Text key={key} className="mr-2 block">{`${key}: ${String(value)}`}</Text>
+                                    ))}
                             </Descriptions.Item>
-                            <Descriptions.Item label="执行器">{selectedStep.assignedExecutorId || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="开始时间">{formatDateTime(selectedStep.startedAt)}</Descriptions.Item>
-                            <Descriptions.Item label="结束时间">{formatDateTime(selectedStep.endedAt)}</Descriptions.Item>
+                            <Descriptions.Item label="Final Artifacts">
+                                {finalArtifactNames.length === 0
+                                    ? '-'
+                                    : finalArtifactNames.map((name) => <Tag key={name}>{name}</Tag>)}
+                            </Descriptions.Item>
                         </Descriptions>
-                    </Card>
-
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                        <div className="min-w-0 lg:col-span-7">
-                            <Card className="!border-github-border !bg-github-panel" title="指标曲线">
-                                {metricChartData.length === 0 ? (
-                                    <Empty description="暂无指标曲线"/>
-                                ) : (
-                                    <div className="h-[320px]">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={metricChartData}>
-                                                <CartesianGrid strokeDasharray="3 3"/>
-                                                <XAxis dataKey="step"/>
-                                                <YAxis/>
-                                                <Tooltip/>
-                                                {metricNames.map((name, idx) => (
-                                                    <Line
-                                                        key={name}
-                                                        type="monotone"
-                                                        dataKey={name}
-                                                        dot={false}
-                                                        stroke={['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'][idx % 5]}
-                                                        strokeWidth={2}
-                                                    />
-                                                ))}
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                )}
-                            </Card>
+                        <div className="mt-3">
+                            <Text type="secondary">Round 进度</Text>
+                            <Progress percent={roundProgressPercent}/>
                         </div>
-                        <div className="min-w-0 lg:col-span-5">
-                            <Card className="!border-github-border !bg-github-panel" title="实时日志（最新 200 条）">
-                                <List
-                                    size="small"
-                                    dataSource={events.slice(-200)}
-                                    locale={{emptyText: '暂无日志'}}
-                                    className="max-h-[320px] overflow-auto"
-                                    renderItem={(item) => (
-                                        <List.Item className="!items-start">
-                                            <div className="w-full">
-                                                <div className="text-xs text-github-muted">#{item.seq} · {formatDateTime(item.ts)}</div>
-                                                <div className="font-mono text-xs whitespace-pre-wrap break-all">{eventToText(item)}</div>
-                                            </div>
-                                        </List.Item>
-                                    )}
-                                />
-                            </Card>
-                        </div>
-                    </div>
-
-                    <Card className="!border-github-border !bg-github-panel" title="混淆矩阵/图像制品">
-                        {imageArtifacts.length === 0 ? (
-                            <Empty description="未检测到图像制品"/>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                                {imageArtifacts.map((artifact) => {
-                                    const imageUrl = artifactUrls[artifact.name];
-                                    return (
-                                        <div key={artifact.name} className="min-w-0">
-                                            <Card size="small" className="!border-github-border !bg-github-panel" title={artifact.name} extra={<Tag>{artifact.kind}</Tag>}>
-                                                {imageUrl ? (
-                                                    <Image src={imageUrl} alt={artifact.name} className="w-full"/>
-                                                ) : (
-                                                    <Alert
-                                                        type="info"
-                                                        showIcon
-                                                        message="当前环境无法直接预览该图片制品"
-                                                        description={artifact.uri}
-                                                    />
-                                                )}
-                                            </Card>
-                                        </div>
-                                    );
-                                })}
+                        <div className="mt-2">
+                            <Text type="secondary">Step 聚合</Text>
+                            <div className="mt-1">
+                                {(Object.entries(round.stepCounts || {}) as Array<[string, number]>).map(([key, value]) => (
+                                    <Tag key={key}>{`${key}:${value}`}</Tag>
+                                ))}
                             </div>
-                        )}
+                        </div>
+                        {round.lastError ? (
+                            <Alert className="!mt-3" type="error" showIcon message={round.lastError}/>
+                        ) : null}
                     </Card>
+                </div>
 
-                    <Card className="!border-github-border !bg-github-panel" title="候选样本（Step 级）">
+                <div className="flex min-w-0 flex-col gap-4 xl:col-span-8">
+                    <Card className="!border-github-border !bg-github-panel" title="Step 时间线">
                         <Table
                             size="small"
-                            pagination={{pageSize: 10, showSizeChanger: false}}
-                            dataSource={candidates}
-                            rowKey={(item) => `${item.sampleId}-${item.rank}`}
+                            rowKey={(item) => item.id}
+                            pagination={false}
+                            dataSource={steps}
+                            rowClassName={(row) => (row.id === selectedStepId ? 'bg-github-surface' : '')}
+                            onRow={(row) => ({
+                                onClick: () => {
+                                    setSelectedStepId(row.id);
+                                    void loadStepDashboard(row.id);
+                                },
+                            })}
                             columns={[
-                                {title: '#', dataIndex: 'rank', width: 60},
+                                {title: '#', dataIndex: 'stepIndex', width: 60},
+                                {title: 'Type', dataIndex: 'stepType', width: 180},
                                 {
-                                    title: 'Sample ID',
-                                    dataIndex: 'sampleId',
-                                    render: (value: string) => <Text code>{value}</Text>,
+                                    title: 'Status',
+                                    dataIndex: 'state',
+                                    width: 140,
+                                    render: (value: string) => <Tag color={STEP_STATE_COLOR[value] || 'default'}>{value}</Tag>,
                                 },
                                 {
-                                    title: 'Score',
-                                    dataIndex: 'score',
-                                    width: 220,
-                                    render: (value: number) => (
-                                        <div className="flex w-full flex-col gap-0.5">
-                                            <Progress percent={Math.max(0, Math.min(100, Number((value * 100).toFixed(2))))}/>
-                                            <Text type="secondary">{value.toFixed(6)}</Text>
-                                        </div>
-                                    ),
+                                    title: '耗时',
+                                    width: 140,
+                                    render: (_value: unknown, row: RuntimeStep) =>
+                                        formatDuration(computeDurationMs(row.startedAt, row.endedAt)),
                                 },
-                                {
-                                    title: 'Reason',
-                                    dataIndex: 'reason',
-                                    render: (value: Record<string, any>) => <Text type="secondary">{JSON.stringify(value || {})}</Text>,
-                                },
+                                {title: 'Executor', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
+                                {title: 'Attempt', dataIndex: 'attempt', width: 90},
+                                {title: 'Error', dataIndex: 'lastError', render: (v: string | null) => v || '-'},
                             ]}
                         />
                     </Card>
 
-                    <Card className="!border-github-border !bg-github-panel" title="Step 制品">
-                        {artifacts.length === 0 ? (
-                            <Empty description="暂无制品"/>
-                        ) : (
-                            <Table
-                                size="small"
-                                rowKey={(item) => item.name}
-                                dataSource={artifacts}
-                                pagination={{pageSize: 8}}
-                                columns={[
-                                    {title: '名称', dataIndex: 'name'},
-                                    {title: '类型', dataIndex: 'kind', width: 180, render: (v: string) => <Tag>{v}</Tag>},
-                                    {
-                                        title: '大小',
-                                        width: 120,
-                                        render: (_value: unknown, row: RuntimeStepArtifact) => {
-                                            const size = Number(row.meta?.size || 0);
-                                            return size > 0 ? `${(size / 1024 / 1024).toFixed(2)} MB` : '-';
-                                        },
-                                    },
-                                    {
-                                        title: '操作',
-                                        width: 220,
-                                        render: (_value: unknown, row: RuntimeStepArtifact) => {
-                                            const url = artifactUrls[row.name];
-                                            return url ? (
-                                                <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
-                                                    下载/预览
-                                                </Button>
+                    {!selectedStep ? (
+                        <Card className="!border-github-border !bg-github-panel">
+                            <Empty description="当前 Round 没有可查看的 Step"/>
+                        </Card>
+                    ) : (
+                        <>
+                            <Card className="!border-github-border !bg-github-panel" title={`当前 Step: ${selectedStep.stepType} (#${selectedStep.stepIndex})`}>
+                                <Descriptions size="small" column={4}>
+                                    <Descriptions.Item label="状态">
+                                        <Tag color={STEP_STATE_COLOR[selectedStep.state] || 'default'}>{selectedStep.state}</Tag>
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="执行器">{selectedStep.assignedExecutorId || '-'}</Descriptions.Item>
+                                    <Descriptions.Item label="开始时间">{formatDateTime(selectedStep.startedAt)}</Descriptions.Item>
+                                    <Descriptions.Item label="结束时间">{formatDateTime(selectedStep.endedAt)}</Descriptions.Item>
+                                </Descriptions>
+                            </Card>
+                            {(['train', 'eval', 'custom'].includes(selectedStep.stepType)) ? (
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                                    <div className="min-w-0 lg:col-span-7">
+                                        <Card className="!border-github-border !bg-github-panel" title="指标曲线">
+                                            {metricChartData.length === 0 ? (
+                                                <Empty description="暂无指标曲线"/>
                                             ) : (
-                                                <Text type="secondary">暂不可下载</Text>
-                                            );
-                                        },
-                                    },
-                                ]}
-                            />
-                        )}
-                    </Card>
-                </>
-            )}
+                                                <div className="h-[320px]">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <LineChart data={metricChartData}>
+                                                            <CartesianGrid strokeDasharray="3 3"/>
+                                                            <XAxis dataKey="step"/>
+                                                            <YAxis/>
+                                                            <Tooltip/>
+                                                            {metricNames.map((name, idx) => (
+                                                                <Line
+                                                                    key={name}
+                                                                    type="monotone"
+                                                                    dataKey={name}
+                                                                    dot={false}
+                                                                    stroke={['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'][idx % 5]}
+                                                                    strokeWidth={2}
+                                                                />
+                                                            ))}
+                                                        </LineChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            )}
+                                        </Card>
+                                    </div>
+                                    <div className="min-w-0 lg:col-span-5">
+                                        <Card className="!border-github-border !bg-github-panel" title="实时日志（最新 200 条）">
+                                            <List
+                                                size="small"
+                                                dataSource={events.slice(-200)}
+                                                locale={{emptyText: '暂无日志'}}
+                                                className="max-h-[320px] overflow-auto"
+                                                renderItem={(item) => (
+                                                    <List.Item className="!items-start">
+                                                        <div className="w-full">
+                                                            <div className="text-xs text-github-muted">#{item.seq} · {formatDateTime(item.ts)}</div>
+                                                            <div className="font-mono text-xs whitespace-pre-wrap break-all">{eventToText(item)}</div>
+                                                        </div>
+                                                    </List.Item>
+                                                )}
+                                            />
+                                        </Card>
+                                    </div>
+                                </div>
+                            ) : (
+                                <Card className="!border-github-border !bg-github-panel" title="Step 指标摘要">
+                                    {Object.keys(selectedStep.metrics || {}).length === 0 ? (
+                                        <Empty description="暂无指标"/>
+                                    ) : (
+                                        <Descriptions size="small" column={2}>
+                                            {Object.entries(selectedStep.metrics || {}).map(([key, value]) => (
+                                                <Descriptions.Item key={key} label={key}>{String(value)}</Descriptions.Item>
+                                            ))}
+                                        </Descriptions>
+                                    )}
+                                </Card>
+                            )}
+
+                            {selectedStep.stepType === 'eval' ? (
+                                <Card className="!border-github-border !bg-github-panel" title="评估图像制品（混淆矩阵等）">
+                                    {imageArtifacts.length === 0 ? (
+                                        <Empty description="未检测到图像制品"/>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                                            {imageArtifacts.map((artifact) => {
+                                                const imageUrl = artifactUrls[artifact.name];
+                                                return (
+                                                    <div key={artifact.name} className="min-w-0">
+                                                        <Card size="small" className="!border-github-border !bg-github-panel" title={artifact.name} extra={<Tag>{artifact.kind}</Tag>}>
+                                                            {imageUrl ? (
+                                                                <Image src={imageUrl} alt={artifact.name} className="w-full"/>
+                                                            ) : (
+                                                                <Alert
+                                                                    type="info"
+                                                                    showIcon
+                                                                    message="当前环境无法直接预览该图片制品"
+                                                                    description={artifact.uri}
+                                                                />
+                                                            )}
+                                                        </Card>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </Card>
+                            ) : null}
+
+                            {(['score', 'custom'].includes(selectedStep.stepType)) ? (
+                                <Card className="!border-github-border !bg-github-panel" title="候选样本/TopK（Step 级）">
+                                    <Table
+                                        size="small"
+                                        pagination={{pageSize: 10, showSizeChanger: false}}
+                                        dataSource={candidates}
+                                        rowKey={(item) => `${item.sampleId}-${item.rank}`}
+                                        columns={[
+                                            {title: '#', dataIndex: 'rank', width: 60},
+                                            {
+                                                title: 'Sample ID',
+                                                dataIndex: 'sampleId',
+                                                render: (value: string) => <Text code>{value}</Text>,
+                                            },
+                                            {
+                                                title: 'Score',
+                                                dataIndex: 'score',
+                                                width: 220,
+                                                render: (value: number) => (
+                                                    <div className="flex w-full flex-col gap-0.5">
+                                                        <Progress percent={Math.max(0, Math.min(100, Number((value * 100).toFixed(2))))}/>
+                                                        <Text type="secondary">{value.toFixed(6)}</Text>
+                                                    </div>
+                                                ),
+                                            },
+                                            {
+                                                title: 'Reason',
+                                                dataIndex: 'reason',
+                                                render: (value: Record<string, any>) => <Text type="secondary">{JSON.stringify(value || {})}</Text>,
+                                            },
+                                        ]}
+                                    />
+                                </Card>
+                            ) : null}
+
+                            <Card
+                                className="!border-github-border !bg-github-panel"
+                                title={['export', 'upload_artifact'].includes(selectedStep.stepType) ? '导出/上传制品' : 'Step 制品'}
+                            >
+                                {artifacts.length === 0 ? (
+                                    <Empty description="暂无制品"/>
+                                ) : (
+                                    <Table
+                                        size="small"
+                                        rowKey={(item) => item.name}
+                                        dataSource={artifacts}
+                                        pagination={{pageSize: 8}}
+                                        columns={[
+                                            {title: '名称', dataIndex: 'name'},
+                                            {title: '类型', dataIndex: 'kind', width: 180, render: (v: string) => <Tag>{v}</Tag>},
+                                            {
+                                                title: '大小',
+                                                width: 120,
+                                                render: (_value: unknown, row: RuntimeStepArtifact) => {
+                                                    const size = Number(row.meta?.size || 0);
+                                                    return size > 0 ? `${(size / 1024 / 1024).toFixed(2)} MB` : '-';
+                                                },
+                                            },
+                                            {
+                                                title: '操作',
+                                                width: 220,
+                                                render: (_value: unknown, row: RuntimeStepArtifact) => {
+                                                    const url = artifactUrls[row.name];
+                                                    return url ? (
+                                                        <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
+                                                            下载/预览
+                                                        </Button>
+                                                    ) : (
+                                                        <Text type="secondary">暂不可下载</Text>
+                                                    );
+                                                },
+                                            },
+                                        ]}
+                                    />
+                                )}
+                            </Card>
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };

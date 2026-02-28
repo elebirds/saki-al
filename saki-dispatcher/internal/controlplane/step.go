@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 	runtimedomainv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimedomainv1"
@@ -226,6 +227,8 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 			return false, tx.Commit(ctx)
 		}
 		stepPayload.Status = stepReady
+		now := time.Now().UTC()
+		stepPayload.UpdatedAt = &now
 	}
 
 	if stepPayload.Status != stepReady {
@@ -242,10 +245,47 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		return executed, tx.Commit(ctx)
 	}
 
-	executorID, found := s.dispatcher.PickExecutor(stepPayload.PluginID)
-	if !found {
+	preferredExecutorID, err := s.resolvePreferredExecutorIDByDependenciesTx(ctx, tx, stepPayload.DependsOnStepIDs)
+	if err != nil {
+		return false, err
+	}
+	executorID, deferredByAffinity := s.pickExecutorWithRoundAffinity(
+		stepPayload.PluginID,
+		preferredExecutorID,
+		stepPayload.UpdatedAt,
+	)
+	if deferredByAffinity || strings.TrimSpace(executorID) == "" {
 		return false, tx.Commit(ctx)
 	}
+
+	resolvedParams, err := s.buildDispatchResolvedParamsTx(ctx, tx, stepPayload)
+	if err != nil {
+		if !s.strictModelHandoff {
+			s.logger.Warn().
+				Err(err).
+				Str("step_id", stepPayload.StepID.String()).
+				Str("step_type", strings.ToLower(string(stepPayload.StepType))).
+				Msg("训练模型交接失败，STRICT_TRAIN_MODEL_HANDOFF=false，回退旧行为")
+			resolvedParams = stepPayload.Params
+		} else {
+			reason := strings.TrimSpace(err.Error())
+			if reason == "" {
+				reason = "训练模型交接失败"
+			}
+			if failErr := s.failStepDispatchPreflightTx(ctx, tx, stepPayload.StepID, reason); failErr != nil {
+				return false, failErr
+			}
+			if _, refreshErr := s.refreshRoundAggregateTx(ctx, tx, stepPayload.RoundID); refreshErr != nil {
+				return false, refreshErr
+			}
+			s.logger.Warn().
+				Str("step_id", stepPayload.StepID.String()).
+				Str("step_type", strings.ToLower(string(stepPayload.StepType))).
+				Msgf("训练模型交接失败，步骤已标记 FAILED: %s", reason)
+			return true, tx.Commit(ctx)
+		}
+	}
+
 	requestID := uuid.NewString()
 	updated, err := s.markStepDispatchingTx(ctx, tx, stepPayload.StepID, executorID, requestID)
 	if err != nil {
@@ -270,8 +310,8 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		DispatchKind:     toRuntimeStepDispatchKind(stepPayload.DispatchKind),
 		PluginId:         stepPayload.PluginID,
 		Mode:             toRuntimeLoopMode(stepPayload.Mode),
-		QueryStrategy:    extractSamplingStrategyFromStruct(stepPayload.Params),
-		ResolvedParams:   stepPayload.Params,
+		QueryStrategy:    extractSamplingStrategyFromStruct(resolvedParams),
+		ResolvedParams:   resolvedParams,
 		Resources:        stepPayload.Resources,
 		RoundIndex:       int32(stepPayload.RoundIndex),
 		Attempt:          int32(stepPayload.Attempt),
@@ -880,6 +920,193 @@ func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, depend
 		}
 	}
 	return len(states) == len(dependencyIDs), nil
+}
+
+type stepRuntimeRequirements struct {
+	requiresTrainedModel    bool
+	primaryModelArtifactKey string
+}
+
+func defaultStepRuntimeRequirements(stepType db.Steptype) stepRuntimeRequirements {
+	switch stepType {
+	case db.SteptypeSCORE:
+		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
+	case db.SteptypeEVAL:
+		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
+	case db.SteptypeEXPORT:
+		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
+	default:
+		return stepRuntimeRequirements{requiresTrainedModel: false, primaryModelArtifactKey: ""}
+	}
+}
+
+func (s *Service) resolvePreferredExecutorIDByDependenciesTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	dependencyIDs []uuid.UUID,
+) (string, error) {
+	if len(dependencyIDs) == 0 {
+		return "", nil
+	}
+	executorID, err := s.qtx(tx).GetLatestAssignedExecutorByStepIDs(ctx, dependencyIDs)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(executorID), nil
+}
+
+func (s *Service) pickExecutorWithRoundAffinity(
+	pluginID string,
+	preferredExecutorID string,
+	readyAt *time.Time,
+) (string, bool) {
+	preferredExecutorID = strings.TrimSpace(preferredExecutorID)
+	if preferredExecutorID == "" {
+		executorID, found := s.dispatcher.PickExecutor(pluginID)
+		if !found {
+			return "", false
+		}
+		return executorID, false
+	}
+
+	if s.dispatcher.IsExecutorAvailable(preferredExecutorID, pluginID) {
+		return preferredExecutorID, false
+	}
+
+	if s.roundAffinityWait > 0 && readyAt != nil {
+		readySince := readyAt.UTC()
+		elapsed := time.Since(readySince)
+		if elapsed < 0 {
+			elapsed = 0
+		}
+		if elapsed < s.roundAffinityWait {
+			return "", true
+		}
+	}
+
+	executorID, found := s.dispatcher.PickExecutor(pluginID)
+	if !found {
+		return "", false
+	}
+	return executorID, false
+}
+
+func (s *Service) buildDispatchResolvedParamsTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepPayload stepDispatchPayload,
+) (*structpb.Struct, error) {
+	requirements := defaultStepRuntimeRequirements(stepPayload.StepType)
+	if !requirements.requiresTrainedModel {
+		return stepPayload.Params, nil
+	}
+	artifactName := strings.TrimSpace(requirements.primaryModelArtifactKey)
+	if artifactName == "" {
+		artifactName = "best.pt"
+	}
+
+	if s.domainClient == nil {
+		return nil, fmt.Errorf("runtime_domain 客户端未初始化")
+	}
+	if !s.domainClient.Configured() {
+		return nil, runtime_domain_client.ErrNotConfigured
+	}
+	if !s.domainClient.Enabled() {
+		return nil, runtime_domain_client.ErrDisabled
+	}
+
+	trainStepID, err := s.qtx(tx).GetLatestSucceededTrainStepIDByRound(ctx, stepPayload.RoundID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf(
+				"round 缺少成功 TRAIN step，无法注入模型: round_id=%s step_id=%s",
+				stepPayload.RoundID,
+				stepPayload.StepID,
+			)
+		}
+		return nil, err
+	}
+
+	downloadResp, err := s.domainClient.CreateDownloadTicket(ctx, &runtimedomainv1.DownloadTicketRequest{
+		RequestId:    uuid.NewString(),
+		StepId:       trainStepID.String(),
+		ArtifactName: artifactName,
+	})
+	if err != nil {
+		if runtime_domain_client.IsNotFoundError(err) {
+			return nil, fmt.Errorf(
+				"训练模型制品不存在: train_step_id=%s artifact=%s",
+				trainStepID,
+				artifactName,
+			)
+		}
+		if runtime_domain_client.IsInvalidRequestError(err) {
+			return nil, fmt.Errorf(
+				"训练模型下载票据请求无效: train_step_id=%s artifact=%s",
+				trainStepID,
+				artifactName,
+			)
+		}
+		return nil, fmt.Errorf(
+			"训练模型下载票据请求失败: train_step_id=%s artifact=%s err=%w",
+			trainStepID,
+			artifactName,
+			err,
+		)
+	}
+	downloadURL := strings.TrimSpace(downloadResp.GetDownloadUrl())
+	if downloadURL == "" {
+		return nil, fmt.Errorf(
+			"训练模型下载地址为空: train_step_id=%s artifact=%s",
+			trainStepID,
+			artifactName,
+		)
+	}
+
+	paramsMap := cloneMap(structToMap(stepPayload.Params))
+	pluginParams := ensureMap(paramsMap["plugin"])
+	pluginParams["model_source"] = "custom_url"
+	pluginParams["model_custom_ref"] = downloadURL
+	paramsMap["plugin"] = pluginParams
+	paramsMap["_runtime_model_handoff"] = map[string]any{
+		"from_step_id":  trainStepID.String(),
+		"artifact_name": artifactName,
+		"download_url":  downloadURL,
+		"injected_at":   time.Now().UTC().Format(time.RFC3339),
+	}
+
+	resolvedParams, err := structpb.NewStruct(paramsMap)
+	if err != nil {
+		return nil, err
+	}
+	return resolvedParams, nil
+}
+
+func (s *Service) failStepDispatchPreflightTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	reason string,
+) error {
+	affected, err := s.updateStepResultGuardedTx(
+		ctx,
+		tx,
+		stepID,
+		stepFailed,
+		[]byte(`{}`),
+		[]byte(`{}`),
+		reason,
+	)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("预派发失败后状态更新冲突: step_id=%s", stepID)
+	}
+	return nil
 }
 
 func (s *Service) markStepDispatchingTx(

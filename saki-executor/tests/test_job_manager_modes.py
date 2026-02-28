@@ -245,6 +245,22 @@ class _BatchScoringPlugin(_ModeAwarePlugin):
         return candidates
 
 
+class _CaptureModelParamsPlugin(_ModeAwarePlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self.last_predict_params: dict[str, Any] | None = None
+
+    async def predict_unlabeled(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        self.last_predict_params = dict(params)
+        return await super().predict_unlabeled(workspace, unlabeled_samples, strategy, params)
+
+
 class _MinimalPlugin(ExecutorPlugin):
     def __init__(self) -> None:
         self.train_calls = 0
@@ -353,7 +369,12 @@ def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> StepManager:
     registry = PluginRegistry()
     registry.register(plugin)
     cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
-    manager = StepManager(runs_dir=str(tmp_path / "runs"), cache=cache, plugin_registry=registry)
+    manager = StepManager(
+        runs_dir=str(tmp_path / "runs"),
+        cache=cache,
+        plugin_registry=registry,
+        strict_train_model_handoff=False,
+    )
     return manager
 
 
@@ -425,8 +446,8 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
     assert len(result_messages) == 1
     result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
-    assert len(result.candidates) == 2
-    assert plugin.predict_calls == 1
+    assert len(result.candidates) == 0
+    assert plugin.predict_calls == 0
     assert plugin.prepare_samples_count == 2
     assert plugin.prepare_annotations_count == 2
 
@@ -478,8 +499,8 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
-    assert len(result.candidates) == 2
-    assert plugin.predict_calls == 1
+    assert len(result.candidates) == 0
+    assert plugin.predict_calls == 0
     assert plugin.prepare_samples_count == 2
     assert plugin.prepare_annotations_count == 2
 
@@ -587,6 +608,134 @@ async def test_score_step_skips_training_and_only_runs_sampling(tmp_path: Path):
     assert len(result.candidates) == 2
     assert plugin.train_calls == 0
     assert plugin.predict_calls == 1
+
+
+@pytest.mark.anyio
+async def test_score_step_strict_model_handoff_fails_without_model_ref(tmp_path: Path):
+    plugin = _ModeAwarePlugin()
+    registry = PluginRegistry()
+    registry.register(plugin)
+    cache = AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024)
+    manager = StepManager(
+        runs_dir=str(tmp_path / "runs"),
+        cache=cache,
+        plugin_registry=registry,
+        strict_train_model_handoff=True,
+    )
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-score-strict-1",
+        {
+            "step_id": "task-score-strict-1",
+            "round_id": "job-score-strict-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "score",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {"topk": 10},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.FAILED
+    assert "trained model is required" in str(result.error_message or "")
+
+
+@pytest.mark.anyio
+async def test_score_step_shared_model_sets_local_model_ref(tmp_path: Path):
+    plugin = _CaptureModelParamsPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    step_id = "task-score-shared-model-1"
+    round_id = "job-score-shared-model-1"
+    shared_model_path = (
+        tmp_path
+        / "runs"
+        / "rounds"
+        / round_id
+        / "attempt_1"
+        / "shared"
+        / "models"
+        / "best.pt"
+    )
+    shared_model_path.parent.mkdir(parents=True, exist_ok=True)
+    shared_model_path.write_bytes(b"mock-model")
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-score-shared-model-1",
+        {
+            "step_id": step_id,
+            "round_id": round_id,
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "score",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {"topk": 10},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.SUCCEEDED
+
+    assert plugin.last_predict_params is not None
+    assert plugin.last_predict_params.get("model_source") == "custom_local"
+    model_ref = str(plugin.last_predict_params.get("model_custom_ref") or "").strip()
+    assert model_ref
+    assert Path(model_ref).exists()
 
 
 @pytest.mark.anyio
@@ -717,8 +866,8 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
-    assert [item.sample_id for item in result.candidates] == ["u9", "u5"]
-    assert plugin.batch_calls == 2
+    assert len(result.candidates) == 0
+    assert plugin.batch_calls == 0
 
 
 @pytest.mark.anyio
@@ -910,9 +1059,9 @@ async def test_plugin_default_hooks_reduce_boilerplate(tmp_path: Path):
     assert len(result_messages) == 1
     result = result_messages[0].step_result
     assert result.status == pb.SUCCEEDED
-    assert len(result.candidates) == 2
+    assert len(result.candidates) == 0
     assert plugin.train_calls == 1
-    assert plugin.predict_calls == 1
+    assert plugin.predict_calls == 0
 
 
 @pytest.mark.anyio

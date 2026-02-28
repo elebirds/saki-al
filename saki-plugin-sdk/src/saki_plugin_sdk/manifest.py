@@ -21,6 +21,7 @@ class PluginManifest(BaseModel):
     supported_strategies: list[str] = Field(default_factory=list)
     supported_accelerators: list[str] = Field(default_factory=lambda: ["cpu"])
     supports_auto_fallback: bool = True
+    step_runtime_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     config_schema: dict[str, Any] = Field(default_factory=dict)
     default_config: dict[str, Any] = Field(default_factory=dict)

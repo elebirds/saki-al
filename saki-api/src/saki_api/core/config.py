@@ -102,6 +102,7 @@ class Settings(BaseSettings):
     INTERNAL_TOKEN: str = "dev-secret"
     RUNTIME_DOMAIN_GRPC_BIND: str = "0.0.0.0:50053"
     RUNTIME_UPLOAD_URL_EXPIRE_HOURS: int = 2
+    RUNTIME_DOWNLOAD_URL_EXPIRE_HOURS: int = 2
     RUNTIME_MAX_RETRY_COUNT: int = 2
     RUNTIME_DOMAIN_GRPC_SERVER_ENABLED: bool = True
 

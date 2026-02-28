@@ -50,6 +50,7 @@ SELECT
   t.round_index,
   t.attempt,
   t.state_version,
+  t.updated_at,
   t.depends_on_step_ids AS depends_on_raw,
   t.resolved_params AS params_raw,
   t.input_commit_id AS input_commit_id,
@@ -69,6 +70,13 @@ FOR UPDATE SKIP LOCKED;
 SELECT state
 FROM step
 WHERE id = ANY(sqlc.arg(step_ids)::uuid[]);
+
+-- name: GetLatestAssignedExecutorByStepIDs :one
+SELECT COALESCE(assigned_executor_id, '') AS assigned_executor_id
+FROM step
+WHERE id = ANY(sqlc.arg(step_ids)::uuid[])
+ORDER BY step_index DESC
+LIMIT 1;
 
 -- name: PromoteStepToReady :execrows
 UPDATE step
@@ -169,6 +177,15 @@ SELECT id AS step_id
 FROM step
 WHERE round_id = sqlc.arg(round_id)::uuid
   AND step_type = 'SCORE'::steptype
+  AND state = 'SUCCEEDED'::stepstatus
+ORDER BY step_index DESC
+LIMIT 1;
+
+-- name: GetLatestSucceededTrainStepIDByRound :one
+SELECT id AS step_id
+FROM step
+WHERE round_id = sqlc.arg(round_id)::uuid
+  AND step_type = 'TRAIN'::steptype
   AND state = 'SUCCEEDED'::stepstatus
 ORDER BY step_index DESC
 LIMIT 1;

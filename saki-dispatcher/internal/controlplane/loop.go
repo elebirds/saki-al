@@ -925,7 +925,7 @@ func (s *Service) refreshRoundAggregateTx(ctx context.Context, tx pgx.Tx, roundI
 	}
 
 	state := summarizeRoundState(counts, total)
-	countsJSON, err := marshalJSON(counts)
+	countsJSON, err := marshalJSON(stepStatusCountsForAPI(counts))
 	if err != nil {
 		return "", err
 	}
@@ -937,6 +937,21 @@ func (s *Service) refreshRoundAggregateTx(ctx context.Context, tx pgx.Tx, roundI
 		return "", err
 	}
 	return state, nil
+}
+
+func stepStatusCountsForAPI(counts map[db.Stepstatus]int) map[string]int {
+	if len(counts) == 0 {
+		return map[string]int{}
+	}
+	normalized := make(map[string]int, len(counts))
+	for state, count := range counts {
+		key := strings.ToLower(strings.TrimSpace(string(state)))
+		if key == "" {
+			continue
+		}
+		normalized[key] += count
+	}
+	return normalized
 }
 
 func summarizeRoundState(counts map[db.Stepstatus]int, total int) db.Roundstatus {

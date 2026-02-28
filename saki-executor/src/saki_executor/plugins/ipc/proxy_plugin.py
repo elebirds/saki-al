@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 import uuid
 
-from saki_executor.plugins.base import EventCallback, ExecutorPlugin, TrainOutput
+from saki_executor.plugins.base import EventCallback, ExecutorPlugin, StepRuntimeRequirements, TrainOutput
 from saki_executor.plugins.ipc.client import PluginWorkerClient
 from saki_executor.plugins.ipc import protocol
 from saki_executor.steps.workspace import Workspace
@@ -69,6 +69,9 @@ class SubprocessPluginProxy(ExecutorPlugin):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         self._metadata.validate_params(params)
+
+    def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
+        return self._metadata.get_step_runtime_requirements(step_type)
 
     async def prepare_data(
         self,

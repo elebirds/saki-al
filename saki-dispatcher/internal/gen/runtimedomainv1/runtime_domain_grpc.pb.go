@@ -26,6 +26,7 @@ const (
 	RuntimeDomain_AdvanceBranchHead_FullMethodName         = "/saki.runtime.domain.v1.RuntimeDomain/AdvanceBranchHead"
 	RuntimeDomain_QueryData_FullMethodName                 = "/saki.runtime.domain.v1.RuntimeDomain/QueryData"
 	RuntimeDomain_CreateUploadTicket_FullMethodName        = "/saki.runtime.domain.v1.RuntimeDomain/CreateUploadTicket"
+	RuntimeDomain_CreateDownloadTicket_FullMethodName      = "/saki.runtime.domain.v1.RuntimeDomain/CreateDownloadTicket"
 )
 
 // RuntimeDomainClient is the client API for RuntimeDomain service.
@@ -39,6 +40,7 @@ type RuntimeDomainClient interface {
 	AdvanceBranchHead(ctx context.Context, in *AdvanceBranchHeadRequest, opts ...grpc.CallOption) (*AdvanceBranchHeadResponse, error)
 	QueryData(ctx context.Context, in *DataRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DataResponse], error)
 	CreateUploadTicket(ctx context.Context, in *UploadTicketRequest, opts ...grpc.CallOption) (*UploadTicketResponse, error)
+	CreateDownloadTicket(ctx context.Context, in *DownloadTicketRequest, opts ...grpc.CallOption) (*DownloadTicketResponse, error)
 }
 
 type runtimeDomainClient struct {
@@ -128,6 +130,16 @@ func (c *runtimeDomainClient) CreateUploadTicket(ctx context.Context, in *Upload
 	return out, nil
 }
 
+func (c *runtimeDomainClient) CreateDownloadTicket(ctx context.Context, in *DownloadTicketRequest, opts ...grpc.CallOption) (*DownloadTicketResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DownloadTicketResponse)
+	err := c.cc.Invoke(ctx, RuntimeDomain_CreateDownloadTicket_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RuntimeDomainServer is the server API for RuntimeDomain service.
 // All implementations must embed UnimplementedRuntimeDomainServer
 // for forward compatibility.
@@ -139,6 +151,7 @@ type RuntimeDomainServer interface {
 	AdvanceBranchHead(context.Context, *AdvanceBranchHeadRequest) (*AdvanceBranchHeadResponse, error)
 	QueryData(*DataRequest, grpc.ServerStreamingServer[DataResponse]) error
 	CreateUploadTicket(context.Context, *UploadTicketRequest) (*UploadTicketResponse, error)
+	CreateDownloadTicket(context.Context, *DownloadTicketRequest) (*DownloadTicketResponse, error)
 	mustEmbedUnimplementedRuntimeDomainServer()
 }
 
@@ -169,6 +182,9 @@ func (UnimplementedRuntimeDomainServer) QueryData(*DataRequest, grpc.ServerStrea
 }
 func (UnimplementedRuntimeDomainServer) CreateUploadTicket(context.Context, *UploadTicketRequest) (*UploadTicketResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateUploadTicket not implemented")
+}
+func (UnimplementedRuntimeDomainServer) CreateDownloadTicket(context.Context, *DownloadTicketRequest) (*DownloadTicketResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateDownloadTicket not implemented")
 }
 func (UnimplementedRuntimeDomainServer) mustEmbedUnimplementedRuntimeDomainServer() {}
 func (UnimplementedRuntimeDomainServer) testEmbeddedByValue()                       {}
@@ -310,6 +326,24 @@ func _RuntimeDomain_CreateUploadTicket_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RuntimeDomain_CreateDownloadTicket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DownloadTicketRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RuntimeDomainServer).CreateDownloadTicket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RuntimeDomain_CreateDownloadTicket_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RuntimeDomainServer).CreateDownloadTicket(ctx, req.(*DownloadTicketRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RuntimeDomain_ServiceDesc is the grpc.ServiceDesc for RuntimeDomain service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -340,6 +374,10 @@ var RuntimeDomain_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateUploadTicket",
 			Handler:    _RuntimeDomain_CreateUploadTicket_Handler,
+		},
+		{
+			MethodName: "CreateDownloadTicket",
+			Handler:    _RuntimeDomain_CreateDownloadTicket_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

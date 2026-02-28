@@ -27,6 +27,13 @@ class TrainOutput:
     artifacts: list[TrainArtifact]
 
 
+@dataclass(frozen=True)
+class StepRuntimeRequirements:
+    requires_prepare_data: bool
+    requires_trained_model: bool
+    primary_model_artifact_name: str = "best.pt"
+
+
 class ExecutorPlugin(ABC):
     @property
     @abstractmethod
@@ -93,6 +100,50 @@ class ExecutorPlugin(ABC):
 
     def validate_params(self, params: dict[str, Any]) -> None:
         del params
+
+    def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
+        normalized = str(step_type or "").strip().lower()
+        if normalized == "train":
+            return StepRuntimeRequirements(
+                requires_prepare_data=True,
+                requires_trained_model=False,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "score":
+            return StepRuntimeRequirements(
+                requires_prepare_data=False,
+                requires_trained_model=True,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "eval":
+            return StepRuntimeRequirements(
+                requires_prepare_data=True,
+                requires_trained_model=True,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "export":
+            return StepRuntimeRequirements(
+                requires_prepare_data=False,
+                requires_trained_model=True,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "upload_artifact":
+            return StepRuntimeRequirements(
+                requires_prepare_data=False,
+                requires_trained_model=False,
+                primary_model_artifact_name="",
+            )
+        if normalized == "custom":
+            return StepRuntimeRequirements(
+                requires_prepare_data=True,
+                requires_trained_model=False,
+                primary_model_artifact_name="best.pt",
+            )
+        return StepRuntimeRequirements(
+            requires_prepare_data=True,
+            requires_trained_model=False,
+            primary_model_artifact_name="best.pt",
+        )
 
     async def prepare_data(
             self,

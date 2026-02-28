@@ -26,6 +26,8 @@ type Config struct {
 	PredictionTTLKeepRounds    int   `env:"PREDICTION_TTL_KEEP_ROUNDS" envDefault:"2"`
 	AssignAckTimeoutSec        int   `env:"ASSIGN_ACK_TIMEOUT_SEC" envDefault:"30"`
 	DispatchScanLockKey        int64 `env:"DISPATCH_SCAN_LOCK_KEY" envDefault:"8042002"`
+	RoundAffinityWaitSec       int   `env:"ROUND_AFFINITY_WAIT_SEC" envDefault:"20"`
+	StrictTrainModelHandoff    bool  `env:"STRICT_TRAIN_MODEL_HANDOFF" envDefault:"true"`
 
 	RuntimeDomainTarget string `env:"RUNTIME_DOMAIN_TARGET" envDefault:"localhost:50053"`
 	RuntimeDomainToken  string `env:"RUNTIME_DOMAIN_TOKEN" envDefault:"dev-secret"`
@@ -69,6 +71,9 @@ func (c Config) Validate() error {
 	}
 	if c.PredictionTTLKeepRounds < 0 {
 		return fmt.Errorf("PREDICTION_TTL_KEEP_ROUNDS 必须大于等于 0")
+	}
+	if c.RoundAffinityWaitSec < 0 {
+		return fmt.Errorf("ROUND_AFFINITY_WAIT_SEC 必须大于等于 0")
 	}
 	return nil
 }

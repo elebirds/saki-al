@@ -69,6 +69,11 @@ class RuntimeDomainStub(object):
                 request_serializer=runtime__domain__pb2.UploadTicketRequest.SerializeToString,
                 response_deserializer=runtime__domain__pb2.UploadTicketResponse.FromString,
                 _registered_method=True)
+        self.CreateDownloadTicket = channel.unary_unary(
+                '/saki.runtime.domain.v1.RuntimeDomain/CreateDownloadTicket',
+                request_serializer=runtime__domain__pb2.DownloadTicketRequest.SerializeToString,
+                response_deserializer=runtime__domain__pb2.DownloadTicketResponse.FromString,
+                _registered_method=True)
 
 
 class RuntimeDomainServicer(object):
@@ -116,6 +121,12 @@ class RuntimeDomainServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateDownloadTicket(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_RuntimeDomainServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -153,6 +164,11 @@ def add_RuntimeDomainServicer_to_server(servicer, server):
                     servicer.CreateUploadTicket,
                     request_deserializer=runtime__domain__pb2.UploadTicketRequest.FromString,
                     response_serializer=runtime__domain__pb2.UploadTicketResponse.SerializeToString,
+            ),
+            'CreateDownloadTicket': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateDownloadTicket,
+                    request_deserializer=runtime__domain__pb2.DownloadTicketRequest.FromString,
+                    response_serializer=runtime__domain__pb2.DownloadTicketResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -344,6 +360,33 @@ class RuntimeDomain(object):
             '/saki.runtime.domain.v1.RuntimeDomain/CreateUploadTicket',
             runtime__domain__pb2.UploadTicketRequest.SerializeToString,
             runtime__domain__pb2.UploadTicketResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateDownloadTicket(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.runtime.domain.v1.RuntimeDomain/CreateDownloadTicket',
+            runtime__domain__pb2.DownloadTicketRequest.SerializeToString,
+            runtime__domain__pb2.DownloadTicketResponse.FromString,
             options,
             channel_credentials,
             insecure,

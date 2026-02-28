@@ -208,8 +208,8 @@ class YoloDetectionInternal:
         allowed_presets = self._presets_for_task(yolo_task)
 
         source = str(config.model_source).strip().lower()
-        # model_preset may not be in schema, use safe access
-        preset_val = config.model_preset if "model_preset" in config else None
+        # model_preset may not be present, use dict-like safe access
+        preset_val = config.get("model_preset", None)
         preset = str(preset_val or allowed_presets[0]).strip()
         if preset not in allowed_presets:
             if preset in self._DETECT_PRESETS or preset in self._OBB_PRESETS:
@@ -217,8 +217,8 @@ class YoloDetectionInternal:
             else:
                 raise ValueError(f"unsupported model_preset: {preset or '<empty>'} for yolo_task={yolo_task}")
 
-        # model_custom_ref may not be in schema, use safe access
-        custom_ref_val = config.model_custom_ref if "model_custom_ref" in config else None
+        # model_custom_ref may not be present, use dict-like safe access
+        custom_ref_val = config.get("model_custom_ref", None)
         custom_ref = str(custom_ref_val or "").strip()
         if source != "preset" and not custom_ref:
             raise ValueError("model_custom_ref is required for custom model source")

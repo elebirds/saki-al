@@ -31,6 +31,8 @@ async def run() -> None:
         runs_dir=settings.RUNS_DIR,
         cache=cache,
         plugin_registry=registry,
+        round_shared_cache_enabled=settings.ROUND_SHARED_CACHE_ENABLED,
+        strict_train_model_handoff=settings.STRICT_TRAIN_MODEL_HANDOFF,
     )
     client = AgentClient(plugin_registry=registry, step_manager=manager)
     manager.set_transport(client.send_message, client.request_message)

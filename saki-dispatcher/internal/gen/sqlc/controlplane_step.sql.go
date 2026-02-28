@@ -89,6 +89,38 @@ func (q *Queries) GetLatestActivateOutputCommitByRound(ctx context.Context, roun
 	return output_commit_id, err
 }
 
+const getLatestAssignedExecutorByStepIDs = `-- name: GetLatestAssignedExecutorByStepIDs :one
+SELECT COALESCE(assigned_executor_id, '') AS assigned_executor_id
+FROM step
+WHERE id = ANY($1::uuid[])
+ORDER BY step_index DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestAssignedExecutorByStepIDs(ctx context.Context, stepIds []uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getLatestAssignedExecutorByStepIDs, stepIds)
+	var assigned_executor_id string
+	err := row.Scan(&assigned_executor_id)
+	return assigned_executor_id, err
+}
+
+const getLatestSucceededTrainStepIDByRound = `-- name: GetLatestSucceededTrainStepIDByRound :one
+SELECT id AS step_id
+FROM step
+WHERE round_id = $1::uuid
+  AND step_type = 'TRAIN'::steptype
+  AND state = 'SUCCEEDED'::stepstatus
+ORDER BY step_index DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestSucceededTrainStepIDByRound(ctx context.Context, roundID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getLatestSucceededTrainStepIDByRound, roundID)
+	var step_id uuid.UUID
+	err := row.Scan(&step_id)
+	return step_id, err
+}
+
 const getLoopBranchID = `-- name: GetLoopBranchID :one
 SELECT branch_id AS branch_id
 FROM loop
@@ -168,6 +200,7 @@ SELECT
   t.round_index,
   t.attempt,
   t.state_version,
+  t.updated_at,
   t.depends_on_step_ids AS depends_on_raw,
   t.resolved_params AS params_raw,
   t.input_commit_id AS input_commit_id,
@@ -193,6 +226,7 @@ type GetStepPayloadByIDForUpdateRow struct {
 	RoundIndex         int32
 	Attempt            int32
 	StateVersion       int32
+	UpdatedAt          pgtype.Timestamp
 	DependsOnRaw       []byte
 	ParamsRaw          []byte
 	InputCommitID      *uuid.UUID
@@ -217,6 +251,7 @@ func (q *Queries) GetStepPayloadByIDForUpdate(ctx context.Context, stepID uuid.U
 		&i.RoundIndex,
 		&i.Attempt,
 		&i.StateVersion,
+		&i.UpdatedAt,
 		&i.DependsOnRaw,
 		&i.ParamsRaw,
 		&i.InputCommitID,

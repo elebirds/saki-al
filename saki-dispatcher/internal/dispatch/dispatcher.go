@@ -210,17 +210,8 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 		if !session.IsOnline || session.Busy {
 			continue
 		}
-		if pluginID != "" && len(session.PluginIDs) > 0 {
-			matched := false
-			for _, item := range session.PluginIDs {
-				if item == pluginID {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
+		if !supportsPlugin(session, pluginID) {
+			continue
 		}
 		candidates = append(candidates, session)
 	}
@@ -231,6 +222,38 @@ func (d *Dispatcher) PickExecutor(pluginID string) (string, bool) {
 		return candidates[i].LastSeen.After(candidates[j].LastSeen)
 	})
 	return candidates[0].ExecutorID, true
+}
+
+func (d *Dispatcher) IsExecutorAvailable(executorID string, pluginID string) bool {
+	executorID = strings.TrimSpace(executorID)
+	pluginID = strings.TrimSpace(pluginID)
+	if executorID == "" {
+		return false
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	session := d.sessions[executorID]
+	if session == nil || !session.IsOnline || session.Busy {
+		return false
+	}
+	return supportsPlugin(session, pluginID)
+}
+
+func supportsPlugin(session *ExecutorSession, pluginID string) bool {
+	if session == nil {
+		return false
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" || len(session.PluginIDs) == 0 {
+		return true
+	}
+	for _, item := range session.PluginIDs {
+		if strings.TrimSpace(item) == pluginID {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *runtimecontrolv1.StepPayload) bool {

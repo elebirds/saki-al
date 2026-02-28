@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -213,5 +214,22 @@ func TestDispatchOutboxRetryBackoffCapsAtSixtySeconds(t *testing.T) {
 	}
 	if got := dispatchOutboxRetryBackoff(10); got.Seconds() != 60 {
 		t.Fatalf("attempt=10 expected 60s cap got=%s", got)
+	}
+}
+
+func TestStepStatusCountsForAPINormalizesToLowercase(t *testing.T) {
+	counts := map[db.Stepstatus]int{
+		db.StepstatusSUCCEEDED: 4,
+		db.StepstatusRUNNING:   1,
+		db.Stepstatus("succeeded"): 2,
+		db.Stepstatus(" "):         7,
+	}
+	got := stepStatusCountsForAPI(counts)
+	want := map[string]int{
+		"succeeded": 6,
+		"running":   1,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("step status counts normalization mismatch: got=%v want=%v", got, want)
 	}
 }

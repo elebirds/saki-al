@@ -87,6 +87,8 @@ func run() error {
 		cfg.StoppingForceCancelSec,
 		cfg.PredictionTTLDays,
 		cfg.PredictionTTLKeepRounds,
+		cfg.RoundAffinityWaitSec,
+		cfg.StrictTrainModelHandoff,
 		logger.With().Str("service", "controlplane").Logger(),
 	)
 	runtimeServer := runtimegrpc.NewServer(

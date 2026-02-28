@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     PLUGIN_WORKER_REQ_POLL_INTERVAL_MS: int = 200
     PLUGIN_WORKER_IPC_DIR: str = "/tmp/saki"
 
+    ROUND_SHARED_CACHE_ENABLED: bool = True
+    STRICT_TRAIN_MODEL_HANDOFF: bool = True
+
     @field_validator("LOG_COLOR_MODE", mode="before")
     @classmethod
     def parse_log_color_mode(cls, v: str | None) -> str:

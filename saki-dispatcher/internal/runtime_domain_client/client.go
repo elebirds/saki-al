@@ -397,6 +397,21 @@ func (c *Client) CreateUploadTicket(
 	return resp, callErr
 }
 
+func (c *Client) CreateDownloadTicket(
+	ctx context.Context,
+	req *runtimedomainv1.DownloadTicketRequest,
+) (*runtimedomainv1.DownloadTicketResponse, error) {
+	client, token, timeout, err := c.clientForCall()
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(withToken(ctx, token), timeout)
+	defer cancel()
+	resp, callErr := client.CreateDownloadTicket(callCtx, req)
+	c.handleCallError(callErr)
+	return resp, callErr
+}
+
 func IsTransientError(err error) bool {
 	if err == nil {
 		return false
@@ -415,6 +430,25 @@ func IsTransientError(err error) bool {
 		codes.ResourceExhausted,
 		codes.Aborted,
 		codes.Internal:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return status.Code(err) == codes.NotFound
+}
+
+func IsInvalidRequestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch status.Code(err) {
+	case codes.InvalidArgument, codes.FailedPrecondition:
 		return true
 	default:
 		return false

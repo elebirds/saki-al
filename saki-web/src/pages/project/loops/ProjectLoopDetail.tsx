@@ -13,6 +13,7 @@ import {
     InputNumber,
     Modal,
     Popconfirm,
+    Progress,
     Select,
     Spin,
     Table,
@@ -88,6 +89,19 @@ const SNAPSHOT_UPDATE_DEFAULTS: SnapshotUpdateRequest = {
     mode: 'append_all_to_pool',
     batchTestRatio: 0.1,
     batchValRatio: 0.1,
+};
+
+const buildRoundProgressSummary = (round: RuntimeRound): { percent: number; text: string } => {
+    const counts = round.stepCounts || {};
+    const total = Object.values(counts).reduce((sum, item) => sum + Number(item || 0), 0);
+    if (!total) return {percent: 0, text: '0/0'};
+    const done = ['succeeded', 'failed', 'cancelled', 'skipped']
+        .reduce((sum, key) => sum + Number((counts as Record<string, number>)[key] || 0), 0);
+    const running = Number((counts as Record<string, number>).running || 0)
+        + Number((counts as Record<string, number>).dispatching || 0)
+        + Number((counts as Record<string, number>).retrying || 0);
+    const percent = Math.max(0, Math.min(100, Number(((done / total) * 100).toFixed(2))));
+    return {percent, text: `${done}/${total} 完成 · ${running} 运行中`};
 };
 
 const ProjectLoopDetail: React.FC = () => {
@@ -660,6 +674,19 @@ const ProjectLoopDetail: React.FC = () => {
                             title: 'Steps',
                             width: 180,
                             render: (_v: unknown, row: RuntimeRound) => JSON.stringify(row.stepCounts || {}),
+                        },
+                        {
+                            title: '进度摘要',
+                            width: 260,
+                            render: (_v: unknown, row: RuntimeRound) => {
+                                const summaryRow = buildRoundProgressSummary(row);
+                                return (
+                                    <div className="flex w-full flex-col gap-1">
+                                        <Progress percent={summaryRow.percent} size="small"/>
+                                        <Text type="secondary">{summaryRow.text}</Text>
+                                    </div>
+                                );
+                            },
                         },
                         {
                             title: '操作',

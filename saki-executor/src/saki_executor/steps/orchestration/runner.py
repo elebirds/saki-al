@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -7,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from saki_executor.agent import codec as runtime_codec
+from saki_executor.plugins.base import StepRuntimeRequirements
 from saki_executor.plugins.ipc.proxy_plugin import SubprocessPluginProxy
 from saki_executor.steps.contracts import SUPPORTED_LOOP_MODES, StepExecutionRequest, StepFinalResult
 from saki_executor.steps.orchestration.event_emitter import StepEventEmitter
@@ -64,7 +67,13 @@ class StepPipelineRunner:
         metadata_plugin = self._resolve_plugin()
         workspace, reporter, emitter = self._prepare_workspace()
         plugin = self._build_execution_plugin(metadata_plugin=metadata_plugin, emitter=emitter)
+        runtime_requirements = plugin.get_step_runtime_requirements(self._request.step_type)
         await self._emit_start_status(emitter)
+        await self._prepare_trained_model_if_needed(
+            workspace=workspace,
+            emitter=emitter,
+            runtime_requirements=runtime_requirements,
+        )
 
         metrics: dict[str, Any]
         artifacts: dict[str, Any]
@@ -77,6 +86,7 @@ class StepPipelineRunner:
                     plugin=plugin,
                     workspace=workspace,
                     emitter=emitter,
+                    runtime_requirements=runtime_requirements,
                 )
             elif self._request.step_type in self._EVAL_ONLY_STEP_TYPES:
                 metrics, artifacts, candidates, optional_upload_failures = await self._run_eval_pipeline(
@@ -84,6 +94,7 @@ class StepPipelineRunner:
                     workspace=workspace,
                     emitter=emitter,
                     reporter=reporter,
+                    runtime_requirements=runtime_requirements,
                 )
             elif self._request.step_type in self._EXPORT_ONLY_STEP_TYPES:
                 metrics, artifacts, candidates, optional_upload_failures = await self._run_export_pipeline(
@@ -105,6 +116,7 @@ class StepPipelineRunner:
                     workspace=workspace,
                     emitter=emitter,
                     reporter=reporter,
+                    runtime_requirements=runtime_requirements,
                 )
             elif self._request.step_type in self._TRAIN_AND_SAMPLE_STEP_TYPES:
                 metrics, artifacts, candidates, optional_upload_failures = await self._run_train_and_sample_pipeline(
@@ -112,6 +124,7 @@ class StepPipelineRunner:
                     workspace=workspace,
                     emitter=emitter,
                     reporter=reporter,
+                    runtime_requirements=runtime_requirements,
                 )
             else:
                 raise RuntimeError(f"step_type routing is not implemented: {self._request.step_type}")
@@ -190,7 +203,12 @@ class StepPipelineRunner:
             await shutdown()
 
     def _prepare_workspace(self) -> tuple[Workspace, StepReporter, StepEventEmitter]:
-        workspace = Workspace(self._manager.runs_dir, self._task_id)
+        workspace = Workspace(
+            self._manager.runs_dir,
+            self._task_id,
+            round_id=self._request.round_id,
+            attempt=self._request.attempt,
+        )
         workspace.ensure()
         workspace.write_config(self._request.raw_payload)
         reporter = StepReporter(self._task_id, workspace.events_path)
@@ -216,11 +234,13 @@ class StepPipelineRunner:
         plugin: Any,
         workspace: Workspace,
         emitter: StepEventEmitter,
+        runtime_requirements: StepRuntimeRequirements,
     ) -> tuple[Any, set[str]]:
-        protected = await self._prepare_plugin_data(
+        protected = await self._prepare_data_for_step(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
+            runtime_requirements=runtime_requirements,
         )
         output = await plugin.train(workspace, self._effective_plugin_params, emitter.emit)
         return output, protected
@@ -284,6 +304,229 @@ class StepPipelineRunner:
             )
         return data_bundle.protected
 
+    async def _prepare_data_for_step(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        runtime_requirements: StepRuntimeRequirements,
+    ) -> set[str]:
+        if not runtime_requirements.requires_prepare_data:
+            await emitter.emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        f"prepare_data skipped by runtime requirements "
+                        f"step_type={self._request.step_type}"
+                    ),
+                },
+            )
+            return set()
+
+        fingerprint = self._build_data_cache_fingerprint()
+        can_use_shared_cache = (
+            self._manager.round_shared_cache_enabled
+            and self._request.round_id
+            and self._request.step_type != "train"
+        )
+        if can_use_shared_cache:
+            try:
+                if workspace.restore_shared_data_cache(fingerprint):
+                    await emitter.emit(
+                        "log",
+                        {
+                            "level": "INFO",
+                            "message": (
+                                f"round shared data cache hit "
+                                f"fingerprint={fingerprint}"
+                            ),
+                        },
+                    )
+                    return set()
+            except Exception as exc:
+                await emitter.emit(
+                    "log",
+                    {
+                        "level": "WARN",
+                        "message": (
+                            f"round shared data cache restore failed "
+                            f"fingerprint={fingerprint} error={exc}"
+                        ),
+                    },
+                )
+
+        protected = await self._prepare_plugin_data(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+        )
+        if self._manager.round_shared_cache_enabled and self._request.round_id:
+            try:
+                cached_path = workspace.store_shared_data_cache(
+                    fingerprint=fingerprint,
+                    source_step_id=self._request.step_id,
+                    step_type=self._request.step_type,
+                )
+                await emitter.emit(
+                    "log",
+                    {
+                        "level": "INFO",
+                        "message": (
+                            f"round shared data cache stored "
+                            f"fingerprint={fingerprint} path={cached_path}"
+                        ),
+                    },
+                )
+            except Exception as exc:
+                await emitter.emit(
+                    "log",
+                    {
+                        "level": "WARN",
+                        "message": (
+                            f"round shared data cache store failed "
+                            f"fingerprint={fingerprint} error={exc}"
+                        ),
+                    },
+                )
+        return protected
+
+    def _build_data_cache_fingerprint(self) -> str:
+        payload = {
+            "version": 1,
+            "round_id": self._request.round_id,
+            "attempt": self._request.attempt,
+            "project_id": self._request.project_id,
+            "input_commit_id": self._request.input_commit_id,
+            "plugin_id": self._request.plugin_id,
+            "mode": self._request.mode,
+            "split_seed": self._request.resolved_params.get("split_seed"),
+            "plugin_subset": {
+                "yolo_task": self._effective_plugin_params.get("yolo_task"),
+                "val_split_ratio": self._effective_plugin_params.get("val_split_ratio"),
+            },
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    async def _prepare_trained_model_if_needed(
+        self,
+        *,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        runtime_requirements: StepRuntimeRequirements,
+    ) -> None:
+        if not runtime_requirements.requires_trained_model:
+            return
+
+        artifact_name = str(runtime_requirements.primary_model_artifact_name or "best.pt").strip() or "best.pt"
+        linked = workspace.link_shared_model_to_step(artifact_name)
+        if linked is not None and linked.exists():
+            # Keep plugin-side model resolution deterministic: if shared model is available,
+            # pin model_source/model_custom_ref to the local shared path.
+            self._effective_plugin_params["model_source"] = "custom_local"
+            self._effective_plugin_params["model_custom_ref"] = str(linked)
+            await emitter.emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        f"trained model resolved source=shared "
+                        f"artifact={artifact_name} path={linked}"
+                    ),
+                },
+            )
+            return
+
+        model_source = str(self._effective_plugin_params.get("model_source") or "").strip().lower()
+        model_ref = str(self._effective_plugin_params.get("model_custom_ref") or "").strip()
+        if model_source in {"custom_url", "custom_local"} and model_ref:
+            await emitter.emit(
+                "log",
+                {
+                    "level": "INFO",
+                    "message": (
+                        f"trained model resolved source=remote "
+                        f"artifact={artifact_name} model_source={model_source}"
+                    ),
+                },
+            )
+            return
+
+        message = (
+            f"trained model is required but unavailable: "
+            f"artifact={artifact_name} step_type={self._request.step_type}"
+        )
+        if self._manager.strict_train_model_handoff:
+            raise RuntimeError(message)
+        await emitter.emit(
+            "log",
+            {
+                "level": "WARN",
+                "message": f"{message}; STRICT_TRAIN_MODEL_HANDOFF=false fallback enabled",
+            },
+        )
+
+    async def _cache_primary_model_after_train(
+        self,
+        *,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        runtime_requirements: StepRuntimeRequirements,
+        output_artifacts: list[Any],
+    ) -> None:
+        if not self._manager.round_shared_cache_enabled or not self._request.round_id:
+            return
+
+        artifact_name = str(runtime_requirements.primary_model_artifact_name or "best.pt").strip() or "best.pt"
+        primary_artifact = next(
+            (item for item in output_artifacts if str(getattr(item, "name", "")).strip() == artifact_name),
+            None,
+        )
+        if primary_artifact is None:
+            await emitter.emit(
+                "log",
+                {
+                    "level": "WARN",
+                    "message": (
+                        f"round shared model cache skip: primary artifact not found "
+                        f"artifact={artifact_name}"
+                    ),
+                },
+            )
+            return
+
+        source_path = Path(primary_artifact.path)
+        if not source_path.exists():
+            await emitter.emit(
+                "log",
+                {
+                    "level": "WARN",
+                    "message": (
+                        f"round shared model cache skip: artifact file missing "
+                        f"artifact={artifact_name} path={source_path}"
+                    ),
+                },
+            )
+            return
+
+        cached_path = workspace.cache_model_artifact(
+            artifact_name=artifact_name,
+            source_path=source_path,
+            source_step_id=self._request.step_id,
+        )
+        await emitter.emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    f"round shared model cache stored "
+                    f"artifact={artifact_name} path={cached_path}"
+                ),
+            },
+        )
+
     async def _run_train_and_sample_pipeline(
         self,
         *,
@@ -291,11 +534,13 @@ class StepPipelineRunner:
         workspace: Workspace,
         emitter: StepEventEmitter,
         reporter: StepReporter,
+        runtime_requirements: StepRuntimeRequirements,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         output, protected = await self._run_training_pipeline(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
+            runtime_requirements=runtime_requirements,
         )
         candidates = await self._collect_candidates(
             plugin=plugin,
@@ -316,11 +561,19 @@ class StepPipelineRunner:
         workspace: Workspace,
         emitter: StepEventEmitter,
         reporter: StepReporter,
+        runtime_requirements: StepRuntimeRequirements,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         output, _protected = await self._run_training_pipeline(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
+            runtime_requirements=runtime_requirements,
+        )
+        await self._cache_primary_model_after_train(
+            workspace=workspace,
+            emitter=emitter,
+            runtime_requirements=runtime_requirements,
+            output_artifacts=output.artifacts,
         )
         artifacts, optional_upload_failures = await self._upload_artifacts(
             output_artifacts=output.artifacts,
@@ -335,11 +588,13 @@ class StepPipelineRunner:
         workspace: Workspace,
         emitter: StepEventEmitter,
         reporter: StepReporter,
+        runtime_requirements: StepRuntimeRequirements,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
-        await self._prepare_plugin_data(
+        await self._prepare_data_for_step(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
+            runtime_requirements=runtime_requirements,
         )
         output = await plugin.eval(workspace, self._effective_plugin_params, emitter.emit)
         artifacts, optional_upload_failures = await self._upload_artifacts(
@@ -384,11 +639,13 @@ class StepPipelineRunner:
         plugin: Any,
         workspace: Workspace,
         emitter: StepEventEmitter,
+        runtime_requirements: StepRuntimeRequirements,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
-        protected = await self._prepare_plugin_data(
+        protected = await self._prepare_data_for_step(
             plugin=plugin,
             workspace=workspace,
             emitter=emitter,
+            runtime_requirements=runtime_requirements,
         )
         candidates = await self._collect_candidates(
             plugin=plugin,

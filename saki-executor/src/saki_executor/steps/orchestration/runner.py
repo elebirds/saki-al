@@ -34,8 +34,10 @@ class StepPipelineRunner:
         "upload_artifact",
         "custom",
     }
-    _TRAIN_AND_SAMPLE_STEP_TYPES = {
+    _TRAIN_ONLY_STEP_TYPES = {
         "train",
+    }
+    _TRAIN_AND_SAMPLE_STEP_TYPES = {
         "custom",
     }
     _SCORE_ONLY_STEP_TYPES = {
@@ -92,6 +94,13 @@ class StepPipelineRunner:
                 )
             elif self._request.step_type in self._UPLOAD_ARTIFACT_ONLY_STEP_TYPES:
                 metrics, artifacts, candidates, optional_upload_failures = await self._run_upload_artifact_pipeline(
+                    plugin=plugin,
+                    workspace=workspace,
+                    emitter=emitter,
+                    reporter=reporter,
+                )
+            elif self._request.step_type in self._TRAIN_ONLY_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_train_pipeline(
                     plugin=plugin,
                     workspace=workspace,
                     emitter=emitter,
@@ -300,6 +309,25 @@ class StepPipelineRunner:
         )
         return output.metrics, artifacts, candidates, optional_upload_failures
 
+    async def _run_train_pipeline(
+        self,
+        *,
+        plugin: Any,
+        workspace: Workspace,
+        emitter: StepEventEmitter,
+        reporter: StepReporter,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+        output, _protected = await self._run_training_pipeline(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+        )
+        artifacts, optional_upload_failures = await self._upload_artifacts(
+            output_artifacts=output.artifacts,
+            reporter=reporter,
+        )
+        return output.metrics, artifacts, [], optional_upload_failures
+
     async def _run_eval_pipeline(
         self,
         *,
@@ -400,9 +428,15 @@ class StepPipelineRunner:
             await emitter.emit("log", {"level": "INFO", "message": "sampling strategy is empty, skip sampling"})
             return []
         topk = int(sampling_cfg.get("topk", self._request.resolved_params.get("topk", 200)))
+        review_pool_size = int(sampling_cfg.get("review_pool_size", 0) or 0)
+        if review_pool_size <= 0:
+            review_pool_multiplier = int(sampling_cfg.get("review_pool_multiplier", 3) or 3)
+            review_pool_multiplier = max(1, review_pool_multiplier)
+            review_pool_size = max(topk, topk * review_pool_multiplier)
+        candidate_limit = max(topk, review_pool_size) if self._request.step_type == "score" else topk
         sampling_params = dict(self._effective_plugin_params)
         sampling_params.update(sampling_cfg)
-        sampling_params["sampling_topk"] = topk
+        sampling_params["sampling_topk"] = candidate_limit
         sampling_params["sampling_seed"] = int(
             self._request.resolved_params.get("sampling_seed", sampling_params.get("sampling_seed", 0))
         )
@@ -415,7 +449,7 @@ class StepPipelineRunner:
             strategy=strategy,
             params=sampling_params,
             protected=protected,
-            topk=topk,
+            topk=candidate_limit,
         )
 
     async def _finalize_result(

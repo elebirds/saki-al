@@ -42,7 +42,6 @@ const {Text, Title} = Typography;
 const ROUND_STATE_COLOR: Record<string, string> = {
     pending: 'default',
     running: 'processing',
-    wait_user: 'warning',
     completed: 'success',
     failed: 'error',
     cancelled: 'warning',
@@ -405,6 +404,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
                             <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回 Loop 详情</Button>
                             <Title level={4} className="!mb-0">Round #{round.roundIndex} · Attempt {round.attemptIndex || 1}</Title>
                             <Tag color={ROUND_STATE_COLOR[round.state] || 'default'}>{round.state}</Tag>
+                            {round.awaitingConfirm ? <Tag color="gold">awaiting_confirm</Tag> : null}
                         </div>
                         <Text type="secondary">{round.id}</Text>
                     </div>

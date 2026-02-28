@@ -34,7 +34,6 @@ const (
 
 	roundPending   db.Roundstatus = db.RoundstatusPENDING
 	roundRunning   db.Roundstatus = db.RoundstatusRUNNING
-	roundWaitUser  db.Roundstatus = db.RoundstatusWAITUSER
 	roundCompleted db.Roundstatus = db.RoundstatusCOMPLETED
 	roundFailed    db.Roundstatus = db.RoundstatusFAILED
 	roundCancelled db.Roundstatus = db.RoundstatusCANCELLED

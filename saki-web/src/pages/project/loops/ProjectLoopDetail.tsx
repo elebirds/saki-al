@@ -28,6 +28,7 @@ import {
     LoopAnnotationGapsResponse,
     LoopSnapshotRead,
     LoopStageResponse,
+    RoundSelectionRead,
     SnapshotInitRequest,
     SnapshotUpdateRequest,
     LoopSummary,
@@ -49,7 +50,6 @@ const LOOP_STATE_COLOR: Record<string, string> = {
 const ROUND_STATE_COLOR: Record<string, string> = {
     pending: 'default',
     running: 'processing',
-    wait_user: 'warning',
     completed: 'success',
     failed: 'error',
     cancelled: 'warning',
@@ -107,9 +107,19 @@ const ProjectLoopDetail: React.FC = () => {
     const [gapInfo, setGapInfo] = useState<LoopAnnotationGapsResponse | null>(null);
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
     const [snapshotUpdateOpen, setSnapshotUpdateOpen] = useState(false);
+    const [selectionAdjustOpen, setSelectionAdjustOpen] = useState(false);
+    const [selectionLoading, setSelectionLoading] = useState(false);
+    const [selectionSubmitting, setSelectionSubmitting] = useState(false);
+    const [selectionData, setSelectionData] = useState<RoundSelectionRead | null>(null);
+    const [selectionRoundId, setSelectionRoundId] = useState<string>('');
     const [snapshotSubmitting, setSnapshotSubmitting] = useState(false);
     const [initForm] = Form.useForm<SnapshotInitRequest & { sampleIdsText?: string }>();
     const [updateForm] = Form.useForm<SnapshotUpdateRequest & { sampleIdsText?: string }>();
+    const [selectionForm] = Form.useForm<{
+        includeSampleIdsText?: string;
+        excludeSampleIdsText?: string;
+        reason?: string;
+    }>();
     const updateMode = Form.useWatch('mode', updateForm);
 
     const refreshLoopData = useCallback(async () => {
@@ -260,6 +270,27 @@ const ProjectLoopDetail: React.FC = () => {
         return rows.length > 0 ? rows : undefined;
     };
 
+    const loadRoundSelection = useCallback(
+        async (roundId: string) => {
+            setSelectionLoading(true);
+            try {
+                const row = await api.getRoundSelection(roundId);
+                setSelectionData(row);
+                const includeIds = row.overrides.filter((item) => item.op === 'include').map((item) => item.sampleId);
+                const excludeIds = row.overrides.filter((item) => item.op === 'exclude').map((item) => item.sampleId);
+                selectionForm.setFieldsValue({
+                    includeSampleIdsText: includeIds.join('\n'),
+                    excludeSampleIdsText: excludeIds.join('\n'),
+                });
+            } catch (error: any) {
+                messageApi.error(error?.message || '加载 TopK 调整信息失败');
+            } finally {
+                setSelectionLoading(false);
+            }
+        },
+        [selectionForm, messageApi],
+    );
+
     const handleInitSnapshot = async () => {
         if (!loopId) return;
         try {
@@ -322,7 +353,64 @@ const ProjectLoopDetail: React.FC = () => {
         setSnapshotUpdateOpen(true);
     };
 
+    const openSelectionAdjustModal = async () => {
+        const latestRoundId = rounds[0]?.id;
+        if (!latestRoundId) {
+            messageApi.warning('当前没有可调整的 round');
+            return;
+        }
+        setSelectionRoundId(latestRoundId);
+        setSelectionData(null);
+        selectionForm.resetFields();
+        setSelectionAdjustOpen(true);
+        await loadRoundSelection(latestRoundId);
+    };
+
+    const handleApplySelectionAdjust = async () => {
+        if (!selectionRoundId) return;
+        try {
+            const values = await selectionForm.validateFields();
+            setSelectionSubmitting(true);
+            const includeSampleIds = parseSampleIds(values.includeSampleIdsText) || [];
+            const excludeSampleIds = parseSampleIds(values.excludeSampleIdsText) || [];
+            const result = await api.applyRoundSelection(selectionRoundId, {
+                includeSampleIds,
+                excludeSampleIds,
+                reason: String(values.reason || '').trim() || undefined,
+            });
+            messageApi.success(
+                `TopK 已更新：selected=${result.selectedCount}, include=${result.includeCount}, exclude=${result.excludeCount}`,
+            );
+            await loadRoundSelection(selectionRoundId);
+            await refreshLoopData();
+        } catch (error: any) {
+            if (error?.errorFields) return;
+            messageApi.error(error?.message || '应用 TopK 调整失败');
+        } finally {
+            setSelectionSubmitting(false);
+        }
+    };
+
+    const handleResetSelectionAdjust = async () => {
+        if (!selectionRoundId) return;
+        setSelectionSubmitting(true);
+        try {
+            await api.resetRoundSelection(selectionRoundId);
+            messageApi.success('TopK 调整已重置');
+            await loadRoundSelection(selectionRoundId);
+            await refreshLoopData();
+        } catch (error: any) {
+            messageApi.error(error?.message || '重置 TopK 调整失败');
+        } finally {
+            setSelectionSubmitting(false);
+        }
+    };
+
     const handleContinue = async () => {
+        if (primaryAction?.key === 'selection_adjust') {
+            await openSelectionAdjustModal();
+            return;
+        }
         await executeLoopAction(primaryAction?.key || undefined);
     };
 
@@ -342,6 +430,10 @@ const ProjectLoopDetail: React.FC = () => {
                 }
                 if (item.key === 'snapshot_update') {
                     openSnapshotUpdateModal();
+                    return;
+                }
+                if (item.key === 'selection_adjust') {
+                    void openSelectionAdjustModal();
                     return;
                 }
                 void executeLoopAction(item.key);
@@ -552,7 +644,12 @@ const ProjectLoopDetail: React.FC = () => {
                             title: '状态',
                             dataIndex: 'state',
                             width: 140,
-                            render: (value: string) => <Tag color={ROUND_STATE_COLOR[value] || 'default'}>{value}</Tag>,
+                            render: (_value: string, row: RuntimeRound) => (
+                                <div className="flex items-center gap-2">
+                                    <Tag color={ROUND_STATE_COLOR[row.state] || 'default'}>{row.state}</Tag>
+                                    {row.awaitingConfirm ? <Tag color="gold">awaiting_confirm</Tag> : null}
+                                </div>
+                            ),
                         },
                         {title: '插件', dataIndex: 'pluginId'},
                         {
@@ -594,6 +691,84 @@ const ProjectLoopDetail: React.FC = () => {
                     ]}
                 />
             </Card>
+
+            <Modal
+                title="调整 TopK 选样（include/exclude）"
+                open={selectionAdjustOpen}
+                onCancel={() => setSelectionAdjustOpen(false)}
+                onOk={handleApplySelectionAdjust}
+                okText="应用调整"
+                okButtonProps={{loading: selectionSubmitting}}
+                destroyOnHidden
+                width={980}
+                footer={[
+                    <Button
+                        key="reset"
+                        onClick={handleResetSelectionAdjust}
+                        disabled={selectionSubmitting || selectionLoading || !selectionRoundId}
+                    >
+                        重置覆写
+                    </Button>,
+                    <Button key="cancel" onClick={() => setSelectionAdjustOpen(false)}>
+                        关闭
+                    </Button>,
+                    <Button
+                        key="apply"
+                        type="primary"
+                        loading={selectionSubmitting}
+                        onClick={handleApplySelectionAdjust}
+                        disabled={selectionLoading || !selectionRoundId}
+                    >
+                        应用调整
+                    </Button>,
+                ]}
+            >
+                {selectionLoading ? (
+                    <div className="flex min-h-[180px] items-center justify-center">
+                        <Spin />
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Tag>TopK: {selectionData?.topk ?? '-'}</Tag>
+                            <Tag>ReviewPool: {selectionData?.reviewPoolSize ?? '-'}</Tag>
+                            <Tag>Selected: {selectionData?.selectedCount ?? '-'}</Tag>
+                            <Tag>Include: {selectionData?.includeCount ?? '-'}</Tag>
+                            <Tag>Exclude: {selectionData?.excludeCount ?? '-'}</Tag>
+                        </div>
+                        <Form form={selectionForm} layout="vertical">
+                            <Form.Item name="includeSampleIdsText" label="Include Sample IDs">
+                                <Input.TextArea rows={3} placeholder="按逗号或换行分隔，仅允许来自 score pool 的样本" />
+                            </Form.Item>
+                            <Form.Item name="excludeSampleIdsText" label="Exclude Sample IDs">
+                                <Input.TextArea rows={3} placeholder="按逗号或换行分隔，将从当前 TopK 中排除" />
+                            </Form.Item>
+                            <Form.Item name="reason" label="Reason（可选）">
+                                <Input placeholder="记录此次人工调整原因" />
+                            </Form.Item>
+                        </Form>
+                        <Divider className="!my-2" />
+                        <Text strong>当前生效 TopK 预览</Text>
+                        <Table
+                            size="small"
+                            rowKey={(row) => row.sampleId}
+                            dataSource={selectionData?.effectiveSelected || []}
+                            pagination={false}
+                            scroll={{y: 260}}
+                            columns={[
+                                { title: 'Rank', dataIndex: 'rank', width: 80 },
+                                { title: 'Sample ID', dataIndex: 'sampleId' },
+                                {
+                                    title: 'Score',
+                                    dataIndex: 'score',
+                                    width: 120,
+                                    render: (value: number) => Number(value || 0).toFixed(6),
+                                },
+                            ]}
+                        />
+                    </div>
+                )}
+            </Modal>
 
             <Modal
                 title="初始化 Snapshot"

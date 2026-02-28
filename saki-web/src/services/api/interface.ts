@@ -25,6 +25,9 @@ import {
     ProjectLabelUpdate,
     ProjectSample,
     RuntimeRound,
+    RoundSelectionApplyRequest,
+    RoundSelectionApplyResponse,
+    RoundSelectionRead,
     RuntimeRoundCommandResponse,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
@@ -262,6 +265,9 @@ export interface ApiService {
     stopRound(roundId: string, reason?: string): Promise<RuntimeRoundCommandResponse>;
 
     getRound(roundId: string): Promise<RuntimeRound>;
+    getRoundSelection(roundId: string): Promise<RoundSelectionRead>;
+    applyRoundSelection(roundId: string, payload: RoundSelectionApplyRequest): Promise<RoundSelectionApplyResponse>;
+    resetRoundSelection(roundId: string): Promise<RoundSelectionApplyResponse>;
 
     getRoundSteps(roundId: string, limit?: number): Promise<RuntimeStep[]>;
 

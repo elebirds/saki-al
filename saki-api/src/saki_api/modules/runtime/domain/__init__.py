@@ -2,6 +2,7 @@
 
 from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
+from saki_api.modules.runtime.domain.al_round_selection_override import ALRoundSelectionOverride
 from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
 from saki_api.modules.runtime.domain.loop_mode import phase_for_mode
@@ -30,6 +31,7 @@ __all__ = [
     "ALSnapshotVersion",
     "ALSnapshotSample",
     "ALLoopVisibility",
+    "ALRoundSelectionOverride",
     "Round",
     "Step",
     "DispatchOutbox",

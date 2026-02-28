@@ -11,6 +11,7 @@ from saki_api.modules.shared.modeling.enums import (
     LoopMode,
     LoopStage,
     LoopStatus,
+    RoundSelectionOverrideOp,
     RoundStatus,
     SnapshotPartition,
     SnapshotUpdateMode,
@@ -111,7 +112,7 @@ class LoopRead(BaseModel):
     active_snapshot_version_id: Optional[uuid.UUID] = None
     experiment_group_id: Optional[uuid.UUID] = None
     current_iteration: int
-    status: LoopStatus
+    state: LoopStatus
     max_rounds: int
     query_batch_size: int
     min_seed_labeled: int
@@ -148,6 +149,7 @@ class RoundRead(BaseModel):
     attempt_index: int
     mode: LoopMode
     state: RoundStatus
+    awaiting_confirm: bool = False
     step_counts: Dict[str, int]
     round_type: str
     plugin_id: str
@@ -230,6 +232,42 @@ class StepCandidateRead(BaseModel):
     prediction_snapshot: Dict[str, Any]
 
 
+class RoundSelectionOverrideRead(BaseModel):
+    sample_id: uuid.UUID
+    op: RoundSelectionOverrideOp
+    reason: Optional[str] = None
+
+
+class RoundSelectionRead(BaseModel):
+    round_id: uuid.UUID
+    loop_id: uuid.UUID
+    round_index: int
+    attempt_index: int
+    topk: int
+    review_pool_size: int
+    auto_selected: List[StepCandidateRead] = Field(default_factory=list)
+    score_pool: List[StepCandidateRead] = Field(default_factory=list)
+    overrides: List[RoundSelectionOverrideRead] = Field(default_factory=list)
+    effective_selected: List[StepCandidateRead] = Field(default_factory=list)
+    selected_count: int = 0
+    include_count: int = 0
+    exclude_count: int = 0
+
+
+class RoundSelectionApplyRequest(BaseModel):
+    include_sample_ids: List[uuid.UUID] = Field(default_factory=list)
+    exclude_sample_ids: List[uuid.UUID] = Field(default_factory=list)
+    reason: Optional[str] = None
+
+
+class RoundSelectionApplyResponse(BaseModel):
+    round_id: uuid.UUID
+    selected_count: int
+    include_count: int
+    exclude_count: int
+    effective_selected: List[StepCandidateRead] = Field(default_factory=list)
+
+
 class StepArtifactRead(BaseModel):
     name: str
     kind: str
@@ -251,7 +289,7 @@ class StepArtifactDownloadResponse(BaseModel):
 
 class LoopSummaryRead(BaseModel):
     loop_id: uuid.UUID
-    status: LoopStatus
+    state: LoopStatus
     phase: LoopPhase
     rounds_total: int
     attempts_total: int

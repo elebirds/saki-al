@@ -340,16 +340,7 @@ func extractOracleCommitID(rawConfig []byte) string {
 	}
 	modeRaw, ok := payload["mode"]
 	if !ok {
-		// fallback for legacy payload
-		simulationRaw, legacyOK := payload["simulation"]
-		if !legacyOK {
-			return ""
-		}
-		simulationMap, mapOK := simulationRaw.(map[string]any)
-		if !mapOK {
-			return ""
-		}
-		return strings.TrimSpace(fmt.Sprintf("%v", simulationMap["oracle_commit_id"]))
+		return ""
 	}
 	modeMap, ok := modeRaw.(map[string]any)
 	if !ok {
@@ -373,17 +364,7 @@ func extractRoundResources(rawConfig []byte) map[string]any {
 			}
 		}
 	}
-
-	// fallback for legacy payload
-	resourcesRaw, ok := payload["round_resources_default"]
-	if !ok {
-		return nil
-	}
-	resources, ok := resourcesRaw.(map[string]any)
-	if !ok {
-		return nil
-	}
-	return resources
+	return nil
 }
 
 func activationCommandID(stepPayload stepDispatchPayload) string {

@@ -126,7 +126,6 @@ class DispatcherAdminClient:
             round_id: str,
             *,
             reason: str = "",
-            use_latest_inputs: bool = True,
             command_id: str | None = None,
     ) -> pb.CommandResponse:
         stub = await self._get_stub()
@@ -135,7 +134,6 @@ class DispatcherAdminClient:
                 command_id=command_id or str(uuid.uuid4()),
                 round_id=str(round_id),
                 reason=str(reason or ""),
-                use_latest_inputs=bool(use_latest_inputs),
             ),
             timeout=self.timeout_sec,
             metadata=self._metadata(),

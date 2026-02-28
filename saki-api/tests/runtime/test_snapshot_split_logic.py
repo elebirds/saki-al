@@ -120,7 +120,7 @@ def test_parse_enum_rejects_invalid_value() -> None:
 
 
 @pytest.mark.anyio
-async def test_count_labeled_samples_uses_review_state_and_camap_fallback() -> None:
+async def test_count_labeled_samples_only_uses_review_state() -> None:
     sample_a = uuid.uuid4()
     sample_b = uuid.uuid4()
     sample_c = uuid.uuid4()
@@ -138,11 +138,8 @@ async def test_count_labeled_samples_uses_review_state_and_camap_fallback() -> N
 
         async def exec(self, _stmt):  # noqa: ANN001
             self.calls += 1
-            if self.calls == 1:
-                # Reviewed set from CommitSampleState (includes EMPTY_CONFIRMED/LABELED).
-                return _Result([sample_a])
-            # Legacy fallback from CAMap.
-            return _Result([sample_b])
+            # Reviewed set from CommitSampleState (includes EMPTY_CONFIRMED/LABELED).
+            return _Result([sample_a])
 
     mixin = SnapshotMixin()
     mixin.session = _Session()  # type: ignore[attr-defined]
@@ -150,4 +147,5 @@ async def test_count_labeled_samples_uses_review_state_and_camap_fallback() -> N
         commit_id=uuid.uuid4(),
         sample_ids=[sample_a, sample_b, sample_c],
     )
-    assert labeled == {sample_a, sample_b}
+    assert labeled == {sample_a}
+    assert mixin.session.calls == 1

@@ -56,6 +56,10 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
         1,
         to_int(normalized_sampling.get("min_candidates_required"), 1),
     )
+    normalized_sampling["review_pool_multiplier"] = max(
+        1,
+        to_int(normalized_sampling.get("review_pool_multiplier"), 3),
+    )
 
     normalized_repro["global_seed"] = str(normalized_repro.get("global_seed") or "").strip()
     normalized_repro["split_seed_policy"] = str(normalized_repro.get("split_seed_policy") or "derived").strip()
@@ -154,12 +158,6 @@ def derive_query_batch_size(*, mode: str, config: dict[str, Any]) -> int:
     sampling = config.get("sampling")
     sampling_map = sampling if isinstance(sampling, dict) else {}
     return max(1, to_int(sampling_map.get("topk"), 200))
-
-
-# Backward-compatible aliases used by existing service wiring.
-def normalize_loop_global_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
-    return normalize_loop_config(raw_config, mode="active_learning")
-
 
 def extract_model_request_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
     config = dict(raw_config or {})

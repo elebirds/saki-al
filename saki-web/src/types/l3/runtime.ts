@@ -20,6 +20,7 @@ export type LoopActionKey =
     | 'retry_round'
     | 'snapshot_init'
     | 'snapshot_update'
+    | 'selection_adjust'
     | 'read'
     | 'observe'
     | 'view_annotation_gaps'
@@ -122,7 +123,7 @@ export interface Loop {
     updatedAt: string;
 }
 
-export type RuntimeRoundState = 'pending' | 'running' | 'wait_user' | 'completed' | 'cancelled' | 'failed';
+export type RuntimeRoundState = 'pending' | 'running' | 'completed' | 'cancelled' | 'failed';
 
 export interface RuntimeRound {
     id: string;
@@ -132,6 +133,7 @@ export interface RuntimeRound {
     attemptIndex: number;
     mode: LoopMode;
     state: RuntimeRoundState;
+    awaitingConfirm?: boolean;
     stepCounts: Record<string, number>;
     roundType: string;
     pluginId: string;
@@ -254,6 +256,42 @@ export interface RuntimeStepCandidate {
     score: number;
     reason: Record<string, any>;
     predictionSnapshot: Record<string, any>;
+}
+
+export interface RoundSelectionOverrideRead {
+    sampleId: string;
+    op: 'include' | 'exclude';
+    reason?: string | null;
+}
+
+export interface RoundSelectionRead {
+    roundId: string;
+    loopId: string;
+    roundIndex: number;
+    attemptIndex: number;
+    topk: number;
+    reviewPoolSize: number;
+    autoSelected: RuntimeStepCandidate[];
+    scorePool: RuntimeStepCandidate[];
+    overrides: RoundSelectionOverrideRead[];
+    effectiveSelected: RuntimeStepCandidate[];
+    selectedCount: number;
+    includeCount: number;
+    excludeCount: number;
+}
+
+export interface RoundSelectionApplyRequest {
+    includeSampleIds?: string[];
+    excludeSampleIds?: string[];
+    reason?: string;
+}
+
+export interface RoundSelectionApplyResponse {
+    roundId: string;
+    selectedCount: number;
+    includeCount: number;
+    excludeCount: number;
+    effectiveSelected: RuntimeStepCandidate[];
 }
 
 export interface RuntimeStepArtifact {

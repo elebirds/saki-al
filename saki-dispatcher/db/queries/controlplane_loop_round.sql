@@ -194,13 +194,6 @@ WHERE status IN ('RUNNING'::loopstatus, 'STOPPING'::loopstatus)
 ORDER BY updated_at ASC
 LIMIT sqlc.arg(limit_count);
 
--- name: UpdateRoundWaitUser :exec
-UPDATE round
-SET state = 'WAIT_USER'::roundstatus,
-    ended_at = COALESCE(ended_at, now()),
-    updated_at = now()
-WHERE id = sqlc.arg(round_id)::uuid;
-
 -- name: CountStepStatesByRound :many
 SELECT state, COUNT(*)::int AS count
 FROM step

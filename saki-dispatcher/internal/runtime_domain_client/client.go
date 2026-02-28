@@ -289,7 +289,7 @@ func (c *Client) CountNewLabelsSinceCommit(
 func (c *Client) ResolveRoundReveal(
 	ctx context.Context,
 	loopID string,
-	roundIndex int32,
+	roundID string,
 	branchID string,
 	force bool,
 	minRequired int32,
@@ -302,7 +302,7 @@ func (c *Client) ResolveRoundReveal(
 	defer cancel()
 	resp, callErr := client.ResolveRoundReveal(callCtx, &runtimedomainv1.ResolveRoundRevealRequest{
 		LoopId:      loopID,
-		RoundIndex:  roundIndex,
+		RoundId:     roundID,
 		BranchId:    branchID,
 		Force:       force,
 		MinRequired: minRequired,

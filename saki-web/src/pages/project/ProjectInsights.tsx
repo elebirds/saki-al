@@ -28,7 +28,6 @@ const LOOP_STATE_COLOR: Record<string, string> = {
 const ROUND_STATE_COLOR: Record<string, string> = {
     pending: 'default',
     running: 'processing',
-    wait_user: 'warning',
     completed: 'success',
     failed: 'error',
     cancelled: 'warning',

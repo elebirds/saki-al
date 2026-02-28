@@ -24,7 +24,6 @@ message RetryRoundRequest {
   string command_id = 1;
   string round_id = 2;
   string reason = 3;
-  bool use_latest_inputs = 4;
 }
 
 message StepCommandRequest {

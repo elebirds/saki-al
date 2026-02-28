@@ -6,6 +6,7 @@ from saki_api.modules.runtime.repo.loop import LoopRepository
 from saki_api.modules.runtime.repo.al_snapshot_version import ALSnapshotVersionRepository
 from saki_api.modules.runtime.repo.al_snapshot_sample import ALSnapshotSampleRepository
 from saki_api.modules.runtime.repo.al_loop_visibility import ALLoopVisibilityRepository
+from saki_api.modules.runtime.repo.al_round_selection_override import ALRoundSelectionOverrideRepository
 from saki_api.modules.runtime.repo.model import ModelRepository
 from saki_api.modules.runtime.repo.runtime_executor import RuntimeExecutorRepository
 from saki_api.modules.runtime.repo.runtime_executor_stats import RuntimeExecutorStatsRepository
@@ -18,6 +19,7 @@ __all__ = [
     "ALSnapshotVersionRepository",
     "ALSnapshotSampleRepository",
     "ALLoopVisibilityRepository",
+    "ALRoundSelectionOverrideRepository",
     "RoundRepository",
     "StepRepository",
     "StepEventRepository",

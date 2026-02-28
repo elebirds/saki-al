@@ -89,7 +89,6 @@ type Querier interface {
 	UpdateRoundOutputCommit(ctx context.Context, arg UpdateRoundOutputCommitParams) error
 	UpdateRoundStateWithReason(ctx context.Context, arg UpdateRoundStateWithReasonParams) error
 	UpdateRoundStateWithReasonGuarded(ctx context.Context, arg UpdateRoundStateWithReasonGuardedParams) (int64, error)
-	UpdateRoundWaitUser(ctx context.Context, roundID uuid.UUID) error
 	UpdateRuntimeExecutorDisconnected(ctx context.Context, arg UpdateRuntimeExecutorDisconnectedParams) error
 	UpdateStepArtifacts(ctx context.Context, arg UpdateStepArtifactsParams) error
 	UpdateStepExecutionResultGuarded(ctx context.Context, arg UpdateStepExecutionResultGuardedParams) (int64, error)

@@ -16,7 +16,7 @@ import (
 )
 
 type alConfirmRevealProbe struct {
-	roundIndex            int
+	roundID               uuid.UUID
 	branchID              uuid.UUID
 	configuredMinRequired int
 	revealedCount         int
@@ -210,7 +210,7 @@ func (s *Service) ConfirmLoop(
 			if s.domainClient != nil && s.domainClient.Enabled() {
 				usedPreflight := false
 				if preflightProbe != nil &&
-					preflightProbe.roundIndex == latestRound.RoundIndex &&
+					preflightProbe.roundID == latestRound.ID &&
 					preflightProbe.branchID == loop.BranchID &&
 					preflightProbe.configuredMinRequired == minRequired {
 					usedPreflight = true
@@ -235,7 +235,7 @@ func (s *Service) ConfirmLoop(
 					response, err := s.domainClient.ResolveRoundReveal(
 						ctx,
 						loop.ID.String(),
-						int32(latestRound.RoundIndex),
+						latestRound.ID.String(),
 						loop.BranchID.String(),
 						force,
 						int32(minRequired),
@@ -370,7 +370,6 @@ func (s *Service) RetryRound(
 	commandID string,
 	roundID string,
 	reason string,
-	useLatestInputs bool,
 ) (CommandResult, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
@@ -443,9 +442,6 @@ func (s *Service) RetryRound(
 		}
 		if createdRoundID == nil {
 			return "rejected", "failed to create retry attempt", nil
-		}
-		if !useLatestInputs {
-			// 当前实现固定按最新分支头与最新 loop 配置重跑，参数保留用于协议兼容。
 		}
 		return "applied", createdRoundID.String(), nil
 	})
@@ -552,12 +548,10 @@ func (s *Service) normalizeRunningRoundStatusTx(
 	latestRound roundRow,
 	roundStatus db.Roundstatus,
 ) (db.Roundstatus, error) {
-	if loop.Mode == modeAL && roundStatus == roundCompleted {
-		if err := s.qtx(tx).UpdateRoundWaitUser(ctx, latestRound.ID); err != nil {
-			return "", err
-		}
-		return roundWaitUser, nil
-	}
+	_ = ctx
+	_ = tx
+	_ = loop
+	_ = latestRound
 	return roundStatus, nil
 }
 
@@ -567,14 +561,10 @@ func (s *Service) handleNonTerminalRoundByModeTx(
 	loop loopRow,
 	roundStatus db.Roundstatus,
 ) error {
-	if loop.Mode == modeAL && roundStatus == roundWaitUser {
-		// Keep wait_user stable: avoid rewriting the same loop state every tick,
-		// otherwise loop.updated_at changes continuously and decision tokens churn.
-		if loop.Status == statusRunning && loop.Phase == phaseALWaitAnnotation {
-			return nil
-		}
-		return s.updateLoopState(ctx, tx, loop.ID, statusRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
-	}
+	_ = ctx
+	_ = tx
+	_ = loop
+	_ = roundStatus
 	return nil
 }
 
@@ -598,6 +588,12 @@ func (s *Service) handleTerminalRoundByModeTx(
 ) error {
 	switch loop.Mode {
 	case modeAL:
+		if latestRound.SummaryStatus == roundCompleted {
+			if loop.Status == statusRunning && loop.Phase == phaseALWaitAnnotation {
+				return nil
+			}
+			return s.updateLoopState(ctx, tx, loop.ID, statusRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
+		}
 		return nil
 	case modeSIM:
 		return s.handleSimulationTerminalRoundTx(ctx, tx, loop, latestRound)
@@ -1111,7 +1107,7 @@ func (s *Service) preflightALConfirmReveal(
 	response, err := s.domainClient.ResolveRoundReveal(
 		ctx,
 		loop.ID.String(),
-		latestRoundRecord.RoundIndex,
+		latestRoundRecord.ID.String(),
 		loop.BranchID.String(),
 		force,
 		int32(minRequired),
@@ -1130,7 +1126,7 @@ func (s *Service) preflightALConfirmReveal(
 		latestCommitID = &parsedCommitID
 	}
 	return &alConfirmRevealProbe{
-		roundIndex:            int(latestRoundRecord.RoundIndex),
+		roundID:               latestRoundRecord.ID,
 		branchID:              loop.BranchID,
 		configuredMinRequired: minRequired,
 		revealedCount:         int(response.GetRevealedCount()),

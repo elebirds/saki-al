@@ -16,7 +16,6 @@ from sqlmodel import select
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.exceptions import ConflictAppException
 from saki_api.infra.db.transaction import transactional
-from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.project import ProjectDataset
@@ -26,7 +25,9 @@ from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.shared.modeling.enums import (
+    LoopPhase,
     LoopMode,
+    RoundSelectionOverrideOp,
     LoopStage,
     LoopStatus,
     RoundStatus,
@@ -49,6 +50,18 @@ class _RevealProbe:
     missing_sample_ids: list[uuid.UUID]
     revealable_sample_ids: list[uuid.UUID]
     latest_commit_id: uuid.UUID | None
+
+
+@dataclass(slots=True)
+class _RoundSelectionContext:
+    loop: Any
+    round_row: Round
+    topk: int
+    review_pool_size: int
+    score_step: Step
+    select_step: Step
+    score_pool: list[StepCandidateItem]
+    auto_selected: list[StepCandidateItem]
 
 
 class SnapshotMixin:
@@ -488,36 +501,18 @@ class SnapshotMixin:
             )
         )
         reviewed_ids = set((await self.session.exec(review_stmt)).all())
-        if len(reviewed_ids) == len(unique_sample_ids):
-            return reviewed_ids
-
-        # Compatibility fallback for legacy commits where sample review state might be missing.
-        remaining_ids = [sample_id for sample_id in unique_sample_ids if sample_id not in reviewed_ids]
-        if not remaining_ids:
-            return reviewed_ids
-        stmt = (
-            select(distinct(CommitAnnotationMap.sample_id))
-            .where(
-                CommitAnnotationMap.commit_id == commit_id,
-                CommitAnnotationMap.sample_id.in_(remaining_ids),
-            )
-        )
-        reviewed_ids.update((await self.session.exec(stmt)).all())
         return reviewed_ids
 
     async def _load_selected_sample_ids(
         self,
         *,
-        loop_id: uuid.UUID,
-        round_index: int,
+        round_id: uuid.UUID,
     ) -> list[uuid.UUID]:
         stmt = (
             select(StepCandidateItem.sample_id)
             .join(Step, Step.id == StepCandidateItem.step_id)
-            .join(Round, Round.id == Step.round_id)
             .where(
-                Round.loop_id == loop_id,
-                Round.round_index == round_index,
+                Step.round_id == round_id,
                 Step.step_type == StepType.SELECT,
             )
             .order_by(StepCandidateItem.rank.asc(), StepCandidateItem.created_at.asc())
@@ -538,11 +533,11 @@ class SnapshotMixin:
         self,
         *,
         loop_id: uuid.UUID,
-        round_index: int,
+        round_id: uuid.UUID,
     ) -> _RevealProbe:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
         latest_commit_id = await self._get_branch_head_commit_id(loop.branch_id)
-        selected_sample_ids = await self._load_selected_sample_ids(loop_id=loop_id, round_index=round_index)
+        selected_sample_ids = await self._load_selected_sample_ids(round_id=round_id)
         if not selected_sample_ids:
             return _RevealProbe(
                 selected_count=0,
@@ -579,18 +574,19 @@ class SnapshotMixin:
         self,
         *,
         loop_id: uuid.UUID,
-        round_index: int,
+        round_id: uuid.UUID,
         branch_id: uuid.UUID | None = None,
         force: bool = False,
         min_required: int = 1,
     ) -> dict[str, Any]:
         loop, _snapshot = await self._get_active_snapshot_or_raise(loop_id)
-        if round_index <= 0:
-            raise BadRequestAppException("round_index must be positive")
         if branch_id and branch_id != loop.branch_id:
             raise BadRequestAppException("branch_id does not match loop")
+        round_row = await self.repository.get_by_id_or_raise(round_id)
+        if round_row.loop_id != loop_id:
+            raise BadRequestAppException("round_id does not belong to loop")
 
-        probe = await self._probe_round_reveal(loop_id=loop_id, round_index=round_index)
+        probe = await self._probe_round_reveal(loop_id=loop_id, round_id=round_row.id)
         threshold = self._effective_round_min_required(
             selected_count=probe.selected_count,
             configured_min_required=int(min_required or 1),
@@ -609,7 +605,7 @@ class SnapshotMixin:
                     sample_id=sample_id,
                     visible_in_train=True,
                     source=source,
-                    revealed_round_index=round_index,
+                    revealed_round_index=int(round_row.round_index),
                     reveal_commit_id=probe.latest_commit_id,
                 )
                 for sample_id in revealed_ids
@@ -618,7 +614,8 @@ class SnapshotMixin:
 
         return {
             "loop_id": loop_id,
-            "round_index": round_index,
+            "round_id": round_row.id,
+            "round_index": int(round_row.round_index),
             "revealed_count": len(revealed_ids),
             "selected_count": int(probe.selected_count),
             "missing_count": int(probe.missing_count),
@@ -626,6 +623,270 @@ class SnapshotMixin:
             "latest_commit_id": probe.latest_commit_id,
             "revealable_sample_ids_hash": self._hash_sample_ids(revealed_ids),
         }
+
+    @staticmethod
+    def _dedupe_uuid_list(values: list[uuid.UUID]) -> list[uuid.UUID]:
+        ordered: list[uuid.UUID] = []
+        seen: set[uuid.UUID] = set()
+        for item in values:
+            if item in seen:
+                continue
+            seen.add(item)
+            ordered.append(item)
+        return ordered
+
+    @staticmethod
+    def _selection_candidate_payload(item: StepCandidateItem, rank: int | None = None) -> dict[str, Any]:
+        return {
+            "sample_id": item.sample_id,
+            "rank": int(rank if rank is not None else item.rank),
+            "score": float(item.score or 0.0),
+            "reason": dict(item.reason or {}),
+            "prediction_snapshot": dict(item.prediction_snapshot or {}),
+        }
+
+    @staticmethod
+    def _sampling_limits_from_round(*, round_row: Round, fallback_topk: int) -> tuple[int, int]:
+        resolved_params = round_row.resolved_params if isinstance(round_row.resolved_params, dict) else {}
+        sampling = resolved_params.get("sampling") if isinstance(resolved_params.get("sampling"), dict) else {}
+        topk = int(sampling.get("topk") or 0)
+        if topk <= 0:
+            topk = max(1, int(fallback_topk or 1))
+
+        review_pool_size = int(sampling.get("review_pool_size") or 0)
+        if review_pool_size <= 0:
+            multiplier = int(sampling.get("review_pool_multiplier") or 3)
+            multiplier = max(1, multiplier)
+            review_pool_size = topk * multiplier
+        review_pool_size = max(topk, int(review_pool_size))
+        return int(topk), int(review_pool_size)
+
+    async def _resolve_round_selection_context(
+        self,
+        *,
+        round_id: uuid.UUID,
+        require_wait_phase: bool,
+    ) -> _RoundSelectionContext:
+        round_row = await self.repository.get_by_id_or_raise(round_id)
+        loop = await self.loop_repo.get_by_id_or_raise(round_row.loop_id)
+        if loop.mode != LoopMode.ACTIVE_LEARNING:
+            raise BadRequestAppException("round selection override is only available for active_learning loop")
+
+        latest_round = await self.repository.get_latest_by_loop(loop.id)
+        if latest_round is None:
+            raise BadRequestAppException("loop has no round")
+        if latest_round.id != round_row.id:
+            raise BadRequestAppException("round selection override only supports latest round attempt")
+
+        if require_wait_phase:
+            if loop.phase != LoopPhase.AL_WAIT_USER:
+                raise BadRequestAppException("round selection override requires loop phase al_wait_user")
+            if loop.status not in {LoopStatus.RUNNING, LoopStatus.PAUSED, LoopStatus.STOPPING}:
+                raise BadRequestAppException("round selection override requires loop in running/paused/stopping status")
+            if round_row.state != RoundStatus.COMPLETED:
+                raise BadRequestAppException("round selection override requires round in completed state")
+
+        steps = await self.step_repo.list_by_round(round_row.id)
+        score_steps = [item for item in steps if item.step_type == StepType.SCORE]
+        select_steps = [item for item in steps if item.step_type == StepType.SELECT]
+        if not score_steps:
+            raise BadRequestAppException("round has no score step")
+        if not select_steps:
+            raise BadRequestAppException("round has no select step")
+        score_step = sorted(score_steps, key=lambda item: int(item.step_index), reverse=True)[0]
+        select_step = sorted(select_steps, key=lambda item: int(item.step_index), reverse=True)[0]
+
+        topk, review_pool_size = self._sampling_limits_from_round(round_row=round_row, fallback_topk=loop.query_batch_size)
+        score_pool = await self.step_candidate_repo.list_by_step(score_step.id)
+        if review_pool_size > 0:
+            score_pool = score_pool[:review_pool_size]
+        auto_selected = score_pool[:topk]
+        return _RoundSelectionContext(
+            loop=loop,
+            round_row=round_row,
+            topk=topk,
+            review_pool_size=review_pool_size,
+            score_step=score_step,
+            select_step=select_step,
+            score_pool=score_pool,
+            auto_selected=auto_selected,
+        )
+
+    @staticmethod
+    def _compute_effective_selected_ids(
+        *,
+        auto_selected_ids: list[uuid.UUID],
+        score_pool_ids: list[uuid.UUID],
+        include_ids: list[uuid.UUID],
+        exclude_ids: set[uuid.UUID],
+        topk: int,
+    ) -> list[uuid.UUID]:
+        result: list[uuid.UUID] = []
+        seen: set[uuid.UUID] = set()
+
+        for sample_id in auto_selected_ids:
+            if sample_id in exclude_ids or sample_id in seen:
+                continue
+            result.append(sample_id)
+            seen.add(sample_id)
+
+        for sample_id in include_ids:
+            if sample_id in exclude_ids or sample_id in seen:
+                continue
+            result.append(sample_id)
+            seen.add(sample_id)
+            if len(result) >= topk:
+                return result[:topk]
+
+        if len(result) < topk:
+            for sample_id in score_pool_ids:
+                if sample_id in exclude_ids or sample_id in seen:
+                    continue
+                result.append(sample_id)
+                seen.add(sample_id)
+                if len(result) >= topk:
+                    break
+        return result[:topk]
+
+    async def _replace_select_candidates_from_score_pool(
+        self,
+        *,
+        select_step_id: uuid.UUID,
+        selected_ids: list[uuid.UUID],
+        score_pool_by_id: dict[uuid.UUID, StepCandidateItem],
+    ) -> None:
+        await self.step_candidate_repo.delete_by_step(select_step_id)
+        for rank, sample_id in enumerate(selected_ids, start=1):
+            source = score_pool_by_id.get(sample_id)
+            if source is None:
+                continue
+            await self.step_candidate_repo.create(
+                {
+                    "step_id": select_step_id,
+                    "sample_id": sample_id,
+                    "rank": rank,
+                    "score": float(source.score or 0.0),
+                    "reason": dict(source.reason or {}),
+                    "prediction_snapshot": dict(source.prediction_snapshot or {}),
+                }
+            )
+        await self.session.flush()
+
+    async def _build_round_selection_payload(
+        self,
+        *,
+        context: _RoundSelectionContext,
+    ) -> dict[str, Any]:
+        overrides = await self.al_round_selection_override_repo.list_by_round(context.round_row.id)
+        include_ids = self._dedupe_uuid_list(
+            [item.sample_id for item in overrides if item.op == RoundSelectionOverrideOp.INCLUDE]
+        )
+        exclude_ids = set(
+            self._dedupe_uuid_list([item.sample_id for item in overrides if item.op == RoundSelectionOverrideOp.EXCLUDE])
+        )
+        score_pool_ids = [item.sample_id for item in context.score_pool]
+        effective_ids = self._compute_effective_selected_ids(
+            auto_selected_ids=[item.sample_id for item in context.auto_selected],
+            score_pool_ids=score_pool_ids,
+            include_ids=include_ids,
+            exclude_ids=exclude_ids,
+            topk=context.topk,
+        )
+        score_pool_by_id = {item.sample_id: item for item in context.score_pool}
+
+        return {
+            "round_id": context.round_row.id,
+            "loop_id": context.loop.id,
+            "round_index": int(context.round_row.round_index),
+            "attempt_index": int(context.round_row.attempt_index),
+            "topk": int(context.topk),
+            "review_pool_size": int(context.review_pool_size),
+            "auto_selected": [
+                self._selection_candidate_payload(item, rank=idx + 1) for idx, item in enumerate(context.auto_selected)
+            ],
+            "score_pool": [self._selection_candidate_payload(item) for item in context.score_pool],
+            "overrides": [
+                {
+                    "sample_id": row.sample_id,
+                    "op": row.op,
+                    "reason": row.reason,
+                }
+                for row in overrides
+            ],
+            "effective_selected": [
+                self._selection_candidate_payload(score_pool_by_id[sample_id], rank=idx + 1)
+                for idx, sample_id in enumerate(effective_ids)
+                if sample_id in score_pool_by_id
+            ],
+            "selected_count": int(len(effective_ids)),
+            "include_count": int(len(include_ids)),
+            "exclude_count": int(len(exclude_ids)),
+            "_effective_selected_ids": effective_ids,
+        }
+
+    async def get_round_selection(self, *, round_id: uuid.UUID) -> dict[str, Any]:
+        context = await self._resolve_round_selection_context(round_id=round_id, require_wait_phase=False)
+        payload = await self._build_round_selection_payload(context=context)
+        payload.pop("_effective_selected_ids", None)
+        return payload
+
+    @transactional
+    async def apply_round_selection_override(
+        self,
+        *,
+        round_id: uuid.UUID,
+        include_sample_ids: list[uuid.UUID],
+        exclude_sample_ids: list[uuid.UUID],
+        actor_user_id: uuid.UUID | None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        context = await self._resolve_round_selection_context(round_id=round_id, require_wait_phase=True)
+        include_ids = self._dedupe_uuid_list([uuid.UUID(str(item)) for item in include_sample_ids or []])
+        exclude_ids = self._dedupe_uuid_list([uuid.UUID(str(item)) for item in exclude_sample_ids or []])
+        include_set = set(include_ids)
+        exclude_set = set(exclude_ids)
+        overlap = include_set & exclude_set
+        if overlap:
+            raise BadRequestAppException("include_sample_ids and exclude_sample_ids cannot overlap")
+
+        score_pool_ids = {item.sample_id for item in context.score_pool}
+        invalid_include = [sample_id for sample_id in include_ids if sample_id not in score_pool_ids]
+        if invalid_include:
+            preview = ",".join(str(item) for item in invalid_include[:5])
+            raise BadRequestAppException(f"include sample is not in score pool: {preview}")
+
+        await self.al_round_selection_override_repo.replace_round_overrides(
+            round_id=context.round_row.id,
+            include_ids=include_ids,
+            exclude_ids=exclude_ids,
+            created_by=actor_user_id,
+            reason=(str(reason or "").strip() or None),
+        )
+
+        payload = await self._build_round_selection_payload(context=context)
+        effective_ids = list(payload.get("_effective_selected_ids") or [])
+        score_pool_by_id = {item.sample_id: item for item in context.score_pool}
+        await self._replace_select_candidates_from_score_pool(
+            select_step_id=context.select_step.id,
+            selected_ids=effective_ids,
+            score_pool_by_id=score_pool_by_id,
+        )
+
+        payload.pop("_effective_selected_ids", None)
+        return payload
+
+    @transactional
+    async def reset_round_selection_override(self, *, round_id: uuid.UUID) -> dict[str, Any]:
+        context = await self._resolve_round_selection_context(round_id=round_id, require_wait_phase=True)
+        await self.al_round_selection_override_repo.reset_round(context.round_row.id)
+        await self._replace_select_candidates_from_score_pool(
+            select_step_id=context.select_step.id,
+            selected_ids=[item.sample_id for item in context.auto_selected],
+            score_pool_by_id={item.sample_id: item for item in context.score_pool},
+        )
+        payload = await self._build_round_selection_payload(context=context)
+        payload.pop("_effective_selected_ids", None)
+        return payload
 
     async def _compute_annotation_gaps_internal(self, loop_id: uuid.UUID) -> dict[str, Any]:
         loop, snapshot = await self._get_active_snapshot_or_raise(loop_id)
@@ -659,7 +920,7 @@ class SnapshotMixin:
         query_bucket = {"partition": SnapshotPartition.TRAIN_POOL, "total": 0, "missing_count": 0, "sample_ids": []}
         latest_round = await self.repository.get_latest_by_loop(loop_id)
         if latest_round and int(latest_round.round_index) > 0:
-            probe = await self._probe_round_reveal(loop_id=loop_id, round_index=int(latest_round.round_index))
+            probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
             query_bucket = {
                 "partition": SnapshotPartition.TRAIN_POOL,
                 "total": int(probe.selected_count),
@@ -763,13 +1024,14 @@ class SnapshotMixin:
                 round_index = int(latest_round.round_index) if latest_round else 0
                 if round_index <= 0:
                     annotate_action = self._action("annotate", label="Annotate Query Samples", runnable=False)
+                    selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
                     return (
                         LoopStage.WAITING_ROUND_LABEL,
                         {"round_index": 0, "revealed_count": 0},
                         annotate_action,
-                        [annotate_action],
+                        [annotate_action, selection_adjust_action],
                     )
-                probe = await self._probe_round_reveal(loop_id=loop_id, round_index=round_index)
+                probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
                 configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
                 effective_min_required = self._effective_round_min_required(
                     selected_count=probe.selected_count,
@@ -777,6 +1039,7 @@ class SnapshotMixin:
                 )
                 if probe.revealable_count >= effective_min_required:
                     confirm_action = self._action("confirm", label="Confirm Round")
+                    selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
                     return (
                         LoopStage.READY_TO_CONFIRM,
                         {
@@ -788,9 +1051,10 @@ class SnapshotMixin:
                             "configured_min_required": configured_min_required,
                         },
                         confirm_action,
-                        [confirm_action],
+                        [confirm_action, selection_adjust_action],
                     )
                 annotate_action = self._action("annotate", label="Annotate Query Samples", runnable=False)
+                selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
                 return (
                     LoopStage.WAITING_ROUND_LABEL,
                     {
@@ -802,7 +1066,7 @@ class SnapshotMixin:
                         "configured_min_required": configured_min_required,
                     },
                     annotate_action,
-                    [annotate_action],
+                    [annotate_action, selection_adjust_action],
                 )
             return LoopStage.RUNNING_ROUND, {"phase": str(loop.phase)}, None, [observe_action]
 

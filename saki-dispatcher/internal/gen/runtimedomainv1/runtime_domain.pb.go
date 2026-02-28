@@ -312,7 +312,7 @@ func (x *CountNewLabelsSinceCommitResponse) GetLatestCommitId() string {
 type ResolveRoundRevealRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	LoopId        string                 `protobuf:"bytes,1,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
-	RoundIndex    int32                  `protobuf:"varint,2,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
+	RoundId       string                 `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
 	BranchId      string                 `protobuf:"bytes,3,opt,name=branch_id,json=branchId,proto3" json:"branch_id,omitempty"`
 	Force         bool                   `protobuf:"varint,4,opt,name=force,proto3" json:"force,omitempty"`
 	MinRequired   int32                  `protobuf:"varint,5,opt,name=min_required,json=minRequired,proto3" json:"min_required,omitempty"`
@@ -357,11 +357,11 @@ func (x *ResolveRoundRevealRequest) GetLoopId() string {
 	return ""
 }
 
-func (x *ResolveRoundRevealRequest) GetRoundIndex() int32 {
+func (x *ResolveRoundRevealRequest) GetRoundId() string {
 	if x != nil {
-		return x.RoundIndex
+		return x.RoundId
 	}
-	return 0
+	return ""
 }
 
 func (x *ResolveRoundRevealRequest) GetBranchId() string {
@@ -1521,11 +1521,10 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x0fsince_commit_id\x18\x03 \x01(\tR\rsinceCommitId\"u\n" +
 	"!CountNewLabelsSinceCommitResponse\x12&\n" +
 	"\x0fnew_label_count\x18\x01 \x01(\x03R\rnewLabelCount\x12(\n" +
-	"\x10latest_commit_id\x18\x02 \x01(\tR\x0elatestCommitId\"\xab\x01\n" +
+	"\x10latest_commit_id\x18\x02 \x01(\tR\x0elatestCommitId\"\xa5\x01\n" +
 	"\x19ResolveRoundRevealRequest\x12\x17\n" +
-	"\aloop_id\x18\x01 \x01(\tR\x06loopId\x12\x1f\n" +
-	"\vround_index\x18\x02 \x01(\x05R\n" +
-	"roundIndex\x12\x1b\n" +
+	"\aloop_id\x18\x01 \x01(\tR\x06loopId\x12\x19\n" +
+	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x1b\n" +
 	"\tbranch_id\x18\x03 \x01(\tR\bbranchId\x12\x14\n" +
 	"\x05force\x18\x04 \x01(\bR\x05force\x12!\n" +
 	"\fmin_required\x18\x05 \x01(\x05R\vminRequired\"\xac\x02\n" +

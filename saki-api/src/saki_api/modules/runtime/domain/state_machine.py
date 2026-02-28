@@ -30,7 +30,6 @@ TERMINAL_ROUND_STATES: set[RoundStatus] = {
 RUNNING_ROUND_STATES: set[RoundStatus] = {
     RoundStatus.PENDING,
     RoundStatus.RUNNING,
-    RoundStatus.WAIT_USER,
 }
 
 

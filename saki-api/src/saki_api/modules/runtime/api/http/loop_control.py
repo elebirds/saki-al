@@ -46,15 +46,15 @@ async def _ensure_project_perm(
         fallback_permissions=fallback,
     )
 
+
 async def _dispatch_loop_command(
-        *,
-        command: str,
-        loop_id: uuid.UUID,
-        round_id: uuid.UUID | None = None,
-        reason: str = "",
-        use_latest_inputs: bool = True,
-        force: bool = False,
-        dispatcher_admin_client: DispatcherAdminClientDep,
+    *,
+    command: str,
+    loop_id: uuid.UUID,
+    round_id: uuid.UUID | None = None,
+    reason: str = "",
+    force: bool = False,
+    dispatcher_admin_client: DispatcherAdminClientDep,
 ) -> object:
     if not dispatcher_admin_client.enabled:
         raise InternalServerErrorAppException("dispatcher_admin is not configured")
@@ -77,7 +77,6 @@ async def _dispatch_loop_command(
             return await dispatcher_admin_client.retry_round(
                 str(round_id),
                 reason=reason,
-                use_latest_inputs=use_latest_inputs,
             )
         raise BadRequestAppException(f"unsupported dispatcher command: {command}")
     except Exception as exc:
@@ -150,7 +149,6 @@ async def act_loop(
             loop_id=loop_id,
             round_id=retry_round_id,
             reason=str(action_payload.get("reason") or "act retry latest failed round"),
-            use_latest_inputs=bool(action_payload.get("use_latest_inputs", True)),
             dispatcher_admin_client=dispatcher_admin_client,
         )
         executed_action = LoopActionKey.RETRY_ROUND

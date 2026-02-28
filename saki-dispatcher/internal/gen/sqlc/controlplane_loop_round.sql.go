@@ -996,16 +996,3 @@ func (q *Queries) UpdateRoundStateWithReasonGuarded(ctx context.Context, arg Upd
 	}
 	return result.RowsAffected(), nil
 }
-
-const updateRoundWaitUser = `-- name: UpdateRoundWaitUser :exec
-UPDATE round
-SET state = 'WAIT_USER'::roundstatus,
-    ended_at = COALESCE(ended_at, now()),
-    updated_at = now()
-WHERE id = $1::uuid
-`
-
-func (q *Queries) UpdateRoundWaitUser(ctx context.Context, roundID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, updateRoundWaitUser, roundID)
-	return err
-}

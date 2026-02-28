@@ -194,13 +194,12 @@ func (x *RoundCommandRequest) GetReason() string {
 }
 
 type RetryRoundRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	CommandId       string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	RoundId         string                 `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
-	Reason          string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	UseLatestInputs bool                   `protobuf:"varint,4,opt,name=use_latest_inputs,json=useLatestInputs,proto3" json:"use_latest_inputs,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	RoundId       string                 `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RetryRoundRequest) Reset() {
@@ -252,13 +251,6 @@ func (x *RetryRoundRequest) GetReason() string {
 		return x.Reason
 	}
 	return ""
-}
-
-func (x *RetryRoundRequest) GetUseLatestInputs() bool {
-	if x != nil {
-		return x.UseLatestInputs
-	}
-	return false
 }
 
 type StepCommandRequest struct {
@@ -1035,13 +1027,12 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x19\n" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x91\x01\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"e\n" +
 	"\x11RetryRoundRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x19\n" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\x12*\n" +
-	"\x11use_latest_inputs\x18\x04 \x01(\bR\x0fuseLatestInputs\"d\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"d\n" +
 	"\x12StepCommandRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x17\n" +

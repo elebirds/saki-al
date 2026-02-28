@@ -211,7 +211,22 @@ async def list_loop_rounds(
         required=Permissions.ROUND_READ,
     )
     rounds = await runtime_service.list_rounds(loop_id, limit=limit)
-    return [RoundRead.model_validate(item) for item in rounds]
+    latest_round = rounds[0] if rounds else None
+    loop_phase_text = loop.phase.value
+    items: list[RoundRead] = []
+    loop_mode_text = loop.mode.value
+    for row in rounds:
+        awaiting_confirm = (
+            loop_mode_text == "active_learning"
+            and loop_phase_text == "al_wait_user"
+            and latest_round is not None
+            and latest_round.id == row.id
+            and row.state.value == "completed"
+        )
+        payload = RoundRead.model_validate(row).model_dump()
+        payload["awaiting_confirm"] = bool(awaiting_confirm)
+        items.append(RoundRead(**payload))
+    return items
 
 
 @router.get("/loops/{loop_id}/summary", response_model=LoopSummaryRead)
@@ -232,7 +247,7 @@ async def get_loop_summary(
     summary = await runtime_service.summarize_loop(loop_id)
     return LoopSummaryRead(
         loop_id=loop.id,
-        status=loop.status,
+        state=loop.status,
         phase=loop.phase,
         rounds_total=summary.rounds_total,
         attempts_total=summary.attempts_total,

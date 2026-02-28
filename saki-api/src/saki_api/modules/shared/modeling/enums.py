@@ -162,6 +162,7 @@ class LoopActionKey(str, Enum):
     RETRY_ROUND = "retry_round"
     SNAPSHOT_INIT = "snapshot_init"
     SNAPSHOT_UPDATE = "snapshot_update"
+    SELECTION_ADJUST = "selection_adjust"
     READ = "read"
     OBSERVE = "observe"
     VIEW_ANNOTATION_GAPS = "view_annotation_gaps"
@@ -234,13 +235,19 @@ class VisibilitySource(str, Enum):
     FORCE_REVEAL = "force_reveal"
 
 
+class RoundSelectionOverrideOp(str, Enum):
+    """Enum for manual round candidate override operation."""
+
+    INCLUDE = "include"
+    EXCLUDE = "exclude"
+
+
 class RoundStatus(str, Enum):
     """
     Enum for aggregated Round status.
     """
     PENDING = "pending"
     RUNNING = "running"
-    WAIT_USER = "wait_user"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     FAILED = "failed"

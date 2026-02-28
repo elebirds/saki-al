@@ -10,6 +10,7 @@ from saki_api.modules.project.contracts import ProjectReadGateway
 from saki_api.modules.runtime.api.round_step import RoundUpdate
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.repo.al_loop_visibility import ALLoopVisibilityRepository
+from saki_api.modules.runtime.repo.al_round_selection_override import ALRoundSelectionOverrideRepository
 from saki_api.modules.runtime.repo.al_snapshot_sample import ALSnapshotSampleRepository
 from saki_api.modules.runtime.repo.al_snapshot_version import ALSnapshotVersionRepository
 from saki_api.modules.runtime.repo.loop import LoopRepository
@@ -68,6 +69,7 @@ class RuntimeService(
         self.al_snapshot_version_repo = ALSnapshotVersionRepository(session)
         self.al_snapshot_sample_repo = ALSnapshotSampleRepository(session)
         self.al_loop_visibility_repo = ALLoopVisibilityRepository(session)
+        self.al_round_selection_override_repo = ALRoundSelectionOverrideRepository(session)
         self._storage = None
 
     @property

@@ -119,11 +119,18 @@ func compileSamplingConfig(loop loopRow, loopConfig map[string]any) map[string]a
 	if minCandidatesRequired <= 0 {
 		minCandidatesRequired = 1
 	}
+	reviewPoolMultiplier := toInt(sampling["review_pool_multiplier"], 3)
+	if reviewPoolMultiplier <= 0 {
+		reviewPoolMultiplier = 1
+	}
+	reviewPoolSize := max(topk, topk*reviewPoolMultiplier)
 	return map[string]any{
 		"strategy":                strategy,
 		"topk":                    topk,
 		"unlabeled_page_size":     max(1, unlabeledPageSize),
 		"min_candidates_required": minCandidatesRequired,
+		"review_pool_multiplier":  reviewPoolMultiplier,
+		"review_pool_size":        reviewPoolSize,
 	}
 }
 

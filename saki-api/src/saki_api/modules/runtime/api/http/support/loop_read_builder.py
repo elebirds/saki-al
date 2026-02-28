@@ -8,6 +8,7 @@ from saki_api.modules.runtime.api.round_step import LoopRead
 
 def build_loop_read(*, loop, stage: LoopStage, stage_meta: dict) -> LoopRead:
     payload = loop.model_dump()
+    payload["state"] = payload.pop("status")
     payload["stage"] = stage
     payload["stage_meta"] = stage_meta
     return LoopRead.model_validate(payload)

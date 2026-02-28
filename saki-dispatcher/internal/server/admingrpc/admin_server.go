@@ -114,7 +114,6 @@ func (s *Server) RetryRound(ctx context.Context, req *dispatcheradminv1.RetryRou
 		req.GetCommandId(),
 		req.GetRoundId(),
 		req.GetReason(),
-		req.GetUseLatestInputs(),
 	)
 	if err != nil {
 		return nil, err

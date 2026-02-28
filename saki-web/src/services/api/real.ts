@@ -25,6 +25,9 @@ import {
     ProjectLabelCreate,
     ProjectLabelUpdate,
     ProjectSample,
+    RoundSelectionApplyRequest,
+    RoundSelectionApplyResponse,
+    RoundSelectionRead,
     RuntimeRound,
     RuntimeRoundCommandResponse,
     RuntimeStep,
@@ -269,7 +272,7 @@ async function withOptionalPasswordHashing<T>(
 function normalizeLoop(loop: Loop): Loop {
     return {
         ...loop,
-        state: (loop as any).state ?? (loop as any).status ?? 'draft',
+        state: (loop as any).state,
         stage: (loop as any).stage ?? undefined,
         lastRoundId: (loop as any).lastRoundId ?? null,
         config: (loop as any).config ?? {plugin: {}},
@@ -279,7 +282,7 @@ function normalizeLoop(loop: Loop): Loop {
 function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
     return {
         ...summary,
-        state: (summary as any).state ?? (summary as any).status ?? 'draft',
+        state: (summary as any).state,
         roundsTotal: (summary as any).roundsTotal ?? 0,
         attemptsTotal: (summary as any).attemptsTotal ?? 0,
         roundsSucceeded: (summary as any).roundsSucceeded ?? 0,
@@ -293,6 +296,7 @@ function normalizeRound(round: RuntimeRound): RuntimeRound {
         ...round,
         state: (round as any).state ?? 'pending',
         attemptIndex: Number((round as any).attemptIndex ?? 1),
+        awaitingConfirm: Boolean((round as any).awaitingConfirm ?? false),
         stepCounts: (round as any).stepCounts ?? {},
         roundType: (round as any).roundType ?? 'loop_round',
         inputCommitId: (round as any).inputCommitId ?? null,
@@ -919,7 +923,7 @@ export class RealApiService implements ApiService {
         const response = await this.client.post<LoopActionResponse>(`/loops/${loopId}:act`, payload ?? {});
         return {
             ...response.data,
-            state: (response.data as any).state ?? (response.data as any).status,
+            state: (response.data as any).state,
             actions: (response.data as any).actions ?? [],
             primaryAction: (response.data as any).primaryAction ?? null,
             executedAction: (response.data as any).executedAction ?? null,
@@ -1002,6 +1006,27 @@ export class RealApiService implements ApiService {
     async getRound(roundId: string): Promise<RuntimeRound> {
         const response = await this.client.get<RuntimeRound>(`/rounds/${roundId}`);
         return normalizeRound(response.data);
+    }
+
+    async getRoundSelection(roundId: string): Promise<RoundSelectionRead> {
+        const response = await this.client.get<RoundSelectionRead>(`/rounds/${roundId}/selection`);
+        return response.data;
+    }
+
+    async applyRoundSelection(
+        roundId: string,
+        payload: RoundSelectionApplyRequest
+    ): Promise<RoundSelectionApplyResponse> {
+        const response = await this.client.post<RoundSelectionApplyResponse>(
+            `/rounds/${roundId}/selection:apply`,
+            payload ?? {},
+        );
+        return response.data;
+    }
+
+    async resetRoundSelection(roundId: string): Promise<RoundSelectionApplyResponse> {
+        const response = await this.client.post<RoundSelectionApplyResponse>(`/rounds/${roundId}/selection:reset`);
+        return response.data;
     }
 
     async getRoundSteps(roundId: string, limit: number = 2000): Promise<RuntimeStep[]> {

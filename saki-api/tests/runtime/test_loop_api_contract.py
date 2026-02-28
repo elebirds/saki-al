@@ -406,6 +406,61 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
 
 
 @pytest.mark.anyio
+async def test_loop_control_act_rejects_selection_adjust(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+
+    class _DispatcherAdminStub:
+        enabled = True
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-selection-adjust-reject",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    status=LoopStatus.RUNNING,
+                ),
+            )
+
+            async def _resolve_loop_action_request(**kwargs):
+                del kwargs
+                return (
+                    {"loop_id": loop.id},
+                    LoopActionKey.SELECTION_ADJUST.value,
+                    {"key": LoopActionKey.SELECTION_ADJUST.value, "runnable": True, "payload": {}},
+                )
+
+            monkeypatch.setattr(service, "resolve_loop_action_request", _resolve_loop_action_request)
+
+            with pytest.raises(BadRequestAppException, match="unsupported action"):
+                await loop_control_endpoint.act_loop(
+                    loop_id=loop.id,
+                    payload=LoopActionRequest(action=LoopActionKey.SELECTION_ADJUST),
+                    runtime_service=service,
+                    dispatcher_admin_client=_DispatcherAdminStub(),
+                    session=session,
+                    current_user_id=current_user_id,
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypatch):
     session_local = loop_api_env
 

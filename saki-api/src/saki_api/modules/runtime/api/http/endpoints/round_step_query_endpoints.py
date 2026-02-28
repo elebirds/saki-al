@@ -14,6 +14,7 @@ from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import (
     RoundRead,
+    RoundSelectionRead,
     StepRead,
     StepArtifactDownloadResponse,
     StepArtifactsResponse,
@@ -42,7 +43,19 @@ async def get_round(
         required_permission=Permissions.ROUND_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    return RoundRead.model_validate(round_item)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(round_item.loop_id)
+    latest_round = await runtime_service.repository.get_latest_by_loop(loop.id)
+    loop_mode_text = loop.mode.value
+    awaiting_confirm = (
+        loop_mode_text == "active_learning"
+        and loop.phase.value == "al_wait_user"
+        and latest_round is not None
+        and latest_round.id == round_item.id
+        and round_item.state.value == "completed"
+    )
+    payload = RoundRead.model_validate(round_item).model_dump()
+    payload["awaiting_confirm"] = bool(awaiting_confirm)
+    return RoundRead(**payload)
 
 
 @router.get("/rounds/{round_id}/steps", response_model=List[StepRead])
@@ -64,6 +77,26 @@ async def list_round_steps(
     )
     steps = await runtime_service.list_steps(round_id, limit=limit)
     return [StepRead.model_validate(item) for item in steps]
+
+
+@router.get("/rounds/{round_id}/selection", response_model=RoundSelectionRead)
+async def get_round_selection(
+    *,
+    round_id: uuid.UUID,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    round_item = await runtime_service.get_by_id_or_raise(round_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=round_item.project_id,
+        required_permission=Permissions.ROUND_READ,
+        fallback_permissions=(Permissions.PROJECT_READ,),
+    )
+    payload = await runtime_service.get_round_selection(round_id=round_id)
+    return RoundSelectionRead.model_validate(payload)
 
 
 @router.get("/steps/{step_id}", response_model=StepRead)

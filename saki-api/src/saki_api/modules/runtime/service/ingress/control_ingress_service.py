@@ -24,6 +24,7 @@ from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import ProjectDataset
 from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
+from saki_api.modules.runtime.domain.al_round_selection_override import ALRoundSelectionOverride
 from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
 from saki_api.modules.runtime.domain.loop import Loop
@@ -619,6 +620,12 @@ class RuntimeControlIngressService:
         if int(ts) <= 0:
             return datetime.now(UTC)
         return datetime.fromtimestamp(float(ts), tz=UTC)
+
+    @staticmethod
+    def _to_datetime_millis(ts: int) -> datetime:
+        if int(ts) <= 0:
+            return datetime.now(UTC)
+        return datetime.fromtimestamp(float(ts) / 1000.0, tz=UTC)
 
     @staticmethod
     def _parse_cursor(cursor: str | None) -> int:

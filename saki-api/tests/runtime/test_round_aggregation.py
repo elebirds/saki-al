@@ -14,7 +14,7 @@ from saki_api.modules.shared.modeling.enums import (
 )
 
 
-def test_active_learning_round_completed_maps_to_wait_user():
+def test_active_learning_round_completed_keeps_completed_state():
     project_id = uuid.uuid4()
     loop_id = uuid.uuid4()
     round_id = uuid.uuid4()
@@ -68,5 +68,5 @@ def test_active_learning_round_completed_maps_to_wait_user():
     ]
 
     update = build_round_update_from_steps(round_row=round_row, steps=steps)
-    assert update.state == RoundStatus.WAIT_USER
+    assert update.state == RoundStatus.COMPLETED
     assert update.ended_at is not None

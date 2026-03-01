@@ -41,6 +41,7 @@ from saki_api.modules.runtime.api.round_step import (
     LoopUpdateRequest,
     SimulationExperimentCreateRequest,
 )
+from saki_api.modules.runtime.service.runtime_service.snapshot_mixin import SnapshotMixin
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 
 
@@ -236,6 +237,12 @@ def test_loop_control_legacy_entrypoints_removed():
     assert not hasattr(loop_control_endpoint, "pause_loop")
     assert not hasattr(loop_control_endpoint, "resume_loop")
     assert not hasattr(loop_control_endpoint, "stop_loop")
+
+
+def test_effective_round_min_required_requires_full_selected():
+    assert SnapshotMixin._effective_round_min_required(selected_count=0, configured_min_required=1) == 0
+    assert SnapshotMixin._effective_round_min_required(selected_count=2, configured_min_required=1) == 2
+    assert SnapshotMixin._effective_round_min_required(selected_count=5, configured_min_required=2) == 5
 
 
 @pytest.mark.anyio

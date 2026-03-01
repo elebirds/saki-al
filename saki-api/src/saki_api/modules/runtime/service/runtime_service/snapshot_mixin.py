@@ -74,11 +74,11 @@ class _RoundSelectionContext:
 class SnapshotMixin:
     @staticmethod
     def _effective_round_min_required(*, selected_count: int, configured_min_required: int) -> int:
-        configured = max(1, int(configured_min_required or 1))
+        del configured_min_required
         selected = max(0, int(selected_count or 0))
         if selected <= 0:
             return 0
-        return min(configured, selected)
+        return selected
 
     def _compute_seed(self, *, loop_id: uuid.UUID, version_index: int, requested_seed: str | None) -> str:
         raw = str(requested_seed or "").strip()

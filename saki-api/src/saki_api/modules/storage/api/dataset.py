@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from pydantic import ConfigDict
 from sqlmodel import SQLModel
 
 from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin
@@ -27,4 +28,6 @@ class DatasetRead(DatasetBase, TimestampMixin, UUIDMixin):
     """
     Schema for reading a dataset.
     """
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     owner_id: UUID

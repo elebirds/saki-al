@@ -8,7 +8,7 @@ import {usePermission, useSystemCapabilities} from '../../hooks';
 import {DatabaseOutlined, PlusOutlined} from '@ant-design/icons';
 import {PaginatedList} from '../../components/common/PaginatedList';
 
-const {Paragraph, Title} = Typography;
+const {Paragraph, Title, Text} = Typography;
 const {Option} = Select;
 
 const DatasetList: React.FC = () => {
@@ -35,6 +35,23 @@ const DatasetList: React.FC = () => {
         }
     }, [t]);
 
+    const formatRelativeTime = useCallback((value?: string) => {
+        if (!value) return t('common.placeholder');
+        const date = new Date(value);
+        const diffMs = Date.now() - date.getTime();
+        const minutes = Math.floor(diffMs / 60000);
+        if (minutes < 1) return t('common.time.justNow');
+        if (minutes < 60) return t('common.time.minutesAgo', {count: minutes});
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return t('common.time.hoursAgo', {count: hours});
+        const days = Math.floor(hours / 24);
+        if (days < 7) return t('common.time.daysAgo', {count: days});
+        const weeks = Math.floor(days / 7);
+        if (weeks < 5) return t('common.time.weeksAgo', {count: weeks});
+        const months = Math.floor(days / 30);
+        return t('common.time.monthsAgo', {count: months});
+    }, [t]);
+
     const handleCreate = async (values: any) => {
         try {
             await api.createDataset(values);
@@ -49,19 +66,21 @@ const DatasetList: React.FC = () => {
 
     const renderDatasets = useCallback((items: Dataset[], _loading?: boolean) => (
         <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {items.map((dataset) => (
                     <div key={dataset.id} className="min-w-0">
                         <Card
-                            hoverable
-                            title={
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <DatabaseOutlined/>
-                                    <span className="truncate">{dataset.name}</span>
+                            className="!border-github-border !bg-github-panel hover:!border-github-border-muted"
+                            onClick={() => navigate(`/datasets/${dataset.id}`)}
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-4">
+                                <div>
+                                    <div className="text-base font-semibold text-github-text">{dataset.name}</div>
+                                    <Text type="secondary" className="text-sm">
+                                        {dataset.description || t('dataset.list.noDescription')}
+                                    </Text>
                                 </div>
-                            }
-                            extra={
-                                <div className="flex items-center gap-1">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <Tag color={getDatasetTypeColor(dataset.type)}>
                                         {getDatasetTypeLabel(dataset.type)}
                                     </Tag>
@@ -69,16 +88,27 @@ const DatasetList: React.FC = () => {
                                         {dataset.isPublic ? t('dataset.visibility.public') : t('dataset.visibility.private')}
                                     </Tag>
                                 </div>
-                            }
-                            actions={[
-                                <Button type="link" onClick={() => navigate(`/datasets/${dataset.id}`)}>
-                                    {t('dataset.list.open')}
-                                </Button>,
-                            ]}
-                        >
-                            <Paragraph ellipsis={{rows: 2}} className="min-h-[44px]">
-                                {dataset.description || t('dataset.list.noDescription')}
-                            </Paragraph>
+                            </div>
+                            <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-github-muted sm:grid-cols-4">
+                                <div>
+                                    <div className="text-github-text font-semibold">{getDatasetTypeLabel(dataset.type)}</div>
+                                    <div>{t('dataset.list.type')}</div>
+                                </div>
+                                <div>
+                                    <div className="text-github-text font-semibold">
+                                        {dataset.isPublic ? t('dataset.visibility.public') : t('dataset.visibility.private')}
+                                    </div>
+                                    <div>{t('dataset.list.visibility')}</div>
+                                </div>
+                                <div>
+                                    <div className="text-github-text font-semibold">{formatRelativeTime(dataset.createdAt)}</div>
+                                    <div>{t('user.profile.createdAt')}</div>
+                                </div>
+                                <div>
+                                    <div className="text-github-text font-semibold">{formatRelativeTime(dataset.updatedAt)}</div>
+                                    <div>{t('user.profile.updatedAt')}</div>
+                                </div>
+                            </div>
                         </Card>
                     </div>
                 ))}
@@ -87,7 +117,7 @@ const DatasetList: React.FC = () => {
                 <div className="mt-4 text-sm text-github-muted text-center">{t('dataset.list.noMore')}</div>
             ) : null}
         </>
-    ), [getDatasetTypeColor, getDatasetTypeLabel, navigate, t, showNoMore]);
+    ), [formatRelativeTime, getDatasetTypeColor, getDatasetTypeLabel, navigate, t, showNoMore]);
 
     const emptyFallback = useMemo(() => (
         <Card>
@@ -132,11 +162,9 @@ const DatasetList: React.FC = () => {
                     pageSizeOptions={['8', '12', '20', '32', '50']}
                     adaptivePageSize={{
                         enabled: true,
-                        mode: 'grid',
-                        itemMinWidth: 240,
-                        itemHeight: 220,
+                        mode: 'list',
+                        itemHeight: 170,
                         rowGap: 16,
-                        colGap: 16,
                     }}
                     paginationProps={{
                         showTotal: (tot, range) => range ? `${range[0]}-${range[1]} ${t('common.of')} ${tot} ${t('common.items')}` : `${tot} ${t('common.items')}`,

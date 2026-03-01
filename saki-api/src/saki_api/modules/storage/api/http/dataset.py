@@ -50,7 +50,7 @@ async def list_datasets(
     """
     pagination = Pagination.from_page(page=page, limit=limit)
     datasets = await dataset_service.list_datasets(current_user_id, pagination, q=q)
-    return datasets.map(DatasetRead.model_validate)
+    return datasets.map(lambda item: DatasetRead.model_validate(item, from_attributes=True))
 
 
 @router.get("/{dataset_id}", response_model=DatasetRead, dependencies=[

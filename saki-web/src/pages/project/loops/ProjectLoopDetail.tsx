@@ -16,7 +16,6 @@ import {
     Popconfirm,
     Progress,
     Select,
-    Steps,
     Statistic,
     Spin,
     Table,
@@ -29,8 +28,6 @@ import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {
     Loop,
-    LoopLabelReadinessResponse,
-    LoopLabelReadinessCheckpoint,
     LoopSnapshotRead,
     LoopGateResponse,
     RoundSelectionRead,
@@ -38,6 +35,7 @@ import {
     SnapshotUpdateRequest,
     LoopSummary,
     RuntimeRound,
+    PredictionSetRead,
 } from '../../../types';
 
 const {Title, Text} = Typography;
@@ -83,13 +81,6 @@ const MANIFEST_LABEL: Record<string, string> = {
     val_batch: 'VAL_BATCH',
     test_anchor: 'TEST_ANCHOR',
     test_batch: 'TEST_BATCH',
-};
-
-const CHECKPOINT_LABEL: Record<string, string> = {
-    seed: 'Seed 标注',
-    val_anchor: 'Anchor Val 标注',
-    test_anchor: 'Anchor Test 标注',
-    query: 'Query 标注',
 };
 
 const PRIMARY_VIEW_LABEL: Record<string, string> = {
@@ -139,26 +130,26 @@ const buildRoundProgressSummary = (round: RuntimeRound): { percent: number; text
     return {percent, text: `${done}/${total} 完成 · ${running} 运行中`};
 };
 
-const checkpointOrder = (checkpoint: LoopLabelReadinessCheckpoint): number => {
-    const keyOrder: Record<string, number> = {
-        seed: 0,
-        val_anchor: 1,
-        test_anchor: 2,
-        query: 3,
-    };
-    return checkpoint.roundIndex * 10 + (keyOrder[checkpoint.key] ?? 9);
-};
-
 const formatGateHint = (gateInfo: LoopGateResponse | null): string => {
     if (!gateInfo) return '暂无 Gate 决策信息。';
     const gate = gateInfo.gate;
     const meta = gateInfo.gateMeta || {};
+    const num = (...keys: string[]): number => {
+        for (const key of keys) {
+            if (meta[key] !== undefined && meta[key] !== null) {
+                return Number(meta[key] || 0);
+            }
+        }
+        return 0;
+    };
     if (gate === 'need_snapshot') return '需要先初始化 Snapshot，才能进入主动学习流程。';
-    if (gate === 'need_labels') return `Round 0 就绪未完成，仍缺 ${Number(meta.gap_count || 0)} 个标注。`;
+    if (gate === 'need_labels') return `Round 0 就绪未完成，仍缺 ${num('gapCount', 'gap_count')} 个标注。`;
     if (gate === 'need_round_labels') {
-        return `本轮 Query 仍需补标：${Number(meta.revealed_count || 0)}/${Number(meta.min_required || 0)}。`;
+        return `本轮 Query 仍需补标：缺失 ${num('missingCount', 'missing_count')} / 已选 ${num('selectedCount', 'selected_count')}（达标 ${num('revealedCount', 'revealed_count')}/${num('minRequired', 'min_required')}）。`;
     }
-    if (gate === 'can_confirm') return '本轮已满足确认条件，可执行 Confirm Reveal。';
+    if (gate === 'can_confirm') {
+        return `本轮已满足确认条件（${num('revealedCount', 'revealed_count')}/${num('minRequired', 'min_required')}），可执行 Confirm Reveal。`;
+    }
     if (gate === 'can_next_round') return '本轮已确认，可启动下一轮。';
     if (gate === 'can_retry') return '最新失败轮可重试。';
     if (gate === 'running') return '当前 Loop 正在执行中。';
@@ -184,7 +175,10 @@ const ProjectLoopDetail: React.FC = () => {
     const [rounds, setRounds] = useState<RuntimeRound[]>([]);
     const [gateInfo, setGateInfo] = useState<LoopGateResponse | null>(null);
     const [snapshotInfo, setSnapshotInfo] = useState<LoopSnapshotRead | null>(null);
-    const [labelReadiness, setLabelReadiness] = useState<LoopLabelReadinessResponse | null>(null);
+    const [predictionSets, setPredictionSets] = useState<PredictionSetRead[]>([]);
+    const [predictionLoading, setPredictionLoading] = useState(false);
+    const [predictionSubmitting, setPredictionSubmitting] = useState(false);
+    const [applyingPredictionSetId, setApplyingPredictionSetId] = useState<string>('');
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
     const [snapshotUpdateOpen, setSnapshotUpdateOpen] = useState(false);
     const [selectionAdjustOpen, setSelectionAdjustOpen] = useState(false);
@@ -214,18 +208,14 @@ const ProjectLoopDetail: React.FC = () => {
         setRounds(roundRows);
         const gateRow = await api.getLoopGate(loopId).catch(() => null);
         setGateInfo(gateRow);
-        if (loopRow.mode === 'active_learning') {
+        if (loopRow.mode === 'active_learning' || loopRow.mode === 'simulation') {
             const snapshotRow = await api.getLoopSnapshot(loopId).catch(() => null);
-            let readinessRow: LoopLabelReadinessResponse | null = null;
-            if (snapshotRow?.activeSnapshotVersionId) {
-                readinessRow = await api.getLoopLabelReadiness(loopId).catch(() => null);
-            }
             setSnapshotInfo(snapshotRow);
-            setLabelReadiness(readinessRow);
         } else {
             setSnapshotInfo(null);
-            setLabelReadiness(null);
         }
+        const predictionRows = await api.listPredictionSets(loopId, 20).catch(() => []);
+        setPredictionSets(predictionRows);
     }, [loopId, projectId]);
 
     const loadData = useCallback(async () => {
@@ -296,7 +286,7 @@ const ProjectLoopDetail: React.FC = () => {
                     blockingReasons: result.blockingReasons || [],
                 });
                 const actionKeys = new Set((result.actions || []).map((item) => item.key));
-                if (actionKeys.has('snapshot_init') && loop?.mode === 'active_learning') {
+                if (actionKeys.has('snapshot_init')) {
                     initForm.resetFields();
                     initForm.setFieldsValue(SNAPSHOT_INIT_DEFAULTS);
                     setSnapshotInitOpen(true);
@@ -335,6 +325,52 @@ const ProjectLoopDetail: React.FC = () => {
             setCleaningRound(null);
         }
     };
+
+    const refreshPredictionSets = useCallback(async () => {
+        if (!loopId) return;
+        setPredictionLoading(true);
+        try {
+            const rows = await api.listPredictionSets(loopId, 20);
+            setPredictionSets(rows);
+        } catch (error: any) {
+            messageApi.error(error?.message || '加载 PredictionSet 失败');
+        } finally {
+            setPredictionLoading(false);
+        }
+    }, [loopId, messageApi]);
+
+    const handleGeneratePredictionSet = useCallback(async () => {
+        if (!loopId) return;
+        const sourceRoundId = rounds[0]?.id;
+        if (!sourceRoundId) {
+            messageApi.warning('当前没有可用 round 生成 PredictionSet');
+            return;
+        }
+        setPredictionSubmitting(true);
+        try {
+            const row = await api.generatePredictionSet(loopId, {sourceRoundId});
+            messageApi.success(`PredictionSet 已生成：${row.id}`);
+            await refreshPredictionSets();
+        } catch (error: any) {
+            messageApi.error(error?.message || '生成 PredictionSet 失败');
+        } finally {
+            setPredictionSubmitting(false);
+        }
+    }, [loopId, rounds, refreshPredictionSets, messageApi]);
+
+    const handleApplyPredictionSet = useCallback(async (predictionSetId: string) => {
+        if (!predictionSetId) return;
+        setApplyingPredictionSetId(predictionSetId);
+        try {
+            const result = await api.applyPredictionSet(predictionSetId, {writeTarget: 'draft'});
+            messageApi.success(`已应用到 Draft：${result.appliedCount} 条`);
+            await refreshPredictionSets();
+        } catch (error: any) {
+            messageApi.error(error?.message || '应用 PredictionSet 失败');
+        } finally {
+            setApplyingPredictionSetId('');
+        }
+    }, [refreshPredictionSets, messageApi]);
 
     const parseSampleIds = (raw?: string): string[] | undefined => {
         const text = String(raw || '').trim();
@@ -482,6 +518,52 @@ const ProjectLoopDetail: React.FC = () => {
         }
     };
 
+    const primaryAction = gateInfo?.primaryAction || null;
+
+    const navigateToScopedAnnotate = async (actionPayload?: Record<string, any>) => {
+        const meta = (gateInfo?.gateMeta as Record<string, any> | undefined) || {};
+        const scope = (meta.annotationScope as Record<string, any> | undefined) || {};
+        const payloadScope = (actionPayload?.annotationScope as Record<string, any> | undefined) || {};
+        const roundId = String(
+            payloadScope.roundId
+            || payloadScope.round_id
+            || scope.roundId
+            || scope.round_id
+            || actionPayload?.roundId
+            || actionPayload?.round_id
+            || meta.roundId
+            || meta.round_id
+            || '',
+        );
+        if (!projectId || !loopId || !roundId) {
+            messageApi.warning('当前 Gate 未提供可标注的 Round 范围');
+            return;
+        }
+        let branchName = 'master';
+        if (loop?.branchId) {
+            try {
+                const branches = await api.getProjectBranches(projectId);
+                const hit = branches.find((item) => item.id === loop.branchId);
+                if (hit?.name) {
+                    branchName = hit.name;
+                }
+            } catch {
+                // ignore branch resolve errors and fallback to master
+            }
+        }
+        const next = new URLSearchParams();
+        next.set('branch', branchName);
+        next.set('status', 'all');
+        next.set('sort', 'createdAt:desc');
+        next.set('page', '1');
+        next.set('pageSize', '24');
+        next.set('runtimeScope', 'round_missing_labels');
+        next.set('runtimeLoopId', loopId);
+        next.set('runtimeRoundId', roundId);
+        next.set('runtimeBranchName', branchName);
+        navigate(`/projects/${projectId}/samples?${next.toString()}`);
+    };
+
     const handleContinue = async () => {
         if (primaryAction?.key === 'snapshot_init') {
             openSnapshotInitModal();
@@ -495,10 +577,13 @@ const ProjectLoopDetail: React.FC = () => {
             await openSelectionAdjustModal();
             return;
         }
+        if (primaryAction?.key === 'annotate') {
+            await navigateToScopedAnnotate(primaryAction.payload || {});
+            return;
+        }
         await executeLoopAction(primaryAction?.key || undefined);
     };
 
-    const primaryAction = gateInfo?.primaryAction || null;
     const continueLabel = primaryAction ? `Continue · ${primaryAction.label}` : 'Continue';
     const continueDisabled = !primaryAction || !primaryAction.runnable;
     const advancedActionItems = (gateInfo?.actions || [])
@@ -520,14 +605,15 @@ const ProjectLoopDetail: React.FC = () => {
                     void openSelectionAdjustModal();
                     return;
                 }
+                if (item.key === 'annotate') {
+                    void navigateToScopedAnnotate(item.payload || {});
+                    return;
+                }
                 void executeLoopAction(item.key);
             },
             danger: item.key === 'stop',
         }));
 
-    const checkpointRows = [...(labelReadiness?.checkpoints || [])].sort((a, b) => checkpointOrder(a) - checkpointOrder(b));
-    const activeCheckpointId = labelReadiness?.activeCheckpointId || null;
-    const activeCheckpoint = checkpointRows.find((item) => item.checkpointId === activeCheckpointId) || null;
     const primaryView = snapshotInfo?.primaryView || {
         train: {count: 0, semantics: 'effective_train' as const},
         pool: {count: 0, semantics: 'hidden_label_pool' as const},
@@ -632,11 +718,6 @@ const ProjectLoopDetail: React.FC = () => {
                                     {gateInfo?.gate || loop.gate || '-'}
                                 </Tag>
                                 {gateInfo?.primaryAction ? <Tag color="blue">下一步: {gateInfo.primaryAction.label}</Tag> : null}
-                                {activeCheckpoint ? (
-                                    <Tag color={activeCheckpoint.blocking ? 'warning' : 'success'}>
-                                        当前焦点: {activeCheckpoint.checkpointId}
-                                    </Tag>
-                                ) : null}
                             </div>
                             <Text type="secondary">{formatGateHint(gateInfo)}</Text>
                             <div className="flex flex-wrap items-center gap-2">
@@ -671,83 +752,7 @@ const ProjectLoopDetail: React.FC = () => {
                 </Card>
             ) : null}
 
-            {loop.mode === 'active_learning' ? (
-                <Card className="!border-github-border !bg-github-panel" title="Label Readiness">
-                    {labelReadiness ? (
-                        <div className="flex flex-col gap-4">
-                            <Steps
-                                current={Math.max(0, checkpointRows.findIndex((item) => item.checkpointId === activeCheckpointId))}
-                                items={checkpointRows.map((checkpoint) => ({
-                                    title: checkpoint.checkpointId,
-                                    description: CHECKPOINT_LABEL[checkpoint.key] || checkpoint.key,
-                                    status: checkpoint.blocking ? 'error' : 'finish',
-                                }))}
-                                responsive
-                                size="small"
-                            />
-                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                                {checkpointRows.map((checkpoint) => {
-                                    const isActive = checkpoint.checkpointId === activeCheckpointId;
-                                    const missingPreview = (checkpoint.missingSampleIdsPreview || []).slice(0, 5);
-                                    return (
-                                        <Card
-                                            key={checkpoint.checkpointId}
-                                            size="small"
-                                            className={`!border-github-border/80 !bg-github-bg ${isActive ? 'ring-1 ring-blue-500/50' : ''}`}
-                                            title={
-                                                <div className="flex items-center gap-2">
-                                                    <Text strong>{checkpoint.checkpointId}</Text>
-                                                    <Tag color={checkpoint.blocking ? 'warning' : 'success'}>
-                                                        {checkpoint.blocking ? 'Blocking' : 'Ready'}
-                                                    </Tag>
-                                                </div>
-                                            }
-                                        >
-                                            <div className="flex flex-col gap-2">
-                                                <Text type="secondary">{CHECKPOINT_LABEL[checkpoint.key] || checkpoint.key}</Text>
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <Tag>Total: {checkpoint.total}</Tag>
-                                                    <Tag color={checkpoint.blocking ? 'warning' : 'green'}>
-                                                        Missing: {checkpoint.missingCount}
-                                                    </Tag>
-                                                    {typeof checkpoint.selectedCount === 'number' ? (
-                                                        <Tag color="blue">Selected: {checkpoint.selectedCount}</Tag>
-                                                    ) : null}
-                                                    {typeof checkpoint.revealedCount === 'number' ? (
-                                                        <Tag color="cyan">Revealed: {checkpoint.revealedCount}</Tag>
-                                                    ) : null}
-                                                </div>
-                                                <Text type="secondary" className="text-xs">
-                                                    {checkpoint.blocking
-                                                        ? (checkpoint.key === 'query'
-                                                            ? '请先补齐本轮 Query 样本标注后再继续。'
-                                                            : '请先补齐此检查点标注。')
-                                                        : (checkpoint.key === 'query'
-                                                            ? '该轮 Query 标注就绪，可继续流程。'
-                                                            : '该检查点已就绪。')}
-                                                </Text>
-                                                <Text className="text-xs">
-                                                    缺失样本预览: {missingPreview.length > 0 ? missingPreview.join(', ') : '-'}
-                                                    {checkpoint.previewTruncated ? ' ...' : ''}
-                                                </Text>
-                                            </div>
-                                        </Card>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    ) : (
-                        <Alert
-                            type="info"
-                            showIcon
-                            message="当前暂无 Label Readiness 数据"
-                            description="初始化 Snapshot 后会出现 Round 0 与当前轮的标注就绪检查点。"
-                        />
-                    )}
-                </Card>
-            ) : null}
-
-            {loop.mode === 'active_learning' ? (
+            {(loop.mode === 'active_learning' || loop.mode === 'simulation') ? (
                 <Card className="!border-github-border !bg-github-panel" title="Snapshot 概览">
                     {snapshotInfo?.active ? (
                         <div className="flex flex-col gap-3">
@@ -812,11 +817,80 @@ const ProjectLoopDetail: React.FC = () => {
                             type="info"
                             showIcon
                             message="当前尚未初始化 Snapshot"
-                            description="请先执行“初始化 Snapshot”，再开始主动学习循环。"
+                            description="请先执行“初始化 Snapshot”，再开始本模式循环。"
                         />
                     )}
                 </Card>
             ) : null}
+
+            <Card
+                className="!border-github-border !bg-github-panel"
+                title="PredictionSet（循环外预测辅助标注）"
+                extra={(
+                    <div className="flex items-center gap-2">
+                        <Button onClick={() => void refreshPredictionSets()} loading={predictionLoading}>
+                            刷新
+                        </Button>
+                        <Button type="primary" onClick={() => void handleGeneratePredictionSet()} loading={predictionSubmitting}>
+                            生成（最新 Round）
+                        </Button>
+                    </div>
+                )}
+            >
+                <Table
+                    size="small"
+                    rowKey={(row) => row.id}
+                    dataSource={predictionSets}
+                    pagination={{pageSize: 6, showSizeChanger: false}}
+                    columns={[
+                        {
+                            title: 'ID',
+                            dataIndex: 'id',
+                            render: (value: string) => <Text code>{`${value.slice(0, 8)}...`}</Text>,
+                        },
+                        {
+                            title: '状态',
+                            dataIndex: 'status',
+                            width: 140,
+                            render: (value: string) => <Tag>{value}</Tag>,
+                        },
+                        {
+                            title: '来源',
+                            width: 220,
+                            render: (_: unknown, row: PredictionSetRead) => (
+                                <Text type="secondary">
+                                    {row.sourceRoundId ? `round:${row.sourceRoundId.slice(0, 8)}...` : '-'}
+                                </Text>
+                            ),
+                        },
+                        {
+                            title: '条目数',
+                            dataIndex: 'totalItems',
+                            width: 100,
+                        },
+                        {
+                            title: '创建时间',
+                            dataIndex: 'createdAt',
+                            width: 180,
+                            render: (value: string) => new Date(value).toLocaleString(),
+                        },
+                        {
+                            title: '操作',
+                            width: 180,
+                            render: (_: unknown, row: PredictionSetRead) => (
+                                <Button
+                                    size="small"
+                                    onClick={() => void handleApplyPredictionSet(row.id)}
+                                    loading={applyingPredictionSetId === row.id}
+                                    disabled={row.status === 'applied'}
+                                >
+                                    应用到 Draft
+                                </Button>
+                            ),
+                        },
+                    ]}
+                />
+            </Card>
 
             <Card className="!border-github-border !bg-github-panel" title="当前 Loop 的 Rounds">
                 <Table

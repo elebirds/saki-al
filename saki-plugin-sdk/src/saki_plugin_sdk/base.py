@@ -358,17 +358,11 @@ class ExecutorPlugin(ABC):
                 requires_trained_model=True,
                 primary_model_artifact_name="best.pt",
             )
-        if normalized == "export":
+        if normalized == "predict":
             return StepRuntimeRequirements(
                 requires_prepare_data=False,
                 requires_trained_model=True,
                 primary_model_artifact_name="best.pt",
-            )
-        if normalized == "upload_artifact":
-            return StepRuntimeRequirements(
-                requires_prepare_data=False,
-                requires_trained_model=False,
-                primary_model_artifact_name="",
             )
         if normalized == "custom":
             return StepRuntimeRequirements(
@@ -425,31 +419,18 @@ class ExecutorPlugin(ABC):
         del workspace, params, emit
         raise NotImplementedError("eval step is not implemented by this plugin")
 
-    async def export(
+    async def predict(
         self,
         workspace: Workspace,
         params: dict[str, Any],
         emit: EventCallback,
     ) -> TrainOutput:
-        """Execute model export step.
+        """Execute predict step.
 
-        Plugins that declare ``export`` in ``supported_step_types`` should override.
+        Plugins that declare ``predict`` in ``supported_step_types`` should override.
         """
         del workspace, params, emit
-        raise NotImplementedError("export step is not implemented by this plugin")
-
-    async def upload_artifact(
-        self,
-        workspace: Workspace,
-        params: dict[str, Any],
-        emit: EventCallback,
-    ) -> TrainOutput:
-        """Execute artifact preparation/upload step.
-
-        Plugins that declare ``upload_artifact`` in ``supported_step_types`` should override.
-        """
-        del workspace, params, emit
-        raise NotImplementedError("upload_artifact step is not implemented by this plugin")
+        raise NotImplementedError("predict step is not implemented by this plugin")
 
     async def stop(self, step_id: str) -> None:
         """Request graceful stop (optional override).

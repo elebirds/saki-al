@@ -11,7 +11,7 @@ from saki_api.modules.shared.modeling.enums import VisibilitySource
 
 
 class ALLoopVisibility(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "al_loop_visibility"
+    __tablename__ = "loop_sample_state"
 
     loop_id: uuid.UUID = Field(primary_key=True, foreign_key="loop.id")
     sample_id: uuid.UUID = Field(primary_key=True, foreign_key="sample.id")

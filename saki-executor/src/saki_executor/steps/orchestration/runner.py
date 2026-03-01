@@ -26,15 +26,12 @@ class StepPipelineRunner:
     _SUPPORTED_MODES = SUPPORTED_LOOP_MODES
     _ORCHESTRATOR_ONLY_STEP_TYPES = {
         "select",
-        "activate_samples",
-        "advance_branch",
     }
     _TRAINING_PIPELINE_STEP_TYPES = {
         "train",
         "score",
         "eval",
-        "export",
-        "upload_artifact",
+        "predict",
         "custom",
     }
     _TRAIN_ONLY_STEP_TYPES = {
@@ -49,11 +46,8 @@ class StepPipelineRunner:
     _EVAL_ONLY_STEP_TYPES = {
         "eval",
     }
-    _EXPORT_ONLY_STEP_TYPES = {
-        "export",
-    }
-    _UPLOAD_ARTIFACT_ONLY_STEP_TYPES = {
-        "upload_artifact",
+    _PREDICT_ONLY_STEP_TYPES = {
+        "predict",
     }
 
     def __init__(self, *, manager: StepManager, request: StepExecutionRequest) -> None:
@@ -96,19 +90,12 @@ class StepPipelineRunner:
                     reporter=reporter,
                     runtime_requirements=runtime_requirements,
                 )
-            elif self._request.step_type in self._EXPORT_ONLY_STEP_TYPES:
-                metrics, artifacts, candidates, optional_upload_failures = await self._run_export_pipeline(
+            elif self._request.step_type in self._PREDICT_ONLY_STEP_TYPES:
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_predict_pipeline(
                     plugin=plugin,
                     workspace=workspace,
                     emitter=emitter,
-                    reporter=reporter,
-                )
-            elif self._request.step_type in self._UPLOAD_ARTIFACT_ONLY_STEP_TYPES:
-                metrics, artifacts, candidates, optional_upload_failures = await self._run_upload_artifact_pipeline(
-                    plugin=plugin,
-                    workspace=workspace,
-                    emitter=emitter,
-                    reporter=reporter,
+                    runtime_requirements=runtime_requirements,
                 )
             elif self._request.step_type in self._TRAIN_ONLY_STEP_TYPES:
                 metrics, artifacts, candidates, optional_upload_failures = await self._run_train_pipeline(
@@ -603,35 +590,21 @@ class StepPipelineRunner:
         )
         return output.metrics, artifacts, [], optional_upload_failures
 
-    async def _run_export_pipeline(
+    async def _run_predict_pipeline(
         self,
         *,
         plugin: Any,
         workspace: Workspace,
         emitter: StepEventEmitter,
-        reporter: StepReporter,
+        runtime_requirements: StepRuntimeRequirements,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
-        output = await plugin.export(workspace, self._effective_plugin_params, emitter.emit)
-        artifacts, optional_upload_failures = await self._upload_artifacts(
-            output_artifacts=output.artifacts,
-            reporter=reporter,
+        # PREDICT currently复用 score 语义，输出候选及预测快照供 prediction_set 持久化。
+        return await self._run_score_pipeline(
+            plugin=plugin,
+            workspace=workspace,
+            emitter=emitter,
+            runtime_requirements=runtime_requirements,
         )
-        return output.metrics, artifacts, [], optional_upload_failures
-
-    async def _run_upload_artifact_pipeline(
-        self,
-        *,
-        plugin: Any,
-        workspace: Workspace,
-        emitter: StepEventEmitter,
-        reporter: StepReporter,
-    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
-        output = await plugin.upload_artifact(workspace, self._effective_plugin_params, emitter.emit)
-        artifacts, optional_upload_failures = await self._upload_artifacts(
-            output_artifacts=output.artifacts,
-            reporter=reporter,
-        )
-        return output.metrics, artifacts, [], optional_upload_failures
 
     async def _run_score_pipeline(
         self,

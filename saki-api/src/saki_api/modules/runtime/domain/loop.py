@@ -44,7 +44,7 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
 
     active_snapshot_version_id: Optional[uuid.UUID] = Field(
         default=None,
-        foreign_key="al_snapshot_version.id",
+        foreign_key="loop_snapshot_version.id",
         index=True,
     )
     last_confirmed_commit_id: Optional[uuid.UUID] = Field(default=None, foreign_key="commit.id", index=True)

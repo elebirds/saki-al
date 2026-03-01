@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
 import {api} from '../../services/api';
-import {Dataset, Project, ProjectBranch, ProjectSample} from '../../types';
+import {Dataset, Project, ProjectBranch, ProjectSample, RoundMissingSamplesDatasetStat} from '../../types';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import CommitModal from '../../components/project/CommitModal';
 import {PaginatedList} from '../../components/common/PaginatedList';
@@ -55,6 +55,11 @@ const ProjectSamplesAnnotations: React.FC = () => {
     const branchName = searchParams.get('branch') || 'master';
     const page = Number(searchParams.get('page') || 1);
     const pageSize = Number(searchParams.get('pageSize') || 24);
+    const runtimeScope = (searchParams.get('runtimeScope') || '') as '' | 'round_missing_labels';
+    const runtimeLoopId = searchParams.get('runtimeLoopId') || '';
+    const runtimeRoundId = searchParams.get('runtimeRoundId') || '';
+    const runtimeBranchName = searchParams.get('runtimeBranchName') || '';
+    const runtimeScopeActive = runtimeScope === 'round_missing_labels' && !!runtimeLoopId && !!runtimeRoundId;
 
     const sortBy = parsedSort.sortBy;
     const sortOrder = parsedSort.sortOrder;
@@ -67,6 +72,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
         offset: (page - 1) * pageSize,
         size: 0,
     });
+    const [runtimeDatasetStats, setRuntimeDatasetStats] = useState<RoundMissingSamplesDatasetStat[]>([]);
 
     const statusOptions = [
         {label: t('project.samples.filters.all'), value: 'all'},
@@ -98,13 +104,22 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 setBranches(branchList || []);
 
                 const datasetParam = searchParams.get('datasetId');
-                if (resolved.length > 0 && (!datasetParam || !resolved.find((d) => d.id === datasetParam))) {
+                if (!runtimeScopeActive && resolved.length > 0 && (!datasetParam || !resolved.find((d) => d.id === datasetParam))) {
                     const next = new URLSearchParams(searchParams);
                     next.set('datasetId', resolved[0].id);
                     setSearchParams(next, {replace: true});
                 }
 
                 const branchParam = searchParams.get('branch');
+                const expectedRuntimeBranch = runtimeScopeActive
+                    ? runtimeBranchName
+                    : '';
+                if (expectedRuntimeBranch && branchList.find((b) => b.name === expectedRuntimeBranch) && branchParam !== expectedRuntimeBranch) {
+                    const next = new URLSearchParams(searchParams);
+                    next.set('branch', expectedRuntimeBranch);
+                    setSearchParams(next, {replace: true});
+                    return;
+                }
                 if (branchList.length > 0 && (!branchParam || !branchList.find((b) => b.name === branchParam))) {
                     const next = new URLSearchParams(searchParams);
                     next.set('branch', branchList.find(b => b.name === 'master')?.name || branchList[0].name);
@@ -112,7 +127,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                 }
             })
             .finally(() => setLoadingMeta(false));
-    }, [projectId]);
+    }, [projectId, runtimeScopeActive, runtimeBranchName]);
 
     useEffect(() => {
         setSampleMeta((prev) => ({
@@ -139,18 +154,34 @@ const ProjectSamplesAnnotations: React.FC = () => {
             message.warning(t('common.noPermission'));
             return;
         }
-        if (!projectId || !selectedDatasetId) return;
-        const response = await api.getProjectSamples(projectId, selectedDatasetId, {
-            q: q || undefined,
-            status,
-            branchName,
-            sortBy,
-            sortOrder: sortOrder as 'asc' | 'desc',
-            page: 1,
-            limit: 1,
-        });
+        if (!projectId) return;
+        const response = runtimeScopeActive
+            ? await api.getRoundMissingSamples(runtimeLoopId, runtimeRoundId, {
+                datasetId: selectedDatasetId || undefined,
+                q: q || undefined,
+                sortBy,
+                sortOrder: sortOrder as 'asc' | 'desc',
+                page: 1,
+                limit: 1,
+            })
+            : (selectedDatasetId
+                ? await api.getProjectSamples(projectId, selectedDatasetId, {
+                    q: q || undefined,
+                    status,
+                    branchName,
+                    sortBy,
+                    sortOrder: sortOrder as 'asc' | 'desc',
+                    page: 1,
+                    limit: 1,
+                })
+                : null);
+        if (!response) return;
         const firstSample = response.items?.[0];
         if (!firstSample) return;
+        const targetDatasetId = runtimeScopeActive
+            ? String(firstSample.datasetId || selectedDatasetId || '')
+            : selectedDatasetId;
+        if (!targetDatasetId) return;
         const nextParams = new URLSearchParams();
         nextParams.set('sampleId', firstSample.id);
         nextParams.set('branch', branchName);
@@ -159,15 +190,45 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('sort', sortValue);
         nextParams.set('page', '1');
         nextParams.set('pageSize', String(pageSize));
-        navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [canAnnotate, projectId, selectedDatasetId, q, status, branchName, sortBy, sortOrder, sortValue, pageSize, navigate, t]);
+        if (runtimeScopeActive) {
+            nextParams.set('runtimeScope', runtimeScope);
+            nextParams.set('runtimeLoopId', runtimeLoopId);
+            nextParams.set('runtimeRoundId', runtimeRoundId);
+            if (runtimeBranchName) {
+                nextParams.set('runtimeBranchName', runtimeBranchName);
+            }
+        }
+        navigate(`/projects/${projectId}/workspace/${targetDatasetId}?${nextParams.toString()}`);
+    }, [
+        canAnnotate,
+        projectId,
+        selectedDatasetId,
+        q,
+        status,
+        branchName,
+        sortBy,
+        sortOrder,
+        sortValue,
+        pageSize,
+        navigate,
+        t,
+        runtimeScopeActive,
+        runtimeScope,
+        runtimeLoopId,
+        runtimeRoundId,
+        runtimeBranchName,
+    ]);
 
     const handleSampleClick = useCallback((sample: ProjectSample) => {
         if (!canAnnotate) {
             message.warning(t('common.noPermission'));
             return;
         }
-        if (!projectId || !selectedDatasetId) return;
+        if (!projectId) return;
+        const targetDatasetId = runtimeScopeActive
+            ? String(sample.datasetId || selectedDatasetId || '')
+            : selectedDatasetId;
+        if (!targetDatasetId) return;
         const nextParams = new URLSearchParams();
         nextParams.set('sampleId', sample.id);
         nextParams.set('branch', branchName);
@@ -176,8 +237,33 @@ const ProjectSamplesAnnotations: React.FC = () => {
         nextParams.set('sort', sortValue);
         nextParams.set('page', String(page));
         nextParams.set('pageSize', String(pageSize));
-        navigate(`/projects/${projectId}/workspace/${selectedDatasetId}?${nextParams.toString()}`);
-    }, [canAnnotate, projectId, selectedDatasetId, branchName, q, status, sortValue, page, pageSize, navigate, t]);
+        if (runtimeScopeActive) {
+            nextParams.set('runtimeScope', runtimeScope);
+            nextParams.set('runtimeLoopId', runtimeLoopId);
+            nextParams.set('runtimeRoundId', runtimeRoundId);
+            if (runtimeBranchName) {
+                nextParams.set('runtimeBranchName', runtimeBranchName);
+            }
+        }
+        navigate(`/projects/${projectId}/workspace/${targetDatasetId}?${nextParams.toString()}`);
+    }, [
+        canAnnotate,
+        projectId,
+        selectedDatasetId,
+        branchName,
+        q,
+        status,
+        sortValue,
+        page,
+        pageSize,
+        navigate,
+        t,
+        runtimeScopeActive,
+        runtimeScope,
+        runtimeLoopId,
+        runtimeRoundId,
+        runtimeBranchName,
+    ]);
 
     const handleCommit = useCallback(async (message: string) => {
         if (!projectId) return;
@@ -195,9 +281,25 @@ const ProjectSamplesAnnotations: React.FC = () => {
     }, [projectId, branchName]);
 
     const fetchSamples = useCallback(async (nextPage: number, nextPageSize: number) => {
-        if (!projectId || !selectedDatasetId) {
+        if (!projectId) {
             return createEmptyPaginationResponse<ProjectSample>(nextPageSize, nextPage);
         }
+        if (!runtimeScopeActive && !selectedDatasetId) {
+            return createEmptyPaginationResponse<ProjectSample>(nextPageSize, nextPage);
+        }
+        if (runtimeScopeActive) {
+            const response = await api.getRoundMissingSamples(runtimeLoopId, runtimeRoundId, {
+                datasetId: selectedDatasetId || undefined,
+                q: q || undefined,
+                sortBy,
+                sortOrder: sortOrder as 'asc' | 'desc',
+                page: nextPage,
+                limit: nextPageSize,
+            });
+            setRuntimeDatasetStats(response.datasetStats || []);
+            return response;
+        }
+        setRuntimeDatasetStats([]);
         return await api.getProjectSamples(projectId, selectedDatasetId, {
             q: q || undefined,
             status,
@@ -207,7 +309,18 @@ const ProjectSamplesAnnotations: React.FC = () => {
             page: nextPage,
             limit: nextPageSize,
         });
-    }, [projectId, selectedDatasetId, q, status, branchName, sortBy, sortOrder]);
+    }, [
+        projectId,
+        selectedDatasetId,
+        q,
+        status,
+        branchName,
+        sortBy,
+        sortOrder,
+        runtimeScopeActive,
+        runtimeLoopId,
+        runtimeRoundId,
+    ]);
 
     const totalSamplePages = Math.max(1, Math.ceil(sampleMeta.total / (sampleMeta.limit || 1)));
 
@@ -231,7 +344,8 @@ const ProjectSamplesAnnotations: React.FC = () => {
                                 value={selectedDatasetId || undefined}
                                 placeholder={t('project.samples.filters.datasetPlaceholder')}
                                 className="w-[210px] shrink-0"
-                                onChange={(value) => updateParams({datasetId: value, page: '1'})}
+                                allowClear={runtimeScopeActive}
+                                onChange={(value) => updateParams({datasetId: value || null, page: '1'})}
                                 loading={loadingMeta}
                             >
                                 {datasets.map((dataset) => (
@@ -295,7 +409,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                                     type="primary"
                                     icon={<PlayCircleOutlined/>}
                                     onClick={handleStartAnnotate}
-                                    disabled={!selectedDatasetId}
+                                    disabled={!runtimeScopeActive && !selectedDatasetId}
                                 >
                                     {t('project.samples.startAnnotating')}
                                 </Button>
@@ -317,15 +431,21 @@ const ProjectSamplesAnnotations: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="flex items-center gap-1 text-xs text-github-muted">
-                            <FilterOutlined/>
-                            {t('project.samples.filterLabel')}
-                        </span>
-                        <Segmented
-                            options={statusOptions}
-                            value={status}
-                            onChange={(value) => updateParams({status: String(value), page: '1'})}
-                        />
+                        {runtimeScopeActive ? (
+                            <Tag color="gold">Scope: Round Missing Labels</Tag>
+                        ) : (
+                            <>
+                                <span className="flex items-center gap-1 text-xs text-github-muted">
+                                    <FilterOutlined/>
+                                    {t('project.samples.filterLabel')}
+                                </span>
+                                <Segmented
+                                    options={statusOptions}
+                                    value={status}
+                                    onChange={(value) => updateParams({status: String(value), page: '1'})}
+                                />
+                            </>
+                        )}
 
                         <span className="ml-2 flex items-center gap-1 text-xs text-github-muted">
                             <PartitionOutlined/>
@@ -336,6 +456,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                             onChange={(value) => updateParams({branch: value, page: '1'})}
                             className="w-[150px]"
                             placeholder={t('project.samples.filters.branchPlaceholder')}
+                            disabled={runtimeScopeActive && !!runtimeBranchName}
                         >
                             {branches.map((branch) => (
                                 <Select.Option key={branch.id} value={branch.name}>
@@ -358,6 +479,14 @@ const ProjectSamplesAnnotations: React.FC = () => {
                         <div className="ml-auto flex flex-wrap items-center gap-2 text-xs text-github-muted">
                             {selectedDataset ? <Tag color="blue">{selectedDataset.name}</Tag> : null}
                             {selectedBranch ? <Tag color="geekblue">{selectedBranch.name}</Tag> : null}
+                            {runtimeScopeActive ? <Tag color="gold">Loop Scope</Tag> : null}
+                            {runtimeScopeActive
+                                ? (runtimeDatasetStats || []).map((item) => (
+                                    <Tag key={item.datasetId} color="purple">
+                                        {item.datasetName || item.datasetId.slice(0, 8)}: {item.count}
+                                    </Tag>
+                                ))
+                                : null}
                             <span>{t('project.samples.resultHint', {count: sampleMeta.total})}</span>
                         </div>
                     </div>
@@ -369,12 +498,12 @@ const ProjectSamplesAnnotations: React.FC = () => {
                     <div className="flex h-full items-center justify-center">
                         <Spin/>
                     </div>
-                ) : !selectedDataset ? (
+                ) : (!runtimeScopeActive && !selectedDataset) ? (
                     <Empty description={t('project.samples.emptySelectDataset')}/>
                 ) : (
                     <PaginatedList<ProjectSample>
                         fetchData={fetchSamples}
-                        enabled={!!projectId && !!selectedDatasetId}
+                        enabled={!!projectId && (runtimeScopeActive || !!selectedDatasetId)}
                         controlledPage={page}
                         controlledPageSize={pageSize}
                         adaptivePageSize={{
@@ -391,7 +520,7 @@ const ProjectSamplesAnnotations: React.FC = () => {
                                 pageSize: String(nextSize),
                             });
                         }}
-                        refreshKey={`${projectId || ''}:${selectedDatasetId}:${q}:${status}:${branchName}:${sortValue}:${samplesRefreshToken}`}
+                        refreshKey={`${projectId || ''}:${selectedDatasetId}:${q}:${status}:${branchName}:${sortValue}:${samplesRefreshToken}:${runtimeScope}:${runtimeLoopId}:${runtimeRoundId}`}
                         onMetaChange={(nextMeta) => setSampleMeta(nextMeta)}
                         renderItems={(items) =>
                             items.length === 0 ? (

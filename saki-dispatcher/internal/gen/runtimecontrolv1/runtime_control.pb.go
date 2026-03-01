@@ -259,13 +259,10 @@ type RuntimeStepType int32
 const (
 	RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED RuntimeStepType = 0
 	RuntimeStepType_TRAIN                         RuntimeStepType = 1
-	RuntimeStepType_SCORE                         RuntimeStepType = 2
-	RuntimeStepType_SELECT                        RuntimeStepType = 3
-	RuntimeStepType_ACTIVATE_SAMPLES              RuntimeStepType = 4
-	RuntimeStepType_ADVANCE_BRANCH                RuntimeStepType = 6
-	RuntimeStepType_EVAL                          RuntimeStepType = 7
-	RuntimeStepType_UPLOAD_ARTIFACT               RuntimeStepType = 8
-	RuntimeStepType_EXPORT                        RuntimeStepType = 9
+	RuntimeStepType_EVAL                          RuntimeStepType = 2
+	RuntimeStepType_SCORE                         RuntimeStepType = 3
+	RuntimeStepType_SELECT                        RuntimeStepType = 4
+	RuntimeStepType_PREDICT                       RuntimeStepType = 5
 	RuntimeStepType_CUSTOM                        RuntimeStepType = 99
 )
 
@@ -274,25 +271,19 @@ var (
 	RuntimeStepType_name = map[int32]string{
 		0:  "RUNTIME_STEP_TYPE_UNSPECIFIED",
 		1:  "TRAIN",
-		2:  "SCORE",
-		3:  "SELECT",
-		4:  "ACTIVATE_SAMPLES",
-		6:  "ADVANCE_BRANCH",
-		7:  "EVAL",
-		8:  "UPLOAD_ARTIFACT",
-		9:  "EXPORT",
+		2:  "EVAL",
+		3:  "SCORE",
+		4:  "SELECT",
+		5:  "PREDICT",
 		99: "CUSTOM",
 	}
 	RuntimeStepType_value = map[string]int32{
 		"RUNTIME_STEP_TYPE_UNSPECIFIED": 0,
 		"TRAIN":                         1,
-		"SCORE":                         2,
-		"SELECT":                        3,
-		"ACTIVATE_SAMPLES":              4,
-		"ADVANCE_BRANCH":                6,
-		"EVAL":                          7,
-		"UPLOAD_ARTIFACT":               8,
-		"EXPORT":                        9,
+		"EVAL":                          2,
+		"SCORE":                         3,
+		"SELECT":                        4,
+		"PREDICT":                       5,
 		"CUSTOM":                        99,
 	}
 )
@@ -3310,23 +3301,17 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x18ACK_REASON_EXECUTOR_BUSY\x10\x03\x12\x17\n" +
 	"\x13ACK_REASON_STOPPING\x10\x04\x12\x1f\n" +
 	"\x1bACK_REASON_STEP_NOT_RUNNING\x10\x05\x12\x17\n" +
-	"\x13ACK_REASON_REJECTED\x10\x06*\xc3\x01\n" +
+	"\x13ACK_REASON_REJECTED\x10\x06*y\n" +
 	"\x0fRuntimeStepType\x12!\n" +
 	"\x1dRUNTIME_STEP_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
-	"\x05TRAIN\x10\x01\x12\t\n" +
-	"\x05SCORE\x10\x02\x12\n" +
+	"\x05TRAIN\x10\x01\x12\b\n" +
+	"\x04EVAL\x10\x02\x12\t\n" +
+	"\x05SCORE\x10\x03\x12\n" +
 	"\n" +
-	"\x06SELECT\x10\x03\x12\x14\n" +
-	"\x10ACTIVATE_SAMPLES\x10\x04\x12\x12\n" +
-	"\x0eADVANCE_BRANCH\x10\x06\x12\b\n" +
-	"\x04EVAL\x10\a\x12\x13\n" +
-	"\x0fUPLOAD_ARTIFACT\x10\b\x12\n" +
+	"\x06SELECT\x10\x04\x12\v\n" +
+	"\aPREDICT\x10\x05\x12\n" +
 	"\n" +
-	"\x06EXPORT\x10\t\x12\n" +
-	"\n" +
-	"\x06CUSTOM\x10c\"\x04\b\x05\x10\x05\"\x04\b\n" +
-	"\x10\n" +
-	"*i\n" +
+	"\x06CUSTOM\x10c*i\n" +
 	"\x17RuntimeStepDispatchKind\x12*\n" +
 	"&RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fDISPATCHABLE\x10\x01\x12\x10\n" +

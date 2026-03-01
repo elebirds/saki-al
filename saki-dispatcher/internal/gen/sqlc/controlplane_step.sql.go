@@ -72,23 +72,6 @@ func (q *Queries) GetDependencyStatesByIDs(ctx context.Context, stepIds []uuid.U
 	return items, nil
 }
 
-const getLatestActivateOutputCommitByRound = `-- name: GetLatestActivateOutputCommitByRound :one
-SELECT output_commit_id
-FROM step
-WHERE round_id = $1::uuid
-  AND step_type = 'ACTIVATE_SAMPLES'::steptype
-  AND state = 'SUCCEEDED'::stepstatus
-ORDER BY step_index DESC
-LIMIT 1
-`
-
-func (q *Queries) GetLatestActivateOutputCommitByRound(ctx context.Context, roundID uuid.UUID) (*uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getLatestActivateOutputCommitByRound, roundID)
-	var output_commit_id *uuid.UUID
-	err := row.Scan(&output_commit_id)
-	return output_commit_id, err
-}
-
 const getLatestAssignedExecutorByStepIDs = `-- name: GetLatestAssignedExecutorByStepIDs :one
 SELECT COALESCE(assigned_executor_id, '') AS assigned_executor_id
 FROM step
@@ -121,19 +104,6 @@ func (q *Queries) GetLatestSucceededTrainStepIDByRound(ctx context.Context, roun
 	return step_id, err
 }
 
-const getLoopBranchID = `-- name: GetLoopBranchID :one
-SELECT branch_id AS branch_id
-FROM loop
-WHERE id = $1::uuid
-`
-
-func (q *Queries) GetLoopBranchID(ctx context.Context, loopID uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getLoopBranchID, loopID)
-	var branch_id uuid.UUID
-	err := row.Scan(&branch_id)
-	return branch_id, err
-}
-
 const getLoopQueryBatchSize = `-- name: GetLoopQueryBatchSize :one
 SELECT query_batch_size
 FROM loop
@@ -145,35 +115,6 @@ func (q *Queries) GetLoopQueryBatchSize(ctx context.Context, loopID uuid.UUID) (
 	var query_batch_size int32
 	err := row.Scan(&query_batch_size)
 	return query_batch_size, err
-}
-
-const getLoopRuntimeConfig = `-- name: GetLoopRuntimeConfig :one
-SELECT
-  project_id AS project_id,
-  branch_id AS branch_id,
-  config,
-  query_batch_size
-FROM loop
-WHERE id = $1::uuid
-`
-
-type GetLoopRuntimeConfigRow struct {
-	ProjectID      uuid.UUID
-	BranchID       uuid.UUID
-	Config         []byte
-	QueryBatchSize int32
-}
-
-func (q *Queries) GetLoopRuntimeConfig(ctx context.Context, loopID uuid.UUID) (GetLoopRuntimeConfigRow, error) {
-	row := q.db.QueryRow(ctx, getLoopRuntimeConfig, loopID)
-	var i GetLoopRuntimeConfigRow
-	err := row.Scan(
-		&i.ProjectID,
-		&i.BranchID,
-		&i.Config,
-		&i.QueryBatchSize,
-	)
-	return i, err
 }
 
 const getStepArtifactsForUpdate = `-- name: GetStepArtifactsForUpdate :one

@@ -347,7 +347,7 @@ class RuntimeControlIngressService:
                 )
                 if (
                     loop_id is not None
-                    and mode == LoopMode.ACTIVE_LEARNING
+                    and mode in {LoopMode.ACTIVE_LEARNING, LoopMode.SIMULATION}
                     and snapshot is not None
                 ):
                     visible_ids = {
@@ -494,7 +494,7 @@ class RuntimeControlIngressService:
         if not row:
             return None, None, None
         loop_id, mode, snapshot_version_id = row
-        if mode != LoopMode.ACTIVE_LEARNING or not snapshot_version_id:
+        if mode not in {LoopMode.ACTIVE_LEARNING, LoopMode.SIMULATION} or not snapshot_version_id:
             return loop_id, mode, None
         snapshot = await session.get(ALSnapshotVersion, snapshot_version_id)
         if not snapshot:

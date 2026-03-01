@@ -167,9 +167,10 @@ class LoopActionKey(str, Enum):
     SNAPSHOT_INIT = "snapshot_init"
     SNAPSHOT_UPDATE = "snapshot_update"
     SELECTION_ADJUST = "selection_adjust"
+    GENERATE_PREDICTION_SET = "generate_prediction_set"
+    APPLY_PREDICTION_SET = "apply_prediction_set"
     READ = "read"
     OBSERVE = "observe"
-    VIEW_LABEL_READINESS = "view_label_readiness"
     ANNOTATE = "annotate"
 
 
@@ -179,24 +180,23 @@ class LoopPhase(str, Enum):
     """
     AL_BOOTSTRAP = "al_bootstrap"
     AL_TRAIN = "al_train"
+    AL_EVAL = "al_eval"
     AL_SCORE = "al_score"
     AL_SELECT = "al_select"
     AL_WAIT_USER = "al_wait_user"
-    AL_EVAL = "al_eval"
     AL_FINALIZE = "al_finalize"
 
     SIM_BOOTSTRAP = "sim_bootstrap"
     SIM_TRAIN = "sim_train"
+    SIM_EVAL = "sim_eval"
     SIM_SCORE = "sim_score"
     SIM_SELECT = "sim_select"
-    SIM_ACTIVATE = "sim_activate"
-    SIM_EVAL = "sim_eval"
+    SIM_WAIT_USER = "sim_wait_user"
     SIM_FINALIZE = "sim_finalize"
 
     MANUAL_BOOTSTRAP = "manual_bootstrap"
     MANUAL_TRAIN = "manual_train"
     MANUAL_EVAL = "manual_eval"
-    MANUAL_EXPORT = "manual_export"
     MANUAL_FINALIZE = "manual_finalize"
 
 
@@ -262,13 +262,10 @@ class StepType(str, Enum):
     Enum for runtime step type in L3 runtime context.
     """
     TRAIN = "train"
+    EVAL = "eval"
     SCORE = "score"
     SELECT = "select"
-    ACTIVATE_SAMPLES = "activate_samples"
-    ADVANCE_BRANCH = "advance_branch"
-    EVAL = "eval"
-    EXPORT = "export"
-    UPLOAD_ARTIFACT = "upload_artifact"
+    PREDICT = "predict"
     CUSTOM = "custom"
 
 

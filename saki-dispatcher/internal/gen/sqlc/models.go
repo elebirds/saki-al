@@ -374,22 +374,21 @@ type Loopphase string
 const (
 	LoopphaseALBOOTSTRAP     Loopphase = "AL_BOOTSTRAP"
 	LoopphaseALTRAIN         Loopphase = "AL_TRAIN"
+	LoopphaseALEVAL          Loopphase = "AL_EVAL"
 	LoopphaseALSCORE         Loopphase = "AL_SCORE"
 	LoopphaseALSELECT        Loopphase = "AL_SELECT"
 	LoopphaseALWAITUSER      Loopphase = "AL_WAIT_USER"
-	LoopphaseALEVAL          Loopphase = "AL_EVAL"
 	LoopphaseALFINALIZE      Loopphase = "AL_FINALIZE"
 	LoopphaseSIMBOOTSTRAP    Loopphase = "SIM_BOOTSTRAP"
 	LoopphaseSIMTRAIN        Loopphase = "SIM_TRAIN"
+	LoopphaseSIMEVAL         Loopphase = "SIM_EVAL"
 	LoopphaseSIMSCORE        Loopphase = "SIM_SCORE"
 	LoopphaseSIMSELECT       Loopphase = "SIM_SELECT"
-	LoopphaseSIMACTIVATE     Loopphase = "SIM_ACTIVATE"
-	LoopphaseSIMEVAL         Loopphase = "SIM_EVAL"
+	LoopphaseSIMWAITUSER     Loopphase = "SIM_WAIT_USER"
 	LoopphaseSIMFINALIZE     Loopphase = "SIM_FINALIZE"
 	LoopphaseMANUALBOOTSTRAP Loopphase = "MANUAL_BOOTSTRAP"
 	LoopphaseMANUALTRAIN     Loopphase = "MANUAL_TRAIN"
 	LoopphaseMANUALEVAL      Loopphase = "MANUAL_EVAL"
-	LoopphaseMANUALEXPORT    Loopphase = "MANUAL_EXPORT"
 	LoopphaseMANUALFINALIZE  Loopphase = "MANUAL_FINALIZE"
 )
 
@@ -694,15 +693,12 @@ func (ns NullStepstatus) Value() (driver.Value, error) {
 type Steptype string
 
 const (
-	SteptypeTRAIN           Steptype = "TRAIN"
-	SteptypeSCORE           Steptype = "SCORE"
-	SteptypeSELECT          Steptype = "SELECT"
-	SteptypeACTIVATESAMPLES Steptype = "ACTIVATE_SAMPLES"
-	SteptypeADVANCEBRANCH   Steptype = "ADVANCE_BRANCH"
-	SteptypeEVAL            Steptype = "EVAL"
-	SteptypeEXPORT          Steptype = "EXPORT"
-	SteptypeUPLOADARTIFACT  Steptype = "UPLOAD_ARTIFACT"
-	SteptypeCUSTOM          Steptype = "CUSTOM"
+	SteptypeTRAIN   Steptype = "TRAIN"
+	SteptypeEVAL    Steptype = "EVAL"
+	SteptypeSCORE   Steptype = "SCORE"
+	SteptypeSELECT  Steptype = "SELECT"
+	SteptypePREDICT Steptype = "PREDICT"
+	SteptypeCUSTOM  Steptype = "CUSTOM"
 )
 
 func (e *Steptype) Scan(src interface{}) error {

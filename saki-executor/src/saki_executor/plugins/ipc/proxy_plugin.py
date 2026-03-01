@@ -135,27 +135,14 @@ class SubprocessPluginProxy(ExecutorPlugin):
             emit=emit,
         )
 
-    async def export(
+    async def predict(
         self,
         workspace: Workspace,
         params: dict[str, Any],
         emit: EventCallback,
     ) -> TrainOutput:
         return await self._run_train_output_action(
-            action="export",
-            workspace=workspace,
-            params=params,
-            emit=emit,
-        )
-
-    async def upload_artifact(
-        self,
-        workspace: Workspace,
-        params: dict[str, Any],
-        emit: EventCallback,
-    ) -> TrainOutput:
-        return await self._run_train_output_action(
-            action="upload_artifact",
+            action="predict",
             workspace=workspace,
             params=params,
             emit=emit,

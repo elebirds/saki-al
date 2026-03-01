@@ -13,6 +13,8 @@ from saki_api.modules.runtime.repo.runtime_executor_stats import RuntimeExecutor
 from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemRepository
 from saki_api.modules.runtime.repo.step_event import StepEventRepository
 from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
+from saki_api.modules.runtime.repo.prediction_set import PredictionSetRepository
+from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
 
 __all__ = [
     "LoopRepository",
@@ -28,4 +30,6 @@ __all__ = [
     "RuntimeExecutorRepository",
     "RuntimeExecutorStatsRepository",
     "ModelRepository",
+    "PredictionSetRepository",
+    "PredictionItemRepository",
 ]

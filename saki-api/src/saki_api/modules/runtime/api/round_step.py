@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,6 +20,7 @@ from saki_api.modules.shared.modeling.enums import (
     StepType,
     LoopPhase,
 )
+from saki_api.modules.storage.api.sample import ProjectSampleRead
 
 
 class LoopSimulationConfig(BaseModel):
@@ -301,17 +302,99 @@ class StepArtifactsResponse(BaseModel):
     artifacts: List[StepArtifactRead]
 
 
-class RoundStepArtifactsRead(BaseModel):
+class RoundArtifactRead(BaseModel):
     step_id: uuid.UUID
     step_index: int
-    step_type: StepType
-    state: StepStatus
-    artifacts: List[StepArtifactRead] = Field(default_factory=list)
+    stage: str
+    artifact_class: str
+    name: str
+    kind: str
+    uri: str
+    size: Optional[int] = None
+    created_at: Optional[datetime] = None
 
 
 class RoundArtifactsResponse(BaseModel):
     round_id: uuid.UUID
-    items: List[RoundStepArtifactsRead] = Field(default_factory=list)
+    items: List[RoundArtifactRead] = Field(default_factory=list)
+
+
+class RoundMissingSamplesDatasetStatRead(BaseModel):
+    dataset_id: uuid.UUID
+    dataset_name: str = ""
+    count: int = 0
+
+
+class RoundMissingSamplesResponse(BaseModel):
+    loop_id: uuid.UUID
+    round_id: uuid.UUID
+    round_index: int
+    selected_count: int = 0
+    revealed_count: int = 0
+    missing_count: int = 0
+    min_required: int = 0
+    configured_min_required: int = 0
+    dataset_stats: List[RoundMissingSamplesDatasetStatRead] = Field(default_factory=list)
+    items: List[ProjectSampleRead] = Field(default_factory=list)
+    total: int = 0
+    offset: int = 0
+    limit: int = 0
+    size: int = 0
+    has_more: bool = False
+
+
+class PredictionSetGenerateRequest(BaseModel):
+    source_round_id: Optional[uuid.UUID] = None
+    source_step_id: Optional[uuid.UUID] = None
+    model_id: Optional[uuid.UUID] = None
+    base_commit_id: Optional[uuid.UUID] = None
+    scope_type: str = "snapshot_scope"
+    scope_payload: Dict[str, Any] = Field(default_factory=dict)
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PredictionSetRead(BaseModel):
+    id: uuid.UUID
+    loop_id: uuid.UUID
+    source_round_id: Optional[uuid.UUID] = None
+    source_step_id: Optional[uuid.UUID] = None
+    model_id: Optional[uuid.UUID] = None
+    base_commit_id: Optional[uuid.UUID] = None
+    scope_type: str
+    scope_payload: Dict[str, Any] = Field(default_factory=dict)
+    status: str
+    total_items: int = 0
+    params: Dict[str, Any] = Field(default_factory=dict)
+    created_by: Optional[uuid.UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PredictionItemRead(BaseModel):
+    sample_id: uuid.UUID
+    rank: int
+    score: float
+    label_id: Optional[uuid.UUID] = None
+    geometry: Dict[str, Any] = Field(default_factory=dict)
+    attrs: Dict[str, Any] = Field(default_factory=dict)
+    confidence: float = 0.0
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PredictionSetDetailRead(BaseModel):
+    prediction_set: PredictionSetRead
+    items: List[PredictionItemRead] = Field(default_factory=list)
+
+
+class PredictionSetApplyRequest(BaseModel):
+    branch_name: Optional[str] = None
+    dry_run: bool = False
+
+
+class PredictionSetApplyResponse(BaseModel):
+    prediction_set_id: uuid.UUID
+    applied_count: int = 0
+    status: str
 
 
 class StepArtifactDownloadResponse(BaseModel):
@@ -472,27 +555,6 @@ class LoopActionResponse(BaseModel):
     blocking_reasons: List[str] = Field(default_factory=list)
     phase: LoopPhase
     lifecycle: LoopLifecycle
-
-
-class LoopLabelReadinessCheckpoint(BaseModel):
-    checkpoint_id: str
-    scope: Literal["setup", "round"]
-    round_index: int
-    key: Literal["seed", "val_anchor", "test_anchor", "query"]
-    blocking: bool
-    total: int
-    missing_count: int
-    selected_count: Optional[int] = None
-    revealed_count: Optional[int] = None
-    missing_sample_ids_preview: List[uuid.UUID] = Field(default_factory=list)
-    preview_truncated: bool = False
-
-
-class LoopLabelReadinessResponse(BaseModel):
-    loop_id: uuid.UUID
-    commit_id: Optional[uuid.UUID] = None
-    active_checkpoint_id: Optional[str] = None
-    checkpoints: List[LoopLabelReadinessCheckpoint] = Field(default_factory=list)
 
 
 class RoundPredictionCleanupResponse(BaseModel):

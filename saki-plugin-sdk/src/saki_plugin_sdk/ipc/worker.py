@@ -257,7 +257,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     rep_socket.send_json(envelope.to_dict())
                     continue
 
-                if action in {"train", "eval", "export", "upload_artifact"}:
+                if action in {"train", "eval", "predict"}:
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
                     _await(plugin.on_start(args.step_id, workspace))
                     try:

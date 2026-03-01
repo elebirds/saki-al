@@ -1,7 +1,7 @@
-# Runtime Loop 策略 V5.2（当前生效）
+# Runtime Loop 策略 V5.2（已废弃）
 
-> 生效日期：2026-03-01  
-> 适用范围：`saki-api` / `saki-web`（本次不改 dispatcher/executor 执行链路）
+> 状态：历史文档（不再生效）  
+> 替代文档：[`runtime-unified-semantics-hardcut-v3.md`](./runtime-unified-semantics-hardcut-v3.md)
 
 ## 1. 三层语义（唯一真值）
 

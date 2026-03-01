@@ -9,12 +9,13 @@ from typing import List
 from fastapi import APIRouter, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.app.deps import RuntimeServiceDep
+from saki_api.app.deps import AssetServiceDep, RuntimeServiceDep
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import (
     RoundArtifactsResponse,
+    RoundMissingSamplesResponse,
     RoundRead,
     RoundSelectionRead,
     StepRead,
@@ -128,6 +129,52 @@ async def get_round_artifacts(
     )
     items = await runtime_service.list_round_artifacts(round_id=round_id, limit=limit)
     return RoundArtifactsResponse(round_id=round_id, items=items)
+
+
+@router.get("/loops/{loop_id}/rounds/{round_id}/missing-samples", response_model=RoundMissingSamplesResponse)
+async def get_round_missing_samples(
+    *,
+    loop_id: uuid.UUID,
+    round_id: uuid.UUID,
+    dataset_id: uuid.UUID | None = Query(default=None),
+    q: str | None = Query(default=None),
+    sort_by: str = Query(default="createdAt"),
+    sort_order: str = Query(default="desc"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=24, ge=1, le=200),
+    runtime_service: RuntimeServiceDep,
+    asset_service: AssetServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required_permission=Permissions.LOOP_READ,
+        fallback_permissions=(Permissions.PROJECT_READ,),
+    )
+    payload = await runtime_service.list_round_missing_samples(
+        loop_id=loop_id,
+        round_id=round_id,
+        current_user_id=current_user_id,
+        dataset_id=dataset_id,
+        q=q,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        limit=limit,
+    )
+    for item in payload.get("items") or []:
+        primary_asset_id = item.get("primary_asset_id")
+        if not primary_asset_id:
+            continue
+        try:
+            item["primary_asset_url"] = await asset_service.get_presigned_download_url(primary_asset_id)
+        except Exception:
+            continue
+    return RoundMissingSamplesResponse.model_validate(payload)
 
 
 @router.get("/steps/{step_id}", response_model=StepRead)

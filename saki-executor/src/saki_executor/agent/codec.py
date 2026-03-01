@@ -9,8 +9,6 @@ from google.protobuf.struct_pb2 import Struct
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.steps.state import StepStatus
 
-_ACTIVATE_SAMPLES_ENUM = pb.ACTIVATE_SAMPLES
-
 _STATUS_TO_ENUM: dict[str, int] = {
     StepStatus.PENDING.value: pb.PENDING,
     StepStatus.DISPATCHING.value: pb.DISPATCHING,
@@ -35,13 +33,10 @@ _ENUM_TO_STATUS: dict[int, str] = {
 
 _STEP_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN: "train",
+    pb.EVAL: "eval",
     pb.SCORE: "score",
     pb.SELECT: "select",
-    _ACTIVATE_SAMPLES_ENUM: "activate_samples",
-    pb.ADVANCE_BRANCH: "advance_branch",
-    pb.EVAL: "eval",
-    pb.EXPORT: "export",
-    pb.UPLOAD_ARTIFACT: "upload_artifact",
+    pb.PREDICT: "predict",
     pb.CUSTOM: "custom",
 }
 

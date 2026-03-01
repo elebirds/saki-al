@@ -367,36 +367,6 @@ func extractRoundResources(rawConfig []byte) map[string]any {
 	return nil
 }
 
-func activationCommandID(stepPayload stepDispatchPayload) string {
-	inputCommitID := ""
-	if stepPayload.InputCommitID != nil {
-		inputCommitID = stepPayload.InputCommitID.String()
-	}
-	raw := fmt.Sprintf(
-		"%s:%d:%s:%d:%s",
-		stepPayload.LoopID.String(),
-		stepPayload.RoundIndex,
-		stepPayload.StepID.String(),
-		stepPayload.Attempt,
-		inputCommitID,
-	)
-	sum := sha256.Sum256([]byte(raw))
-	return "activate_samples:" + hex.EncodeToString(sum[:])
-}
-
-func advanceBranchCommandID(stepPayload stepDispatchPayload, commitID uuid.UUID) string {
-	raw := fmt.Sprintf(
-		"%s:%d:%s:%d:%s",
-		stepPayload.LoopID.String(),
-		stepPayload.RoundIndex,
-		stepPayload.StepID.String(),
-		stepPayload.Attempt,
-		commitID.String(),
-	)
-	sum := sha256.Sum256([]byte(raw))
-	return "advance_branch:" + hex.EncodeToString(sum[:])
-}
-
 func cancelAttemptCommandID(stepID uuid.UUID, attempt int) string {
 	raw := fmt.Sprintf("%s:%d", stepID.String(), max(1, attempt))
 	sum := sha256.Sum256([]byte(raw))

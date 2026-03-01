@@ -14,8 +14,6 @@ from saki_api.modules.runtime.service.application.control_plane_dto import (
     RuntimeRegisterDTO,
 )
 
-_ACTIVATE_SAMPLES_ENUM = pb.ACTIVATE_SAMPLES
-
 _STATUS_TO_TEXT: dict[int, str] = {
     pb.PENDING: "pending",
     pb.DISPATCHING: "dispatching",
@@ -31,13 +29,10 @@ _TEXT_TO_STATUS: dict[str, int] = {value: key for key, value in _STATUS_TO_TEXT.
 
 _STEP_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN: "train",
+    pb.EVAL: "eval",
     pb.SCORE: "score",
     pb.SELECT: "select",
-    _ACTIVATE_SAMPLES_ENUM: "activate_samples",
-    pb.ADVANCE_BRANCH: "advance_branch",
-    pb.EVAL: "eval",
-    pb.EXPORT: "export",
-    pb.UPLOAD_ARTIFACT: "upload_artifact",
+    pb.PREDICT: "predict",
     pb.CUSTOM: "custom",
 }
 _TEXT_TO_STEP_TYPE: dict[str, int] = {value: key for key, value in _STEP_TYPE_TO_TEXT.items()}

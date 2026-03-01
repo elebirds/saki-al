@@ -46,7 +46,13 @@ import {
     LoopSummary,
     LoopSnapshotRead,
     LoopGateResponse,
-    LoopLabelReadinessResponse,
+    RoundMissingSamplesQuery,
+    RoundMissingSamplesResponse,
+    PredictionSetApplyRequest,
+    PredictionSetApplyResponse,
+    PredictionSetDetailRead,
+    PredictionSetGenerateRequest,
+    PredictionSetRead,
     SimulationComparison,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
@@ -248,7 +254,13 @@ export interface ApiService {
     actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse>;
     getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;
     getLoopGate(loopId: string): Promise<LoopGateResponse>;
-    getLoopLabelReadiness(loopId: string): Promise<LoopLabelReadinessResponse>;
+    generatePredictionSet(loopId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead>;
+    listPredictionSets(loopId: string, limit?: number): Promise<PredictionSetRead[]>;
+    getPredictionSetDetail(predictionSetId: string, itemLimit?: number): Promise<PredictionSetDetailRead>;
+    applyPredictionSet(
+        predictionSetId: string,
+        payload: PredictionSetApplyRequest,
+    ): Promise<PredictionSetApplyResponse>;
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
@@ -270,6 +282,11 @@ export interface ApiService {
     getRoundSelection(roundId: string): Promise<RoundSelectionRead>;
     applyRoundSelection(roundId: string, payload: RoundSelectionApplyRequest): Promise<RoundSelectionApplyResponse>;
     resetRoundSelection(roundId: string): Promise<RoundSelectionApplyResponse>;
+    getRoundMissingSamples(
+        loopId: string,
+        roundId: string,
+        params?: RoundMissingSamplesQuery,
+    ): Promise<RoundMissingSamplesResponse>;
 
     getRoundSteps(roundId: string, limit?: number): Promise<RuntimeStep[]>;
     getRoundArtifacts(roundId: string, limit?: number): Promise<RuntimeRoundArtifactsResponse>;

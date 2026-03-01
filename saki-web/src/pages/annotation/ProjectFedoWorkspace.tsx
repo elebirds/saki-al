@@ -58,6 +58,9 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
     const parsedSort = parseProjectSampleSort(searchParams.get('sort'));
     const sortBy = parsedSort.sortBy;
     const sortOrder = parsedSort.sortOrder;
+    const runtimeScope = (searchParams.get('runtimeScope') || '') as '' | 'round_missing_labels';
+    const runtimeLoopId = searchParams.get('runtimeLoopId') || '';
+    const runtimeRoundId = searchParams.get('runtimeRoundId') || '';
 
     const updateParams = useCallback((updates: Record<string, string | null>) => {
         const next = new URLSearchParams(searchParams);
@@ -82,6 +85,9 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
             sortOrder: sortOrder as 'asc' | 'desc',
             page,
             limit: pageSize,
+            runtimeScope: runtimeScope || undefined,
+            runtimeLoopId: runtimeLoopId || undefined,
+            runtimeRoundId: runtimeRoundId || undefined,
         },
         enabled: !!projectId && !!datasetId,
     });

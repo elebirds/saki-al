@@ -228,29 +228,6 @@ INSERT INTO step_candidate_item(
   $1, $2, $3, $4, $5, $6, $7, $8, $9
 );
 
--- name: GetLoopRuntimeConfig :one
-SELECT
-  project_id AS project_id,
-  branch_id AS branch_id,
-  config,
-  query_batch_size
-FROM loop
-WHERE id = sqlc.arg(loop_id)::uuid;
-
--- name: GetLoopBranchID :one
-SELECT branch_id AS branch_id
-FROM loop
-WHERE id = sqlc.arg(loop_id)::uuid;
-
--- name: GetLatestActivateOutputCommitByRound :one
-SELECT output_commit_id
-FROM step
-WHERE round_id = sqlc.arg(round_id)::uuid
-  AND step_type = 'ACTIVATE_SAMPLES'::steptype
-  AND state = 'SUCCEEDED'::stepstatus
-ORDER BY step_index DESC
-LIMIT 1;
-
 -- name: GetStepStateForUpdate :one
 SELECT state
 FROM step

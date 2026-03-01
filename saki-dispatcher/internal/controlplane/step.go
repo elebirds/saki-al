@@ -442,13 +442,10 @@ func (s *Service) runOrchestratorStepTx(
 	stepPayload stepDispatchPayload,
 	resultCommitID **uuid.UUID,
 ) error {
+	_ = resultCommitID
 	switch stepPayload.StepType {
 	case db.SteptypeSELECT:
 		return s.runSelectTopKTx(ctx, tx, stepPayload)
-	case db.SteptypeACTIVATESAMPLES:
-		return s.runActivateSamplesTx(ctx, tx, stepPayload, resultCommitID)
-	case db.SteptypeADVANCEBRANCH:
-		return s.runAdvanceBranchTx(ctx, tx, stepPayload, resultCommitID)
 	default:
 		return fmt.Errorf("unsupported orchestrator step type: %s", stepPayload.StepType)
 	}
@@ -516,155 +513,6 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 		if _, err := s.qtx(tx).CopyStepCandidateItems(ctx, copyRows); err != nil {
 			return err
 		}
-	}
-
-	return nil
-}
-
-func (s *Service) runActivateSamplesTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	stepPayload stepDispatchPayload,
-	resultCommitID **uuid.UUID,
-) error {
-	if s.domainClient == nil {
-		return fmt.Errorf("runtime_domain 客户端未初始化")
-	}
-	if !s.domainClient.Configured() {
-		return runtime_domain_client.ErrNotConfigured
-	}
-	if !s.domainClient.Enabled() {
-		return runtime_domain_client.ErrDisabled
-	}
-
-	var (
-		projectID  string
-		branchID   string
-		loopConfig map[string]any
-		queryBatch int
-	)
-	loopRuntimeConfig, err := s.qtx(tx).GetLoopRuntimeConfig(ctx, stepPayload.LoopID)
-	if err != nil {
-		return err
-	}
-	projectID = loopRuntimeConfig.ProjectID.String()
-	branchID = loopRuntimeConfig.BranchID.String()
-	queryBatch = int(loopRuntimeConfig.QueryBatchSize)
-	loopConfig, _ = parseJSONObject(loopRuntimeConfig.Config)
-
-	oracleCommitID := extractOracleCommitID(loopRuntimeConfig.Config)
-	if oracleCommitID == "" {
-		return nil
-	}
-
-	sourceCommitID := ""
-	if stepPayload.InputCommitID != nil {
-		sourceCommitID = stepPayload.InputCommitID.String()
-	}
-	if sourceCommitID == "" {
-		headCommitID, branchProjectID, err := s.resolveBranchHead(ctx, loopRuntimeConfig.BranchID)
-		if err != nil {
-			return err
-		}
-		if headCommitID != nil {
-			sourceCommitID = headCommitID.String()
-		}
-		if branchProjectID != nil {
-			projectID = branchProjectID.String()
-		}
-	}
-
-	queryStrategy, topk := extractSamplingStrategyAndTopK(loopConfig, stepPayload.Params, queryBatch)
-	if topk <= 0 {
-		topk = 1
-	}
-
-	commandID := activationCommandID(stepPayload)
-	response, err := s.domainClient.ActivateSamples(ctx, &runtimedomainv1.ActivateSamplesRequest{
-		CommandId:      commandID,
-		ProjectId:      projectID,
-		BranchId:       branchID,
-		OracleCommitId: oracleCommitID,
-		SourceCommitId: sourceCommitID,
-		LoopId:         stepPayload.LoopID.String(),
-		RoundIndex:     int32(stepPayload.RoundIndex),
-		QueryStrategy:  queryStrategy,
-		Topk:           int32(topk),
-	})
-	if err != nil {
-		return err
-	}
-	commitID := strings.TrimSpace(response.GetCommitId())
-	if commitID != "" {
-		if resultCommitID != nil {
-			parsedID, parseErr := parseUUID(commitID)
-			if parseErr != nil {
-				return parseErr
-			}
-			*resultCommitID = &parsedID
-		}
-	}
-	return nil
-}
-
-func (s *Service) runAdvanceBranchTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	stepPayload stepDispatchPayload,
-	resultCommitID **uuid.UUID,
-) error {
-	if s.domainClient == nil {
-		return fmt.Errorf("runtime_domain 客户端未初始化")
-	}
-	if !s.domainClient.Configured() {
-		return runtime_domain_client.ErrNotConfigured
-	}
-	if !s.domainClient.Enabled() {
-		return runtime_domain_client.ErrDisabled
-	}
-
-	branchID, err := s.qtx(tx).GetLoopBranchID(ctx, stepPayload.LoopID)
-	if err != nil {
-		return err
-	}
-	if branchID == uuid.Nil {
-		return fmt.Errorf("loop 的 branch_id 为空: loop_id=%s", stepPayload.LoopID)
-	}
-
-	activateCommitID, err := s.qtx(tx).GetLatestActivateOutputCommitByRound(ctx, stepPayload.RoundID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return fmt.Errorf("round 缺少 ACTIVATE_SAMPLES 输出 commit: round_id=%s", stepPayload.RoundID)
-		}
-		return err
-	}
-	if activateCommitID == nil {
-		return fmt.Errorf("ACTIVATE_SAMPLES 输出 commit 为空: round_id=%s", stepPayload.RoundID)
-	}
-
-	commandID := advanceBranchCommandID(stepPayload, *activateCommitID)
-	response, err := s.domainClient.AdvanceBranchHead(
-		ctx,
-		commandID,
-		branchID.String(),
-		activateCommitID.String(),
-		fmt.Sprintf("loop=%s round=%d advance_branch_step=%s", stepPayload.LoopID, stepPayload.RoundIndex, stepPayload.StepID),
-	)
-	if err != nil {
-		return err
-	}
-	if !response.GetAdvanced() {
-		headCommitID := strings.TrimSpace(response.GetHeadCommitId())
-		if headCommitID == activateCommitID.String() {
-			if resultCommitID != nil {
-				*resultCommitID = activateCommitID
-			}
-			return nil
-		}
-		return fmt.Errorf("推进分支头被拒绝: branch_id=%s commit_id=%s head_commit_id=%s", branchID, activateCommitID, headCommitID)
-	}
-	if resultCommitID != nil {
-		*resultCommitID = activateCommitID
 	}
 	return nil
 }
@@ -932,8 +780,6 @@ func defaultStepRuntimeRequirements(stepType db.Steptype) stepRuntimeRequirement
 	case db.SteptypeSCORE:
 		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
 	case db.SteptypeEVAL:
-		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
-	case db.SteptypeEXPORT:
 		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
 	default:
 		return stepRuntimeRequirements{requiresTrainedModel: false, primaryModelArtifactKey: ""}

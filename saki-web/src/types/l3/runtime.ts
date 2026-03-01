@@ -1,3 +1,5 @@
+import {ProjectSample} from '../l2/projectSample';
+
 export type LoopLifecycle = 'draft' | 'running' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed';
 export type LoopMode = 'active_learning' | 'simulation' | 'manual';
 export type LoopGate =
@@ -25,9 +27,10 @@ export type LoopActionKey =
     | 'snapshot_init'
     | 'snapshot_update'
     | 'selection_adjust'
+    | 'generate_prediction_set'
+    | 'apply_prediction_set'
     | 'read'
     | 'observe'
-    | 'view_label_readiness'
     | 'annotate';
 
 export type SnapshotUpdateMode = 'init' | 'append_all_to_pool' | 'append_split';
@@ -37,22 +40,21 @@ export type SnapshotPartition = 'train_seed' | 'train_pool' | 'val_anchor' | 'va
 export type LoopPhase =
     | 'al_bootstrap'
     | 'al_train'
+    | 'al_eval'
     | 'al_score'
     | 'al_select'
     | 'al_wait_user'
-    | 'al_eval'
     | 'al_finalize'
     | 'sim_bootstrap'
     | 'sim_train'
+    | 'sim_eval'
     | 'sim_score'
     | 'sim_select'
-    | 'sim_activate'
-    | 'sim_eval'
+    | 'sim_wait_user'
     | 'sim_finalize'
     | 'manual_bootstrap'
     | 'manual_train'
     | 'manual_eval'
-    | 'manual_export'
     | 'manual_finalize';
 
 export interface LoopSamplingConfig {
@@ -178,13 +180,10 @@ export type RuntimeStepState =
 
 export type RuntimeStepType =
     | 'train'
+    | 'eval'
     | 'score'
     | 'select'
-    | 'activate_samples'
-    | 'advance_branch'
-    | 'eval'
-    | 'upload_artifact'
-    | 'export'
+    | 'predict'
     | 'custom';
 
 export type RuntimeStepDispatchKind = 'dispatchable' | 'orchestrator';
@@ -344,17 +343,76 @@ export interface RuntimeStepArtifactsResponse {
     artifacts: RuntimeStepArtifact[];
 }
 
-export interface RuntimeRoundStepArtifacts {
+export interface RuntimeRoundArtifact {
     stepId: string;
     stepIndex: number;
-    stepType: RuntimeStepType | string;
-    state: RuntimeStepState | string;
-    artifacts: RuntimeStepArtifact[];
+    stage: string;
+    artifactClass: string;
+    name: string;
+    kind: string;
+    uri: string;
+    size?: number | null;
+    createdAt?: string | null;
 }
 
 export interface RuntimeRoundArtifactsResponse {
     roundId: string;
-    items: RuntimeRoundStepArtifacts[];
+    items: RuntimeRoundArtifact[];
+}
+
+export interface PredictionSetGenerateRequest {
+    sourceRoundId?: string;
+    sourceStepId?: string;
+    modelId?: string;
+    baseCommitId?: string;
+    scopeType?: string;
+    scopePayload?: Record<string, any>;
+    params?: Record<string, any>;
+}
+
+export interface PredictionSetRead {
+    id: string;
+    loopId: string;
+    sourceRoundId?: string | null;
+    sourceStepId?: string | null;
+    modelId?: string | null;
+    baseCommitId?: string | null;
+    scopeType: string;
+    scopePayload: Record<string, any>;
+    status: string;
+    totalItems: number;
+    params: Record<string, any>;
+    createdBy?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface PredictionItemRead {
+    sampleId: string;
+    rank: number;
+    score: number;
+    labelId?: string | null;
+    geometry: Record<string, any>;
+    attrs: Record<string, any>;
+    confidence: number;
+    meta: Record<string, any>;
+}
+
+export interface PredictionSetDetailRead {
+    predictionSet: PredictionSetRead;
+    items: PredictionItemRead[];
+}
+
+export interface PredictionSetApplyRequest {
+    writeTarget?: 'draft';
+    draftName?: string;
+    dryRun?: boolean;
+}
+
+export interface PredictionSetApplyResponse {
+    predictionSetId: string;
+    appliedCount: number;
+    status: string;
 }
 
 export interface StepArtifactDownload {
@@ -532,26 +590,37 @@ export interface LoopGateResponse {
     blockingReasons: string[];
 }
 
-export type LabelCheckpointKey = 'seed' | 'val_anchor' | 'test_anchor' | 'query';
-export interface LoopLabelReadinessCheckpoint {
-    checkpointId: string;
-    scope: 'setup' | 'round';
-    roundIndex: number;
-    key: LabelCheckpointKey;
-    blocking: boolean;
-    total: number;
-    missingCount: number;
-    selectedCount?: number;
-    revealedCount?: number;
-    missingSampleIdsPreview: string[];
-    previewTruncated: boolean;
+export interface RoundMissingSamplesDatasetStat {
+    datasetId: string;
+    datasetName: string;
+    count: number;
 }
 
-export interface LoopLabelReadinessResponse {
+export interface RoundMissingSamplesQuery {
+    datasetId?: string;
+    q?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    page?: number;
+    limit?: number;
+}
+
+export interface RoundMissingSamplesResponse {
     loopId: string;
-    commitId?: string | null;
-    activeCheckpointId?: string | null;
-    checkpoints: LoopLabelReadinessCheckpoint[];
+    roundId: string;
+    roundIndex: number;
+    selectedCount: number;
+    revealedCount: number;
+    missingCount: number;
+    minRequired: number;
+    configuredMinRequired: number;
+    datasetStats: RoundMissingSamplesDatasetStat[];
+    items: ProjectSample[];
+    total: number;
+    offset: number;
+    limit: number;
+    size: number;
+    hasMore: boolean;
 }
 
 export interface RoundPredictionCleanupResponse {

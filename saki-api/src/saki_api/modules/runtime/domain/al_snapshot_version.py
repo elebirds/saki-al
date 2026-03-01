@@ -13,12 +13,12 @@ from saki_api.modules.shared.modeling.enums import SnapshotUpdateMode, SnapshotV
 
 
 class ALSnapshotVersion(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    __tablename__ = "al_snapshot_version"
-    __table_args__ = (UniqueConstraint("loop_id", "version_index", name="uq_al_snapshot_version_loop_version"),)
+    __tablename__ = "loop_snapshot_version"
+    __table_args__ = (UniqueConstraint("loop_id", "version_index", name="uq_loop_snapshot_version_loop_version"),)
 
     loop_id: uuid.UUID = Field(foreign_key="loop.id", index=True)
     version_index: int = Field(default=1, ge=1, index=True)
-    parent_version_id: uuid.UUID | None = Field(default=None, foreign_key="al_snapshot_version.id", index=True)
+    parent_version_id: uuid.UUID | None = Field(default=None, foreign_key="loop_snapshot_version.id", index=True)
 
     update_mode: SnapshotUpdateMode = Field(default=SnapshotUpdateMode.INIT, index=True)
     val_policy: SnapshotValPolicy = Field(default=SnapshotValPolicy.ANCHOR_ONLY, index=True)

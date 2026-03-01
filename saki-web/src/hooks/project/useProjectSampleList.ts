@@ -10,6 +10,9 @@ export interface ProjectSampleFilters {
     sortOrder?: 'asc' | 'desc';
     page?: number;
     limit?: number;
+    runtimeScope?: 'round_missing_labels';
+    runtimeLoopId?: string;
+    runtimeRoundId?: string;
 }
 
 export interface ProjectSampleListMeta {
@@ -37,6 +40,9 @@ export function useProjectSampleList(options: UseProjectSampleListOptions) {
         sortOrder,
         page,
         limit,
+        runtimeScope,
+        runtimeLoopId,
+        runtimeRoundId,
     } = filters;
     const [samples, setSamples] = useState<ProjectSample[]>([]);
     const [meta, setMeta] = useState<ProjectSampleListMeta>({
@@ -51,15 +57,25 @@ export function useProjectSampleList(options: UseProjectSampleListOptions) {
         if (!projectId || !datasetId || !enabled) return;
         setLoading(true);
         try {
-            const response = await api.getProjectSamples(projectId, datasetId, {
-                q,
-                status,
-                branchName,
-                sortBy,
-                sortOrder,
-                page,
-                limit,
-            });
+            const isRoundMissingScope = runtimeScope === 'round_missing_labels' && !!runtimeLoopId && !!runtimeRoundId;
+            const response = isRoundMissingScope
+                ? await api.getRoundMissingSamples(runtimeLoopId!, runtimeRoundId!, {
+                    datasetId: datasetId || undefined,
+                    q,
+                    sortBy,
+                    sortOrder,
+                    page,
+                    limit,
+                })
+                : await api.getProjectSamples(projectId, datasetId, {
+                    q,
+                    status,
+                    branchName,
+                    sortBy,
+                    sortOrder,
+                    page,
+                    limit,
+                });
             setSamples(response.items || []);
             setMeta({
                 total: response.total,
@@ -82,6 +98,9 @@ export function useProjectSampleList(options: UseProjectSampleListOptions) {
         sortOrder,
         page,
         limit,
+        runtimeScope,
+        runtimeLoopId,
+        runtimeRoundId,
     ]);
 
     useEffect(() => {

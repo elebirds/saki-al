@@ -11,15 +11,20 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import distinct
+from sqlalchemy import asc, desc, distinct, func, or_
 from sqlmodel import select
 
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.exceptions import ConflictAppException
 from saki_api.infra.db.transaction import transactional
+from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
+from saki_api.modules.annotation.domain.draft import AnnotationDraft
+from saki_api.modules.annotation.repo.draft import AnnotationDraftRepository
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.project import ProjectDataset
+from saki_api.modules.runtime.domain.prediction_set import PredictionSet
+from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
 from saki_api.modules.runtime.domain.round import Round
@@ -40,6 +45,7 @@ from saki_api.modules.shared.modeling.enums import (
     VisibilitySource,
     CommitSampleReviewState,
 )
+from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
 
 
@@ -475,8 +481,8 @@ class SnapshotMixin:
 
     async def _get_active_snapshot_or_raise(self, loop_id: uuid.UUID) -> tuple[Any, ALSnapshotVersion]:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.mode != LoopMode.ACTIVE_LEARNING:
-            raise BadRequestAppException("snapshot is only available for active_learning loop")
+        if loop.mode not in {LoopMode.ACTIVE_LEARNING, LoopMode.SIMULATION}:
+            raise BadRequestAppException("snapshot is only available for active_learning/simulation loop")
         if not loop.active_snapshot_version_id:
             raise BadRequestAppException("loop has no active snapshot")
         snapshot = await self.al_snapshot_version_repo.get_by_id(loop.active_snapshot_version_id)
@@ -576,6 +582,225 @@ class SnapshotMixin:
             revealable_sample_ids=revealable,
             latest_commit_id=latest_commit_id,
         )
+
+    @staticmethod
+    def _build_wait_user_gate_meta(
+        *,
+        loop_id: uuid.UUID,
+        round_row: Round,
+        selected_count: int,
+        revealed_count: int,
+        missing_count: int,
+        min_required: int,
+        configured_min_required: int,
+    ) -> dict[str, Any]:
+        return {
+            "round_id": str(round_row.id),
+            "round_index": int(round_row.round_index or 0),
+            "selected_count": int(selected_count),
+            "revealed_count": int(revealed_count),
+            "missing_count": int(missing_count),
+            "min_required": int(min_required),
+            "configured_min_required": int(configured_min_required),
+            "annotation_scope": {
+                "type": "round_missing_labels",
+                "loop_id": str(loop_id),
+                "round_id": str(round_row.id),
+            },
+        }
+
+    async def list_round_missing_samples(
+        self,
+        *,
+        loop_id: uuid.UUID,
+        round_id: uuid.UUID,
+        current_user_id: uuid.UUID,
+        dataset_id: uuid.UUID | None = None,
+        q: str | None = None,
+        sort_by: str = "createdAt",
+        sort_order: str = "desc",
+        page: int = 1,
+        limit: int = 24,
+    ) -> dict[str, Any]:
+        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
+        round_row = await self.repository.get_by_id_or_raise(round_id)
+        if round_row.loop_id != loop_id:
+            raise BadRequestAppException("round_id does not belong to loop")
+
+        probe = await self._probe_round_reveal(loop_id=loop_id, round_id=round_id)
+        configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
+        effective_min_required = self._effective_round_min_required(
+            selected_count=probe.selected_count,
+            configured_min_required=configured_min_required,
+        )
+
+        missing_ids = list(probe.missing_sample_ids or [])
+        if not missing_ids:
+            return {
+                **self._build_wait_user_gate_meta(
+                    loop_id=loop_id,
+                    round_row=round_row,
+                    selected_count=probe.selected_count,
+                    revealed_count=probe.revealable_count,
+                    missing_count=probe.missing_count,
+                    min_required=effective_min_required,
+                    configured_min_required=configured_min_required,
+                ),
+                "loop_id": loop_id,
+                "round_id": round_row.id,
+                "dataset_stats": [],
+                "items": [],
+                "total": 0,
+                "offset": 0,
+                "limit": int(max(1, min(int(limit or 24), 200))),
+                "size": 0,
+                "has_more": False,
+            }
+
+        dataset_stats_stmt = (
+            select(Sample.dataset_id, func.count(Sample.id))
+            .where(Sample.id.in_(missing_ids))
+            .group_by(Sample.dataset_id)
+        )
+        dataset_stats_rows = list((await self.session.exec(dataset_stats_stmt)).all())
+        dataset_name_map: dict[uuid.UUID, str] = {}
+        if dataset_stats_rows:
+            dataset_ids = [row[0] for row in dataset_stats_rows]
+            dataset_rows = list(
+                (
+                    await self.session.exec(
+                        select(Dataset.id, Dataset.name).where(Dataset.id.in_(dataset_ids))
+                    )
+                ).all()
+            )
+            dataset_name_map = {dataset_row[0]: str(dataset_row[1] or "") for dataset_row in dataset_rows}
+        dataset_stats = [
+            {
+                "dataset_id": dataset_id_item,
+                "dataset_name": dataset_name_map.get(dataset_id_item, ""),
+                "count": int(total_count or 0),
+            }
+            for dataset_id_item, total_count in dataset_stats_rows
+        ]
+        dataset_stats.sort(key=lambda item: (-int(item["count"]), str(item["dataset_id"])))
+
+        statement = select(Sample).where(Sample.id.in_(missing_ids))
+        if dataset_id is not None:
+            statement = statement.where(Sample.dataset_id == dataset_id)
+        search_text = str(q or "").strip()
+        if search_text:
+            pattern = f"%{search_text}%"
+            statement = statement.where(
+                or_(
+                    Sample.name.ilike(pattern),
+                    Sample.remark.ilike(pattern),
+                )
+            )
+
+        sort_map = {
+            "name": Sample.name,
+            "createdAt": Sample.created_at,
+            "updatedAt": Sample.updated_at,
+            "created_at": Sample.created_at,
+            "updated_at": Sample.updated_at,
+        }
+        sort_column = sort_map.get(str(sort_by or "createdAt"), Sample.created_at)
+        order_clause = asc(sort_column) if str(sort_order or "desc").lower() == "asc" else desc(sort_column)
+        statement = statement.order_by(order_clause)
+
+        safe_limit = int(max(1, min(int(limit or 24), 200)))
+        safe_page = int(max(1, int(page or 1)))
+        offset = (safe_page - 1) * safe_limit
+        total_stmt = select(func.count()).select_from(statement.subquery())
+        total = int((await self.session.scalar(total_stmt)) or 0)
+        samples = list((await self.session.exec(statement.offset(offset).limit(safe_limit))).all())
+
+        sample_ids = [sample.id for sample in samples]
+        annotation_counts: dict[uuid.UUID, int] = {}
+        review_states: dict[uuid.UUID, CommitSampleReviewState] = {}
+        if sample_ids and probe.latest_commit_id:
+            count_stmt = (
+                select(
+                    CommitAnnotationMap.sample_id,
+                    func.count(CommitAnnotationMap.annotation_id),
+                )
+                .where(
+                    CommitAnnotationMap.commit_id == probe.latest_commit_id,
+                    CommitAnnotationMap.sample_id.in_(sample_ids),
+                )
+                .group_by(CommitAnnotationMap.sample_id)
+            )
+            count_rows = list((await self.session.exec(count_stmt)).all())
+            annotation_counts = {sample_id_item: int(count or 0) for sample_id_item, count in count_rows}
+
+            review_stmt = select(
+                CommitSampleState.sample_id,
+                CommitSampleState.state,
+            ).where(
+                CommitSampleState.commit_id == probe.latest_commit_id,
+                CommitSampleState.sample_id.in_(sample_ids),
+            )
+            review_rows = list((await self.session.exec(review_stmt)).all())
+            review_states = {sample_id_item: state for sample_id_item, state in review_rows}
+
+        branch_name = "master"
+        branch_row = await self.session.exec(select(Branch.name).where(Branch.id == loop.branch_id))
+        branch_name_raw = branch_row.first()
+        if branch_name_raw:
+            branch_name = str(branch_name_raw)
+
+        draft_ids: set[uuid.UUID] = set()
+        if sample_ids:
+            draft_stmt = select(AnnotationDraft.sample_id).where(
+                AnnotationDraft.project_id == loop.project_id,
+                AnnotationDraft.user_id == current_user_id,
+                AnnotationDraft.branch_name == branch_name,
+                AnnotationDraft.sample_id.in_(sample_ids),
+            )
+            draft_ids = set((await self.session.exec(draft_stmt)).all())
+
+        items: list[dict[str, Any]] = []
+        for sample in samples:
+            review_state = review_states.get(sample.id)
+            items.append(
+                {
+                    "id": sample.id,
+                    "dataset_id": sample.dataset_id,
+                    "name": sample.name,
+                    "asset_group": sample.asset_group or {},
+                    "primary_asset_id": sample.primary_asset_id,
+                    "remark": sample.remark,
+                    "meta_info": sample.meta_info or {},
+                    "created_at": sample.created_at,
+                    "updated_at": sample.updated_at,
+                    "annotation_count": int(annotation_counts.get(sample.id, 0)),
+                    "is_labeled": review_state is not None,
+                    "review_state": review_state.value if review_state else "unreviewed",
+                    "has_draft": sample.id in draft_ids,
+                }
+            )
+
+        size = len(items)
+        return {
+            **self._build_wait_user_gate_meta(
+                loop_id=loop_id,
+                round_row=round_row,
+                selected_count=probe.selected_count,
+                revealed_count=probe.revealable_count,
+                missing_count=probe.missing_count,
+                min_required=effective_min_required,
+                configured_min_required=configured_min_required,
+            ),
+            "loop_id": loop_id,
+            "round_id": round_row.id,
+            "dataset_stats": dataset_stats,
+            "items": items,
+            "total": total,
+            "offset": offset,
+            "limit": safe_limit,
+            "size": size,
+            "has_more": bool(offset + size < total),
+        }
 
     @transactional
     async def resolve_round_reveal(
@@ -680,13 +905,12 @@ class SnapshotMixin:
         if loop.mode != LoopMode.ACTIVE_LEARNING:
             raise BadRequestAppException("round selection override is only available for active_learning loop")
 
-        latest_round = await self.repository.get_latest_by_loop(loop.id)
-        if latest_round is None:
-            raise BadRequestAppException("loop has no round")
-        if latest_round.id != round_row.id:
-            raise BadRequestAppException("round selection override only supports latest round attempt")
-
         if require_wait_phase:
+            latest_round = await self.repository.get_latest_by_loop(loop.id)
+            if latest_round is None:
+                raise BadRequestAppException("loop has no round")
+            if latest_round.id != round_row.id:
+                raise BadRequestAppException("round selection override only supports latest round attempt")
             if loop.phase != LoopPhase.AL_WAIT_USER:
                 raise BadRequestAppException("round selection override requires loop phase al_wait_user")
             if loop.lifecycle not in {LoopLifecycle.RUNNING, LoopLifecycle.PAUSED, LoopLifecycle.STOPPING}:
@@ -1062,104 +1286,114 @@ class SnapshotMixin:
         if loop.lifecycle == LoopLifecycle.STOPPING:
             return LoopGate.STOPPING, {"phase": phase_text}, None, [observe_action]
         if loop.lifecycle == LoopLifecycle.RUNNING:
-            if loop.mode != LoopMode.ACTIVE_LEARNING:
+            if loop.mode == LoopMode.MANUAL:
+                if phase_text != LoopPhase.MANUAL_EVAL.value:
+                    return LoopGate.RUNNING, {"mode": str(loop.mode), "phase": phase_text}, None, [observe_action]
+
+                latest_round = await self.repository.get_latest_by_loop(loop_id)
+                if latest_round and latest_round.state == RoundStatus.COMPLETED:
+                    round_index = int(latest_round.round_index or 0)
+                    if round_index < int(loop.max_rounds or 1):
+                        start_next_round_action = self._action("start_next_round", label="Start Next Round")
+                        return (
+                            LoopGate.CAN_NEXT_ROUND,
+                            {
+                                "round_index": round_index,
+                                "attempt_index": int(latest_round.attempt_index or 1),
+                            },
+                            start_next_round_action,
+                            [start_next_round_action],
+                        )
+                return LoopGate.RUNNING, {"mode": str(loop.mode), "phase": phase_text}, None, [observe_action]
+
+            if loop.mode == LoopMode.SIMULATION:
                 return LoopGate.RUNNING, {"mode": str(loop.mode), "phase": phase_text}, None, [observe_action]
 
             if phase_text != LoopPhase.AL_WAIT_USER.value:
                 return LoopGate.RUNNING, {"phase": phase_text}, None, [observe_action]
 
             latest_round = await self.repository.get_latest_by_loop(loop_id)
-            round_index = int(latest_round.round_index) if latest_round else 0
-            if round_index <= 0:
-                annotate_action = self._action("annotate", label="Annotate Query Samples", runnable=False)
-                selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
-                return (
-                    LoopGate.NEED_ROUND_LABELS,
-                    {"round_index": 0, "revealed_count": 0},
-                    annotate_action,
-                    [annotate_action, selection_adjust_action],
-                )
+            if latest_round is None:
+                return LoopGate.RUNNING, {"phase": phase_text}, None, [observe_action]
             if latest_round.state != RoundStatus.COMPLETED:
                 return LoopGate.RUNNING, {"phase": phase_text}, None, [observe_action]
+            configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
             if latest_round.confirmed_at is not None:
                 start_next_round_action = self._action("start_next_round", label="Start Next Round")
+                confirmed_selected_count = int(latest_round.confirmed_selected_count or 0)
+                confirmed_revealed_count = int(latest_round.confirmed_revealed_count or 0)
+                confirmed_effective_min_required = int(
+                    latest_round.confirmed_effective_min_required
+                    or self._effective_round_min_required(
+                        selected_count=confirmed_selected_count,
+                        configured_min_required=configured_min_required,
+                    )
+                )
+                gate_meta = self._build_wait_user_gate_meta(
+                    loop_id=loop_id,
+                    round_row=latest_round,
+                    selected_count=confirmed_selected_count,
+                    revealed_count=confirmed_revealed_count,
+                    missing_count=max(0, confirmed_selected_count - confirmed_revealed_count),
+                    min_required=confirmed_effective_min_required,
+                    configured_min_required=configured_min_required,
+                )
+                gate_meta.update(
+                    {
+                        "attempt_index": int(latest_round.attempt_index or 1),
+                        "confirmed_at": latest_round.confirmed_at.isoformat() if latest_round.confirmed_at else None,
+                        "confirmed_revealed_count": confirmed_revealed_count,
+                        "confirmed_selected_count": confirmed_selected_count,
+                        "confirmed_effective_min_required": confirmed_effective_min_required,
+                    }
+                )
                 return (
                     LoopGate.CAN_NEXT_ROUND,
-                    {
-                        "round_index": round_index,
-                        "attempt_index": int(latest_round.attempt_index),
-                        "confirmed_at": latest_round.confirmed_at.isoformat() if latest_round.confirmed_at else None,
-                        "confirmed_revealed_count": int(latest_round.confirmed_revealed_count or 0),
-                        "confirmed_selected_count": int(latest_round.confirmed_selected_count or 0),
-                        "confirmed_effective_min_required": int(latest_round.confirmed_effective_min_required or 0),
-                    },
+                    gate_meta,
                     start_next_round_action,
                     [start_next_round_action],
                 )
 
             probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
-            configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
             effective_min_required = self._effective_round_min_required(
                 selected_count=probe.selected_count,
                 configured_min_required=configured_min_required,
             )
-            if probe.revealable_count >= effective_min_required:
+            gate_meta = self._build_wait_user_gate_meta(
+                loop_id=loop_id,
+                round_row=latest_round,
+                selected_count=probe.selected_count,
+                revealed_count=probe.revealable_count,
+                missing_count=probe.missing_count,
+                min_required=effective_min_required,
+                configured_min_required=configured_min_required,
+            )
+            if effective_min_required <= 0 or probe.revealable_count >= effective_min_required:
                 confirm_action = self._action("confirm", label="Confirm Reveal")
                 selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
                 return (
                     LoopGate.CAN_CONFIRM,
-                    {
-                        "round_index": round_index,
-                        "revealed_count": probe.revealable_count,
-                        "selected_count": probe.selected_count,
-                        "missing_count": probe.missing_count,
-                        "min_required": effective_min_required,
-                        "configured_min_required": configured_min_required,
-                    },
+                    gate_meta,
                     confirm_action,
                     [confirm_action, selection_adjust_action],
                 )
-            annotate_action = self._action("annotate", label="Annotate Query Samples", runnable=False)
+            annotate_action = self._action("annotate", label="Annotate Query Samples")
             selection_adjust_action = self._action("selection_adjust", label="Adjust TopK Selection")
             return (
                 LoopGate.NEED_ROUND_LABELS,
-                {
-                    "round_index": round_index,
-                    "revealed_count": probe.revealable_count,
-                    "selected_count": probe.selected_count,
-                    "missing_count": probe.missing_count,
-                    "min_required": effective_min_required,
-                    "configured_min_required": configured_min_required,
-                },
+                gate_meta,
                 annotate_action,
                 [annotate_action, selection_adjust_action],
             )
 
         # Draft/setup gates.
         if loop.lifecycle == LoopLifecycle.DRAFT:
-            if loop.mode != LoopMode.ACTIVE_LEARNING:
+            if loop.mode == LoopMode.MANUAL:
                 return LoopGate.CAN_START, {"mode": str(loop.mode)}, start_action, [start_action]
 
             if not loop.active_snapshot_version_id:
                 snapshot_action = self._action("snapshot_init", label="Init Snapshot")
                 return LoopGate.NEED_SNAPSHOT, {"missing": "snapshot"}, snapshot_action, [snapshot_action, read_action]
-
-            readiness = await self._compute_label_readiness_internal(loop_id)
-            setup_checkpoints = [item for item in readiness.get("checkpoints", []) if item.get("scope") == "setup"]
-            gap_total = int(sum(int(item.get("missing_count") or 0) for item in setup_checkpoints))
-            if gap_total > 0:
-                active_checkpoint_id = None
-                for item in setup_checkpoints:
-                    if bool(item.get("blocking")):
-                        active_checkpoint_id = str(item.get("checkpoint_id") or "")
-                        break
-                gap_action = self._action("view_label_readiness", label="Resolve Label Readiness", runnable=False)
-                return (
-                    LoopGate.NEED_LABELS,
-                    {"gap_count": gap_total, "active_checkpoint_id": active_checkpoint_id},
-                    gap_action,
-                    [gap_action, read_action],
-                )
             return LoopGate.CAN_START, {"mode": str(loop.mode)}, start_action, [start_action]
 
         # Safety fallback for unexpected lifecycle values.
@@ -1174,8 +1408,8 @@ class SnapshotMixin:
         actor_user_id: uuid.UUID | None,
     ) -> dict[str, Any]:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.mode != LoopMode.ACTIVE_LEARNING:
-            raise BadRequestAppException("snapshot init is only available for active_learning loop")
+        if loop.mode not in {LoopMode.ACTIVE_LEARNING, LoopMode.SIMULATION}:
+            raise BadRequestAppException("snapshot init is only available for active_learning/simulation loop")
         if loop.active_snapshot_version_id:
             raise BadRequestAppException("active snapshot already exists; use snapshot:update")
 
@@ -1409,8 +1643,8 @@ class SnapshotMixin:
 
     async def get_loop_snapshot(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        if loop.mode != LoopMode.ACTIVE_LEARNING:
-            raise BadRequestAppException("snapshot is only available for active_learning loop")
+        if loop.mode not in {LoopMode.ACTIVE_LEARNING, LoopMode.SIMULATION}:
+            raise BadRequestAppException("snapshot is only available for active_learning/simulation loop")
         history = await self.al_snapshot_version_repo.list_by_loop(loop_id)
         active = None
         if loop.active_snapshot_version_id:
@@ -1574,3 +1808,235 @@ class SnapshotMixin:
 
         payload["active_checkpoint_id"] = active_checkpoint_id
         return payload
+
+    async def _resolve_prediction_source_step(
+        self,
+        *,
+        loop_id: uuid.UUID,
+        source_round_id: uuid.UUID | None,
+        source_step_id: uuid.UUID | None,
+    ) -> tuple[Round, Step]:
+        if source_step_id is not None:
+            step_row = await self.step_repo.get_by_id_or_raise(source_step_id)
+            round_row = await self.repository.get_by_id_or_raise(step_row.round_id)
+            if round_row.loop_id != loop_id:
+                raise BadRequestAppException("source_step_id does not belong to loop")
+            return round_row, step_row
+
+        if source_round_id is not None:
+            round_row = await self.repository.get_by_id_or_raise(source_round_id)
+            if round_row.loop_id != loop_id:
+                raise BadRequestAppException("source_round_id does not belong to loop")
+        else:
+            round_row = await self.repository.get_latest_by_loop(loop_id)
+            if round_row is None:
+                raise BadRequestAppException("loop has no round")
+
+        steps = await self.step_repo.list_by_round(round_row.id)
+        ordered = sorted(steps, key=lambda item: int(item.step_index or 0), reverse=True)
+        preferred = next((item for item in ordered if item.step_type == StepType.SCORE), None)
+        if preferred is None:
+            preferred = next((item for item in ordered if item.step_type == StepType.PREDICT), None)
+        if preferred is None:
+            preferred = next((item for item in ordered if item.step_type == StepType.SELECT), None)
+        if preferred is None:
+            raise BadRequestAppException("round has no score/predict/select step for prediction_set source")
+        return round_row, preferred
+
+    @transactional
+    async def generate_prediction_set(
+        self,
+        *,
+        loop_id: uuid.UUID,
+        payload: dict[str, Any],
+        actor_user_id: uuid.UUID | None,
+    ) -> PredictionSet:
+        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
+        source_round_raw = payload.get("source_round_id")
+        source_step_raw = payload.get("source_step_id")
+        source_round_id = uuid.UUID(str(source_round_raw)) if source_round_raw else None
+        source_step_id = uuid.UUID(str(source_step_raw)) if source_step_raw else None
+        source_round, source_step = await self._resolve_prediction_source_step(
+            loop_id=loop_id,
+            source_round_id=source_round_id,
+            source_step_id=source_step_id,
+        )
+
+        scope_type = str(payload.get("scope_type") or "snapshot_scope").strip() or "snapshot_scope"
+        scope_payload = payload.get("scope_payload") if isinstance(payload.get("scope_payload"), dict) else {}
+        params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+
+        base_commit_raw = payload.get("base_commit_id")
+        base_commit_id: uuid.UUID | None = None
+        if base_commit_raw:
+            base_commit_id = uuid.UUID(str(base_commit_raw))
+        elif source_round.input_commit_id:
+            base_commit_id = source_round.input_commit_id
+
+        model_id_raw = payload.get("model_id")
+        model_id: uuid.UUID | None = uuid.UUID(str(model_id_raw)) if model_id_raw else None
+
+        prediction_set = await self.prediction_set_repo.create(
+            {
+                "loop_id": loop_id,
+                "source_round_id": source_round.id,
+                "source_step_id": source_step.id,
+                "model_id": model_id,
+                "base_commit_id": base_commit_id,
+                "scope_type": scope_type,
+                "scope_payload": scope_payload,
+                "status": "generating",
+                "total_items": 0,
+                "params": params,
+                "created_by": actor_user_id,
+            }
+        )
+
+        source_candidates = await self.step_candidate_repo.list_by_step(source_step.id)
+        prediction_rows: list[dict[str, Any]] = []
+        for candidate in source_candidates:
+            snapshot = dict(candidate.prediction_snapshot or {})
+            label_raw = snapshot.get("label_id") or snapshot.get("labelId")
+            label_id: uuid.UUID | None = None
+            if label_raw:
+                try:
+                    label_id = uuid.UUID(str(label_raw))
+                except Exception:
+                    label_id = None
+            prediction_rows.append(
+                {
+                    "sample_id": candidate.sample_id,
+                    "rank": int(candidate.rank or 0),
+                    "score": float(candidate.score or 0.0),
+                    "label_id": label_id,
+                    "geometry": snapshot.get("geometry") if isinstance(snapshot.get("geometry"), dict) else {},
+                    "attrs": snapshot.get("attrs") if isinstance(snapshot.get("attrs"), dict) else {},
+                    "confidence": float(snapshot.get("confidence") or candidate.score or 0.0),
+                    "meta": snapshot if isinstance(snapshot, dict) else {},
+                }
+            )
+
+        await self.prediction_item_repo.replace_rows(
+            prediction_set_id=prediction_set.id,
+            rows=prediction_rows,
+        )
+        prediction_set = await self.prediction_set_repo.update(
+            prediction_set.id,
+            {
+                "status": "ready",
+                "total_items": int(len(prediction_rows)),
+            },
+        )
+        if prediction_set is None:
+            raise BadRequestAppException("failed to persist generated prediction_set")
+        return prediction_set
+
+    async def list_prediction_sets(self, *, loop_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:
+        await self.loop_repo.get_by_id_or_raise(loop_id)
+        return await self.prediction_set_repo.list_by_loop(loop_id=loop_id, limit=limit)
+
+    async def get_prediction_set_detail(
+        self,
+        *,
+        prediction_set_id: uuid.UUID,
+        item_limit: int = 2000,
+    ) -> tuple[PredictionSet, list[PredictionItem]]:
+        prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
+        items = await self.prediction_item_repo.list_by_prediction_set(prediction_set_id, limit=item_limit)
+        return prediction_set, items
+
+    @transactional
+    async def apply_prediction_set(
+        self,
+        *,
+        prediction_set_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None,
+        branch_name: str | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        if actor_user_id is None:
+            raise BadRequestAppException("actor user is required when applying prediction_set")
+        prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
+        loop = await self.loop_repo.get_by_id_or_raise(prediction_set.loop_id)
+        items = await self.prediction_item_repo.list_by_prediction_set(prediction_set_id, limit=100000)
+        if not items:
+            return {
+                "prediction_set_id": prediction_set.id,
+                "applied_count": 0,
+                "status": str(prediction_set.status or "ready"),
+            }
+
+        resolved_branch_name = str(branch_name or "").strip()
+        if not resolved_branch_name:
+            branch = await self.session.get(Branch, loop.branch_id)
+            resolved_branch_name = str(getattr(branch, "name", "") or "").strip() or "master"
+
+        applied_count = 0
+        if not dry_run:
+            draft_repo = AnnotationDraftRepository(self.session)
+            grouped_items: dict[uuid.UUID, list[PredictionItem]] = {}
+            for item in items:
+                grouped_items.setdefault(item.sample_id, []).append(item)
+            for sample_id, group in grouped_items.items():
+                existing = await draft_repo.get_by_unique(
+                    project_id=loop.project_id,
+                    sample_id=sample_id,
+                    user_id=actor_user_id,
+                    branch_name=resolved_branch_name,
+                )
+                existing_payload = dict(existing.payload or {}) if existing and isinstance(existing.payload, dict) else {}
+                existing_annotations = existing_payload.get("annotations")
+                base_annotations = [
+                    ann
+                    for ann in (existing_annotations if isinstance(existing_annotations, list) else [])
+                    if str(ann.get("source") or "").strip().lower() != "model"
+                ]
+
+                model_annotations: list[dict[str, Any]] = []
+                for item in sorted(group, key=lambda row: int(row.rank or 0)):
+                    if item.label_id is None:
+                        continue
+                    model_annotations.append(
+                        {
+                            "id": str(uuid.uuid4()),
+                            "project_id": str(loop.project_id),
+                            "sample_id": str(sample_id),
+                            "label_id": str(item.label_id),
+                            "geometry": dict(item.geometry or {}),
+                            "attrs": dict(item.attrs or {}),
+                            "source": "model",
+                            "confidence": float(item.confidence or 0.0),
+                            "annotator_id": str(actor_user_id),
+                        }
+                    )
+                if not model_annotations:
+                    continue
+                applied_count += len(model_annotations)
+                payload_to_write = {
+                    **existing_payload,
+                    "annotations": base_annotations + model_annotations,
+                }
+                if existing is None:
+                    await draft_repo.create(
+                        {
+                            "project_id": loop.project_id,
+                            "sample_id": sample_id,
+                            "user_id": actor_user_id,
+                            "branch_name": resolved_branch_name,
+                            "payload": payload_to_write,
+                        }
+                    )
+                else:
+                    await draft_repo.update(existing.id, {"payload": payload_to_write})
+            prediction_set = await self.prediction_set_repo.update(
+                prediction_set.id,
+                {
+                    "status": "applied",
+                },
+            ) or prediction_set
+
+        return {
+            "prediction_set_id": prediction_set.id,
+            "applied_count": int(applied_count if not dry_run else len(items)),
+            "status": str(prediction_set.status or ("ready" if dry_run else "applied")),
+        }

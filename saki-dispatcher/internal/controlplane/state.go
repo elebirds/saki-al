@@ -12,20 +12,19 @@ const (
 	lifecycleFailed    db.Looplifecycle = db.LooplifecycleFAILED
 
 	phaseALTrain          db.Loopphase = db.LoopphaseALTRAIN
+	phaseALEval           db.Loopphase = db.LoopphaseALEVAL
 	phaseALScore          db.Loopphase = db.LoopphaseALSCORE
 	phaseALSelect         db.Loopphase = db.LoopphaseALSELECT
 	phaseALWaitAnnotation db.Loopphase = db.LoopphaseALWAITUSER
-	phaseALEval           db.Loopphase = db.LoopphaseALEVAL
 	phaseALFinalize       db.Loopphase = db.LoopphaseALFINALIZE
 	phaseSimTrain         db.Loopphase = db.LoopphaseSIMTRAIN
+	phaseSimEval          db.Loopphase = db.LoopphaseSIMEVAL
 	phaseSimScore         db.Loopphase = db.LoopphaseSIMSCORE
 	phaseSimSelect        db.Loopphase = db.LoopphaseSIMSELECT
-	phaseSimActivate      db.Loopphase = db.LoopphaseSIMACTIVATE
-	phaseSimEval          db.Loopphase = db.LoopphaseSIMEVAL
+	phaseSimWaitUser      db.Loopphase = db.LoopphaseSIMWAITUSER
 	phaseSimFinalize      db.Loopphase = db.LoopphaseSIMFINALIZE
 	phaseManualTrain      db.Loopphase = db.LoopphaseMANUALTRAIN
 	phaseManualEval       db.Loopphase = db.LoopphaseMANUALEVAL
-	phaseManualExport     db.Loopphase = db.LoopphaseMANUALEXPORT
 	phaseManualFinalize   db.Loopphase = db.LoopphaseMANUALFINALIZE
 
 	modeAL     db.Loopmode = db.LoopmodeACTIVELEARNING

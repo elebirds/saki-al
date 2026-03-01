@@ -13,6 +13,8 @@ from saki_api.modules.runtime.domain.dispatch_outbox import DispatchOutbox
 from saki_api.modules.runtime.domain.runtime_command_log import RuntimeCommandLog
 from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 from saki_api.modules.runtime.domain.runtime_executor_stats import RuntimeExecutorStats
+from saki_api.modules.runtime.domain.prediction_set import PredictionSet
+from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.runtime.domain.step_event import StepEvent
@@ -40,6 +42,8 @@ __all__ = [
     "RuntimeCommandLog",
     "RuntimeExecutor",
     "RuntimeExecutorStats",
+    "PredictionSet",
+    "PredictionItem",
     "StepCandidateItem",
     "StepEvent",
     "StepMetricPoint",

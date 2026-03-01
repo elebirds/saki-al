@@ -17,9 +17,13 @@ from saki_api.modules.runtime.api.round_step import (
     LoopActionRequest,
     LoopActionResponse,
     LoopActionSpec,
-    LoopLabelReadinessResponse,
     LoopSnapshotRead,
     LoopGateResponse,
+    PredictionSetApplyRequest,
+    PredictionSetApplyResponse,
+    PredictionSetDetailRead,
+    PredictionSetGenerateRequest,
+    PredictionSetRead,
     RoundPredictionCleanupResponse,
     SnapshotVersionRead,
     SnapshotVersionSummaryRead,
@@ -243,10 +247,35 @@ async def get_loop_gate(
     return LoopGateResponse(**payload)
 
 
-@router.get("/loops/{loop_id}/label-readiness", response_model=LoopLabelReadinessResponse)
-async def get_loop_label_readiness(
+@router.post("/loops/{loop_id}/prediction-sets:generate", response_model=PredictionSetRead)
+async def generate_prediction_set(
     *,
     loop_id: uuid.UUID,
+    payload: PredictionSetGenerateRequest,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    result = await runtime_service.generate_prediction_set(
+        loop_id=loop_id,
+        payload=payload.model_dump(exclude_none=True),
+        actor_user_id=current_user_id,
+    )
+    return PredictionSetRead.model_validate(result)
+
+
+@router.get("/loops/{loop_id}/prediction-sets", response_model=list[PredictionSetRead])
+async def list_prediction_sets(
+    *,
+    loop_id: uuid.UUID,
+    limit: int = 100,
     runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
@@ -258,8 +287,76 @@ async def get_loop_label_readiness(
         project_id=loop.project_id,
         required=Permissions.LOOP_READ,
     )
-    payload = await runtime_service.get_loop_label_readiness(loop_id=loop_id)
-    return LoopLabelReadinessResponse(**payload)
+    rows = await runtime_service.list_prediction_sets(loop_id=loop_id, limit=limit)
+    return [PredictionSetRead.model_validate(row) for row in rows]
+
+
+@router.get("/prediction-sets/{prediction_set_id}", response_model=PredictionSetDetailRead)
+async def get_prediction_set_detail(
+    *,
+    prediction_set_id: uuid.UUID,
+    item_limit: int = 2000,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    prediction_set, items = await runtime_service.get_prediction_set_detail(
+        prediction_set_id=prediction_set_id,
+        item_limit=item_limit,
+    )
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(prediction_set.loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_READ,
+    )
+    return PredictionSetDetailRead(
+        prediction_set=PredictionSetRead.model_validate(prediction_set),
+        items=[
+            {
+                "sample_id": row.sample_id,
+                "rank": int(row.rank or 0),
+                "score": float(row.score or 0.0),
+                "label_id": row.label_id,
+                "geometry": dict(row.geometry or {}),
+                "attrs": dict(row.attrs or {}),
+                "confidence": float(row.confidence or 0.0),
+                "meta": dict(row.meta or {}),
+            }
+            for row in items
+        ],
+    )
+
+
+@router.post("/prediction-sets/{prediction_set_id}:apply", response_model=PredictionSetApplyResponse)
+async def apply_prediction_set(
+    *,
+    prediction_set_id: uuid.UUID,
+    payload: PredictionSetApplyRequest,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    prediction_set = await runtime_service.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
+    loop = await runtime_service.loop_repo.get_by_id_or_raise(prediction_set.loop_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=loop.project_id,
+        required=Permissions.LOOP_MANAGE,
+    )
+    result = await runtime_service.apply_prediction_set(
+        prediction_set_id=prediction_set_id,
+        actor_user_id=current_user_id,
+        branch_name=payload.branch_name,
+        dry_run=bool(payload.dry_run),
+    )
+    return PredictionSetApplyResponse(
+        prediction_set_id=result["prediction_set_id"],
+        applied_count=int(result.get("applied_count", 0)),
+        status=str(result.get("status") or "ready"),
+    )
 
 
 @router.post("/loops/{loop_id}/rounds/{round_index}:cleanup-predictions", response_model=RoundPredictionCleanupResponse)

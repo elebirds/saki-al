@@ -34,9 +34,8 @@ import {api} from '../../../services/api';
 import {useAuthStore} from '../../../store/authStore';
 import {
     RuntimeRound,
-    RuntimeRoundStepArtifacts,
+    RuntimeRoundArtifact,
     RuntimeStep,
-    RuntimeStepArtifact,
     RuntimeStepCandidate,
     RuntimeStepEvent,
     StepEventFacets,
@@ -91,12 +90,9 @@ const LEVEL_COLOR_CLASS: Record<string, string> = {
 
 type RoundStageKey =
     | 'train'
+    | 'eval'
     | 'score'
     | 'select'
-    | 'eval'
-    | 'activate_samples'
-    | 'advance_branch'
-    | 'export'
     | 'custom';
 
 type ConsoleStageFilter = 'all' | RoundStageKey;
@@ -112,14 +108,18 @@ interface RoundStageSnapshot {
     metricSummary: Record<string, any>;
 }
 
-interface TrainEvalArtifactRow {
+interface RoundArtifactTableRow {
     key: string;
-    stage: 'train' | 'eval';
+    stage: string;
     stageLabel: string;
+    artifactClass: string;
+    artifactClassLabel: string;
     stepId: string;
+    stepIndex: number;
     name: string;
     kind: string;
-    meta: Record<string, any>;
+    size?: number | null;
+    createdAt?: string | null;
 }
 
 type RawRuntimeStepEvent = {
@@ -138,19 +138,24 @@ type RawRuntimeStepEvent = {
 
 const STAGE_LABEL: Record<RoundStageKey, string> = {
     train: '训练',
+    eval: '评估',
     score: '评分',
     select: '选样',
-    eval: '评估',
-    activate_samples: '激活样本',
-    advance_branch: '推进分支',
-    export: '导出/上传',
     custom: '自定义',
 };
 
+const ARTIFACT_CLASS_LABEL: Record<string, string> = {
+    model_artifact: '模型',
+    eval_artifact: '评估',
+    selection_artifact: '选样',
+    prediction_artifact: '预测',
+    generic_artifact: '通用',
+};
+
 const MODE_STAGE_ORDER: Record<string, RoundStageKey[]> = {
-    active_learning: ['train', 'score', 'select', 'eval', 'custom'],
-    simulation: ['train', 'score', 'select', 'eval', 'activate_samples', 'advance_branch', 'custom'],
-    manual: ['train', 'eval', 'export', 'custom'],
+    active_learning: ['train', 'eval', 'score', 'select', 'custom'],
+    simulation: ['train', 'eval', 'score', 'select', 'custom'],
+    manual: ['train', 'eval', 'custom'],
 };
 
 const EMPTY_FACETS: StepEventFacets = {eventTypes: {}, levels: {}, tags: {}};
@@ -206,7 +211,7 @@ const buildWsUrl = (stepId: string, afterSeq: number, token: string): string => 
 const resolveModeStageOrder = (mode?: string | null): RoundStageKey[] => {
     const key = String(mode || '');
     if (MODE_STAGE_ORDER[key]) return MODE_STAGE_ORDER[key];
-    return ['train', 'score', 'select', 'eval', 'activate_samples', 'advance_branch', 'export', 'custom'];
+    return ['train', 'eval', 'score', 'select', 'custom'];
 };
 
 const normalizeStepTypeText = (stepType: string): string => String(stepType || '').trim().toLowerCase();
@@ -215,21 +220,14 @@ const mapStepTypeToStage = (stepType: string): RoundStageKey => {
     switch (normalizeStepTypeText(stepType)) {
         case 'train':
             return 'train';
-        case 'score':
-            return 'score';
-        case 'select':
-            return 'select';
         case 'eval':
         case 'evaluate':
         case 'evaluation':
             return 'eval';
-        case 'activate_samples':
-            return 'activate_samples';
-        case 'advance_branch':
-            return 'advance_branch';
-        case 'export':
-        case 'upload_artifact':
-            return 'export';
+        case 'score':
+            return 'score';
+        case 'select':
+            return 'select';
         default:
             return 'custom';
     }
@@ -401,36 +399,6 @@ const createInitialStageSnapshots = (): Record<RoundStageKey, RoundStageSnapshot
         stateSummary: '-',
         metricSummary: {},
     },
-    activate_samples: {
-        key: 'activate_samples',
-        label: STAGE_LABEL.activate_samples,
-        steps: [],
-        representativeStep: null,
-        totalDurationSec: 0,
-        representativeDurationSec: 0,
-        stateSummary: '-',
-        metricSummary: {},
-    },
-    advance_branch: {
-        key: 'advance_branch',
-        label: STAGE_LABEL.advance_branch,
-        steps: [],
-        representativeStep: null,
-        totalDurationSec: 0,
-        representativeDurationSec: 0,
-        stateSummary: '-',
-        metricSummary: {},
-    },
-    export: {
-        key: 'export',
-        label: STAGE_LABEL.export,
-        steps: [],
-        representativeStep: null,
-        totalDurationSec: 0,
-        representativeDurationSec: 0,
-        stateSummary: '-',
-        metricSummary: {},
-    },
     custom: {
         key: 'custom',
         label: STAGE_LABEL.custom,
@@ -506,12 +474,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
     const [trainMetricPoints, setTrainMetricPoints] = useState<RuntimeStepMetricPoint[]>([]);
     const [topkCandidates, setTopkCandidates] = useState<RuntimeStepCandidate[]>([]);
     const [topkSource, setTopkSource] = useState<string>('-');
-    const [trainArtifacts, setTrainArtifacts] = useState<RuntimeStepArtifact[]>([]);
-    const [trainArtifactSourceStepId, setTrainArtifactSourceStepId] = useState<string>('');
-    const [evalArtifacts, setEvalArtifacts] = useState<RuntimeStepArtifact[]>([]);
-    const [evalArtifactSourceStepId, setEvalArtifactSourceStepId] = useState<string>('');
-    const [exportArtifacts, setExportArtifacts] = useState<RuntimeStepArtifact[]>([]);
-    const [exportArtifactSourceStepId, setExportArtifactSourceStepId] = useState<string>('');
+    const [roundArtifacts, setRoundArtifacts] = useState<RuntimeRoundArtifact[]>([]);
     const [artifactUrls, setArtifactUrls] = useState<Record<string, string>>({});
 
     const [consoleStage, setConsoleStage] = useState<ConsoleStageFilter>('all');
@@ -557,19 +520,9 @@ const ProjectLoopRoundDetail: React.FC = () => {
     );
 
     const trainStep = stageSnapshots.train.representativeStep;
+    const evalStep = stageSnapshots.eval.representativeStep;
     const scoreStep = stageSnapshots.score.representativeStep;
     const selectStep = stageSnapshots.select.representativeStep;
-    const evalStep = stageSnapshots.eval.representativeStep;
-    const exportStep = stageSnapshots.export.representativeStep;
-    const evalArtifactStep = useMemo(() => {
-        if (evalStep) return evalStep;
-        return [...sortedSteps]
-            .reverse()
-            .find((item) => {
-                const stepType = normalizeStepTypeText(item.stepType);
-                return stepType === 'eval' || stepType.includes('eval');
-            }) || null;
-    }, [evalStep, sortedSteps]);
 
     const consoleStageOptions = useMemo(() => {
         if (!round) return [];
@@ -678,46 +631,32 @@ const ProjectLoopRoundDetail: React.FC = () => {
         return Array.from(rows.values()).sort((a, b) => (a.step || 0) - (b.step || 0));
     }, [trainMetricPoints]);
 
-    const trainEvalArtifactRows = useMemo(() => {
-        const rows: TrainEvalArtifactRow[] = [];
-        const pushRows = (
-            stage: 'train' | 'eval',
-            stageLabel: string,
-            stepId: string,
-            artifacts: RuntimeStepArtifact[],
-        ) => {
-            if (!stepId || artifacts.length === 0) return;
-            artifacts.forEach((artifact) => {
-                rows.push({
-                    key: buildArtifactKey(stepId, artifact.name),
-                    stage,
-                    stageLabel,
-                    stepId,
-                    name: artifact.name,
-                    kind: artifact.kind,
-                    meta: artifact.meta || {},
-                });
-            });
-        };
-        const trainStepId = trainArtifactSourceStepId || trainStep?.id || '';
-        const evalStepId = evalArtifactSourceStepId || evalArtifactStep?.id || '';
-        pushRows('train', STAGE_LABEL.train, trainStepId, trainArtifacts);
-        pushRows('eval', STAGE_LABEL.eval, evalStepId, evalArtifacts);
-        return rows;
-    }, [
-        trainArtifacts,
-        evalArtifacts,
-        trainArtifactSourceStepId,
-        evalArtifactSourceStepId,
-        trainStep?.id,
-        evalArtifactStep?.id,
-    ]);
+    const roundArtifactRows = useMemo<RoundArtifactTableRow[]>(() => {
+        return (roundArtifacts || []).map((item) => {
+            const stageKey = String(item.stage || '').trim().toLowerCase() as RoundStageKey;
+            const stageLabel = STAGE_LABEL[stageKey] || String(item.stage || '-');
+            const artifactClass = String(item.artifactClass || '').trim().toLowerCase();
+            return {
+                key: buildArtifactKey(item.stepId, item.name),
+                stage: String(item.stage || ''),
+                stageLabel,
+                artifactClass,
+                artifactClassLabel: ARTIFACT_CLASS_LABEL[artifactClass] || artifactClass || '-',
+                stepId: item.stepId,
+                stepIndex: Number(item.stepIndex || 0),
+                name: item.name,
+                kind: item.kind,
+                size: item.size,
+                createdAt: item.createdAt,
+            };
+        });
+    }, [roundArtifacts]);
 
     const evalMetricSummary = useMemo(() => {
         const stageMetrics = stageSnapshots.eval.metricSummary || {};
         if (Object.keys(stageMetrics).length > 0) return stageMetrics;
-        return evalArtifactStep?.metrics || {};
-    }, [stageSnapshots.eval.metricSummary, evalArtifactStep?.id, evalArtifactStep?.metrics]);
+        return evalStep?.metrics || {};
+    }, [stageSnapshots.eval.metricSummary, evalStep?.id, evalStep?.metrics]);
 
     const visibleEvents = useMemo(() => {
         const eventTypeSet = new Set((eventTypeFilter || []).map((item) => String(item).toLowerCase()));
@@ -746,15 +685,15 @@ const ProjectLoopRoundDetail: React.FC = () => {
         return rows;
     }, [events, eventTypeFilter, eventLevelFilter, eventTagFilter, eventQueryText, onlyErrors, logTailLimit]);
 
-    const ensureArtifactUrls = useCallback(async (stepId: string, items: RuntimeStepArtifact[]) => {
-        if (!stepId || items.length === 0) return;
+    const ensureArtifactUrls = useCallback(async (items: RuntimeRoundArtifact[]) => {
+        if (!items || items.length === 0) return;
         const currentMap = artifactUrlsRef.current;
-        const missing = items.filter((item) => !currentMap[buildArtifactKey(stepId, item.name)]);
+        const missing = items.filter((item) => !currentMap[buildArtifactKey(item.stepId, item.name)]);
         if (missing.length === 0) return;
 
         const updates: Record<string, string> = {};
         for (const artifact of missing) {
-            const key = buildArtifactKey(stepId, artifact.name);
+            const key = buildArtifactKey(artifact.stepId, artifact.name);
             const uri = String(artifact.uri || '');
             if (uri.startsWith('http://') || uri.startsWith('https://')) {
                 updates[key] = uri;
@@ -762,7 +701,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
             }
             if (!uri.startsWith('s3://')) continue;
             try {
-                const row = await api.getStepArtifactDownloadUrl(stepId, artifact.name, 2);
+                const row = await api.getStepArtifactDownloadUrl(artifact.stepId, artifact.name, 2);
                 updates[key] = row.downloadUrl;
             } catch {
                 // ignore unavailable artifacts
@@ -884,7 +823,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
 
             const roundArtifactsPromise = api.getRoundArtifacts(round.id, 2000).catch(() => ({
                 roundId: round.id,
-                items: [] as RuntimeRoundStepArtifacts[],
+                items: [] as RuntimeRoundArtifact[],
             }));
 
             const [trainPoints, roundArtifactsResp] = await Promise.all([trainPromise, roundArtifactsPromise]);
@@ -894,50 +833,10 @@ const ProjectLoopRoundDetail: React.FC = () => {
             const roundArtifactItems = [...(roundArtifactsResp.items || [])].sort(
                 (left, right) => Number(left.stepIndex || 0) - Number(right.stepIndex || 0),
             );
-            const pickLatestArtifactsByType = (
-                matcher: (normalizedStepType: string) => boolean,
-                preferredStepId?: string,
-            ): RuntimeRoundStepArtifacts | null => {
-                const matches = roundArtifactItems.filter((item) => {
-                    const artifacts = Array.isArray(item.artifacts) ? item.artifacts : [];
-                    if (artifacts.length === 0) return false;
-                    const normalizedType = normalizeStepTypeText(String(item.stepType || ''));
-                    return matcher(normalizedType);
-                });
-                if (matches.length === 0) return null;
-                if (preferredStepId) {
-                    const preferred = matches.find((item) => item.stepId === preferredStepId);
-                    if (preferred) return preferred;
-                }
-                return matches[matches.length - 1];
-            };
-
-            const trainArtifactItem = pickLatestArtifactsByType(
-                (type) => type === 'train',
-                trainStep?.id,
-            );
-            const evalArtifactItem = pickLatestArtifactsByType(
-                (type) => type === 'eval' || type.includes('eval'),
-                evalArtifactStep?.id,
-            );
-            const exportArtifactItem = pickLatestArtifactsByType(
-                (type) => type === 'export' || type === 'upload_artifact',
-                exportStep?.id,
-            );
 
             setTrainMetricPoints(trainPoints);
-            setTrainArtifacts(trainArtifactItem?.artifacts || []);
-            setTrainArtifactSourceStepId(trainArtifactItem?.stepId || trainStep?.id || '');
-            setEvalArtifacts(evalArtifactItem?.artifacts || []);
-            setEvalArtifactSourceStepId(evalArtifactItem?.stepId || evalArtifactStep?.id || '');
-            setExportArtifacts(exportArtifactItem?.artifacts || []);
-            setExportArtifactSourceStepId(exportArtifactItem?.stepId || exportStep?.id || '');
-
-            roundArtifactItems.forEach((item) => {
-                const artifactRows = item.artifacts || [];
-                if (!item.stepId || artifactRows.length === 0) return;
-                void ensureArtifactUrls(item.stepId, artifactRows);
-            });
+            setRoundArtifacts(roundArtifactItems);
+            void ensureArtifactUrls(roundArtifactItems);
 
             if (round.mode === 'manual') {
                 setTopkCandidates([]);
@@ -990,10 +889,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
         round?.mode,
         trainStep?.id,
         trainStep?.updatedAt,
-        evalArtifactStep?.id,
-        evalArtifactStep?.updatedAt,
-        exportStep?.id,
-        exportStep?.updatedAt,
         selectStep?.id,
         selectStep?.updatedAt,
         scoreStep?.id,
@@ -1231,9 +1126,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
         );
     }
 
-    const exportStepId = exportArtifactSourceStepId || exportStep?.id || '';
-    const simulationActionStages: RoundStageKey[] = ['activate_samples', 'advance_branch'];
-
     return (
         <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
             <Card className="!border-github-border !bg-github-panel">
@@ -1318,35 +1210,51 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 )}
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel" title="训练/评估制品">
-                {trainEvalArtifactRows.length === 0 ? (
-                    <Empty description="当前 Round 暂无训练/评估制品"/>
+            <Card className="!border-github-border !bg-github-panel" title="制品">
+                {roundArtifactRows.length === 0 ? (
+                    <Empty description="当前 Round 暂无制品"/>
                 ) : (
-                    <Table<TrainEvalArtifactRow>
+                    <Table<RoundArtifactTableRow>
                         size="small"
                         rowKey={(row) => row.key}
-                        dataSource={trainEvalArtifactRows}
+                        dataSource={roundArtifactRows}
                         pagination={{pageSize: 10, showSizeChanger: false}}
                         columns={[
                             {
                                 title: '来源阶段',
                                 dataIndex: 'stageLabel',
                                 width: 120,
-                                render: (_value: unknown, row: TrainEvalArtifactRow) => (
-                                    <Tag color={row.stage === 'train' ? 'blue' : 'green'}>{row.stageLabel}</Tag>
+                                render: (_value: unknown, row: RoundArtifactTableRow) => (
+                                    <Tag>{row.stageLabel}</Tag>
                                 ),
                             },
+                            {
+                                title: '类别',
+                                dataIndex: 'artifactClassLabel',
+                                width: 120,
+                                render: (_value: unknown, row: RoundArtifactTableRow) => <Tag>{row.artifactClassLabel}</Tag>,
+                            },
                             {title: '名称', dataIndex: 'name'},
-                            {title: '类型', dataIndex: 'kind', width: 180, render: (v: string) => <Tag>{v}</Tag>},
+                            {title: '类型', dataIndex: 'kind', width: 180, render: (value: string) => <Tag>{value}</Tag>},
                             {
                                 title: '大小',
                                 width: 120,
-                                render: (_value: unknown, row: TrainEvalArtifactRow) => formatArtifactSize(row.meta?.size),
+                                render: (_value: unknown, row: RoundArtifactTableRow) => formatArtifactSize(row.size),
+                            },
+                            {
+                                title: 'Step',
+                                width: 100,
+                                render: (_value: unknown, row: RoundArtifactTableRow) => `#${row.stepIndex}`,
+                            },
+                            {
+                                title: '时间',
+                                width: 180,
+                                render: (_value: unknown, row: RoundArtifactTableRow) => formatDateTime(row.createdAt),
                             },
                             {
                                 title: '操作',
                                 width: 220,
-                                render: (_value: unknown, row: TrainEvalArtifactRow) => {
+                                render: (_value: unknown, row: RoundArtifactTableRow) => {
                                     const url = artifactUrls[buildArtifactKey(row.stepId, row.name)];
                                     return url ? (
                                         <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
@@ -1409,7 +1317,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
             ) : null}
 
             <Card className="!border-github-border !bg-github-panel" title="评估结果">
-                {!evalArtifactStep ? (
+                {!evalStep ? (
                     <Empty description="当前 Round 无评估阶段"/>
                 ) : (
                     <div>
@@ -1426,71 +1334,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
                     </div>
                 )}
             </Card>
-
-            {(exportStep || exportArtifacts.length > 0 || round.mode === 'manual') ? (
-                <Card className="!border-github-border !bg-github-panel" title="导出/上传制品">
-                    {!exportStep ? (
-                        <Empty description="当前 Round 无导出/上传阶段"/>
-                    ) : exportArtifacts.length === 0 ? (
-                        <Empty description="导出阶段暂无制品"/>
-                    ) : (
-                        <Table
-                            size="small"
-                            rowKey={(item) => item.name}
-                            dataSource={exportArtifacts}
-                            pagination={{pageSize: 8}}
-                            columns={[
-                                {title: '名称', dataIndex: 'name'},
-                                {title: '类型', dataIndex: 'kind', width: 180, render: (v: string) => <Tag>{v}</Tag>},
-                                {
-                                    title: '大小',
-                                    width: 120,
-                                    render: (_value: unknown, row: RuntimeStepArtifact) => formatArtifactSize(row.meta?.size),
-                                },
-                                {
-                                    title: '操作',
-                                    width: 220,
-                                    render: (_value: unknown, row: RuntimeStepArtifact) => {
-                                        const url = artifactUrls[buildArtifactKey(exportStepId, row.name)];
-                                        return url ? (
-                                            <Button size="small" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
-                                                下载/预览
-                                            </Button>
-                                        ) : (
-                                            <Text type="secondary">暂不可下载</Text>
-                                        );
-                                    },
-                                },
-                            ]}
-                        />
-                    )}
-                </Card>
-            ) : null}
-
-            {round.mode === 'simulation' ? (
-                <Card className="!border-github-border !bg-github-panel" title="模拟推进阶段">
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                        {simulationActionStages.map((key) => {
-                            const stage = stageSnapshots[key];
-                            const step = stage.representativeStep;
-                            return (
-                                <div key={key} className="rounded border border-github-border p-3">
-                                    <div className="mb-1 flex items-center justify-between gap-2">
-                                        <Text strong>{stage.label}</Text>
-                                        <Tag color={step ? (STEP_STATE_COLOR[step.state] || 'default') : 'default'}>
-                                            {step?.state || 'pending'}
-                                        </Tag>
-                                    </div>
-                                    <div className="text-xs text-github-muted">
-                                        <div>{`Step: ${step ? `#${step.stepIndex}` : '-'}`}</div>
-                                        <div>{`耗时: ${stage.representativeDurationSec}s`}</div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </Card>
-            ) : null}
 
             <Card
                 className="!border-github-border !bg-github-panel"

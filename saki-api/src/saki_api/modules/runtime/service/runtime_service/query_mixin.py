@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.core.config import settings
 from saki_api.modules.runtime.api.round_step import (
-    RoundStepArtifactsRead,
+    RoundArtifactRead,
     SimulationComparisonRead,
     SimulationCurvePointRead,
     SimulationStrategySummaryRead,
@@ -257,22 +257,53 @@ class RuntimeQueryMixin:
         step = await self.step_repo.get_by_id_or_raise(step_id)
         return self._extract_downloadable_step_artifacts(step)
 
-    async def list_round_artifacts(self, round_id: uuid.UUID, limit: int = 2000) -> list[RoundStepArtifactsRead]:
+    @staticmethod
+    def _artifact_stage_from_step_type(step_type: Any) -> str:
+        value = str(step_type.value if hasattr(step_type, "value") else step_type).strip().lower()
+        if value in {"train", "eval", "score", "select", "predict"}:
+            return value
+        return "custom"
+
+    @staticmethod
+    def _artifact_class_from_stage(stage: str, kind: str) -> str:
+        normalized_kind = str(kind or "").strip().lower()
+        if stage == "train":
+            return "model_artifact"
+        if stage == "eval":
+            return "eval_artifact"
+        if stage in {"score", "select"}:
+            return "selection_artifact"
+        if stage == "predict":
+            return "prediction_artifact"
+        if normalized_kind in {"report", "eval_artifact"}:
+            return "eval_artifact"
+        return "generic_artifact"
+
+    async def list_round_artifacts(self, round_id: uuid.UUID, limit: int = 2000) -> list[RoundArtifactRead]:
         steps = await self.list_steps(round_id, limit=limit)
-        items: list[RoundStepArtifactsRead] = []
+        items: list[RoundArtifactRead] = []
         for step in steps:
             artifacts = self._extract_downloadable_step_artifacts(step)
             if not artifacts:
                 continue
-            items.append(
-                RoundStepArtifactsRead(
-                    step_id=step.id,
-                    step_index=int(step.step_index or 0),
-                    step_type=step.step_type,
-                    state=step.state,
-                    artifacts=artifacts,
+            stage = self._artifact_stage_from_step_type(step.step_type)
+            for artifact in artifacts:
+                size_raw = (artifact.meta or {}).get("size") if isinstance(artifact.meta, dict) else None
+                size_value = int(size_raw) if isinstance(size_raw, (int, float)) else None
+                items.append(
+                    RoundArtifactRead(
+                        step_id=step.id,
+                        step_index=int(step.step_index or 0),
+                        stage=stage,
+                        artifact_class=self._artifact_class_from_stage(stage, artifact.kind),
+                        name=artifact.name,
+                        kind=artifact.kind,
+                        uri=artifact.uri,
+                        size=size_value,
+                        created_at=step.updated_at,
+                    )
                 )
-            )
+        items.sort(key=lambda item: (int(item.step_index or 0), str(item.name or "")))
         return items
 
     async def get_step_artifact_download_url(

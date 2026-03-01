@@ -12,9 +12,9 @@ from saki_api.modules.shared.modeling.enums import RoundSelectionOverrideOp
 
 
 class ALRoundSelectionOverride(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    __tablename__ = "al_round_selection_override"
+    __tablename__ = "round_selection_override"
     __table_args__ = (
-        UniqueConstraint("round_id", "sample_id", name="uq_al_round_selection_override_round_sample"),
+        UniqueConstraint("round_id", "sample_id", name="uq_round_selection_override_round_sample"),
     )
 
     round_id: uuid.UUID = Field(foreign_key="round.id", index=True)

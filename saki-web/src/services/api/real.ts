@@ -45,7 +45,13 @@ import {
     LoopActionResponse,
     LoopSnapshotRead,
     LoopGateResponse,
-    LoopLabelReadinessResponse,
+    RoundMissingSamplesQuery,
+    RoundMissingSamplesResponse,
+    PredictionSetApplyRequest,
+    PredictionSetApplyResponse,
+    PredictionSetDetailRead,
+    PredictionSetGenerateRequest,
+    PredictionSetRead,
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
     LoopSummary,
@@ -1003,8 +1009,36 @@ export class RealApiService implements ApiService {
         };
     }
 
-    async getLoopLabelReadiness(loopId: string): Promise<LoopLabelReadinessResponse> {
-        const response = await this.client.get<LoopLabelReadinessResponse>(`/loops/${loopId}/label-readiness`);
+    async generatePredictionSet(loopId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead> {
+        const response = await this.client.post<PredictionSetRead>(
+            `/loops/${loopId}/prediction-sets:generate`,
+            payload ?? {},
+        );
+        return response.data;
+    }
+
+    async listPredictionSets(loopId: string, limit: number = 100): Promise<PredictionSetRead[]> {
+        const response = await this.client.get<PredictionSetRead[]>(`/loops/${loopId}/prediction-sets`, {
+            params: {limit},
+        });
+        return response.data;
+    }
+
+    async getPredictionSetDetail(predictionSetId: string, itemLimit: number = 1000): Promise<PredictionSetDetailRead> {
+        const response = await this.client.get<PredictionSetDetailRead>(`/prediction-sets/${predictionSetId}`, {
+            params: {item_limit: itemLimit},
+        });
+        return response.data;
+    }
+
+    async applyPredictionSet(
+        predictionSetId: string,
+        payload: PredictionSetApplyRequest,
+    ): Promise<PredictionSetApplyResponse> {
+        const response = await this.client.post<PredictionSetApplyResponse>(
+            `/prediction-sets/${predictionSetId}:apply`,
+            payload ?? {},
+        );
         return response.data;
     }
 
@@ -1080,6 +1114,27 @@ export class RealApiService implements ApiService {
 
     async resetRoundSelection(roundId: string): Promise<RoundSelectionApplyResponse> {
         const response = await this.client.post<RoundSelectionApplyResponse>(`/rounds/${roundId}/selection:reset`);
+        return response.data;
+    }
+
+    async getRoundMissingSamples(
+        loopId: string,
+        roundId: string,
+        params: RoundMissingSamplesQuery = {},
+    ): Promise<RoundMissingSamplesResponse> {
+        const response = await this.client.get<RoundMissingSamplesResponse>(
+            `/loops/${loopId}/rounds/${roundId}/missing-samples`,
+            {
+                params: {
+                    dataset_id: params.datasetId,
+                    q: params.q,
+                    sort_by: params.sortBy,
+                    sort_order: params.sortOrder,
+                    page: params.page,
+                    limit: params.limit,
+                },
+            },
+        );
         return response.data;
     }
 

@@ -79,22 +79,19 @@ type loopModeStepSpec struct {
 var loopModeStepPlan = map[db.Loopmode][]loopModeStepSpec{
 	modeAL: {
 		{StepType: db.SteptypeTRAIN, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseALTrain},
-		{StepType: db.SteptypeSCORE, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseALScore},
 		{StepType: db.SteptypeEVAL, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseALEval},
+		{StepType: db.SteptypeSCORE, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseALScore},
 		{StepType: db.SteptypeSELECT, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseALSelect},
 	},
 	modeSIM: {
 		{StepType: db.SteptypeTRAIN, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimTrain},
-		{StepType: db.SteptypeSCORE, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimScore},
 		{StepType: db.SteptypeEVAL, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimEval},
+		{StepType: db.SteptypeSCORE, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseSimScore},
 		{StepType: db.SteptypeSELECT, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseSimSelect},
-		{StepType: db.SteptypeACTIVATESAMPLES, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseSimActivate},
-		{StepType: db.SteptypeADVANCEBRANCH, DispatchKind: db.StepdispatchkindORCHESTRATOR, Phase: phaseSimActivate},
 	},
 	modeManual: {
 		{StepType: db.SteptypeTRAIN, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseManualTrain},
 		{StepType: db.SteptypeEVAL, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseManualEval},
-		{StepType: db.SteptypeEXPORT, DispatchKind: db.StepdispatchkindDISPATCHABLE, Phase: phaseManualExport},
 	},
 }
 
@@ -239,20 +236,14 @@ func toRuntimeStepType(raw db.Steptype) runtimecontrolv1.RuntimeStepType {
 	switch raw {
 	case db.SteptypeTRAIN:
 		return runtimecontrolv1.RuntimeStepType_TRAIN
+	case db.SteptypeEVAL:
+		return runtimecontrolv1.RuntimeStepType_EVAL
 	case db.SteptypeSCORE:
 		return runtimecontrolv1.RuntimeStepType_SCORE
 	case db.SteptypeSELECT:
 		return runtimecontrolv1.RuntimeStepType_SELECT
-	case db.SteptypeACTIVATESAMPLES:
-		return runtimecontrolv1.RuntimeStepType_ACTIVATE_SAMPLES
-	case db.SteptypeADVANCEBRANCH:
-		return runtimecontrolv1.RuntimeStepType_ADVANCE_BRANCH
-	case db.SteptypeEVAL:
-		return runtimecontrolv1.RuntimeStepType_EVAL
-	case db.SteptypeEXPORT:
-		return runtimecontrolv1.RuntimeStepType_EXPORT
-	case db.SteptypeUPLOADARTIFACT:
-		return runtimecontrolv1.RuntimeStepType_UPLOAD_ARTIFACT
+	case db.SteptypePREDICT:
+		return runtimecontrolv1.RuntimeStepType_PREDICT
 	case db.SteptypeCUSTOM:
 		return runtimecontrolv1.RuntimeStepType_CUSTOM
 	default:

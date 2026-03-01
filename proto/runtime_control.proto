@@ -48,15 +48,10 @@ enum AckReason {
 enum RuntimeStepType {
   RUNTIME_STEP_TYPE_UNSPECIFIED = 0;
   TRAIN = 1;
-  SCORE = 2;
-  SELECT = 3;
-  ACTIVATE_SAMPLES = 4;
-  reserved 5;
-  ADVANCE_BRANCH = 6;
-  EVAL = 7;
-  UPLOAD_ARTIFACT = 8;
-  EXPORT = 9;
-  reserved 10;
+  EVAL = 2;
+  SCORE = 3;
+  SELECT = 4;
+  PREDICT = 5;
   CUSTOM = 99;
 }
 

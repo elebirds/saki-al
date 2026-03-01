@@ -124,22 +124,21 @@ CREATE TYPE public.loopmode AS ENUM (
 CREATE TYPE public.loopphase AS ENUM (
     'AL_BOOTSTRAP',
     'AL_TRAIN',
+    'AL_EVAL',
     'AL_SCORE',
     'AL_SELECT',
     'AL_WAIT_USER',
-    'AL_EVAL',
     'AL_FINALIZE',
     'SIM_BOOTSTRAP',
     'SIM_TRAIN',
+    'SIM_EVAL',
     'SIM_SCORE',
     'SIM_SELECT',
-    'SIM_ACTIVATE',
-    'SIM_EVAL',
+    'SIM_WAIT_USER',
     'SIM_FINALIZE',
     'MANUAL_BOOTSTRAP',
     'MANUAL_TRAIN',
     'MANUAL_EVAL',
-    'MANUAL_EXPORT',
     'MANUAL_FINALIZE'
 );
 
@@ -236,13 +235,10 @@ CREATE TYPE public.stepstatus AS ENUM (
 
 CREATE TYPE public.steptype AS ENUM (
     'TRAIN',
+    'EVAL',
     'SCORE',
     'SELECT',
-    'ACTIVATE_SAMPLES',
-    'ADVANCE_BRANCH',
-    'EVAL',
-    'EXPORT',
-    'UPLOAD_ARTIFACT',
+    'PREDICT',
     'CUSTOM'
 );
 

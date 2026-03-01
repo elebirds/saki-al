@@ -64,11 +64,20 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 		if !ok {
 			return "rejected", "loop not found", nil
 		}
-		if loop.Mode != modeAL {
-			return "rejected", "start_next_round only supports active-learning loop", nil
+		var expectedPhase db.Loopphase
+		switch loop.Mode {
+		case modeAL:
+			expectedPhase = phaseALWaitAnnotation
+		case modeManual:
+			expectedPhase = phaseManualEval
+		default:
+			return "rejected", "start_next_round only supports active-learning/manual loop", nil
 		}
-		if loop.Phase != phaseALWaitAnnotation {
-			return "rejected", "loop is not in al_wait_user phase", nil
+		if loop.Phase != expectedPhase {
+			if loop.Mode == modeAL {
+				return "rejected", "loop is not in al_wait_user phase", nil
+			}
+			return "rejected", "loop is not in manual_eval phase", nil
 		}
 		if loop.Lifecycle != lifecycleRunning {
 			return "rejected", fmt.Sprintf("loop in lifecycle %s cannot start next round", loop.Lifecycle), nil
@@ -84,7 +93,7 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 		if latestRound.SummaryStatus != roundCompleted {
 			return "rejected", fmt.Sprintf("latest round is not completed: %s", latestRound.SummaryStatus), nil
 		}
-		if latestRound.ConfirmedAt == nil {
+		if loop.Mode == modeAL && latestRound.ConfirmedAt == nil {
 			return "rejected", "latest round is not confirmed", nil
 		}
 
@@ -101,18 +110,24 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 			return "", "", err
 		}
 		if nextRound > loop.MaxRounds {
+			finalizePhase := phaseALFinalize
+			completedMsg := "active-learning loop completed"
+			if loop.Mode == modeManual {
+				finalizePhase = phaseManualFinalize
+				completedMsg = "manual loop completed"
+			}
 			if err := s.updateLoopRuntime(
 				ctx,
 				tx,
 				loop.ID,
 				lifecycleCompleted,
-				phaseALFinalize,
+				finalizePhase,
 				terminalReasonSuccess,
 				loop.LastConfirmedCommitID,
 			); err != nil {
 				return "", "", err
 			}
-			return "applied", "active-learning loop completed", nil
+			return "applied", completedMsg, nil
 		}
 
 		created, err := s.createNextRoundTx(ctx, tx, loop, commandID)
@@ -120,7 +135,7 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 			return "", "", err
 		}
 		if !created {
-			return "rejected", "cannot create next round for active-learning loop", nil
+			return "rejected", "cannot create next round", nil
 		}
 		return "applied", "start_next_round applied", nil
 	})
@@ -242,7 +257,7 @@ func (s *Service) ConfirmLoop(
 
 		switch loop.Mode {
 		case modeManual:
-			return "rejected", "manual mode is single-run and does not require confirm", nil
+			return "rejected", "manual mode does not require confirm", nil
 
 		case modeAL:
 			if loop.Phase != phaseALWaitAnnotation {
@@ -668,15 +683,21 @@ func (s *Service) handleTerminalRoundByModeTx(
 	case modeSIM:
 		return s.handleSimulationTerminalRoundTx(ctx, tx, loop, latestRound)
 	case modeManual:
-		return s.updateLoopRuntime(
-			ctx,
-			tx,
-			loop.ID,
-			lifecycleCompleted,
-			phaseManualFinalize,
-			terminalReasonSuccess,
-			loop.LastConfirmedCommitID,
-		)
+		if latestRound.RoundIndex >= loop.MaxRounds {
+			return s.updateLoopRuntime(
+				ctx,
+				tx,
+				loop.ID,
+				lifecycleCompleted,
+				phaseManualFinalize,
+				terminalReasonSuccess,
+				loop.LastConfirmedCommitID,
+			)
+		}
+		if loop.Lifecycle == lifecycleRunning && loop.Phase == phaseManualEval {
+			return nil
+		}
+		return s.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseManualEval, "", loop.LastConfirmedCommitID)
 	default:
 		return fmt.Errorf("unsupported loop mode: %s", loop.Mode)
 	}

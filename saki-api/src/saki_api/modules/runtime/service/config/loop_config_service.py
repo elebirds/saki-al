@@ -83,7 +83,6 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     )
 
     if mode == "manual":
-        normalized_mode["single_round"] = True
         normalized_mode["confirm_required"] = False
         normalized_sampling = {}
     elif mode == "active_learning":
@@ -145,8 +144,6 @@ def validate_loop_config(config: dict[str, Any], *, mode: str) -> None:
 
 
 def derive_loop_max_rounds(*, mode: str, config: dict[str, Any]) -> int:
-    if mode == "manual":
-        return 1
     mode_config = config.get("mode")
     mode_map = mode_config if isinstance(mode_config, dict) else {}
     return max(1, to_int(mode_map.get("max_rounds"), 20))

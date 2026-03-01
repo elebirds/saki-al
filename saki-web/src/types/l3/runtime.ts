@@ -344,6 +344,19 @@ export interface RuntimeStepArtifactsResponse {
     artifacts: RuntimeStepArtifact[];
 }
 
+export interface RuntimeRoundStepArtifacts {
+    stepId: string;
+    stepIndex: number;
+    stepType: RuntimeStepType | string;
+    state: RuntimeStepState | string;
+    artifacts: RuntimeStepArtifact[];
+}
+
+export interface RuntimeRoundArtifactsResponse {
+    roundId: string;
+    items: RuntimeRoundStepArtifacts[];
+}
+
 export interface StepArtifactDownload {
     stepId: string;
     artifactName: string;

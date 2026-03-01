@@ -14,6 +14,7 @@ from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import (
+    RoundArtifactsResponse,
     RoundRead,
     RoundSelectionRead,
     StepRead,
@@ -106,6 +107,27 @@ async def get_round_selection(
     )
     payload = await runtime_service.get_round_selection(round_id=round_id)
     return RoundSelectionRead.model_validate(payload)
+
+
+@router.get("/rounds/{round_id}/artifacts", response_model=RoundArtifactsResponse)
+async def get_round_artifacts(
+    *,
+    round_id: uuid.UUID,
+    limit: int = Query(default=2000, ge=1, le=5000),
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    round_item = await runtime_service.get_by_id_or_raise(round_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=round_item.project_id,
+        required_permission=Permissions.ROUND_READ,
+        fallback_permissions=(Permissions.PROJECT_READ,),
+    )
+    items = await runtime_service.list_round_artifacts(round_id=round_id, limit=limit)
+    return RoundArtifactsResponse(round_id=round_id, items=items)
 
 
 @router.get("/steps/{step_id}", response_model=StepRead)

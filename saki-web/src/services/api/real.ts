@@ -30,6 +30,7 @@ import {
     RoundSelectionRead,
     RuntimeRound,
     RuntimeRoundCommandResponse,
+    RuntimeRoundArtifactsResponse,
     RuntimeStep,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
@@ -315,21 +316,6 @@ function normalizeRound(round: RuntimeRound): RuntimeRound {
     };
 }
 
-function normalizeStep(step: RuntimeStep): RuntimeStep {
-    return {
-        ...step,
-        roundId: (step as any).roundId ?? '',
-        stepType: (step as any).stepType ?? 'train',
-        state: (step as any).state ?? 'pending',
-        stepIndex: (step as any).stepIndex ?? 1,
-        dependsOnStepIds: (step as any).dependsOnStepIds ?? [],
-        resolvedParams: (step as any).resolvedParams ?? {},
-        dispatchKind: (step as any).dispatchKind ?? 'dispatchable',
-        inputCommitId: (step as any).inputCommitId ?? null,
-        outputCommitId: (step as any).outputCommitId ?? null,
-    };
-}
-
 function normalizeStepEvent(event: any): RuntimeStepEvent {
     const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
     const eventType = String(event?.eventType ?? event?.event_type ?? 'unknown').trim().toLowerCase();
@@ -413,20 +399,6 @@ function normalizeRoundCommandResponse(response: RuntimeRoundCommandResponse): R
 }
 
 function normalizeStepCommandResponse(response: RuntimeStepCommandResponse): RuntimeStepCommandResponse {
-    return {
-        ...response,
-        stepId: (response as any).stepId,
-    };
-}
-
-function normalizeStepArtifactsResponse(response: RuntimeStepArtifactsResponse): RuntimeStepArtifactsResponse {
-    return {
-        ...response,
-        stepId: (response as any).stepId,
-    };
-}
-
-function normalizeStepArtifactDownload(response: StepArtifactDownload): StepArtifactDownload {
     return {
         ...response,
         stepId: (response as any).stepId,
@@ -1113,12 +1085,19 @@ export class RealApiService implements ApiService {
 
     async getRoundSteps(roundId: string, limit: number = 2000): Promise<RuntimeStep[]> {
         const response = await this.client.get<RuntimeStep[]>(`/rounds/${roundId}/steps`, {params: {limit}});
-        return response.data.map((item) => normalizeStep(item));
+        return response.data;
+    }
+
+    async getRoundArtifacts(roundId: string, limit: number = 2000): Promise<RuntimeRoundArtifactsResponse> {
+        const response = await this.client.get<RuntimeRoundArtifactsResponse>(`/rounds/${roundId}/artifacts`, {
+            params: {limit},
+        });
+        return response.data;
     }
 
     async getStep(stepId: string): Promise<RuntimeStep> {
         const response = await this.client.get<RuntimeStep>(`/steps/${stepId}`);
-        return normalizeStep(response.data);
+        return response.data;
     }
 
     async stopStep(stepId: string, reason: string = 'user requested stop'): Promise<RuntimeStepCommandResponse> {
@@ -1169,7 +1148,7 @@ export class RealApiService implements ApiService {
 
     async getStepArtifacts(stepId: string): Promise<RuntimeStepArtifactsResponse> {
         const response = await this.client.get<RuntimeStepArtifactsResponse>(`/steps/${stepId}/artifacts`);
-        return normalizeStepArtifactsResponse(response.data);
+        return response.data;
     }
 
     async getStepArtifactDownloadUrl(
@@ -1181,7 +1160,7 @@ export class RealApiService implements ApiService {
             `/steps/${stepId}/artifacts/${artifactName}:download-url`,
             {params: {expires_in_hours: expiresInHours}}
         );
-        return normalizeStepArtifactDownload(response.data);
+        return response.data;
     }
 
     async getRuntimeExecutors(): Promise<RuntimeExecutorListResponse> {

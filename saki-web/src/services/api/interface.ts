@@ -30,6 +30,7 @@ import {
     RoundSelectionRead,
     RuntimeRoundCommandResponse,
     RuntimeStep,
+    RuntimeRoundArtifactsResponse,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
     RuntimeStepCommandResponse,
@@ -271,6 +272,7 @@ export interface ApiService {
     resetRoundSelection(roundId: string): Promise<RoundSelectionApplyResponse>;
 
     getRoundSteps(roundId: string, limit?: number): Promise<RuntimeStep[]>;
+    getRoundArtifacts(roundId: string, limit?: number): Promise<RuntimeRoundArtifactsResponse>;
 
     getStep(stepId: string): Promise<RuntimeStep>;
 

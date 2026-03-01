@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.core.config import settings
 from saki_api.modules.runtime.api.round_step import (
+    RoundStepArtifactsRead,
     SimulationComparisonRead,
     SimulationCurvePointRead,
     SimulationStrategySummaryRead,
@@ -234,8 +235,7 @@ class RuntimeQueryMixin:
         await self.step_repo.get_by_id_or_raise(step_id)
         return await self.step_candidate_repo.list_topk_by_step(step_id, limit=max(1, min(limit, 5000)))
 
-    async def list_step_artifacts(self, step_id: uuid.UUID) -> list[StepArtifactRead]:
-        step = await self.step_repo.get_by_id_or_raise(step_id)
+    def _extract_downloadable_step_artifacts(self, step: Step) -> list[StepArtifactRead]:
         artifacts: list[StepArtifactRead] = []
         for name, value in (step.artifacts or {}).items():
             if not isinstance(value, dict):
@@ -252,6 +252,28 @@ class RuntimeQueryMixin:
                 )
             )
         return artifacts
+
+    async def list_step_artifacts(self, step_id: uuid.UUID) -> list[StepArtifactRead]:
+        step = await self.step_repo.get_by_id_or_raise(step_id)
+        return self._extract_downloadable_step_artifacts(step)
+
+    async def list_round_artifacts(self, round_id: uuid.UUID, limit: int = 2000) -> list[RoundStepArtifactsRead]:
+        steps = await self.list_steps(round_id, limit=limit)
+        items: list[RoundStepArtifactsRead] = []
+        for step in steps:
+            artifacts = self._extract_downloadable_step_artifacts(step)
+            if not artifacts:
+                continue
+            items.append(
+                RoundStepArtifactsRead(
+                    step_id=step.id,
+                    step_index=int(step.step_index or 0),
+                    step_type=step.step_type,
+                    state=step.state,
+                    artifacts=artifacts,
+                )
+            )
+        return items
 
     async def get_step_artifact_download_url(
         self,

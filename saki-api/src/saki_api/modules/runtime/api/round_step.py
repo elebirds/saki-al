@@ -301,6 +301,19 @@ class StepArtifactsResponse(BaseModel):
     artifacts: List[StepArtifactRead]
 
 
+class RoundStepArtifactsRead(BaseModel):
+    step_id: uuid.UUID
+    step_index: int
+    step_type: StepType
+    state: StepStatus
+    artifacts: List[StepArtifactRead] = Field(default_factory=list)
+
+
+class RoundArtifactsResponse(BaseModel):
+    round_id: uuid.UUID
+    items: List[RoundStepArtifactsRead] = Field(default_factory=list)
+
+
 class StepArtifactDownloadResponse(BaseModel):
     step_id: uuid.UUID
     artifact_name: str

@@ -35,6 +35,8 @@ import {
     RuntimeStepCandidate,
     RuntimeStepCommandResponse,
     RuntimeStepEvent,
+    StepEventQuery,
+    StepEventQueryResponse,
     RuntimeStepMetricPoint,
     StepArtifactDownload,
     LoopCreateRequest,
@@ -325,6 +327,81 @@ function normalizeStep(step: RuntimeStep): RuntimeStep {
         dispatchKind: (step as any).dispatchKind ?? 'dispatchable',
         inputCommitId: (step as any).inputCommitId ?? null,
         outputCommitId: (step as any).outputCommitId ?? null,
+    };
+}
+
+function normalizeStepEvent(event: any): RuntimeStepEvent {
+    const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
+    const eventType = String(event?.eventType ?? event?.event_type ?? 'unknown').trim().toLowerCase();
+    const levelRaw = event?.level ?? (eventType === 'log' ? payload.level : null);
+    const statusRaw = event?.status ?? (eventType === 'status' ? payload.status : null);
+    const kindRaw = event?.kind ?? (eventType === 'artifact' ? payload.kind : null);
+    const level = levelRaw ? String(levelRaw).trim().toUpperCase() : null;
+    const status = statusRaw ? String(statusRaw).trim() : null;
+    const kind = kindRaw ? String(kindRaw).trim() : null;
+
+    const tags: string[] = [];
+    const pushTag = (value: unknown) => {
+        const text = String(value || '').trim();
+        if (!text || tags.includes(text)) return;
+        tags.push(text);
+    };
+    pushTag(`event:${eventType}`);
+    if (level) pushTag(`level:${level}`);
+    if (status) pushTag(`status:${status.toLowerCase()}`);
+    if (kind) pushTag(`kind:${kind.toLowerCase()}`);
+    if (payload.tag != null) pushTag(payload.tag);
+    if (Array.isArray(payload.tags)) {
+        payload.tags.forEach((item: unknown) => pushTag(item));
+    }
+    if (Array.isArray(event?.tags)) {
+        event.tags.forEach((item: unknown) => pushTag(item));
+    }
+
+    let messageText = String(event?.messageText ?? event?.message_text ?? '').trim();
+    if (!messageText) {
+        if (eventType === 'log') {
+            messageText = String(payload.message || '').trim();
+        } else if (eventType === 'status') {
+            messageText = `${String(payload.status || '').trim()} ${String(payload.reason || '').trim()}`.trim();
+        } else if (eventType === 'progress') {
+            messageText = `progress epoch=${payload.epoch ?? '-'} step=${payload.step ?? '-'} total=${payload.total_steps ?? payload.totalSteps ?? '-'}`;
+        } else if (eventType === 'metric') {
+            const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
+            messageText = `metric keys=${Object.keys(metrics).join(',')}`;
+        } else if (eventType === 'artifact') {
+            messageText = `${String(payload.name || '').trim()} ${String(payload.uri || '').trim()}`.trim();
+        } else {
+            messageText = JSON.stringify(payload || {});
+        }
+    }
+
+    return {
+        seq: Number(event?.seq ?? 0),
+        ts: String(event?.ts || new Date().toISOString()),
+        eventType,
+        payload,
+        level,
+        status,
+        kind,
+        tags,
+        messageText,
+    };
+}
+
+function normalizeStepEventQueryResponse(response: any): StepEventQueryResponse {
+    const itemsRaw = Array.isArray(response?.items) ? response.items : [];
+    const facetsRaw = response?.facets && typeof response.facets === 'object' ? response.facets : null;
+    return {
+        items: itemsRaw.map((item: any) => normalizeStepEvent(item)),
+        nextAfterSeq: response?.nextAfterSeq ?? response?.next_after_seq ?? null,
+        facets: facetsRaw
+            ? {
+                eventTypes: facetsRaw.eventTypes ?? facetsRaw.event_types ?? {},
+                levels: facetsRaw.levels ?? {},
+                tags: facetsRaw.tags ?? {},
+            }
+            : null,
     };
 }
 
@@ -1049,12 +1126,35 @@ export class RealApiService implements ApiService {
         return normalizeStepCommandResponse(response.data);
     }
 
-    async getStepEvents(stepId: string, afterSeq: number = 0, limit: number = 5000): Promise<RuntimeStepEvent[]> {
-        const response = await this.client.get<RuntimeStepEvent[]>(
+    async getStepEvents(stepId: string, query: StepEventQuery = {}): Promise<StepEventQueryResponse> {
+        const params: Record<string, any> = {
+            after_seq: Number(query.afterSeq ?? 0),
+            limit: Number(query.limit ?? 5000),
+            include_facets: Boolean(query.includeFacets ?? false),
+        };
+        if (query.eventTypes && query.eventTypes.length > 0) {
+            params.event_types = query.eventTypes.join(',');
+        }
+        if (query.levels && query.levels.length > 0) {
+            params.levels = query.levels.join(',');
+        }
+        if (query.tags && query.tags.length > 0) {
+            params.tags = query.tags.join(',');
+        }
+        if (query.q) {
+            params.q = String(query.q);
+        }
+        if (query.fromTs) {
+            params.from_ts = String(query.fromTs);
+        }
+        if (query.toTs) {
+            params.to_ts = String(query.toTs);
+        }
+        const response = await this.client.get(
             `/steps/${stepId}/events`,
-            {params: {after_seq: afterSeq, limit}},
+            {params},
         );
-        return response.data;
+        return normalizeStepEventQueryResponse(response.data);
     }
 
     async getStepMetricSeries(stepId: string, limit: number = 5000): Promise<RuntimeStepMetricPoint[]> {

@@ -4,12 +4,18 @@ import {
     Alert,
     Button,
     Card,
+    Collapse,
     Descriptions,
+    Drawer,
     Empty,
     Image,
-    List,
+    Input,
     Progress,
+    Select,
+    Space,
     Spin,
+    Steps,
+    Switch,
     Table,
     Tag,
     Typography,
@@ -34,6 +40,7 @@ import {
     RuntimeStepArtifact,
     RuntimeStepCandidate,
     RuntimeStepEvent,
+    StepEventFacets,
     RuntimeStepMetricPoint,
 } from '../../../types';
 
@@ -60,6 +67,29 @@ const STEP_STATE_COLOR: Record<string, string> = {
 };
 
 const TERMINAL_STEP_STATE = new Set(['succeeded', 'failed', 'cancelled', 'skipped']);
+const ERROR_LEVELS = new Set(['ERROR', 'CRITICAL', 'FATAL']);
+const MAX_EVENT_BUFFER = 20000;
+const DEFAULT_LOG_TAIL = 500;
+
+const EVENT_TYPE_COLOR: Record<string, string> = {
+    log: 'default',
+    status: 'blue',
+    progress: 'cyan',
+    metric: 'green',
+    artifact: 'purple',
+    worker: 'gold',
+};
+
+const LEVEL_COLOR_CLASS: Record<string, string> = {
+    TRACE: 'text-slate-400',
+    DEBUG: 'text-slate-300',
+    INFO: 'text-blue-300',
+    WARNING: 'text-amber-300',
+    WARN: 'text-amber-300',
+    ERROR: 'text-red-300',
+    CRITICAL: 'text-fuchsia-300',
+    FATAL: 'text-fuchsia-300',
+};
 
 const formatDateTime = (value?: string | null) => {
     if (!value) return '-';
@@ -107,36 +137,92 @@ type RawRuntimeStepEvent = {
     ts?: unknown;
     eventType?: unknown;
     event_type?: unknown;
+    level?: unknown;
+    status?: unknown;
+    kind?: unknown;
+    tags?: unknown;
+    messageText?: unknown;
+    message_text?: unknown;
     payload?: unknown;
 };
 
-const normalizeWsEvent = (raw: RawRuntimeStepEvent): RuntimeStepEvent | null => {
+const deriveEventMessage = (eventType: string, payload: Record<string, any>): string => {
+    if (eventType === 'log') return String(payload.message || '');
+    if (eventType === 'status') {
+        return `${String(payload.status || '').trim()} ${String(payload.reason || '').trim()}`.trim();
+    }
+    if (eventType === 'progress') {
+        return `progress epoch=${payload.epoch ?? '-'} step=${payload.step ?? '-'} total=${payload.total_steps ?? payload.totalSteps ?? '-'}`;
+    }
+    if (eventType === 'metric') {
+        const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
+        return `metric keys=${Object.keys(metrics).join(',')}`;
+    }
+    if (eventType === 'artifact') {
+        return `${String(payload.name || '').trim()} ${String(payload.uri || '').trim()}`.trim();
+    }
+    try {
+        return JSON.stringify(payload || {});
+    } catch {
+        return String(payload || '');
+    }
+};
+
+const deriveEventTags = (
+    eventType: string,
+    payload: Record<string, any>,
+    level?: string | null,
+    status?: string | null,
+    kind?: string | null,
+    rawTags?: unknown,
+): string[] => {
+    const tags: string[] = [];
+    const pushTag = (value: unknown) => {
+        const text = String(value || '').trim();
+        if (!text || tags.includes(text)) return;
+        tags.push(text);
+    };
+    pushTag(`event:${eventType}`);
+    if (level) pushTag(`level:${level.toUpperCase()}`);
+    if (status) pushTag(`status:${status.toLowerCase()}`);
+    if (kind) pushTag(`kind:${kind.toLowerCase()}`);
+    if (payload.tag != null) pushTag(payload.tag);
+    if (Array.isArray(payload.tags)) {
+        payload.tags.forEach((item) => pushTag(item));
+    }
+    if (Array.isArray(rawTags)) {
+        rawTags.forEach((item) => pushTag(item));
+    }
+    return tags;
+};
+
+const normalizeRuntimeEvent = (raw: RawRuntimeStepEvent): RuntimeStepEvent | null => {
     const seq = Number(raw.seq);
     if (!Number.isFinite(seq)) return null;
     const eventTypeRaw = raw.eventType ?? raw.event_type;
-    const eventType = String(eventTypeRaw || 'unknown_event');
+    const eventType = String(eventTypeRaw || 'unknown_event').trim().toLowerCase();
     const ts = typeof raw.ts === 'string' ? raw.ts : new Date().toISOString();
     const payload = raw.payload && typeof raw.payload === 'object' ? (raw.payload as Record<string, any>) : {};
-    return {seq, ts, eventType, payload};
-};
-
-const eventToText = (event: RuntimeStepEvent): string => {
-    if (event.eventType === 'log') {
-        return `[${event.payload.level || 'INFO'}] ${event.payload.message || ''}`;
-    }
-    if (event.eventType === 'status') {
-        return `状态 => ${event.payload.status || ''} ${event.payload.reason || ''}`.trim();
-    }
-    if (event.eventType === 'progress') {
-        return `进度 epoch=${event.payload.epoch ?? '-'} step=${event.payload.step ?? '-'} / ${event.payload.totalSteps ?? event.payload.total_steps ?? '-'}`;
-    }
-    if (event.eventType === 'metric') {
-        return `指标 ${JSON.stringify(event.payload.metrics || {})}`;
-    }
-    if (event.eventType === 'artifact') {
-        return `制品 ${event.payload.name || ''} -> ${event.payload.uri || ''}`;
-    }
-    return `${event.eventType} ${JSON.stringify(event.payload || {})}`;
+    const levelRaw = raw.level ?? payload.level;
+    const statusRaw = raw.status ?? payload.status;
+    const kindRaw = raw.kind ?? payload.kind;
+    const level = levelRaw ? String(levelRaw).trim().toUpperCase() : null;
+    const status = statusRaw ? String(statusRaw).trim() : null;
+    const kind = kindRaw ? String(kindRaw).trim() : null;
+    const messageTextRaw = raw.messageText ?? raw.message_text;
+    const messageText = String(messageTextRaw || deriveEventMessage(eventType, payload)).trim();
+    const tags = deriveEventTags(eventType, payload, level, status, kind, raw.tags);
+    return {
+        seq,
+        ts,
+        eventType,
+        payload,
+        level,
+        status,
+        kind,
+        tags,
+        messageText,
+    };
 };
 
 const isImageArtifact = (artifact: RuntimeStepArtifact): boolean => {
@@ -165,6 +251,24 @@ const pickDefaultStep = (steps: RuntimeStep[]): RuntimeStep | null => {
     );
 };
 
+const mergeEventBuffer = (previous: RuntimeStepEvent[], incoming: RuntimeStepEvent[]): RuntimeStepEvent[] => {
+    const merged = [...previous, ...incoming];
+    const dedup = new Map<number, RuntimeStepEvent>();
+    merged.forEach((item) => {
+        dedup.set(Number(item.seq || 0), item);
+    });
+    const rows = Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
+    if (rows.length <= MAX_EVENT_BUFFER) return rows;
+    return rows.slice(rows.length - MAX_EVENT_BUFFER);
+};
+
+const getStepFlowStatus = (state: string): 'wait' | 'process' | 'finish' | 'error' => {
+    if (state === 'succeeded' || state === 'skipped') return 'finish';
+    if (state === 'failed' || state === 'cancelled') return 'error';
+    if (state === 'running' || state === 'dispatching' || state === 'retrying' || state === 'ready') return 'process';
+    return 'wait';
+};
+
 const ProjectLoopRoundDetail: React.FC = () => {
     const {projectId, loopId, roundId} = useParams<{ projectId: string; loopId: string; roundId: string }>();
     const navigate = useNavigate();
@@ -183,11 +287,21 @@ const ProjectLoopRoundDetail: React.FC = () => {
     const [metricPoints, setMetricPoints] = useState<RuntimeStepMetricPoint[]>([]);
     const [candidates, setCandidates] = useState<RuntimeStepCandidate[]>([]);
     const [events, setEvents] = useState<RuntimeStepEvent[]>([]);
+    const [eventFacets, setEventFacets] = useState<StepEventFacets>({eventTypes: {}, levels: {}, tags: {}});
+    const [eventTypeFilter, setEventTypeFilter] = useState<string[]>([]);
+    const [eventLevelFilter, setEventLevelFilter] = useState<string[]>([]);
+    const [eventTagFilter, setEventTagFilter] = useState<string[]>([]);
+    const [eventQueryText, setEventQueryText] = useState<string>('');
+    const [onlyErrors, setOnlyErrors] = useState<boolean>(false);
+    const [autoScrollLogs, setAutoScrollLogs] = useState<boolean>(true);
+    const [logTailLimit, setLogTailLimit] = useState<number>(DEFAULT_LOG_TAIL);
+    const [stepDrawerOpen, setStepDrawerOpen] = useState<boolean>(false);
     const [artifacts, setArtifacts] = useState<RuntimeStepArtifact[]>([]);
     const [wsConnected, setWsConnected] = useState(false);
     const [artifactUrls, setArtifactUrls] = useState<Record<string, string>>({});
 
     const eventCursorRef = useRef<number>(0);
+    const logScrollRef = useRef<HTMLDivElement | null>(null);
 
     const metricNames = useMemo(() => {
         const names = new Set<string>();
@@ -227,6 +341,48 @@ const ProjectLoopRoundDetail: React.FC = () => {
         () => Object.keys(round?.finalArtifacts || {}).slice(0, 8),
         [round?.finalArtifacts],
     );
+    const sortedSteps = useMemo(
+        () => [...steps].sort((left, right) => Number(left.stepIndex || 0) - Number(right.stepIndex || 0)),
+        [steps],
+    );
+    const selectedStepOrderIndex = useMemo(
+        () => sortedSteps.findIndex((item) => item.id === selectedStepId),
+        [sortedSteps, selectedStepId],
+    );
+    const visibleEvents = useMemo(() => {
+        const eventTypeSet = new Set((eventTypeFilter || []).map((item) => String(item).toLowerCase()));
+        const levelSet = new Set((eventLevelFilter || []).map((item) => String(item).toUpperCase()));
+        const tagSet = new Set((eventTagFilter || []).map((item) => String(item).toLowerCase()));
+        const query = eventQueryText.trim().toLowerCase();
+        let rows = events.filter((item) => {
+            if (eventTypeSet.size > 0 && !eventTypeSet.has(String(item.eventType || '').toLowerCase())) {
+                return false;
+            }
+            if (levelSet.size > 0 && !levelSet.has(String(item.level || '').toUpperCase())) {
+                return false;
+            }
+            if (tagSet.size > 0) {
+                const rowTags = (item.tags || []).map((tag) => String(tag).toLowerCase());
+                if (!rowTags.some((tag) => tagSet.has(tag))) return false;
+            }
+            if (query) {
+                const haystack = `${item.messageText || ''} ${JSON.stringify(item.payload || {})}`.toLowerCase();
+                if (!haystack.includes(query)) return false;
+            }
+            if (onlyErrors) {
+                const level = String(item.level || '').toUpperCase();
+                const status = String(item.status || '').toLowerCase();
+                if (!ERROR_LEVELS.has(level) && !['failed', 'error', 'cancelled'].includes(status)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        if (logTailLimit > 0 && rows.length > logTailLimit) {
+            rows = rows.slice(rows.length - logTailLimit);
+        }
+        return rows;
+    }, [events, eventTypeFilter, eventLevelFilter, eventTagFilter, eventQueryText, onlyErrors, logTailLimit]);
 
     const ensureArtifactUrls = useCallback(async (stepId: string, items: RuntimeStepArtifact[]) => {
         if (!stepId || items.length === 0) return;
@@ -255,21 +411,47 @@ const ProjectLoopRoundDetail: React.FC = () => {
     }, [artifactUrls]);
 
     const loadStepDashboard = useCallback(async (stepId: string) => {
-        const [stepRow, points, topk, artifactsResp, initialEvents] = await Promise.all([
+        const [stepRow, points, topk, artifactsResp, initialEventsResp] = await Promise.all([
             api.getStep(stepId),
             api.getStepMetricSeries(stepId, 5000),
             api.getStepCandidates(stepId, 200),
             api.getStepArtifacts(stepId),
-            api.getStepEvents(stepId, 0, 5000),
+            api.getStepEvents(stepId, {
+                afterSeq: 0,
+                limit: 5000,
+                includeFacets: true,
+            }),
         ]);
         setSelectedStep(stepRow);
         setMetricPoints(points);
         setCandidates(topk);
         setArtifacts(artifactsResp.artifacts || []);
-        setEvents(initialEvents);
-        eventCursorRef.current = initialEvents.reduce((max, item) => Math.max(max, item.seq), 0);
+        setEvents(initialEventsResp.items || []);
+        setEventFacets(initialEventsResp.facets || {eventTypes: {}, levels: {}, tags: {}});
+        eventCursorRef.current = Number(
+            initialEventsResp.nextAfterSeq
+            ?? (initialEventsResp.items || []).reduce((max, item) => Math.max(max, Number(item.seq || 0)), 0),
+        );
         await ensureArtifactUrls(stepId, artifactsResp.artifacts || []);
     }, [ensureArtifactUrls]);
+
+    const reloadFilteredEvents = useCallback(async (stepId: string) => {
+        const response = await api.getStepEvents(stepId, {
+            afterSeq: 0,
+            limit: 5000,
+            eventTypes: eventTypeFilter,
+            levels: eventLevelFilter,
+            tags: eventTagFilter,
+            q: eventQueryText.trim() || undefined,
+            includeFacets: true,
+        });
+        setEvents(response.items || []);
+        setEventFacets(response.facets || {eventTypes: {}, levels: {}, tags: {}});
+        eventCursorRef.current = Number(
+            response.nextAfterSeq
+            ?? (response.items || []).reduce((max, item) => Math.max(max, Number(item.seq || 0)), 0),
+        );
+    }, [eventTypeFilter, eventLevelFilter, eventTagFilter, eventQueryText]);
 
     const loadRoundDashboard = useCallback(async () => {
         if (!roundId || !canManageLoops) return;
@@ -325,10 +507,46 @@ const ProjectLoopRoundDetail: React.FC = () => {
         }
     }, [round, loopId, loadData, messageApi]);
 
+    const handleExportLogs = useCallback(() => {
+        if (!selectedStep) return;
+        const lines = visibleEvents.map((item) => {
+            const level = String(item.level || item.status || item.eventType || '').trim();
+            const tagText = (item.tags || []).join(',');
+            return `[${item.ts}] #${item.seq} [${level}] [${tagText}] ${item.messageText || ''}`;
+        });
+        const content = lines.join('\n');
+        const blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `step-${selectedStep.stepIndex}-logs.txt`;
+        anchor.click();
+        window.URL.revokeObjectURL(url);
+    }, [selectedStep, visibleEvents]);
+
+    const handleClearLogs = useCallback(() => {
+        setEvents([]);
+    }, []);
+
     useEffect(() => {
         if (!canManageLoops) return;
         void loadData(false);
     }, [canManageLoops, loadData]);
+
+    useEffect(() => {
+        if (!autoScrollLogs) return;
+        const container = logScrollRef.current;
+        if (!container) return;
+        container.scrollTop = container.scrollHeight;
+    }, [visibleEvents.length, autoScrollLogs]);
+
+    useEffect(() => {
+        if (!canManageLoops || !selectedStepId) return;
+        const timer = window.setTimeout(() => {
+            void reloadFilteredEvents(selectedStepId).catch(() => undefined);
+        }, 250);
+        return () => window.clearTimeout(timer);
+    }, [canManageLoops, selectedStepId, reloadFilteredEvents]);
 
     useEffect(() => {
         if (!canManageLoops || !selectedStepId) return;
@@ -337,7 +555,11 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 const [latestRound, latestSteps, newEvents, latestStep] = await Promise.all([
                     api.getRound(roundId as string),
                     api.getRoundSteps(roundId as string, 2000),
-                    api.getStepEvents(selectedStepId, eventCursorRef.current, 5000),
+                    api.getStepEvents(selectedStepId, {
+                        afterSeq: eventCursorRef.current,
+                        limit: 5000,
+                        includeFacets: false,
+                    }),
                     api.getStep(selectedStepId),
                 ]);
 
@@ -345,22 +567,21 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 setSteps(latestSteps);
                 setSelectedStep(latestStep);
 
-                if (newEvents.length > 0) {
-                    setEvents((prev) => {
-                        const merged = [...prev, ...newEvents];
-                        const dedup = new Map<number, RuntimeStepEvent>();
-                        merged.forEach((item) => dedup.set(item.seq, item));
-                        return Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
-                    });
-                    eventCursorRef.current = Math.max(eventCursorRef.current, ...newEvents.map((item) => item.seq));
+                const incoming = newEvents.items || [];
+                if (incoming.length > 0) {
+                    setEvents((prev) => mergeEventBuffer(prev, incoming));
+                    eventCursorRef.current = Math.max(
+                        eventCursorRef.current,
+                        ...incoming.map((item) => Number(item.seq || 0)),
+                    );
                 }
 
                 const shouldRefreshMetrics =
                     latestStep.state === 'running' ||
                     latestStep.state === 'dispatching' ||
-                    newEvents.some((item) => item.eventType === 'metric');
+                    incoming.some((item) => item.eventType === 'metric');
                 const shouldRefreshArtifacts =
-                    newEvents.some((item) => item.eventType === 'artifact') ||
+                    incoming.some((item) => item.eventType === 'artifact') ||
                     TERMINAL_STEP_STATE.has(latestStep.state);
 
                 if (shouldRefreshMetrics) {
@@ -392,14 +613,9 @@ const ProjectLoopRoundDetail: React.FC = () => {
         ws.onmessage = (event: MessageEvent<string>) => {
             try {
                 const raw = JSON.parse(event.data || '{}') as RawRuntimeStepEvent;
-                const payload = normalizeWsEvent(raw);
+                const payload = normalizeRuntimeEvent(raw);
                 if (!payload) return;
-                setEvents((prev) => {
-                    const merged = [...prev, payload];
-                    const dedup = new Map<number, RuntimeStepEvent>();
-                    merged.forEach((item) => dedup.set(item.seq, item));
-                    return Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
-                });
+                setEvents((prev) => mergeEventBuffer(prev, [payload]));
                 eventCursorRef.current = Math.max(eventCursorRef.current, payload.seq);
             } catch {
                 // ignore malformed ws payload
@@ -506,39 +722,79 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-4 xl:col-span-8">
-                    <Card className="!border-github-border !bg-github-panel" title="Step 时间线">
-                        <Table
-                            size="small"
-                            rowKey={(item) => item.id}
-                            pagination={false}
-                            dataSource={steps}
-                            rowClassName={(row) => (row.id === selectedStepId ? 'bg-github-surface' : '')}
-                            onRow={(row) => ({
-                                onClick: () => {
-                                    setSelectedStepId(row.id);
-                                    void loadStepDashboard(row.id);
-                                },
-                            })}
-                            columns={[
-                                {title: '#', dataIndex: 'stepIndex', width: 60},
-                                {title: 'Type', dataIndex: 'stepType', width: 180},
-                                {
-                                    title: 'Status',
-                                    dataIndex: 'state',
-                                    width: 140,
-                                    render: (value: string) => <Tag color={STEP_STATE_COLOR[value] || 'default'}>{value}</Tag>,
-                                },
-                                {
-                                    title: '耗时',
-                                    width: 140,
-                                    render: (_value: unknown, row: RuntimeStep) =>
-                                        formatDuration(computeDurationMs(row.startedAt, row.endedAt)),
-                                },
-                                {title: 'Executor', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
-                                {title: 'Attempt', dataIndex: 'attempt', width: 90},
-                                {title: 'Error', dataIndex: 'lastError', render: (v: string | null) => v || '-'},
-                            ]}
-                        />
+                    <Card
+                        className="!border-github-border !bg-github-panel"
+                        title="Step 流程导航"
+                        extra={selectedStep ? (
+                            <Button size="small" onClick={() => setStepDrawerOpen(true)}>
+                                打开 Step 详情
+                            </Button>
+                        ) : null}
+                    >
+                        {sortedSteps.length === 0 ? (
+                            <Empty description="当前 Round 没有 Step"/>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                <Steps
+                                    current={Math.max(0, selectedStepOrderIndex)}
+                                    onChange={(index) => {
+                                        const target = sortedSteps[index];
+                                        if (!target) return;
+                                        setSelectedStepId(target.id);
+                                        void loadStepDashboard(target.id);
+                                    }}
+                                    items={sortedSteps.map((item) => ({
+                                        title: `#${item.stepIndex} ${item.stepType}`,
+                                        description: `${formatDuration(computeDurationMs(item.startedAt, item.endedAt))} · A${item.attempt || 1}`,
+                                        status: getStepFlowStatus(item.state),
+                                    }))}
+                                    size="small"
+                                />
+                                <Collapse
+                                    size="small"
+                                    items={[
+                                        {
+                                            key: 'step-table',
+                                            label: '查看技术视图（Step 表格）',
+                                            children: (
+                                                <Table
+                                                    size="small"
+                                                    rowKey={(item) => item.id}
+                                                    pagination={false}
+                                                    dataSource={sortedSteps}
+                                                    rowClassName={(row) => (row.id === selectedStepId ? 'bg-github-surface' : '')}
+                                                    onRow={(row) => ({
+                                                        onClick: () => {
+                                                            setSelectedStepId(row.id);
+                                                            void loadStepDashboard(row.id);
+                                                        },
+                                                    })}
+                                                    columns={[
+                                                        {title: '#', dataIndex: 'stepIndex', width: 60},
+                                                        {title: 'Type', dataIndex: 'stepType', width: 180},
+                                                        {
+                                                            title: 'Status',
+                                                            dataIndex: 'state',
+                                                            width: 140,
+                                                            render: (value: string) => <Tag color={STEP_STATE_COLOR[value] || 'default'}>{value}</Tag>,
+                                                        },
+                                                        {
+                                                            title: '耗时',
+                                                            width: 140,
+                                                            render: (_value: unknown, row: RuntimeStep) =>
+                                                                formatDuration(computeDurationMs(row.startedAt, row.endedAt)),
+                                                        },
+                                                        {title: 'Executor', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
+                                                        {title: 'Attempt', dataIndex: 'attempt', width: 90},
+                                                        {title: 'Error', dataIndex: 'lastError', render: (v: string | null) => v || '-'},
+                                                    ]}
+                                                />
+                                            ),
+                                        },
+                                    ]}
+                                />
+                            </div>
+                        )}
                     </Card>
 
                     {!selectedStep ? (
@@ -558,54 +814,32 @@ const ProjectLoopRoundDetail: React.FC = () => {
                                 </Descriptions>
                             </Card>
                             {(['train', 'eval', 'custom'].includes(selectedStep.stepType)) ? (
-                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                                    <div className="min-w-0 lg:col-span-7">
-                                        <Card className="!border-github-border !bg-github-panel" title="指标曲线">
-                                            {metricChartData.length === 0 ? (
-                                                <Empty description="暂无指标曲线"/>
-                                            ) : (
-                                                <div className="h-[320px]">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <LineChart data={metricChartData}>
-                                                            <CartesianGrid strokeDasharray="3 3"/>
-                                                            <XAxis dataKey="step"/>
-                                                            <YAxis/>
-                                                            <Tooltip/>
-                                                            {metricNames.map((name, idx) => (
-                                                                <Line
-                                                                    key={name}
-                                                                    type="monotone"
-                                                                    dataKey={name}
-                                                                    dot={false}
-                                                                    stroke={['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'][idx % 5]}
-                                                                    strokeWidth={2}
-                                                                />
-                                                            ))}
-                                                        </LineChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                            )}
-                                        </Card>
-                                    </div>
-                                    <div className="min-w-0 lg:col-span-5">
-                                        <Card className="!border-github-border !bg-github-panel" title="实时日志（最新 200 条）">
-                                            <List
-                                                size="small"
-                                                dataSource={events.slice(-200)}
-                                                locale={{emptyText: '暂无日志'}}
-                                                className="max-h-[320px] overflow-auto"
-                                                renderItem={(item) => (
-                                                    <List.Item className="!items-start">
-                                                        <div className="w-full">
-                                                            <div className="text-xs text-github-muted">#{item.seq} · {formatDateTime(item.ts)}</div>
-                                                            <div className="font-mono text-xs whitespace-pre-wrap break-all">{eventToText(item)}</div>
-                                                        </div>
-                                                    </List.Item>
-                                                )}
-                                            />
-                                        </Card>
-                                    </div>
-                                </div>
+                                <Card className="!border-github-border !bg-github-panel" title="指标曲线">
+                                    {metricChartData.length === 0 ? (
+                                        <Empty description="暂无指标曲线"/>
+                                    ) : (
+                                        <div className="h-[320px]">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <LineChart data={metricChartData}>
+                                                    <CartesianGrid strokeDasharray="3 3"/>
+                                                    <XAxis dataKey="step"/>
+                                                    <YAxis/>
+                                                    <Tooltip/>
+                                                    {metricNames.map((name, idx) => (
+                                                        <Line
+                                                            key={name}
+                                                            type="monotone"
+                                                            dataKey={name}
+                                                            dot={false}
+                                                            stroke={['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'][idx % 5]}
+                                                            strokeWidth={2}
+                                                        />
+                                                    ))}
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    )}
+                                </Card>
                             ) : (
                                 <Card className="!border-github-border !bg-github-panel" title="Step 指标摘要">
                                     {Object.keys(selectedStep.metrics || {}).length === 0 ? (
@@ -730,6 +964,152 @@ const ProjectLoopRoundDetail: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            <Card
+                className="!border-github-border !bg-github-panel"
+                title={selectedStep ? `Step 控制台日志 · #${selectedStep.stepIndex} ${selectedStep.stepType}` : 'Step 控制台日志'}
+                extra={(
+                    <Space size={8}>
+                        <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WS 实时' : 'WS 断开'}</Tag>
+                        <Button size="small" onClick={handleClearLogs}>清屏</Button>
+                        <Button size="small" onClick={handleExportLogs} disabled={!selectedStep || visibleEvents.length === 0}>
+                            导出
+                        </Button>
+                    </Space>
+                )}
+            >
+                {!selectedStep ? (
+                    <Empty description="请先选择 Step"/>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                className="min-w-[180px]"
+                                placeholder="事件类型"
+                                value={eventTypeFilter}
+                                options={Object.entries(eventFacets.eventTypes || {}).map(([name, count]) => ({
+                                    label: `${name} (${count})`,
+                                    value: name,
+                                }))}
+                                onChange={(values) => setEventTypeFilter(values)}
+                            />
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                className="min-w-[160px]"
+                                placeholder="日志级别"
+                                value={eventLevelFilter}
+                                options={Object.entries(eventFacets.levels || {}).map(([name, count]) => ({
+                                    label: `${name} (${count})`,
+                                    value: name,
+                                }))}
+                                onChange={(values) => setEventLevelFilter(values)}
+                            />
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                className="min-w-[240px]"
+                                placeholder="Tag"
+                                value={eventTagFilter}
+                                options={Object.entries(eventFacets.tags || {})
+                                    .sort((left, right) => Number(right[1]) - Number(left[1]))
+                                    .slice(0, 200)
+                                    .map(([name, count]) => ({
+                                        label: `${name} (${count})`,
+                                        value: name,
+                                    }))}
+                                onChange={(values) => setEventTagFilter(values)}
+                            />
+                            <Input.Search
+                                allowClear
+                                className="min-w-[280px]"
+                                placeholder="搜索 message/payload"
+                                value={eventQueryText}
+                                onChange={(event) => setEventQueryText(String(event.target.value || ''))}
+                            />
+                            <Select
+                                value={logTailLimit}
+                                className="w-[120px]"
+                                options={[
+                                    {label: '尾部 200', value: 200},
+                                    {label: '尾部 500', value: 500},
+                                    {label: '尾部 1000', value: 1000},
+                                    {label: '全部', value: 0},
+                                ]}
+                                onChange={(value) => setLogTailLimit(Number(value || 0))}
+                            />
+                            <span className="inline-flex items-center gap-1 rounded border border-github-border px-2 py-1">
+                                <Switch size="small" checked={onlyErrors} onChange={setOnlyErrors}/>
+                                <span className="text-xs text-github-muted">仅错误</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded border border-github-border px-2 py-1">
+                                <Switch size="small" checked={autoScrollLogs} onChange={setAutoScrollLogs}/>
+                                <span className="text-xs text-github-muted">自动滚动</span>
+                            </span>
+                            <Tag>{`显示 ${visibleEvents.length} / 缓冲 ${events.length}`}</Tag>
+                        </div>
+                        <div
+                            ref={logScrollRef}
+                            className="max-h-[560px] overflow-auto rounded border border-github-border bg-slate-950 p-2"
+                        >
+                            {visibleEvents.length === 0 ? (
+                                <div className="py-8 text-center text-xs text-slate-400">暂无命中日志</div>
+                            ) : (
+                                <div className="space-y-1 font-mono text-xs">
+                                    {visibleEvents.map((item) => {
+                                        const levelKey = String(item.level || '').toUpperCase();
+                                        const lineClass = LEVEL_COLOR_CLASS[levelKey] || 'text-slate-200';
+                                        return (
+                                            <div key={`${item.seq}-${item.eventType}`} className={`rounded px-2 py-1 ${lineClass} hover:bg-slate-900`}>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="text-slate-400">{formatDateTime(item.ts)}</span>
+                                                    <span className="text-slate-500">#{item.seq}</span>
+                                                    <Tag color={EVENT_TYPE_COLOR[item.eventType] || 'default'} className="!m-0">{item.eventType}</Tag>
+                                                    {item.level ? <Tag color={ERROR_LEVELS.has(String(item.level).toUpperCase()) ? 'error' : 'blue'} className="!m-0">{item.level}</Tag> : null}
+                                                    {(item.tags || []).slice(0, 4).map((tag) => (
+                                                        <Tag key={`${item.seq}-${tag}`} className="!m-0">{tag}</Tag>
+                                                    ))}
+                                                </div>
+                                                <div className="mt-1 whitespace-pre-wrap break-all">{item.messageText || '-'}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </Card>
+
+            <Drawer
+                open={stepDrawerOpen}
+                onClose={() => setStepDrawerOpen(false)}
+                width={560}
+                title={selectedStep ? `Step #${selectedStep.stepIndex} · ${selectedStep.stepType}` : 'Step 详情'}
+            >
+                {!selectedStep ? (
+                    <Empty description="暂无选中 Step"/>
+                ) : (
+                    <Descriptions size="small" column={1}>
+                        <Descriptions.Item label="Step ID">{selectedStep.id}</Descriptions.Item>
+                        <Descriptions.Item label="状态">
+                            <Tag color={STEP_STATE_COLOR[selectedStep.state] || 'default'}>{selectedStep.state}</Tag>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="执行器">{selectedStep.assignedExecutorId || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Attempt">{`${selectedStep.attempt || 1}/${selectedStep.maxAttempts || 1}`}</Descriptions.Item>
+                        <Descriptions.Item label="开始时间">{formatDateTime(selectedStep.startedAt)}</Descriptions.Item>
+                        <Descriptions.Item label="结束时间">{formatDateTime(selectedStep.endedAt)}</Descriptions.Item>
+                        <Descriptions.Item label="依赖 Step">
+                            {(selectedStep.dependsOnStepIds || []).length > 0
+                                ? (selectedStep.dependsOnStepIds || []).map((item) => <Tag key={item}>{item}</Tag>)
+                                : '-'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="错误信息">{selectedStep.lastError || '-'}</Descriptions.Item>
+                    </Descriptions>
+                )}
+            </Drawer>
         </div>
     );
 };

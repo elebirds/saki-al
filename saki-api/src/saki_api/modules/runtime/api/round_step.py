@@ -218,6 +218,23 @@ class StepEventRead(BaseModel):
     ts: datetime
     event_type: str
     payload: Dict[str, Any]
+    level: Optional[str] = None
+    status: Optional[str] = None
+    kind: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    message_text: str = ""
+
+
+class StepEventFacetsRead(BaseModel):
+    event_types: Dict[str, int] = Field(default_factory=dict)
+    levels: Dict[str, int] = Field(default_factory=dict)
+    tags: Dict[str, int] = Field(default_factory=dict)
+
+
+class StepEventQueryResponse(BaseModel):
+    items: List[StepEventRead] = Field(default_factory=list)
+    next_after_seq: Optional[int] = None
+    facets: Optional[StepEventFacetsRead] = None
 
 
 class StepMetricPointRead(BaseModel):

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from datetime import timedelta
 from statistics import mean, pstdev
 from typing import Any, Dict, List
@@ -53,6 +56,175 @@ class RuntimeQueryMixin:
             after_seq=max(0, after_seq),
             limit=max(1, min(limit, 100000)),
         )
+
+    @staticmethod
+    def _derive_step_event_message(*, event_type: str, payload: dict[str, Any]) -> str:
+        if event_type == "log":
+            return str(payload.get("message") or "")
+        if event_type == "status":
+            status_text = str(payload.get("status") or "").strip()
+            reason_text = str(payload.get("reason") or "").strip()
+            return " ".join(item for item in [status_text, reason_text] if item)
+        if event_type == "progress":
+            epoch = payload.get("epoch")
+            step = payload.get("step")
+            total_steps = payload.get("total_steps") or payload.get("totalSteps")
+            return f"progress epoch={epoch} step={step}/{total_steps}"
+        if event_type == "metric":
+            metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+            metric_keys = ",".join(sorted(str(key) for key in metrics.keys()))
+            return f"metric keys={metric_keys}"
+        if event_type == "artifact":
+            name = str(payload.get("name") or "").strip()
+            uri = str(payload.get("uri") or "").strip()
+            return " ".join(item for item in [name, uri] if item)
+        try:
+            return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return str(payload)
+
+    @staticmethod
+    def _derive_step_event_tags(
+        *,
+        event_type: str,
+        payload: dict[str, Any],
+        level: str | None,
+        status: str | None,
+        kind: str | None,
+    ) -> list[str]:
+        tags: list[str] = [f"event:{event_type.lower()}"]
+        if level:
+            tags.append(f"level:{level.upper()}")
+        if status:
+            tags.append(f"status:{status.lower()}")
+        if kind:
+            tags.append(f"kind:{kind.lower()}")
+        payload_tag = payload.get("tag")
+        if payload_tag is not None:
+            text = str(payload_tag).strip()
+            if text:
+                tags.append(text)
+        payload_tags = payload.get("tags")
+        if isinstance(payload_tags, list):
+            for item in payload_tags:
+                text = str(item).strip()
+                if text:
+                    tags.append(text)
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for item in tags:
+            lowered = str(item).strip()
+            if not lowered or lowered in seen:
+                continue
+            deduped.append(lowered)
+            seen.add(lowered)
+        return deduped
+
+    def _normalize_step_event(self, event: Any) -> dict[str, Any]:
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        event_type = str(event.event_type or "").strip().lower() or "unknown"
+        level = None
+        status = None
+        kind = None
+        if event_type == "log":
+            text = str(payload.get("level") or "").strip().upper()
+            level = text or None
+        if event_type == "status":
+            text = str(payload.get("status") or "").strip()
+            status = text or None
+        if event_type == "artifact":
+            text = str(payload.get("kind") or "").strip()
+            kind = text or None
+        tags = self._derive_step_event_tags(
+            event_type=event_type,
+            payload=payload,
+            level=level,
+            status=status,
+            kind=kind,
+        )
+        message_text = self._derive_step_event_message(event_type=event_type, payload=payload)
+        return {
+            "seq": int(event.seq),
+            "ts": event.ts,
+            "event_type": event_type,
+            "payload": payload,
+            "level": level,
+            "status": status,
+            "kind": kind,
+            "tags": tags,
+            "message_text": message_text,
+        }
+
+    async def query_step_events(
+        self,
+        *,
+        step_id: uuid.UUID,
+        after_seq: int = 0,
+        limit: int = 5000,
+        event_types: list[str] | None = None,
+        levels: list[str] | None = None,
+        tags: list[str] | None = None,
+        q: str | None = None,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        include_facets: bool = False,
+    ) -> dict[str, Any]:
+        await self.step_repo.get_by_id_or_raise(step_id)
+        normalized_event_types = [str(item).strip().lower() for item in (event_types or []) if str(item).strip()]
+        normalized_levels = {str(item).strip().upper() for item in (levels or []) if str(item).strip()}
+        normalized_tags = {str(item).strip().lower() for item in (tags or []) if str(item).strip()}
+        text_query = str(q or "").strip().lower()
+        rows = await self.step_event_repo.list_by_step_query(
+            step_id=step_id,
+            after_seq=max(0, int(after_seq or 0)),
+            limit=max(1, min(int(limit or 5000), 100000)),
+            event_types=normalized_event_types or None,
+            q=text_query or None,
+            from_ts=from_ts,
+            to_ts=to_ts,
+        )
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            item = self._normalize_step_event(row)
+            if normalized_levels:
+                level = str(item.get("level") or "").upper()
+                if level not in normalized_levels:
+                    continue
+            if normalized_tags:
+                row_tags = {str(tag).lower() for tag in item.get("tags") or []}
+                if not row_tags.intersection(normalized_tags):
+                    continue
+            if text_query:
+                haystack = f"{item.get('message_text') or ''} {json.dumps(item.get('payload') or {}, ensure_ascii=False)}"
+                if text_query not in haystack.lower():
+                    continue
+            items.append(item)
+
+        next_after_seq = max((int(item.get("seq") or 0) for item in items), default=None)
+        payload: dict[str, Any] = {
+            "items": items,
+            "next_after_seq": next_after_seq,
+            "facets": None,
+        }
+        if include_facets:
+            event_type_counter: Counter[str] = Counter()
+            level_counter: Counter[str] = Counter()
+            tag_counter: Counter[str] = Counter()
+            for item in items:
+                event_type_counter[str(item.get("event_type") or "unknown")] += 1
+                level_value = str(item.get("level") or "").strip()
+                if level_value:
+                    level_counter[level_value] += 1
+                for tag in item.get("tags") or []:
+                    text = str(tag).strip()
+                    if text:
+                        tag_counter[text] += 1
+            payload["facets"] = {
+                "event_types": dict(event_type_counter),
+                "levels": dict(level_counter),
+                "tags": dict(tag_counter),
+            }
+        return payload
 
     async def list_step_metric_series(self, step_id: uuid.UUID, limit: int = 5000):
         await self.step_repo.get_by_id_or_raise(step_id)

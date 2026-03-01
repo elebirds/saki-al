@@ -249,6 +249,35 @@ export interface RuntimeStepEvent {
     ts: string;
     eventType: string;
     payload: Record<string, any>;
+    level?: string | null;
+    status?: string | null;
+    kind?: string | null;
+    tags: string[];
+    messageText: string;
+}
+
+export interface StepEventFacets {
+    eventTypes: Record<string, number>;
+    levels: Record<string, number>;
+    tags: Record<string, number>;
+}
+
+export interface StepEventQuery {
+    afterSeq?: number;
+    limit?: number;
+    eventTypes?: string[];
+    levels?: string[];
+    tags?: string[];
+    q?: string;
+    fromTs?: string;
+    toTs?: string;
+    includeFacets?: boolean;
+}
+
+export interface StepEventQueryResponse {
+    items: RuntimeStepEvent[];
+    nextAfterSeq?: number | null;
+    facets?: StepEventFacets | null;
 }
 
 export interface RuntimeStepMetricPoint {

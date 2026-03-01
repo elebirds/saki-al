@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import uuid
 from typing import List
 
@@ -19,12 +20,19 @@ from saki_api.modules.runtime.api.round_step import (
     StepArtifactDownloadResponse,
     StepArtifactsResponse,
     StepCandidateRead,
-    StepEventRead,
+    StepEventQueryResponse,
     StepMetricPointRead,
 )
 from saki_api.modules.access.domain.rbac import Permissions
 
 router = APIRouter()
+
+
+def _csv_to_list(raw: str | None) -> list[str]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    return [item.strip() for item in text.split(",") if str(item).strip()]
 
 
 @router.get("/rounds/{round_id}", response_model=RoundRead)
@@ -120,12 +128,19 @@ async def get_step(
     return StepRead.model_validate(step)
 
 
-@router.get("/steps/{step_id}/events", response_model=List[StepEventRead])
+@router.get("/steps/{step_id}/events", response_model=StepEventQueryResponse)
 async def get_step_events(
     *,
     step_id: uuid.UUID,
     after_seq: int = Query(default=0, ge=0),
     limit: int = Query(default=5000, ge=1, le=100000),
+    event_types: str | None = Query(default=None),
+    levels: str | None = Query(default=None),
+    tags: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+    from_ts: datetime | None = Query(default=None),
+    to_ts: datetime | None = Query(default=None),
+    include_facets: bool = Query(default=False),
     runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
@@ -139,8 +154,19 @@ async def get_step_events(
         required_permission=Permissions.ROUND_READ,
         fallback_permissions=(Permissions.PROJECT_READ,),
     )
-    events = await runtime_service.list_step_events(step_id, after_seq=after_seq, limit=limit)
-    return [StepEventRead(seq=e.seq, ts=e.ts, event_type=e.event_type, payload=e.payload) for e in events]
+    payload = await runtime_service.query_step_events(
+        step_id=step_id,
+        after_seq=after_seq,
+        limit=limit,
+        event_types=_csv_to_list(event_types),
+        levels=_csv_to_list(levels),
+        tags=_csv_to_list(tags),
+        q=q,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        include_facets=include_facets,
+    )
+    return StepEventQueryResponse.model_validate(payload)
 
 
 @router.get("/steps/{step_id}/metrics/series", response_model=List[StepMetricPointRead])

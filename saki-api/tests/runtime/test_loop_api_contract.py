@@ -12,6 +12,7 @@ import saki_api.modules.shared.modeling  # noqa: F401
 from saki_api.modules.access.domain.rbac.audit_log import AuditLog
 from saki_api.modules.runtime.api.http import loop_control as loop_control_endpoint
 from saki_api.modules.runtime.api.http import query as loop_query_endpoint
+from saki_api.modules.runtime.api.http.endpoints import round_step_query_endpoints as round_step_query_endpoint
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.session import _session_ctx
 from saki_api.modules.shared.modeling.enums import (
@@ -569,6 +570,197 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
             )
             assert len(audit_rows) == 1
             assert audit_rows[0].new_value["loop_id"] == str(loop.id)
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(round_step_query_endpoint, "ensure_project_permission", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-step-events",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.RUNNING,
+                step_counts={},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.RUNNING,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add(step)
+            await session.flush()
+
+            session.add_all(
+                [
+                    StepEvent(
+                        step_id=step.id,
+                        seq=1,
+                        ts=datetime.now(UTC),
+                        event_type="log",
+                        payload={"level": "INFO", "message": "train started", "tag": "trainer"},
+                    ),
+                    StepEvent(
+                        step_id=step.id,
+                        seq=2,
+                        ts=datetime.now(UTC),
+                        event_type="status",
+                        payload={"status": "running", "reason": "epoch 1"},
+                    ),
+                    StepEvent(
+                        step_id=step.id,
+                        seq=3,
+                        ts=datetime.now(UTC),
+                        event_type="log",
+                        payload={"level": "ERROR", "message": "disk full", "tags": ["io", "critical"]},
+                    ),
+                ]
+            )
+            await session.commit()
+
+            all_events = await round_step_query_endpoint.get_step_events(
+                step_id=step.id,
+                after_seq=0,
+                limit=5000,
+                include_facets=True,
+                event_types=None,
+                levels=None,
+                tags=None,
+                q=None,
+                from_ts=None,
+                to_ts=None,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(all_events.items) == 3
+            assert all_events.next_after_seq == 3
+            assert all_events.facets is not None
+            assert all_events.facets.event_types.get("log") == 2
+            assert all_events.facets.levels.get("INFO") == 1
+            assert all_events.facets.levels.get("ERROR") == 1
+            assert any("event:log" in item.tags for item in all_events.items)
+            assert any(item.message_text == "disk full" for item in all_events.items)
+
+            error_only = await round_step_query_endpoint.get_step_events(
+                step_id=step.id,
+                after_seq=0,
+                limit=5000,
+                event_types=None,
+                levels="ERROR",
+                tags=None,
+                q=None,
+                from_ts=None,
+                to_ts=None,
+                include_facets=False,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(error_only.items) == 1
+            assert error_only.items[0].seq == 3
+
+            io_tag_only = await round_step_query_endpoint.get_step_events(
+                step_id=step.id,
+                after_seq=0,
+                limit=5000,
+                event_types=None,
+                levels=None,
+                tags="io",
+                q=None,
+                from_ts=None,
+                to_ts=None,
+                include_facets=False,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(io_tag_only.items) == 1
+            assert io_tag_only.items[0].seq == 3
+
+            status_only = await round_step_query_endpoint.get_step_events(
+                step_id=step.id,
+                after_seq=0,
+                limit=5000,
+                event_types="status",
+                levels=None,
+                tags=None,
+                q=None,
+                from_ts=None,
+                to_ts=None,
+                include_facets=False,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(status_only.items) == 1
+            assert status_only.items[0].seq == 2
+
+            message_search = await round_step_query_endpoint.get_step_events(
+                step_id=step.id,
+                after_seq=0,
+                limit=5000,
+                event_types=None,
+                levels=None,
+                tags=None,
+                q="disk",
+                from_ts=None,
+                to_ts=None,
+                include_facets=False,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(message_search.items) == 1
+            assert message_search.items[0].seq == 3
         finally:
             _session_ctx.reset(token)
 

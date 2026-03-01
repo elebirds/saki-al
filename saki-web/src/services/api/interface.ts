@@ -33,7 +33,8 @@ import {
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
     RuntimeStepCommandResponse,
-    RuntimeStepEvent,
+    StepEventQuery,
+    StepEventQueryResponse,
     RuntimeStepMetricPoint,
     StepArtifactDownload,
     RoundPredictionCleanupResponse,
@@ -275,7 +276,7 @@ export interface ApiService {
 
     stopStep(stepId: string, reason?: string): Promise<RuntimeStepCommandResponse>;
 
-    getStepEvents(stepId: string, afterSeq?: number, limit?: number): Promise<RuntimeStepEvent[]>;
+    getStepEvents(stepId: string, query?: StepEventQuery): Promise<StepEventQueryResponse>;
 
     getStepMetricSeries(stepId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
 

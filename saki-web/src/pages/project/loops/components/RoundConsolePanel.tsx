@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, Card, Input, Select, Space, Switch, Tag} from 'antd';
+import {DeploymentUnitOutlined, FilterOutlined, SearchOutlined} from '@ant-design/icons';
+import {Button, Card, Input, Segmented, Select, Switch, Tag} from 'antd';
 
 import {RuntimeRoundEvent} from '../../../../types';
 
@@ -95,6 +96,10 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
     const logScrollRef = useRef<HTMLDivElement | null>(null);
 
     const eventFacets = useMemo(() => buildEventFacetsFromItems(events), [events]);
+    const stageNavOptions = useMemo(
+        () => (stageOptions || []).map((item) => ({label: String(item.label), value: String(item.value)})),
+        [stageOptions],
+    );
 
     const visibleEvents = useMemo(() => {
         const eventTypeSet = new Set((eventTypeFilter || []).map((item) => String(item).toLowerCase()));
@@ -134,6 +139,15 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
         onClearBuffer?.();
     }, [onClearBuffer]);
 
+    const handleResetFilters = useCallback(() => {
+        setEventTypeFilter([]);
+        setEventLevelFilter([]);
+        setEventTagFilter([]);
+        setEventQueryText('');
+        setOnlyErrors(false);
+        setLogTailLimit(DEFAULT_LOG_TAIL);
+    }, []);
+
     const handleExportLogs = useCallback(() => {
         if (visibleEvents.length === 0) return;
         const lines = visibleEvents.map((item) => {
@@ -151,98 +165,126 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
         window.URL.revokeObjectURL(url);
     }, [visibleEvents, exportFilePrefix]);
 
-    const showStageSelector = Boolean(stageOptions && stageOptions.length > 0 && onStageChange);
+    const showStageSelector = Boolean(stageNavOptions.length > 0 && onStageChange);
+    const useSegmentedStageNav = Boolean(showStageSelector && stageNavOptions.length <= 6);
+    const hasActiveFilters = Boolean(
+        eventTypeFilter.length > 0
+        || eventLevelFilter.length > 0
+        || eventTagFilter.length > 0
+        || Boolean(eventQueryText.trim())
+        || onlyErrors
+        || logTailLimit !== DEFAULT_LOG_TAIL,
+    );
 
     return (
         <Card
             className={className}
             title={title}
-            extra={(
-                <Space size={8}>
-                    <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WS 实时' : 'WS 断开'}</Tag>
-                    <Button size="small" onClick={handleClearLogs}>清屏</Button>
-                    <Button size="small" onClick={handleExportLogs} disabled={visibleEvents.length === 0}>
-                        导出
-                    </Button>
-                </Space>
-            )}
         >
             <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                    {showStageSelector ? (
-                        <Select
-                            className="w-[180px]"
-                            value={stageValue}
-                            options={stageOptions}
-                            onChange={(value) => onStageChange?.(String(value))}
-                        />
-                    ) : null}
-                    <Select
-                        mode="multiple"
-                        allowClear
-                        className="min-w-[180px]"
-                        placeholder="事件类型"
-                        value={eventTypeFilter}
-                        options={Object.entries(eventFacets.eventTypes || {}).map(([name, count]) => ({
-                            label: `${name} (${count})`,
-                            value: name,
-                        }))}
-                        onChange={(values) => setEventTypeFilter(values)}
+                <div className="relative overflow-hidden rounded-lg border border-github-border/80 bg-github-panel">
+                    <div
+                        className="pointer-events-none absolute inset-0 opacity-80"
+                        style={{
+                            background: 'radial-gradient(1000px 220px at -8% -30%, rgba(56, 139, 253, 0.20), transparent 60%), radial-gradient(700px 220px at 105% 0%, rgba(47, 129, 247, 0.14), transparent 68%)',
+                        }}
                     />
-                    <Select
-                        mode="multiple"
-                        allowClear
-                        className="min-w-[160px]"
-                        placeholder="日志级别"
-                        value={eventLevelFilter}
-                        options={Object.entries(eventFacets.levels || {}).map(([name, count]) => ({
-                            label: `${name} (${count})`,
-                            value: name,
-                        }))}
-                        onChange={(values) => setEventLevelFilter(values)}
-                    />
-                    <Select
-                        mode="multiple"
-                        allowClear
-                        className="min-w-[240px]"
-                        placeholder="Tag"
-                        value={eventTagFilter}
-                        options={Object.entries(eventFacets.tags || {})
-                            .sort((left, right) => Number(right[1]) - Number(left[1]))
-                            .slice(0, 200)
-                            .map(([name, count]) => ({
-                                label: `${name} (${count})`,
-                                value: name,
-                            }))}
-                        onChange={(values) => setEventTagFilter(values)}
-                    />
-                    <Input.Search
-                        allowClear
-                        className="min-w-[280px]"
-                        placeholder="搜索 message/payload"
-                        value={eventQueryText}
-                        onChange={(event) => setEventQueryText(String(event.target.value || ''))}
-                    />
-                    <Select
-                        value={logTailLimit}
-                        className="w-[120px]"
-                        options={[
-                            {label: '尾部 200', value: 200},
-                            {label: '尾部 500', value: 500},
-                            {label: '尾部 1000', value: 1000},
-                            {label: '全部', value: 0},
-                        ]}
-                        onChange={(value) => setLogTailLimit(Number(value || 0))}
-                    />
-                    <span className="inline-flex items-center gap-1 rounded border border-github-border px-2 py-1">
-                        <Switch size="small" checked={onlyErrors} onChange={setOnlyErrors}/>
-                        <span className="text-xs text-github-muted">仅错误</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded border border-github-border px-2 py-1">
-                        <Switch size="small" checked={autoScrollLogs} onChange={setAutoScrollLogs}/>
-                        <span className="text-xs text-github-muted">自动滚动</span>
-                    </span>
-                    <Tag>{`显示 ${visibleEvents.length} / 缓冲 ${events.length}`}</Tag>
+                    <div className="relative flex flex-col gap-3 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-1 text-xs text-github-muted">
+                                <SearchOutlined/>
+                                检索
+                            </span>
+                            <Input.Search
+                                allowClear
+                                className="min-w-[280px] flex-1"
+                                placeholder="搜索 message/payload"
+                                value={eventQueryText}
+                                onChange={(event) => setEventQueryText(String(event.target.value || ''))}
+                            />
+
+                            <div className="ml-auto flex items-center gap-2">
+                                <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WS 实时' : 'WS 断开'}</Tag>
+                                <Button size="small" onClick={handleClearLogs}>清屏</Button>
+                                <Button size="small" onClick={handleResetFilters} disabled={!hasActiveFilters}>
+                                    重置筛选
+                                </Button>
+                                <Button size="small" onClick={handleExportLogs} disabled={visibleEvents.length === 0}>
+                                    导出
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-1 text-xs text-github-muted">
+                                <FilterOutlined/>
+                                过滤
+                            </span>
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                className="w-[180px]"
+                                placeholder="事件类型"
+                                value={eventTypeFilter}
+                                options={Object.entries(eventFacets.eventTypes || {}).map(([name, count]) => ({
+                                    label: `${name} (${count})`,
+                                    value: name,
+                                }))}
+                                onChange={(values) => setEventTypeFilter(values)}
+                            />
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                className="w-[160px]"
+                                placeholder="日志级别"
+                                value={eventLevelFilter}
+                                options={Object.entries(eventFacets.levels || {}).map(([name, count]) => ({
+                                    label: `${name} (${count})`,
+                                    value: name,
+                                }))}
+                                onChange={(values) => setEventLevelFilter(values)}
+                            />
+                            <Select
+                                mode="multiple"
+                                allowClear
+                                className="w-[220px]"
+                                placeholder="Tag"
+                                value={eventTagFilter}
+                                options={Object.entries(eventFacets.tags || {})
+                                    .sort((left, right) => Number(right[1]) - Number(left[1]))
+                                    .slice(0, 200)
+                                    .map(([name, count]) => ({
+                                        label: `${name} (${count})`,
+                                        value: name,
+                                    }))}
+                                onChange={(values) => setEventTagFilter(values)}
+                            />
+                            <Select
+                                value={logTailLimit}
+                                className="w-[120px]"
+                                options={[
+                                    {label: '尾部 200', value: 200},
+                                    {label: '尾部 500', value: 500},
+                                    {label: '尾部 1000', value: 1000},
+                                    {label: '全部', value: 0},
+                                ]}
+                                onChange={(value) => setLogTailLimit(Number(value || 0))}
+                            />
+
+
+                            <span className="inline-flex items-center gap-1 rounded border border-github-border bg-github-panel px-2 py-1">
+                                <Switch size="small" checked={onlyErrors} onChange={setOnlyErrors}/>
+                                <span className="text-xs text-github-muted">仅错误</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded border border-github-border bg-github-panel px-2 py-1">
+                                <Switch size="small" checked={autoScrollLogs} onChange={setAutoScrollLogs}/>
+                                <span className="text-xs text-github-muted">自动滚动</span>
+                            </span>
+
+
+                            <Tag>{`显示 ${visibleEvents.length} / 缓冲 ${events.length}`}</Tag>
+                        </div>
+                    </div>
                 </div>
                 <div
                     ref={logScrollRef}

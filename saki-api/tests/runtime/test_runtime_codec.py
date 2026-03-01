@@ -108,3 +108,34 @@ def test_decode_step_artifact_event():
     assert payload["uri"].startswith("s3://")
     assert payload["meta"]["size"] == 12
     assert status_enum is None
+
+
+def test_decode_step_log_event_with_structured_fields():
+    message_args = Struct()
+    message_args.update({"epoch": 3})
+    meta = Struct()
+    meta.update({"source": "worker_stdio", "stream": "stderr", "line_count": 2})
+    event = pb.StepEvent(
+        request_id="r3",
+        step_id="t3",
+        seq=3,
+        ts=3,
+        log_event=pb.LogEvent(
+            level="DEBUG",
+            message="display",
+            raw_message="raw",
+            message_key="runtime.progress.update",
+            message_args=message_args,
+            meta=meta,
+        ),
+    )
+    event_type, payload, status_enum = runtime_codec.decode_step_event(event)
+    assert event_type == "log"
+    assert status_enum is None
+    assert payload["level"] == "DEBUG"
+    assert payload["message"] == "display"
+    assert payload["raw_message"] == "raw"
+    assert payload["message_key"] == "runtime.progress.update"
+    assert payload["message_args"]["epoch"] == 3
+    assert payload["meta"]["source"] == "worker_stdio"
+    assert payload["meta"]["line_count"] == 2

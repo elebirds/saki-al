@@ -400,8 +400,21 @@ def build_step_event_message(
         if payload.get("reason") is not None:
             step_event.status_event.reason = str(payload.get("reason"))
     elif event_type == "log":
+        message = str(payload.get("message") or "")
+        raw_message = payload.get("raw_message")
         step_event.log_event.level = str(payload.get("level") or "")
-        step_event.log_event.message = str(payload.get("message") or "")
+        step_event.log_event.message = message
+        step_event.log_event.raw_message = str(raw_message if raw_message is not None else message)
+        if payload.get("message_key") is not None:
+            message_key = str(payload.get("message_key") or "").strip()
+            if message_key:
+                step_event.log_event.message_key = message_key
+        message_args = payload.get("message_args")
+        if isinstance(message_args, Mapping):
+            step_event.log_event.message_args.CopyFrom(dict_to_struct(message_args))
+        meta_payload = payload.get("meta")
+        if isinstance(meta_payload, Mapping):
+            step_event.log_event.meta.CopyFrom(dict_to_struct(meta_payload))
     elif event_type == "progress":
         step_event.progress_event.epoch = int(payload.get("epoch") or 0)
         step_event.progress_event.step = int(payload.get("step") or 0)

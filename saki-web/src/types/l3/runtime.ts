@@ -252,7 +252,13 @@ export interface RuntimeStepEvent {
     status?: string | null;
     kind?: string | null;
     tags: string[];
+    messageKey?: string | null;
+    messageParams: Record<string, any>;
     messageText: string;
+    rawMessage: string;
+    source?: string | null;
+    groupId?: string | null;
+    lineCount: number;
 }
 
 export interface RuntimeRoundEvent {
@@ -268,7 +274,13 @@ export interface RuntimeRoundEvent {
     status?: string | null;
     kind?: string | null;
     tags: string[];
+    messageKey?: string | null;
+    messageParams: Record<string, any>;
     messageText: string;
+    rawMessage: string;
+    source?: string | null;
+    groupId?: string | null;
+    lineCount: number;
 }
 
 export interface RoundEventQuery {

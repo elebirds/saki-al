@@ -37,6 +37,7 @@ import {
     RuntimeStepCandidate,
     RuntimeStepMetricPoint,
 } from '../../../types';
+import {mergeRuntimeRoundEvents, normalizeRuntimeRoundEvent} from './runtimeEventFormatter';
 
 const {Text, Title} = Typography;
 
@@ -99,27 +100,6 @@ interface RoundArtifactTableRow {
     size?: number | null;
     createdAt?: string | null;
 }
-
-type RawRuntimeRoundEvent = {
-    stepId?: unknown;
-    step_id?: unknown;
-    stepIndex?: unknown;
-    step_index?: unknown;
-    stepType?: unknown;
-    step_type?: unknown;
-    stage?: unknown;
-    seq?: unknown;
-    ts?: unknown;
-    eventType?: unknown;
-    event_type?: unknown;
-    level?: unknown;
-    status?: unknown;
-    kind?: unknown;
-    tags?: unknown;
-    messageText?: unknown;
-    message_text?: unknown;
-    payload?: unknown;
-};
 
 const STAGE_LABEL: Record<RoundStageKey, string> = {
     train: '训练',
@@ -226,123 +206,6 @@ const mapStepTypeToStage = (stepType: string): RoundStageKey => {
 };
 
 const buildArtifactKey = (stepId: string, artifactName: string): string => `${stepId}:${artifactName}`;
-
-const deriveEventMessage = (eventType: string, payload: Record<string, any>): string => {
-    if (eventType === 'log') return String(payload.message || '');
-    if (eventType === 'status') {
-        return `${String(payload.status || '').trim()} ${String(payload.reason || '').trim()}`.trim();
-    }
-    if (eventType === 'progress') {
-        return `progress epoch=${payload.epoch ?? '-'} step=${payload.step ?? '-'} total=${payload.total_steps ?? payload.totalSteps ?? '-'}`;
-    }
-    if (eventType === 'metric') {
-        const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
-        return `metric keys=${Object.keys(metrics).join(',')}`;
-    }
-    if (eventType === 'artifact') {
-        return `${String(payload.name || '').trim()} ${String(payload.uri || '').trim()}`.trim();
-    }
-    try {
-        return JSON.stringify(payload || {});
-    } catch {
-        return String(payload || '');
-    }
-};
-
-const deriveEventTags = (
-    eventType: string,
-    payload: Record<string, any>,
-    level?: string | null,
-    status?: string | null,
-    kind?: string | null,
-    rawTags?: unknown,
-): string[] => {
-    const tags: string[] = [];
-    const pushTag = (value: unknown) => {
-        const text = String(value || '').trim();
-        if (!text || tags.includes(text)) return;
-        tags.push(text);
-    };
-    pushTag(`event:${eventType}`);
-    if (level) pushTag(`level:${level.toUpperCase()}`);
-    if (status) pushTag(`status:${status.toLowerCase()}`);
-    if (kind) pushTag(`kind:${kind.toLowerCase()}`);
-    if (payload.tag != null) pushTag(payload.tag);
-    if (Array.isArray(payload.tags)) payload.tags.forEach((item) => pushTag(item));
-    if (Array.isArray(rawTags)) rawTags.forEach((item) => pushTag(item));
-    return tags;
-};
-
-const normalizeRuntimeEvent = (raw: RawRuntimeRoundEvent): RuntimeRoundEvent | null => {
-    const stepIdRaw = raw.stepId ?? raw.step_id;
-    const stepId = String(stepIdRaw || '').trim();
-    if (!stepId) return null;
-    const stepIndex = Number(raw.stepIndex ?? raw.step_index ?? 0);
-    if (!Number.isFinite(stepIndex) || stepIndex <= 0) return null;
-    const stepTypeRaw = raw.stepType ?? raw.step_type;
-    const stepType = String(stepTypeRaw || 'custom').trim().toLowerCase();
-    const seq = Number(raw.seq);
-    if (!Number.isFinite(seq)) return null;
-    const stageRaw = String(raw.stage || '').trim().toLowerCase();
-    const stage = (['train', 'eval', 'score', 'select', 'custom'] as const).includes(stageRaw as any)
-        ? (stageRaw as RoundStageKey)
-        : mapStepTypeToStage(stepType);
-    const eventTypeRaw = raw.eventType ?? raw.event_type;
-    const eventType = String(eventTypeRaw || 'unknown_event').trim().toLowerCase();
-    const ts = typeof raw.ts === 'string' ? raw.ts : new Date().toISOString();
-    const payload = raw.payload && typeof raw.payload === 'object' ? (raw.payload as Record<string, any>) : {};
-    const levelRaw = raw.level ?? payload.level;
-    const statusRaw = raw.status ?? payload.status;
-    const kindRaw = raw.kind ?? payload.kind;
-    const level = levelRaw ? String(levelRaw).trim().toUpperCase() : null;
-    const status = statusRaw ? String(statusRaw).trim() : null;
-    const kind = kindRaw ? String(kindRaw).trim() : null;
-    const messageTextRaw = raw.messageText ?? raw.message_text;
-    const baseMessage = String(messageTextRaw || deriveEventMessage(eventType, payload)).trim();
-    const tags = deriveEventTags(eventType, payload, level, status, kind, raw.tags);
-    const stepTag = `step:${stepIndex}`;
-    const stepTypeTag = `step_type:${stepType}`;
-    const stageTag = `stage:${stage}`;
-    if (!tags.includes(stepTag)) tags.push(stepTag);
-    if (!tags.includes(stepTypeTag)) tags.push(stepTypeTag);
-    if (!tags.includes(stageTag)) tags.push(stageTag);
-    return {
-        stepId,
-        stepIndex,
-        stepType: stepType as any,
-        stage,
-        seq,
-        ts,
-        eventType,
-        payload,
-        level,
-        status,
-        kind,
-        tags,
-        messageText: `[step#${stepIndex} ${stepType}] ${baseMessage}`.trim(),
-    };
-};
-
-const mergeEventBuffer = (previous: RuntimeRoundEvent[], incoming: RuntimeRoundEvent[]): RuntimeRoundEvent[] => {
-    const merged = [...previous, ...incoming];
-    const dedup = new Map<string, RuntimeRoundEvent>();
-    merged.forEach((item) => {
-        const key = `${item.stepId}:${Number(item.seq || 0)}`;
-        dedup.set(key, item);
-    });
-    const rows = Array.from(dedup.values()).sort((left, right) => {
-        const leftTs = Date.parse(String(left.ts || ''));
-        const rightTs = Date.parse(String(right.ts || ''));
-        if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && leftTs !== rightTs) return leftTs - rightTs;
-        if (Number(left.stepIndex || 0) !== Number(right.stepIndex || 0)) {
-            return Number(left.stepIndex || 0) - Number(right.stepIndex || 0);
-        }
-        if (Number(left.seq || 0) !== Number(right.seq || 0)) return Number(left.seq || 0) - Number(right.seq || 0);
-        return String(left.stepId).localeCompare(String(right.stepId));
-    });
-    if (rows.length <= MAX_EVENT_BUFFER) return rows;
-    return rows.slice(rows.length - MAX_EVENT_BUFFER);
-};
 
 const extractMetricPointsFromEvent = (event: RuntimeRoundEvent): RuntimeStepMetricPoint[] => {
     if (event.eventType !== 'metric') return [];
@@ -960,7 +823,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
 
         const applyIncomingEvents = (incoming: RuntimeRoundEvent[]) => {
             if (incoming.length === 0 || cancelled) return;
-            const merged = mergeEventBuffer(eventsRef.current, incoming);
+            const merged = mergeRuntimeRoundEvents(eventsRef.current, incoming, MAX_EVENT_BUFFER);
             eventsRef.current = merged;
             setEvents(merged);
 
@@ -1120,8 +983,8 @@ const ProjectLoopRoundDetail: React.FC = () => {
             };
             ws.onmessage = (messageEvent: MessageEvent<string>) => {
                 try {
-                    const raw = JSON.parse(messageEvent.data || '{}') as RawRuntimeRoundEvent;
-                    const item = normalizeRuntimeEvent(raw);
+                    const raw = JSON.parse(messageEvent.data || '{}');
+                    const item = normalizeRuntimeRoundEvent(raw);
                     if (!item) return;
                     applyIncomingEvents([item]);
                 } catch {

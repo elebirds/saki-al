@@ -63,67 +63,122 @@ class RuntimeQueryMixin:
         )
 
     @staticmethod
-    def _derive_step_event_message(*, event_type: str, payload: dict[str, Any]) -> str:
-        if event_type == "log":
-            return str(payload.get("message") or "")
+    def _derive_business_tags(*, payload: dict[str, Any]) -> list[str]:
+        tags: list[str] = []
+
+        def _push_tag(value: Any) -> None:
+            text = str(value or "").strip()
+            lowered = text.lower()
+            if not text:
+                return
+            if lowered.startswith("event:") or lowered.startswith("level:") or lowered.startswith("status:"):
+                return
+            if lowered.startswith("kind:"):
+                return
+            if text in tags:
+                return
+            tags.append(text)
+
+        payload_tag = payload.get("tag")
+        if payload_tag is not None:
+            _push_tag(payload_tag)
+        payload_tags = payload.get("tags")
+        if isinstance(payload_tags, list):
+            for item in payload_tags:
+                _push_tag(item)
+        return tags
+
+    @staticmethod
+    def _derive_step_event_message_key_and_params(
+        *,
+        event_type: str,
+        payload: dict[str, Any],
+        status: str | None,
+    ) -> tuple[str | None, dict[str, Any]]:
+        payload_key = str(payload.get("message_key") or "").strip()
+        payload_params = payload.get("message_args")
+        if payload_key:
+            params = payload_params if isinstance(payload_params, dict) else {}
+            return payload_key, dict(params)
+
         if event_type == "status":
-            status_text = str(payload.get("status") or "").strip()
-            reason_text = str(payload.get("reason") or "").strip()
-            return " ".join(item for item in [status_text, reason_text] if item)
+            status_key = str(status or payload.get("status") or "").strip().lower()
+            if status_key:
+                params: dict[str, Any] = {}
+                reason = str(payload.get("reason") or "").strip()
+                if reason:
+                    params["reason"] = reason
+                return f"runtime.status.{status_key}", params
+            return "runtime.status.unknown", {}
+
         if event_type == "progress":
-            epoch = payload.get("epoch")
-            step = payload.get("step")
-            total_steps = payload.get("total_steps") or payload.get("totalSteps")
-            return f"progress epoch={epoch} step={step}/{total_steps}"
+            params = {
+                "epoch": int(payload.get("epoch") or 0),
+                "step": int(payload.get("step") or 0),
+                "total_steps": int(payload.get("total_steps") or payload.get("totalSteps") or 0),
+                "eta_sec": int(payload.get("eta_sec") or payload.get("etaSec") or 0),
+            }
+            return "runtime.progress.update", params
+
         if event_type == "metric":
             metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
-            metric_keys = ",".join(sorted(str(key) for key in metrics.keys()))
-            return f"metric keys={metric_keys}"
+            metric_keys = sorted(str(key) for key in metrics.keys() if str(key).strip())
+            params = {
+                "step": int(payload.get("step") or 0),
+                "epoch": int(payload.get("epoch") or 0),
+                "metric_count": len(metric_keys),
+                "metric_keys": metric_keys,
+            }
+            return "runtime.metric.update", params
+
+        if event_type == "artifact":
+            params = {
+                "name": str(payload.get("name") or "").strip(),
+                "kind": str(payload.get("kind") or "artifact").strip(),
+                "uri": str(payload.get("uri") or "").strip(),
+            }
+            return "runtime.artifact.generated", params
+
+        return None, {}
+
+    @staticmethod
+    def _derive_step_event_message_text(
+        *,
+        event_type: str,
+        payload: dict[str, Any],
+        status: str | None,
+    ) -> str:
+        if event_type == "log":
+            return str(payload.get("message") or "").rstrip()
+        if event_type == "status":
+            status_text = str(status or payload.get("status") or "").strip().lower()
+            reason_text = str(payload.get("reason") or "").strip()
+            if status_text and reason_text:
+                return f"{status_text}: {reason_text}"
+            return status_text or reason_text
+        if event_type == "progress":
+            epoch = int(payload.get("epoch") or 0)
+            step = int(payload.get("step") or 0)
+            total_steps = int(payload.get("total_steps") or payload.get("totalSteps") or 0)
+            return f"epoch {epoch}, step {step}/{total_steps}"
+        if event_type == "metric":
+            metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+            keys = sorted(str(key) for key in metrics.keys() if str(key).strip())
+            if keys:
+                preview = ", ".join(keys[:4])
+                suffix = "..." if len(keys) > 4 else ""
+                return f"metrics updated ({preview}{suffix})"
+            return "metrics updated"
         if event_type == "artifact":
             name = str(payload.get("name") or "").strip()
             uri = str(payload.get("uri") or "").strip()
-            return " ".join(item for item in [name, uri] if item)
+            if name and uri:
+                return f"{name} ({uri})"
+            return name or uri
         try:
             return json.dumps(payload, ensure_ascii=False, sort_keys=True)
         except Exception:
             return str(payload)
-
-    @staticmethod
-    def _derive_step_event_tags(
-        *,
-        event_type: str,
-        payload: dict[str, Any],
-        level: str | None,
-        status: str | None,
-        kind: str | None,
-    ) -> list[str]:
-        tags: list[str] = [f"event:{event_type.lower()}"]
-        if level:
-            tags.append(f"level:{level.upper()}")
-        if status:
-            tags.append(f"status:{status.lower()}")
-        if kind:
-            tags.append(f"kind:{kind.lower()}")
-        payload_tag = payload.get("tag")
-        if payload_tag is not None:
-            text = str(payload_tag).strip()
-            if text:
-                tags.append(text)
-        payload_tags = payload.get("tags")
-        if isinstance(payload_tags, list):
-            for item in payload_tags:
-                text = str(item).strip()
-                if text:
-                    tags.append(text)
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for item in tags:
-            lowered = str(item).strip()
-            if not lowered or lowered in seen:
-                continue
-            deduped.append(lowered)
-            seen.add(lowered)
-        return deduped
 
     def _normalize_step_event(self, event: Any) -> dict[str, Any]:
         payload = event.payload if isinstance(event.payload, dict) else {}
@@ -131,23 +186,54 @@ class RuntimeQueryMixin:
         level = None
         status = None
         kind = None
+        raw_message = ""
+        source = ""
+        group_id = None
+        line_count = 1
+        message_key = None
+        message_params: dict[str, Any] = {}
         if event_type == "log":
             text = str(payload.get("level") or "").strip().upper()
             level = text or None
+            raw_message = str(payload.get("raw_message") or payload.get("message") or "")
+            message_key = str(payload.get("message_key") or "").strip() or None
+            message_args = payload.get("message_args")
+            if isinstance(message_args, dict):
+                message_params = dict(message_args)
+            meta = payload.get("meta")
+            if isinstance(meta, dict):
+                source = str(meta.get("source") or "").strip()
+                group_text = str(meta.get("group_id") or "").strip()
+                if group_text:
+                    group_id = group_text
+                line_count_raw = meta.get("line_count")
+                try:
+                    line_count = max(1, int(line_count_raw or 1))
+                except Exception:
+                    line_count = 1
         if event_type == "status":
             text = str(payload.get("status") or "").strip()
-            status = text or None
+            status = (text.lower() if text else None)
         if event_type == "artifact":
             text = str(payload.get("kind") or "").strip()
             kind = text or None
-        tags = self._derive_step_event_tags(
+        tags = self._derive_business_tags(payload=payload)
+
+        if not message_key:
+            derived_key, derived_params = self._derive_step_event_message_key_and_params(
+                event_type=event_type,
+                payload=payload,
+                status=status,
+            )
+            message_key = derived_key
+            if not message_params and derived_params:
+                message_params = derived_params
+
+        message_text = self._derive_step_event_message_text(
             event_type=event_type,
             payload=payload,
-            level=level,
             status=status,
-            kind=kind,
         )
-        message_text = self._derive_step_event_message(event_type=event_type, payload=payload)
         return {
             "seq": int(event.seq),
             "ts": event.ts,
@@ -157,7 +243,13 @@ class RuntimeQueryMixin:
             "status": status,
             "kind": kind,
             "tags": tags,
+            "message_key": message_key,
+            "message_params": message_params,
             "message_text": message_text,
+            "raw_message": raw_message,
+            "source": source or None,
+            "group_id": group_id,
+            "line_count": line_count,
         }
 
     @staticmethod
@@ -263,7 +355,14 @@ class RuntimeQueryMixin:
                 if not row_tags.intersection(normalized_tags):
                     continue
             if text_query:
-                haystack = f"{item.get('message_text') or ''} {json.dumps(item.get('payload') or {}, ensure_ascii=False)}"
+                haystack = " ".join(
+                    [
+                        str(item.get("message_text") or ""),
+                        str(item.get("raw_message") or ""),
+                        str(item.get("message_key") or ""),
+                        json.dumps(item.get("payload") or {}, ensure_ascii=False),
+                    ]
+                )
                 if text_query not in haystack.lower():
                     continue
             items.append(item)

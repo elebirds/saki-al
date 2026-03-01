@@ -1251,6 +1251,10 @@ type LogEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Level         string                 `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	RawMessage    string                 `protobuf:"bytes,3,opt,name=raw_message,json=rawMessage,proto3" json:"raw_message,omitempty"`
+	MessageKey    string                 `protobuf:"bytes,4,opt,name=message_key,json=messageKey,proto3" json:"message_key,omitempty"`
+	MessageArgs   *structpb.Struct       `protobuf:"bytes,5,opt,name=message_args,json=messageArgs,proto3" json:"message_args,omitempty"`
+	Meta          *structpb.Struct       `protobuf:"bytes,6,opt,name=meta,proto3" json:"meta,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1297,6 +1301,34 @@ func (x *LogEvent) GetMessage() string {
 		return x.Message
 	}
 	return ""
+}
+
+func (x *LogEvent) GetRawMessage() string {
+	if x != nil {
+		return x.RawMessage
+	}
+	return ""
+}
+
+func (x *LogEvent) GetMessageKey() string {
+	if x != nil {
+		return x.MessageKey
+	}
+	return ""
+}
+
+func (x *LogEvent) GetMessageArgs() *structpb.Struct {
+	if x != nil {
+		return x.MessageArgs
+	}
+	return nil
+}
+
+func (x *LogEvent) GetMeta() *structpb.Struct {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
 }
 
 type ProgressEvent struct {
@@ -3096,10 +3128,16 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\"a\n" +
 	"\vStatusEvent\x12:\n" +
 	"\x06status\x18\x01 \x01(\x0e2\".saki.runtime.v1.RuntimeStepStatusR\x06status\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\":\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xe5\x01\n" +
 	"\bLogEvent\x12\x14\n" +
 	"\x05level\x18\x01 \x01(\tR\x05level\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"s\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1f\n" +
+	"\vraw_message\x18\x03 \x01(\tR\n" +
+	"rawMessage\x12\x1f\n" +
+	"\vmessage_key\x18\x04 \x01(\tR\n" +
+	"messageKey\x12:\n" +
+	"\fmessage_args\x18\x05 \x01(\v2\x17.google.protobuf.StructR\vmessageArgs\x12+\n" +
+	"\x04meta\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x04meta\"s\n" +
 	"\rProgressEvent\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x05R\x05epoch\x12\x12\n" +
 	"\x04step\x18\x02 \x01(\x05R\x04step\x12\x1f\n" +
@@ -3411,50 +3449,52 @@ var file_runtime_control_proto_depIdxs = []int32{
 	5,  // 12: saki.runtime.v1.StepPayload.dispatch_kind:type_name -> saki.runtime.v1.RuntimeStepDispatchKind
 	14, // 13: saki.runtime.v1.AssignStep.step:type_name -> saki.runtime.v1.StepPayload
 	0,  // 14: saki.runtime.v1.StatusEvent.status:type_name -> saki.runtime.v1.RuntimeStepStatus
-	37, // 15: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
-	40, // 16: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct
-	21, // 17: saki.runtime.v1.ArtifactEvent.artifact:type_name -> saki.runtime.v1.ArtifactItem
-	17, // 18: saki.runtime.v1.StepEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
-	18, // 19: saki.runtime.v1.StepEvent.log_event:type_name -> saki.runtime.v1.LogEvent
-	19, // 20: saki.runtime.v1.StepEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
-	20, // 21: saki.runtime.v1.StepEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
-	22, // 22: saki.runtime.v1.StepEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
-	40, // 23: saki.runtime.v1.QueryCandidate.reason:type_name -> google.protobuf.Struct
-	0,  // 24: saki.runtime.v1.StepResult.status:type_name -> saki.runtime.v1.RuntimeStepStatus
-	38, // 25: saki.runtime.v1.StepResult.metrics:type_name -> saki.runtime.v1.StepResult.MetricsEntry
-	21, // 26: saki.runtime.v1.StepResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
-	24, // 27: saki.runtime.v1.StepResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
-	7,  // 28: saki.runtime.v1.DataRequest.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	40, // 29: saki.runtime.v1.SampleItem.meta:type_name -> google.protobuf.Struct
-	40, // 30: saki.runtime.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
-	27, // 31: saki.runtime.v1.DataItem.label_item:type_name -> saki.runtime.v1.LabelItem
-	28, // 32: saki.runtime.v1.DataItem.sample_item:type_name -> saki.runtime.v1.SampleItem
-	29, // 33: saki.runtime.v1.DataItem.annotation_item:type_name -> saki.runtime.v1.AnnotationItem
-	7,  // 34: saki.runtime.v1.DataResponse.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	39, // 35: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
-	1,  // 36: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
-	2,  // 37: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
-	3,  // 38: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
-	7,  // 39: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
-	12, // 40: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
-	13, // 41: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
-	15, // 42: saki.runtime.v1.RuntimeMessage.assign_step:type_name -> saki.runtime.v1.AssignStep
-	16, // 43: saki.runtime.v1.RuntimeMessage.stop_step:type_name -> saki.runtime.v1.StopStep
-	23, // 44: saki.runtime.v1.RuntimeMessage.step_event:type_name -> saki.runtime.v1.StepEvent
-	25, // 45: saki.runtime.v1.RuntimeMessage.step_result:type_name -> saki.runtime.v1.StepResult
-	26, // 46: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
-	31, // 47: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
-	32, // 48: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
-	33, // 49: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
-	34, // 50: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
-	35, // 51: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
-	36, // 52: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
-	36, // 53: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
-	53, // [53:54] is the sub-list for method output_type
-	52, // [52:53] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	40, // 15: saki.runtime.v1.LogEvent.message_args:type_name -> google.protobuf.Struct
+	40, // 16: saki.runtime.v1.LogEvent.meta:type_name -> google.protobuf.Struct
+	37, // 17: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
+	40, // 18: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct
+	21, // 19: saki.runtime.v1.ArtifactEvent.artifact:type_name -> saki.runtime.v1.ArtifactItem
+	17, // 20: saki.runtime.v1.StepEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
+	18, // 21: saki.runtime.v1.StepEvent.log_event:type_name -> saki.runtime.v1.LogEvent
+	19, // 22: saki.runtime.v1.StepEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
+	20, // 23: saki.runtime.v1.StepEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
+	22, // 24: saki.runtime.v1.StepEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
+	40, // 25: saki.runtime.v1.QueryCandidate.reason:type_name -> google.protobuf.Struct
+	0,  // 26: saki.runtime.v1.StepResult.status:type_name -> saki.runtime.v1.RuntimeStepStatus
+	38, // 27: saki.runtime.v1.StepResult.metrics:type_name -> saki.runtime.v1.StepResult.MetricsEntry
+	21, // 28: saki.runtime.v1.StepResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
+	24, // 29: saki.runtime.v1.StepResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
+	7,  // 30: saki.runtime.v1.DataRequest.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	40, // 31: saki.runtime.v1.SampleItem.meta:type_name -> google.protobuf.Struct
+	40, // 32: saki.runtime.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
+	27, // 33: saki.runtime.v1.DataItem.label_item:type_name -> saki.runtime.v1.LabelItem
+	28, // 34: saki.runtime.v1.DataItem.sample_item:type_name -> saki.runtime.v1.SampleItem
+	29, // 35: saki.runtime.v1.DataItem.annotation_item:type_name -> saki.runtime.v1.AnnotationItem
+	7,  // 36: saki.runtime.v1.DataResponse.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	39, // 37: saki.runtime.v1.UploadTicketResponse.headers:type_name -> saki.runtime.v1.UploadTicketResponse.HeadersEntry
+	1,  // 38: saki.runtime.v1.Ack.status:type_name -> saki.runtime.v1.AckStatus
+	2,  // 39: saki.runtime.v1.Ack.type:type_name -> saki.runtime.v1.AckType
+	3,  // 40: saki.runtime.v1.Ack.reason:type_name -> saki.runtime.v1.AckReason
+	7,  // 41: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
+	12, // 42: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
+	13, // 43: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
+	15, // 44: saki.runtime.v1.RuntimeMessage.assign_step:type_name -> saki.runtime.v1.AssignStep
+	16, // 45: saki.runtime.v1.RuntimeMessage.stop_step:type_name -> saki.runtime.v1.StopStep
+	23, // 46: saki.runtime.v1.RuntimeMessage.step_event:type_name -> saki.runtime.v1.StepEvent
+	25, // 47: saki.runtime.v1.RuntimeMessage.step_result:type_name -> saki.runtime.v1.StepResult
+	26, // 48: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
+	31, // 49: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
+	32, // 50: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
+	33, // 51: saki.runtime.v1.RuntimeMessage.upload_ticket_response:type_name -> saki.runtime.v1.UploadTicketResponse
+	34, // 52: saki.runtime.v1.RuntimeMessage.ack:type_name -> saki.runtime.v1.Ack
+	35, // 53: saki.runtime.v1.RuntimeMessage.error:type_name -> saki.runtime.v1.Error
+	36, // 54: saki.runtime.v1.RuntimeControl.Stream:input_type -> saki.runtime.v1.RuntimeMessage
+	36, // 55: saki.runtime.v1.RuntimeControl.Stream:output_type -> saki.runtime.v1.RuntimeMessage
+	55, // [55:56] is the sub-list for method output_type
+	54, // [54:55] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_runtime_control_proto_init() }

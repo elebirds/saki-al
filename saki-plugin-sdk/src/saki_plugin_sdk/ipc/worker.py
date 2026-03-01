@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from loguru import logger
 
 from saki_plugin_sdk.base import ExecutorPlugin
 from saki_plugin_sdk.ipc import protocol
+from saki_plugin_sdk.logger import reset_log_bridge, set_log_bridge
 from saki_plugin_sdk.workspace import Workspace
 
 try:
@@ -74,6 +76,38 @@ def _build_workspace(workspace_root: str) -> Workspace:
     workspace = Workspace(str(root.parent), root.name)
     workspace.ensure()
     return workspace
+
+
+@contextlib.contextmanager
+def _bind_plugin_log_bridge(
+    *,
+    pub_socket,
+    step_id: str,
+    plugin_id: str,
+    request_id: str = "",
+):
+    def _bridge(payload: dict[str, Any]) -> None:
+        row = dict(payload or {})
+        meta_raw = row.get("meta")
+        meta = dict(meta_raw) if isinstance(meta_raw, dict) else {}
+        meta.setdefault("source", "plugin_logger")
+        meta.setdefault("plugin_id", plugin_id)
+        if step_id:
+            meta.setdefault("step_id", step_id)
+        row["meta"] = meta
+        _publish_event(
+            pub_socket=pub_socket,
+            event_type="log",
+            step_id=step_id,
+            payload=row,
+            request_id=request_id,
+        )
+
+    token = set_log_bridge(_bridge)
+    try:
+        yield
+    finally:
+        reset_log_bridge(token)
 
 
 async def _run_prepare_data(
@@ -201,7 +235,13 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
         }
 
         # Call on_load lifecycle hook
-        _await(plugin.on_load(load_context))
+        with _bind_plugin_log_bridge(
+            pub_socket=pub_socket,
+            step_id=args.step_id,
+            plugin_id=args.plugin_id,
+            request_id="",
+        ):
+            _await(plugin.on_load(load_context))
 
         _publish_event(
             pub_socket=pub_socket,
@@ -244,67 +284,85 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
 
                 if action == "prepare_data":
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
-                    _await(plugin.on_start(args.step_id, workspace))
-                    try:
-                        _await(
-                            _run_prepare_data(
-                                plugin=plugin,
-                                payload=payload,
+                    with _bind_plugin_log_bridge(
+                        pub_socket=pub_socket,
+                        step_id=args.step_id,
+                        plugin_id=args.plugin_id,
+                        request_id=cmd.request_id,
+                    ):
+                        _await(plugin.on_start(args.step_id, workspace))
+                        try:
+                            _await(
+                                _run_prepare_data(
+                                    plugin=plugin,
+                                    payload=payload,
+                                )
                             )
-                        )
-                    finally:
-                        _await(plugin.on_stop(args.step_id, workspace))
+                        finally:
+                            _await(plugin.on_stop(args.step_id, workspace))
                     rep_socket.send_json(envelope.to_dict())
                     continue
 
                 if action in {"train", "eval", "predict"}:
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
-                    _await(plugin.on_start(args.step_id, workspace))
-                    try:
-                        result_path = _await(
-                            _run_train_like(
-                                plugin=plugin,
-                                payload=payload,
-                                step_id=args.step_id,
-                                request_id=cmd.request_id,
-                                pub_socket=pub_socket,
-                                method_name=action,
+                    with _bind_plugin_log_bridge(
+                        pub_socket=pub_socket,
+                        step_id=args.step_id,
+                        plugin_id=args.plugin_id,
+                        request_id=cmd.request_id,
+                    ):
+                        _await(plugin.on_start(args.step_id, workspace))
+                        try:
+                            result_path = _await(
+                                _run_train_like(
+                                    plugin=plugin,
+                                    payload=payload,
+                                    step_id=args.step_id,
+                                    request_id=cmd.request_id,
+                                    pub_socket=pub_socket,
+                                    method_name=action,
+                                )
                             )
-                        )
-                        rep_socket.send_json(
-                            protocol.WorkerReplyEnvelope(
-                                request_id=cmd.request_id,
-                                ok=True,
-                                error_code="",
-                                error_message="",
-                                result_path=result_path,
-                            ).to_dict()
-                        )
-                    finally:
-                        _await(plugin.on_stop(args.step_id, workspace))
+                            rep_socket.send_json(
+                                protocol.WorkerReplyEnvelope(
+                                    request_id=cmd.request_id,
+                                    ok=True,
+                                    error_code="",
+                                    error_message="",
+                                    result_path=result_path,
+                                ).to_dict()
+                            )
+                        finally:
+                            _await(plugin.on_stop(args.step_id, workspace))
                     continue
 
                 if action == "predict_unlabeled_batch":
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
-                    _await(plugin.on_start(args.step_id, workspace))
-                    try:
-                        result_path = _await(
-                            _run_predict(
-                                plugin=plugin,
-                                payload=payload,
+                    with _bind_plugin_log_bridge(
+                        pub_socket=pub_socket,
+                        step_id=args.step_id,
+                        plugin_id=args.plugin_id,
+                        request_id=cmd.request_id,
+                    ):
+                        _await(plugin.on_start(args.step_id, workspace))
+                        try:
+                            result_path = _await(
+                                _run_predict(
+                                    plugin=plugin,
+                                    payload=payload,
+                                )
                             )
-                        )
-                        rep_socket.send_json(
-                            protocol.WorkerReplyEnvelope(
-                                request_id=cmd.request_id,
-                                ok=True,
-                                error_code="",
-                                error_message="",
-                                result_path=result_path,
-                            ).to_dict()
-                        )
-                    finally:
-                        _await(plugin.on_stop(args.step_id, workspace))
+                            rep_socket.send_json(
+                                protocol.WorkerReplyEnvelope(
+                                    request_id=cmd.request_id,
+                                    ok=True,
+                                    error_code="",
+                                    error_message="",
+                                    result_path=result_path,
+                                ).to_dict()
+                            )
+                        finally:
+                            _await(plugin.on_stop(args.step_id, workspace))
                     continue
 
                 if action == "shutdown":
@@ -335,7 +393,13 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
     finally:
         # Call on_unload lifecycle hook
         try:
-            _await(plugin.on_unload())
+            with _bind_plugin_log_bridge(
+                pub_socket=pub_socket,
+                step_id=args.step_id,
+                plugin_id=args.plugin_id,
+                request_id="",
+            ):
+                _await(plugin.on_unload())
         except Exception:
             logger.exception("worker on_unload failed step_id={}", args.step_id)
         finally:

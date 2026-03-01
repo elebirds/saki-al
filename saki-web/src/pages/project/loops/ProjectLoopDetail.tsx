@@ -40,6 +40,7 @@ import {
     RuntimeRoundEvent,
     PredictionSetRead,
 } from '../../../types';
+import {mergeRuntimeRoundEvents, normalizeRuntimeRoundEvent} from './runtimeEventFormatter';
 
 const {Title, Text} = Typography;
 
@@ -132,85 +133,6 @@ const shouldRefreshLoopByRoundEvent = (raw: unknown): boolean => {
     const row = raw as Record<string, unknown>;
     const eventType = String(row.eventType ?? row.event_type ?? '').trim().toLowerCase();
     return eventType === 'status' || eventType === 'artifact';
-};
-
-const normalizeRoundConsoleEvent = (raw: unknown): RuntimeRoundEvent | null => {
-    if (!raw || typeof raw !== 'object') return null;
-    const row = raw as Record<string, unknown>;
-    const stepId = String(row.stepId ?? row.step_id ?? '').trim();
-    if (!stepId) return null;
-    const stepIndex = Number(row.stepIndex ?? row.step_index ?? 0);
-    if (!Number.isFinite(stepIndex) || stepIndex <= 0) return null;
-    const stepType = String(row.stepType ?? row.step_type ?? 'custom').trim().toLowerCase();
-    const seq = Number(row.seq ?? 0);
-    if (!Number.isFinite(seq) || seq <= 0) return null;
-    const eventType = String(row.eventType ?? row.event_type ?? 'unknown').trim().toLowerCase();
-    const ts = String(row.ts ?? new Date().toISOString());
-    const payload = row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, any>) : {};
-    const levelRaw = row.level ?? payload.level;
-    const statusRaw = row.status ?? payload.status;
-    const kindRaw = row.kind ?? payload.kind;
-    const stageRaw = String(row.stage ?? '').trim().toLowerCase();
-    const stage = (['train', 'eval', 'score', 'select', 'custom'] as const).includes(stageRaw as any)
-        ? stageRaw
-        : 'custom';
-    const tags: string[] = [];
-    const pushTag = (value: unknown) => {
-        const text = String(value || '').trim();
-        if (!text || tags.includes(text)) return;
-        tags.push(text);
-    };
-    if (Array.isArray(row.tags)) row.tags.forEach((item) => pushTag(item));
-    pushTag(`step:${stepIndex}`);
-    pushTag(`step_type:${stepType}`);
-    pushTag(`stage:${stage}`);
-    const messageTextRaw = String(row.messageText ?? row.message_text ?? '').trim();
-    const messageText = messageTextRaw
-        || (eventType === 'log'
-            ? String(payload.message || '').trim()
-            : (eventType === 'status'
-                ? `${String(payload.status || '').trim()} ${String(payload.reason || '').trim()}`.trim()
-                : ''));
-
-    return {
-        stepId,
-        stepIndex,
-        stepType: stepType as any,
-        stage: stage as RuntimeRoundEvent['stage'],
-        seq,
-        ts,
-        eventType,
-        payload,
-        level: levelRaw ? String(levelRaw).trim().toUpperCase() : null,
-        status: statusRaw ? String(statusRaw).trim() : null,
-        kind: kindRaw ? String(kindRaw).trim() : null,
-        tags,
-        messageText: `[step#${stepIndex} ${stepType}] ${messageText}`.trim(),
-    };
-};
-
-const mergeRoundConsoleEvents = (
-    previous: RuntimeRoundEvent[],
-    incoming: RuntimeRoundEvent[],
-): RuntimeRoundEvent[] => {
-    const merged = [...previous, ...incoming];
-    const dedup = new Map<string, RuntimeRoundEvent>();
-    merged.forEach((item) => {
-        const key = `${item.stepId}:${item.seq}:${item.eventType}:${item.ts}:${item.messageText}`;
-        dedup.set(key, item);
-    });
-    const rows = Array.from(dedup.values()).sort((left, right) => {
-        const leftTs = Date.parse(String(left.ts || ''));
-        const rightTs = Date.parse(String(right.ts || ''));
-        if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && leftTs !== rightTs) return leftTs - rightTs;
-        if (Number(left.stepIndex || 0) !== Number(right.stepIndex || 0)) {
-            return Number(left.stepIndex || 0) - Number(right.stepIndex || 0);
-        }
-        if (Number(left.seq || 0) !== Number(right.seq || 0)) return Number(left.seq || 0) - Number(right.seq || 0);
-        return String(left.stepId || '').localeCompare(String(right.stepId || ''));
-    });
-    if (rows.length <= MAX_CONSOLE_EVENT_BUFFER) return rows;
-    return rows.slice(rows.length - MAX_CONSOLE_EVENT_BUFFER);
 };
 
 const SNAPSHOT_INIT_DEFAULTS: SnapshotInitRequest = {
@@ -459,7 +381,11 @@ const ProjectLoopDetail: React.FC = () => {
             wsCursorRef.current = response.nextAfterCursor ?? wsCursorRef.current;
             const incoming = (response.items || []).filter((item) => Boolean(item.stepId));
             if (incoming.length > 0) {
-                const merged = mergeRoundConsoleEvents(latestRoundConsoleEventsRef.current, incoming);
+                const merged = mergeRuntimeRoundEvents(
+                    latestRoundConsoleEventsRef.current,
+                    incoming,
+                    MAX_CONSOLE_EVENT_BUFFER,
+                );
                 latestRoundConsoleEventsRef.current = merged;
                 setLatestRoundConsoleEvents(merged);
             }
@@ -512,9 +438,13 @@ const ProjectLoopDetail: React.FC = () => {
             ws.onmessage = (event: MessageEvent<string>) => {
                 try {
                     const parsed = JSON.parse(event.data || '{}') as unknown;
-                    const normalized = normalizeRoundConsoleEvent(parsed);
+                    const normalized = normalizeRuntimeRoundEvent(parsed);
                     if (!normalized) return;
-                    const merged = mergeRoundConsoleEvents(latestRoundConsoleEventsRef.current, [normalized]);
+                    const merged = mergeRuntimeRoundEvents(
+                        latestRoundConsoleEventsRef.current,
+                        [normalized],
+                        MAX_CONSOLE_EVENT_BUFFER,
+                    );
                     latestRoundConsoleEventsRef.current = merged;
                     setLatestRoundConsoleEvents(merged);
                     if (shouldRefreshLoopByRoundEvent(normalized)) {

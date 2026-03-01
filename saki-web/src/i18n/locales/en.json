@@ -1283,6 +1283,28 @@
       }
     }
   },
+  "runtime": {
+    "status": {
+      "pending": "Pending",
+      "dispatching": "Dispatching",
+      "running": "Running",
+      "retrying": "Retrying",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "skipped": "Skipped",
+      "unknown": "Status updated"
+    },
+    "progress": {
+      "update": "Progress: epoch {{epoch}}, {{step}} / {{total_steps}}"
+    },
+    "metric": {
+      "update": "Metrics updated ({{metric_count}})"
+    },
+    "artifact": {
+      "generated": "Artifact generated: {{name}}"
+    }
+  },
   "layout": {
     "header": {
       "newProject": "New project",

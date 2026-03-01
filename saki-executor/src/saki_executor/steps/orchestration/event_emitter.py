@@ -35,6 +35,26 @@ class StepEventEmitter:
             return self._reporter.log(
                 level=str(payload.get("level", "INFO")),
                 message=str(payload.get("message", "")),
+                raw_message=(
+                    str(payload.get("raw_message"))
+                    if payload.get("raw_message") is not None
+                    else None
+                ),
+                message_key=(
+                    str(payload.get("message_key"))
+                    if payload.get("message_key") is not None
+                    else None
+                ),
+                message_args=(
+                    payload.get("message_args")
+                    if isinstance(payload.get("message_args"), dict)
+                    else None
+                ),
+                meta=(
+                    payload.get("meta")
+                    if isinstance(payload.get("meta"), dict)
+                    else None
+                ),
             )
         if event_type == "progress":
             return self._reporter.progress(

@@ -375,11 +375,17 @@ def decode_step_event(event: pb.StepEvent) -> tuple[str, dict[str, Any], int | N
             status_value,
         )
     if payload_type == "log_event":
+        message_args = struct_to_dict(event.log_event.message_args)
+        meta = struct_to_dict(event.log_event.meta)
         return (
             "log",
             {
                 "level": event.log_event.level,
                 "message": event.log_event.message,
+                "raw_message": event.log_event.raw_message,
+                "message_key": event.log_event.message_key,
+                "message_args": message_args,
+                "meta": meta,
             },
             None,
         )

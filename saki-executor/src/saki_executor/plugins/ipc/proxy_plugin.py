@@ -239,7 +239,18 @@ class SubprocessPluginProxy(ExecutorPlugin):
         if event_type == "worker":
             level = str(payload.get("level") or "INFO")
             message = str(payload.get("message") or "")
-            await self._emit("log", {"level": level, "message": message})
+            await self._emit(
+                "log",
+                {
+                    "level": level,
+                    "message": message,
+                    "raw_message": str(payload.get("raw_message") or message),
+                    "meta": {
+                        "source": "worker_lifecycle",
+                        "plugin_id": self.plugin_id,
+                    },
+                },
+            )
             return
         await self._emit(event_type, payload)
 

@@ -105,6 +105,7 @@ import {ApiService} from './interface';
 import {useAuthStore} from '../../store/authStore';
 import {hydrateAnnotationRead, hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {enforceHttps, hashPassword} from '../../utils/security';
+import {normalizeRuntimeRoundEvent, normalizeRuntimeStepEvent} from '../../pages/project/loops/runtimeEventFormatter';
 
 // ============================================================================
 // Case Conversion Utilities
@@ -326,62 +327,7 @@ function normalizeRound(round: RuntimeRound): RuntimeRound {
 }
 
 function normalizeStepEvent(event: any): RuntimeStepEvent {
-    const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
-    const eventType = String(event?.eventType ?? event?.event_type ?? 'unknown').trim().toLowerCase();
-    const levelRaw = event?.level ?? (eventType === 'log' ? payload.level : null);
-    const statusRaw = event?.status ?? (eventType === 'status' ? payload.status : null);
-    const kindRaw = event?.kind ?? (eventType === 'artifact' ? payload.kind : null);
-    const level = levelRaw ? String(levelRaw).trim().toUpperCase() : null;
-    const status = statusRaw ? String(statusRaw).trim() : null;
-    const kind = kindRaw ? String(kindRaw).trim() : null;
-
-    const tags: string[] = [];
-    const pushTag = (value: unknown) => {
-        const text = String(value || '').trim();
-        if (!text || tags.includes(text)) return;
-        tags.push(text);
-    };
-    pushTag(`event:${eventType}`);
-    if (level) pushTag(`level:${level}`);
-    if (status) pushTag(`status:${status.toLowerCase()}`);
-    if (kind) pushTag(`kind:${kind.toLowerCase()}`);
-    if (payload.tag != null) pushTag(payload.tag);
-    if (Array.isArray(payload.tags)) {
-        payload.tags.forEach((item: unknown) => pushTag(item));
-    }
-    if (Array.isArray(event?.tags)) {
-        event.tags.forEach((item: unknown) => pushTag(item));
-    }
-
-    let messageText = String(event?.messageText ?? event?.message_text ?? '').trim();
-    if (!messageText) {
-        if (eventType === 'log') {
-            messageText = String(payload.message || '').trim();
-        } else if (eventType === 'status') {
-            messageText = `${String(payload.status || '').trim()} ${String(payload.reason || '').trim()}`.trim();
-        } else if (eventType === 'progress') {
-            messageText = `progress epoch=${payload.epoch ?? '-'} step=${payload.step ?? '-'} total=${payload.total_steps ?? payload.totalSteps ?? '-'}`;
-        } else if (eventType === 'metric') {
-            const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
-            messageText = `metric keys=${Object.keys(metrics).join(',')}`;
-        } else if (eventType === 'artifact') {
-            messageText = `${String(payload.name || '').trim()} ${String(payload.uri || '').trim()}`.trim();
-        } else {
-            messageText = JSON.stringify(payload || {});
-        }
-    }
-
-    return {
-        seq: Number(event?.seq ?? 0),
-        ts: String(event?.ts || new Date().toISOString()),
-        eventType,
-        payload,
-        level,
-        status,
-        kind,
-        tags,
-        messageText,
-    };
+    return normalizeRuntimeStepEvent(event);
 }
 
 function normalizeStepEventQueryResponse(response: any): StepEventQueryResponse {
@@ -400,25 +346,16 @@ function normalizeStepEventQueryResponse(response: any): StepEventQueryResponse 
     };
 }
 
-function normalizeRoundEvent(event: any): RuntimeRoundEvent {
-    const base = normalizeStepEvent(event);
-    const stageRaw = String(event?.stage || 'custom').trim().toLowerCase();
-    const stage = (['train', 'eval', 'score', 'select', 'custom'] as const).includes(stageRaw as any)
-        ? (stageRaw as RuntimeRoundEvent['stage'])
-        : 'custom';
-    return {
-        ...base,
-        stepId: String(event?.stepId ?? event?.step_id ?? ''),
-        stepIndex: Number(event?.stepIndex ?? event?.step_index ?? 0),
-        stepType: String(event?.stepType ?? event?.step_type ?? 'custom') as any,
-        stage,
-    };
+function normalizeRoundEvent(event: any): RuntimeRoundEvent | null {
+    return normalizeRuntimeRoundEvent(event);
 }
 
 function normalizeRoundEventQueryResponse(response: any): RoundEventQueryResponse {
     const itemsRaw = Array.isArray(response?.items) ? response.items : [];
     return {
-        items: itemsRaw.map((item: any) => normalizeRoundEvent(item)),
+        items: itemsRaw
+            .map((item: any) => normalizeRoundEvent(item))
+            .filter((item: RuntimeRoundEvent | null): item is RuntimeRoundEvent => Boolean(item)),
         nextAfterCursor: response?.nextAfterCursor ?? response?.next_after_cursor ?? null,
         hasMore: Boolean(response?.hasMore ?? response?.has_more ?? false),
     };

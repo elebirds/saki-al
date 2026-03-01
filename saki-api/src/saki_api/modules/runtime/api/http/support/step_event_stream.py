@@ -6,6 +6,8 @@ import asyncio
 import contextlib
 import uuid
 
+from fastapi.encoders import jsonable_encoder
+
 from jose import JWTError, jwt
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.websockets import WebSocket, WebSocketState
@@ -85,20 +87,17 @@ async def stream_step_events_loop(
 
             async with SessionLocal() as session:  # type: AsyncSession
                 runtime_service = RuntimeService(session=session)
-                events = await runtime_service.list_step_events(parsed_step_id, after_seq=cursor, limit=500)
+                payload = await runtime_service.query_step_events(
+                    step_id=parsed_step_id,
+                    after_seq=cursor,
+                    limit=500,
+                )
 
+            events = payload.get("items") or []
             if events:
                 for event in events:
-                    await websocket.send_json(
-                        {
-                            "seq": event.seq,
-                            "ts": event.ts.isoformat(),
-                            "eventType": event.event_type,
-                            "event_type": event.event_type,
-                            "payload": event.payload,
-                        }
-                    )
-                    cursor = max(cursor, event.seq)
+                    await websocket.send_json(jsonable_encoder(event))
+                    cursor = max(cursor, int(event.get("seq") or 0))
 
             if disconnect_task is None:
                 disconnect_task = asyncio.create_task(websocket.receive())

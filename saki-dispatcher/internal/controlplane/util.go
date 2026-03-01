@@ -167,14 +167,24 @@ func decodeStepEvent(event *runtimecontrolv1.StepEvent) (string, map[string]any,
 	switch payload := event.GetEventPayload().(type) {
 	case *runtimecontrolv1.StepEvent_StatusEvent:
 		statusValue := runtimeStatusToStepStatus(payload.StatusEvent.GetStatus())
+		statusText := strings.ToLower(strings.TrimSpace(string(statusValue)))
 		return "status", map[string]any{
-			"status": string(statusValue),
+			"status": statusText,
 			"reason": strings.TrimSpace(payload.StatusEvent.GetReason()),
 		}, statusValue
 	case *runtimecontrolv1.StepEvent_LogEvent:
+		message := payload.LogEvent.GetMessage()
+		rawMessage := payload.LogEvent.GetRawMessage()
+		if strings.TrimSpace(rawMessage) == "" {
+			rawMessage = message
+		}
 		return "log", map[string]any{
-			"level":   strings.TrimSpace(payload.LogEvent.GetLevel()),
-			"message": payload.LogEvent.GetMessage(),
+			"level":        strings.TrimSpace(payload.LogEvent.GetLevel()),
+			"message":      message,
+			"raw_message":  rawMessage,
+			"message_key":  strings.TrimSpace(payload.LogEvent.GetMessageKey()),
+			"message_args": structToMap(payload.LogEvent.GetMessageArgs()),
+			"meta":         structToMap(payload.LogEvent.GetMeta()),
 		}, ""
 	case *runtimecontrolv1.StepEvent_ProgressEvent:
 		return "progress", map[string]any{

@@ -669,6 +669,13 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
                         event_type="log",
                         payload={"level": "ERROR", "message": "disk full", "tags": ["io", "critical"]},
                     ),
+                    StepEvent(
+                        step_id=step.id,
+                        seq=4,
+                        ts=datetime.now(UTC),
+                        event_type="metric",
+                        payload={"step": 1, "epoch": 1, "metrics": {"map50": 0.7, "precision": 0.8}},
+                    ),
                 ]
             )
             await session.commit()
@@ -688,14 +695,19 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
                 session=session,
                 current_user_id=current_user_id,
             )
-            assert len(all_events.items) == 3
-            assert all_events.next_after_seq == 3
+            assert len(all_events.items) == 4
+            assert all_events.next_after_seq == 4
             assert all_events.facets is not None
             assert all_events.facets.event_types.get("log") == 2
+            assert all_events.facets.event_types.get("metric") == 1
             assert all_events.facets.levels.get("INFO") == 1
             assert all_events.facets.levels.get("ERROR") == 1
-            assert any("event:log" in item.tags for item in all_events.items)
+            assert any("trainer" in item.tags for item in all_events.items)
             assert any(item.message_text == "disk full" for item in all_events.items)
+            assert any(item.raw_message == "disk full" for item in all_events.items)
+            metric_event = next(item for item in all_events.items if item.event_type == "metric")
+            assert metric_event.message_key == "runtime.metric.update"
+            assert metric_event.message_text != "metric keys=map50,precision"
 
             error_only = await round_step_query_endpoint.get_step_events(
                 step_id=step.id,

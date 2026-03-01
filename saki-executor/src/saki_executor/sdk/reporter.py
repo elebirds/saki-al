@@ -48,8 +48,26 @@ class StepReporter:
             payload["reason"] = reason
         return self._append("status", payload)
 
-    def log(self, level: str, message: str) -> dict[str, Any]:
-        return self._append("log", {"level": level, "message": message})
+    def log(
+        self,
+        level: str,
+        message: str,
+        *,
+        raw_message: str | None = None,
+        message_key: str | None = None,
+        message_args: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"level": level, "message": message}
+        if raw_message is not None:
+            payload["raw_message"] = raw_message
+        if message_key:
+            payload["message_key"] = message_key
+        if message_args:
+            payload["message_args"] = dict(message_args)
+        if meta:
+            payload["meta"] = dict(meta)
+        return self._append("log", payload)
 
     def progress(self, epoch: int, step: int, total_steps: int, eta_sec: int | None = None) -> dict[str, Any]:
         payload = {

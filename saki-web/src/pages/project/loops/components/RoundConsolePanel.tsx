@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DeploymentUnitOutlined, FilterOutlined, SearchOutlined} from '@ant-design/icons';
-import {Button, Card, Input, Segmented, Select, Switch, Tag} from 'antd';
+import {Button, Card, Drawer, Input, Segmented, Select, Switch, Tag} from 'antd';
+import {useTranslation} from 'react-i18next';
 
 import {RuntimeRoundEvent} from '../../../../types';
+import {buildRuntimeEventSearchText, formatRuntimeEventMessage, isRuntimeEventError} from '../runtimeEventFormatter';
 
 type StageOption = {
     label: string;
@@ -23,7 +25,6 @@ type RoundConsolePanelProps = {
     maxHeight?: number;
 };
 
-const ERROR_LEVELS = new Set(['ERROR', 'CRITICAL', 'FATAL']);
 const DEFAULT_LOG_TAIL = 500;
 
 const EVENT_TYPE_COLOR: Record<string, string> = {
@@ -37,13 +38,24 @@ const EVENT_TYPE_COLOR: Record<string, string> = {
 
 const LEVEL_COLOR_CLASS: Record<string, string> = {
     TRACE: 'text-slate-400',
-    DEBUG: 'text-slate-300',
+    DEBUG: 'text-cyan-300',
     INFO: 'text-blue-300',
     WARNING: 'text-amber-300',
     WARN: 'text-amber-300',
     ERROR: 'text-red-300',
     CRITICAL: 'text-fuchsia-300',
     FATAL: 'text-fuchsia-300',
+};
+
+const LEVEL_TAG_COLOR: Record<string, string> = {
+    TRACE: 'default',
+    DEBUG: 'cyan',
+    INFO: 'blue',
+    WARNING: 'warning',
+    WARN: 'warning',
+    ERROR: 'error',
+    CRITICAL: 'magenta',
+    FATAL: 'magenta',
 };
 
 const formatDateTime = (value?: string | null) => {
@@ -62,7 +74,7 @@ const buildEventFacetsFromItems = (items: RuntimeRoundEvent[]) => {
     items.forEach((item) => {
         const eventType = String(item.eventType || '').trim();
         if (eventType) eventTypes[eventType] = Number(eventTypes[eventType] || 0) + 1;
-        const level = String(item.level || '').trim();
+        const level = String(item.level || '').trim().toUpperCase();
         if (level) levels[level] = Number(levels[level] || 0) + 1;
         (item.tags || []).forEach((tag) => {
             const text = String(tag || '').trim();
@@ -71,6 +83,158 @@ const buildEventFacetsFromItems = (items: RuntimeRoundEvent[]) => {
         });
     });
     return {eventTypes, levels, tags};
+};
+
+type ConsoleEventBlock = {
+    key: string;
+    stepId: string;
+    stepIndex: number;
+    stepType: string;
+    epoch: number | null;
+    totalEpochs: number | null;
+    events: RuntimeRoundEvent[];
+    grouped: boolean;
+};
+
+const EPOCH_FROM_PROGRESS_RE = /^\s*(\d+)\s*\/\s*(\d+)/;
+
+const asEpoch = (value: unknown): number | null => {
+    const epoch = Number(value);
+    if (!Number.isFinite(epoch) || epoch <= 0) return null;
+    return Math.floor(epoch);
+};
+
+type EpochHint = {
+    epoch: number | null;
+    total: number | null;
+};
+
+const inferEventEpoch = (
+    event: RuntimeRoundEvent,
+    lastEpochByStep: Map<string, number>,
+    lastTotalByStep: Map<string, number>,
+): EpochHint => {
+    const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+    const params = event.messageParams && typeof event.messageParams === 'object' ? event.messageParams : {};
+    const direct = asEpoch(payload.epoch ?? (params as any).epoch);
+    const directTotal = asEpoch(
+        payload.total_steps
+        ?? payload.totalSteps
+        ?? (params as any).total_steps
+        ?? (params as any).totalSteps,
+    );
+    if (directTotal != null) lastTotalByStep.set(event.stepId, directTotal);
+    if (direct != null) {
+        lastEpochByStep.set(event.stepId, direct);
+        return {
+            epoch: direct,
+            total: directTotal ?? lastTotalByStep.get(event.stepId) ?? null,
+        };
+    }
+    if (event.eventType === 'log') {
+        const message = String(event.messageText || '');
+        const match = message.match(EPOCH_FROM_PROGRESS_RE);
+        if (match) {
+            const parsed = asEpoch(match[1]);
+            const parsedTotal = asEpoch(match[2]);
+            if (parsedTotal != null) lastTotalByStep.set(event.stepId, parsedTotal);
+            if (parsed != null) {
+                lastEpochByStep.set(event.stepId, parsed);
+                return {
+                    epoch: parsed,
+                    total: parsedTotal ?? lastTotalByStep.get(event.stepId) ?? null,
+                };
+            }
+        }
+        const remembered = lastEpochByStep.get(event.stepId);
+        if (remembered != null) {
+            return {
+                epoch: remembered,
+                total: lastTotalByStep.get(event.stepId) ?? null,
+            };
+        }
+    }
+    return {epoch: null, total: lastTotalByStep.get(event.stepId) ?? null};
+};
+
+const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] => {
+    if (events.length === 0) return [];
+    const lastEpochByStep = new Map<string, number>();
+    const lastTotalByStep = new Map<string, number>();
+    const annotated = events.map((event) => ({
+        event,
+        hint: inferEventEpoch(event, lastEpochByStep, lastTotalByStep),
+    }));
+
+    const blocks: ConsoleEventBlock[] = [];
+    let index = 0;
+    while (index < annotated.length) {
+        const seed = annotated[index];
+        const seedEvent = seed.event;
+        const seedEpoch = seed.hint.epoch;
+        let seedTotalEpochs = seed.hint.total;
+        const seedStepId = String(seedEvent.stepId || '');
+        const seedStepIndex = Number(seedEvent.stepIndex || 0);
+        const seedStepType = String(seedEvent.stepType || 'custom');
+
+        if (seedEpoch == null) {
+            blocks.push({
+                key: `${seedStepId}:${seedEvent.seq}:single`,
+                stepId: seedStepId,
+                stepIndex: seedStepIndex,
+                stepType: seedStepType,
+                epoch: null,
+                totalEpochs: null,
+                events: [seedEvent],
+                grouped: false,
+            });
+            index += 1;
+            continue;
+        }
+
+        const groupedEvents: RuntimeRoundEvent[] = [seedEvent];
+        let cursor = index + 1;
+        while (cursor < annotated.length) {
+            const item = annotated[cursor];
+            const event = item.event;
+            if (String(event.stepId || '') !== seedStepId) break;
+            if (!['progress', 'metric', 'log'].includes(String(event.eventType || '').toLowerCase())) break;
+            if (item.hint.epoch !== seedEpoch) break;
+            if (seedTotalEpochs == null && item.hint.total != null) seedTotalEpochs = item.hint.total;
+            groupedEvents.push(event);
+            cursor += 1;
+        }
+
+        const hasSemantic = groupedEvents.some((item) => item.eventType === 'progress' || item.eventType === 'metric');
+        const hasLog = groupedEvents.some((item) => item.eventType === 'log');
+        if (groupedEvents.length >= 2 && hasSemantic && hasLog) {
+            blocks.push({
+                key: `${seedStepId}:epoch:${seedEpoch}:${groupedEvents[0].seq}`,
+                stepId: seedStepId,
+                stepIndex: seedStepIndex,
+                stepType: seedStepType,
+                epoch: seedEpoch,
+                totalEpochs: seedTotalEpochs,
+                events: groupedEvents,
+                grouped: true,
+            });
+            index = cursor;
+            continue;
+        }
+
+        blocks.push({
+            key: `${seedStepId}:${seedEvent.seq}:single`,
+            stepId: seedStepId,
+            stepIndex: seedStepIndex,
+            stepType: seedStepType,
+            epoch: seedEpoch,
+            totalEpochs: seedTotalEpochs,
+            events: [seedEvent],
+            grouped: false,
+        });
+        index += 1;
+    }
+    return blocks;
 };
 
 const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
@@ -86,6 +250,8 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
     exportFilePrefix = 'round-console',
     maxHeight = 560,
 }) => {
+    const {t} = useTranslation();
+
     const [eventTypeFilter, setEventTypeFilter] = useState<string[]>([]);
     const [eventLevelFilter, setEventLevelFilter] = useState<string[]>([]);
     const [eventTagFilter, setEventTagFilter] = useState<string[]>([]);
@@ -93,6 +259,7 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
     const [onlyErrors, setOnlyErrors] = useState<boolean>(false);
     const [autoScrollLogs, setAutoScrollLogs] = useState<boolean>(true);
     const [logTailLimit, setLogTailLimit] = useState<number>(DEFAULT_LOG_TAIL);
+    const [rawEvent, setRawEvent] = useState<RuntimeRoundEvent | null>(null);
     const logScrollRef = useRef<HTMLDivElement | null>(null);
 
     const eventFacets = useMemo(() => buildEventFacetsFromItems(events), [events]);
@@ -101,32 +268,40 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
         [stageOptions],
     );
 
+    const getDisplayMessage = useCallback(
+        (event: RuntimeRoundEvent) => formatRuntimeEventMessage(event, {translator: t, withStepPrefix: false}),
+        [t],
+    );
+
     const visibleEvents = useMemo(() => {
         const eventTypeSet = new Set((eventTypeFilter || []).map((item) => String(item).toLowerCase()));
         const levelSet = new Set((eventLevelFilter || []).map((item) => String(item).toUpperCase()));
         const tagSet = new Set((eventTagFilter || []).map((item) => String(item).toLowerCase()));
         const query = eventQueryText.trim().toLowerCase();
+
         let rows = events.filter((item) => {
-            if (eventTypeSet.size > 0 && !eventTypeSet.has(String(item.eventType || '').toLowerCase())) return false;
-            if (levelSet.size > 0 && !levelSet.has(String(item.level || '').toUpperCase())) return false;
+            const level = String(item.level || '').toUpperCase();
+            const eventType = String(item.eventType || '').toLowerCase();
+            if (eventTypeSet.size > 0 && !eventTypeSet.has(eventType)) return false;
+            if (levelSet.size > 0 && !levelSet.has(level)) return false;
             if (tagSet.size > 0) {
                 const rowTags = (item.tags || []).map((tag) => String(tag).toLowerCase());
                 if (!rowTags.some((tag) => tagSet.has(tag))) return false;
             }
+            const messageText = getDisplayMessage(item);
             if (query) {
-                const haystack = `${item.messageText || ''} ${JSON.stringify(item.payload || {})}`.toLowerCase();
+                const haystack = buildRuntimeEventSearchText(item, messageText);
                 if (!haystack.includes(query)) return false;
             }
-            if (onlyErrors) {
-                const level = String(item.level || '').toUpperCase();
-                const status = String(item.status || '').toLowerCase();
-                if (!ERROR_LEVELS.has(level) && !['failed', 'error', 'cancelled'].includes(status)) return false;
-            }
+            if (onlyErrors && !isRuntimeEventError(item)) return false;
             return true;
         });
+
         if (logTailLimit > 0 && rows.length > logTailLimit) rows = rows.slice(rows.length - logTailLimit);
         return rows;
-    }, [events, eventTypeFilter, eventLevelFilter, eventTagFilter, eventQueryText, onlyErrors, logTailLimit]);
+    }, [events, eventTypeFilter, eventLevelFilter, eventTagFilter, eventQueryText, onlyErrors, logTailLimit, getDisplayMessage]);
+
+    const consoleBlocks = useMemo(() => buildConsoleBlocks(visibleEvents), [visibleEvents]);
 
     useEffect(() => {
         if (!autoScrollLogs) return;
@@ -152,8 +327,9 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
         if (visibleEvents.length === 0) return;
         const lines = visibleEvents.map((item) => {
             const level = String(item.level || item.status || item.eventType || '').trim();
-            const tagText = (item.tags || []).join(',');
-            return `[${item.ts}] #${item.seq} [${level}] [${tagText}] ${item.messageText || ''}`;
+            const message = getDisplayMessage(item);
+            const stepTag = `step#${Number(item.stepIndex || 0)} ${String(item.stepType || 'custom')}`;
+            return `[${item.ts}] #${item.seq} [${level}] [${stepTag}] ${message}`;
         });
         const content = lines.join('\n');
         const blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
@@ -163,10 +339,11 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
         anchor.download = `${exportFilePrefix}-logs.txt`;
         anchor.click();
         window.URL.revokeObjectURL(url);
-    }, [visibleEvents, exportFilePrefix]);
+    }, [visibleEvents, exportFilePrefix, getDisplayMessage]);
 
     const showStageSelector = Boolean(stageNavOptions.length > 0 && onStageChange);
     const useSegmentedStageNav = Boolean(showStageSelector && stageNavOptions.length <= 6);
+
     const hasActiveFilters = Boolean(
         eventTypeFilter.length > 0
         || eventLevelFilter.length > 0
@@ -177,147 +354,281 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
     );
 
     return (
-        <Card
-            className={className}
-            title={title}
-        >
-            <div className="flex flex-col gap-3">
-                <div className="relative overflow-hidden rounded-lg border border-github-border/80 bg-github-panel">
-                    <div
-                        className="pointer-events-none absolute inset-0 opacity-80"
-                        style={{
-                            background: 'radial-gradient(1000px 220px at -8% -30%, rgba(56, 139, 253, 0.20), transparent 60%), radial-gradient(700px 220px at 105% 0%, rgba(47, 129, 247, 0.14), transparent 68%)',
-                        }}
-                    />
-                    <div className="relative flex flex-col gap-3 p-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="flex items-center gap-1 text-xs text-github-muted">
-                                <SearchOutlined/>
-                                检索
-                            </span>
-                            <Input.Search
-                                allowClear
-                                className="min-w-[280px] flex-1"
-                                placeholder="搜索 message/payload"
-                                value={eventQueryText}
-                                onChange={(event) => setEventQueryText(String(event.target.value || ''))}
-                            />
+        <>
+            <Card
+                className={className}
+                title={title}
+            >
+                <div className="flex flex-col gap-3">
+                    <div className="relative overflow-hidden rounded-lg border border-github-border/80 bg-github-panel">
+                        <div
+                            className="pointer-events-none absolute inset-0 opacity-80"
+                            style={{
+                                background: 'radial-gradient(1000px 220px at -8% -30%, rgba(56, 139, 253, 0.20), transparent 60%), radial-gradient(700px 220px at 105% 0%, rgba(47, 129, 247, 0.14), transparent 68%)',
+                            }}
+                        />
+                        <div className="relative flex flex-col gap-3 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="flex items-center gap-1 text-xs text-github-muted">
+                                    <SearchOutlined/>
+                                    检索
+                                </span>
+                                <Input.Search
+                                    allowClear
+                                    className="min-w-[280px] flex-1"
+                                    placeholder="搜索 message/payload"
+                                    value={eventQueryText}
+                                    onChange={(event) => setEventQueryText(String(event.target.value || ''))}
+                                />
 
-                            <div className="ml-auto flex items-center gap-2">
-                                <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WS 实时' : 'WS 断开'}</Tag>
-                                <Button size="small" onClick={handleClearLogs}>清屏</Button>
-                                <Button size="small" onClick={handleResetFilters} disabled={!hasActiveFilters}>
-                                    重置筛选
-                                </Button>
-                                <Button size="small" onClick={handleExportLogs} disabled={visibleEvents.length === 0}>
-                                    导出
-                                </Button>
+                                <div className="ml-auto flex items-center gap-2">
+                                    <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WS 实时' : 'WS 断开'}</Tag>
+                                    <Button size="small" onClick={handleClearLogs}>清屏</Button>
+                                    <Button size="small" onClick={handleResetFilters} disabled={!hasActiveFilters}>
+                                        重置筛选
+                                    </Button>
+                                    <Button size="small" onClick={handleExportLogs} disabled={visibleEvents.length === 0}>
+                                        导出
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="flex items-center gap-1 text-xs text-github-muted">
-                                <FilterOutlined/>
-                                过滤
-                            </span>
-                            <Select
-                                mode="multiple"
-                                allowClear
-                                className="w-[180px]"
-                                placeholder="事件类型"
-                                value={eventTypeFilter}
-                                options={Object.entries(eventFacets.eventTypes || {}).map(([name, count]) => ({
-                                    label: `${name} (${count})`,
-                                    value: name,
-                                }))}
-                                onChange={(values) => setEventTypeFilter(values)}
-                            />
-                            <Select
-                                mode="multiple"
-                                allowClear
-                                className="w-[160px]"
-                                placeholder="日志级别"
-                                value={eventLevelFilter}
-                                options={Object.entries(eventFacets.levels || {}).map(([name, count]) => ({
-                                    label: `${name} (${count})`,
-                                    value: name,
-                                }))}
-                                onChange={(values) => setEventLevelFilter(values)}
-                            />
-                            <Select
-                                mode="multiple"
-                                allowClear
-                                className="w-[220px]"
-                                placeholder="Tag"
-                                value={eventTagFilter}
-                                options={Object.entries(eventFacets.tags || {})
-                                    .sort((left, right) => Number(right[1]) - Number(left[1]))
-                                    .slice(0, 200)
-                                    .map(([name, count]) => ({
+                            {showStageSelector ? (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="flex items-center gap-1 text-xs text-github-muted">
+                                        <DeploymentUnitOutlined/>
+                                        阶段
+                                    </span>
+                                    {useSegmentedStageNav ? (
+                                        <Segmented
+                                            options={stageNavOptions}
+                                            value={stageValue}
+                                            onChange={(value) => onStageChange?.(String(value || 'all'))}
+                                        />
+                                    ) : (
+                                        <Select
+                                            className="w-[220px]"
+                                            options={stageNavOptions}
+                                            value={stageValue}
+                                            onChange={(value) => onStageChange?.(String(value || 'all'))}
+                                        />
+                                    )}
+                                </div>
+                            ) : null}
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="flex items-center gap-1 text-xs text-github-muted">
+                                    <FilterOutlined/>
+                                    过滤
+                                </span>
+                                <Select
+                                    mode="multiple"
+                                    allowClear
+                                    className="w-[180px]"
+                                    placeholder="事件类型"
+                                    value={eventTypeFilter}
+                                    options={Object.entries(eventFacets.eventTypes || {}).map(([name, count]) => ({
                                         label: `${name} (${count})`,
                                         value: name,
                                     }))}
-                                onChange={(values) => setEventTagFilter(values)}
-                            />
-                            <Select
-                                value={logTailLimit}
-                                className="w-[120px]"
-                                options={[
-                                    {label: '尾部 200', value: 200},
-                                    {label: '尾部 500', value: 500},
-                                    {label: '尾部 1000', value: 1000},
-                                    {label: '全部', value: 0},
-                                ]}
-                                onChange={(value) => setLogTailLimit(Number(value || 0))}
-                            />
+                                    onChange={(values) => setEventTypeFilter(values)}
+                                />
+                                <Select
+                                    mode="multiple"
+                                    allowClear
+                                    className="w-[180px]"
+                                    placeholder="日志级别"
+                                    value={eventLevelFilter}
+                                    options={Object.entries(eventFacets.levels || {}).map(([name, count]) => ({
+                                        label: `${name} (${count})`,
+                                        value: name,
+                                    }))}
+                                    onChange={(values) => setEventLevelFilter(values)}
+                                />
+                                <Select
+                                    mode="multiple"
+                                    allowClear
+                                    className="w-[220px]"
+                                    placeholder="业务标签"
+                                    value={eventTagFilter}
+                                    options={Object.entries(eventFacets.tags || {})
+                                        .sort((left, right) => Number(right[1]) - Number(left[1]))
+                                        .slice(0, 200)
+                                        .map(([name, count]) => ({
+                                            label: `${name} (${count})`,
+                                            value: name,
+                                        }))}
+                                    onChange={(values) => setEventTagFilter(values)}
+                                />
+                                <Select
+                                    value={logTailLimit}
+                                    className="w-[120px]"
+                                    options={[
+                                        {label: '尾部 200', value: 200},
+                                        {label: '尾部 500', value: 500},
+                                        {label: '尾部 1000', value: 1000},
+                                        {label: '全部', value: 0},
+                                    ]}
+                                    onChange={(value) => setLogTailLimit(Number(value || 0))}
+                                />
 
+                                <span className="inline-flex items-center gap-1 rounded border border-github-border bg-github-panel px-2 py-1">
+                                    <Switch size="small" checked={onlyErrors} onChange={setOnlyErrors}/>
+                                    <span className="text-xs text-github-muted">仅错误</span>
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded border border-github-border bg-github-panel px-2 py-1">
+                                    <Switch size="small" checked={autoScrollLogs} onChange={setAutoScrollLogs}/>
+                                    <span className="text-xs text-github-muted">自动滚动</span>
+                                </span>
 
-                            <span className="inline-flex items-center gap-1 rounded border border-github-border bg-github-panel px-2 py-1">
-                                <Switch size="small" checked={onlyErrors} onChange={setOnlyErrors}/>
-                                <span className="text-xs text-github-muted">仅错误</span>
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded border border-github-border bg-github-panel px-2 py-1">
-                                <Switch size="small" checked={autoScrollLogs} onChange={setAutoScrollLogs}/>
-                                <span className="text-xs text-github-muted">自动滚动</span>
-                            </span>
-
-
-                            <Tag>{`显示 ${visibleEvents.length} / 缓冲 ${events.length}`}</Tag>
+                                <Tag>{`显示 ${visibleEvents.length} / 缓冲 ${events.length}`}</Tag>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div
-                    ref={logScrollRef}
-                    className="overflow-auto rounded border border-github-border bg-slate-950 p-2"
-                    style={{maxHeight}}
-                >
-                    {visibleEvents.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-slate-400">{emptyDescription}</div>
-                    ) : (
-                        <div className="space-y-1 font-mono text-xs">
-                            {visibleEvents.map((item, idx) => {
-                                const levelKey = String(item.level || '').toUpperCase();
-                                const lineClass = LEVEL_COLOR_CLASS[levelKey] || 'text-slate-200';
-                                return (
-                                    <div key={`${item.stepId}-${item.ts}-${item.seq}-${item.eventType}-${idx}`} className={`rounded px-2 py-1 ${lineClass} hover:bg-slate-900`}>
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="text-slate-400">{formatDateTime(item.ts)}</span>
-                                            <span className="text-slate-500">#{item.seq}</span>
-                                            <Tag color={EVENT_TYPE_COLOR[item.eventType] || 'default'} className="!m-0">{item.eventType}</Tag>
-                                            {item.level ? <Tag color={ERROR_LEVELS.has(String(item.level).toUpperCase()) ? 'error' : 'blue'} className="!m-0">{item.level}</Tag> : null}
-                                            {(item.tags || []).slice(0, 4).map((tag, tagIdx) => (
-                                                <Tag key={`${item.stepId}-${item.ts}-${item.seq}-${tag}-${tagIdx}`} className="!m-0">{tag}</Tag>
-                                            ))}
+
+                    <div
+                        ref={logScrollRef}
+                        className="overflow-auto rounded border border-github-border bg-slate-950 p-2"
+                        style={{maxHeight}}
+                    >
+                        {visibleEvents.length === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-400">{emptyDescription}</div>
+                        ) : (
+                            <div className="space-y-1 font-mono text-xs">
+                                {consoleBlocks.map((block) => {
+                                    if (!block.grouped || block.events.length <= 1) {
+                                        const item = block.events[0];
+                                        const levelKey = String(item.level || '').toUpperCase();
+                                        const lineClass = LEVEL_COLOR_CLASS[levelKey] || 'text-slate-200';
+                                        const messageText = getDisplayMessage(item);
+                                        const lineCount = Number(item.lineCount || 1);
+                                        return (
+                                            <div
+                                                key={block.key}
+                                                className={`rounded px-2 py-1 ${lineClass} hover:bg-slate-900`}
+                                            >
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="text-slate-400">{formatDateTime(item.ts)}</span>
+                                                    <span className="text-slate-500">#{item.seq}</span>
+                                                    <Tag color={EVENT_TYPE_COLOR[item.eventType] || 'default'} className="!m-0">{item.eventType}</Tag>
+                                                    <Tag color="geekblue" className="!m-0">{`step#${Number(item.stepIndex || 0)} ${String(item.stepType || 'custom')}`}</Tag>
+                                                    {item.level ? (
+                                                        <Tag color={LEVEL_TAG_COLOR[levelKey] || 'blue'} className="!m-0">{item.level}</Tag>
+                                                    ) : null}
+                                                    {item.source ? <Tag className="!m-0">{item.source}</Tag> : null}
+                                                    {lineCount > 1 ? <Tag className="!m-0">{`${lineCount} lines`}</Tag> : null}
+                                                    {(item.tags || []).slice(0, 4).map((tag, tagIdx) => (
+                                                        <Tag key={`${item.stepId}-${item.ts}-${item.seq}-${tag}-${tagIdx}`} className="!m-0">{tag}</Tag>
+                                                    ))}
+                                                    <Button
+                                                        size="small"
+                                                        type="text"
+                                                        className="!h-5 !px-1 text-slate-300"
+                                                        onClick={() => setRawEvent(item)}
+                                                    >
+                                                        查看原始
+                                                    </Button>
+                                                </div>
+                                                <div className="mt-1 whitespace-pre-wrap break-all">{messageText || '-'}</div>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div
+                                            key={block.key}
+                                            className="rounded border border-slate-700/70 bg-slate-900/40 px-2 py-2"
+                                        >
+                                            <div className="mb-1 flex flex-wrap items-center gap-2 text-slate-300">
+                                                <Tag color="geekblue" className="!m-0">{`step#${block.stepIndex} ${block.stepType}`}</Tag>
+                                                {block.epoch != null ? (
+                                                    <Tag color="processing" className="!m-0">
+                                                        {block.totalEpochs != null
+                                                            ? `epoch ${block.epoch} (${block.epoch}/${block.totalEpochs})`
+                                                            : `epoch ${block.epoch}`}
+                                                    </Tag>
+                                                ) : null}
+                                                <Tag className="!m-0">{`${block.events.length} events`}</Tag>
+                                                <span className="text-slate-500">
+                                                    {formatDateTime(block.events[0]?.ts)}
+                                                    {' ~ '}
+                                                    {formatDateTime(block.events[block.events.length - 1]?.ts)}
+                                                </span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                {block.events.map((item, idx) => {
+                                                    const levelKey = String(item.level || '').toUpperCase();
+                                                    const lineClass = LEVEL_COLOR_CLASS[levelKey] || 'text-slate-200';
+                                                    const messageText = getDisplayMessage(item);
+                                                    const lineCount = Number(item.lineCount || 1);
+                                                    return (
+                                                        <div
+                                                            key={`${block.key}:${item.seq}:${idx}`}
+                                                            className={`rounded px-2 py-1 ${lineClass} hover:bg-slate-900`}
+                                                        >
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <span className="text-slate-400">{formatDateTime(item.ts)}</span>
+                                                                <span className="text-slate-500">#{item.seq}</span>
+                                                                <Tag color={EVENT_TYPE_COLOR[item.eventType] || 'default'} className="!m-0">{item.eventType}</Tag>
+                                                                {item.level ? (
+                                                                    <Tag color={LEVEL_TAG_COLOR[levelKey] || 'blue'} className="!m-0">{item.level}</Tag>
+                                                                ) : null}
+                                                                {item.source ? <Tag className="!m-0">{item.source}</Tag> : null}
+                                                                {lineCount > 1 ? <Tag className="!m-0">{`${lineCount} lines`}</Tag> : null}
+                                                                <Button
+                                                                    size="small"
+                                                                    type="text"
+                                                                    className="!h-5 !px-1 text-slate-300"
+                                                                    onClick={() => setRawEvent(item)}
+                                                                >
+                                                                    查看原始
+                                                                </Button>
+                                                            </div>
+                                                            <div className="mt-1 whitespace-pre-wrap break-all">{messageText || '-'}</div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                        <div className="mt-1 whitespace-pre-wrap break-all">{item.messageText || '-'}</div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
-        </Card>
+            </Card>
+
+            <Drawer
+                title="原始事件"
+                open={Boolean(rawEvent)}
+                width={720}
+                onClose={() => setRawEvent(null)}
+                destroyOnClose
+            >
+                {rawEvent ? (
+                    <div className="space-y-4">
+                        <div>
+                            <div className="mb-1 text-xs text-slate-500">语义文案</div>
+                            <pre className="rounded border border-github-border bg-github-bg p-2 whitespace-pre-wrap break-all">
+                                {formatRuntimeEventMessage(rawEvent, {translator: t, withStepPrefix: false})}
+                            </pre>
+                        </div>
+                        <div>
+                            <div className="mb-1 text-xs text-slate-500">raw_message</div>
+                            <pre className="rounded border border-github-border bg-github-bg p-2 whitespace-pre-wrap break-all">
+                                {rawEvent.rawMessage || '-'}
+                            </pre>
+                        </div>
+                        <div>
+                            <div className="mb-1 text-xs text-slate-500">payload</div>
+                            <pre className="rounded border border-github-border bg-github-bg p-2 whitespace-pre-wrap break-all">
+                                {JSON.stringify(rawEvent.payload || {}, null, 2)}
+                            </pre>
+                        </div>
+                    </div>
+                ) : null}
+            </Drawer>
+        </>
     );
 };
 

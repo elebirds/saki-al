@@ -223,7 +223,13 @@ class StepEventRead(BaseModel):
     status: Optional[str] = None
     kind: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    message_key: Optional[str] = None
+    message_params: Dict[str, Any] = Field(default_factory=dict)
     message_text: str = ""
+    raw_message: str = ""
+    source: Optional[str] = None
+    group_id: Optional[str] = None
+    line_count: int = 1
 
 
 class StepEventFacetsRead(BaseModel):
@@ -251,7 +257,13 @@ class RoundEventRead(BaseModel):
     status: Optional[str] = None
     kind: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    message_key: Optional[str] = None
+    message_params: Dict[str, Any] = Field(default_factory=dict)
     message_text: str = ""
+    raw_message: str = ""
+    source: Optional[str] = None
+    group_id: Optional[str] = None
+    line_count: int = 1
 
 
 class RoundEventQueryResponse(BaseModel):

@@ -179,3 +179,30 @@ def test_task_status_codec_mapping():
     )
     assert message.step_result.status == pb.FAILED
     assert codec.status_enum_to_text(pb.FAILED) == "failed"
+
+
+def test_build_step_event_message_log_supports_structured_fields():
+    message = codec.build_step_event_message(
+        request_id="req-log-1",
+        step_id="step-log-1",
+        seq=10,
+        ts=123456,
+        event_type="log",
+        payload={
+            "level": "DEBUG",
+            "message": "display text",
+            "raw_message": "raw text",
+            "message_key": "runtime.status.running",
+            "message_args": {"step": 3},
+            "meta": {"source": "worker_stdio", "stream": "stderr", "line_count": 2},
+        },
+    )
+    assert message.WhichOneof("payload") == "step_event"
+    log_event = message.step_event.log_event
+    assert log_event.level == "DEBUG"
+    assert log_event.message == "display text"
+    assert log_event.raw_message == "raw text"
+    assert log_event.message_key == "runtime.status.running"
+    assert log_event.message_args.fields["step"].number_value == 3
+    assert log_event.meta.fields["source"].string_value == "worker_stdio"
+    assert log_event.meta.fields["line_count"].number_value == 2

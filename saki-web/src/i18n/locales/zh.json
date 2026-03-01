@@ -1283,6 +1283,28 @@
       }
     }
   },
+  "runtime": {
+    "status": {
+      "pending": "待处理",
+      "dispatching": "派发中",
+      "running": "运行中",
+      "retrying": "重试中",
+      "succeeded": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "skipped": "已跳过",
+      "unknown": "状态更新"
+    },
+    "progress": {
+      "update": "训练进度：第 {{epoch}} 轮，{{step}} / {{total_steps}}"
+    },
+    "metric": {
+      "update": "指标已更新（{{metric_count}} 项）"
+    },
+    "artifact": {
+      "generated": "产物已生成：{{name}}"
+    }
+  },
   "layout": {
     "header": {
       "newProject": "新建项目",

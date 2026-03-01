@@ -12,6 +12,8 @@ from loguru import logger
 
 from saki_executor.core.config import settings
 from saki_executor.plugins.ipc import protocol
+from saki_executor.plugins.ipc.log_coalescer import LogCoalescer
+from saki_executor.plugins.ipc.log_normalizer import normalize_log_payload, normalize_stdio_log_line
 
 try:
     import zmq
@@ -54,6 +56,7 @@ class PluginWorkerClient:
         self._event_task: asyncio.Task | None = None
         self._stdout_task: asyncio.Task | None = None
         self._stderr_task: asyncio.Task | None = None
+        self._stream_coalescers: dict[str, LogCoalescer] = {}
         self._startup_lock = asyncio.Lock()
         self._request_lock = asyncio.Lock()
         self._closed = False
@@ -121,7 +124,7 @@ class PluginWorkerClient:
         except Exception:
             pass
         await self._terminate_worker()
-        self._stop_background_tasks()
+        await self._stop_background_tasks()
         self._close_sockets()
         self._cleanup_socket_paths()
         self._started = False
@@ -129,7 +132,7 @@ class PluginWorkerClient:
     async def terminate(self) -> None:
         self._closed = True
         await self._terminate_worker()
-        self._stop_background_tasks()
+        await self._stop_background_tasks()
         self._close_sockets()
         self._cleanup_socket_paths()
         self._started = False
@@ -204,6 +207,10 @@ class PluginWorkerClient:
         self._sub_socket.connect(self._event_endpoint)
 
     def _start_background_tasks(self) -> None:
+        self._stream_coalescers = {
+            "stdout": LogCoalescer(emit=self._emit_log_event),
+            "stderr": LogCoalescer(emit=self._emit_log_event),
+        }
         self._event_task = asyncio.create_task(
             self._event_loop(),
             name=f"worker-events-{self._step_id}",
@@ -211,12 +218,12 @@ class PluginWorkerClient:
         process = self._process
         if process and process.stdout:
             self._stdout_task = asyncio.create_task(
-                self._stream_log_loop(process.stdout, "INFO"),
+                self._stream_log_loop(process.stdout, "stdout"),
                 name=f"worker-stdout-{self._step_id}",
             )
         if process and process.stderr:
             self._stderr_task = asyncio.create_task(
-                self._stream_log_loop(process.stderr, "ERROR"),
+                self._stream_log_loop(process.stderr, "stderr"),
                 name=f"worker-stderr-{self._step_id}",
             )
 
@@ -320,6 +327,12 @@ class PluginWorkerClient:
                 if not isinstance(payload, dict):
                     continue
                 event_type = envelope.event_type or topic
+                if event_type == "log":
+                    payload = normalize_log_payload(
+                        payload,
+                        plugin_id=self._plugin_id,
+                        default_source="worker_event",
+                    )
                 try:
                     await self._event_handler(event_type, payload)
                 except asyncio.CancelledError:
@@ -331,21 +344,26 @@ class PluginWorkerClient:
         except Exception:
             logger.exception("worker event loop failed step_id={}", self._step_id)
 
-    async def _stream_log_loop(self, stream: asyncio.StreamReader, level: str) -> None:
+    async def _stream_log_loop(self, stream: asyncio.StreamReader, stream_name: str) -> None:
+        coalescer = self._stream_coalescers.get(stream_name)
         try:
             while True:
                 raw = await stream.readline()
                 if not raw:
                     break
-                message = raw.decode("utf-8", errors="replace").strip()
-                if not message:
+                raw_line = raw.decode("utf-8", errors="replace")
+                payload = normalize_stdio_log_line(
+                    raw_line=raw_line,
+                    plugin_id=self._plugin_id,
+                    stream=stream_name,
+                )
+                if not payload:
                     continue
-                payload = {
-                    "level": level,
-                    "message": f"[worker:{self._plugin_id}] {message}",
-                }
                 try:
-                    await self._event_handler("log", payload)
+                    if coalescer is not None:
+                        await coalescer.add(payload)
+                    else:
+                        await self._emit_log_event(payload)
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -353,12 +371,36 @@ class PluginWorkerClient:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("worker stream read failed step_id={} level={}", self._step_id, level)
+            logger.exception("worker stream read failed step_id={} stream={}", self._step_id, stream_name)
+        finally:
+            if coalescer is not None:
+                try:
+                    await coalescer.flush()
+                except Exception:
+                    logger.exception(
+                        "worker stream coalescer flush failed step_id={} stream={}",
+                        self._step_id,
+                        stream_name,
+                    )
 
-    def _stop_background_tasks(self) -> None:
-        for task in (self._event_task, self._stdout_task, self._stderr_task):
+    async def _emit_log_event(self, payload: dict[str, Any]) -> None:
+        await self._event_handler("log", payload)
+
+    async def _stop_background_tasks(self) -> None:
+        tasks = [task for task in (self._event_task, self._stdout_task, self._stderr_task) if task]
+        for task in tasks:
             if task and not task.done():
                 task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        for coalescer in self._stream_coalescers.values():
+            try:
+                await coalescer.close()
+            except Exception:
+                logger.exception("worker stream coalescer close failed step_id={}", self._step_id)
+        self._stream_coalescers = {}
+
         self._event_task = None
         self._stdout_task = None
         self._stderr_task = None

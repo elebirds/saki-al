@@ -75,4 +75,6 @@ def extract_primary_metrics(
         metrics.setdefault("map50_95", to_float(latest.get("map50_95"), 0.0))
         metrics.setdefault("precision", to_float(latest.get("precision"), 0.0))
         metrics.setdefault("recall", to_float(latest.get("recall"), 0.0))
+        if "loss" in latest and latest.get("loss") is not None:
+            metrics.setdefault("loss", to_float(latest.get("loss"), 0.0))
     return metrics

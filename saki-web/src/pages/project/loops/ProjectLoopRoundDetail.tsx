@@ -117,6 +117,9 @@ const ARTIFACT_CLASS_LABEL: Record<string, string> = {
     generic_artifact: '通用',
 };
 
+const TRAIN_METRIC_COLORS = ['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'];
+const LOSS_METRIC_NAME_RE = /loss/i;
+
 const MODE_STAGE_ORDER: Record<string, RoundStageKey[]> = {
     active_learning: ['train', 'eval', 'score', 'select', 'custom'],
     simulation: ['train', 'eval', 'score', 'select', 'custom'],
@@ -206,6 +209,7 @@ const mapStepTypeToStage = (stepType: string): RoundStageKey => {
 };
 
 const buildArtifactKey = (stepId: string, artifactName: string): string => `${stepId}:${artifactName}`;
+const isLossMetricName = (metricName: string): boolean => LOSS_METRIC_NAME_RE.test(String(metricName || ''));
 
 const extractMetricPointsFromEvent = (event: RuntimeRoundEvent): RuntimeStepMetricPoint[] => {
     if (event.eventType !== 'metric') return [];
@@ -579,6 +583,19 @@ const ProjectLoopRoundDetail: React.FC = () => {
             rows.set(stepKey, current);
         });
         return Array.from(rows.values()).sort((a, b) => (a.step || 0) - (b.step || 0));
+    }, [trainMetricPoints]);
+
+    const trainScoreAxisUpperBound = useMemo(() => {
+        let maxValue = 0;
+        trainMetricPoints.forEach((point) => {
+            if (isLossMetricName(point.metricName)) return;
+            const value = Number(point.metricValue);
+            if (!Number.isFinite(value)) return;
+            maxValue = Math.max(maxValue, value);
+        });
+        if (maxValue <= 0) return 1;
+        const padded = Math.min(1, maxValue * 1.1);
+        return Math.max(0.05, Number(padded.toFixed(4)));
     }, [trainMetricPoints]);
 
     const roundArtifactRows = useMemo<RoundArtifactTableRow[]>(() => {
@@ -1103,15 +1120,17 @@ const ProjectLoopRoundDetail: React.FC = () => {
                             <LineChart data={trainMetricChartData}>
                                 <CartesianGrid strokeDasharray="3 3"/>
                                 <XAxis dataKey="step"/>
-                                <YAxis/>
+                                <YAxis yAxisId="metric" domain={[0, trainScoreAxisUpperBound]}/>
+                                <YAxis yAxisId="loss" orientation="right"/>
                                 <Tooltip/>
                                 {trainMetricNames.map((name, idx) => (
                                     <Line
                                         key={name}
                                         type="monotone"
                                         dataKey={name}
+                                        yAxisId={isLossMetricName(name) ? 'loss' : 'metric'}
                                         dot={false}
-                                        stroke={['#1677ff', '#52c41a', '#faad14', '#13c2c2', '#eb2f96'][idx % 5]}
+                                        stroke={TRAIN_METRIC_COLORS[idx % TRAIN_METRIC_COLORS.length]}
                                         strokeWidth={2}
                                     />
                                 ))}

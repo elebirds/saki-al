@@ -97,6 +97,9 @@ type ConsoleEventBlock = {
 };
 
 const EPOCH_FROM_PROGRESS_RE = /^\s*(\d+)\s*\/\s*(\d+)/;
+const EPOCH_FROM_HEADER_RE = /(?:^|\n)\s*epoch\s+(\d+)\s*\(\s*(\d+)\s*\/\s*(\d+)\s*\)/i;
+const EPOCH_FROM_TRAIN_ROW_RE = /(?:^|\n)\s*(\d+)\s*\/\s*(\d+)\b/m;
+const TRAIN_ROW_HINT_RE = /\b(?:gpu_mem|box_loss|cls_loss|dfl_loss|instances|size)\b/i;
 
 const asEpoch = (value: unknown): number | null => {
     const epoch = Number(value);
@@ -107,6 +110,60 @@ const asEpoch = (value: unknown): number | null => {
 type EpochHint = {
     epoch: number | null;
     total: number | null;
+};
+
+const parseEpochFromLogMessage = (message: string): EpochHint => {
+    const text = String(message || '');
+    if (!text.trim()) return {epoch: null, total: null};
+    const headerMatch = text.match(EPOCH_FROM_HEADER_RE);
+    if (headerMatch) {
+        return {
+            epoch: asEpoch(headerMatch[1]),
+            total: asEpoch(headerMatch[3]),
+        };
+    }
+    const progressMatch = text.match(EPOCH_FROM_PROGRESS_RE);
+    if (progressMatch) {
+        return {
+            epoch: asEpoch(progressMatch[1]),
+            total: asEpoch(progressMatch[2]),
+        };
+    }
+    if (TRAIN_ROW_HINT_RE.test(text)) {
+        const trainRowMatch = text.match(EPOCH_FROM_TRAIN_ROW_RE);
+        if (trainRowMatch) {
+            return {
+                epoch: asEpoch(trainRowMatch[1]),
+                total: asEpoch(trainRowMatch[2]),
+            };
+        }
+    }
+    return {epoch: null, total: null};
+};
+
+const resolveEventSource = (event: RuntimeRoundEvent, payload: Record<string, any>): string => {
+    const meta = payload.meta && typeof payload.meta === 'object'
+        ? (payload.meta as Record<string, any>)
+        : {};
+    return String(event.source ?? meta.source ?? '').trim().toLowerCase();
+};
+
+const buildLogMessageCandidates = (event: RuntimeRoundEvent, payload: Record<string, any>): string[] => {
+    const seen = new Set<string>();
+    const items: string[] = [];
+    const push = (raw: unknown) => {
+        const text = String(raw ?? '');
+        if (!text.trim()) return;
+        if (seen.has(text)) return;
+        seen.add(text);
+        items.push(text);
+    };
+    push(event.messageText);
+    push(event.rawMessage);
+    push(payload.raw_message);
+    push(payload.rawMessage);
+    push(payload.message);
+    return items;
 };
 
 const inferEventEpoch = (
@@ -132,26 +189,26 @@ const inferEventEpoch = (
         };
     }
     if (event.eventType === 'log') {
-        const message = String(event.messageText || '');
-        const match = message.match(EPOCH_FROM_PROGRESS_RE);
-        if (match) {
-            const parsed = asEpoch(match[1]);
-            const parsedTotal = asEpoch(match[2]);
-            if (parsedTotal != null) lastTotalByStep.set(event.stepId, parsedTotal);
-            if (parsed != null) {
-                lastEpochByStep.set(event.stepId, parsed);
+        const source = resolveEventSource(event, payload);
+        const candidates = buildLogMessageCandidates(event, payload);
+        for (const message of candidates) {
+            const parsedHint = parseEpochFromLogMessage(message);
+            if (parsedHint.total != null) lastTotalByStep.set(event.stepId, parsedHint.total);
+            if (parsedHint.epoch == null) continue;
+            lastEpochByStep.set(event.stepId, parsedHint.epoch);
+            return {
+                epoch: parsedHint.epoch,
+                total: parsedHint.total ?? lastTotalByStep.get(event.stepId) ?? null,
+            };
+        }
+        if (source !== 'worker_stdio') {
+            const remembered = lastEpochByStep.get(event.stepId);
+            if (remembered != null) {
                 return {
-                    epoch: parsed,
-                    total: parsedTotal ?? lastTotalByStep.get(event.stepId) ?? null,
+                    epoch: remembered,
+                    total: lastTotalByStep.get(event.stepId) ?? null,
                 };
             }
-        }
-        const remembered = lastEpochByStep.get(event.stepId);
-        if (remembered != null) {
-            return {
-                epoch: remembered,
-                total: lastTotalByStep.get(event.stepId) ?? null,
-            };
         }
     }
     return {epoch: null, total: lastTotalByStep.get(event.stepId) ?? null};

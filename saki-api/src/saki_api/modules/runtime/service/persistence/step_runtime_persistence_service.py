@@ -133,19 +133,6 @@ class RuntimeStepPersistenceService:
                 ).model_dump(exclude_none=True)
             )
 
-        metric_rows = [
-            StepMetricPoint(
-                step_id=step.id,
-                metric_step=0,
-                epoch=None,
-                metric_name=str(metric_name),
-                metric_value=float(metric_value),
-                ts=datetime.now(UTC),
-            )
-            for metric_name, metric_value in result.metrics.items()
-        ]
-        await self.metric_repo.add_many(metric_rows)
-
         await self._recompute_round_summary(step.round_id)
 
     async def _recompute_round_summary(self, round_id: uuid.UUID) -> None:

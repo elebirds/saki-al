@@ -17,6 +17,27 @@ ResolveDeviceFn = Callable[[Any], tuple[Any, str, str]]
 ResolveModelRefFn = Callable[..., Awaitable[str]]
 
 
+def _format_epoch_metric_summary(metrics_row: dict[str, Any]) -> str:
+    if not metrics_row:
+        return "epoch metrics: no data"
+    preferred = ("loss", "map50", "map50_95", "precision", "recall")
+    ordered_keys: list[str] = []
+    for key in preferred:
+        if key in metrics_row:
+            ordered_keys.append(key)
+    for key in sorted(str(k) for k in metrics_row.keys()):
+        if key not in ordered_keys:
+            ordered_keys.append(key)
+    chunks: list[str] = []
+    for key in ordered_keys:
+        try:
+            value = float(metrics_row[key])
+            chunks.append(f"{key}={value:.6f}")
+        except Exception:
+            chunks.append(f"{key}={metrics_row[key]}")
+    return "epoch metrics: " + ", ".join(chunks)
+
+
 async def resolve_train_config(
     *,
     workspace: Workspace,
@@ -134,6 +155,18 @@ async def run_train_with_epoch_stream(
                 "step": step,
                 "total_steps": total_steps,
                 "eta_sec": eta_sec,
+            },
+        )
+        await emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": _format_epoch_metric_summary(metrics_row),
+                "meta": {
+                    "source": "worker_metric_summary",
+                    "epoch": epoch,
+                    "step": step,
+                },
             },
         )
         await emit("metric", {"step": step, "epoch": epoch, "metrics": metrics_row})

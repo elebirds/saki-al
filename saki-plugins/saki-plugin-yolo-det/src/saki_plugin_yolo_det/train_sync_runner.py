@@ -20,6 +20,26 @@ LoadYoloFn = Callable[[], Any]
 EnsureFontFn = Callable[[], None]
 
 
+def _collect_epoch_raw_metrics(*, trainer: Any, to_float: ToFloatFn) -> dict[str, float]:
+    merged: dict[str, float] = {}
+    metrics_payload = getattr(trainer, "metrics", {}) or {}
+    if isinstance(metrics_payload, dict):
+        for key, value in metrics_payload.items():
+            merged[str(key)] = to_float(value, 0.0)
+
+    labeler = getattr(trainer, "label_loss_items", None)
+    if callable(labeler):
+        tloss = getattr(trainer, "tloss", None)
+        try:
+            labeled_loss = labeler(tloss, prefix="train")
+        except TypeError:
+            labeled_loss = labeler(tloss)
+        if isinstance(labeled_loss, dict):
+            for key, value in labeled_loss.items():
+                merged[str(key)] = to_float(value, 0.0)
+    return merged
+
+
 def run_train_sync(
     *,
     workspace: Workspace,
@@ -114,7 +134,7 @@ def _build_epoch_update_callback(
         epoch_time = to_float(getattr(trainer, "epoch_time", 0.0), 0.0)
         remaining_epochs = max(0, total_steps - epoch)
         eta_sec = int(max(0.0, epoch_time * remaining_epochs)) if epoch_time > 0 else 0
-        raw_metrics = getattr(trainer, "metrics", {}) or {}
+        raw_metrics = _collect_epoch_raw_metrics(trainer=trainer, to_float=to_float)
         epoch_callback(
             {
                 "step": max(1, epoch),

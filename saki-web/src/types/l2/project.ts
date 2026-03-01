@@ -19,6 +19,7 @@ export interface Project {
     labelCount: number;
     branchCount: number;
     commitCount: number;
+    annotationCount: number;
     forkCount: number;
 }
 

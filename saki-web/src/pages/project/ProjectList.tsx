@@ -269,8 +269,8 @@ const ProjectList: React.FC = () => {
                                             <div>{t('project.list.stats.branches')}</div>
                                         </div>
                                         <div>
-                                            <div className="text-github-text font-semibold">{project.commitCount}</div>
-                                            <div>{t('project.list.stats.commits')}</div>
+                                            <div className="text-github-text font-semibold">{project.annotationCount}</div>
+                                            <div>{t('project.list.stats.annotations')}</div>
                                         </div>
                                     </div>
                                 </Card>

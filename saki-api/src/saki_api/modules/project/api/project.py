@@ -71,6 +71,7 @@ class ProjectRead(ProjectBase):
     label_count: int = 0
     branch_count: int = 0
     commit_count: int = 0
+    annotation_count: int = 0
     fork_count: int = 0
 
 

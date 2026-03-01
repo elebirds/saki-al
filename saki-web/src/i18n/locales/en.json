@@ -416,6 +416,7 @@
         "datasets": "Datasets",
         "labels": "Labels",
         "branches": "Branches",
+        "annotations": "Annotations",
         "commits": "Commits"
       }
     },

@@ -221,6 +221,14 @@ class ProjectRepository(BaseRepository[Project]):
         )
         return await self.session.scalar(statement) or 0
 
+    async def count_annotations(self, project_id: uuid.UUID) -> int:
+        """Count annotations in a project."""
+        from saki_api.modules.annotation.domain.annotation import Annotation
+        statement = select(func.count()).select_from(
+            select(Annotation).where(Annotation.project_id == project_id).subquery()
+        )
+        return await self.session.scalar(statement) or 0
+
     async def count_forks(self, project_id: uuid.UUID) -> int:
         """
         Count how many projects are forked from the given project.

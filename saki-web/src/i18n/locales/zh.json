@@ -416,6 +416,7 @@
         "datasets": "数据集",
         "labels": "标签",
         "branches": "分支",
+        "annotations": "标注",
         "commits": "提交"
       }
     },

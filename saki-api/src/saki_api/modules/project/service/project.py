@@ -271,6 +271,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
             "label_count": await self.repository.count_labels(project_id),
             "branch_count": await self.repository.count_branches(project_id),
             "commit_count": await self.repository.count_commits(project_id),
+            "annotation_count": await self.repository.count_annotations(project_id),
             "fork_count": await self.repository.count_forks(project_id),
         }
 

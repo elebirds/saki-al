@@ -19,6 +19,7 @@ from saki_api.core.exceptions import (
     AuthInvalidTokenAppException,
     DataInvalidFormatAppException,
     ForbiddenAppException,
+    InternalServerErrorAppException,
 )
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.access.api.auth import LoginResponse
@@ -193,8 +194,11 @@ class AuthService:
                 "New password must be in the correct format (frontend hashed)"
             )
 
-        await self.user_service.change_password(
+        updated_user = await self.user_service.change_password(
             user.id,
             security.get_password_hash(new_password),
             False
         )
+
+        if not security.verify_password(new_password, updated_user.hashed_password):
+            raise InternalServerErrorAppException("Password change verification failed")

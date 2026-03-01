@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {Avatar, Button, Card, Collapse, Descriptions, message, Spin, Tag, Typography} from 'antd';
 import {CameraOutlined, LockOutlined, SafetyOutlined, UserOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
+import {useNavigate} from 'react-router-dom';
 import {useAuthStore} from '../../store/authStore';
 import {usePermissionStore} from '../../store/permissionStore';
 import {api} from '../../services/api';
@@ -13,6 +14,7 @@ const MAX_AVATAR_SIZE_BYTES = 10 * 1024 * 1024;
 
 const UserProfile: React.FC = () => {
     const {t} = useTranslation();
+    const navigate = useNavigate();
     const currentUser = useAuthStore((state) => state.user);
     const setAuthUser = useAuthStore((state) => state.setUser);
     const permissionStore = usePermissionStore();
@@ -217,6 +219,12 @@ const UserProfile: React.FC = () => {
                                 loading={avatarUploading}
                             >
                                 {t('user.profile.uploadAvatar')}
+                            </Button>
+                            <Button
+                                icon={<LockOutlined/>}
+                                onClick={() => navigate('/profile/change-password')}
+                            >
+                                {t('auth.changePassword.title')}
                             </Button>
                             <Tag color={displayUser.isActive ? 'green' : 'red'}>
                                 {displayUser.isActive ? t('common.active') : t('common.inactive')}

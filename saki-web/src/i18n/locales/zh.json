@@ -99,6 +99,7 @@
     "changePassword": {
       "title": "更改密码",
       "subtitle": "您需要更改密码才能继续使用",
+      "subtitleOptional": "为保障账户安全，建议定期更新密码",
       "oldPassword": "当前密码",
       "newPassword": "新密码",
       "confirmPassword": "确认新密码",

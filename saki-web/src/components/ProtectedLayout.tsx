@@ -12,6 +12,7 @@ import {
     ExperimentOutlined,
     HistoryOutlined,
     InfoCircleOutlined,
+    LockOutlined,
     LogoutOutlined,
     SettingOutlined,
     TeamOutlined,
@@ -220,6 +221,8 @@ const ProtectedLayout: React.FC = () => {
     const handleUserMenuClick: MenuProps['onClick'] = ({key}) => {
         if (key === 'profile') {
             navigate('/profile')
+        } else if (key === 'change-password') {
+            navigate('/profile/change-password')
         } else if (key === 'logout') {
             logout()
         }
@@ -230,6 +233,11 @@ const ProtectedLayout: React.FC = () => {
             key: 'profile',
             icon: <UserOutlined/>,
             label: t('user.profile.title'),
+        },
+        {
+            key: 'change-password',
+            icon: <LockOutlined/>,
+            label: t('auth.changePassword.title'),
         },
         {
             type: 'divider',

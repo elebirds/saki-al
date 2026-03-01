@@ -248,8 +248,13 @@ class UserService(CrudServiceBase[User, UserRepository, UserCreate, UserUpdate])
     async def change_password(
             self,
             record_id: uuid.UUID,
-            hashed_password: str,
+            new_hashed_password: str,
             must_change_password: bool
     ) -> User:
-        return await self.repository.update_or_raise(record_id, {"password": hashed_password,
-                                                                 "must_change_password": must_change_password})
+        return await self.repository.update_or_raise(
+            record_id,
+            {
+                "hashed_password": new_hashed_password,
+                "must_change_password": must_change_password,
+            },
+        )

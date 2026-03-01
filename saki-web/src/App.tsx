@@ -57,7 +57,7 @@ const App: React.FC = () => {
                             <Route path="/setup" element={<Setup/>}/>
                             <Route path="/login" element={<Login/>}/>
                             <Route path="/register" element={<Register/>}/>
-                            <Route path="/change-password" element={<ChangePassword/>}/>
+                            <Route path="/change-password" element={<ChangePassword forceMode/>}/>
 
                             <Route element={<ProtectedLayout/>}>
                                 <Route path="/" element={<DatasetList/>}/>
@@ -92,6 +92,7 @@ const App: React.FC = () => {
                                 <Route path="/roles" element={<RoleManagement/>}/>
                                 <Route path="/system/settings" element={<SystemSettings/>}/>
                                 <Route path="/profile" element={<UserProfile/>}/>
+                                <Route path="/profile/change-password" element={<ChangePassword/>}/>
                                 <Route path="/about" element={<About/>}/>
                             </Route>
                         </Routes>

@@ -98,6 +98,7 @@
     "changePassword": {
       "title": "Change Password",
       "subtitle": "You need to change your password to continue",
+      "subtitleOptional": "For account security, it is recommended to update your password regularly",
       "oldPassword": "Current Password",
       "newPassword": "New Password",
       "confirmPassword": "Confirm New Password",

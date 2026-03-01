@@ -21,6 +21,7 @@ from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.annotation.domain.draft import AnnotationDraft
 from saki_api.modules.annotation.repo.draft import AnnotationDraftRepository
 from saki_api.modules.project.domain.branch import Branch
+from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.project import ProjectDataset
 from saki_api.modules.runtime.domain.prediction_set import PredictionSet
@@ -1843,6 +1844,99 @@ class SnapshotMixin:
             raise BadRequestAppException("round has no score/predict/select step for prediction_set source")
         return round_row, preferred
 
+    @staticmethod
+    def _safe_uuid(raw: Any) -> uuid.UUID | None:
+        if raw is None:
+            return None
+        try:
+            return uuid.UUID(str(raw))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _safe_float(raw: Any, *, default: float = 0.0) -> float:
+        try:
+            return float(raw)
+        except Exception:
+            return float(default)
+
+    @staticmethod
+    def _first_non_none(*values: Any) -> Any:
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+    @staticmethod
+    def _extract_prediction_snapshot(candidate: StepCandidateItem) -> dict[str, Any]:
+        primary = candidate.prediction_snapshot if isinstance(candidate.prediction_snapshot, dict) else {}
+        reason = candidate.reason if isinstance(candidate.reason, dict) else {}
+        fallback_raw = reason.get("prediction_snapshot")
+        if not isinstance(fallback_raw, dict):
+            fallback_raw = reason.get("predictionSnapshot")
+        fallback = fallback_raw if isinstance(fallback_raw, dict) else {}
+
+        if primary and fallback:
+            merged = dict(fallback)
+            merged.update(primary)
+            return merged
+        if primary:
+            return dict(primary)
+        if fallback:
+            return dict(fallback)
+        return {}
+
+    @staticmethod
+    def _prediction_list_from_snapshot(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        for key in ("base_predictions", "predictions"):
+            rows = snapshot.get(key)
+            if isinstance(rows, list):
+                return [row for row in rows if isinstance(row, dict)]
+        return []
+
+    @staticmethod
+    def _rect_geometry_from_xyxy(raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, list) or len(raw) < 4:
+            return {}
+        x1 = SnapshotMixin._safe_float(raw[0])
+        y1 = SnapshotMixin._safe_float(raw[1])
+        x2 = SnapshotMixin._safe_float(raw[2])
+        y2 = SnapshotMixin._safe_float(raw[3])
+        x = min(x1, x2)
+        y = min(y1, y2)
+        width = abs(x2 - x1)
+        height = abs(y2 - y1)
+        return {
+            "rect": {
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
+            }
+        }
+
+    @staticmethod
+    def _rect_geometry_from_xywh(raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, list) or len(raw) < 4:
+            return {}
+        return {
+            "rect": {
+                "x": SnapshotMixin._safe_float(raw[0]),
+                "y": SnapshotMixin._safe_float(raw[1]),
+                "width": max(0.0, SnapshotMixin._safe_float(raw[2])),
+                "height": max(0.0, SnapshotMixin._safe_float(raw[3])),
+            }
+        }
+
+    @staticmethod
+    def _parse_cls_index(raw: Any) -> int | None:
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except Exception:
+            return None
+
     @transactional
     async def generate_prediction_set(
         self,
@@ -1893,25 +1987,79 @@ class SnapshotMixin:
         )
 
         source_candidates = await self.step_candidate_repo.list_by_step(source_step.id)
+        label_rows = list(
+            (
+                await self.session.exec(
+                    select(Label)
+                    .where(Label.project_id == loop.project_id)
+                    .order_by(Label.id.asc())
+                )
+            ).all()
+        )
+        ordered_label_ids = [row.id for row in label_rows]
         prediction_rows: list[dict[str, Any]] = []
         for candidate in source_candidates:
-            snapshot = dict(candidate.prediction_snapshot or {})
-            label_raw = snapshot.get("label_id") or snapshot.get("labelId")
-            label_id: uuid.UUID | None = None
-            if label_raw:
-                try:
-                    label_id = uuid.UUID(str(label_raw))
-                except Exception:
-                    label_id = None
+            snapshot = self._extract_prediction_snapshot(candidate)
+            predictions = self._prediction_list_from_snapshot(snapshot)
+            top_prediction = predictions[0] if predictions else {}
+
+            label_id = self._safe_uuid(
+                self._first_non_none(
+                    snapshot.get("label_id"),
+                    snapshot.get("labelId"),
+                    snapshot.get("category_id"),
+                    snapshot.get("categoryId"),
+                    top_prediction.get("label_id"),
+                    top_prediction.get("labelId"),
+                    top_prediction.get("category_id"),
+                    top_prediction.get("categoryId"),
+                )
+            )
+            if label_id is None:
+                cls_idx = self._parse_cls_index(
+                    self._first_non_none(
+                        snapshot.get("cls_id"),
+                        snapshot.get("clsId"),
+                        top_prediction.get("cls_id"),
+                        top_prediction.get("clsId"),
+                        top_prediction.get("class_id"),
+                        top_prediction.get("classId"),
+                    )
+                )
+                if cls_idx is not None and 0 <= cls_idx < len(ordered_label_ids):
+                    label_id = ordered_label_ids[cls_idx]
+
+            geometry = snapshot.get("geometry")
+            geometry = dict(geometry) if isinstance(geometry, dict) else {}
+            if not geometry and isinstance(top_prediction.get("geometry"), dict):
+                geometry = dict(top_prediction.get("geometry") or {})
+            if not geometry:
+                geometry = self._rect_geometry_from_xyxy(top_prediction.get("xyxy"))
+            if not geometry:
+                geometry = self._rect_geometry_from_xywh(top_prediction.get("bbox_xywh"))
+            if not geometry and isinstance(top_prediction.get("obb"), dict):
+                geometry = {"obb": dict(top_prediction.get("obb") or {})}
+
+            attrs = snapshot.get("attrs")
+            attrs = dict(attrs) if isinstance(attrs, dict) else {}
+            if not attrs and isinstance(top_prediction.get("attrs"), dict):
+                attrs = dict(top_prediction.get("attrs") or {})
+
+            confidence_raw = self._first_non_none(
+                snapshot.get("confidence"),
+                top_prediction.get("confidence"),
+                top_prediction.get("conf"),
+            )
+
             prediction_rows.append(
                 {
                     "sample_id": candidate.sample_id,
                     "rank": int(candidate.rank or 0),
                     "score": float(candidate.score or 0.0),
                     "label_id": label_id,
-                    "geometry": snapshot.get("geometry") if isinstance(snapshot.get("geometry"), dict) else {},
-                    "attrs": snapshot.get("attrs") if isinstance(snapshot.get("attrs"), dict) else {},
-                    "confidence": float(snapshot.get("confidence") or candidate.score or 0.0),
+                    "geometry": geometry,
+                    "attrs": attrs,
+                    "confidence": self._safe_float(confidence_raw, default=float(candidate.score or 0.0)),
                     "meta": snapshot if isinstance(snapshot, dict) else {},
                 }
             )
@@ -1996,13 +2144,19 @@ class SnapshotMixin:
                 for item in sorted(group, key=lambda row: int(row.rank or 0)):
                     if item.label_id is None:
                         continue
+                    geometry = dict(item.geometry or {})
+                    annotation_id = str(uuid.uuid4())
+                    annotation_type = "obb" if isinstance(geometry.get("obb"), dict) else "rect"
                     model_annotations.append(
                         {
-                            "id": str(uuid.uuid4()),
+                            "id": annotation_id,
+                            "group_id": annotation_id,
+                            "lineage_id": annotation_id,
                             "project_id": str(loop.project_id),
                             "sample_id": str(sample_id),
                             "label_id": str(item.label_id),
-                            "geometry": dict(item.geometry or {}),
+                            "type": annotation_type,
+                            "geometry": geometry,
                             "attrs": dict(item.attrs or {}),
                             "source": "model",
                             "confidence": float(item.confidence or 0.0),

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Callable
+from typing import Any, Callable
 
 from google.protobuf.json_format import ParseDict
 from loguru import logger
@@ -237,12 +237,16 @@ class RuntimeControlIngressService:
                 sample_id = uuid.UUID(sample_id_raw)
             except Exception:
                 continue
+            reason_payload = runtime_codec.struct_to_dict(candidate.reason)
+            if not isinstance(reason_payload, dict):
+                reason_payload = {}
             candidates.append(
                 RuntimeStepCandidateDTO(
                     sample_id=sample_id,
                     rank=idx,
                     score=float(candidate.score or 0.0),
-                    reason=runtime_codec.struct_to_dict(candidate.reason),
+                    reason=reason_payload,
+                    prediction_snapshot=self._extract_prediction_snapshot_from_reason(reason_payload),
                 )
             )
 
@@ -635,6 +639,18 @@ class RuntimeControlIngressService:
             return max(0, int(cursor))
         except Exception:
             return 0
+
+    @staticmethod
+    def _extract_prediction_snapshot_from_reason(reason: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(reason, dict):
+            return {}
+        snapshot = reason.get("prediction_snapshot")
+        if isinstance(snapshot, dict):
+            return snapshot
+        camel_snapshot = reason.get("predictionSnapshot")
+        if isinstance(camel_snapshot, dict):
+            return camel_snapshot
+        return {}
 
     @staticmethod
     def _paginate(rows: list[object], *, limit: int, offset: int) -> tuple[list[object], str | None]:

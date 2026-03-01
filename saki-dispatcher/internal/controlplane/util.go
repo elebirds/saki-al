@@ -143,6 +143,23 @@ func structToMap(payload *structpb.Struct) map[string]any {
 	return items
 }
 
+func extractPredictionSnapshotFromReason(reason map[string]any) map[string]any {
+	if len(reason) == 0 {
+		return map[string]any{}
+	}
+	if raw, ok := reason["prediction_snapshot"]; ok {
+		if payload, ok := raw.(map[string]any); ok && payload != nil {
+			return payload
+		}
+	}
+	if raw, ok := reason["predictionSnapshot"]; ok {
+		if payload, ok := raw.(map[string]any); ok && payload != nil {
+			return payload
+		}
+	}
+	return map[string]any{}
+}
+
 func decodeStepEvent(event *runtimecontrolv1.StepEvent) (string, map[string]any, db.Stepstatus) {
 	if event == nil {
 		return "", map[string]any{}, ""

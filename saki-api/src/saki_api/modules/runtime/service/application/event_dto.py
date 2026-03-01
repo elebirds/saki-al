@@ -23,6 +23,7 @@ class RuntimeStepCandidateDTO(BaseModel):
     rank: int
     score: float
     reason: dict[str, Any] = Field(default_factory=dict)
+    prediction_snapshot: dict[str, Any] = Field(default_factory=dict)
 
 
 class RuntimeStepEventDTO(BaseModel):

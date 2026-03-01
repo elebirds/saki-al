@@ -1152,7 +1152,12 @@ func (s *Service) replaceStepCandidatesTx(
 		if err != nil {
 			continue
 		}
-		reasonJSON, err := marshalJSON(structToMap(item.GetReason()))
+		reasonPayload := structToMap(item.GetReason())
+		reasonJSON, err := marshalJSON(reasonPayload)
+		if err != nil {
+			return err
+		}
+		predictionSnapshotJSON, err := marshalJSON(extractPredictionSnapshotFromReason(reasonPayload))
 		if err != nil {
 			return err
 		}
@@ -1163,7 +1168,7 @@ func (s *Service) replaceStepCandidatesTx(
 			Rank:               int32(idx + 1),
 			Score:              item.GetScore(),
 			Reason:             []byte(reasonJSON),
-			PredictionSnapshot: []byte(`{}`),
+			PredictionSnapshot: []byte(predictionSnapshotJSON),
 			CreatedAt:          now,
 			UpdatedAt:          now,
 		})

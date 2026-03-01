@@ -129,7 +129,7 @@ class RuntimeStepPersistenceService:
                     rank=int(candidate.rank),
                     score=float(candidate.score),
                     reason=candidate.reason,
-                    prediction_snapshot={},
+                    prediction_snapshot=dict(candidate.prediction_snapshot or {}),
                 ).model_dump(exclude_none=True)
             )
 

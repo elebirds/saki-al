@@ -179,3 +179,37 @@ func TestStepStatusCountsForAPINormalizesToLowercase(t *testing.T) {
 		t.Fatalf("step status counts normalization mismatch: got=%v want=%v", got, want)
 	}
 }
+
+func TestExtractPredictionSnapshotFromReasonSnakeCase(t *testing.T) {
+	reason := map[string]any{
+		"strategy": "uncertainty",
+		"prediction_snapshot": map[string]any{
+			"label_id":   "0f9cf52f-bbd9-4fca-a6f5-47c3d04de6b2",
+			"confidence": 0.91,
+		},
+	}
+	got := extractPredictionSnapshotFromReason(reason)
+	want := map[string]any{
+		"label_id":   "0f9cf52f-bbd9-4fca-a6f5-47c3d04de6b2",
+		"confidence": 0.91,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("prediction snapshot extract mismatch: got=%v want=%v", got, want)
+	}
+}
+
+func TestExtractPredictionSnapshotFromReasonFallbackAndInvalid(t *testing.T) {
+	camel := map[string]any{
+		"predictionSnapshot": map[string]any{"pred_count": float64(2)},
+	}
+	gotCamel := extractPredictionSnapshotFromReason(camel)
+	if !reflect.DeepEqual(gotCamel, map[string]any{"pred_count": float64(2)}) {
+		t.Fatalf("predictionSnapshot camelCase extract mismatch: got=%v", gotCamel)
+	}
+
+	invalid := map[string]any{"prediction_snapshot": "not-object"}
+	gotInvalid := extractPredictionSnapshotFromReason(invalid)
+	if !reflect.DeepEqual(gotInvalid, map[string]any{}) {
+		t.Fatalf("invalid snapshot should fallback to empty object: got=%v", gotInvalid)
+	}
+}

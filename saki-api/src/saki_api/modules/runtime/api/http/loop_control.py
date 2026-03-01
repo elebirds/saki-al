@@ -268,7 +268,7 @@ async def generate_prediction_set(
         payload=payload.model_dump(exclude_none=True),
         actor_user_id=current_user_id,
     )
-    return PredictionSetRead.model_validate(result)
+    return PredictionSetRead.model_validate(result, from_attributes=True)
 
 
 @router.get("/loops/{loop_id}/prediction-sets", response_model=list[PredictionSetRead])
@@ -288,7 +288,7 @@ async def list_prediction_sets(
         required=Permissions.LOOP_READ,
     )
     rows = await runtime_service.list_prediction_sets(loop_id=loop_id, limit=limit)
-    return [PredictionSetRead.model_validate(row) for row in rows]
+    return [PredictionSetRead.model_validate(row, from_attributes=True) for row in rows]
 
 
 @router.get("/prediction-sets/{prediction_set_id}", response_model=PredictionSetDetailRead)
@@ -312,7 +312,7 @@ async def get_prediction_set_detail(
         required=Permissions.LOOP_READ,
     )
     return PredictionSetDetailRead(
-        prediction_set=PredictionSetRead.model_validate(prediction_set),
+        prediction_set=PredictionSetRead.model_validate(prediction_set, from_attributes=True),
         items=[
             {
                 "sample_id": row.sample_id,

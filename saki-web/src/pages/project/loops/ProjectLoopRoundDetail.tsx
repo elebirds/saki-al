@@ -4,7 +4,6 @@ import {
     Alert,
     Button,
     Card,
-    Collapse,
     Descriptions,
     Drawer,
     Empty,
@@ -296,6 +295,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
     const [autoScrollLogs, setAutoScrollLogs] = useState<boolean>(true);
     const [logTailLimit, setLogTailLimit] = useState<number>(DEFAULT_LOG_TAIL);
     const [stepDrawerOpen, setStepDrawerOpen] = useState<boolean>(false);
+    const [roundOverviewOpen, setRoundOverviewOpen] = useState<boolean>(false);
     const [artifacts, setArtifacts] = useState<RuntimeStepArtifact[]>([]);
     const [wsConnected, setWsConnected] = useState(false);
     const [artifactUrls, setArtifactUrls] = useState<Record<string, string>>({});
@@ -671,132 +671,55 @@ const ProjectLoopRoundDetail: React.FC = () => {
                                 重跑本轮
                             </Button>
                         ) : null}
+                        <Button onClick={() => setRoundOverviewOpen(true)}>Round 概览</Button>
                         <Button loading={refreshing} onClick={() => loadData(true)}>刷新</Button>
                     </div>
                 </div>
-            </Card>
-
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-                <div className="min-w-0 xl:sticky xl:top-3 xl:col-span-4 xl:self-start">
-                    <Card className="!border-github-border !bg-github-panel" title="Round 概览">
-                        <Descriptions size="small" column={1}>
-                            <Descriptions.Item label="插件">{round.pluginId}</Descriptions.Item>
-                            <Descriptions.Item label="采样策略">{round.resolvedParams?.sampling?.strategy || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="模式">{round.mode}</Descriptions.Item>
-                            <Descriptions.Item label="Attempt">{round.attemptIndex || 1}</Descriptions.Item>
-                            <Descriptions.Item label="开始时间">{formatDateTime(round.startedAt)}</Descriptions.Item>
-                            <Descriptions.Item label="结束时间">{formatDateTime(round.endedAt)}</Descriptions.Item>
-                            <Descriptions.Item label="耗时">{roundDurationText}</Descriptions.Item>
-                            <Descriptions.Item label="Step 数量">{steps.length}</Descriptions.Item>
-                            <Descriptions.Item label="Retry From">{round.retryOfRoundId || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="Retry Reason">{round.retryReason || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="Final Metrics">
-                                {finalMetricPairs.length === 0
-                                    ? '-'
-                                    : finalMetricPairs.map(([key, value]) => (
-                                        <Text key={key} className="mr-2 block">{`${key}: ${String(value)}`}</Text>
-                                    ))}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Final Artifacts">
-                                {finalArtifactNames.length === 0
-                                    ? '-'
-                                    : finalArtifactNames.map((name) => <Tag key={name}>{name}</Tag>)}
-                            </Descriptions.Item>
-                        </Descriptions>
-                        <div className="mt-3">
-                            <Text type="secondary">Round 进度</Text>
-                            <Progress percent={roundProgressPercent}/>
-                        </div>
-                        <div className="mt-2">
-                            <Text type="secondary">Step 聚合</Text>
-                            <div className="mt-1">
-                                {(Object.entries(round.stepCounts || {}) as Array<[string, number]>).map(([key, value]) => (
-                                    <Tag key={key}>{`${key}:${value}`}</Tag>
-                                ))}
-                            </div>
-                        </div>
-                        {round.lastError ? (
-                            <Alert className="!mt-3" type="error" showIcon message={round.lastError}/>
-                        ) : null}
-                    </Card>
-                </div>
-
-                <div className="flex min-w-0 flex-col gap-4 xl:col-span-8">
-                    <Card
-                        className="!border-github-border !bg-github-panel"
-                        title="Step 流程导航"
-                        extra={selectedStep ? (
+                <div className="mt-4 border-t border-github-border pt-4">
+                    <div className="mb-3 flex items-center justify-end gap-2">
+                        {selectedStep ? (
                             <Button size="small" onClick={() => setStepDrawerOpen(true)}>
                                 打开 Step 详情
                             </Button>
                         ) : null}
-                    >
-                        {sortedSteps.length === 0 ? (
-                            <Empty description="当前 Round 没有 Step"/>
-                        ) : (
-                            <div className="flex flex-col gap-3">
-                                <Steps
-                                    current={Math.max(0, selectedStepOrderIndex)}
-                                    onChange={(index) => {
-                                        const target = sortedSteps[index];
-                                        if (!target) return;
-                                        setSelectedStepId(target.id);
-                                        void loadStepDashboard(target.id);
-                                    }}
-                                    items={sortedSteps.map((item) => ({
-                                        title: `#${item.stepIndex} ${item.stepType}`,
-                                        description: `${formatDuration(computeDurationMs(item.startedAt, item.endedAt))} · A${item.attempt || 1}`,
-                                        status: getStepFlowStatus(item.state),
-                                    }))}
-                                    size="small"
-                                />
-                                <Collapse
-                                    size="small"
-                                    items={[
-                                        {
-                                            key: 'step-table',
-                                            label: '查看技术视图（Step 表格）',
-                                            children: (
-                                                <Table
-                                                    size="small"
-                                                    rowKey={(item) => item.id}
-                                                    pagination={false}
-                                                    dataSource={sortedSteps}
-                                                    rowClassName={(row) => (row.id === selectedStepId ? 'bg-github-surface' : '')}
-                                                    onRow={(row) => ({
-                                                        onClick: () => {
-                                                            setSelectedStepId(row.id);
-                                                            void loadStepDashboard(row.id);
-                                                        },
-                                                    })}
-                                                    columns={[
-                                                        {title: '#', dataIndex: 'stepIndex', width: 60},
-                                                        {title: 'Type', dataIndex: 'stepType', width: 180},
-                                                        {
-                                                            title: 'Status',
-                                                            dataIndex: 'state',
-                                                            width: 140,
-                                                            render: (value: string) => <Tag color={STEP_STATE_COLOR[value] || 'default'}>{value}</Tag>,
-                                                        },
-                                                        {
-                                                            title: '耗时',
-                                                            width: 140,
-                                                            render: (_value: unknown, row: RuntimeStep) =>
-                                                                formatDuration(computeDurationMs(row.startedAt, row.endedAt)),
-                                                        },
-                                                        {title: 'Executor', dataIndex: 'assignedExecutorId', render: (v: string | null) => v || '-'},
-                                                        {title: 'Attempt', dataIndex: 'attempt', width: 90},
-                                                        {title: 'Error', dataIndex: 'lastError', render: (v: string | null) => v || '-'},
-                                                    ]}
-                                                />
-                                            ),
-                                        },
-                                    ]}
-                                />
-                            </div>
-                        )}
-                    </Card>
+                    </div>
+                    {sortedSteps.length === 0 ? (
+                        <Empty description="当前 Round 没有 Step"/>
+                    ) : (
+                        <Steps
+                            current={Math.max(0, selectedStepOrderIndex)}
+                            onChange={(index) => {
+                                const target = sortedSteps[index];
+                                if (!target) return;
+                                setSelectedStepId(target.id);
+                                void loadStepDashboard(target.id);
+                            }}
+                            items={sortedSteps.map((item) => ({
+                                title: `#${item.stepIndex} ${item.stepType}`,
+                                description: (
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-xs text-github-muted">
+                                            {`${formatDuration(computeDurationMs(item.startedAt, item.endedAt))} · A${item.attempt || 1}`}
+                                        </span>
+                                        <span className="text-xs text-github-muted">
+                                            {`executor: ${item.assignedExecutorId || '-'}`}
+                                        </span>
+                                        {(['failed', 'cancelled'].includes(item.state) && item.lastError) ? (
+                                            <span className="truncate text-xs text-red-400" title={item.lastError}>
+                                                {`error: ${item.lastError}`}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                ),
+                                status: getStepFlowStatus(item.state),
+                            }))}
+                            size="small"
+                        />
+                    )}
+                </div>
+            </Card>
 
+            <div className="flex min-w-0 flex-col gap-4">
                     {!selectedStep ? (
                         <Card className="!border-github-border !bg-github-panel">
                             <Empty description="当前 Round 没有可查看的 Step"/>
@@ -962,7 +885,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
                             </Card>
                         </>
                     )}
-                </div>
             </div>
 
             <Card
@@ -1082,6 +1004,53 @@ const ProjectLoopRoundDetail: React.FC = () => {
                     </div>
                 )}
             </Card>
+
+            <Drawer
+                open={roundOverviewOpen}
+                onClose={() => setRoundOverviewOpen(false)}
+                width={560}
+                title={`Round 概览 · #${round.roundIndex} / Attempt ${round.attemptIndex || 1}`}
+            >
+                <Descriptions size="small" column={1}>
+                    <Descriptions.Item label="插件">{round.pluginId}</Descriptions.Item>
+                    <Descriptions.Item label="采样策略">{round.resolvedParams?.sampling?.strategy || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="模式">{round.mode}</Descriptions.Item>
+                    <Descriptions.Item label="Attempt">{round.attemptIndex || 1}</Descriptions.Item>
+                    <Descriptions.Item label="开始时间">{formatDateTime(round.startedAt)}</Descriptions.Item>
+                    <Descriptions.Item label="结束时间">{formatDateTime(round.endedAt)}</Descriptions.Item>
+                    <Descriptions.Item label="耗时">{roundDurationText}</Descriptions.Item>
+                    <Descriptions.Item label="Step 数量">{steps.length}</Descriptions.Item>
+                    <Descriptions.Item label="Retry From">{round.retryOfRoundId || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Retry Reason">{round.retryReason || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Final Metrics">
+                        {finalMetricPairs.length === 0
+                            ? '-'
+                            : finalMetricPairs.map(([key, value]) => (
+                                <Text key={key} className="mr-2 block">{`${key}: ${String(value)}`}</Text>
+                            ))}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Final Artifacts">
+                        {finalArtifactNames.length === 0
+                            ? '-'
+                            : finalArtifactNames.map((name) => <Tag key={name}>{name}</Tag>)}
+                    </Descriptions.Item>
+                </Descriptions>
+                <div className="mt-3">
+                    <Text type="secondary">Round 进度</Text>
+                    <Progress percent={roundProgressPercent}/>
+                </div>
+                <div className="mt-2">
+                    <Text type="secondary">Step 聚合</Text>
+                    <div className="mt-1">
+                        {(Object.entries(round.stepCounts || {}) as Array<[string, number]>).map(([key, value]) => (
+                            <Tag key={key}>{`${key}:${value}`}</Tag>
+                        ))}
+                    </div>
+                </div>
+                {round.lastError ? (
+                    <Alert className="!mt-3" type="error" showIcon message={round.lastError}/>
+                ) : null}
+            </Drawer>
 
             <Drawer
                 open={stepDrawerOpen}

@@ -13,11 +13,15 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.websockets import WebSocketState
 
 from saki_api.app.deps import RuntimeServiceDep
-from saki_api.core.exceptions import ForbiddenAppException
+from saki_api.core.exceptions import BadRequestAppException, ForbiddenAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
+from saki_api.modules.runtime.api.http.support.round_event_stream import (
+    authorize_stream_round_access,
+    stream_round_events_loop,
+)
 from saki_api.modules.runtime.api.http.support.step_event_stream import (
     authenticate_stream_token,
     authorize_stream_step_access,
@@ -37,6 +41,13 @@ from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.access.domain.rbac import Permissions
 
 router = APIRouter()
+
+
+def _csv_to_list(raw: str | None) -> list[str]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    return [item.strip() for item in text.split(",") if str(item).strip()]
 
 
 async def _ensure_project_perm(
@@ -84,6 +95,19 @@ async def _authorize_stream_step_access(
     )
 
 
+async def _authorize_stream_round_access(
+    *,
+    websocket: WebSocket,
+    user_id: uuid.UUID,
+    parsed_round_id: uuid.UUID,
+) -> bool:
+    return await authorize_stream_round_access(
+        websocket=websocket,
+        user_id=user_id,
+        parsed_round_id=parsed_round_id,
+    )
+
+
 async def _stream_step_events_loop(
     *,
     websocket: WebSocket,
@@ -94,6 +118,21 @@ async def _stream_step_events_loop(
         websocket=websocket,
         parsed_step_id=parsed_step_id,
         cursor=cursor,
+    )
+
+
+async def _stream_round_events_loop(
+    *,
+    websocket: WebSocket,
+    parsed_round_id: uuid.UUID,
+    after_cursor: str | None,
+    stages: list[str] | None,
+) -> str | None:
+    return await stream_round_events_loop(
+        websocket=websocket,
+        parsed_round_id=parsed_round_id,
+        after_cursor=after_cursor,
+        stages=stages,
     )
 
 
@@ -325,6 +364,57 @@ async def stream_step_events(
         return
     except Exception:
         logger.exception("step event stream failed step_id={} after_seq={}", parsed_step_id, cursor)
+        if websocket.client_state == WebSocketState.CONNECTED:
+            with contextlib.suppress(Exception):
+                await websocket.close(code=1011, reason="internal error")
+        return
+
+
+@router.websocket("/rounds/{round_id}/events/ws")
+async def stream_round_events(
+    websocket: WebSocket,
+    round_id: str,
+    after_cursor: str | None = None,
+    stages: str | None = None,
+):
+    user_id = await _authenticate_stream_token(websocket)
+    if user_id is None:
+        return
+
+    try:
+        parsed_round_id = uuid.UUID(round_id)
+    except Exception:
+        await websocket.close(code=1008, reason="invalid round_id")
+        return
+
+    authorized = await _authorize_stream_round_access(
+        websocket=websocket,
+        user_id=user_id,
+        parsed_round_id=parsed_round_id,
+    )
+    if not authorized:
+        return
+
+    stage_list = _csv_to_list(stages)
+    await websocket.accept()
+    cursor = str(after_cursor or "").strip() or None
+    try:
+        cursor = await _stream_round_events_loop(
+            websocket=websocket,
+            parsed_round_id=parsed_round_id,
+            after_cursor=cursor,
+            stages=stage_list,
+        )
+    except BadRequestAppException:
+        if websocket.client_state == WebSocketState.CONNECTED:
+            with contextlib.suppress(Exception):
+                await websocket.close(code=1008, reason="invalid after_cursor")
+        return
+    except WebSocketDisconnect:
+        logger.debug("round event stream disconnected round_id={} after_cursor={}", parsed_round_id, cursor or "")
+        return
+    except Exception:
+        logger.exception("round event stream failed round_id={} after_cursor={}", parsed_round_id, cursor or "")
         if websocket.client_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close(code=1011, reason="internal error")

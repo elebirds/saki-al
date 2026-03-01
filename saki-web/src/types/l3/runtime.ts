@@ -255,6 +255,34 @@ export interface RuntimeStepEvent {
     messageText: string;
 }
 
+export interface RuntimeRoundEvent {
+    stepId: string;
+    stepIndex: number;
+    stepType: RuntimeStepType;
+    stage: 'train' | 'eval' | 'score' | 'select' | 'custom';
+    seq: number;
+    ts: string;
+    eventType: string;
+    payload: Record<string, any>;
+    level?: string | null;
+    status?: string | null;
+    kind?: string | null;
+    tags: string[];
+    messageText: string;
+}
+
+export interface RoundEventQuery {
+    afterCursor?: string;
+    limit?: number;
+    stages?: string[];
+}
+
+export interface RoundEventQueryResponse {
+    items: RuntimeRoundEvent[];
+    nextAfterCursor?: string | null;
+    hasMore: boolean;
+}
+
 export interface StepEventFacets {
     eventTypes: Record<string, number>;
     levels: Record<string, number>;

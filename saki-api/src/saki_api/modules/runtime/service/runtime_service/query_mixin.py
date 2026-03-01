@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import uuid
 from collections import Counter
@@ -38,6 +39,9 @@ class LoopSummaryStatsVO:
 
 
 class RuntimeQueryMixin:
+    _ROUND_EVENT_CURSOR_VERSION = 1
+    _ROUND_EVENT_STAGE_ALLOWLIST = {"train", "eval", "score", "select", "custom"}
+
     async def list_loops(self, project_id: uuid.UUID) -> List[Loop]:
         return await self.loop_repo.list_by_project(project_id)
 
@@ -156,6 +160,69 @@ class RuntimeQueryMixin:
             "message_text": message_text,
         }
 
+    @staticmethod
+    def _round_stage_from_step_type(step_type: Any) -> str:
+        value = str(step_type.value if hasattr(step_type, "value") else step_type).strip().lower()
+        if value in {"train", "eval", "score", "select"}:
+            return value
+        return "custom"
+
+    @staticmethod
+    def _encode_round_events_cursor_payload(payload: dict[str, Any]) -> str:
+        raw = json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
+
+    @staticmethod
+    def _decode_round_events_cursor_payload(cursor: str) -> dict[str, Any]:
+        raw_cursor = str(cursor or "").strip()
+        if not raw_cursor:
+            return {}
+        pad = "=" * (-len(raw_cursor) % 4)
+        decoded = base64.urlsafe_b64decode(f"{raw_cursor}{pad}".encode("utf-8"))
+        payload = json.loads(decoded.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("cursor payload must be object")
+        return payload
+
+    def decode_round_events_cursor(self, after_cursor: str | None) -> dict[str, int]:
+        raw = str(after_cursor or "").strip()
+        if not raw:
+            return {}
+        try:
+            payload = self._decode_round_events_cursor_payload(raw)
+            version = int(payload.get("v", 0))
+            if version != self._ROUND_EVENT_CURSOR_VERSION:
+                raise ValueError("cursor version mismatch")
+            step_seq_raw = payload.get("step_seq")
+            if not isinstance(step_seq_raw, dict):
+                raise ValueError("cursor step_seq must be object")
+            step_seq: dict[str, int] = {}
+            for key, value in step_seq_raw.items():
+                step_id = str(uuid.UUID(str(key)))
+                seq_value = max(0, int(value or 0))
+                step_seq[step_id] = seq_value
+            return step_seq
+        except Exception as exc:
+            raise BadRequestAppException("invalid after_cursor") from exc
+
+    def encode_round_events_cursor(self, step_seq: dict[str, int]) -> str | None:
+        if not step_seq:
+            return None
+        normalized: dict[str, int] = {}
+        for key, value in step_seq.items():
+            try:
+                step_id = str(uuid.UUID(str(key)))
+            except Exception:
+                continue
+            normalized[step_id] = max(0, int(value or 0))
+        if not normalized:
+            return None
+        payload = {
+            "v": self._ROUND_EVENT_CURSOR_VERSION,
+            "step_seq": normalized,
+        }
+        return self._encode_round_events_cursor_payload(payload)
+
     async def query_step_events(
         self,
         *,
@@ -226,6 +293,76 @@ class RuntimeQueryMixin:
                 "tags": dict(tag_counter),
             }
         return payload
+
+    async def query_round_events(
+        self,
+        *,
+        round_id: uuid.UUID,
+        after_cursor: str | None = None,
+        limit: int = 5000,
+        stages: list[str] | None = None,
+    ) -> dict[str, Any]:
+        await self.repository.get_by_id_or_raise(round_id)
+        all_steps = await self.step_repo.list_by_round(round_id)
+
+        normalized_stages = [str(item or "").strip().lower() for item in (stages or []) if str(item or "").strip()]
+        invalid_stages = [item for item in normalized_stages if item not in self._ROUND_EVENT_STAGE_ALLOWLIST]
+        if invalid_stages:
+            raise BadRequestAppException(f"invalid stages: {','.join(sorted(set(invalid_stages)))}")
+        stage_filter = set(normalized_stages)
+
+        step_stage: dict[uuid.UUID, str] = {}
+        target_steps: list[Step] = []
+        for step in all_steps:
+            stage = self._round_stage_from_step_type(step.step_type)
+            step_stage[step.id] = stage
+            if stage_filter and stage not in stage_filter:
+                continue
+            target_steps.append(step)
+
+        cursor_step_seq = self.decode_round_events_cursor(after_cursor)
+        if not target_steps:
+            return {
+                "items": [],
+                "next_after_cursor": self.encode_round_events_cursor(cursor_step_seq) if cursor_step_seq else None,
+                "has_more": False,
+            }
+
+        safe_limit = max(1, min(int(limit or 5000), 100000))
+        target_step_ids = [step.id for step in target_steps]
+        step_seq_cursor = {step_id: max(0, int(cursor_step_seq.get(str(step_id), 0))) for step_id in target_step_ids}
+        rows = await self.step_event_repo.list_by_round_after_cursor(
+            round_id=round_id,
+            step_ids=target_step_ids,
+            after_step_seq=step_seq_cursor,
+            limit=safe_limit,
+        )
+
+        step_lookup = {step.id: step for step in target_steps}
+        next_step_seq = dict(cursor_step_seq)
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            event = row[0]
+            step = row[1]
+            if step.id not in step_lookup:
+                continue
+            item = self._normalize_step_event(event)
+            item["step_id"] = step.id
+            item["step_index"] = int(step.step_index or 0)
+            item["step_type"] = str(step.step_type.value if hasattr(step.step_type, "value") else step.step_type)
+            item["stage"] = step_stage.get(step.id) or self._round_stage_from_step_type(step.step_type)
+            items.append(item)
+            step_key = str(step.id)
+            next_step_seq[step_key] = max(int(next_step_seq.get(step_key, 0) or 0), int(event.seq or 0))
+
+        next_after = self.encode_round_events_cursor(next_step_seq)
+        if not items and after_cursor:
+            next_after = str(after_cursor)
+        return {
+            "items": items,
+            "next_after_cursor": next_after,
+            "has_more": len(items) >= safe_limit,
+        }
 
     async def list_step_metric_series(self, step_id: uuid.UUID, limit: int = 5000):
         await self.step_repo.get_by_id_or_raise(step_id)

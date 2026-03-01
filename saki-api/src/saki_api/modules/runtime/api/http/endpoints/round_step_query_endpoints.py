@@ -15,6 +15,7 @@ from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import (
     RoundArtifactsResponse,
+    RoundEventQueryResponse,
     RoundMissingSamplesResponse,
     RoundRead,
     RoundSelectionRead,
@@ -129,6 +130,34 @@ async def get_round_artifacts(
     )
     items = await runtime_service.list_round_artifacts(round_id=round_id, limit=limit)
     return RoundArtifactsResponse(round_id=round_id, items=items)
+
+
+@router.get("/rounds/{round_id}/events", response_model=RoundEventQueryResponse)
+async def get_round_events(
+    *,
+    round_id: uuid.UUID,
+    after_cursor: str | None = Query(default=None),
+    limit: int = Query(default=5000, ge=1, le=100000),
+    stages: str | None = Query(default=None),
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    round_item = await runtime_service.get_by_id_or_raise(round_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=round_item.project_id,
+        required_permission=Permissions.ROUND_READ,
+        fallback_permissions=(Permissions.PROJECT_READ,),
+    )
+    payload = await runtime_service.query_round_events(
+        round_id=round_id,
+        after_cursor=after_cursor,
+        limit=limit,
+        stages=_csv_to_list(stages),
+    )
+    return RoundEventQueryResponse.model_validate(payload)
 
 
 @router.get("/loops/{loop_id}/rounds/{round_id}/missing-samples", response_model=RoundMissingSamplesResponse)

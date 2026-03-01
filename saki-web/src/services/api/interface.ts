@@ -33,6 +33,8 @@ import {
     RuntimeRoundArtifactsResponse,
     RuntimeStepArtifactsResponse,
     RuntimeStepCandidate,
+    RoundEventQuery,
+    RoundEventQueryResponse,
     RuntimeStepCommandResponse,
     StepEventQuery,
     StepEventQueryResponse,
@@ -290,6 +292,7 @@ export interface ApiService {
 
     getRoundSteps(roundId: string, limit?: number): Promise<RuntimeStep[]>;
     getRoundArtifacts(roundId: string, limit?: number): Promise<RuntimeRoundArtifactsResponse>;
+    getRoundEvents(roundId: string, query?: RoundEventQuery): Promise<RoundEventQueryResponse>;
 
     getStep(stepId: string): Promise<RuntimeStep>;
 

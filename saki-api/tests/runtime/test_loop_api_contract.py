@@ -773,6 +773,158 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_get_round_events_query_contract(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(round_step_query_endpoint, "ensure_project_permission", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-round-events",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.RUNNING,
+                step_counts={},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.RUNNING,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.PENDING,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add_all([train_step, eval_step])
+            await session.flush()
+
+            session.add_all(
+                [
+                    StepEvent(
+                        step_id=train_step.id,
+                        seq=1,
+                        ts=datetime.now(UTC),
+                        event_type="log",
+                        payload={"level": "INFO", "message": "train started"},
+                    ),
+                    StepEvent(
+                        step_id=eval_step.id,
+                        seq=1,
+                        ts=datetime.now(UTC),
+                        event_type="status",
+                        payload={"status": "pending", "reason": "wait train"},
+                    ),
+                ]
+            )
+            await session.commit()
+
+            first_page = await round_step_query_endpoint.get_round_events(
+                round_id=round_row.id,
+                after_cursor=None,
+                limit=5000,
+                stages=None,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(first_page.items) == 2
+            assert first_page.has_more is False
+            assert first_page.next_after_cursor
+            assert {item.stage for item in first_page.items} == {"train", "eval"}
+
+            second_page = await round_step_query_endpoint.get_round_events(
+                round_id=round_row.id,
+                after_cursor=first_page.next_after_cursor,
+                limit=5000,
+                stages=None,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(second_page.items) == 0
+
+            train_only = await round_step_query_endpoint.get_round_events(
+                round_id=round_row.id,
+                after_cursor=None,
+                limit=5000,
+                stages="train",
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(train_only.items) == 1
+            assert train_only.items[0].stage == "train"
+            assert train_only.items[0].step_type == StepType.TRAIN
+
+            with pytest.raises(BadRequestAppException):
+                await round_step_query_endpoint.get_round_events(
+                    round_id=round_row.id,
+                    after_cursor="not-valid-cursor",
+                    limit=5000,
+                    stages=None,
+                    runtime_service=service,
+                    session=session,
+                    current_user_id=current_user_id,
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_simulation_experiment_create_and_comparison_contract(loop_api_env, monkeypatch):
     session_local = loop_api_env
 

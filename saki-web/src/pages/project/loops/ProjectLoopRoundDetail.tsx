@@ -7,13 +7,9 @@ import {
     Descriptions,
     Drawer,
     Empty,
-    Input,
     Progress,
-    Select,
-    Space,
     Spin,
     Steps,
-    Switch,
     Table,
     Tag,
     Typography,
@@ -32,13 +28,13 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
 import {useAuthStore} from '../../../store/authStore';
+import RoundConsolePanel from './components/RoundConsolePanel';
 import {
     RuntimeRound,
+    RuntimeRoundEvent,
     RuntimeRoundArtifact,
     RuntimeStep,
     RuntimeStepCandidate,
-    RuntimeStepEvent,
-    StepEventFacets,
     RuntimeStepMetricPoint,
 } from '../../../types';
 
@@ -64,29 +60,11 @@ const STEP_STATE_COLOR: Record<string, string> = {
     skipped: 'default',
 };
 
-const ERROR_LEVELS = new Set(['ERROR', 'CRITICAL', 'FATAL']);
 const MAX_EVENT_BUFFER = 20000;
-const DEFAULT_LOG_TAIL = 500;
-
-const EVENT_TYPE_COLOR: Record<string, string> = {
-    log: 'default',
-    status: 'blue',
-    progress: 'cyan',
-    metric: 'green',
-    artifact: 'purple',
-    worker: 'gold',
-};
-
-const LEVEL_COLOR_CLASS: Record<string, string> = {
-    TRACE: 'text-slate-400',
-    DEBUG: 'text-slate-300',
-    INFO: 'text-blue-300',
-    WARNING: 'text-amber-300',
-    WARN: 'text-amber-300',
-    ERROR: 'text-red-300',
-    CRITICAL: 'text-fuchsia-300',
-    FATAL: 'text-fuchsia-300',
-};
+const ROUND_EVENT_SYNC_LIMIT = 5000;
+const ROUND_META_REFRESH_THROTTLE_MS = 2000;
+const ROUND_WS_RECONNECT_DELAYS = [1000, 2000, 5000, 10000];
+const TERMINAL_STEP_STATES = new Set(['succeeded', 'failed', 'cancelled', 'skipped']);
 
 type RoundStageKey =
     | 'train'
@@ -122,7 +100,14 @@ interface RoundArtifactTableRow {
     createdAt?: string | null;
 }
 
-type RawRuntimeStepEvent = {
+type RawRuntimeRoundEvent = {
+    stepId?: unknown;
+    step_id?: unknown;
+    stepIndex?: unknown;
+    step_index?: unknown;
+    stepType?: unknown;
+    step_type?: unknown;
+    stage?: unknown;
     seq?: unknown;
     ts?: unknown;
     eventType?: unknown;
@@ -157,8 +142,6 @@ const MODE_STAGE_ORDER: Record<string, RoundStageKey[]> = {
     simulation: ['train', 'eval', 'score', 'select', 'custom'],
     manual: ['train', 'eval', 'custom'],
 };
-
-const EMPTY_FACETS: StepEventFacets = {eventTypes: {}, levels: {}, tags: {}};
 
 const formatDateTime = (value?: string | null) => {
     if (!value) return '-';
@@ -196,10 +179,19 @@ const formatArtifactSize = (sizeRaw: unknown): string => {
     return `${(size / 1024).toFixed(1)} KB`;
 };
 
-const buildWsUrl = (stepId: string, afterSeq: number, token: string): string => {
+const buildRoundEventsWsUrl = (
+    roundId: string,
+    token: string,
+    afterCursor?: string | null,
+    stages?: string[],
+): string => {
     const apiBaseUrlRaw = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
     const apiBaseUrl = apiBaseUrlRaw.endsWith('/') ? apiBaseUrlRaw.slice(0, -1) : apiBaseUrlRaw;
-    const suffix = `/steps/${stepId}/events/ws?after_seq=${afterSeq}&token=${encodeURIComponent(token)}`;
+    const query = new URLSearchParams();
+    query.set('token', token);
+    if (afterCursor) query.set('after_cursor', afterCursor);
+    if (stages && stages.length > 0) query.set('stages', stages.join(','));
+    const suffix = `/rounds/${roundId}/events/ws?${query.toString()}`;
     if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
         return `${apiBaseUrl.replace(/^http/, 'ws')}${suffix}`;
     }
@@ -281,9 +273,20 @@ const deriveEventTags = (
     return tags;
 };
 
-const normalizeRuntimeEvent = (raw: RawRuntimeStepEvent): RuntimeStepEvent | null => {
+const normalizeRuntimeEvent = (raw: RawRuntimeRoundEvent): RuntimeRoundEvent | null => {
+    const stepIdRaw = raw.stepId ?? raw.step_id;
+    const stepId = String(stepIdRaw || '').trim();
+    if (!stepId) return null;
+    const stepIndex = Number(raw.stepIndex ?? raw.step_index ?? 0);
+    if (!Number.isFinite(stepIndex) || stepIndex <= 0) return null;
+    const stepTypeRaw = raw.stepType ?? raw.step_type;
+    const stepType = String(stepTypeRaw || 'custom').trim().toLowerCase();
     const seq = Number(raw.seq);
     if (!Number.isFinite(seq)) return null;
+    const stageRaw = String(raw.stage || '').trim().toLowerCase();
+    const stage = (['train', 'eval', 'score', 'select', 'custom'] as const).includes(stageRaw as any)
+        ? (stageRaw as RoundStageKey)
+        : mapStepTypeToStage(stepType);
     const eventTypeRaw = raw.eventType ?? raw.event_type;
     const eventType = String(eventTypeRaw || 'unknown_event').trim().toLowerCase();
     const ts = typeof raw.ts === 'string' ? raw.ts : new Date().toISOString();
@@ -295,9 +298,19 @@ const normalizeRuntimeEvent = (raw: RawRuntimeStepEvent): RuntimeStepEvent | nul
     const status = statusRaw ? String(statusRaw).trim() : null;
     const kind = kindRaw ? String(kindRaw).trim() : null;
     const messageTextRaw = raw.messageText ?? raw.message_text;
-    const messageText = String(messageTextRaw || deriveEventMessage(eventType, payload)).trim();
+    const baseMessage = String(messageTextRaw || deriveEventMessage(eventType, payload)).trim();
     const tags = deriveEventTags(eventType, payload, level, status, kind, raw.tags);
+    const stepTag = `step:${stepIndex}`;
+    const stepTypeTag = `step_type:${stepType}`;
+    const stageTag = `stage:${stage}`;
+    if (!tags.includes(stepTag)) tags.push(stepTag);
+    if (!tags.includes(stepTypeTag)) tags.push(stepTypeTag);
+    if (!tags.includes(stageTag)) tags.push(stageTag);
     return {
+        stepId,
+        stepIndex,
+        stepType: stepType as any,
+        stage,
         seq,
         ts,
         eventType,
@@ -306,37 +319,126 @@ const normalizeRuntimeEvent = (raw: RawRuntimeStepEvent): RuntimeStepEvent | nul
         status,
         kind,
         tags,
-        messageText,
+        messageText: `[step#${stepIndex} ${stepType}] ${baseMessage}`.trim(),
     };
 };
 
-const mergeEventBuffer = (previous: RuntimeStepEvent[], incoming: RuntimeStepEvent[]): RuntimeStepEvent[] => {
+const mergeEventBuffer = (previous: RuntimeRoundEvent[], incoming: RuntimeRoundEvent[]): RuntimeRoundEvent[] => {
     const merged = [...previous, ...incoming];
-    const dedup = new Map<number, RuntimeStepEvent>();
+    const dedup = new Map<string, RuntimeRoundEvent>();
     merged.forEach((item) => {
-        dedup.set(Number(item.seq || 0), item);
+        const key = `${item.stepId}:${Number(item.seq || 0)}`;
+        dedup.set(key, item);
     });
-    const rows = Array.from(dedup.values()).sort((a, b) => a.seq - b.seq);
+    const rows = Array.from(dedup.values()).sort((left, right) => {
+        const leftTs = Date.parse(String(left.ts || ''));
+        const rightTs = Date.parse(String(right.ts || ''));
+        if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && leftTs !== rightTs) return leftTs - rightTs;
+        if (Number(left.stepIndex || 0) !== Number(right.stepIndex || 0)) {
+            return Number(left.stepIndex || 0) - Number(right.stepIndex || 0);
+        }
+        if (Number(left.seq || 0) !== Number(right.seq || 0)) return Number(left.seq || 0) - Number(right.seq || 0);
+        return String(left.stepId).localeCompare(String(right.stepId));
+    });
     if (rows.length <= MAX_EVENT_BUFFER) return rows;
     return rows.slice(rows.length - MAX_EVENT_BUFFER);
 };
 
-const buildEventFacetsFromItems = (items: RuntimeStepEvent[]): StepEventFacets => {
-    const eventTypes: Record<string, number> = {};
-    const levels: Record<string, number> = {};
-    const tags: Record<string, number> = {};
-    items.forEach((item) => {
-        const eventType = String(item.eventType || '').trim();
-        if (eventType) eventTypes[eventType] = Number(eventTypes[eventType] || 0) + 1;
-        const level = String(item.level || '').trim();
-        if (level) levels[level] = Number(levels[level] || 0) + 1;
-        (item.tags || []).forEach((tag) => {
-            const text = String(tag || '').trim();
-            if (!text) return;
-            tags[text] = Number(tags[text] || 0) + 1;
+const extractMetricPointsFromEvent = (event: RuntimeRoundEvent): RuntimeStepMetricPoint[] => {
+    if (event.eventType !== 'metric') return [];
+    if (event.stage !== 'train') return [];
+    const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+    const points: RuntimeStepMetricPoint[] = [];
+    const stepValue = Number(payload.step ?? payload.globalStep ?? payload.iteration ?? event.seq ?? 0);
+    const epochRaw = payload.epoch;
+    const epoch = epochRaw == null ? null : Number(epochRaw);
+    const pushPoint = (metricName: string, metricValue: unknown) => {
+        const value = Number(metricValue);
+        if (!metricName || !Number.isFinite(value)) return;
+        points.push({
+            step: Number.isFinite(stepValue) ? stepValue : 0,
+            epoch: Number.isFinite(Number(epoch)) ? Number(epoch) : null,
+            metricName,
+            metricValue: value,
+            ts: String(event.ts || new Date().toISOString()),
         });
+    };
+    const directMetricName = String(payload.metricName ?? payload.metric_name ?? '').trim();
+    if (directMetricName) {
+        pushPoint(directMetricName, payload.metricValue ?? payload.metric_value);
+    }
+    if (payload.metrics && typeof payload.metrics === 'object') {
+        Object.entries(payload.metrics as Record<string, unknown>).forEach(([name, value]) => {
+            pushPoint(String(name || '').trim(), value);
+        });
+    }
+    return points;
+};
+
+const mergeMetricPoints = (
+    previous: RuntimeStepMetricPoint[],
+    incoming: RuntimeStepMetricPoint[],
+): RuntimeStepMetricPoint[] => {
+    if (incoming.length === 0) return previous;
+    const merged = new Map<string, RuntimeStepMetricPoint>();
+    [...previous, ...incoming].forEach((item) => {
+        const key = `${item.step}|${item.epoch ?? ''}|${item.metricName}|${item.ts}`;
+        merged.set(key, item);
     });
-    return {eventTypes, levels, tags};
+    return Array.from(merged.values()).sort((left, right) => {
+        if (Number(left.step || 0) !== Number(right.step || 0)) return Number(left.step || 0) - Number(right.step || 0);
+        const leftTs = Date.parse(String(left.ts || ''));
+        const rightTs = Date.parse(String(right.ts || ''));
+        if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && leftTs !== rightTs) return leftTs - rightTs;
+        return String(left.metricName || '').localeCompare(String(right.metricName || ''));
+    });
+};
+
+const normalizeIncomingStepState = (raw: unknown): string | null => {
+    const state = String(raw || '').trim().toLowerCase();
+    if (!state) return null;
+    if (
+        ['pending', 'ready', 'dispatching', 'running', 'retrying', 'succeeded', 'failed', 'cancelled', 'skipped']
+            .includes(state)
+    ) {
+        return state;
+    }
+    return null;
+};
+
+const isTerminalStepState = (state?: string | null): boolean => TERMINAL_STEP_STATES.has(String(state || '').toLowerCase());
+
+const deriveArtifactClass = (stage: RoundStageKey, kindRaw: string): string => {
+    const kind = String(kindRaw || '').toLowerCase();
+    if (kind.includes('model')) return 'model_artifact';
+    if (kind.includes('eval')) return 'eval_artifact';
+    if (kind.includes('selection') || stage === 'select') return 'selection_artifact';
+    if (kind.includes('predict')) return 'prediction_artifact';
+    return 'generic_artifact';
+};
+
+const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRoundArtifact | null => {
+    if (event.eventType !== 'artifact') return null;
+    const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+    const name = String(payload.name || '').trim();
+    if (!name) return null;
+    const kind = String(payload.kind || 'artifact').trim() || 'artifact';
+    const uri = String(payload.uri || '').trim();
+    const sizeRaw = payload.size ?? (payload.meta && typeof payload.meta === 'object' ? (payload.meta as Record<string, any>).size : null);
+    const sizeValue = Number(sizeRaw);
+    return {
+        stepId: event.stepId,
+        stepIndex: Number(event.stepIndex || 0),
+        stage: event.stage,
+        artifactClass: deriveArtifactClass(event.stage, kind),
+        name,
+        kind,
+        uri,
+        size: Number.isFinite(sizeValue) && sizeValue > 0 ? sizeValue : null,
+        createdAt: typeof payload.createdAt === 'string'
+            ? payload.createdAt
+            : (typeof payload.created_at === 'string' ? payload.created_at : event.ts),
+    };
 };
 
 const getStepFlowStatus = (state: string): 'wait' | 'process' | 'finish' | 'error' => {
@@ -478,21 +580,15 @@ const ProjectLoopRoundDetail: React.FC = () => {
     const [artifactUrls, setArtifactUrls] = useState<Record<string, string>>({});
 
     const [consoleStage, setConsoleStage] = useState<ConsoleStageFilter>('all');
-    const [events, setEvents] = useState<RuntimeStepEvent[]>([]);
-    const [eventFacets, setEventFacets] = useState<StepEventFacets>(EMPTY_FACETS);
-    const [eventTypeFilter, setEventTypeFilter] = useState<string[]>([]);
-    const [eventLevelFilter, setEventLevelFilter] = useState<string[]>([]);
-    const [eventTagFilter, setEventTagFilter] = useState<string[]>([]);
-    const [eventQueryText, setEventQueryText] = useState<string>('');
-    const [onlyErrors, setOnlyErrors] = useState<boolean>(false);
-    const [autoScrollLogs, setAutoScrollLogs] = useState<boolean>(true);
-    const [logTailLimit, setLogTailLimit] = useState<number>(DEFAULT_LOG_TAIL);
+    const [events, setEvents] = useState<RuntimeRoundEvent[]>([]);
     const [wsConnected, setWsConnected] = useState<boolean>(false);
-
-    const eventCursorRef = useRef<number>(0);
-    const eventCursorByStepRef = useRef<Record<string, number>>({});
-    const eventsRef = useRef<RuntimeStepEvent[]>([]);
-    const logScrollRef = useRef<HTMLDivElement | null>(null);
+    const eventsRef = useRef<RuntimeRoundEvent[]>([]);
+    const roundEventCursorRef = useRef<string | null>(null);
+    const wsRef = useRef<WebSocket | null>(null);
+    const wsRetryTimerRef = useRef<number | null>(null);
+    const wsRetryCountRef = useRef<number>(0);
+    const wsClosedRef = useRef<boolean>(false);
+    const metaRefreshTimerRef = useRef<number | null>(null);
     const artifactUrlsRef = useRef<Record<string, string>>({});
 
     useEffect(() => {
@@ -550,23 +646,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
         });
     }, [round?.id, round?.mode, stageSnapshots, currentTimelineStep]);
 
-    const annotateEventWithStep = useCallback((item: RuntimeStepEvent, step: RuntimeStep): RuntimeStepEvent => {
-        const stage = mapStepTypeToStage(step.stepType);
-        const tags = Array.from(new Set([
-            ...(item.tags || []),
-            `step:${step.stepIndex}`,
-            `step_type:${step.stepType}`,
-            `stage:${stage}`,
-        ]));
-        const original = String(item.messageText || '').trim();
-        const prefixed = `[step#${step.stepIndex} ${step.stepType}] ${original}`.trim();
-        return {
-            ...item,
-            tags,
-            messageText: prefixed,
-        };
-    }, []);
-
     const consoleStep = useMemo(() => {
         if (consoleStage === 'all') return currentTimelineStep || null;
         const stageStep = stageSnapshots[consoleStage]?.representativeStep;
@@ -578,6 +657,10 @@ const ProjectLoopRoundDetail: React.FC = () => {
         const row = stageSnapshots[consoleStage]?.representativeStep;
         return row ? [row] : [];
     }, [consoleStage, sortedSteps, stageSnapshots]);
+    const activeConsoleStages = useMemo(
+        () => (consoleStage === 'all' ? [] : [consoleStage]),
+        [consoleStage],
+    );
 
     useEffect(() => {
         if (!stepDrawerStepId) return;
@@ -596,8 +679,12 @@ const ProjectLoopRoundDetail: React.FC = () => {
     );
 
     const roundProgressPercent = useMemo(() => {
+        if (steps.length > 0) {
+            const done = steps.filter((item) => isTerminalStepState(item.state)).length;
+            return Math.max(0, Math.min(100, Number(((done / steps.length) * 100).toFixed(2))));
+        }
         const stepCounts = round?.stepCounts || {};
-        const total = steps.length || Object.values(stepCounts).reduce((sum, item) => sum + Number(item || 0), 0);
+        const total = Object.values(stepCounts).reduce((sum, item) => sum + Number(item || 0), 0);
         if (!total) return 0;
         const done = ['succeeded', 'failed', 'cancelled', 'skipped']
             .reduce((sum, key) => sum + Number((stepCounts as Record<string, number>)[key] || 0), 0);
@@ -658,33 +745,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
         return evalStep?.metrics || {};
     }, [stageSnapshots.eval.metricSummary, evalStep?.id, evalStep?.metrics]);
 
-    const visibleEvents = useMemo(() => {
-        const eventTypeSet = new Set((eventTypeFilter || []).map((item) => String(item).toLowerCase()));
-        const levelSet = new Set((eventLevelFilter || []).map((item) => String(item).toUpperCase()));
-        const tagSet = new Set((eventTagFilter || []).map((item) => String(item).toLowerCase()));
-        const query = eventQueryText.trim().toLowerCase();
-        let rows = events.filter((item) => {
-            if (eventTypeSet.size > 0 && !eventTypeSet.has(String(item.eventType || '').toLowerCase())) return false;
-            if (levelSet.size > 0 && !levelSet.has(String(item.level || '').toUpperCase())) return false;
-            if (tagSet.size > 0) {
-                const rowTags = (item.tags || []).map((tag) => String(tag).toLowerCase());
-                if (!rowTags.some((tag) => tagSet.has(tag))) return false;
-            }
-            if (query) {
-                const haystack = `${item.messageText || ''} ${JSON.stringify(item.payload || {})}`.toLowerCase();
-                if (!haystack.includes(query)) return false;
-            }
-            if (onlyErrors) {
-                const level = String(item.level || '').toUpperCase();
-                const status = String(item.status || '').toLowerCase();
-                if (!ERROR_LEVELS.has(level) && !['failed', 'error', 'cancelled'].includes(status)) return false;
-            }
-            return true;
-        });
-        if (logTailLimit > 0 && rows.length > logTailLimit) rows = rows.slice(rows.length - logTailLimit);
-        return rows;
-    }, [events, eventTypeFilter, eventLevelFilter, eventTagFilter, eventQueryText, onlyErrors, logTailLimit]);
-
     const ensureArtifactUrls = useCallback(async (items: RuntimeRoundArtifact[]) => {
         if (!items || items.length === 0) return;
         const currentMap = artifactUrlsRef.current;
@@ -713,26 +773,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
         }
     }, []);
 
-    const reloadFilteredEvents = useCallback(async (step: RuntimeStep) => {
-        const response = await api.getStepEvents(step.id, {
-            afterSeq: 0,
-            limit: 5000,
-            eventTypes: eventTypeFilter,
-            levels: eventLevelFilter,
-            tags: eventTagFilter,
-            q: eventQueryText.trim() || undefined,
-            includeFacets: true,
-        });
-        const annotated = (response.items || []).map((item) => annotateEventWithStep(item, step));
-        setEvents(annotated);
-        setEventFacets(buildEventFacetsFromItems(annotated));
-        eventCursorRef.current = Number(
-            response.nextAfterSeq
-            ?? (response.items || []).reduce((max, item) => Math.max(max, Number(item.seq || 0)), 0),
-        );
-        eventCursorByStepRef.current[step.id] = eventCursorRef.current;
-    }, [eventTypeFilter, eventLevelFilter, eventTagFilter, eventQueryText, annotateEventWithStep]);
-
     const loadRoundData = useCallback(async (silent: boolean = false) => {
         if (!roundId || !canManageLoops) return;
         if (!silent) setLoading(true);
@@ -752,6 +792,14 @@ const ProjectLoopRoundDetail: React.FC = () => {
         }
     }, [roundId, canManageLoops, messageApi]);
 
+    const scheduleRoundMetaRefresh = useCallback(() => {
+        if (metaRefreshTimerRef.current != null) return;
+        metaRefreshTimerRef.current = window.setTimeout(() => {
+            metaRefreshTimerRef.current = null;
+            void loadRoundData(true);
+        }, ROUND_META_REFRESH_THROTTLE_MS);
+    }, [loadRoundData]);
+
     const handleRetryRound = useCallback(async () => {
         if (!round || !loopId) return;
         setRetrying(true);
@@ -769,24 +817,8 @@ const ProjectLoopRoundDetail: React.FC = () => {
         }
     }, [round, loopId, messageApi, loadRoundData]);
 
-    const handleExportLogs = useCallback(() => {
-        if (visibleEvents.length === 0) return;
-        const lines = visibleEvents.map((item) => {
-            const level = String(item.level || item.status || item.eventType || '').trim();
-            const tagText = (item.tags || []).join(',');
-            return `[${item.ts}] #${item.seq} [${level}] [${tagText}] ${item.messageText || ''}`;
-        });
-        const content = lines.join('\n');
-        const blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
-        const url = window.URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `round-${round?.roundIndex ?? 'x'}-${consoleStage === 'all' ? 'all-stages' : consoleStage}-logs.txt`;
-        anchor.click();
-        window.URL.revokeObjectURL(url);
-    }, [visibleEvents, round?.roundIndex, consoleStage]);
-
     const handleClearLogs = useCallback(() => {
+        eventsRef.current = [];
         setEvents([]);
     }, []);
 
@@ -794,23 +826,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
         if (!canManageLoops) return;
         void loadRoundData(false);
     }, [canManageLoops, loadRoundData]);
-
-    useEffect(() => {
-        if (!canManageLoops || !roundId) return;
-        const timer = window.setInterval(async () => {
-            try {
-                const [latestRound, latestSteps] = await Promise.all([
-                    api.getRound(roundId),
-                    api.getRoundSteps(roundId, 2000),
-                ]);
-                setRound(latestRound);
-                setSteps(latestSteps);
-            } catch {
-                // ignore polling errors
-            }
-        }, 3000);
-        return () => window.clearInterval(timer);
-    }, [canManageLoops, roundId]);
 
     useEffect(() => {
         if (!canManageLoops || !round) return;
@@ -891,216 +906,249 @@ const ProjectLoopRoundDetail: React.FC = () => {
         trainStep?.updatedAt,
         selectStep?.id,
         selectStep?.updatedAt,
+        selectStep?.state,
         scoreStep?.id,
         scoreStep?.updatedAt,
+        scoreStep?.state,
         ensureArtifactUrls,
     ]);
 
     useEffect(() => {
-        if (!canManageLoops || consoleTargetSteps.length === 0) {
+        return () => {
+            if (metaRefreshTimerRef.current != null) {
+                window.clearTimeout(metaRefreshTimerRef.current);
+                metaRefreshTimerRef.current = null;
+            }
+            if (wsRetryTimerRef.current != null) {
+                window.clearTimeout(wsRetryTimerRef.current);
+                wsRetryTimerRef.current = null;
+            }
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!canManageLoops || !round?.id || !token) {
+            eventsRef.current = [];
             setEvents([]);
-            setEventFacets(EMPTY_FACETS);
-            eventCursorRef.current = 0;
-            eventCursorByStepRef.current = {};
             setWsConnected(false);
+            roundEventCursorRef.current = null;
+            wsRetryCountRef.current = 0;
             return;
         }
+
         let cancelled = false;
+        wsClosedRef.current = false;
+        wsRetryCountRef.current = 0;
+        roundEventCursorRef.current = null;
+        eventsRef.current = [];
+        setEvents([]);
 
-        const run = async () => {
-            if (consoleStage === 'all') {
-                const rows = await Promise.all(
-                    consoleTargetSteps.map(async (step) => {
-                        try {
-                            const response = await api.getStepEvents(step.id, {
-                                afterSeq: 0,
-                                limit: 5000,
-                                includeFacets: false,
-                            });
-                            const items = (response.items || []).map((item) => annotateEventWithStep(item, step));
-                            const nextAfterSeq = Number(
-                                response.nextAfterSeq
-                                ?? (response.items || []).reduce((max, item) => Math.max(max, Number(item.seq || 0)), 0),
-                            );
-                            return {step, items, nextAfterSeq};
-                        } catch {
-                            return {step, items: [] as RuntimeStepEvent[], nextAfterSeq: 0};
-                        }
-                    }),
-                );
-                if (cancelled) return;
-
-                const merged = rows
-                    .flatMap((row) => row.items)
-                    .sort((left, right) => {
-                        const leftTs = Date.parse(String(left.ts || ''));
-                        const rightTs = Date.parse(String(right.ts || ''));
-                        if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && leftTs !== rightTs) {
-                            return leftTs - rightTs;
-                        }
-                        return Number(left.seq || 0) - Number(right.seq || 0);
-                    });
-                setEvents(mergeEventBuffer([], merged));
-                setEventFacets(buildEventFacetsFromItems(merged));
-                const nextMap: Record<string, number> = {};
-                rows.forEach((row) => {
-                    nextMap[row.step.id] = Number(row.nextAfterSeq || 0);
-                });
-                eventCursorByStepRef.current = nextMap;
-                eventCursorRef.current = 0;
-                setWsConnected(false);
-                return;
+        const closeSocket = () => {
+            if (wsRetryTimerRef.current != null) {
+                window.clearTimeout(wsRetryTimerRef.current);
+                wsRetryTimerRef.current = null;
             }
-
-            const targetStep = consoleTargetSteps[0];
-            try {
-                const response = await api.getStepEvents(targetStep.id, {
-                    afterSeq: 0,
-                    limit: 5000,
-                    includeFacets: true,
-                });
-                if (cancelled) return;
-                const annotated = (response.items || []).map((item) => annotateEventWithStep(item, targetStep));
-                setEvents(annotated);
-                setEventFacets(buildEventFacetsFromItems(annotated));
-                eventCursorRef.current = Number(
-                    response.nextAfterSeq
-                    ?? (response.items || []).reduce((max, item) => Math.max(max, Number(item.seq || 0)), 0),
-                );
-                eventCursorByStepRef.current = {[targetStep.id]: eventCursorRef.current};
-            } catch {
-                if (cancelled) return;
-                setEvents([]);
-                setEventFacets(EMPTY_FACETS);
-                eventCursorRef.current = 0;
-                eventCursorByStepRef.current = {};
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
             }
         };
 
-        void run();
+        const applyIncomingEvents = (incoming: RuntimeRoundEvent[]) => {
+            if (incoming.length === 0 || cancelled) return;
+            const merged = mergeEventBuffer(eventsRef.current, incoming);
+            eventsRef.current = merged;
+            setEvents(merged);
+
+            const metricPoints = incoming.flatMap((item) => extractMetricPointsFromEvent(item));
+            if (metricPoints.length > 0) {
+                setTrainMetricPoints((prev) => mergeMetricPoints(prev, metricPoints));
+            }
+
+            const artifactRows = incoming
+                .map((item) => buildArtifactFromRoundEvent(item))
+                .filter((item): item is RuntimeRoundArtifact => Boolean(item));
+            if (artifactRows.length > 0) {
+                setRoundArtifacts((prev) => {
+                    const rowMap = new Map<string, RuntimeRoundArtifact>();
+                    prev.forEach((item) => rowMap.set(buildArtifactKey(item.stepId, item.name), item));
+                    artifactRows.forEach((item) => rowMap.set(buildArtifactKey(item.stepId, item.name), item));
+                    return Array.from(rowMap.values()).sort(
+                        (left, right) => Number(left.stepIndex || 0) - Number(right.stepIndex || 0),
+                    );
+                });
+                void ensureArtifactUrls(artifactRows);
+            }
+
+            const statusRows = incoming.filter((item) => item.eventType === 'status');
+            let shouldRefreshRoundMeta = false;
+            if (statusRows.length > 0) {
+                setSteps((prev) => {
+                    if (!prev || prev.length === 0) return prev;
+                    const indexMap = new Map(prev.map((item, idx) => [item.id, idx]));
+                    const next = [...prev];
+                    let changed = false;
+                    statusRows.forEach((row) => {
+                        const idx = indexMap.get(row.stepId);
+                        if (idx == null) return;
+                        const current = next[idx];
+                        if (!current) return;
+                        const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+                        const normalizedState = normalizeIncomingStepState(payload.status ?? row.status);
+                        if (!normalizedState) return;
+                        const nextStartedAt = current.startedAt
+                            || (['ready', 'dispatching', 'running', 'retrying'].includes(normalizedState)
+                                ? String(payload.startedAt ?? payload.started_at ?? row.ts)
+                                : current.startedAt);
+                        const nextEndedAt = isTerminalStepState(normalizedState)
+                            ? String(payload.endedAt ?? payload.ended_at ?? row.ts)
+                            : current.endedAt;
+                        const nextLastError = normalizedState === 'failed'
+                            ? (String(payload.reason ?? payload.error ?? current.lastError ?? '').trim() || current.lastError)
+                            : current.lastError;
+                        if (
+                            normalizedState === current.state
+                            && nextStartedAt === current.startedAt
+                            && nextEndedAt === current.endedAt
+                            && nextLastError === current.lastError
+                        ) {
+                            return;
+                        }
+                        changed = true;
+                        next[idx] = {
+                            ...current,
+                            state: normalizedState as RuntimeStep['state'],
+                            startedAt: nextStartedAt,
+                            endedAt: nextEndedAt,
+                            lastError: nextLastError,
+                        };
+                    });
+                    if (!changed) return prev;
+                    if (next.length > 0 && next.every((item) => isTerminalStepState(item.state))) {
+                        shouldRefreshRoundMeta = true;
+                    }
+                    return next;
+                });
+            }
+
+            if (shouldRefreshRoundMeta || statusRows.some((row) => {
+                const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+                const state = normalizeIncomingStepState(payload.status ?? row.status);
+                return state === 'failed' || state === 'cancelled';
+            })) {
+                scheduleRoundMetaRefresh();
+            }
+        };
+
+        const syncRoundEvents = async () => {
+            let afterCursor = roundEventCursorRef.current || undefined;
+            let hasMore = true;
+            let pageCount = 0;
+            let nextCursor = roundEventCursorRef.current;
+            const incoming: RuntimeRoundEvent[] = [];
+            while (hasMore && pageCount < 20) {
+                const response = await api.getRoundEvents(round.id, {
+                    afterCursor,
+                    limit: ROUND_EVENT_SYNC_LIMIT,
+                    stages: activeConsoleStages.length > 0 ? activeConsoleStages : undefined,
+                });
+                const items = (response.items || []).filter((item) => Boolean(item.stepId));
+                if (items.length > 0) {
+                    incoming.push(...items);
+                }
+                nextCursor = response.nextAfterCursor ?? nextCursor ?? null;
+                hasMore = Boolean(response.hasMore);
+                afterCursor = response.nextAfterCursor || undefined;
+                pageCount += 1;
+            }
+            if (cancelled) return;
+            roundEventCursorRef.current = nextCursor ?? roundEventCursorRef.current;
+            applyIncomingEvents(incoming);
+        };
+
+        const scheduleReconnect = () => {
+            if (cancelled || wsClosedRef.current) return;
+            const nextRetry = wsRetryCountRef.current + 1;
+            wsRetryCountRef.current = nextRetry;
+            const delay = ROUND_WS_RECONNECT_DELAYS[Math.min(nextRetry - 1, ROUND_WS_RECONNECT_DELAYS.length - 1)];
+            wsRetryTimerRef.current = window.setTimeout(async () => {
+                wsRetryTimerRef.current = null;
+                if (cancelled || wsClosedRef.current) return;
+                if (nextRetry >= 3) {
+                    try {
+                        await syncRoundEvents();
+                    } catch {
+                        // ignore catch-up failure and keep retrying ws
+                    }
+                }
+                if (!cancelled && !wsClosedRef.current) {
+                    connectSocket();
+                }
+            }, delay);
+        };
+
+        const connectSocket = () => {
+            if (cancelled || wsClosedRef.current) return;
+            closeSocket();
+            const ws = new WebSocket(
+                buildRoundEventsWsUrl(
+                    round.id,
+                    token,
+                    roundEventCursorRef.current || undefined,
+                    activeConsoleStages.length > 0 ? activeConsoleStages : undefined,
+                ),
+            );
+            wsRef.current = ws;
+            ws.onopen = () => {
+                if (cancelled) return;
+                wsRetryCountRef.current = 0;
+                setWsConnected(true);
+            };
+            ws.onclose = () => {
+                if (cancelled || wsClosedRef.current) return;
+                setWsConnected(false);
+                wsRef.current = null;
+                scheduleReconnect();
+            };
+            ws.onerror = () => {
+                if (cancelled) return;
+                setWsConnected(false);
+            };
+            ws.onmessage = (messageEvent: MessageEvent<string>) => {
+                try {
+                    const raw = JSON.parse(messageEvent.data || '{}') as RawRuntimeRoundEvent;
+                    const item = normalizeRuntimeEvent(raw);
+                    if (!item) return;
+                    applyIncomingEvents([item]);
+                } catch {
+                    // ignore malformed ws payload
+                }
+            };
+        };
+
+        const start = async () => {
+            try {
+                await syncRoundEvents();
+            } catch {
+                // ignore initial history sync failure and rely on ws reconnect
+            }
+            if (!cancelled && !wsClosedRef.current) {
+                connectSocket();
+            }
+        };
+
+        void start();
         return () => {
             cancelled = true;
-            eventCursorRef.current = 0;
-            eventCursorByStepRef.current = {};
+            wsClosedRef.current = true;
             setWsConnected(false);
+            closeSocket();
         };
-    }, [canManageLoops, consoleStage, consoleTargetSteps, annotateEventWithStep]);
-
-    useEffect(() => {
-        if (!canManageLoops || consoleStage === 'all' || consoleTargetSteps.length === 0) return;
-        const timer = window.setTimeout(() => {
-            void reloadFilteredEvents(consoleTargetSteps[0]).catch(() => undefined);
-        }, 250);
-        return () => window.clearTimeout(timer);
-    }, [canManageLoops, consoleStage, consoleTargetSteps, reloadFilteredEvents]);
-
-    useEffect(() => {
-        if (!canManageLoops || consoleTargetSteps.length === 0) return;
-        const timer = window.setInterval(async () => {
-            if (consoleStage === 'all') {
-                try {
-                    const cursorMap = {...eventCursorByStepRef.current};
-                    const results = await Promise.all(
-                        consoleTargetSteps.map(async (step) => {
-                            try {
-                                const response = await api.getStepEvents(step.id, {
-                                    afterSeq: Number(cursorMap[step.id] || 0),
-                                    limit: 5000,
-                                    includeFacets: false,
-                                });
-                                return {step, response};
-                            } catch {
-                                return null;
-                            }
-                        }),
-                    );
-                    const incoming: RuntimeStepEvent[] = [];
-                    results.forEach((item) => {
-                        if (!item) return;
-                        const rows = item.response.items || [];
-                        if (rows.length > 0) {
-                            incoming.push(...rows.map((row) => annotateEventWithStep(row, item.step)));
-                        }
-                        const nextAfterSeq = Number(
-                            item.response.nextAfterSeq
-                            ?? rows.reduce((max, row) => Math.max(max, Number(row.seq || 0)), 0),
-                        );
-                        cursorMap[item.step.id] = Math.max(Number(cursorMap[item.step.id] || 0), nextAfterSeq);
-                    });
-                    eventCursorByStepRef.current = cursorMap;
-                    if (incoming.length > 0) {
-                        const merged = mergeEventBuffer(eventsRef.current, incoming);
-                        setEvents(merged);
-                        setEventFacets(buildEventFacetsFromItems(merged));
-                    }
-                } catch {
-                    // ignore polling errors
-                }
-                return;
-            }
-
-            const targetStep = consoleTargetSteps[0];
-            try {
-                const response = await api.getStepEvents(targetStep.id, {
-                    afterSeq: eventCursorRef.current,
-                    limit: 5000,
-                    includeFacets: false,
-                });
-                const incoming = (response.items || []).map((item) => annotateEventWithStep(item, targetStep));
-                if (incoming.length > 0) {
-                    const merged = mergeEventBuffer(eventsRef.current, incoming);
-                    setEvents(merged);
-                    setEventFacets(buildEventFacetsFromItems(merged));
-                    eventCursorRef.current = Math.max(
-                        eventCursorRef.current,
-                        ...incoming.map((item) => Number(item.seq || 0)),
-                    );
-                    eventCursorByStepRef.current[targetStep.id] = eventCursorRef.current;
-                }
-            } catch {
-                // ignore polling errors
-            }
-        }, 3000);
-        return () => window.clearInterval(timer);
-    }, [canManageLoops, consoleStage, consoleTargetSteps, annotateEventWithStep]);
-
-    useEffect(() => {
-        if (!canManageLoops || consoleStage === 'all' || consoleTargetSteps.length === 0 || !token) {
-            setWsConnected(false);
-            return;
-        }
-        const targetStep = consoleTargetSteps[0];
-        const ws = new WebSocket(buildWsUrl(targetStep.id, eventCursorRef.current, token));
-        ws.onopen = () => setWsConnected(true);
-        ws.onclose = () => setWsConnected(false);
-        ws.onerror = () => setWsConnected(false);
-        ws.onmessage = (event: MessageEvent<string>) => {
-            try {
-                const raw = JSON.parse(event.data || '{}') as RawRuntimeStepEvent;
-                const payload = normalizeRuntimeEvent(raw);
-                if (!payload) return;
-                const incoming = annotateEventWithStep(payload, targetStep);
-                const merged = mergeEventBuffer(eventsRef.current, [incoming]);
-                setEvents(merged);
-                setEventFacets(buildEventFacetsFromItems(merged));
-                eventCursorRef.current = Math.max(eventCursorRef.current, incoming.seq);
-                eventCursorByStepRef.current[targetStep.id] = eventCursorRef.current;
-            } catch {
-                // ignore malformed ws payload
-            }
-        };
-        return () => {
-            ws.close();
-            setWsConnected(false);
-        };
-    }, [canManageLoops, consoleStage, consoleTargetSteps, token, annotateEventWithStep]);
-
-    useEffect(() => {
-        if (!autoScrollLogs) return;
-        const container = logScrollRef.current;
-        if (!container) return;
-        container.scrollTop = container.scrollHeight;
-    }, [visibleEvents.length, autoScrollLogs]);
+    }, [canManageLoops, round?.id, token, activeConsoleStages, scheduleRoundMetaRefresh, ensureArtifactUrls]);
 
     if (loading) {
         return (
@@ -1335,7 +1383,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 )}
             </Card>
 
-            <Card
+            <RoundConsolePanel
                 className="!border-github-border !bg-github-panel"
                 title={
                     consoleStage === 'all'
@@ -1344,126 +1392,18 @@ const ProjectLoopRoundDetail: React.FC = () => {
                             ? `Round 控制台日志 · ${STAGE_LABEL[consoleStage]} (#${consoleStep.stepIndex} ${consoleStep.stepType})`
                             : 'Round 控制台日志')
                 }
-                extra={(
-                    <Space size={8}>
-                        <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WS 实时' : 'WS 断开'}</Tag>
-                        <Button size="small" onClick={handleClearLogs}>清屏</Button>
-                        <Button size="small" onClick={handleExportLogs} disabled={visibleEvents.length === 0}>
-                            导出
-                        </Button>
-                    </Space>
-                )}
-            >
-                {consoleTargetSteps.length === 0 ? (
-                    <Empty description="当前 Round 暂无可用日志阶段"/>
-                ) : (
-                    <div className="flex flex-col gap-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Select
-                                className="w-[180px]"
-                                value={consoleStage}
-                                options={consoleStageOptions}
-                                onChange={(value) => setConsoleStage(value as ConsoleStageFilter)}
-                            />
-                            <Select
-                                mode="multiple"
-                                allowClear
-                                className="min-w-[180px]"
-                                placeholder="事件类型"
-                                value={eventTypeFilter}
-                                options={Object.entries(eventFacets.eventTypes || {}).map(([name, count]) => ({
-                                    label: `${name} (${count})`,
-                                    value: name,
-                                }))}
-                                onChange={(values) => setEventTypeFilter(values)}
-                            />
-                            <Select
-                                mode="multiple"
-                                allowClear
-                                className="min-w-[160px]"
-                                placeholder="日志级别"
-                                value={eventLevelFilter}
-                                options={Object.entries(eventFacets.levels || {}).map(([name, count]) => ({
-                                    label: `${name} (${count})`,
-                                    value: name,
-                                }))}
-                                onChange={(values) => setEventLevelFilter(values)}
-                            />
-                            <Select
-                                mode="multiple"
-                                allowClear
-                                className="min-w-[240px]"
-                                placeholder="Tag"
-                                value={eventTagFilter}
-                                options={Object.entries(eventFacets.tags || {})
-                                    .sort((left, right) => Number(right[1]) - Number(left[1]))
-                                    .slice(0, 200)
-                                    .map(([name, count]) => ({
-                                        label: `${name} (${count})`,
-                                        value: name,
-                                    }))}
-                                onChange={(values) => setEventTagFilter(values)}
-                            />
-                            <Input.Search
-                                allowClear
-                                className="min-w-[280px]"
-                                placeholder="搜索 message/payload"
-                                value={eventQueryText}
-                                onChange={(event) => setEventQueryText(String(event.target.value || ''))}
-                            />
-                            <Select
-                                value={logTailLimit}
-                                className="w-[120px]"
-                                options={[
-                                    {label: '尾部 200', value: 200},
-                                    {label: '尾部 500', value: 500},
-                                    {label: '尾部 1000', value: 1000},
-                                    {label: '全部', value: 0},
-                                ]}
-                                onChange={(value) => setLogTailLimit(Number(value || 0))}
-                            />
-                            <span className="inline-flex items-center gap-1 rounded border border-github-border px-2 py-1">
-                                <Switch size="small" checked={onlyErrors} onChange={setOnlyErrors}/>
-                                <span className="text-xs text-github-muted">仅错误</span>
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded border border-github-border px-2 py-1">
-                                <Switch size="small" checked={autoScrollLogs} onChange={setAutoScrollLogs}/>
-                                <span className="text-xs text-github-muted">自动滚动</span>
-                            </span>
-                            <Tag>{`显示 ${visibleEvents.length} / 缓冲 ${events.length}`}</Tag>
-                        </div>
-                        <div
-                            ref={logScrollRef}
-                            className="max-h-[560px] overflow-auto rounded border border-github-border bg-slate-950 p-2"
-                        >
-                            {visibleEvents.length === 0 ? (
-                                <div className="py-8 text-center text-xs text-slate-400">暂无命中日志</div>
-                            ) : (
-                                <div className="space-y-1 font-mono text-xs">
-                                    {visibleEvents.map((item, idx) => {
-                                        const levelKey = String(item.level || '').toUpperCase();
-                                        const lineClass = LEVEL_COLOR_CLASS[levelKey] || 'text-slate-200';
-                                        return (
-                                            <div key={`${item.ts}-${item.seq}-${item.eventType}-${idx}`} className={`rounded px-2 py-1 ${lineClass} hover:bg-slate-900`}>
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="text-slate-400">{formatDateTime(item.ts)}</span>
-                                                    <span className="text-slate-500">#{item.seq}</span>
-                                                    <Tag color={EVENT_TYPE_COLOR[item.eventType] || 'default'} className="!m-0">{item.eventType}</Tag>
-                                                    {item.level ? <Tag color={ERROR_LEVELS.has(String(item.level).toUpperCase()) ? 'error' : 'blue'} className="!m-0">{item.level}</Tag> : null}
-                                                    {(item.tags || []).slice(0, 4).map((tag, tagIdx) => (
-                                                        <Tag key={`${item.ts}-${item.seq}-${tag}-${tagIdx}`} className="!m-0">{tag}</Tag>
-                                                    ))}
-                                                </div>
-                                                <div className="mt-1 whitespace-pre-wrap break-all">{item.messageText || '-'}</div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </Card>
+                wsConnected={wsConnected}
+                events={events}
+                stageValue={consoleStage}
+                stageOptions={consoleStageOptions.map((item) => ({
+                    label: String(item.label),
+                    value: String(item.value),
+                }))}
+                onStageChange={(value) => setConsoleStage(value as ConsoleStageFilter)}
+                onClearBuffer={handleClearLogs}
+                emptyDescription={consoleTargetSteps.length === 0 ? '当前 Round 暂无可用日志阶段' : '暂无命中日志'}
+                exportFilePrefix={`round-${round.roundIndex}-${consoleStage}`}
+            />
 
             <Drawer
                 open={roundOverviewOpen}

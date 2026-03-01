@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
     App,
     Alert,
@@ -26,6 +26,8 @@ import {useNavigate, useParams} from 'react-router-dom';
 
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
+import {useAuthStore} from '../../../store/authStore';
+import RoundConsolePanel from './components/RoundConsolePanel';
 import {
     Loop,
     LoopSnapshotRead,
@@ -35,6 +37,7 @@ import {
     SnapshotUpdateRequest,
     LoopSummary,
     RuntimeRound,
+    RuntimeRoundEvent,
     PredictionSetRead,
 } from '../../../types';
 
@@ -104,6 +107,112 @@ const PRIMARY_VIEW_COLOR: Record<string, string> = {
     test: '#13a8a8',
 };
 
+const FALLBACK_POLL_MS = 30000;
+const WS_REFRESH_THROTTLE_MS = 5000;
+const ROUND_WS_RECONNECT_DELAYS = [1000, 2000, 5000, 10000];
+const MAX_CONSOLE_EVENT_BUFFER = 20000;
+
+const buildRoundEventsWsUrl = (roundId: string, token: string, afterCursor?: string | null): string => {
+    const apiBaseUrlRaw = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+    const apiBaseUrl = apiBaseUrlRaw.endsWith('/') ? apiBaseUrlRaw.slice(0, -1) : apiBaseUrlRaw;
+    const query = new URLSearchParams();
+    query.set('token', token);
+    if (afterCursor) query.set('after_cursor', afterCursor);
+    const suffix = `/rounds/${roundId}/events/ws?${query.toString()}`;
+    if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
+        return `${apiBaseUrl.replace(/^http/, 'ws')}${suffix}`;
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const path = apiBaseUrl.startsWith('/') ? apiBaseUrl : `/${apiBaseUrl}`;
+    return `${protocol}//${window.location.host}${path}${suffix}`;
+};
+
+const shouldRefreshLoopByRoundEvent = (raw: unknown): boolean => {
+    if (!raw || typeof raw !== 'object') return false;
+    const row = raw as Record<string, unknown>;
+    const eventType = String(row.eventType ?? row.event_type ?? '').trim().toLowerCase();
+    return eventType === 'status' || eventType === 'artifact';
+};
+
+const normalizeRoundConsoleEvent = (raw: unknown): RuntimeRoundEvent | null => {
+    if (!raw || typeof raw !== 'object') return null;
+    const row = raw as Record<string, unknown>;
+    const stepId = String(row.stepId ?? row.step_id ?? '').trim();
+    if (!stepId) return null;
+    const stepIndex = Number(row.stepIndex ?? row.step_index ?? 0);
+    if (!Number.isFinite(stepIndex) || stepIndex <= 0) return null;
+    const stepType = String(row.stepType ?? row.step_type ?? 'custom').trim().toLowerCase();
+    const seq = Number(row.seq ?? 0);
+    if (!Number.isFinite(seq) || seq <= 0) return null;
+    const eventType = String(row.eventType ?? row.event_type ?? 'unknown').trim().toLowerCase();
+    const ts = String(row.ts ?? new Date().toISOString());
+    const payload = row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, any>) : {};
+    const levelRaw = row.level ?? payload.level;
+    const statusRaw = row.status ?? payload.status;
+    const kindRaw = row.kind ?? payload.kind;
+    const stageRaw = String(row.stage ?? '').trim().toLowerCase();
+    const stage = (['train', 'eval', 'score', 'select', 'custom'] as const).includes(stageRaw as any)
+        ? stageRaw
+        : 'custom';
+    const tags: string[] = [];
+    const pushTag = (value: unknown) => {
+        const text = String(value || '').trim();
+        if (!text || tags.includes(text)) return;
+        tags.push(text);
+    };
+    if (Array.isArray(row.tags)) row.tags.forEach((item) => pushTag(item));
+    pushTag(`step:${stepIndex}`);
+    pushTag(`step_type:${stepType}`);
+    pushTag(`stage:${stage}`);
+    const messageTextRaw = String(row.messageText ?? row.message_text ?? '').trim();
+    const messageText = messageTextRaw
+        || (eventType === 'log'
+            ? String(payload.message || '').trim()
+            : (eventType === 'status'
+                ? `${String(payload.status || '').trim()} ${String(payload.reason || '').trim()}`.trim()
+                : ''));
+
+    return {
+        stepId,
+        stepIndex,
+        stepType: stepType as any,
+        stage: stage as RuntimeRoundEvent['stage'],
+        seq,
+        ts,
+        eventType,
+        payload,
+        level: levelRaw ? String(levelRaw).trim().toUpperCase() : null,
+        status: statusRaw ? String(statusRaw).trim() : null,
+        kind: kindRaw ? String(kindRaw).trim() : null,
+        tags,
+        messageText: `[step#${stepIndex} ${stepType}] ${messageText}`.trim(),
+    };
+};
+
+const mergeRoundConsoleEvents = (
+    previous: RuntimeRoundEvent[],
+    incoming: RuntimeRoundEvent[],
+): RuntimeRoundEvent[] => {
+    const merged = [...previous, ...incoming];
+    const dedup = new Map<string, RuntimeRoundEvent>();
+    merged.forEach((item) => {
+        const key = `${item.stepId}:${item.seq}:${item.eventType}:${item.ts}:${item.messageText}`;
+        dedup.set(key, item);
+    });
+    const rows = Array.from(dedup.values()).sort((left, right) => {
+        const leftTs = Date.parse(String(left.ts || ''));
+        const rightTs = Date.parse(String(right.ts || ''));
+        if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && leftTs !== rightTs) return leftTs - rightTs;
+        if (Number(left.stepIndex || 0) !== Number(right.stepIndex || 0)) {
+            return Number(left.stepIndex || 0) - Number(right.stepIndex || 0);
+        }
+        if (Number(left.seq || 0) !== Number(right.seq || 0)) return Number(left.seq || 0) - Number(right.seq || 0);
+        return String(left.stepId || '').localeCompare(String(right.stepId || ''));
+    });
+    if (rows.length <= MAX_CONSOLE_EVENT_BUFFER) return rows;
+    return rows.slice(rows.length - MAX_CONSOLE_EVENT_BUFFER);
+};
+
 const SNAPSHOT_INIT_DEFAULTS: SnapshotInitRequest = {
     trainSeedRatio: 0.05,
     valRatio: 0.1,
@@ -165,6 +274,7 @@ const ProjectLoopDetail: React.FC = () => {
     const {projectId, loopId} = useParams<{ projectId: string; loopId: string }>();
     const navigate = useNavigate();
     const {message: messageApi} = App.useApp();
+    const token = useAuthStore((state) => state.token);
     const {can: canProject} = useResourcePermission('project', projectId);
     const canManageLoops = canProject('loop:manage:assigned');
     const [loading, setLoading] = useState(true);
@@ -187,6 +297,12 @@ const ProjectLoopDetail: React.FC = () => {
     const [selectionData, setSelectionData] = useState<RoundSelectionRead | null>(null);
     const [selectionRoundId, setSelectionRoundId] = useState<string>('');
     const [snapshotSubmitting, setSnapshotSubmitting] = useState(false);
+    const [wsConnected, setWsConnected] = useState(false);
+    const [latestRoundConsoleEvents, setLatestRoundConsoleEvents] = useState<RuntimeRoundEvent[]>([]);
+    const [isPageVisible, setIsPageVisible] = useState<boolean>(() => {
+        if (typeof document === 'undefined') return true;
+        return document.visibilityState !== 'hidden';
+    });
     const [initForm] = Form.useForm<SnapshotInitRequest & { sampleIdsText?: string }>();
     const [updateForm] = Form.useForm<SnapshotUpdateRequest & { sampleIdsText?: string }>();
     const [selectionForm] = Form.useForm<{
@@ -194,7 +310,33 @@ const ProjectLoopDetail: React.FC = () => {
         excludeSampleIdsText?: string;
         reason?: string;
     }>();
+    const wsCursorRef = useRef<string | null>(null);
+    const wsRef = useRef<WebSocket | null>(null);
+    const wsRetryTimerRef = useRef<number | null>(null);
+    const wsRetryCountRef = useRef<number>(0);
+    const wsClosedRef = useRef<boolean>(false);
+    const wsLastRefreshAtRef = useRef<number>(0);
+    const wsRefreshInFlightRef = useRef<boolean>(false);
+    const latestRoundConsoleEventsRef = useRef<RuntimeRoundEvent[]>([]);
     const updateMode = Form.useWatch('mode', updateForm);
+    const latestRound = useMemo(() => {
+        if (!rounds || rounds.length === 0) return null;
+        return [...rounds].sort((left, right) => {
+            if (Number(left.roundIndex || 0) !== Number(right.roundIndex || 0)) {
+                return Number(right.roundIndex || 0) - Number(left.roundIndex || 0);
+            }
+            return Number(right.attemptIndex || 0) - Number(left.attemptIndex || 0);
+        })[0] || null;
+    }, [rounds]);
+
+    useEffect(() => {
+        latestRoundConsoleEventsRef.current = latestRoundConsoleEvents;
+    }, [latestRoundConsoleEvents]);
+
+    useEffect(() => {
+        latestRoundConsoleEventsRef.current = [];
+        setLatestRoundConsoleEvents([]);
+    }, [latestRound?.id]);
 
     const refreshLoopData = useCallback(async () => {
         if (!loopId || !projectId) return;
@@ -234,6 +376,175 @@ const ProjectLoopDetail: React.FC = () => {
         if (!canManageLoops) return;
         void loadData();
     }, [canManageLoops, loadData]);
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const onVisibilityChange = () => setIsPageVisible(document.visibilityState !== 'hidden');
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (wsRetryTimerRef.current != null) {
+                window.clearTimeout(wsRetryTimerRef.current);
+                wsRetryTimerRef.current = null;
+            }
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        const latestRoundId = latestRound?.id;
+        if (!canManageLoops || !loopId) return;
+        if (latestRoundId && wsConnected) return;
+        const timer = window.setInterval(() => {
+            void refreshLoopData().catch(() => undefined);
+        }, FALLBACK_POLL_MS);
+        return () => window.clearInterval(timer);
+    }, [canManageLoops, loopId, latestRound?.id, wsConnected, refreshLoopData]);
+
+    useEffect(() => {
+        const latestRoundId = latestRound?.id;
+        if (!canManageLoops || !latestRoundId || !token) {
+            setWsConnected(false);
+            wsCursorRef.current = null;
+            wsRetryCountRef.current = 0;
+            latestRoundConsoleEventsRef.current = [];
+            setLatestRoundConsoleEvents([]);
+            return;
+        }
+        let cancelled = false;
+
+        wsClosedRef.current = false;
+        wsRetryCountRef.current = 0;
+        wsCursorRef.current = null;
+        latestRoundConsoleEventsRef.current = [];
+        setLatestRoundConsoleEvents([]);
+
+        const triggerRefresh = () => {
+            if (!isPageVisible) return;
+            const now = Date.now();
+            if (wsRefreshInFlightRef.current) return;
+            if (now - wsLastRefreshAtRef.current < WS_REFRESH_THROTTLE_MS) return;
+            wsLastRefreshAtRef.current = now;
+            wsRefreshInFlightRef.current = true;
+            void refreshLoopData()
+                .catch(() => undefined)
+                .finally(() => {
+                    wsRefreshInFlightRef.current = false;
+                });
+        };
+
+        const closeSocket = () => {
+            if (wsRetryTimerRef.current != null) {
+                window.clearTimeout(wsRetryTimerRef.current);
+                wsRetryTimerRef.current = null;
+            }
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+        };
+
+        const syncRoundCursor = async () => {
+            const response = await api.getRoundEvents(latestRoundId, {
+                afterCursor: wsCursorRef.current || undefined,
+                limit: 5000,
+            });
+            if (cancelled) return;
+            wsCursorRef.current = response.nextAfterCursor ?? wsCursorRef.current;
+            const incoming = (response.items || []).filter((item) => Boolean(item.stepId));
+            if (incoming.length > 0) {
+                const merged = mergeRoundConsoleEvents(latestRoundConsoleEventsRef.current, incoming);
+                latestRoundConsoleEventsRef.current = merged;
+                setLatestRoundConsoleEvents(merged);
+            }
+            if (incoming.some((item) => shouldRefreshLoopByRoundEvent(item))) {
+                triggerRefresh();
+            }
+        };
+
+        const scheduleReconnect = () => {
+            if (cancelled || wsClosedRef.current) return;
+            const retry = wsRetryCountRef.current + 1;
+            wsRetryCountRef.current = retry;
+            const delay = ROUND_WS_RECONNECT_DELAYS[Math.min(retry - 1, ROUND_WS_RECONNECT_DELAYS.length - 1)];
+            wsRetryTimerRef.current = window.setTimeout(async () => {
+                wsRetryTimerRef.current = null;
+                if (cancelled || wsClosedRef.current) return;
+                if (retry >= 3) {
+                    try {
+                        await syncRoundCursor();
+                    } catch {
+                        // ignore catch-up failure and keep retrying ws
+                    }
+                }
+                if (!cancelled && !wsClosedRef.current) {
+                    connectSocket();
+                }
+            }, delay);
+        };
+
+        const connectSocket = () => {
+            if (cancelled || wsClosedRef.current) return;
+            closeSocket();
+            const ws = new WebSocket(buildRoundEventsWsUrl(latestRoundId, token, wsCursorRef.current || undefined));
+            wsRef.current = ws;
+            ws.onopen = () => {
+                if (cancelled) return;
+                wsRetryCountRef.current = 0;
+                setWsConnected(true);
+            };
+            ws.onclose = () => {
+                if (cancelled || wsClosedRef.current) return;
+                setWsConnected(false);
+                wsRef.current = null;
+                scheduleReconnect();
+            };
+            ws.onerror = () => {
+                if (cancelled) return;
+                setWsConnected(false);
+            };
+            ws.onmessage = (event: MessageEvent<string>) => {
+                try {
+                    const parsed = JSON.parse(event.data || '{}') as unknown;
+                    const normalized = normalizeRoundConsoleEvent(parsed);
+                    if (!normalized) return;
+                    const merged = mergeRoundConsoleEvents(latestRoundConsoleEventsRef.current, [normalized]);
+                    latestRoundConsoleEventsRef.current = merged;
+                    setLatestRoundConsoleEvents(merged);
+                    if (shouldRefreshLoopByRoundEvent(normalized)) {
+                        triggerRefresh();
+                    }
+                } catch {
+                    // ignore malformed ws payload
+                }
+            };
+        };
+
+        const start = async () => {
+            try {
+                await syncRoundCursor();
+            } catch {
+                // ignore initial catch-up failure and rely on ws reconnect
+            }
+            if (!cancelled && !wsClosedRef.current) {
+                connectSocket();
+            }
+        };
+
+        void start();
+        return () => {
+            cancelled = true;
+            wsClosedRef.current = true;
+            setWsConnected(false);
+            closeSocket();
+        };
+    }, [canManageLoops, token, latestRound?.id, refreshLoopData, isPageVisible]);
 
     const executeLoopAction = useCallback(
         async (
@@ -341,7 +652,7 @@ const ProjectLoopDetail: React.FC = () => {
 
     const handleGeneratePredictionSet = useCallback(async () => {
         if (!loopId) return;
-        const sourceRoundId = rounds[0]?.id;
+        const sourceRoundId = latestRound?.id;
         if (!sourceRoundId) {
             messageApi.warning('当前没有可用 round 生成 PredictionSet');
             return;
@@ -356,7 +667,7 @@ const ProjectLoopDetail: React.FC = () => {
         } finally {
             setPredictionSubmitting(false);
         }
-    }, [loopId, rounds, refreshPredictionSets, messageApi]);
+    }, [loopId, latestRound?.id, refreshPredictionSets, messageApi]);
 
     const handleApplyPredictionSet = useCallback(async (predictionSetId: string) => {
         if (!predictionSetId) return;
@@ -466,7 +777,7 @@ const ProjectLoopDetail: React.FC = () => {
     };
 
     const openSelectionAdjustModal = async () => {
-        const latestRoundId = rounds[0]?.id;
+        const latestRoundId = latestRound?.id;
         if (!latestRoundId) {
             messageApi.warning('当前没有可调整的 round');
             return;
@@ -655,6 +966,9 @@ const ProjectLoopDetail: React.FC = () => {
                             <Title level={4} className="!mb-0">{loop.name}</Title>
                             <Tag color={LOOP_LIFECYCLE_COLOR[loop.lifecycle] || 'default'}>{loop.lifecycle}</Tag>
                             <Tag>{loop.phase}</Tag>
+                            <Tag color={wsConnected ? 'success' : 'default'}>
+                                {wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'}
+                            </Tag>
                         </div>
                         <Text type="secondary">Loop ID: {loop.id}</Text>
                     </div>
@@ -693,6 +1007,25 @@ const ProjectLoopDetail: React.FC = () => {
                     </div>
                 </div>
             </Card>
+
+            {latestRound ? (
+                <RoundConsolePanel
+                    className="!border-github-border !bg-github-panel"
+                    title={`最新 Round 动态控制台 · #${latestRound.roundIndex} / A${latestRound.attemptIndex || 1}`}
+                    wsConnected={wsConnected}
+                    events={latestRoundConsoleEvents}
+                    onClearBuffer={() => {
+                        latestRoundConsoleEventsRef.current = [];
+                        setLatestRoundConsoleEvents([]);
+                    }}
+                    emptyDescription="最新 Round 暂无日志"
+                    exportFilePrefix={`loop-${loop.id}-latest-round-${latestRound.roundIndex}`}
+                />
+            ) : (
+                <Card className="!border-github-border !bg-github-panel" title="最新 Round 动态控制台">
+                    <Empty description="当前暂无 Round，无法展示实时控制台"/>
+                </Card>
+            )}
 
             <Card className="!border-github-border !bg-github-panel" title="Loop 摘要">
                 <Descriptions size="small" column={4}>

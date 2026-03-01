@@ -238,6 +238,28 @@ class StepEventQueryResponse(BaseModel):
     facets: Optional[StepEventFacetsRead] = None
 
 
+class RoundEventRead(BaseModel):
+    step_id: uuid.UUID
+    step_index: int
+    step_type: StepType
+    stage: str
+    seq: int
+    ts: datetime
+    event_type: str
+    payload: Dict[str, Any]
+    level: Optional[str] = None
+    status: Optional[str] = None
+    kind: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    message_text: str = ""
+
+
+class RoundEventQueryResponse(BaseModel):
+    items: List[RoundEventRead] = Field(default_factory=list)
+    next_after_cursor: Optional[str] = None
+    has_more: bool = False
+
+
 class StepMetricPointRead(BaseModel):
     step: int
     epoch: Optional[int]

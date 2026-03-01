@@ -36,6 +36,9 @@ import {
     RuntimeStepCandidate,
     RuntimeStepCommandResponse,
     RuntimeStepEvent,
+    RuntimeRoundEvent,
+    RoundEventQuery,
+    RoundEventQueryResponse,
     StepEventQuery,
     StepEventQueryResponse,
     RuntimeStepMetricPoint,
@@ -394,6 +397,30 @@ function normalizeStepEventQueryResponse(response: any): StepEventQueryResponse 
                 tags: facetsRaw.tags ?? {},
             }
             : null,
+    };
+}
+
+function normalizeRoundEvent(event: any): RuntimeRoundEvent {
+    const base = normalizeStepEvent(event);
+    const stageRaw = String(event?.stage || 'custom').trim().toLowerCase();
+    const stage = (['train', 'eval', 'score', 'select', 'custom'] as const).includes(stageRaw as any)
+        ? (stageRaw as RuntimeRoundEvent['stage'])
+        : 'custom';
+    return {
+        ...base,
+        stepId: String(event?.stepId ?? event?.step_id ?? ''),
+        stepIndex: Number(event?.stepIndex ?? event?.step_index ?? 0),
+        stepType: String(event?.stepType ?? event?.step_type ?? 'custom') as any,
+        stage,
+    };
+}
+
+function normalizeRoundEventQueryResponse(response: any): RoundEventQueryResponse {
+    const itemsRaw = Array.isArray(response?.items) ? response.items : [];
+    return {
+        items: itemsRaw.map((item: any) => normalizeRoundEvent(item)),
+        nextAfterCursor: response?.nextAfterCursor ?? response?.next_after_cursor ?? null,
+        hasMore: Boolean(response?.hasMore ?? response?.has_more ?? false),
     };
 }
 
@@ -1148,6 +1175,20 @@ export class RealApiService implements ApiService {
             params: {limit},
         });
         return response.data;
+    }
+
+    async getRoundEvents(roundId: string, query: RoundEventQuery = {}): Promise<RoundEventQueryResponse> {
+        const params: Record<string, any> = {
+            limit: Number(query.limit ?? 5000),
+        };
+        if (query.afterCursor) {
+            params.after_cursor = String(query.afterCursor);
+        }
+        if (query.stages && query.stages.length > 0) {
+            params.stages = query.stages.join(',');
+        }
+        const response = await this.client.get(`/rounds/${roundId}/events`, {params});
+        return normalizeRoundEventQueryResponse(response.data);
     }
 
     async getStep(stepId: string): Promise<RuntimeStep> {

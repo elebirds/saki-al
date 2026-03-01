@@ -197,31 +197,35 @@ export function useInitPermissions() {
  * Hook for annotation permission checking.
  *
  * @example
- * const { canModify, canDelete } = useAnnotationPermission(annotation.annotatorId);
+ * const { canModify, canDelete } = useAnnotationPermission('project', projectId, annotation.annotatorId);
  *
  * if (canModify) {
  *   // Show edit button
  * }
  */
-export function useAnnotationPermission(annotationCreatorId?: string) {
+export function useAnnotationPermission(
+    resourceType: string,
+    resourceId: string | undefined,
+    annotationCreatorId?: string
+) {
     const currentUser = useAuthStore((state) => state.user);
 
     const canModify = canModifyAnnotation(
         'annotation:create:assigned',
-        annotationCreatorId,
-        currentUser?.id
+        resourceType,
+        resourceId
     );
 
     const canDelete = canModifyAnnotation(
         'annotation:create:assigned',
-        annotationCreatorId,
-        currentUser?.id
+        resourceType,
+        resourceId
     );
 
     const canRead = canModifyAnnotation(
         'annotation:read:assigned',
-        annotationCreatorId,
-        currentUser?.id
+        resourceType,
+        resourceId
     );
 
     return {

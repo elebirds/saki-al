@@ -372,7 +372,7 @@ export function useFedoAnnotations(
         if (!currentSampleId) return;
 
         if (!canEditAnnotation(updatedAnn)) {
-            if (t) message.warning(t('annotation.workspace.cannotEditOthersAnnotation'));
+            if (t) message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
 
@@ -414,7 +414,7 @@ export function useFedoAnnotations(
 
         const annotation = canvasAnnotations.find(a => a.id === id);
         if (annotation && !canEditAnnotation(annotation)) {
-            if (t) message.warning(t('annotation.workspace.cannotDeleteOthersAnnotation'));
+            if (t) message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
 

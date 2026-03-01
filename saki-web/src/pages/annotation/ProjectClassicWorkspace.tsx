@@ -268,9 +268,9 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         };
     }, []);
 
-    const canEditAnnotation = useCallback((annotation: Annotation) => {
-        return canModifyAnnotation('annotation:create:assigned', annotation.annotatorId, user?.id);
-    }, [user?.id]);
+    const canEditAnnotation = useCallback((_annotation: Annotation) => {
+        return canModifyAnnotation('annotation:create:assigned', 'project', projectId);
+    }, [projectId]);
 
     const handleAnnotationCreate = useCallback(async (event: {
         type: DetectionAnnotationType;
@@ -321,7 +321,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
     const handleUpdateAnnotation = useCallback(async (updatedAnn: Annotation) => {
         if (!currentSample?.id) return;
         if (!canEditAnnotation(updatedAnn)) {
-            message.warning(t('annotation.workspace.cannotEditOthersAnnotation'));
+            message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
         annotationState.handleAnnotationUpdate(updatedAnn);
@@ -337,7 +337,7 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         if (!currentSample?.id) return;
         const ann = annotationState.annotations.find(a => a.id === id);
         if (ann && !canEditAnnotation(ann)) {
-            message.warning(t('annotation.workspace.cannotDeleteOthersAnnotation'));
+            message.warning(t('annotation.workspace.noEditPermission'));
             return;
         }
         annotationState.handleAnnotationDelete(id);

@@ -111,9 +111,9 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
         return new Map(labels.map((label) => [label.id, label]));
     }, [labels]);
 
-    const canEditAnnotation = useCallback((annotation: Annotation) => {
-        return canModifyAnnotation('annotation:create:assigned', annotation.annotatorId, user?.id);
-    }, [user?.id]);
+    const canEditAnnotation = useCallback((_annotation: Annotation) => {
+        return canModifyAnnotation('annotation:create:assigned', 'project', projectId);
+    }, [projectId]);
 
     const {
         loadSnapshot,

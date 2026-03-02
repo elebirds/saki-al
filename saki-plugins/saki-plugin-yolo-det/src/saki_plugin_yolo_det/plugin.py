@@ -29,21 +29,21 @@ class YoloDetectionPlugin(ExecutorPlugin):
     async def on_load(self, context: dict[str, Any]) -> None:
         del context
         self.logger.info(
-            f"YOLO Detection Plugin v{self.version} loaded. "
-            f"Supported strategies: {self.supported_strategies}"
+            f"YOLO 检测插件 v{self.version} 已加载。"
+            f"支持的策略：{self.supported_strategies}"
         )
 
     async def on_start(self, step_id: str, workspace: WorkspaceProtocol) -> None:
         await super().on_start(step_id, workspace)
         workspace.ensure()
-        self.logger.debug(f"Step {step_id} workspace prepared at {workspace.root}")
+        self.logger.debug(f"step {step_id} 的工作目录已准备完成：{workspace.root}")
 
     async def on_stop(self, step_id: str, workspace: WorkspaceProtocol) -> None:
         del workspace
-        self.logger.debug(f"Step {step_id} completed")
+        self.logger.debug(f"step {step_id} 已完成")
 
     async def on_unload(self) -> None:
-        self.logger.info("YOLO Detection Plugin unloading")
+        self.logger.info("YOLO 检测插件正在卸载")
 
     def validate_params(
         self,
@@ -65,7 +65,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             *,
             context: StepRuntimeContext,
     ) -> None:
-        self.logger.info(f"Preparing dataset with {len(samples)} samples")
+        self.logger.info(f"正在准备数据集，样本数：{len(samples)}")
         await self._runtime.prepare_data(
             workspace=workspace,
             labels=labels,
@@ -75,7 +75,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             splits=splits,
             context=context,
         )
-        self.logger.info("Dataset preparation completed")
+        self.logger.info("数据集准备完成")
 
     async def train(
             self,
@@ -85,7 +85,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             *,
             context: StepRuntimeContext,
     ) -> TrainOutput:
-        self.logger.info(f"Starting training with params: {list(params.keys())}")
+        self.logger.info(f"开始训练，参数键：{list(params.keys())}")
         return await self._runtime.train(
             workspace=workspace,
             params=params,
@@ -101,7 +101,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             *,
             context: StepRuntimeContext,
     ) -> TrainOutput:
-        self.logger.info(f"Starting eval with params: {list(params.keys())}")
+        self.logger.info(f"开始评估，参数键：{list(params.keys())}")
         return await self._runtime.eval(
             workspace=workspace,
             params=params,
@@ -119,7 +119,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
         context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
         self.logger.info(
-            f"Running {strategy} prediction on {len(unlabeled_samples)} samples"
+            f"正在执行 {strategy} 预测，未标注样本数：{len(unlabeled_samples)}"
         )
         return await self._runtime.predict_unlabeled(
             workspace=workspace,
@@ -147,7 +147,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
         )
 
     async def stop(self, step_id: str) -> None:
-        self.logger.info(f"Stop requested for step {step_id}")
+        self.logger.info(f"收到 step {step_id} 的停止请求")
         await self._runtime.stop(step_id)
 
 

@@ -178,7 +178,7 @@ class PluginWorkerClient:
         self._command_endpoint = f"ipc://{cmd_path}"
         self._event_endpoint = f"ipc://{evt_path}"
         logger.debug(
-            "IPC endpoints prepared step_id={} cmd={} evt={}",
+            "IPC 端点已准备完成，step_id={} 命令端点={} 事件端点={}",
             self._step_id,
             self._command_endpoint,
             self._event_endpoint,
@@ -360,11 +360,11 @@ class PluginWorkerClient:
                 except asyncio.CancelledError:
                     raise
                 except Exception:
-                    logger.exception("worker event handler error step_id={} event_type={}", self._step_id, event_type)
+                    logger.exception("工作进程事件处理失败，step_id={} 事件类型={}", self._step_id, event_type)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("worker event loop failed step_id={}", self._step_id)
+            logger.exception("工作进程事件循环失败，step_id={}", self._step_id)
 
     async def _stream_log_loop(self, stream: asyncio.StreamReader, stream_name: str) -> None:
         coalescer = self._stream_coalescers.get(stream_name)
@@ -389,18 +389,18 @@ class PluginWorkerClient:
                 except asyncio.CancelledError:
                     raise
                 except Exception:
-                    logger.exception("worker stream log forward failed step_id={}", self._step_id)
+                    logger.exception("工作进程流日志转发失败，step_id={}", self._step_id)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("worker stream read failed step_id={} stream={}", self._step_id, stream_name)
+            logger.exception("工作进程流读取失败，step_id={} 流={}", self._step_id, stream_name)
         finally:
             if coalescer is not None:
                 try:
                     await coalescer.flush()
                 except Exception:
                     logger.exception(
-                        "worker stream coalescer flush failed step_id={} stream={}",
+                        "工作进程流日志合并器刷新失败，step_id={} 流={}",
                         self._step_id,
                         stream_name,
                     )
@@ -420,7 +420,7 @@ class PluginWorkerClient:
             try:
                 await coalescer.close()
             except Exception:
-                logger.exception("worker stream coalescer close failed step_id={}", self._step_id)
+                logger.exception("工作进程流日志合并器关闭失败，step_id={}", self._step_id)
         self._stream_coalescers = {}
 
         self._event_task = None
@@ -440,6 +440,6 @@ class PluginWorkerClient:
             try:
                 if path.exists():
                     path.unlink()
-                    logger.debug("cleaned legacy socket file: {}", path)
+                    logger.debug("已清理遗留套接字文件：{}", path)
             except Exception as exc:
-                logger.warning("failed to cleanup socket {}: {}", path, exc)
+                logger.warning("清理套接字失败 {}: {}", path, exc)

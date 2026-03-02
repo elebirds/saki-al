@@ -35,7 +35,7 @@ def ensure_plugin_venv(plugin_dir: Path, *, auto_sync: bool = True) -> Path:
     needs_sync = auto_sync and (not python_path.exists() or not venv_dir.exists())
 
     if needs_sync and pyproject.exists():
-        logger.info("syncing plugin venv dir={}", plugin_dir)
+        logger.info("正在同步插件虚拟环境，目录={}", plugin_dir)
         result = subprocess.run(
             ["uv", "sync"],
             cwd=str(plugin_dir),
@@ -49,7 +49,7 @@ def ensure_plugin_venv(plugin_dir: Path, *, auto_sync: bool = True) -> Path:
                 f"uv sync failed for plugin at {plugin_dir}: "
                 f"exit_code={result.returncode} stderr={stderr[:500]}"
             )
-        logger.info("plugin venv synced dir={}", plugin_dir)
+        logger.info("插件虚拟环境同步完成，目录={}", plugin_dir)
 
     if not python_path.exists():
         raise RuntimeError(

@@ -38,7 +38,7 @@ class PluginRegistry:
 
         root = Path(plugins_dir)
         if not root.is_dir():
-            logger.warning("plugins directory does not exist: {}", root)
+            logger.warning("插件目录不存在：{}", root)
             return
 
         for candidate in sorted(root.iterdir()):
@@ -55,10 +55,10 @@ class PluginRegistry:
                 )
                 self.register(handle)
                 logger.info(
-                    "discovered plugin id={} v={} dir={}",
+                    "发现插件：插件ID={} 版本={} 目录={}",
                     manifest.plugin_id,
                     manifest.version,
                     candidate,
                 )
             except Exception:
-                logger.exception("failed to load plugin from {}", candidate)
+                logger.exception("加载插件失败，目录={}", candidate)

@@ -81,7 +81,7 @@ class StepManager:
         request = StepExecutionRequest.from_payload(payload)
         async with self._lock:
             if self.busy:
-                logger.warning("拒绝任务分配：executor busy, request_id={}", request_id)
+                logger.warning("拒绝任务分配：executor 忙碌，request_id={}", request_id)
                 return False
             self.current_step_id = request.step_id
             self.executor_state = ExecutorState.RESERVED

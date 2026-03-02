@@ -9,7 +9,46 @@ from saki_api.modules.runtime.api.round_step import RoundUpdate
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.state_machine import TERMINAL_ROUND_STATES, summarize_step_states
-from saki_api.modules.shared.modeling.enums import RoundStatus
+from saki_api.modules.shared.modeling.enums import RoundStatus, StepType
+
+
+def _step_type_text(step: Step) -> str:
+    raw = step.step_type.value if hasattr(step.step_type, "value") else step.step_type
+    return str(raw or "").strip().lower()
+
+
+def _non_empty_metrics(step: Step) -> dict[str, object] | None:
+    metrics = step.metrics if isinstance(step.metrics, dict) else {}
+    if not metrics:
+        return None
+    return dict(metrics)
+
+
+def _find_latest_metrics_by_step_type(ordered_steps: list[Step], step_type: StepType) -> dict[str, object] | None:
+    target = str(step_type.value)
+    for step in reversed(ordered_steps):
+        if _step_type_text(step) != target:
+            continue
+        metrics = _non_empty_metrics(step)
+        if metrics is not None:
+            return metrics
+    return None
+
+
+def _pick_final_metrics(ordered_steps: list[Step]) -> dict[str, object]:
+    eval_metrics = _find_latest_metrics_by_step_type(ordered_steps, StepType.EVAL)
+    if eval_metrics is not None:
+        return eval_metrics
+
+    train_metrics = _find_latest_metrics_by_step_type(ordered_steps, StepType.TRAIN)
+    if train_metrics is not None:
+        return train_metrics
+
+    for step in reversed(ordered_steps):
+        metrics = _non_empty_metrics(step)
+        if metrics is not None:
+            return metrics
+    return {}
 
 
 def build_round_update_from_steps(*, round_row: Round, steps: Iterable[Step]) -> RoundUpdate:
@@ -40,7 +79,7 @@ def build_round_update_from_steps(*, round_row: Round, steps: Iterable[Step]) ->
         payload.ended_at = datetime.now(UTC)
 
     last_step = ordered_steps[-1]
-    payload.final_metrics = dict(last_step.metrics or {})
+    payload.final_metrics = _pick_final_metrics(ordered_steps)
     merged_artifacts: dict[str, dict] = {}
     for step in ordered_steps:
         step_artifacts = step.artifacts if isinstance(step.artifacts, dict) else {}

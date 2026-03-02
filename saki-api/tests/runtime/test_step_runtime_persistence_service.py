@@ -122,6 +122,52 @@ async def _seed_train_step(session: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]
     return step.id, round_row.id
 
 
+async def _seed_train_eval_select_steps(session: AsyncSession) -> tuple[dict[str, uuid.UUID], uuid.UUID]:
+    train_step_id, round_id = await _seed_train_step(session)
+    train_step = await session.get(Step, train_step_id)
+    assert train_step is not None
+
+    eval_step = Step(
+        round_id=round_id,
+        step_type=StepType.EVAL,
+        dispatch_kind=StepDispatchKind.DISPATCHABLE,
+        state=StepStatus.RUNNING,
+        round_index=int(train_step.round_index),
+        step_index=2,
+        depends_on_step_ids=[],
+        resolved_params={},
+        metrics={},
+        artifacts={},
+        input_commit_id=train_step.input_commit_id,
+        attempt=1,
+        max_attempts=3,
+    )
+    select_step = Step(
+        round_id=round_id,
+        step_type=StepType.SELECT,
+        dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+        state=StepStatus.RUNNING,
+        round_index=int(train_step.round_index),
+        step_index=3,
+        depends_on_step_ids=[],
+        resolved_params={},
+        metrics={},
+        artifacts={},
+        input_commit_id=train_step.input_commit_id,
+        attempt=1,
+        max_attempts=3,
+    )
+    session.add(eval_step)
+    session.add(select_step)
+    await session.commit()
+
+    return {
+        "train": train_step_id,
+        "eval": eval_step.id,
+        "select": select_step.id,
+    }, round_id
+
+
 @pytest.mark.anyio
 async def test_persist_step_result_no_longer_appends_terminal_metric_points(persistence_env):
     session_local = persistence_env
@@ -197,3 +243,46 @@ async def test_persist_step_result_without_metric_events_keeps_series_empty(pers
         assert round_row is not None
         assert float(round_row.final_metrics.get("map50", 0.0)) == pytest.approx(0.70)
         assert float(round_row.final_metrics.get("loss", 0.0)) == pytest.approx(0.30)
+
+
+@pytest.mark.anyio
+async def test_persist_multi_step_result_keeps_eval_metrics_as_round_final(persistence_env):
+    session_local = persistence_env
+
+    async with session_local() as session:
+        step_ids, round_id = await _seed_train_eval_select_steps(session)
+        persistence = RuntimeStepPersistenceService(session)
+
+        await persistence.persist_step_result(
+            RuntimeStepResultDTO(
+                step_id=step_ids["train"],
+                status=StepStatus.SUCCEEDED,
+                metrics={"loss": 0.55},
+                artifacts=[],
+                candidates=[],
+            )
+        )
+        await persistence.persist_step_result(
+            RuntimeStepResultDTO(
+                step_id=step_ids["eval"],
+                status=StepStatus.SUCCEEDED,
+                metrics={"map50": 0.81, "precision": 0.89},
+                artifacts=[],
+                candidates=[],
+            )
+        )
+        await persistence.persist_step_result(
+            RuntimeStepResultDTO(
+                step_id=step_ids["select"],
+                status=StepStatus.SUCCEEDED,
+                metrics={},
+                artifacts=[],
+                candidates=[],
+            )
+        )
+        await session.commit()
+
+        round_row = await session.get(Round, round_id)
+        assert round_row is not None
+        assert round_row.state == RoundStatus.COMPLETED
+        assert round_row.final_metrics == {"map50": 0.81, "precision": 0.89}

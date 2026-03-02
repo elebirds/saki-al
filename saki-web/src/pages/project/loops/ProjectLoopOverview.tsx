@@ -16,6 +16,7 @@ import {
     Typography,
     message,
 } from 'antd';
+import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router-dom';
 import {Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
 
@@ -86,6 +87,7 @@ const listSimulationStrategies = (plugin?: RuntimePluginCatalogItem): string[] =
 };
 
 const ProjectLoopOverview: React.FC = () => {
+    const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const {can: canProject} = useResourcePermission('project', projectId);
@@ -151,7 +153,7 @@ const ProjectLoopOverview: React.FC = () => {
             const payload = await api.getSimulationExperimentComparison(groupId, 'map50');
             setComparison(payload);
         } catch (error: any) {
-            message.error(error?.message || '加载对比数据失败');
+            message.error(error?.message || t('project.loopOverview.messages.loadComparisonFailed'));
         } finally {
             setCurveLoading(false);
         }
@@ -181,7 +183,7 @@ const ProjectLoopOverview: React.FC = () => {
             });
             setSummaryMap(nextSummaryMap);
         } catch (error: any) {
-            message.error(error?.message || '加载 Loop 概览失败');
+            message.error(error?.message || t('project.loopOverview.messages.loadOverviewFailed'));
         } finally {
             setLoading(false);
         }
@@ -240,7 +242,7 @@ const ProjectLoopOverview: React.FC = () => {
             if (isSimulation) {
                 const strategies = (values.simulationStrategies || []).filter((item) => !!String(item || '').trim());
                 if (strategies.length === 0) {
-                    message.error('请至少选择一个 simulation 策略');
+                    message.error(t('project.loopOverview.messages.selectAtLeastOneSimulationStrategy'));
                     return;
                 }
                 const seeds = (values.simulationConfig?.seeds || [0, 1, 2, 3, 4])
@@ -270,7 +272,7 @@ const ProjectLoopOverview: React.FC = () => {
                     lifecycle: values.lifecycle || 'draft',
                 };
                 const created = await api.createSimulationExperiment(projectId, simulationPayload);
-                message.success(`Simulation 实验创建成功，共 ${created.loops.length} 条 Loop`);
+                message.success(t('project.loopOverview.messages.simulationExperimentCreateSuccess', {count: created.loops.length}));
                 setCreateOpen(false);
                 await loadData();
                 if (created.loops[0]) {
@@ -302,13 +304,13 @@ const ProjectLoopOverview: React.FC = () => {
                 config,
             };
             const created = await api.createProjectLoop(projectId, payload);
-            message.success('Loop 创建成功');
+            message.success(t('project.loopOverview.messages.loopCreateSuccess'));
             setCreateOpen(false);
             await loadData();
             navigate(`/projects/${projectId}/loops/${created.id}`);
         } catch (error: any) {
             if (error?.errorFields) return;
-            message.error(error?.message || 'Loop 创建失败');
+            message.error(error?.message || t('project.loopOverview.messages.loopCreateFailed'));
         } finally {
             setCreating(false);
         }
@@ -325,7 +327,7 @@ const ProjectLoopOverview: React.FC = () => {
     if (!canManageLoops) {
         return (
             <Card className="!border-github-border !bg-github-panel">
-                <Alert type="warning" showIcon message="暂无权限访问 Loop 页面"/>
+                <Alert type="warning" showIcon message={t('project.loopOverview.noPermission')}/>
             </Card>
         );
     }
@@ -335,16 +337,16 @@ const ProjectLoopOverview: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <Title level={4} className="!mb-1">Loop 概览</Title>
-                        <Text type="secondary">Loop/Round/Step 统一语义概览页。</Text>
+                        <Title level={4} className="!mb-1">{t('project.loopOverview.title')}</Title>
+                        <Text type="secondary">{t('project.loopOverview.subtitle')}</Text>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <Button onClick={() => navigate('/runtime/executors')}>查看执行器状态</Button>
+                        <Button onClick={() => navigate('/runtime/executors')}>{t('project.loopOverview.viewExecutors')}</Button>
                         <Button
                             onClick={async () => {
                                 const groupId = selectedGroupId || experimentGroupOptions[0]?.value;
                                 if (!groupId) {
-                                    message.info('当前没有可展示的 simulation 实验组');
+                                    message.info(t('project.loopOverview.messages.noSimulationExperimentGroup'));
                                     return;
                                 }
                                 setCurveModalOpen(true);
@@ -352,15 +354,15 @@ const ProjectLoopOverview: React.FC = () => {
                             }}
                             disabled={experimentGroupOptions.length === 0}
                         >
-                            实验组对比
+                            {t('project.loopOverview.compareExperimentGroup')}
                         </Button>
-                        <Button onClick={loadData}>刷新</Button>
+                        <Button onClick={loadData}>{t('project.loopOverview.refresh')}</Button>
                         <Button
                             type="primary"
                             onClick={() => setCreateOpen(true)}
                             disabled={plugins.length === 0 || branches.length === 0}
                         >
-                            新建 Loop
+                            {t('project.loopOverview.createLoop')}
                         </Button>
                     </div>
                 </div>
@@ -369,15 +371,15 @@ const ProjectLoopOverview: React.FC = () => {
                         className="!mt-4"
                         type="warning"
                         showIcon
-                        message="当前没有可用插件目录"
-                        description="请先启动至少一个 executor 并完成注册。"
+                        message={t('project.loopOverview.noPluginCatalog')}
+                        description={t('project.loopOverview.noPluginCatalogDesc')}
                     />
                 ) : null}
             </Card>
 
             {loops.length === 0 ? (
                 <Card className="!border-github-border !bg-github-panel">
-                    <Empty description="当前项目还没有 Loop"/>
+                    <Empty description={t('project.loopOverview.empty')}/>
                 </Card>
             ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -394,7 +396,7 @@ const ProjectLoopOverview: React.FC = () => {
                                             type="link"
                                             onClick={() => navigate(`/projects/${projectId}/loops/${loop.id}`)}
                                         >
-                                            进入详情
+                                            {t('project.loopOverview.enterDetail')}
                                         </Button>,
                                     ]}
                                 >
@@ -403,24 +405,24 @@ const ProjectLoopOverview: React.FC = () => {
                                             <Text strong>{loop.name}</Text>
                                             <Tag color={LOOP_LIFECYCLE_COLOR[loop.lifecycle] || 'default'}>{loop.lifecycle}</Tag>
                                         </div>
-                                        <Text type="secondary">分支：{branchName}</Text>
-                                        <Text type="secondary">模式：{loop.mode}</Text>
+                                        <Text type="secondary">{t('project.loopOverview.branch')}: {branchName}</Text>
+                                        <Text type="secondary">{t('project.loopOverview.mode')}: {loop.mode}</Text>
                                         <Text type="secondary">Phase：{loop.phase}</Text>
                                         {loop.gate ? <Tag color={LOOP_GATE_COLOR[loop.gate] || 'default'}>{loop.gate}</Tag> : null}
-                                        <Text type="secondary">插件：{loop.modelArch}</Text>
-                                        <Text type="secondary">策略：{loop.config?.sampling?.strategy || '-'}</Text>
+                                        <Text type="secondary">{t('project.loopOverview.plugin')}: {loop.modelArch}</Text>
+                                        <Text type="secondary">{t('project.loopOverview.strategy')}: {loop.config?.sampling?.strategy || '-'}</Text>
                                         <div className="grid grid-cols-2 gap-2 text-xs text-github-muted">
                                             <div>
-                                                <Text strong>{summary?.roundsTotal ?? 0}</Text> Rounds
+                                                <Text strong>{summary?.roundsTotal ?? 0}</Text> {t('project.loopOverview.summary.rounds')}
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.roundsSucceeded ?? 0}</Text> Rounds 成功
+                                                <Text strong>{summary?.roundsSucceeded ?? 0}</Text> {t('project.loopOverview.summary.roundsSucceeded')}
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.stepsTotal ?? 0}</Text> Steps
+                                                <Text strong>{summary?.stepsTotal ?? 0}</Text> {t('project.loopOverview.summary.steps')}
                                             </div>
                                             <div>
-                                                <Text strong>{summary?.stepsSucceeded ?? 0}</Text> Steps 成功
+                                                <Text strong>{summary?.stepsSucceeded ?? 0}</Text> {t('project.loopOverview.summary.stepsSucceeded')}
                                             </div>
                                         </div>
                                     </div>
@@ -432,7 +434,7 @@ const ProjectLoopOverview: React.FC = () => {
             )}
 
             <Modal
-                title={selectedMode === 'simulation' ? '新建 Simulation Experiment' : '新建 Loop'}
+                title={selectedMode === 'simulation' ? t('project.loopOverview.modal.createSimulationExperiment') : t('project.loopOverview.modal.createLoop')}
                 open={createOpen}
                 onCancel={() => setCreateOpen(false)}
                 onOk={handleCreateLoop}
@@ -441,18 +443,18 @@ const ProjectLoopOverview: React.FC = () => {
             >
                 <Form form={createForm} layout="vertical">
                     {selectedMode !== 'simulation' ? (
-                        <Form.Item name="name" label="名称" rules={[{required: true, message: '请输入名称'}]}>
-                            <Input placeholder="例如：fedo-yolo-loop-1"/>
+                        <Form.Item name="name" label={t('project.loopOverview.form.name')} rules={[{required: true, message: t('project.loopOverview.form.nameRequired')}]}>
+                            <Input placeholder={t('project.loopOverview.form.namePlaceholder')}/>
                         </Form.Item>
                     ) : (
-                        <Form.Item name="simulationExperimentName" label="实验名称（可选）">
-                            <Input placeholder="例如：车辆检测对比实验（留空自动命名）"/>
+                        <Form.Item name="simulationExperimentName" label={t('project.loopOverview.form.simulationExperimentName')}>
+                            <Input placeholder={t('project.loopOverview.form.simulationExperimentNamePlaceholder')}/>
                         </Form.Item>
                     )}
-                    <Form.Item name="branchId" label="绑定分支" rules={[{required: true, message: '请选择分支'}]}>
+                    <Form.Item name="branchId" label={t('project.loopOverview.form.branchId')} rules={[{required: true, message: t('project.loopOverview.form.branchIdRequired')}]}>
                         <Select options={branches.map((item) => ({label: item.name, value: item.id}))}/>
                     </Form.Item>
-                    <Form.Item name="modelArch" label="插件" rules={[{required: true, message: '请选择插件'}]}>
+                    <Form.Item name="modelArch" label={t('project.loopOverview.form.modelArch')} rules={[{required: true, message: t('project.loopOverview.form.modelArchRequired')}]}>
                         <Select
                             options={pluginOptions}
                             onChange={(value) => {
@@ -466,25 +468,25 @@ const ProjectLoopOverview: React.FC = () => {
                     </Form.Item>
 
                     {selectedMode === 'active_learning' ? (
-                        <Form.Item name="samplingStrategy" label="默认采样策略" rules={[{required: true, message: '请选择采样策略'}]}>
+                        <Form.Item name="samplingStrategy" label={t('project.loopOverview.form.samplingStrategy')} rules={[{required: true, message: t('project.loopOverview.form.samplingStrategyRequired')}]}>
                             <Select options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}/>
                         </Form.Item>
                     ) : (
-                        <Form.Item name="simulationStrategies" label="对比策略" rules={[{required: true, message: '请至少选择一个策略'}]}>
+                        <Form.Item name="simulationStrategies" label={t('project.loopOverview.form.simulationStrategies')} rules={[{required: true, message: t('project.loopOverview.form.simulationStrategiesRequired')}]}>
                             <Select
                                 mode="multiple"
                                 options={simulationStrategyOptions}
-                                placeholder="至少选择一个策略，系统会自动补齐 random_baseline"
+                                placeholder={t('project.loopOverview.form.simulationStrategiesPlaceholder')}
                             />
                         </Form.Item>
                     )}
 
-                    <Form.Item name="mode" label="运行模式" rules={[{required: true, message: '请选择运行模式'}]}>
+                    <Form.Item name="mode" label={t('project.loopOverview.form.mode')} rules={[{required: true, message: t('project.loopOverview.form.modeRequired')}]}>
                         <Select
                             options={[
-                                {label: '主动学习 (HITL)', value: 'active_learning'},
-                                {label: '模拟实验 (Simulation)', value: 'simulation'},
-                                {label: '手动模式 (Manual)', value: 'manual'},
+                                {label: t('project.loopOverview.form.modeOptions.activeLearning'), value: 'active_learning'},
+                                {label: t('project.loopOverview.form.modeOptions.simulation'), value: 'simulation'},
+                                {label: t('project.loopOverview.form.modeOptions.manual'), value: 'manual'},
                             ]}
                         />
                     </Form.Item>
@@ -494,16 +496,16 @@ const ProjectLoopOverview: React.FC = () => {
                             <Alert
                                 type="info"
                                 showIcon
-                                message="Simulation 会在独立分支上运行策略对比，并强制包含 random_baseline。"
+                                message={t('project.loopOverview.form.simulationInfo')}
                             />
                             <Form.Item
                                 name={['simulationConfig', 'oracleCommitId']}
-                                label="Oracle Commit ID"
-                                rules={[{required: true, message: 'simulation 模式必须提供 oracle commit'}]}
+                                label={t('project.loopOverview.form.oracleCommitId')}
+                                rules={[{required: true, message: t('project.loopOverview.form.oracleCommitIdRequired')}]}
                             >
-                                <Input placeholder="全量标注 commit id"/>
+                                <Input placeholder={t('project.loopOverview.form.oracleCommitIdPlaceholder')}/>
                             </Form.Item>
-                            <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
+                            <Form.Item name={['simulationConfig', 'seedRatio']} label={t('project.loopOverview.form.seedRatio')}>
                                 <Slider
                                     min={0.001}
                                     max={1}
@@ -512,7 +514,7 @@ const ProjectLoopOverview: React.FC = () => {
                                     tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
                                 />
                             </Form.Item>
-                            <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
+                            <Form.Item name={['simulationConfig', 'stepRatio']} label={t('project.loopOverview.form.stepRatio')}>
                                 <Slider
                                     min={0.001}
                                     max={1}
@@ -521,20 +523,20 @@ const ProjectLoopOverview: React.FC = () => {
                                     tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
                                 />
                             </Form.Item>
-                            <Form.Item name={['simulationConfig', 'seeds']} label="随机种子列表">
-                                <Select mode="tags" tokenSeparators={[',']} placeholder="例如：0,1,2,3,4"/>
+                            <Form.Item name={['simulationConfig', 'seeds']} label={t('project.loopOverview.form.seeds')}>
+                                <Select mode="tags" tokenSeparators={[',']} placeholder={t('project.loopOverview.form.seedsPlaceholder')}/>
                             </Form.Item>
                         </>
                     ) : null}
 
-                    <Form.Item name="queryBatchSize" label="每轮 TopK">
+                    <Form.Item name="queryBatchSize" label={t('project.loopOverview.form.queryBatchSize')}>
                         <InputNumber min={1} max={5000} className="w-full"/>
                     </Form.Item>
                 </Form>
             </Modal>
 
             <Modal
-                title="Simulation 策略对比"
+                title={t('project.loopOverview.compareModal.title')}
                 open={curveModalOpen}
                 onCancel={() => setCurveModalOpen(false)}
                 footer={null}
@@ -548,14 +550,14 @@ const ProjectLoopOverview: React.FC = () => {
                             setSelectedGroupId(value);
                             await loadComparison(value);
                         }}
-                        placeholder="选择实验组"
+                        placeholder={t('project.loopOverview.compareModal.selectGroupPlaceholder')}
                     />
                     {curveLoading ? (
                         <div className="flex h-[320px] items-center justify-center">
                             <Spin/>
                         </div>
                     ) : curveChartRows.length === 0 ? (
-                        <Empty description="暂无可绘制对比数据"/>
+                        <Empty description={t('project.loopOverview.compareModal.empty')}/>
                     ) : (
                         <>
                             <div className="h-[320px] w-full">
@@ -584,7 +586,7 @@ const ProjectLoopOverview: React.FC = () => {
                                 pagination={false}
                                 dataSource={comparison?.strategies || []}
                                 columns={[
-                                    {title: '策略', dataIndex: 'strategy'},
+                                    {title: t('project.loopOverview.compareModal.table.strategy'), dataIndex: 'strategy'},
                                     {title: 'Seeds', render: (_: unknown, row: any) => (row.seeds || []).join(', ')},
                                     {title: 'Final Mean', render: (_: unknown, row: any) => Number(row.finalMean || 0).toFixed(4)},
                                     {title: 'Final Std', render: (_: unknown, row: any) => Number(row.finalStd || 0).toFixed(4)},

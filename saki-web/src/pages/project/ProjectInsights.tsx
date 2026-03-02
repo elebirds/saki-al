@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Card, Empty, Select, Spin, Statistic, Table, Tag, Typography} from 'antd';
+import {useTranslation} from 'react-i18next';
 import {useParams} from 'react-router-dom';
 import {
     CartesianGrid,
@@ -34,6 +35,7 @@ const ROUND_STATE_COLOR: Record<string, string> = {
 };
 
 const ProjectInsights: React.FC = () => {
+    const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
     const [loading, setLoading] = useState(true);
     const [loops, setLoops] = useState<Loop[]>([]);
@@ -109,7 +111,7 @@ const ProjectInsights: React.FC = () => {
     if (!selectedLoop && loops.length === 0) {
         return (
             <Card className="!border-github-border !bg-github-panel">
-                <Empty description="暂无 Loop 数据，先到 Loops 页面创建并运行闭环"/>
+                <Empty description={t('project.insights.emptyLoops')}/>
             </Card>
         );
     }
@@ -118,7 +120,7 @@ const ProjectInsights: React.FC = () => {
         <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
             <Card className="!border-github-border !bg-github-panel">
                 <div className="flex flex-wrap items-center gap-3">
-                    <Text type="secondary">Loop 维度</Text>
+                    <Text type="secondary">{t('project.insights.loopDimension')}</Text>
                     <Select
                         className="min-w-[320px]"
                         value={selectedLoopId}
@@ -140,31 +142,31 @@ const ProjectInsights: React.FC = () => {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Rounds 总数" value={summary?.roundsTotal ?? rounds.length}/>
+                        <Statistic title={t('project.insights.stats.roundsTotal')} value={summary?.roundsTotal ?? rounds.length}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Rounds 成功" value={summary?.roundsSucceeded ?? 0}/>
+                        <Statistic title={t('project.insights.stats.roundsSucceeded')} value={summary?.roundsSucceeded ?? 0}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Steps 总数" value={summary?.stepsTotal ?? 0}/>
+                        <Statistic title={t('project.insights.stats.stepsTotal')} value={summary?.stepsTotal ?? 0}/>
                     </Card>
                 </div>
                 <div>
                     <Card className="!border-github-border !bg-github-panel">
-                        <Statistic title="Steps 成功" value={summary?.stepsSucceeded ?? 0}/>
+                        <Statistic title={t('project.insights.stats.stepsSucceeded')} value={summary?.stepsSucceeded ?? 0}/>
                     </Card>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="min-w-0 lg:col-span-2">
-                    <Card className="!border-github-border !bg-github-panel" title="Round 指标走势">
+                    <Card className="!border-github-border !bg-github-panel" title={t('project.insights.roundMetricsTrend')}>
                         {chartData.length === 0 ? (
-                            <Empty description="暂无 Round 指标"/>
+                            <Empty description={t('project.insights.emptyRoundMetrics')}/>
                         ) : (
                             <div className="h-[340px]">
                                 <ResponsiveContainer width="100%" height="100%">
@@ -184,18 +186,20 @@ const ProjectInsights: React.FC = () => {
                     </Card>
                 </div>
                 <div className="min-w-0">
-                    <Card className="!border-github-border !bg-github-panel" title="模型状态">
+                    <Card className="!border-github-border !bg-github-panel" title={t('project.insights.modelStatus')}>
                         <div className="flex flex-col gap-4">
-                            <Statistic title="总模型数" value={models.length}/>
-                            <Statistic title="候选模型" value={candidateModels.length}/>
-                            <Statistic title="生产模型" value={productionModels.length}/>
-                            <Text type="secondary">最新 mAP50: {Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}</Text>
+                            <Statistic title={t('project.insights.stats.totalModels')} value={models.length}/>
+                            <Statistic title={t('project.insights.stats.candidateModels')} value={candidateModels.length}/>
+                            <Statistic title={t('project.insights.stats.productionModels')} value={productionModels.length}/>
+                            <Text type="secondary">
+                                {t('project.insights.latestMap50', {value: Number(summary?.metricsLatest?.map50 || 0).toFixed(4)})}
+                            </Text>
                         </div>
                     </Card>
                 </div>
             </div>
 
-            <Card className="!border-github-border !bg-github-panel" title="Round 明细">
+            <Card className="!border-github-border !bg-github-panel" title={t('project.insights.roundDetails')}>
                 <Table
                     size="small"
                     rowKey={(item) => item.id}
@@ -204,12 +208,12 @@ const ProjectInsights: React.FC = () => {
                     columns={[
                         {title: 'Round', dataIndex: 'roundIndex', width: 90},
                         {
-                            title: '状态',
+                            title: t('project.insights.table.status'),
                             dataIndex: 'state',
                             width: 140,
                             render: (value: string) => <Tag color={ROUND_STATE_COLOR[value] || 'default'}>{value}</Tag>,
                         },
-                        {title: '策略', dataIndex: 'queryStrategy', width: 180},
+                        {title: t('project.insights.table.strategy'), dataIndex: 'queryStrategy', width: 180},
                         {title: 'mAP50', render: (_: unknown, row: RuntimeRound) => Number(row.finalMetrics?.map50 || 0).toFixed(4), width: 100},
                         {title: 'recall', render: (_: unknown, row: RuntimeRound) => Number(row.finalMetrics?.recall || 0).toFixed(4), width: 100},
                         {title: 'stepCounts', render: (_: unknown, row: RuntimeRound) => JSON.stringify(row.stepCounts || {})},

@@ -18,6 +18,7 @@ import {
     message,
 } from 'antd';
 import {ReloadOutlined} from '@ant-design/icons';
+import {useTranslation} from 'react-i18next';
 import {useParams, useSearchParams} from 'react-router-dom';
 
 import {api} from '../../services/api';
@@ -49,6 +50,7 @@ const shortId = (value?: string | null): string => {
 };
 
 const ProjectModels: React.FC = () => {
+    const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
     const [searchParams] = useSearchParams();
     const [loading, setLoading] = useState(true);
@@ -106,7 +108,7 @@ const ProjectModels: React.FC = () => {
             });
             setModels(rows);
         } catch (error: any) {
-            message.error(error?.message || '加载模型列表失败');
+            message.error(error?.message || t('project.models.messages.loadListFailed'));
         } finally {
             setLoading(false);
         }
@@ -118,7 +120,7 @@ const ProjectModels: React.FC = () => {
             const row = await api.getModel(modelId);
             setDetailModel(row);
         } catch (error: any) {
-            message.error(error?.message || '加载模型详情失败');
+            message.error(error?.message || t('project.models.messages.loadDetailFailed'));
             setDetailModel(null);
         } finally {
             setDetailLoading(false);
@@ -156,13 +158,13 @@ const ProjectModels: React.FC = () => {
                 versionTag: values.versionTag || undefined,
                 status: values.status || 'candidate',
             });
-            message.success(`模型发布成功：${created.name}`);
+            message.success(t('project.models.messages.publishSuccess', {name: created.name}));
             setPublishOpen(false);
             publishForm.resetFields();
             await loadModels();
         } catch (error: any) {
             if (error?.errorFields) return;
-            message.error(error?.message || '发布模型失败');
+            message.error(error?.message || t('project.models.messages.publishFailed'));
         } finally {
             setPublishing(false);
         }
@@ -172,10 +174,10 @@ const ProjectModels: React.FC = () => {
         setPromotingId(modelId);
         try {
             await api.promoteModel(modelId, 'production');
-            message.success('已晋升为 production');
+            message.success(t('project.models.messages.promoteSuccess'));
             await loadModels();
         } catch (error: any) {
-            message.error(error?.message || '晋升失败');
+            message.error(error?.message || t('project.models.messages.promoteFailed'));
         } finally {
             setPromotingId(null);
         }
@@ -188,7 +190,7 @@ const ProjectModels: React.FC = () => {
             const payload = await api.getModelArtifactDownloadUrl(row.id, artifactName, 2);
             window.open(payload.downloadUrl, '_blank', 'noopener,noreferrer');
         } catch (error: any) {
-            message.error(error?.message || '获取下载链接失败');
+            message.error(error?.message || t('project.models.messages.getDownloadUrlFailed'));
         } finally {
             setDownloadingId(null);
         }
@@ -223,7 +225,7 @@ const ProjectModels: React.FC = () => {
                     <Space wrap>
                         <Input.Search
                             allowClear
-                            placeholder="按名称/插件/版本筛选"
+                            placeholder={t('project.models.searchPlaceholder')}
                             value={q}
                             onChange={(event) => setQ(event.target.value)}
                             onSearch={() => void loadModels()}
@@ -234,7 +236,7 @@ const ProjectModels: React.FC = () => {
                             onChange={(value) => setStatusFilter(value)}
                             style={{width: 180}}
                             options={[
-                                {label: '全部状态', value: 'all'},
+                                {label: t('project.models.allStatus'), value: 'all'},
                                 {label: 'candidate', value: 'candidate'},
                                 {label: 'production', value: 'production'},
                                 {label: 'archived', value: 'archived'},
@@ -243,18 +245,18 @@ const ProjectModels: React.FC = () => {
                     </Space>
                     <Space wrap>
                         <Button icon={<ReloadOutlined/>} onClick={() => void loadModels()}>
-                            刷新
+                            {t('project.models.refresh')}
                         </Button>
                         <Button type="primary" onClick={() => setPublishOpen(true)}>
-                            发布模型
+                            {t('project.models.publishModel')}
                         </Button>
                     </Space>
                 </div>
             </Card>
 
-            <Card className="!border-github-border !bg-github-panel" title="模型中心">
+            <Card className="!border-github-border !bg-github-panel" title={t('project.models.title')}>
                 {models.length === 0 ? (
-                    <Empty description="暂无模型"/>
+                    <Empty description={t('project.models.empty')}/>
                 ) : (
                     <Table<ProjectModel>
                         rowKey={(row) => row.id}
@@ -262,37 +264,37 @@ const ProjectModels: React.FC = () => {
                         pagination={{pageSize: 10, showSizeChanger: false}}
                         size="small"
                         columns={[
-                            {title: '名称', dataIndex: 'name'},
-                            {title: '版本', dataIndex: 'versionTag', width: 150},
-                            {title: '插件', dataIndex: 'pluginId', width: 180},
+                            {title: t('project.models.table.name'), dataIndex: 'name'},
+                            {title: t('project.models.table.version'), dataIndex: 'versionTag', width: 150},
+                            {title: t('project.models.table.plugin'), dataIndex: 'pluginId', width: 180},
                             {
-                                title: '状态',
+                                title: t('project.models.table.status'),
                                 dataIndex: 'status',
                                 width: 140,
                                 render: (value: string) => <Tag color={STATUS_COLOR[value] || 'default'}>{value}</Tag>,
                             },
                             {
-                                title: '来源 Round',
+                                title: t('project.models.table.sourceRound'),
                                 width: 140,
                                 render: (_: unknown, row: ProjectModel) => (
                                     <Text code>{shortId(row.sourceRoundId)}</Text>
                                 ),
                             },
                             {
-                                title: '主制品',
+                                title: t('project.models.table.primaryArtifact'),
                                 width: 160,
                                 render: (_: unknown, row: ProjectModel) => (
                                     <Text>{String(row.primaryArtifactName || '-')}</Text>
                                 ),
                             },
                             {
-                                title: '创建时间',
+                                title: t('project.models.table.createdAt'),
                                 dataIndex: 'createdAt',
                                 width: 180,
                                 render: (value: string) => formatDateTime(value),
                             },
                             {
-                                title: '操作',
+                                title: t('project.models.table.actions'),
                                 width: 320,
                                 render: (_: unknown, row: ProjectModel) => (
                                     <Space wrap>
@@ -304,14 +306,14 @@ const ProjectModels: React.FC = () => {
                                                 void loadModelDetail(row.id);
                                             }}
                                         >
-                                            详情
+                                            {t('project.models.actions.detail')}
                                         </Button>
                                         <Button
                                             size="small"
                                             loading={downloadingId === row.id}
                                             onClick={() => void onDownloadPrimary(row)}
                                         >
-                                            下载主制品
+                                            {t('project.models.actions.downloadPrimary')}
                                         </Button>
                                         {row.status === 'candidate' ? (
                                             <Button
@@ -320,7 +322,7 @@ const ProjectModels: React.FC = () => {
                                                 loading={promotingId === row.id}
                                                 onClick={() => void onPromote(row.id)}
                                             >
-                                                晋升 Production
+                                                {t('project.models.actions.promoteProduction')}
                                             </Button>
                                         ) : null}
                                     </Space>
@@ -333,10 +335,10 @@ const ProjectModels: React.FC = () => {
 
             <Modal
                 open={publishOpen}
-                title="发布模型"
+                title={t('project.models.publishModal.title')}
                 onCancel={() => setPublishOpen(false)}
                 onOk={() => void onPublish()}
-                okText="发布"
+                okText={t('project.models.publishModal.okText')}
                 confirmLoading={publishing}
                 destroyOnHidden
             >
@@ -349,30 +351,30 @@ const ProjectModels: React.FC = () => {
                     }}
                 >
                     <Form.Item
-                        label="来源 Round"
+                        label={t('project.models.table.sourceRound')}
                         name="roundId"
-                        rules={[{required: true, message: '请选择来源 Round'}]}
-                        extra="优先选择 completed Round，也支持手工输入 Round ID。"
+                        rules={[{required: true, message: t('project.models.publishModal.sourceRoundRequired')}]}
+                        extra={t('project.models.publishModal.sourceRoundExtra')}
                     >
                         <AutoComplete
                             showSearch
                             options={roundOptions}
-                            placeholder="选择 completed round"
+                            placeholder={t('project.models.publishModal.sourceRoundPlaceholder')}
                             filterOption={(input, option) =>
                                 String(option?.label || '').toLowerCase().includes(input.toLowerCase())
                             }
                         />
                     </Form.Item>
-                    <Form.Item label="模型名称" name="name">
-                        <Input placeholder="留空则自动生成"/>
+                    <Form.Item label={t('project.models.publishModal.modelName')} name="name">
+                        <Input placeholder={t('project.models.publishModal.modelNamePlaceholder')}/>
                     </Form.Item>
-                    <Form.Item label="主制品名" name="primaryArtifactName">
-                        <Input placeholder="默认 best.pt"/>
+                    <Form.Item label={t('project.models.publishModal.primaryArtifactName')} name="primaryArtifactName">
+                        <Input placeholder={t('project.models.publishModal.primaryArtifactNamePlaceholder')}/>
                     </Form.Item>
-                    <Form.Item label="版本号" name="versionTag" extra="留空按轮次自动生成（如 r3-a1）。">
-                        <Input placeholder="例如 r3-a1"/>
+                    <Form.Item label={t('project.models.publishModal.versionTag')} name="versionTag" extra={t('project.models.publishModal.versionTagExtra')}>
+                        <Input placeholder={t('project.models.publishModal.versionTagPlaceholder')}/>
                     </Form.Item>
-                    <Form.Item label="发布状态" name="status">
+                    <Form.Item label={t('project.models.publishModal.status')} name="status">
                         <Select
                             options={[
                                 {label: 'candidate', value: 'candidate'},
@@ -392,43 +394,45 @@ const ProjectModels: React.FC = () => {
                     setDetailModel(null);
                 }}
                 width={760}
-                title={detailModel ? `模型详情 · ${detailModel.name}` : `模型详情 · ${shortId(detailModelId)}`}
+                title={detailModel
+                    ? t('project.models.detailDrawer.titleWithName', {name: detailModel.name})
+                    : t('project.models.detailDrawer.titleWithId', {id: shortId(detailModelId)})}
             >
                 {detailLoading ? (
                     <div className="flex min-h-[220px] items-center justify-center">
                         <Spin/>
                     </div>
                 ) : !detailModel ? (
-                    <Empty description="暂无详情数据"/>
+                    <Empty description={t('project.models.detailDrawer.empty')}/>
                 ) : (
                     <div className="flex flex-col gap-4">
                         <Descriptions size="small" column={1}>
                             <Descriptions.Item label="ID">{detailModel.id}</Descriptions.Item>
-                            <Descriptions.Item label="状态">
+                            <Descriptions.Item label={t('project.models.detailDrawer.labels.status')}>
                                 <Tag color={STATUS_COLOR[detailModel.status] || 'default'}>{detailModel.status}</Tag>
                             </Descriptions.Item>
-                            <Descriptions.Item label="插件">{detailModel.pluginId}</Descriptions.Item>
-                            <Descriptions.Item label="来源 Round">{detailModel.sourceRoundId || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="来源 Step">{detailModel.sourceStepId || '-'}</Descriptions.Item>
-                            <Descriptions.Item label="主制品">{detailModel.primaryArtifactName}</Descriptions.Item>
-                            <Descriptions.Item label="创建时间">{formatDateTime(detailModel.createdAt)}</Descriptions.Item>
+                            <Descriptions.Item label={t('project.models.detailDrawer.labels.plugin')}>{detailModel.pluginId}</Descriptions.Item>
+                            <Descriptions.Item label={t('project.models.detailDrawer.labels.sourceRound')}>{detailModel.sourceRoundId || '-'}</Descriptions.Item>
+                            <Descriptions.Item label={t('project.models.detailDrawer.labels.sourceStep')}>{detailModel.sourceStepId || '-'}</Descriptions.Item>
+                            <Descriptions.Item label={t('project.models.detailDrawer.labels.primaryArtifact')}>{detailModel.primaryArtifactName}</Descriptions.Item>
+                            <Descriptions.Item label={t('project.models.detailDrawer.labels.createdAt')}>{formatDateTime(detailModel.createdAt)}</Descriptions.Item>
                         </Descriptions>
 
-                        <Card size="small" title="Metrics">
+                        <Card size="small" title={t('project.models.detailDrawer.metrics')}>
                             <pre className="m-0 whitespace-pre-wrap break-all text-xs">
                                 {JSON.stringify(detailModel.metrics || {}, null, 2)}
                             </pre>
                         </Card>
 
-                        <Card size="small" title="Artifacts">
+                        <Card size="small" title={t('project.models.detailDrawer.artifacts')}>
                             <Table
                                 rowKey={(row: any) => row.name}
                                 size="small"
                                 pagination={false}
                                 dataSource={detailArtifacts}
                                 columns={[
-                                    {title: '名称', dataIndex: 'name'},
-                                    {title: '类型', dataIndex: 'kind', width: 160},
+                                    {title: t('project.models.detailDrawer.table.name'), dataIndex: 'name'},
+                                    {title: t('project.models.detailDrawer.table.type'), dataIndex: 'kind', width: 160},
                                     {
                                         title: 'URI',
                                         dataIndex: 'uri',

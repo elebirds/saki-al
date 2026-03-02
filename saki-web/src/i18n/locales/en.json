@@ -71,7 +71,6 @@
       "loginFailed": "Login failed",
       "mustChangePassword": "You need to change your password to continue",
       "registerLink": "Register now!",
-      "registerDisabled": "Self-registration is disabled on this system",
       "or": "Or"
     },
     "register": {
@@ -190,7 +189,6 @@
       "avatarFileSizeError": "Avatar image cannot exceed 10MB",
       "avatarCropTitle": "Crop Avatar",
       "avatarCropHint": "Drag image position and adjust zoom to crop the avatar.",
-      "avatarCropLoadError": "Failed to load image, please choose another file.",
       "avatarCropConfirm": "Save Avatar",
       "avatarCropReset": "Reset",
       "noRoles": "No roles assigned",
@@ -203,9 +201,7 @@
       "userNotFound": "User information not found",
       "permissionScope": {
         "all": "All",
-        "assigned": "Assigned",
-        "self": "Self",
-        "owned": "Owned"
+        "assigned": "Assigned"
       },
       "permissionResources": {
         "user": "User Management",
@@ -230,7 +226,6 @@
       "nameRequired": "Please enter dataset name",
       "description": "Description",
       "descriptionPlaceholder": "Enter dataset description (optional)",
-      "open": "Open",
       "noDescription": "No description",
       "empty": "No datasets",
       "emptyHint": "Click the button above to create your first dataset",
@@ -362,14 +357,10 @@
       "back": "Back",
       "backToDataset": "Back to samples",
       "noEditPermission": "You do not have edit permission",
-      "cannotEditOthersAnnotation": "You can only edit your own annotations",
-      "cannotDeleteOthersAnnotation": "You can only delete your own annotations",
       "readOnly": "Read-only",
       "confidenceShort": "Conf {{confidence}}",
       "annotationSource": {
         "manual": "Manual",
-        "mine": "My annotation",
-        "others": "Others' annotation",
         "auto": "Auto-generated",
         "model": "Model",
         "confirmedModel": "Confirmed Model",
@@ -386,20 +377,11 @@
         "lOmegad": "L-ωd"
       },
       "annotationMeta": {
-        "id": "ID",
         "unavailable": "Geometry unavailable",
         "mappedCount": "{{count}} mapped"
       },
       "annotationOrderHint": "Order: by spatial position (top to bottom, left to right)",
-      "commitDrafts": "Commit Drafts",
-      "sort": {
-        "createdNewest": "Created (Newest)",
-        "createdOldest": "Created (Oldest)",
-        "updatedNewest": "Updated (Newest)",
-        "updatedOldest": "Updated (Oldest)",
-        "nameAZ": "Name (A-Z)",
-        "nameZA": "Name (Z-A)"
-      }
+      "commitDrafts": "Commit Drafts"
     },
     "toolbar": {
       "undoShortcut": "Undo (Ctrl+Z)",
@@ -426,8 +408,7 @@
         "datasets": "Datasets",
         "labels": "Labels",
         "branches": "Branches",
-        "annotations": "Annotations",
-        "commits": "Commits"
+        "annotations": "Annotations"
       }
     },
     "form": {
@@ -737,11 +718,9 @@
         "nameZA": "Name (Z-A)"
       },
       "datasetLabel": "Target Dataset",
-      "searchLabel": "Sample Search",
       "filterLabel": "Sample Status",
       "sortLabel": "Sort Order",
       "branchLabel": "Commit Branch",
-      "actionsTitle": "Quick Actions",
       "startAnnotating": "Start Annotating",
       "commitDrafts": "Commit Drafts",
       "noRemark": "No remark",
@@ -775,8 +754,7 @@
       },
       "models": {
         "title": "Models",
-        "empty": "No artifacts published",
-        "comingSoon": "Coming soon"
+        "empty": "No artifacts published"
       },
       "sampleStatus": {
         "title": "Sample Status",
@@ -786,11 +764,256 @@
         "empty": "Not available yet"
       }
     },
-    "loops": {
-      "comingSoon": "AL Loops is coming soon."
+    "loopOverview": {
+      "title": "Loop Overview",
+      "subtitle": "Unified semantic overview for Loop/Round/Step.",
+      "viewExecutors": "View Executor Status",
+      "compareExperimentGroup": "Compare Experiment Groups",
+      "refresh": "Refresh",
+      "createLoop": "Create Loop",
+      "noPermission": "No permission to access Loop page",
+      "noPluginCatalog": "No available plugin catalog",
+      "noPluginCatalogDesc": "Please start at least one executor and complete registration first.",
+      "empty": "No loops in this project yet",
+      "enterDetail": "View Details",
+      "branch": "Branch",
+      "mode": "Mode",
+      "plugin": "Plugin",
+      "strategy": "Strategy",
+      "summary": {
+        "rounds": "Rounds",
+        "roundsSucceeded": "Rounds Succeeded",
+        "steps": "Steps",
+        "stepsSucceeded": "Steps Succeeded"
+      },
+      "messages": {
+        "loadComparisonFailed": "Failed to load comparison data",
+        "loadOverviewFailed": "Failed to load loop overview",
+        "selectAtLeastOneSimulationStrategy": "Please select at least one simulation strategy",
+        "simulationExperimentCreateSuccess": "Simulation experiment created, {{count}} loops generated",
+        "loopCreateSuccess": "Loop created successfully",
+        "loopCreateFailed": "Failed to create loop",
+        "noSimulationExperimentGroup": "No simulation experiment group to display"
+      },
+      "modal": {
+        "createSimulationExperiment": "Create Simulation Experiment",
+        "createLoop": "Create Loop"
+      },
+      "form": {
+        "name": "Name",
+        "nameRequired": "Please enter a name",
+        "namePlaceholder": "e.g. fedo-yolo-loop-1",
+        "simulationExperimentName": "Experiment Name (Optional)",
+        "simulationExperimentNamePlaceholder": "e.g. Vehicle detection comparison (auto-generated when empty)",
+        "branchId": "Bound Branch",
+        "branchIdRequired": "Please select a branch",
+        "modelArch": "Plugin",
+        "modelArchRequired": "Please select a plugin",
+        "samplingStrategy": "Default Sampling Strategy",
+        "samplingStrategyRequired": "Please select a sampling strategy",
+        "simulationStrategies": "Comparison Strategies",
+        "simulationStrategiesRequired": "Please select at least one strategy",
+        "simulationStrategiesPlaceholder": "Select at least one strategy; random_baseline will be included automatically",
+        "mode": "Run Mode",
+        "modeRequired": "Please select a run mode",
+        "modeOptions": {
+          "activeLearning": "Active Learning (HITL)",
+          "simulation": "Simulation",
+          "manual": "Manual"
+        },
+        "simulationInfo": "Simulation runs strategy comparison on independent branches and always includes random_baseline.",
+        "oracleCommitId": "Oracle Commit ID",
+        "oracleCommitIdRequired": "Oracle commit is required in simulation mode",
+        "oracleCommitIdPlaceholder": "Fully labeled commit id",
+        "seedRatio": "Initial Seed Ratio",
+        "stepRatio": "Step Ratio Per Round",
+        "seeds": "Random Seeds",
+        "seedsPlaceholder": "e.g. 0,1,2,3,4",
+        "queryBatchSize": "TopK Per Round"
+      },
+      "compareModal": {
+        "title": "Simulation Strategy Comparison",
+        "selectGroupPlaceholder": "Select experiment group",
+        "empty": "No comparison data to plot",
+        "table": {
+          "strategy": "Strategy"
+        }
+      }
+    },
+    "loopConfig": {
+      "noPermission": "No permission to access Loop config page",
+      "notFoundOrNoPermission": "Loop not found or no permission",
+      "pageTitle": "{{name}} Config",
+      "backToDetail": "Back to Details",
+      "saveConfig": "Save Config",
+      "basicConfig": "Basic Config",
+      "messages": {
+        "loadFailed": "Failed to load loop config",
+        "saveSuccess": "Loop config saved",
+        "saveFailed": "Failed to save loop config"
+      },
+      "form": {
+        "name": "Name",
+        "nameRequired": "Please enter a name",
+        "mode": "Run Mode",
+        "modeRequired": "Please select run mode",
+        "modeOptions": {
+          "activeLearning": "Active Learning (HITL)",
+          "simulation": "Simulation",
+          "manual": "Manual"
+        },
+        "modelArch": "Plugin",
+        "modelArchRequired": "Please select a plugin",
+        "samplingStrategy": "Sampling Strategy",
+        "samplingStrategyRequired": "Please select sampling strategy",
+        "queryBatchSize": "TopK Per Round",
+        "simulationConfigTitle": "Simulation Config",
+        "oracleCommitId": "Oracle Commit ID",
+        "oracleCommitIdRequired": "Oracle commit is required for simulation",
+        "seedRatio": "Initial Seed Ratio",
+        "stepRatio": "Step Ratio Per Round",
+        "seeds": "Random Seeds",
+        "seedsPlaceholder": "e.g. 0,1,2,3,4",
+        "modelRequestParams": "Model Request Parameters",
+        "noDynamicSchema": "Current plugin does not define a dynamic schema"
+      }
+    },
+    "predictionTasks": {
+      "refresh": "Refresh",
+      "newTask": "New Task",
+      "messages": {
+        "loadFailed": "Failed to load prediction tasks",
+        "createSuccess": "Prediction task created",
+        "createFailed": "Failed to create prediction task",
+        "applySuccess": "Applied to Draft: {{count}} items",
+        "applyFailed": "Failed to apply prediction set"
+      },
+      "table": {
+        "taskId": "Task ID",
+        "status": "Status",
+        "totalItems": "Items",
+        "error": "Error",
+        "actions": "Actions"
+      },
+      "actions": {
+        "gotoLoop": "Go to Loop",
+        "apply": "Apply"
+      },
+      "modal": {
+        "title": "Create Prediction Task",
+        "okText": "Create"
+      },
+      "form": {
+        "plugin": "Plugin",
+        "pluginExtra": "Select plugin first, then Round/Model/Artifact will be filtered accordingly.",
+        "targetRound": "Target Round",
+        "targetRoundExtra": "Task will be attached to this Round for scheduling (execution anchor).",
+        "modelSource": "Model Source",
+        "model": "Model",
+        "sourceRound": "Source Round",
+        "sourceRoundExtra": "Only used in Round Artifact mode to pick model files from that Round artifacts.",
+        "artifactName": "Artifact Name",
+        "targetBranch": "Target Branch",
+        "baseCommit": "Base Commit",
+        "baseCommitPlaceholder": "Select a commit",
+        "predictConf": "Prediction Threshold (predict_conf)",
+        "predictConfTooltip": "Lower values keep more low-confidence boxes and often improve candidate recall.",
+        "scopeStatus": "Sample Scope"
+      },
+      "scope": {
+        "all": "All Samples",
+        "unlabeled": "Unlabeled Only",
+        "labeled": "Labeled Only",
+        "draft": "Draft Only"
+      }
+    },
+    "models": {
+      "title": "Model Center",
+      "empty": "No models",
+      "searchPlaceholder": "Filter by name/plugin/version",
+      "allStatus": "All Status",
+      "refresh": "Refresh",
+      "publishModel": "Publish Model",
+      "messages": {
+        "loadListFailed": "Failed to load model list",
+        "loadDetailFailed": "Failed to load model details",
+        "publishSuccess": "Model published: {{name}}",
+        "publishFailed": "Failed to publish model",
+        "promoteSuccess": "Promoted to production",
+        "promoteFailed": "Failed to promote model",
+        "getDownloadUrlFailed": "Failed to get download URL"
+      },
+      "table": {
+        "name": "Name",
+        "version": "Version",
+        "plugin": "Plugin",
+        "status": "Status",
+        "sourceRound": "Source Round",
+        "primaryArtifact": "Primary Artifact",
+        "createdAt": "Created At",
+        "actions": "Actions"
+      },
+      "actions": {
+        "detail": "Details",
+        "downloadPrimary": "Download Primary Artifact",
+        "promoteProduction": "Promote to Production"
+      },
+      "publishModal": {
+        "title": "Publish Model",
+        "okText": "Publish",
+        "sourceRoundRequired": "Please select source round",
+        "sourceRoundExtra": "Prefer completed rounds; manual round ID input is also supported.",
+        "sourceRoundPlaceholder": "Select completed round",
+        "modelName": "Model Name",
+        "modelNamePlaceholder": "Auto-generated when empty",
+        "primaryArtifactName": "Primary Artifact Name",
+        "primaryArtifactNamePlaceholder": "Default is best.pt",
+        "versionTag": "Version Tag",
+        "versionTagExtra": "Auto-generated by round when empty (e.g. r3-a1).",
+        "versionTagPlaceholder": "e.g. r3-a1",
+        "status": "Publish Status"
+      },
+      "detailDrawer": {
+        "titleWithName": "Model Details · {{name}}",
+        "titleWithId": "Model Details · {{id}}",
+        "empty": "No detail data",
+        "labels": {
+          "status": "Status",
+          "plugin": "Plugin",
+          "sourceRound": "Source Round",
+          "sourceStep": "Source Step",
+          "primaryArtifact": "Primary Artifact",
+          "createdAt": "Created At"
+        },
+        "metrics": "Metrics",
+        "artifacts": "Artifacts",
+        "table": {
+          "name": "Name",
+          "type": "Type"
+        }
+      }
     },
     "insights": {
-      "comingSoon": "Insights will be available soon."
+      "emptyLoops": "No Loop data yet. Create and run loops first.",
+      "loopDimension": "Loop Dimension",
+      "roundMetricsTrend": "Round Metrics Trend",
+      "emptyRoundMetrics": "No round metrics",
+      "modelStatus": "Model Status",
+      "latestMap50": "Latest mAP50: {{value}}",
+      "roundDetails": "Round Details",
+      "stats": {
+        "roundsTotal": "Total Rounds",
+        "roundsSucceeded": "Succeeded Rounds",
+        "stepsTotal": "Total Steps",
+        "stepsSucceeded": "Succeeded Steps",
+        "totalModels": "Total Models",
+        "candidateModels": "Candidate Models",
+        "productionModels": "Production Models"
+      },
+      "table": {
+        "status": "Status",
+        "strategy": "Strategy"
+      }
     },
     "tabs": {
       "overview": "Overview",
@@ -885,9 +1108,7 @@
       "execute": "Execute",
       "preview": "Dry Run Result",
       "previewEmpty": "Run dry run first to view preview details.",
-      "previewSummary": "Summary",
       "execution": "Execution Panel",
-      "status": "Status",
       "startedAt": "Started at: {{time}}",
       "elapsed": "Elapsed: {{duration}}",
       "stateIdle": "Idle",
@@ -995,7 +1216,6 @@
       "subtitle": "Stream datasets by selected format directly to local files to avoid backend full-package load.",
       "metaLoadError": "Failed to load export metadata",
       "noAvailableExportProfile": "No export format is available for this project's annotation capabilities.",
-      "fedoObbOnlyHint": "FEDO datasets are selected. Only OBB-compatible export formats are allowed.",
       "configTitle": "Export Configuration",
       "statusTitle": "Export Status",
       "start": "Start Export",
@@ -1018,7 +1238,6 @@
       "sampleScopeLabeled": "Labeled only",
       "sampleScopeUnlabeled": "Unlabeled only",
       "formatLabel": "Export Format",
-      "yoloSubFormatLabel": "YOLO Sub-format",
       "bundleLayoutLabel": "Bundle Layout",
       "layoutMerged": "Single ZIP (dataset folders)",
       "layoutPerDataset": "One ZIP per dataset",
@@ -1131,34 +1350,23 @@
         "sampleManagementAll": "Sample Management (All)",
         "sampleReadAll": "Read Sample (All)",
         "sampleCreateAll": "Create Sample (All)",
-        "sampleUpdateAll": "Update Sample (All)",
         "sampleDeleteAll": "Delete Sample (All)",
         "sampleManagementAssigned": "Sample Management (Assigned)",
         "sampleReadAssigned": "Read Sample (Assigned)",
         "sampleCreateAssigned": "Create Sample (Assigned)",
-        "sampleUpdateAssigned": "Update Sample (Assigned)",
         "sampleDeleteAssigned": "Delete Sample (Assigned)",
         "labelManagementAll": "Label Management (All)",
         "labelReadAll": "Read Label (All)",
         "labelManageAll": "Manage Label (All)",
-        "labelCreateAll": "Create Label (All)",
-        "labelUpdateAll": "Update Label (All)",
-        "labelDeleteAll": "Delete Label (All)",
         "labelManagementAssigned": "Label Management (Assigned)",
         "labelReadAssigned": "Read Label (Assigned)",
         "labelManageAssigned": "Manage Label (Assigned)",
-        "labelCreateAssigned": "Create Label (Assigned)",
-        "labelUpdateAssigned": "Update Label (Assigned)",
-        "labelDeleteAssigned": "Delete Label (Assigned)",
         "annotationManagementAll": "Annotation Management (All)",
         "annotationReadAll": "Read Annotation (All)",
         "annotationModifyAll": "Modify Annotation (All)",
         "annotationManagementAssigned": "Annotation Management (Assigned)",
         "annotationReadAssigned": "Read Annotation (Assigned)",
         "annotationModifyAssigned": "Modify Annotation (Assigned)",
-        "annotationManagementSelf": "Annotation Management (Self)",
-        "annotationReadSelf": "Read Annotation (Self)",
-        "annotationModifySelf": "Modify Annotation (Self)",
         "projectManagementAll": "Project Management (All)",
         "projectCreateAll": "Create Project (All)",
         "projectReadAll": "Read Project (All)",
@@ -1299,25 +1507,60 @@
     }
   },
   "runtime": {
-    "status": {
-      "pending": "Pending",
-      "dispatching": "Dispatching",
-      "running": "Running",
-      "retrying": "Retrying",
-      "succeeded": "Succeeded",
-      "failed": "Failed",
-      "cancelled": "Cancelled",
-      "skipped": "Skipped",
-      "unknown": "Status updated"
-    },
-    "progress": {
-      "update": "Progress: epoch {{epoch}}, {{step}} / {{total_steps}}"
-    },
-    "metric": {
-      "update": "Metrics updated ({{metric_count}})"
-    },
-    "artifact": {
-      "generated": "Artifact generated: {{name}}"
+    "executors": {
+      "title": "Executor Runtime Stats",
+      "lastUpdated": "Last updated",
+      "realtimeSnapshotHint": " (using realtime snapshot)",
+      "messages": {
+        "loadDetailFailed": "Failed to load executor details",
+        "loadStatusFailed": "Failed to load executor status"
+      },
+      "range": {
+        "30m": "Last 30 min",
+        "1h": "Last 1 hour",
+        "6h": "Last 6 hours",
+        "24h": "Last 24 hours",
+        "7d": "Last 7 days"
+      },
+      "summary": {
+        "total": "Total Executors",
+        "online": "Online",
+        "busy": "Busy",
+        "available": "Available"
+      },
+      "availabilityTitle": "Availability",
+      "currentAvailability": "Current availability {{value}}",
+      "trendPercentTitle": "Status Percentage Trend (100%)",
+      "trendCountTitle": "Status Count Trend",
+      "emptyTrend": "No trend data",
+      "listTitle": "Executor List",
+      "listTotal": "Total {{count}}",
+      "emptyList": "No executors registered",
+      "table": {
+        "status": "Status",
+        "online": "Online",
+        "currentStep": "Current Step",
+        "pending": "Pending Assign/Stop",
+        "lastHeartbeat": "Last Heartbeat"
+      },
+      "detailTitle": "Executor Details",
+      "selectExecutor": "Please select an executor to view details",
+      "detail": {
+        "version": "Version",
+        "status": "Status",
+        "pending": "Pending Assign / Stop"
+      },
+      "hardware": "Hardware Capability ({{count}})",
+      "noHardware": "No hardware capability reported",
+      "pluginCapability": "Plugin Capability ({{count}})",
+      "noPluginCapability": "No plugin capability reported",
+      "noStrategy": "No strategy declared",
+      "noAccelerator": "No accelerator backend declared",
+      "status": {
+        "busy": "Busy",
+        "idle": "Idle",
+        "offline": "Offline"
+      }
     }
   },
   "layout": {

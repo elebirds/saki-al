@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, Card, Form, Modal, Select, Slider, Space, Table, Tag, Typography, message} from 'antd';
 import {PlusOutlined, ReloadOutlined} from '@ant-design/icons';
+import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {api} from '../../../services/api';
 import {
@@ -41,6 +42,7 @@ interface TaskFormValues {
 }
 
 const ProjectPredictionTasks: React.FC = () => {
+    const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -158,11 +160,11 @@ const ProjectPredictionTasks: React.FC = () => {
             });
             setRoundsByLoopId(roundMap);
         } catch (error: any) {
-            messageApi.error(error?.message || '加载预测任务失败');
+            messageApi.error(error?.message || t('project.predictionTasks.messages.loadFailed'));
         } finally {
             setLoading(false);
         }
-    }, [api, projectId, messageApi]);
+    }, [api, projectId, messageApi, t]);
 
     const ensureRoundArtifacts = useCallback(async (roundId?: string) => {
         const normalized = String(roundId || '').trim();
@@ -353,26 +355,26 @@ const ProjectPredictionTasks: React.FC = () => {
             };
             setSubmitting(true);
             await api.generatePredictionSet(projectId, payload);
-            messageApi.success('预测任务已创建');
+            messageApi.success(t('project.predictionTasks.messages.createSuccess'));
             setCreateOpen(false);
             await refresh();
         } catch (error: any) {
             if (error?.errorFields) return;
-            messageApi.error(error?.message || '创建预测任务失败');
+            messageApi.error(error?.message || t('project.predictionTasks.messages.createFailed'));
         } finally {
             setSubmitting(false);
         }
-    }, [api, form, messageApi, projectId, refresh]);
+    }, [api, form, messageApi, projectId, refresh, t]);
 
     const onApply = useCallback(async (taskId: string) => {
         try {
             const result = await api.applyPredictionSet(taskId, {});
-            messageApi.success(`已应用到 Draft：${result.appliedCount} 条`);
+            messageApi.success(t('project.predictionTasks.messages.applySuccess', {count: result.appliedCount}));
             await refresh();
         } catch (error: any) {
-            messageApi.error(error?.message || '应用 PredictionSet 失败');
+            messageApi.error(error?.message || t('project.predictionTasks.messages.applyFailed'));
         }
-    }, [api, messageApi, refresh]);
+    }, [api, messageApi, refresh, t]);
 
     return (
         <div className="p-6 space-y-4">
@@ -380,8 +382,8 @@ const ProjectPredictionTasks: React.FC = () => {
             <Space className="w-full justify-between">
                 <Typography.Title level={4} className="!mb-0">Prediction Tasks</Typography.Title>
                 <Space>
-                    <Button icon={<ReloadOutlined />} onClick={() => void refresh()} loading={loading}>刷新</Button>
-                    <Button type="primary" icon={<PlusOutlined />} onClick={onOpenCreate}>新建任务</Button>
+                    <Button icon={<ReloadOutlined />} onClick={() => void refresh()} loading={loading}>{t('project.predictionTasks.refresh')}</Button>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={onOpenCreate}>{t('project.predictionTasks.newTask')}</Button>
                 </Space>
             </Space>
 
@@ -393,13 +395,13 @@ const ProjectPredictionTasks: React.FC = () => {
                     pagination={{pageSize: 20}}
                     columns={[
                         {
-                            title: '任务 ID',
+                            title: t('project.predictionTasks.table.taskId'),
                             dataIndex: 'id',
                             width: 260,
                             render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
                         },
                         {
-                            title: '状态',
+                            title: t('project.predictionTasks.table.status'),
                             dataIndex: 'status',
                             width: 130,
                             render: (value: string) => <Tag color={statusColor[value] || 'default'}>{value}</Tag>,
@@ -410,23 +412,23 @@ const ProjectPredictionTasks: React.FC = () => {
                             width: 180,
                         },
                         {
-                            title: '条目数',
+                            title: t('project.predictionTasks.table.totalItems'),
                             dataIndex: 'totalItems',
                             width: 100,
                         },
                         {
-                            title: '错误',
+                            title: t('project.predictionTasks.table.error'),
                             dataIndex: 'lastError',
                             render: (value?: string | null) => value || '-',
                         },
                         {
-                            title: '操作',
+                            title: t('project.predictionTasks.table.actions'),
                             key: 'actions',
                             width: 220,
                             render: (_, row) => (
                                 <Space>
                                     <Button size="small" onClick={() => navigate(`/projects/${projectId}/loops/${row.loopId}`)} disabled={!row.loopId}>
-                                        跳转 Loop
+                                        {t('project.predictionTasks.actions.gotoLoop')}
                                     </Button>
                                     <Button
                                         size="small"
@@ -434,7 +436,7 @@ const ProjectPredictionTasks: React.FC = () => {
                                         disabled={row.status !== 'ready'}
                                         onClick={() => void onApply(row.id)}
                                     >
-                                        应用
+                                        {t('project.predictionTasks.actions.apply')}
                                     </Button>
                                 </Space>
                             ),
@@ -444,15 +446,15 @@ const ProjectPredictionTasks: React.FC = () => {
             </Card>
 
             <Modal
-                title="新建 Prediction Task"
+                title={t('project.predictionTasks.modal.title')}
                 open={createOpen}
                 onCancel={() => setCreateOpen(false)}
                 onOk={() => void onCreateTask()}
                 confirmLoading={submitting}
-                okText="创建"
+                okText={t('project.predictionTasks.modal.okText')}
             >
                 <Form<TaskFormValues> form={form} layout="vertical">
-                    <Form.Item label="Plugin" name="pluginId" rules={[{required: true}]} extra="先选择插件，后续 Round/Model/Artifact 会按插件联动过滤。"> 
+                    <Form.Item label={t('project.predictionTasks.form.plugin')} name="pluginId" rules={[{required: true}]} extra={t('project.predictionTasks.form.pluginExtra')}>
                         <Select
                             showSearch
                             optionFilterProp="label"
@@ -463,7 +465,7 @@ const ProjectPredictionTasks: React.FC = () => {
                             }))}
                         />
                     </Form.Item>
-                    <Form.Item label="目标 Round" name="targetRoundId" rules={[{required: true}]} extra="任务将挂载到该 Round 上创建并调度执行（执行锚点）。"> 
+                    <Form.Item label={t('project.predictionTasks.form.targetRound')} name="targetRoundId" rules={[{required: true}]} extra={t('project.predictionTasks.form.targetRoundExtra')}>
                         <Select
                             showSearch
                             optionFilterProp="label"
@@ -474,7 +476,7 @@ const ProjectPredictionTasks: React.FC = () => {
                             }))}
                         />
                     </Form.Item>
-                    <Form.Item label="模型来源" name="modelSourceKind" rules={[{required: true}]}> 
+                    <Form.Item label={t('project.predictionTasks.form.modelSource')} name="modelSourceKind" rules={[{required: true}]}>
                         <Select
                             options={[
                                 {value: 'round_artifact', label: 'Round Artifact'},
@@ -487,7 +489,7 @@ const ProjectPredictionTasks: React.FC = () => {
                             const kind = getFieldValue('modelSourceKind') as ModelSourceKind;
                             if (kind === 'model') {
                                 return (
-                                    <Form.Item label="模型" name="modelId" rules={[{required: true}]}> 
+                                    <Form.Item label={t('project.predictionTasks.form.model')} name="modelId" rules={[{required: true}]}>
                                         <Select
                                             showSearch
                                             optionFilterProp="label"
@@ -500,7 +502,7 @@ const ProjectPredictionTasks: React.FC = () => {
                                 );
                             }
                             return (
-                                <Form.Item label="来源 Round" name="sourceRoundId" rules={[{required: true}]} extra="仅在 Round Artifact 模式生效：从该 Round 的产物中取模型文件。"> 
+                                <Form.Item label={t('project.predictionTasks.form.sourceRound')} name="sourceRoundId" rules={[{required: true}]} extra={t('project.predictionTasks.form.sourceRoundExtra')}>
                                     <Select
                                         showSearch
                                         optionFilterProp="label"
@@ -516,14 +518,14 @@ const ProjectPredictionTasks: React.FC = () => {
                             );
                         }}
                     </Form.Item>
-                    <Form.Item label="Artifact 名称" name="artifactName" initialValue="best.pt" rules={[{required: true}]}> 
+                    <Form.Item label={t('project.predictionTasks.form.artifactName')} name="artifactName" initialValue="best.pt" rules={[{required: true}]}>
                         <Select
                             showSearch
                             optionFilterProp="label"
                             options={artifactOptions}
                         />
                     </Form.Item>
-                    <Form.Item label="目标分支" name="targetBranchId" rules={[{required: true}]}> 
+                    <Form.Item label={t('project.predictionTasks.form.targetBranch')} name="targetBranchId" rules={[{required: true}]}>
                         <Select
                             options={branches.map((item) => ({
                                 value: item.id,
@@ -532,18 +534,18 @@ const ProjectPredictionTasks: React.FC = () => {
                             onChange={onBranchChanged}
                         />
                     </Form.Item>
-                    <Form.Item label="Base Commit" name="baseCommitId" rules={[{required: true}]}> 
+                    <Form.Item label={t('project.predictionTasks.form.baseCommit')} name="baseCommitId" rules={[{required: true}]}>
                         <Select
                             showSearch
                             optionFilterProp="label"
                             options={commitOptions}
-                            placeholder="请选择 Commit"
+                            placeholder={t('project.predictionTasks.form.baseCommitPlaceholder')}
                         />
                     </Form.Item>
                     <Form.Item
-                        label="预测阈值 (predict_conf)"
+                        label={t('project.predictionTasks.form.predictConf')}
                         name="predictConf"
-                        tooltip="越小越容易保留低置信度框，通常可提升候选召回。"
+                        tooltip={t('project.predictionTasks.form.predictConfTooltip')}
                         rules={[{required: true}]}
                     >
                         <Slider
@@ -554,13 +556,13 @@ const ProjectPredictionTasks: React.FC = () => {
                             tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
                         />
                     </Form.Item>
-                    <Form.Item label="样本范围" name="scopeStatus" rules={[{required: true}]}> 
+                    <Form.Item label={t('project.predictionTasks.form.scopeStatus')} name="scopeStatus" rules={[{required: true}]}>
                         <Select
                             options={[
-                                {value: 'all', label: '全部样本'},
-                                {value: 'unlabeled', label: '仅未标注样本'},
-                                {value: 'labeled', label: '仅已标注样本'},
-                                {value: 'draft', label: '仅草稿样本'},
+                                {value: 'all', label: t('project.predictionTasks.scope.all')},
+                                {value: 'unlabeled', label: t('project.predictionTasks.scope.unlabeled')},
+                                {value: 'labeled', label: t('project.predictionTasks.scope.labeled')},
+                                {value: 'draft', label: t('project.predictionTasks.scope.draft')},
                             ]}
                         />
                     </Form.Item>

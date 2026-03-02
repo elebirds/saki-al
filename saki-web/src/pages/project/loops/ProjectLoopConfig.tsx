@@ -11,6 +11,7 @@ import {
     Spin,
     message,
 } from 'antd';
+import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router-dom';
 
 import {useResourcePermission} from '../../../hooks';
@@ -87,6 +88,7 @@ type LoopConfigForm = {
 };
 
 const ProjectLoopConfig: React.FC = () => {
+    const {t} = useTranslation();
     const {projectId, loopId} = useParams<{ projectId: string; loopId: string }>();
     const navigate = useNavigate();
     const {can: canProject} = useResourcePermission('project', projectId);
@@ -151,7 +153,7 @@ const ProjectLoopConfig: React.FC = () => {
         try {
             await refreshLoopData();
         } catch (error: any) {
-            message.error(error?.message || '加载 Loop 配置失败');
+            message.error(error?.message || t('project.loopConfig.messages.loadFailed'));
         } finally {
             setLoading(false);
         }
@@ -198,11 +200,11 @@ const ProjectLoopConfig: React.FC = () => {
                 config,
             };
             await api.updateLoop(loopId, payload);
-            message.success('Loop 配置已保存');
+            message.success(t('project.loopConfig.messages.saveSuccess'));
             await refreshLoopData();
         } catch (error: any) {
             if (error?.errorFields) return;
-            message.error(error?.message || '保存 Loop 配置失败');
+            message.error(error?.message || t('project.loopConfig.messages.saveFailed'));
         } finally {
             setSaving(false);
         }
@@ -229,7 +231,7 @@ const ProjectLoopConfig: React.FC = () => {
     if (!canManageLoops) {
         return (
             <Card className="!border-github-border !bg-github-panel">
-                <Alert type="warning" showIcon message="暂无权限访问 Loop 配置页面"/>
+                <Alert type="warning" showIcon message={t('project.loopConfig.noPermission')}/>
             </Card>
         );
     }
@@ -237,7 +239,7 @@ const ProjectLoopConfig: React.FC = () => {
     if (!loop) {
         return (
             <Card className="!border-github-border !bg-github-panel">
-                <Alert type="warning" message="Loop 不存在或无权限访问"/>
+                <Alert type="warning" message={t('project.loopConfig.notFoundOrNoPermission')}/>
             </Card>
         );
     }
@@ -247,17 +249,17 @@ const ProjectLoopConfig: React.FC = () => {
             <Card className="!border-github-border !bg-github-panel">
                 <div className="flex w-full flex-wrap items-center justify-between gap-3">
                     <div className="flex min-w-0 flex-col gap-1">
-                        <h2 className="text-xl font-semibold">{loop.name} 配置</h2>
+                        <h2 className="text-xl font-semibold">{t('project.loopConfig.pageTitle', {name: loop.name})}</h2>
                         <p className="text-sm text-gray-500">Loop ID: {loop.id}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>返回详情</Button>
+                        <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>{t('project.loopConfig.backToDetail')}</Button>
                         <Button
                             type="primary"
                             loading={saving}
                             onClick={handleSave}
                         >
-                            保存配置
+                            {t('project.loopConfig.saveConfig')}
                         </Button>
                     </div>
                 </div>
@@ -265,22 +267,22 @@ const ProjectLoopConfig: React.FC = () => {
 
             <Card
                 className="!border-github-border !bg-github-panel"
-                title="基本配置"
+                title={t('project.loopConfig.basicConfig')}
             >
                 <Form form={configForm} layout="vertical">
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                         <div>
-                            <Form.Item name="name" label="名称" rules={[{required: true, message: '请输入名称'}]}>
+                            <Form.Item name="name" label={t('project.loopConfig.form.name')} rules={[{required: true, message: t('project.loopConfig.form.nameRequired')}]}>
                                 <Input/>
                             </Form.Item>
                         </div>
                         <div>
-                            <Form.Item name="mode" label="运行模式" rules={[{required: true, message: '请选择运行模式'}]}>
+                            <Form.Item name="mode" label={t('project.loopConfig.form.mode')} rules={[{required: true, message: t('project.loopConfig.form.modeRequired')}]}>
                                 <Select
                                     options={[
-                                        {label: '主动学习 (HITL)', value: 'active_learning'},
-                                        {label: '模拟实验 (Simulation)', value: 'simulation'},
-                                        {label: '手动模式 (Manual)', value: 'manual'},
+                                        {label: t('project.loopConfig.form.modeOptions.activeLearning'), value: 'active_learning'},
+                                        {label: t('project.loopConfig.form.modeOptions.simulation'), value: 'simulation'},
+                                        {label: t('project.loopConfig.form.modeOptions.manual'), value: 'manual'},
                                     ]}
                                 />
                             </Form.Item>
@@ -288,7 +290,7 @@ const ProjectLoopConfig: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                         <div>
-                            <Form.Item name="modelArch" label="插件" rules={[{required: true, message: '请选择插件'}]}>
+                            <Form.Item name="modelArch" label={t('project.loopConfig.form.modelArch')} rules={[{required: true, message: t('project.loopConfig.form.modelArchRequired')}]}>
                                 <Select
                                     options={plugins.map((item) => ({
                                         label: `${item.displayName} (${item.pluginId})`,
@@ -316,7 +318,7 @@ const ProjectLoopConfig: React.FC = () => {
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                         {selectedMode !== 'manual' ? (
                             <div>
-                                <Form.Item name="samplingStrategy" label="采样策略" rules={[{required: true, message: '请选择采样策略'}]}>
+                                <Form.Item name="samplingStrategy" label={t('project.loopConfig.form.samplingStrategy')} rules={[{required: true, message: t('project.loopConfig.form.samplingStrategyRequired')}]}>
                                     <Select
                                         options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}
                                     />
@@ -328,7 +330,7 @@ const ProjectLoopConfig: React.FC = () => {
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                         {selectedMode !== 'manual' ? (
                             <div>
-                                <Form.Item name="queryBatchSize" label="每轮 TopK">
+                                <Form.Item name="queryBatchSize" label={t('project.loopConfig.form.queryBatchSize')}>
                                     <InputNumber min={1} max={5000} className="w-full"/>
                                 </Form.Item>
                             </div>
@@ -337,19 +339,19 @@ const ProjectLoopConfig: React.FC = () => {
 
                     {selectedMode === 'simulation' ? (
                         <div>
-                            <div className="mb-2 font-semibold">模拟实验配置</div>
+                            <div className="mb-2 font-semibold">{t('project.loopConfig.form.simulationConfigTitle')}</div>
                             <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
                                 <div>
                                     <Form.Item
                                         name={['simulationConfig', 'oracleCommitId']}
-                                        label="Oracle Commit ID"
-                                        rules={[{required: true, message: 'simulation 需要 oracle commit'}]}
+                                        label={t('project.loopConfig.form.oracleCommitId')}
+                                        rules={[{required: true, message: t('project.loopConfig.form.oracleCommitIdRequired')}]}
                                     >
                                         <Input/>
                                     </Form.Item>
                                 </div>
                                 <div>
-                                    <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
+                                    <Form.Item name={['simulationConfig', 'seedRatio']} label={t('project.loopConfig.form.seedRatio')}>
                                         <Slider
                                             min={0.001}
                                             max={1}
@@ -360,7 +362,7 @@ const ProjectLoopConfig: React.FC = () => {
                                     </Form.Item>
                                 </div>
                                 <div>
-                                    <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
+                                    <Form.Item name={['simulationConfig', 'stepRatio']} label={t('project.loopConfig.form.stepRatio')}>
                                         <Slider
                                             min={0.001}
                                             max={1}
@@ -371,17 +373,17 @@ const ProjectLoopConfig: React.FC = () => {
                                     </Form.Item>
                                 </div>
                                 <div>
-                                    <Form.Item name={['simulationConfig', 'seeds']} label="随机种子列表">
-                                        <Select mode="tags" tokenSeparators={[',']} placeholder="例如：0,1,2,3,4"/>
+                                    <Form.Item name={['simulationConfig', 'seeds']} label={t('project.loopConfig.form.seeds')}>
+                                        <Select mode="tags" tokenSeparators={[',']} placeholder={t('project.loopConfig.form.seedsPlaceholder')}/>
                                     </Form.Item>
                                 </div>
                             </div>
                         </div>
                     ) : null}
 
-                    <Card size="small" className="!border-github-border !bg-github-panel" title={selectedPlugin?.requestConfigSchema?.title || '模型请求参数'}>
+                    <Card size="small" className="!border-github-border !bg-github-panel" title={selectedPlugin?.requestConfigSchema?.title || t('project.loopConfig.form.modelRequestParams')}>
                         {pluginConfigSchema.fields.length === 0 ? (
-                            <Alert type="info" showIcon message="当前插件未定义动态参数 schema"/>
+                            <Alert type="info" showIcon message={t('project.loopConfig.form.noDynamicSchema')}/>
                         ) : (
                             <DynamicConfigForm
                                 schema={pluginConfigSchema}

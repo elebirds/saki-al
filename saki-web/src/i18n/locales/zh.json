@@ -71,7 +71,6 @@
       "loginFailed": "登录失败",
       "mustChangePassword": "您需要更改密码才能继续使用",
       "registerLink": "立即注册！",
-      "registerDisabled": "当前系统已关闭自助注册",
       "or": "或"
     },
     "logout": "退出登录",
@@ -190,7 +189,6 @@
       "avatarFileSizeError": "头像大小不能超过 10MB",
       "avatarCropTitle": "裁剪头像",
       "avatarCropHint": "拖拽图片位置并调整缩放，确认裁剪范围。",
-      "avatarCropLoadError": "图片加载失败，请重新选择文件。",
       "avatarCropConfirm": "保存头像",
       "avatarCropReset": "重置",
       "noRoles": "暂无角色",
@@ -203,9 +201,7 @@
       "userNotFound": "用户信息未找到",
       "permissionScope": {
         "all": "全局",
-        "assigned": "成员",
-        "self": "自己",
-        "owned": "拥有"
+        "assigned": "成员"
       },
       "permissionResources": {
         "user": "用户管理",
@@ -234,7 +230,6 @@
       "typeHelp": "数据集类型决定标注方式与模型训练流程。",
       "visibility": "可见性",
       "visibilityHelp": "公开后，所有用户默认可查看样本并可将该数据集关联到有权限的项目。",
-      "open": "打开",
       "noDescription": "暂无描述",
       "empty": "暂无数据集",
       "emptyHint": "点击上方按钮创建您的第一个数据集",
@@ -362,14 +357,10 @@
       "back": "返回",
       "backToDataset": "返回样本列表",
       "noEditPermission": "您没有编辑权限",
-      "cannotEditOthersAnnotation": "您只能编辑自己的标注",
-      "cannotDeleteOthersAnnotation": "您只能删除自己的标注",
       "readOnly": "只读",
       "confidenceShort": "置信度 {{confidence}}",
       "annotationSource": {
         "manual": "手动",
-        "mine": "我的标注",
-        "others": "他人标注",
         "auto": "自动生成",
         "model": "模型",
         "confirmedModel": "已确认模型",
@@ -386,20 +377,11 @@
         "lOmegad": "L-ωd"
       },
       "annotationMeta": {
-        "id": "ID",
         "unavailable": "几何信息不可用",
         "mappedCount": "映射 {{count}} 框"
       },
       "annotationOrderHint": "排序：按空间位置（上→下，左→右）",
-      "commitDrafts": "提交草稿",
-      "sort": {
-        "createdNewest": "创建时间（最新）",
-        "createdOldest": "创建时间（最早）",
-        "updatedNewest": "更新时间（最新）",
-        "updatedOldest": "更新时间（最早）",
-        "nameAZ": "名称（A-Z）",
-        "nameZA": "名称（Z-A）"
-      }
+      "commitDrafts": "提交草稿"
     },
     "toolbar": {
       "undoShortcut": "撤销 (Ctrl+Z)",
@@ -426,8 +408,7 @@
         "datasets": "数据集",
         "labels": "标签",
         "branches": "分支",
-        "annotations": "标注",
-        "commits": "提交"
+        "annotations": "标注"
       }
     },
     "form": {
@@ -737,11 +718,9 @@
         "nameZA": "名称（Z-A）"
       },
       "datasetLabel": "目标数据集",
-      "searchLabel": "样本检索",
       "filterLabel": "样本状态",
       "sortLabel": "排序规则",
       "branchLabel": "提交分支",
-      "actionsTitle": "快捷操作",
       "startAnnotating": "开始标注",
       "commitDrafts": "提交草稿",
       "noRemark": "暂无备注",
@@ -775,8 +754,7 @@
       },
       "models": {
         "title": "模型",
-        "empty": "暂无发布的产物",
-        "comingSoon": "敬请期待"
+        "empty": "暂无发布的产物"
       },
       "sampleStatus": {
         "title": "样本状态",
@@ -786,11 +764,256 @@
         "empty": "暂无数据"
       }
     },
-    "loops": {
-      "comingSoon": "AL Loops 即将上线。"
-    },
     "insights": {
-      "comingSoon": "Insights 即将上线。"
+      "emptyLoops": "暂无 Loop 数据，先到 Loops 页面创建并运行闭环",
+      "loopDimension": "Loop 维度",
+      "roundMetricsTrend": "Round 指标走势",
+      "emptyRoundMetrics": "暂无 Round 指标",
+      "modelStatus": "模型状态",
+      "latestMap50": "最新 mAP50: {{value}}",
+      "roundDetails": "Round 明细",
+      "stats": {
+        "roundsTotal": "Rounds 总数",
+        "roundsSucceeded": "Rounds 成功",
+        "stepsTotal": "Steps 总数",
+        "stepsSucceeded": "Steps 成功",
+        "totalModels": "总模型数",
+        "candidateModels": "候选模型",
+        "productionModels": "生产模型"
+      },
+      "table": {
+        "status": "状态",
+        "strategy": "策略"
+      }
+    },
+    "loopOverview": {
+      "title": "Loop 概览",
+      "subtitle": "Loop/Round/Step 统一语义概览页。",
+      "viewExecutors": "查看执行器状态",
+      "compareExperimentGroup": "实验组对比",
+      "refresh": "刷新",
+      "createLoop": "新建 Loop",
+      "noPermission": "暂无权限访问 Loop 页面",
+      "noPluginCatalog": "当前没有可用插件目录",
+      "noPluginCatalogDesc": "请先启动至少一个 executor 并完成注册。",
+      "empty": "当前项目还没有 Loop",
+      "enterDetail": "进入详情",
+      "branch": "分支",
+      "mode": "模式",
+      "plugin": "插件",
+      "strategy": "策略",
+      "summary": {
+        "rounds": "Rounds",
+        "roundsSucceeded": "Rounds 成功",
+        "steps": "Steps",
+        "stepsSucceeded": "Steps 成功"
+      },
+      "messages": {
+        "loadComparisonFailed": "加载对比数据失败",
+        "loadOverviewFailed": "加载 Loop 概览失败",
+        "selectAtLeastOneSimulationStrategy": "请至少选择一个 simulation 策略",
+        "simulationExperimentCreateSuccess": "Simulation 实验创建成功，共 {{count}} 条 Loop",
+        "loopCreateSuccess": "Loop 创建成功",
+        "loopCreateFailed": "Loop 创建失败",
+        "noSimulationExperimentGroup": "当前没有可展示的 simulation 实验组"
+      },
+      "modal": {
+        "createSimulationExperiment": "新建 Simulation Experiment",
+        "createLoop": "新建 Loop"
+      },
+      "form": {
+        "name": "名称",
+        "nameRequired": "请输入名称",
+        "namePlaceholder": "例如：fedo-yolo-loop-1",
+        "simulationExperimentName": "实验名称（可选）",
+        "simulationExperimentNamePlaceholder": "例如：车辆检测对比实验（留空自动命名）",
+        "branchId": "绑定分支",
+        "branchIdRequired": "请选择分支",
+        "modelArch": "插件",
+        "modelArchRequired": "请选择插件",
+        "samplingStrategy": "默认采样策略",
+        "samplingStrategyRequired": "请选择采样策略",
+        "simulationStrategies": "对比策略",
+        "simulationStrategiesRequired": "请至少选择一个策略",
+        "simulationStrategiesPlaceholder": "至少选择一个策略，系统会自动补齐 random_baseline",
+        "mode": "运行模式",
+        "modeRequired": "请选择运行模式",
+        "modeOptions": {
+          "activeLearning": "主动学习 (HITL)",
+          "simulation": "模拟实验 (Simulation)",
+          "manual": "手动模式 (Manual)"
+        },
+        "simulationInfo": "Simulation 会在独立分支上运行策略对比，并强制包含 random_baseline。",
+        "oracleCommitId": "Oracle Commit ID",
+        "oracleCommitIdRequired": "simulation 模式必须提供 oracle commit",
+        "oracleCommitIdPlaceholder": "全量标注 commit id",
+        "seedRatio": "初始种子比例",
+        "stepRatio": "每轮提升比例",
+        "seeds": "随机种子列表",
+        "seedsPlaceholder": "例如：0,1,2,3,4",
+        "queryBatchSize": "每轮 TopK"
+      },
+      "compareModal": {
+        "title": "Simulation 策略对比",
+        "selectGroupPlaceholder": "选择实验组",
+        "empty": "暂无可绘制对比数据",
+        "table": {
+          "strategy": "策略"
+        }
+      }
+    },
+    "loopConfig": {
+      "noPermission": "暂无权限访问 Loop 配置页面",
+      "notFoundOrNoPermission": "Loop 不存在或无权限访问",
+      "pageTitle": "{{name}} 配置",
+      "backToDetail": "返回详情",
+      "saveConfig": "保存配置",
+      "basicConfig": "基本配置",
+      "messages": {
+        "loadFailed": "加载 Loop 配置失败",
+        "saveSuccess": "Loop 配置已保存",
+        "saveFailed": "保存 Loop 配置失败"
+      },
+      "form": {
+        "name": "名称",
+        "nameRequired": "请输入名称",
+        "mode": "运行模式",
+        "modeRequired": "请选择运行模式",
+        "modeOptions": {
+          "activeLearning": "主动学习 (HITL)",
+          "simulation": "模拟实验 (Simulation)",
+          "manual": "手动模式 (Manual)"
+        },
+        "modelArch": "插件",
+        "modelArchRequired": "请选择插件",
+        "samplingStrategy": "采样策略",
+        "samplingStrategyRequired": "请选择采样策略",
+        "queryBatchSize": "每轮 TopK",
+        "simulationConfigTitle": "模拟实验配置",
+        "oracleCommitId": "Oracle Commit ID",
+        "oracleCommitIdRequired": "simulation 需要 oracle commit",
+        "seedRatio": "初始种子比例",
+        "stepRatio": "每轮提升比例",
+        "seeds": "随机种子列表",
+        "seedsPlaceholder": "例如：0,1,2,3,4",
+        "modelRequestParams": "模型请求参数",
+        "noDynamicSchema": "当前插件未定义动态参数 schema"
+      }
+    },
+    "predictionTasks": {
+      "refresh": "刷新",
+      "newTask": "新建任务",
+      "messages": {
+        "loadFailed": "加载预测任务失败",
+        "createSuccess": "预测任务已创建",
+        "createFailed": "创建预测任务失败",
+        "applySuccess": "已应用到 Draft：{{count}} 条",
+        "applyFailed": "应用 PredictionSet 失败"
+      },
+      "table": {
+        "taskId": "任务 ID",
+        "status": "状态",
+        "totalItems": "条目数",
+        "error": "错误",
+        "actions": "操作"
+      },
+      "actions": {
+        "gotoLoop": "跳转 Loop",
+        "apply": "应用"
+      },
+      "modal": {
+        "title": "新建 Prediction Task",
+        "okText": "创建"
+      },
+      "form": {
+        "plugin": "Plugin",
+        "pluginExtra": "先选择插件，后续 Round/Model/Artifact 会按插件联动过滤。",
+        "targetRound": "目标 Round",
+        "targetRoundExtra": "任务将挂载到该 Round 上创建并调度执行（执行锚点）。",
+        "modelSource": "模型来源",
+        "model": "模型",
+        "sourceRound": "来源 Round",
+        "sourceRoundExtra": "仅在 Round Artifact 模式生效：从该 Round 的产物中取模型文件。",
+        "artifactName": "Artifact 名称",
+        "targetBranch": "目标分支",
+        "baseCommit": "Base Commit",
+        "baseCommitPlaceholder": "请选择 Commit",
+        "predictConf": "预测阈值 (predict_conf)",
+        "predictConfTooltip": "越小越容易保留低置信度框，通常可提升候选召回。",
+        "scopeStatus": "样本范围"
+      },
+      "scope": {
+        "all": "全部样本",
+        "unlabeled": "仅未标注样本",
+        "labeled": "仅已标注样本",
+        "draft": "仅草稿样本"
+      }
+    },
+    "models": {
+      "title": "模型中心",
+      "empty": "暂无模型",
+      "searchPlaceholder": "按名称/插件/版本筛选",
+      "allStatus": "全部状态",
+      "refresh": "刷新",
+      "publishModel": "发布模型",
+      "messages": {
+        "loadListFailed": "加载模型列表失败",
+        "loadDetailFailed": "加载模型详情失败",
+        "publishSuccess": "模型发布成功：{{name}}",
+        "publishFailed": "发布模型失败",
+        "promoteSuccess": "已晋升为 production",
+        "promoteFailed": "晋升失败",
+        "getDownloadUrlFailed": "获取下载链接失败"
+      },
+      "table": {
+        "name": "名称",
+        "version": "版本",
+        "plugin": "插件",
+        "status": "状态",
+        "sourceRound": "来源 Round",
+        "primaryArtifact": "主制品",
+        "createdAt": "创建时间",
+        "actions": "操作"
+      },
+      "actions": {
+        "detail": "详情",
+        "downloadPrimary": "下载主制品",
+        "promoteProduction": "晋升 Production"
+      },
+      "publishModal": {
+        "title": "发布模型",
+        "okText": "发布",
+        "sourceRoundRequired": "请选择来源 Round",
+        "sourceRoundExtra": "优先选择 completed Round，也支持手工输入 Round ID。",
+        "sourceRoundPlaceholder": "选择 completed round",
+        "modelName": "模型名称",
+        "modelNamePlaceholder": "留空则自动生成",
+        "primaryArtifactName": "主制品名",
+        "primaryArtifactNamePlaceholder": "默认 best.pt",
+        "versionTag": "版本号",
+        "versionTagExtra": "留空按轮次自动生成（如 r3-a1）。",
+        "versionTagPlaceholder": "例如 r3-a1",
+        "status": "发布状态"
+      },
+      "detailDrawer": {
+        "titleWithName": "模型详情 · {{name}}",
+        "titleWithId": "模型详情 · {{id}}",
+        "empty": "暂无详情数据",
+        "labels": {
+          "status": "状态",
+          "plugin": "插件",
+          "sourceRound": "来源 Round",
+          "sourceStep": "来源 Step",
+          "primaryArtifact": "主制品",
+          "createdAt": "创建时间"
+        },
+        "metrics": "Metrics",
+        "artifacts": "Artifacts",
+        "table": {
+          "name": "名称",
+          "type": "类型"
+        }
+      }
     },
     "tabs": {
       "overview": "概览",
@@ -885,9 +1108,7 @@
       "execute": "开始执行",
       "preview": "预检结果",
       "previewEmpty": "请先执行预检以查看预检结果。",
-      "previewSummary": "摘要",
       "execution": "执行面板",
-      "status": "状态",
       "startedAt": "开始时间：{{time}}",
       "elapsed": "已耗时：{{duration}}",
       "stateIdle": "待开始",
@@ -995,7 +1216,6 @@
       "subtitle": "按数据集与格式流式导出，前端直接落盘，避免后端整包占用资源。",
       "metaLoadError": "加载导出元信息失败",
       "noAvailableExportProfile": "当前项目能力下没有可用的导出格式，请先调整项目标注类型配置。",
-      "fedoObbOnlyHint": "已选 FEDO 数据集，导出格式仅可使用支持 OBB 的选项。",
       "configTitle": "导出配置",
       "statusTitle": "导出状态",
       "start": "开始导出",
@@ -1018,7 +1238,6 @@
       "sampleScopeLabeled": "仅已标注",
       "sampleScopeUnlabeled": "仅未标注",
       "formatLabel": "导出格式",
-      "yoloSubFormatLabel": "YOLO 子格式",
       "bundleLayoutLabel": "打包布局",
       "layoutMerged": "单个 ZIP（按数据集分目录）",
       "layoutPerDataset": "每数据集一个 ZIP",
@@ -1131,34 +1350,23 @@
         "sampleManagementAll": "样本管理（全局）",
         "sampleReadAll": "查看样本（全局）",
         "sampleCreateAll": "创建样本（全局）",
-        "sampleUpdateAll": "更新样本（全局）",
         "sampleDeleteAll": "删除样本（全局）",
         "sampleManagementAssigned": "样本管理（成员）",
         "sampleReadAssigned": "查看样本（成员）",
         "sampleCreateAssigned": "创建样本（成员）",
-        "sampleUpdateAssigned": "更新样本（成员）",
         "sampleDeleteAssigned": "删除样本（成员）",
         "labelManagementAll": "标签管理（全局）",
         "labelReadAll": "查看标签（全局）",
         "labelManageAll": "管理标签（全局）",
-        "labelCreateAll": "创建标签（全局）",
-        "labelUpdateAll": "更新标签（全局）",
-        "labelDeleteAll": "删除标签（全局）",
         "labelManagementAssigned": "标签管理（成员）",
         "labelReadAssigned": "查看标签（成员）",
         "labelManageAssigned": "管理标签（成员）",
-        "labelCreateAssigned": "创建标签（成员）",
-        "labelUpdateAssigned": "更新标签（成员）",
-        "labelDeleteAssigned": "删除标签（成员）",
         "annotationManagementAll": "标注管理（全局）",
         "annotationReadAll": "查看标注（全局）",
         "annotationModifyAll": "修改标注（全局）",
         "annotationManagementAssigned": "标注管理（成员）",
         "annotationReadAssigned": "查看标注（成员）",
         "annotationModifyAssigned": "修改标注（成员）",
-        "annotationManagementSelf": "标注管理（自己）",
-        "annotationReadSelf": "查看标注（自己）",
-        "annotationModifySelf": "修改标注（自己）",
         "projectManagementAll": "项目管理（全局）",
         "projectCreateAll": "创建项目（全局）",
         "projectReadAll": "查看项目（全局）",
@@ -1299,25 +1507,60 @@
     }
   },
   "runtime": {
-    "status": {
-      "pending": "待处理",
-      "dispatching": "派发中",
-      "running": "运行中",
-      "retrying": "重试中",
-      "succeeded": "已完成",
-      "failed": "失败",
-      "cancelled": "已取消",
-      "skipped": "已跳过",
-      "unknown": "状态更新"
-    },
-    "progress": {
-      "update": "训练进度：第 {{epoch}} 轮，{{step}} / {{total_steps}}"
-    },
-    "metric": {
-      "update": "指标已更新（{{metric_count}} 项）"
-    },
-    "artifact": {
-      "generated": "产物已生成：{{name}}"
+    "executors": {
+      "title": "执行器运行统计",
+      "lastUpdated": "最近更新",
+      "realtimeSnapshotHint": "（当前使用实时快照）",
+      "messages": {
+        "loadDetailFailed": "加载执行器详情失败",
+        "loadStatusFailed": "加载执行器状态失败"
+      },
+      "range": {
+        "30m": "最近 30 分钟",
+        "1h": "最近 1 小时",
+        "6h": "最近 6 小时",
+        "24h": "最近 24 小时",
+        "7d": "最近 7 天"
+      },
+      "summary": {
+        "total": "执行器总数",
+        "online": "在线数",
+        "busy": "运行中",
+        "available": "可用数"
+      },
+      "availabilityTitle": "可用率",
+      "currentAvailability": "当前可用率 {{value}}",
+      "trendPercentTitle": "状态占比趋势（100%）",
+      "trendCountTitle": "状态计数趋势",
+      "emptyTrend": "暂无统计趋势数据",
+      "listTitle": "执行器列表",
+      "listTotal": "共 {{count}} 台",
+      "emptyList": "暂无执行器注册",
+      "table": {
+        "status": "状态",
+        "online": "在线",
+        "currentStep": "当前 Step",
+        "pending": "待派发/待停止",
+        "lastHeartbeat": "最后心跳"
+      },
+      "detailTitle": "执行器详情",
+      "selectExecutor": "请选择执行器查看详情",
+      "detail": {
+        "version": "版本",
+        "status": "状态",
+        "pending": "待派发 / 待停止"
+      },
+      "hardware": "硬件能力 ({{count}})",
+      "noHardware": "未上报硬件能力",
+      "pluginCapability": "插件能力 ({{count}})",
+      "noPluginCapability": "未上报插件能力",
+      "noStrategy": "无策略声明",
+      "noAccelerator": "未声明加速后端",
+      "status": {
+        "busy": "忙碌中",
+        "idle": "空闲中",
+        "offline": "离线"
+      }
     }
   },
   "layout": {

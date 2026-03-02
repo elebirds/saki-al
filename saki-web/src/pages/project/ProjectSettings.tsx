@@ -19,6 +19,8 @@ import {
 } from 'antd'
 import type {ColumnsType} from 'antd/es/table'
 import {
+    ArrowDownOutlined,
+    ArrowUpOutlined,
     DeleteOutlined,
     EditOutlined,
     LockOutlined,
@@ -98,6 +100,7 @@ const ProjectSettings: React.FC = () => {
 
     const [labels, setLabels] = useState<ProjectLabel[]>([])
     const [labelsLoading, setLabelsLoading] = useState(false)
+    const [labelReorderingId, setLabelReorderingId] = useState<string | null>(null)
     const [labelModalOpen, setLabelModalOpen] = useState(false)
     const [labelSaving, setLabelSaving] = useState(false)
     const [editingLabel, setEditingLabel] = useState<ProjectLabel | null>(null)
@@ -376,6 +379,33 @@ const ProjectSettings: React.FC = () => {
         }
     }
 
+    const handleMoveLabel = async (labelId: string, direction: 'up' | 'down') => {
+        if (!projectId || !canManageLabels) return
+        const index = labels.findIndex((item) => item.id === labelId)
+        if (index < 0) return
+        const targetIndex = direction === 'up' ? index - 1 : index + 1
+        if (targetIndex < 0 || targetIndex >= labels.length) return
+
+        const next = [...labels]
+        const [moved] = next.splice(index, 1)
+        next.splice(targetIndex, 0, moved)
+
+        setLabelReorderingId(labelId)
+        setLabels(next)
+        try {
+            const reordered = await api.reorderProjectLabels(
+                projectId,
+                next.map((item) => item.id),
+            )
+            setLabels(reordered || [])
+        } catch (error: any) {
+            message.error(error.message || t('project.settings.labels.reorderError'))
+            loadLabels()
+        } finally {
+            setLabelReorderingId(null)
+        }
+    }
+
     const handleAddMember = async () => {
         if (!projectId) return
         try {
@@ -503,8 +533,30 @@ const ProjectSettings: React.FC = () => {
         {
             title: t('project.settings.labels.columns.actions'),
             key: 'actions',
-            render: (_, record) => (
-                <div className="flex items-center gap-2">
+            render: (_, record) => {
+                const index = labels.findIndex((item) => item.id === record.id)
+                const disableMoveUp = !canManageLabels || index <= 0 || labelReorderingId !== null
+                const disableMoveDown = !canManageLabels || index < 0 || index >= labels.length - 1 || labelReorderingId !== null
+                return (
+                    <div className="flex items-center gap-2">
+                        <Tooltip title={t('project.settings.labels.moveUp')}>
+                            <Button
+                                size="small"
+                                icon={<ArrowUpOutlined/>}
+                                onClick={() => handleMoveLabel(record.id, 'up')}
+                                disabled={disableMoveUp}
+                                loading={labelReorderingId === record.id}
+                            />
+                        </Tooltip>
+                        <Tooltip title={t('project.settings.labels.moveDown')}>
+                            <Button
+                                size="small"
+                                icon={<ArrowDownOutlined/>}
+                                onClick={() => handleMoveLabel(record.id, 'down')}
+                                disabled={disableMoveDown}
+                                loading={labelReorderingId === record.id}
+                            />
+                        </Tooltip>
                     <Button size="small" onClick={() => openEditLabel(record)} disabled={!canManageLabels}>
                         {t('common.edit')}
                     </Button>
@@ -520,7 +572,8 @@ const ProjectSettings: React.FC = () => {
                         </Button>
                     </Popconfirm>
                 </div>
-            ),
+                )
+            },
         },
     ]
 

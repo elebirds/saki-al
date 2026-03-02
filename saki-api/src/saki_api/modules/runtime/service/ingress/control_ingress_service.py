@@ -322,7 +322,7 @@ class RuntimeControlIngressService:
                         await session.exec(
                             select(Label)
                             .where(Label.project_id == project_id)
-                            .order_by(Label.id)
+                            .order_by(Label.sort_order.asc(), Label.id.asc())
                             .offset(offset)
                             .limit(limit + 1)
                         )

@@ -384,6 +384,8 @@ export interface ApiService {
 
     deleteProjectLabel(projectId: string, labelId: string): Promise<void>;
 
+    reorderProjectLabels(projectId: string, labelIds: string[]): Promise<ProjectLabel[]>;
+
     getProjectSamples(
         projectId: string,
         datasetId: string,

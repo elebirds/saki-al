@@ -5,7 +5,7 @@ Labels belong to projects and are referenced by Annotations.
 import uuid
 from typing import TYPE_CHECKING, List
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlmodel import Field, SQLModel, Relationship
 
 from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin
@@ -25,7 +25,7 @@ class LabelBase(SQLModel):
     description: str | None = Field(default=None, description="Optional description of the label.")
 
     # UI 增强字段
-    sort_order: int = Field(default=0, description="在界面上的排列顺序。")
+    sort_order: int = Field(default=1, description="在界面上的排列顺序（从 1 开始）。")
     shortcut: str | None = Field(default=None, max_length=10, description="前端标注快捷键 (e.g., 'q', '1').")
 
 
@@ -45,4 +45,6 @@ class Label(LabelBase, TimestampMixin, UUIDMixin, table=True):
     __tablename__ = "label"
     __table_args__ = (
         UniqueConstraint("project_id", "name", name="uq_project_label_name"),
+        UniqueConstraint("project_id", "sort_order", name="uq_project_label_sort_order"),
+        CheckConstraint("sort_order > 0", name="ck_label_sort_order_positive"),
     )

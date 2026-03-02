@@ -15,7 +15,7 @@ class LabelBase(SQLModel):
     name: str
     color: str = "#1890ff"
     description: str | None = None
-    sort_order: int = 0
+    sort_order: int = 1
     shortcut: str | None = None
 
 

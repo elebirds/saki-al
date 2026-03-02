@@ -1992,7 +1992,7 @@ class SnapshotMixin:
                 await self.session.exec(
                     select(Label)
                     .where(Label.project_id == loop.project_id)
-                    .order_by(Label.id.asc())
+                    .order_by(Label.sort_order.asc(), Label.id.asc())
                 )
             ).all()
         )

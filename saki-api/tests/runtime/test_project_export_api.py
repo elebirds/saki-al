@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.modules.shared.modeling  # noqa: F401
@@ -367,6 +367,56 @@ async def test_export_chunk_pagination_and_asset_url_toggle(export_env, monkeypa
             for file in assets_page.files
             if file.source_type == "url"
         )
+
+
+@pytest.mark.anyio
+async def test_yolo_data_yaml_names_follow_label_sort_order(export_env):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT],
+            include_obb_annotation=False,
+        )
+        project_id = seeded["project_id"]
+        dataset_id = seeded["dataset_id"]
+        commit_id = seeded["commit_id"]
+
+        labels = list((await session.exec(select(Label).where(Label.project_id == project_id))).all())
+        assert len(labels) == 1
+        labels[0].sort_order = 2
+        session.add(labels[0])
+        session.add(
+            Label(
+                project_id=project_id,
+                name="bus",
+                color="#00ff00",
+                sort_order=1,
+            )
+        )
+        await session.commit()
+
+        service = ExportService(session)
+        page = await service.get_export_chunk(
+            project_id=project_id,
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=commit_id,
+                dataset_ids=[dataset_id],
+                sample_scope="all",
+                format_profile="yolo",
+                bundle_layout="merged_zip",
+                include_assets=False,
+                cursor=0,
+                limit=10,
+            ),
+        )
+        assert page.next_cursor is None
+
+        data_yaml = next((file for file in page.files if file.path.endswith("data.yaml")), None)
+        assert data_yaml is not None
+        yaml_text = data_yaml.text_content or ""
+        assert "  0: bus" in yaml_text
+        assert "  1: car" in yaml_text
 
 
 @pytest.mark.anyio

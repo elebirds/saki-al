@@ -222,3 +222,70 @@ def test_build_voc_import_split_falls_back_to_annotations_when_split_missing(tmp
     generated = set_dir / "__saki_import_all__.txt"
     lines = [line.strip() for line in generated.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert lines == ["a", "b"]
+
+
+def test_load_yolo_declared_labels_from_data_yaml_preserves_index_order(tmp_path: Path) -> None:
+    yolo_root = tmp_path / "yolo"
+    (yolo_root / "images" / "train").mkdir(parents=True, exist_ok=True)
+    (yolo_root / "labels" / "train").mkdir(parents=True, exist_ok=True)
+    (yolo_root / "data.yaml").write_text(
+        "\n".join(
+            [
+                "path: .",
+                "train: images/train",
+                "names:",
+                "  0: car",
+                "  1: bus",
+                "  2: truck",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    labels = ImportService._load_yolo_declared_labels(yolo_root)
+    assert labels == ["car", "bus", "truck"]
+
+
+def test_build_planned_new_labels_keeps_order_and_filters_existing() -> None:
+    planned = ImportService._build_planned_new_labels(
+        raw_labels=["car", "bus", "truck", "bus", "car"],
+        existing_label_names={"bus"},
+    )
+    assert planned == ["car", "truck"]
+
+
+def test_load_yolo_declared_labels_sorts_numeric_keys_before_string_keys(tmp_path: Path) -> None:
+    yolo_root = tmp_path / "yolo_mixed_keys"
+    (yolo_root / "images" / "train").mkdir(parents=True, exist_ok=True)
+    (yolo_root / "labels" / "train").mkdir(parents=True, exist_ok=True)
+    (yolo_root / "data.yaml").write_text(
+        "\n".join(
+            [
+                "names:",
+                "  11: cls11",
+                "  2: cls2",
+                "  1: cls1",
+                "  a: clsA",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    labels = ImportService._load_yolo_declared_labels(yolo_root)
+    assert labels == ["cls1", "cls2", "cls11", "clsA"]
+
+
+def test_yolo_observed_labels_without_yaml_sort_class_suffix_numerically() -> None:
+    labels = ImportService._normalize_yolo_observed_labels_without_declared(
+        ["class_11", "class_2", "class_1", "class_2"]
+    )
+    assert labels == ["class_1", "class_2", "class_11"]
+
+
+def test_yolo_observed_labels_without_yaml_keep_order_if_not_all_class_numeric() -> None:
+    labels = ImportService._normalize_yolo_observed_labels_without_declared(
+        ["class_11", "vehicle", "class_2", "class_1"]
+    )
+    assert labels == ["class_11", "vehicle", "class_2", "class_1"]

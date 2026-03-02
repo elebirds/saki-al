@@ -1201,6 +1201,22 @@ ALTER TABLE ONLY public.label
 
 
 --
+-- Name: label uq_project_label_sort_order; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.label
+    ADD CONSTRAINT uq_project_label_sort_order UNIQUE (project_id, sort_order);
+
+
+--
+-- Name: label ck_label_sort_order_positive; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.label
+    ADD CONSTRAINT ck_label_sort_order_positive CHECK ((sort_order > 0));
+
+
+--
 -- Name: resource_member uq_resource_member; Type: CONSTRAINT; Schema: public; Owner: -
 --
 

@@ -93,8 +93,8 @@ async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedC
     session.add(branch)
     await session.flush()
 
-    label_a = Label(project_id=project.id, name="car", color="#ff0000")
-    label_b = Label(project_id=project.id, name="bus", color="#00ff00")
+    label_a = Label(project_id=project.id, name="car", color="#ff0000", sort_order=2)
+    label_b = Label(project_id=project.id, name="bus", color="#00ff00", sort_order=1)
     session.add(label_a)
     session.add(label_b)
     await session.flush()
@@ -130,7 +130,7 @@ async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedC
     labels_sorted = list(
         (
             await session.exec(
-                select(Label).where(Label.project_id == project.id).order_by(Label.id.asc())
+                select(Label).where(Label.project_id == project.id).order_by(Label.sort_order.asc(), Label.id.asc())
             )
         ).all()
     )
@@ -255,6 +255,7 @@ async def test_apply_prediction_set_writes_model_annotations_with_type_and_ids(p
         ann = annotations[0]
         assert ann.get("source") == "model"
         assert ann.get("type") == "rect"
+        assert ann.get("label_id") == str(ctx.labels_sorted[1].id)
         assert isinstance(ann.get("group_id"), str) and ann.get("group_id")
         assert isinstance(ann.get("lineage_id"), str) and ann.get("lineage_id")
 

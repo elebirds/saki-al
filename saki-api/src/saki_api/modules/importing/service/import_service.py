@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import re
 import shutil
 import tempfile
 import uuid
+import ast
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -344,8 +346,9 @@ class ImportService:
 
         existing_labels = await self.label_service.get_by_project(project_id)
         existing_label_names = {self._normalize_label_name(item.name) for item in existing_labels}
-        planned_new_labels = sorted(
-            {name for name in raw_labels if self._normalize_label_name(name) not in existing_label_names}
+        planned_new_labels = self._build_planned_new_labels(
+            raw_labels=raw_labels,
+            existing_label_names=existing_label_names,
         )
 
         summary = {
@@ -529,12 +532,9 @@ class ImportService:
             labels = await self.label_service.get_by_project(project_id)
             existing_label_names = {self._normalize_label_name(item.name) for item in labels}
 
-        planned_new_labels = sorted(
-            {
-                name
-                for name in raw_labels
-                if self._normalize_label_name(name) not in existing_label_names
-            }
+        planned_new_labels = self._build_planned_new_labels(
+            raw_labels=raw_labels,
+            existing_label_names=existing_label_names,
         )
 
         summary = {
@@ -1856,12 +1856,24 @@ class ImportService:
         labels_by_id, samples, annotations = split_batch(batch, ctx=ctx, report=report)
 
         sample_by_id = {sample.id: sample for sample in samples}
-        raw_labels: list[str] = []
+        observed_labels: list[str] = []
         prepared: list[PreparedAnnotation] = []
 
         for label in labels_by_id.values():
             if label.name:
-                raw_labels.append(str(label.name))
+                observed_labels.append(str(label.name))
+
+        if fmt in {ImportFormat.YOLO, ImportFormat.YOLO_OBB}:
+            declared_labels = self._load_yolo_declared_labels(yolo_root)
+            if declared_labels:
+                raw_labels = self._merge_declared_and_observed_labels(
+                    declared_labels=declared_labels,
+                    observed_labels=observed_labels,
+                )
+            else:
+                raw_labels = self._normalize_yolo_observed_labels_without_declared(observed_labels)
+        else:
+            raw_labels = self._ordered_unique_label_names(observed_labels)
 
         for index, ann in enumerate(annotations):
             sample = sample_by_id.get(ann.sample_id)
@@ -1928,6 +1940,76 @@ class ImportService:
             )
 
         return prepared, raw_labels, report
+
+    @staticmethod
+    def _ordered_unique_label_names(names: list[str]) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for raw in names:
+            name = str(raw or "").strip()
+            normalized = ImportService._normalize_label_name(name)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered.append(name)
+        return ordered
+
+    @classmethod
+    def _merge_declared_and_observed_labels(
+        cls,
+        *,
+        declared_labels: list[str],
+        observed_labels: list[str],
+    ) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for raw in list(declared_labels) + list(observed_labels):
+            name = str(raw or "").strip()
+            normalized = cls._normalize_label_name(name)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered.append(name)
+        return ordered
+
+    @classmethod
+    def _build_planned_new_labels(
+        cls,
+        *,
+        raw_labels: list[str],
+        existing_label_names: set[str],
+    ) -> list[str]:
+        planned: list[str] = []
+        seen = set(existing_label_names)
+        for raw in raw_labels:
+            name = str(raw or "").strip()
+            normalized = cls._normalize_label_name(name)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            planned.append(name)
+        return planned
+
+    @classmethod
+    def _normalize_yolo_observed_labels_without_declared(cls, observed_labels: list[str]) -> list[str]:
+        """
+        YOLO 未声明 data.yaml names 时：
+        - 若标签全为 class_<数字>，按数字升序；
+        - 否则保持首次出现顺序。
+        """
+        ordered = cls._ordered_unique_label_names(observed_labels)
+        if not ordered:
+            return ordered
+
+        parsed: list[tuple[int, str]] = []
+        for name in ordered:
+            matched = re.fullmatch(r"class_(\d+)", name.strip())
+            if not matched:
+                return ordered
+            parsed.append((int(matched.group(1)), name))
+
+        parsed.sort(key=lambda item: (item[0], item[1]))
+        return [name for _index, name in parsed]
 
     @staticmethod
     def _extract_sample_key(sample) -> str:
@@ -2034,6 +2116,115 @@ class ImportService:
             return shared[0]
 
         raise BadRequestAppException("YOLO split folders not found (expected images/<split> and labels/<split>)")
+
+    @classmethod
+    def _load_yolo_declared_labels(cls, yolo_root: Path) -> list[str]:
+        yaml_path = yolo_root / "data.yaml"
+        if not yaml_path.exists():
+            return []
+
+        try:
+            text = yaml_path.read_text(encoding="utf-8")
+        except OSError:
+            return []
+
+        cfg: dict[str, Any] = {}
+        try:
+            import yaml  # type: ignore
+
+            loaded = yaml.safe_load(text)
+            if isinstance(loaded, dict):
+                cfg = dict(loaded)
+        except Exception:
+            try:
+                cfg = cls._parse_simple_yaml(text)
+            except Exception:  # noqa: BLE001
+                return []
+
+        names = cfg.get("names")
+        if isinstance(names, list):
+            return cls._ordered_unique_label_names([str(item) for item in names])
+        if isinstance(names, dict):
+            ordered = [str(value) for _idx, value in cls._sort_indexed_name_items(names)]
+            return cls._ordered_unique_label_names(ordered)
+        return []
+
+    @staticmethod
+    def _sort_indexed_name_items(names: dict[Any, Any]) -> list[tuple[Any, Any]]:
+        def key_fn(item: tuple[Any, Any]) -> tuple[int, int, str]:
+            raw_key = str(item[0])
+            try:
+                return 0, int(raw_key), raw_key
+            except Exception:
+                return 1, 0, raw_key
+
+        return sorted(names.items(), key=key_fn)
+
+    @classmethod
+    def _parse_simple_yaml(cls, text: str) -> dict[str, Any]:
+        content = str(text or "").strip()
+        if not content:
+            return {}
+        if content.startswith("{"):
+            parsed = json.loads(content)
+            return dict(parsed) if isinstance(parsed, dict) else {}
+
+        out: dict[str, Any] = {}
+        lines = content.splitlines()
+        index = 0
+        while index < len(lines):
+            raw = lines[index]
+            stripped = raw.strip()
+            index += 1
+            if not stripped or stripped.startswith("#") or ":" not in stripped:
+                continue
+
+            key, value = stripped.split(":", 1)
+            key = key.strip()
+            value = value.strip()
+            if key != "names":
+                out[key] = cls._strip_quotes(value)
+                continue
+
+            if value:
+                if value.startswith("["):
+                    parsed = ast.literal_eval(value)
+                    out["names"] = [str(item) for item in parsed]
+                else:
+                    out["names"] = cls._strip_quotes(value)
+                continue
+
+            names_map: dict[str, str] = {}
+            names_list: list[str] = []
+            while index < len(lines):
+                block = lines[index]
+                if not block.strip():
+                    index += 1
+                    continue
+                if not block.startswith(" ") and not block.startswith("\t"):
+                    break
+
+                piece = block.strip()
+                index += 1
+                if piece.startswith("-"):
+                    names_list.append(cls._strip_quotes(piece[1:].strip()))
+                    continue
+                if ":" in piece:
+                    left, right = piece.split(":", 1)
+                    names_map[cls._strip_quotes(left.strip())] = cls._strip_quotes(right.strip())
+            if names_map:
+                out["names"] = names_map
+            elif names_list:
+                out["names"] = names_list
+
+        return out
+
+    @staticmethod
+    def _strip_quotes(value: str) -> str:
+        text = str(value or "")
+        if len(text) >= 2 and ((text[0] == '"' and text[-1] == '"') or (text[0] == "'" and text[-1] == "'")):
+            return text[1:-1]
+        return text
 
     @staticmethod
     def _detect_yolo_label_format(yolo_root: Path, split: str) -> str:

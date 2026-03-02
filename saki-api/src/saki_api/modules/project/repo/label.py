@@ -30,7 +30,7 @@ class LabelRepository(BaseRepository[Label]):
         """
         return await self.list(
             filters=[Label.project_id == project_id],
-            order_by=[Label.sort_order, Label.created_at]
+            order_by=[Label.sort_order, Label.id]
         )
 
     async def get_by_project_and_name(

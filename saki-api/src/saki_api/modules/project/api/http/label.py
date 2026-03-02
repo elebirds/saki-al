@@ -150,8 +150,7 @@ async def delete_label(
 
     Warning: This may affect annotations that reference this label.
     """
-    await label_service.get_by_id_or_raise(label_id)
-    await label_service.repository.delete(label_id)
+    await label_service.delete_label(label_id=label_id)
 
 
 @router.delete("/projects/{project_id}/labels/{label_id}", response_model=None, dependencies=[
@@ -163,12 +162,10 @@ async def delete_project_label(
         label_id: uuid.UUID,
         label_service: LabelServiceDep,
 ):
-    await _ensure_label_in_project(
-        project_id=project_id,
+    await label_service.delete_label(
         label_id=label_id,
-        label_service=label_service,
+        project_id=project_id,
     )
-    await label_service.repository.delete(label_id)
 
 
 # =============================================================================

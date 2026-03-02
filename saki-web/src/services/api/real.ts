@@ -1396,6 +1396,14 @@ export class RealApiService implements ApiService {
         await this.client.delete(`/labels/projects/${projectId}/labels/${labelId}`);
     }
 
+    async reorderProjectLabels(projectId: string, labelIds: string[]): Promise<ProjectLabel[]> {
+        const response = await this.client.post<ProjectLabel[]>(
+            `/labels/projects/${projectId}/labels/reorder`,
+            labelIds,
+        );
+        return response.data;
+    }
+
     async getProjectSamples(
         projectId: string,
         datasetId: string,

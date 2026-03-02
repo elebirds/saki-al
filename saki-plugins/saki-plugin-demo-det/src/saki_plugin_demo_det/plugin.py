@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from saki_plugin_sdk import (
+    ExecutionBindingContext,
     EventCallback,
     ExecutorPlugin,
+    RuntimeCapabilitySnapshot,
     StepRuntimeContext,
     TrainOutput,
     WorkspaceProtocol,
@@ -18,6 +20,20 @@ class DemoDetectionPlugin(ExecutorPlugin):
         self._manifest = self._load_manifest()
         self._internal = DemoDetectionInternal()
 
+    async def probe_runtime_capability(
+        self,
+        *,
+        context: StepRuntimeContext,
+    ) -> RuntimeCapabilitySnapshot:
+        del context
+        return RuntimeCapabilitySnapshot(
+            framework="demo",
+            framework_version=self.version,
+            backends=["cpu"],
+            backend_details={},
+            errors=[],
+        )
+
     async def prepare_data(
             self,
             workspace: WorkspaceProtocol,
@@ -27,7 +43,7 @@ class DemoDetectionPlugin(ExecutorPlugin):
             dataset_ir: Any,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> None:
         await self._internal.prepare_data(
             workspace,
@@ -45,7 +61,7 @@ class DemoDetectionPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit: EventCallback,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
         return await self._internal.train(workspace, params, emit, context=context)
 
@@ -56,7 +72,7 @@ class DemoDetectionPlugin(ExecutorPlugin):
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         return await self._internal.predict_unlabeled(
             workspace,
@@ -72,7 +88,7 @@ class DemoDetectionPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit: EventCallback,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
         return await self._internal.eval(workspace, params, emit, context=context)
 

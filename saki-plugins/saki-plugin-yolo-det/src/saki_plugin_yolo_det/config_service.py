@@ -11,9 +11,6 @@ from saki_plugin_sdk import (
     PluginConfig,
     PluginManifest,
     WorkspaceProtocol,
-    available_accelerators,
-    normalize_accelerator_name,
-    probe_hardware,
 )
 
 
@@ -120,64 +117,6 @@ class YoloConfigService:
 
     def validate_params(self, params: dict[str, Any]) -> None:
         self.resolve_config(params)
-
-    def resolve_device(
-        self,
-        params: Any,
-        *,
-        supported_accelerators: list[str],
-        preferred_backend: str = "",
-    ) -> tuple[Any, str, str]:
-        requested_raw = params.get("device", "auto")
-        requested = normalize_accelerator_name(requested_raw) or "auto"
-        preferred = normalize_accelerator_name(preferred_backend or params.get("_resolved_device_backend"))
-
-        available = available_accelerators(
-            probe_hardware(
-                cpu_workers=1,
-                memory_mb=0,
-            )
-        )
-        supported = {
-            normalize_accelerator_name(item)
-            for item in supported_accelerators
-            if normalize_accelerator_name(item) and normalize_accelerator_name(item) != "auto"
-        }
-        supported = supported or {"cpu"}
-        candidates = available & supported
-
-        if requested != "auto":
-            if requested == "cuda" and requested not in candidates:
-                raise ValueError(
-                    f"Invalid CUDA 'device={requested_raw}' requested. Use 'device=cpu' if no CUDA device is available."
-                )
-            if requested not in candidates:
-                raise ValueError(
-                    f"Requested device '{requested_raw}' is not available on this executor. "
-                    f"available={sorted(available)} supported={sorted(supported)}"
-                )
-            if requested == "cuda":
-                raw = str(requested_raw).strip()
-                if raw and (raw.isdigit() or raw.startswith("cuda:") or "," in raw):
-                    return requested_raw, str(requested_raw), requested
-                return "0", str(requested_raw), requested
-            if requested == "mps":
-                return "mps", str(requested_raw), requested
-            return "cpu", str(requested_raw), requested
-
-        order = ["cuda", "cpu", "mps"]
-        if preferred in order and preferred != "mps":
-            order = [preferred] + [item for item in order if item != preferred]
-        resolved_backend = next((item for item in order if item in candidates), "")
-        if not resolved_backend:
-            raise ValueError(
-                f"No available accelerator for auto mode. available={sorted(available)} supported={sorted(supported)}"
-            )
-        if resolved_backend == "cuda":
-            return "0", str(requested_raw), resolved_backend
-        if resolved_backend == "mps":
-            return "mps", str(requested_raw), resolved_backend
-        return "cpu", str(requested_raw), resolved_backend
 
     async def resolve_model_ref(
         self,

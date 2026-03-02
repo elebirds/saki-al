@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import yaml
+
+from saki_plugin_sdk.profile_spec import parse_runtime_profiles
 
 
 class PluginManifest(BaseModel):
@@ -15,19 +17,26 @@ class PluginManifest(BaseModel):
     plugin_id: str
     version: str = "0.0.0"
     display_name: str = ""
-    sdk_version: str = ">=2.0.0"
+    sdk_version: str = ">=3.0.0"
 
     supported_step_types: list[str] = Field(default_factory=list)
     supported_strategies: list[str] = Field(default_factory=list)
     supported_accelerators: list[str] = Field(default_factory=lambda: ["cpu"])
     supports_auto_fallback: bool = True
     step_runtime_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    runtime_profiles: list[dict[str, Any]] = Field(default_factory=list)
 
     config_schema: dict[str, Any] = Field(default_factory=dict)
     default_config: dict[str, Any] = Field(default_factory=dict)
 
     entrypoint: str = ""
     """Module path used to start the plugin worker, e.g. ``saki_plugin_demo_det.worker:main``."""
+
+    @field_validator("runtime_profiles", mode="after")
+    @classmethod
+    def validate_runtime_profiles(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        profiles = parse_runtime_profiles(value)
+        return [item.to_dict() for item in profiles]
 
     @classmethod
     def from_yaml(cls, path: Path) -> "PluginManifest":

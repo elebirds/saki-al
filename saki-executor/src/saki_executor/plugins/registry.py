@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 from loguru import logger
 
@@ -34,7 +35,6 @@ class PluginRegistry:
     def discover_plugins(self, plugins_dir: str | Path, *, auto_sync: bool = True) -> None:
         """Scan *plugins_dir* for sub-directories containing ``plugin.yml``."""
         from saki_plugin_sdk.manifest import PluginManifest
-        from saki_executor.plugins.venv_manager import ensure_plugin_venv
 
         root = Path(plugins_dir)
         if not root.is_dir():
@@ -47,11 +47,10 @@ class PluginRegistry:
                 continue
             try:
                 manifest = PluginManifest.from_yaml(yml)
-                python_path = ensure_plugin_venv(candidate, auto_sync=auto_sync)
                 handle = ExternalPluginHandle(
                     manifest=manifest,
                     plugin_dir=candidate,
-                    python_path=python_path,
+                    python_path=Path(sys.executable),
                 )
                 self.register(handle)
                 logger.info(

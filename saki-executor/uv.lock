@@ -650,7 +650,7 @@ wheels = [
 
 [[package]]
 name = "saki-executor"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "grpcio" },
@@ -716,7 +716,7 @@ dev = [{ name = "pytest", specifier = ">=8.3.0" }]
 
 [[package]]
 name = "saki-plugin-sdk"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "../saki-plugin-sdk" }
 dependencies = [
     { name = "loguru" },

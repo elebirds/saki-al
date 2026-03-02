@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.steps.contracts import FetchedPage
-from saki_plugin_sdk import ExecutorPlugin, StepRuntimeContext, WorkspaceProtocol
+from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, WorkspaceProtocol
 
 FetchPageFn = Callable[..., Awaitable[FetchedPage]]
 
@@ -36,7 +36,7 @@ class SamplingService:
         protected: set[str],
         query_type: str,
         topk: int,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         page_size = max(1, min(5000, int(params.get("unlabeled_page_size", 1000))))
         target_topk = int(topk)

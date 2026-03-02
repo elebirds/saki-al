@@ -5,9 +5,21 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from saki_plugin_sdk import EventCallback, StepRuntimeContext, TrainArtifact, TrainOutput, WorkspaceProtocol
+from saki_plugin_sdk import EventCallback, ExecutionBindingContext, TrainArtifact, TrainOutput, WorkspaceProtocol
 from saki_plugin_yolo_det.common import to_int
 from saki_plugin_yolo_det.config_service import YoloConfigService
+
+
+def _to_yolo_device(backend: str, device_spec: str) -> Any:
+    normalized_backend = str(backend or "").strip().lower()
+    spec = str(device_spec or "").strip().lower()
+    if normalized_backend == "cuda":
+        if spec.startswith("cuda:"):
+            return spec.split(":", 1)[1] or "0"
+        return spec or "0"
+    if normalized_backend == "mps":
+        return "mps"
+    return "cpu"
 
 
 class YoloEvalService:
@@ -28,19 +40,16 @@ class YoloEvalService:
         workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
-        context: StepRuntimeContext,
-        supported_accelerators: list[str],
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         cfg = self._config_service.resolve_config(params)
         dataset_yaml = workspace.data_dir / "dataset.yaml"
         if not dataset_yaml.exists():
             raise RuntimeError(f"dataset file not found: {dataset_yaml}")
 
-        device, requested_device, resolved_backend = self._config_service.resolve_device(
-            cfg,
-            supported_accelerators=supported_accelerators,
-            preferred_backend=context.resolved_device_backend,
-        )
+        requested_device = str(cfg.get("device", "auto") or "auto").strip().lower()
+        resolved_backend = str(context.device_binding.backend or "").strip().lower()
+        device = _to_yolo_device(resolved_backend, str(context.device_binding.device_spec or ""))
         model_path = await self._config_service.resolve_best_or_fallback_model(workspace=workspace, params=cfg)
         imgsz = to_int(cfg.imgsz, 640)
         batch = to_int(cfg.batch, 16)
@@ -51,7 +60,8 @@ class YoloEvalService:
                 "level": "INFO",
                 "message": (
                     f"YOLO eval started model={model_path} imgsz={imgsz} batch={batch} "
-                    f"requested_device={requested_device} resolved_backend={resolved_backend} device={device}"
+                    f"requested_device={requested_device} resolved_backend={resolved_backend} "
+                    f"device={device} profile={context.profile_id}"
                 ),
             },
         )

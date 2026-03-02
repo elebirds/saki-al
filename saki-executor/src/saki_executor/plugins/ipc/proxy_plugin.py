@@ -6,8 +6,10 @@ import uuid
 
 from saki_executor.plugins.ipc.client import PluginWorkerClient
 from saki_plugin_sdk import (
+    ExecutionBindingContext,
     EventCallback,
     ExecutorPlugin,
+    RuntimeCapabilitySnapshot,
     StepRuntimeContext,
     StepRuntimeRequirements,
     TrainOutput,
@@ -25,6 +27,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         emit: EventCallback,
         python_executable: str | Path | None = None,
         entrypoint_module: str | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> None:
         self._metadata = metadata_plugin
         self._step_id = step_id
@@ -35,7 +38,9 @@ class SubprocessPluginProxy(ExecutorPlugin):
             event_handler=self._on_worker_event,
             python_executable=python_executable,
             entrypoint_module=entrypoint_module,
+            extra_env=extra_env,
         )
+        self._binding_context: ExecutionBindingContext | None = None
 
     @property
     def plugin_id(self) -> str:
@@ -77,12 +82,40 @@ class SubprocessPluginProxy(ExecutorPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | None = None,
+        context: StepRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         self._metadata.validate_params(params, context=context)
 
     def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
         return self._metadata.get_step_runtime_requirements(step_type)
+
+    async def probe_runtime_capability(
+        self,
+        *,
+        context: StepRuntimeContext,
+    ) -> RuntimeCapabilitySnapshot:
+        await self._worker.start()
+        payload_dir = self._payload_dir_for_step_cache()
+        result_path = payload_dir / f"runtime_capability_{uuid.uuid4().hex}.json"
+        reply = await self._worker.request(
+            action="probe_runtime_capability",
+            payload={
+                "result_path": str(result_path),
+            },
+            runtime_context=context,
+        )
+        output_path = Path(reply.result_path or str(result_path))
+        payload = protocol.read_json(output_path)
+        return protocol.parse_runtime_capability(payload)
+
+    async def bind_execution_context(self, context: ExecutionBindingContext) -> None:
+        await self._worker.start()
+        await self._worker.request(
+            action="bind_execution_context",
+            payload={},
+            execution_binding_context=context,
+        )
+        self._binding_context = context
 
     async def prepare_data(
         self,
@@ -93,7 +126,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         dataset_ir: Any,
         splits: dict[str, list[dict[str, Any]]] | None = None,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> None:
         await self._worker.start()
         payload_dir = self._payload_dir(workspace)
@@ -120,7 +153,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
                 "splits_path": str(splits_path),
                 "dataset_ir_path": str(dataset_ir_path),
             },
-            context=context,
+            execution_binding_context=context,
         )
 
     async def train(
@@ -129,7 +162,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         return await self._run_train_output_action(
             action="train",
@@ -145,7 +178,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         return await self._run_train_output_action(
             action="eval",
@@ -161,7 +194,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         return await self._run_train_output_action(
             action="predict",
@@ -178,7 +211,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         self._emit = emit
         await self._worker.start()
@@ -193,7 +226,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
                 "params_path": str(params_path),
                 "result_path": str(result_path),
             },
-            context=context,
+            execution_binding_context=context,
         )
         output_path = Path(reply.result_path or str(result_path))
         if not output_path.exists():
@@ -210,7 +243,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         strategy: str,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         return await self.predict_unlabeled_batch(
             workspace=workspace,
@@ -227,7 +260,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         strategy: str,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         await self._worker.start()
         payload_dir = self._payload_dir(workspace)
@@ -246,7 +279,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
                 "params_path": str(params_path),
                 "result_path": str(result_path),
             },
-            context=context,
+            execution_binding_context=context,
         )
         output_path = Path(reply.result_path or str(result_path))
         if not output_path.exists():
@@ -288,5 +321,10 @@ class SubprocessPluginProxy(ExecutorPlugin):
     @staticmethod
     def _payload_dir(workspace: WorkspaceProtocol) -> Path:
         path = workspace.cache_dir / "plugin_worker_payloads"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _payload_dir_for_step_cache(self) -> Path:
+        path = Path("/tmp") / "saki_plugin_worker_payloads" / self._step_id
         path.mkdir(parents=True, exist_ok=True)
         return path

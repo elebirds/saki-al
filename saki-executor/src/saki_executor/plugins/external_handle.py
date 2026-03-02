@@ -15,12 +15,15 @@ from typing import Any
 
 from saki_plugin_sdk.manifest import PluginManifest
 from saki_plugin_sdk import (
+    ExecutionBindingContext,
     EventCallback,
     ExecutorPlugin,
+    RuntimeProfileSpec,
     StepRuntimeContext,
     StepRuntimeRequirements,
     TrainOutput,
     WorkspaceProtocol,
+    parse_runtime_profiles,
 )
 
 
@@ -94,11 +97,15 @@ class ExternalPluginHandle(ExecutorPlugin):
     def entrypoint(self) -> str:
         return self._manifest.entrypoint
 
+    @property
+    def runtime_profiles(self) -> list[RuntimeProfileSpec]:
+        return parse_runtime_profiles(self._manifest.runtime_profiles)
+
     def validate_params(
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | None = None,
+        context: StepRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         super().validate_params(params, context=context)
 
@@ -139,7 +146,7 @@ class ExternalPluginHandle(ExecutorPlugin):
         dataset_ir,
         splits=None,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ):
         del workspace, labels, samples, annotations, dataset_ir, splits, context
         raise RuntimeError("ExternalPluginHandle.prepare_data must not be called directly; use SubprocessPluginProxy")
@@ -150,7 +157,7 @@ class ExternalPluginHandle(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         del workspace, params, emit, context
         raise RuntimeError("ExternalPluginHandle.train must not be called directly; use SubprocessPluginProxy")
@@ -162,7 +169,7 @@ class ExternalPluginHandle(ExecutorPlugin):
         strategy,
         params,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ):
         del workspace, unlabeled_samples, strategy, params, context
         raise RuntimeError("ExternalPluginHandle.predict_unlabeled must not be called directly")
@@ -174,7 +181,7 @@ class ExternalPluginHandle(ExecutorPlugin):
         strategy,
         params,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ):
         del workspace, unlabeled_samples, strategy, params, context
         raise RuntimeError("ExternalPluginHandle.predict_unlabeled_batch must not be called directly")
@@ -185,7 +192,7 @@ class ExternalPluginHandle(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         del workspace, params, emit, context
         raise RuntimeError("ExternalPluginHandle.eval must not be called directly; use SubprocessPluginProxy")
@@ -196,7 +203,7 @@ class ExternalPluginHandle(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         del workspace, params, emit, context
         raise RuntimeError("ExternalPluginHandle.predict must not be called directly; use SubprocessPluginProxy")

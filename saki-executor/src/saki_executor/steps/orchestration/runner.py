@@ -9,15 +9,30 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from saki_executor.core.config import settings
 from saki_executor.agent import codec as runtime_codec
+from saki_executor.plugins.venv_manager import ensure_plugin_venv_for_profile
 from saki_executor.plugins.ipc.proxy_plugin import SubprocessPluginProxy
+from saki_executor.runtime.binding.device_binding_resolver import DeviceBindingResolver
+from saki_executor.runtime.capability.host_probe_service import HostProbeService
+from saki_executor.runtime.profile.profile_selector import ProfileSelectorStrategy
 from saki_executor.steps.contracts import SUPPORTED_LOOP_MODES, StepExecutionRequest, StepFinalResult
 from saki_executor.steps.orchestration.event_emitter import StepEventEmitter
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
 from saki_executor.steps.state import ExecutorState, StepStatus
 from saki_executor.steps.workspace import Workspace
 from saki_executor.steps.workspace_adapter import WorkspaceAdapter
-from saki_plugin_sdk import StepReporter, StepRuntimeRequirements, StepRuntimeContext, WorkspaceProtocol
+from saki_plugin_sdk import (
+    ExecutionBindingContext,
+    HostCapabilitySnapshot,
+    RuntimeCapabilitySnapshot,
+    RuntimeProfileSpec,
+    StepReporter,
+    StepRuntimeRequirements,
+    StepRuntimeContext,
+    WorkspaceProtocol,
+    parse_runtime_profiles,
+)
 
 if TYPE_CHECKING:
     from saki_executor.steps.manager import StepManager
@@ -67,12 +82,18 @@ class StepPipelineRunner:
         self._task_id = request.step_id
         self._effective_plugin_params: dict[str, Any] = {}
         self._runtime_context: StepRuntimeContext | None = None
+        self._execution_binding_context: ExecutionBindingContext | None = None
+        self._host_capability: HostCapabilitySnapshot | None = None
+        self._runtime_capability: RuntimeCapabilitySnapshot | None = None
+        self._selected_profile: RuntimeProfileSpec | None = None
+        self._selected_worker_python: str | Path | None = None
 
     async def run(self) -> StepFinalResult:
         self._validate_request()
         metadata_plugin = self._resolve_plugin()
         workspace, reporter, emitter = self._prepare_workspace()
         plugin = self._build_execution_plugin(metadata_plugin=metadata_plugin, emitter=emitter)
+        await self._prepare_execution_binding(plugin=plugin, emitter=emitter)
         runtime_requirements = plugin.get_step_runtime_requirements(self._request.step_type)
         await self._emit_start_status(emitter)
         await self._prepare_trained_model_if_needed(
@@ -160,6 +181,10 @@ class StepPipelineRunner:
                 f"plugin {self._request.plugin_id} does not support step_type={self._request.step_type}; "
                 f"supported={sorted(supported_step_types)}"
             )
+        self._host_capability = HostProbeService().probe(
+            cpu_workers=settings.CPU_WORKERS,
+            memory_mb=settings.MEMORY_MB,
+        )
         raw_plugin_config = self._request.resolved_params.get("plugin")
         if not isinstance(raw_plugin_config, dict):
             raw_plugin_config = dict(self._request.resolved_params)
@@ -183,14 +208,7 @@ class StepPipelineRunner:
                 effective_plugin_params[key] = self._request.resolved_params.get(key)
         effective_plugin_params["step_type"] = self._request.step_type
         effective_plugin_params["mode"] = self._request.mode
-        resolved_backend = str(
-            effective_plugin_params.get("_resolved_device_backend")
-            or self._request.resolved_params.get("_resolved_device_backend")
-            or ""
-        ).strip().lower()
-        runtime_context = self._build_runtime_context(
-            resolved_device_backend=resolved_backend,
-        )
+        runtime_context = runtime_context_candidate
         try:
             plugin.validate_params(effective_plugin_params, context=runtime_context)
         except Exception as exc:
@@ -198,9 +216,44 @@ class StepPipelineRunner:
                 f"plugin params validate failed plugin_id={self._request.plugin_id} "
                 f"step_id={self._request.step_id}: {exc}"
             ) from exc
+        requested_device = effective_plugin_params.get("device", "auto")
+        profiles = self._resolve_runtime_profiles(plugin)
+        selected_profile = ProfileSelectorStrategy().select(
+            profiles=profiles,
+            host_capability=self._host_capability,
+            requested_device=requested_device,
+        )
+        self._selected_profile = selected_profile
+        self._selected_worker_python = self._resolve_worker_python(plugin, selected_profile)
         self._effective_plugin_params = effective_plugin_params
         self._runtime_context = runtime_context
         return plugin
+
+    def _resolve_runtime_profiles(self, plugin: Any) -> list[RuntimeProfileSpec]:
+        runtime_profiles = getattr(plugin, "runtime_profiles", None)
+        if isinstance(runtime_profiles, list):
+            rows = runtime_profiles
+        else:
+            manifest = getattr(plugin, "manifest", None)
+            raw = getattr(manifest, "runtime_profiles", []) if manifest is not None else []
+            rows = raw if isinstance(raw, list) else []
+        return parse_runtime_profiles(rows)
+
+    def _resolve_worker_python(
+        self,
+        plugin: Any,
+        profile: RuntimeProfileSpec,
+    ) -> str | Path | None:
+        plugin_dir = getattr(plugin, "plugin_dir", None)
+        if not plugin_dir:
+            return getattr(plugin, "python_path", None)
+        return ensure_plugin_venv_for_profile(
+            plugin_dir=Path(str(plugin_dir)),
+            plugin_id=str(getattr(plugin, "plugin_id", self._request.plugin_id) or self._request.plugin_id),
+            plugin_version=str(getattr(plugin, "version", "0.0.0") or "0.0.0"),
+            profile=profile,
+            auto_sync=settings.PLUGIN_VENV_AUTO_SYNC,
+        )
 
     def _build_runtime_context(
         self,
@@ -235,10 +288,18 @@ class StepPipelineRunner:
             raise RuntimeError(f"runtime context is not initialized: {self._request.step_id}")
         return self._runtime_context
 
+    def _require_execution_context(self) -> ExecutionBindingContext:
+        if self._execution_binding_context is None:
+            raise RuntimeError(f"execution binding context is not initialized: {self._request.step_id}")
+        return self._execution_binding_context
+
     def _build_execution_plugin(self, *, metadata_plugin: Any, emitter: StepEventEmitter):
         # Extract external plugin info if available
-        python_executable = getattr(metadata_plugin, "python_path", None)
+        python_executable = self._selected_worker_python or getattr(metadata_plugin, "python_path", None)
         entrypoint_module = getattr(metadata_plugin, "entrypoint", None)
+        if self._selected_profile and self._selected_profile.entrypoint:
+            entrypoint_module = self._selected_profile.entrypoint
+        extra_env = dict(self._selected_profile.env) if self._selected_profile else {}
 
         plugin = SubprocessPluginProxy(
             metadata_plugin=metadata_plugin,
@@ -246,9 +307,82 @@ class StepPipelineRunner:
             emit=emitter.emit,
             python_executable=python_executable,
             entrypoint_module=entrypoint_module,
+            extra_env=extra_env,
         )
         self._manager._active_plugin = plugin  # noqa: SLF001
         return plugin
+
+    async def _prepare_execution_binding(
+        self,
+        *,
+        plugin: Any,
+        emitter: StepEventEmitter,
+    ) -> None:
+        runtime_context = self._require_runtime_context()
+        selected_profile = self._selected_profile
+        host_capability = self._host_capability
+        if selected_profile is None:
+            raise RuntimeError("runtime profile is not selected")
+        if host_capability is None:
+            raise RuntimeError("host capability is not resolved")
+
+        runtime_capability = await plugin.probe_runtime_capability(context=runtime_context)
+        if not isinstance(runtime_capability, RuntimeCapabilitySnapshot):
+            runtime_capability = RuntimeCapabilitySnapshot.from_dict(dict(runtime_capability or {}))
+
+        binding = DeviceBindingResolver().resolve(
+            requested_device=self._effective_plugin_params.get("device", "auto"),
+            host_capability=host_capability,
+            runtime_capability=runtime_capability,
+            supported_backends=list(getattr(plugin, "supported_accelerators", []) or []),
+            profile=selected_profile,
+            allow_auto_fallback=bool(getattr(plugin, "supports_auto_fallback", True)),
+        )
+        self._effective_plugin_params["_resolved_device_backend"] = binding.backend
+        self._effective_plugin_params["_resolved_device_spec"] = binding.device_spec
+        execution_context = ExecutionBindingContext(
+            step_context=self._require_runtime_context(),
+            host_capability=host_capability,
+            runtime_capability=runtime_capability,
+            device_binding=binding,
+            profile_id=selected_profile.id,
+        )
+        bind_context = getattr(plugin, "bind_execution_context", None)
+        if callable(bind_context):
+            await bind_context(execution_context)
+        try:
+            plugin.validate_params(self._effective_plugin_params, context=execution_context)
+        except Exception as exc:
+            raise RuntimeError(
+                f"plugin params validate failed after binding plugin_id={self._request.plugin_id} "
+                f"step_id={self._request.step_id}: {exc}"
+            ) from exc
+        self._execution_binding_context = execution_context
+        self._runtime_capability = runtime_capability
+        await emitter.emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "execution binding resolved "
+                    f"profile={selected_profile.id} backend={binding.backend} "
+                    f"device_spec={binding.device_spec} fallback={binding.fallback_applied}"
+                ),
+            },
+        )
+        await emitter.emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "execution capability snapshots "
+                    f"host_capability={host_capability.to_dict()} "
+                    f"runtime_capability={runtime_capability.to_dict()} "
+                    f"selected_profile={selected_profile.to_dict()} "
+                    f"device_binding={binding.to_dict()}"
+                ),
+            },
+        )
 
     async def _shutdown_plugin(self, plugin: Any) -> None:
         shutdown = getattr(plugin, "shutdown", None)
@@ -300,7 +434,7 @@ class StepPipelineRunner:
             workspace,
             self._effective_plugin_params,
             emitter.emit,
-            context=self._require_runtime_context(),
+            context=self._require_execution_context(),
         )
         return output, protected
 
@@ -346,7 +480,7 @@ class StepPipelineRunner:
             annotations=data_bundle.train_annotations,
             dataset_ir=data_bundle.ir_batch,
             splits=dict(data_bundle.splits),
-            context=runtime_context,
+            context=self._require_execution_context(),
         )
         return data_bundle.protected
 
@@ -649,7 +783,7 @@ class StepPipelineRunner:
             workspace,
             self._effective_plugin_params,
             emitter.emit,
-            context=self._require_runtime_context(),
+            context=self._require_execution_context(),
         )
         artifacts, optional_upload_failures = await self._upload_artifacts(
             output_artifacts=output.artifacts,
@@ -776,7 +910,7 @@ class StepPipelineRunner:
             protected=protected,
             query_type=query_type,
             topk=candidate_limit,
-            context=runtime_context,
+            context=self._require_execution_context(),
         )
 
     async def _finalize_result(

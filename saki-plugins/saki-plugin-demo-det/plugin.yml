@@ -1,7 +1,7 @@
 plugin_id: "demo_det_v1"
-version: "2.0.0"
+version: "3.0.0"
 display_name: "Demo Detection (Mock)"
-sdk_version: ">=2.0.0"
+sdk_version: ">=3.0.0"
 
 supported_step_types:
   - train
@@ -19,6 +19,15 @@ supported_accelerators:
   - cpu
 
 supports_auto_fallback: true
+
+runtime_profiles:
+  - id: "cpu"
+    priority: 100
+    when: "host.backends.includes('cpu')"
+    dependency_groups:
+      - "profile-cpu"
+    allowed_backends:
+      - "cpu"
 
 config_schema:
   title: "Demo Detection Request Config"

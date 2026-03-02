@@ -5,13 +5,16 @@ from typing import Any
 import pytest
 
 from saki_plugin_sdk import (
+    DeviceBinding,
+    ExecutionBindingContext,
     EventCallback,
     ExecutorPlugin,
+    HostCapabilitySnapshot,
     PluginManifest,
     PluginValidationError,
+    RuntimeCapabilitySnapshot,
     StepRuntimeContext,
     TrainOutput,
-    Workspace,
     WorkspaceProtocol,
 )
 
@@ -22,10 +25,19 @@ class _DummyPlugin(ExecutorPlugin):
         self._manifest = PluginManifest.model_validate(
             {
                 "plugin_id": "dummy_v2",
-                "version": "2.0.0",
-                "display_name": "Dummy V2",
+                "version": "3.0.0",
+                "display_name": "Dummy V3",
                 "supported_step_types": ["train", "score"],
                 "supported_strategies": ["random_baseline"],
+                "runtime_profiles": [
+                    {
+                        "id": "cpu",
+                        "priority": 100,
+                        "when": "host.backends.includes('cpu')",
+                        "dependency_groups": ["profile-cpu"],
+                        "allowed_backends": ["cpu"],
+                    }
+                ],
                 "config_schema": {
                     "title": "Dummy Config",
                     "fields": [
@@ -46,7 +58,7 @@ class _DummyPlugin(ExecutorPlugin):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         del workspace, params, emit, context
         return TrainOutput(metrics={}, artifacts=[])
@@ -58,7 +70,7 @@ class _DummyPlugin(ExecutorPlugin):
         strategy: str,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         del workspace, unlabeled_samples, strategy, params, context
         return []
@@ -79,6 +91,39 @@ def _context() -> StepRuntimeContext:
     )
 
 
+def _execution_context() -> ExecutionBindingContext:
+    return ExecutionBindingContext(
+        step_context=_context(),
+        host_capability=HostCapabilitySnapshot.from_dict(
+            {
+                "cpu_workers": 8,
+                "memory_mb": 8192,
+                "gpus": [],
+                "metal_available": False,
+                "platform": "darwin",
+                "arch": "arm64",
+                "driver_info": {},
+            }
+        ),
+        runtime_capability=RuntimeCapabilitySnapshot(
+            framework="torch",
+            framework_version="2.2.0",
+            backends=["cpu"],
+            backend_details={},
+            errors=[],
+        ),
+        device_binding=DeviceBinding(
+            backend="cpu",
+            device_spec="cpu",
+            precision="fp32",
+            profile_id="cpu",
+            reason="test",
+            fallback_applied=False,
+        ),
+        profile_id="cpu",
+    )
+
+
 def test_executor_plugin_resolve_config_applies_default_and_coercion():
     plugin = _DummyPlugin()
     config = plugin.resolve_config(
@@ -93,5 +138,6 @@ def test_executor_plugin_resolve_config_applies_default_and_coercion():
 def test_executor_plugin_validate_params_uses_schema():
     plugin = _DummyPlugin()
     plugin.validate_params({"epochs": 3, "batch": 4}, context=_context())
+    plugin.validate_params({"epochs": 3, "batch": 4}, context=_execution_context())
     with pytest.raises(PluginValidationError):
         plugin.validate_params({"epochs": 0, "batch": 4}, context=_context())

@@ -6,9 +6,16 @@ import pytest
 
 from saki_executor.plugins.ipc.client import PluginWorkerClient
 from saki_executor.plugins.registry import PluginRegistry
+from saki_executor.plugins.venv_manager import ensure_plugin_venv_for_profile
 from saki_executor.steps.workspace import Workspace
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
-from saki_plugin_sdk import StepRuntimeContext
+from saki_plugin_sdk import (
+    DeviceBinding,
+    ExecutionBindingContext,
+    HostCapabilitySnapshot,
+    RuntimeCapabilitySnapshot,
+    StepRuntimeContext,
+)
 from saki_plugin_sdk.ipc import protocol
 
 
@@ -28,12 +35,20 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
     registry.discover_plugins(plugins_root, auto_sync=True)
     handle = registry.get("demo_det_v1")
     assert handle is not None
+    profile = handle.runtime_profiles[0]
+    worker_python = ensure_plugin_venv_for_profile(
+        plugin_dir=handle.plugin_dir,
+        plugin_id=handle.plugin_id,
+        plugin_version=handle.version,
+        profile=profile,
+        auto_sync=True,
+    )
 
     client = PluginWorkerClient(
         plugin_id="demo_det_v1",
         step_id=step_id,
         event_handler=on_event,
-        python_executable=handle.python_path,
+        python_executable=worker_python,
         entrypoint_module=handle.entrypoint,
     )
 
@@ -46,6 +61,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
     params_path = payload_dir / "params.json"
     predict_samples_path = payload_dir / "predict_samples.json"
     predict_params_path = payload_dir / "predict_params.json"
+    runtime_capability_path = payload_dir / "runtime_capability.json"
     train_result_path = payload_dir / "train_result.json"
     predict_result_path = payload_dir / "predict_result.json"
 
@@ -69,10 +85,59 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
         sampling_seed=3,
         resolved_device_backend="cpu",
     )
+    execution_context = ExecutionBindingContext(
+        step_context=runtime_context,
+        host_capability=HostCapabilitySnapshot.from_dict(
+            {
+                "cpu_workers": 8,
+                "memory_mb": 8192,
+                "gpus": [],
+                "metal_available": False,
+                "platform": "darwin",
+                "arch": "arm64",
+                "driver_info": {},
+            }
+        ),
+        runtime_capability=RuntimeCapabilitySnapshot(
+            framework="demo",
+            framework_version="",
+            backends=["cpu"],
+            backend_details={},
+            errors=[],
+        ),
+        device_binding=DeviceBinding(
+            backend="cpu",
+            device_spec="cpu",
+            precision="fp32",
+            profile_id="cpu",
+            reason="test",
+            fallback_applied=False,
+        ),
+        profile_id="cpu",
+    )
 
     try:
         await client.start()
         await client.request(action="ping", payload={})
+        runtime_reply = await client.request(
+            action="probe_runtime_capability",
+            payload={"result_path": str(runtime_capability_path)},
+            runtime_context=runtime_context,
+        )
+        runtime_payload = protocol.read_json(Path(runtime_reply.result_path))
+        runtime_capability = protocol.parse_runtime_capability(runtime_payload)
+        execution_context = ExecutionBindingContext(
+            step_context=runtime_context,
+            host_capability=execution_context.host_capability,
+            runtime_capability=runtime_capability,
+            device_binding=execution_context.device_binding,
+            profile_id="cpu",
+        )
+        await client.request(
+            action="bind_execution_context",
+            payload={},
+            execution_binding_context=execution_context,
+        )
         await client.request(
             action="prepare_data",
             payload={
@@ -82,7 +147,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
                 "annotations_path": str(annotations_path),
                 "dataset_ir_path": str(dataset_ir_path),
             },
-            context=runtime_context,
+            execution_binding_context=execution_context,
         )
         train_reply = await client.request(
             action="train",
@@ -91,7 +156,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
                 "params_path": str(params_path),
                 "result_path": str(train_result_path),
             },
-            context=runtime_context,
+            execution_binding_context=execution_context,
         )
         assert Path(train_reply.result_path).exists()
         train_payload = protocol.read_json(Path(train_reply.result_path))
@@ -112,7 +177,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
                 "params_path": str(predict_params_path),
                 "result_path": str(predict_result_path),
             },
-            context=runtime_context,
+            execution_binding_context=execution_context,
         )
         predict_payload = protocol.read_json(Path(predict_reply.result_path))
         assert isinstance(predict_payload, dict)

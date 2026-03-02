@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from saki_plugin_sdk.base import TrainArtifact, TrainOutput
+from saki_plugin_sdk.capability_types import RuntimeCapabilitySnapshot
+from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
 from saki_plugin_sdk.types import StepRuntimeContext
 
 WORKER_EVENT_TOPICS = ("progress", "log", "metric", "status", "artifact", "worker")
-WORKER_PROTOCOL_VERSION = 2
+WORKER_PROTOCOL_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -95,11 +97,22 @@ def build_command_payload(
     *,
     envelope: WorkerCommandEnvelope,
     payload: dict[str, Any] | None = None,
-    context: StepRuntimeContext | dict[str, Any] | None = None,
+    runtime_context: StepRuntimeContext | dict[str, Any] | None = None,
+    execution_binding_context: ExecutionBindingContext | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     body = dict(payload or {})
-    if context is not None:
-        body["context"] = context.to_dict() if isinstance(context, StepRuntimeContext) else dict(context)
+    if runtime_context is not None:
+        body["runtime_context"] = (
+            runtime_context.to_dict()
+            if isinstance(runtime_context, StepRuntimeContext)
+            else dict(runtime_context)
+        )
+    if execution_binding_context is not None:
+        body["execution_binding_context"] = (
+            execution_binding_context.to_dict()
+            if isinstance(execution_binding_context, ExecutionBindingContext)
+            else dict(execution_binding_context)
+        )
     return {
         "envelope": envelope.to_dict(),
         "payload": body,
@@ -122,10 +135,24 @@ def parse_command_payload(raw: dict[str, Any]) -> tuple[WorkerCommandEnvelope, d
 
 
 def parse_runtime_context(payload: dict[str, Any]) -> StepRuntimeContext:
-    context_raw = payload.get("context")
+    context_raw = payload.get("runtime_context")
     if not isinstance(context_raw, dict):
-        raise ValueError("missing runtime context")
+        raise ValueError("missing runtime_context")
     return StepRuntimeContext.from_dict(context_raw)
+
+
+def parse_execution_binding_context(payload: dict[str, Any]) -> ExecutionBindingContext:
+    context_raw = payload.get("execution_binding_context")
+    if not isinstance(context_raw, dict):
+        raise ValueError("missing execution_binding_context")
+    return ExecutionBindingContext.from_dict(context_raw)
+
+
+def parse_runtime_capability(payload: dict[str, Any]) -> RuntimeCapabilitySnapshot:
+    runtime_raw = payload.get("runtime_capability")
+    if not isinstance(runtime_raw, dict):
+        raise ValueError("missing runtime_capability")
+    return RuntimeCapabilitySnapshot.from_dict(runtime_raw)
 
 
 def build_event_frames(

@@ -13,7 +13,7 @@ from loguru import logger
 from saki_executor.core.config import settings
 from saki_executor.plugins.ipc.log_coalescer import LogCoalescer
 from saki_executor.plugins.ipc.log_normalizer import normalize_log_payload, normalize_stdio_log_line
-from saki_plugin_sdk import StepRuntimeContext
+from saki_plugin_sdk import ExecutionBindingContext, StepRuntimeContext
 from saki_plugin_sdk.ipc import protocol
 
 try:
@@ -41,12 +41,18 @@ class PluginWorkerClient:
         event_handler: EventHandler,
         python_executable: str | Path | None = None,
         entrypoint_module: str | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> None:
         self._plugin_id = plugin_id
         self._step_id = step_id
         self._event_handler = event_handler
         self._python_executable = str(python_executable) if python_executable else sys.executable
         self._entrypoint_module = entrypoint_module
+        self._extra_env = {
+            str(key): str(value)
+            for key, value in (extra_env or {}).items()
+            if str(key).strip()
+        }
         self._ctx = zmq.asyncio.Context.instance()
         self._process: asyncio.subprocess.Process | None = None
         self._req_socket: zmq.asyncio.Socket | None = None
@@ -85,7 +91,8 @@ class PluginWorkerClient:
         *,
         action: str,
         payload: dict[str, Any],
-        context: StepRuntimeContext | dict[str, Any] | None = None,
+        runtime_context: StepRuntimeContext | dict[str, Any] | None = None,
+        execution_binding_context: ExecutionBindingContext | dict[str, Any] | None = None,
         timeout_sec: int | None = None,
     ) -> protocol.WorkerReplyEnvelope:
         if self._closed:
@@ -102,14 +109,14 @@ class PluginWorkerClient:
                 action=action,
                 step_id=self._step_id,
             )
-            resolved_context = context
-            payload_context = payload.get("context") if isinstance(payload, dict) else None
+            resolved_runtime_context = runtime_context
+            payload_runtime_context = payload.get("runtime_context") if isinstance(payload, dict) else None
             if (
-                resolved_context is None
-                and action != "ping"
-                and not isinstance(payload_context, dict)
+                resolved_runtime_context is None
+                and action == "probe_runtime_capability"
+                and not isinstance(payload_runtime_context, dict)
             ):
-                resolved_context = StepRuntimeContext(
+                resolved_runtime_context = StepRuntimeContext(
                     step_id=self._step_id,
                     round_id="",
                     round_index=0,
@@ -124,7 +131,8 @@ class PluginWorkerClient:
             command_payload = protocol.build_command_payload(
                 envelope=cmd,
                 payload=payload,
-                context=resolved_context,
+                runtime_context=resolved_runtime_context,
+                execution_binding_context=execution_binding_context,
             )
             await self._req_socket.send_json(command_payload)
             raw_reply = await self._recv_reply_or_raise(timeout_sec=timeout_sec)
@@ -188,6 +196,7 @@ class PluginWorkerClient:
         env = dict(os.environ)
         env["PYTHONUNBUFFERED"] = "1"
         env["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+        env.update(self._extra_env)
 
         # Resolve entrypoint module: the part before ":" is the module,
         # e.g. "saki_plugin_yolo_det.worker:main" → module = "saki_plugin_yolo_det.worker"

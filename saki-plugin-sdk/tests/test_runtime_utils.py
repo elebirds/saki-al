@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from saki_plugin_sdk import available_accelerators, probe_hardware, resolve_train_val_split
+import pytest
+
+from saki_plugin_sdk import (
+    DevicePriorityStrategy,
+    HostCapabilitySnapshot,
+    RuntimeCapabilitySnapshot,
+    RuntimeProfileSpec,
+    resolve_device_binding,
+    resolve_train_val_split,
+)
 
 
 def test_data_split_is_deterministic_and_handles_small_dataset():
@@ -14,11 +23,51 @@ def test_data_split_is_deterministic_and_handles_small_dataset():
     assert val_ids == set()
 
 
-def test_hardware_probe_contains_cpu_and_available_accelerators_fallback():
-    payload = probe_hardware(cpu_workers=4, memory_mb=8192)
-    assert payload["cpu_workers"] == 4
-    assert payload["memory_mb"] == 8192
-    accelerators = payload.get("accelerators") or []
-    assert any(str(item.get("type")) == "cpu" and bool(item.get("available")) for item in accelerators)
-    available = available_accelerators(payload)
-    assert "cpu" in available
+def test_device_binding_resolver_auto_and_explicit_conflict():
+    host = HostCapabilitySnapshot.from_dict(
+        {
+            "cpu_workers": 8,
+            "memory_mb": 16384,
+            "gpus": [{"id": "0", "name": "GPU-0", "memory_mb": 8192}],
+            "metal_available": False,
+            "platform": "darwin",
+            "arch": "arm64",
+            "driver_info": {},
+        }
+    )
+    runtime = RuntimeCapabilitySnapshot(
+        framework="torch",
+        framework_version="2.2.0",
+        backends=["cpu", "cuda"],
+        backend_details={},
+        errors=[],
+    )
+    profile = RuntimeProfileSpec(
+        id="cuda",
+        priority=10,
+        when="host.backends.includes('cuda')",
+        dependency_groups=["profile-cuda"],
+        allowed_backends=["cuda"],
+    )
+
+    binding = resolve_device_binding(
+        requested_device="auto",
+        host_capability=host,
+        runtime_capability=runtime,
+        supported_backends=["cuda", "cpu"],
+        profile=profile,
+        allow_auto_fallback=True,
+        priority_strategy=DevicePriorityStrategy(("cuda", "cpu")),
+    )
+    assert binding.backend == "cuda"
+
+    with pytest.raises(RuntimeError, match="DEVICE_BINDING_CONFLICT"):
+        resolve_device_binding(
+            requested_device="mps",
+            host_capability=host,
+            runtime_capability=runtime,
+            supported_backends=["cuda", "cpu"],
+            profile=profile,
+            allow_auto_fallback=True,
+            priority_strategy=DevicePriorityStrategy(("cuda", "cpu")),
+        )

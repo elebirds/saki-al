@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from saki_plugin_sdk.capability_types import RuntimeCapabilitySnapshot
+from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
 from saki_plugin_sdk.types import StepRuntimeContext
 from saki_plugin_sdk.workspace_protocol import WorkspaceProtocol
 
@@ -321,7 +323,7 @@ class ExecutorPlugin(ABC):
             params: dict[str, Any],
             emit: EventCallback,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
         """Execute training step.
 
@@ -349,7 +351,7 @@ class ExecutorPlugin(ABC):
         strategy: str,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         """Run prediction on unlabeled samples.
 
@@ -379,15 +381,23 @@ class ExecutorPlugin(ABC):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | None = None,
+        context: StepRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
-        context_payload = context.to_dict() if context else None
+        context_payload = context.to_dict() if hasattr(context, "to_dict") and context else None
         self.resolve_config(
             mode=str(params.get("mode") or "manual"),
             raw_config=params,
             context=context_payload,
             validate=True,
         )
+
+    async def probe_runtime_capability(
+        self,
+        *,
+        context: StepRuntimeContext,
+    ) -> RuntimeCapabilitySnapshot:
+        del context
+        return RuntimeCapabilitySnapshot.empty(framework="")
 
     def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
         normalized = str(step_type or "").strip().lower()
@@ -436,7 +446,7 @@ class ExecutorPlugin(ABC):
             dataset_ir: Any,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> None:
         """Prepare training data (optional override).
 
@@ -451,7 +461,7 @@ class ExecutorPlugin(ABC):
         strategy: str,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         """Batch prediction (delegates to ``predict_unlabeled`` by default)."""
         return await self.predict_unlabeled(
@@ -468,7 +478,7 @@ class ExecutorPlugin(ABC):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         """Execute evaluation step.
 
@@ -483,7 +493,7 @@ class ExecutorPlugin(ABC):
         params: dict[str, Any],
         emit: EventCallback,
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         """Execute predict step.
 

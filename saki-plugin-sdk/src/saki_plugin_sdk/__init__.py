@@ -2,6 +2,12 @@
 
 from saki_plugin_sdk.base import EventCallback, ExecutorPlugin, TrainArtifact, TrainOutput, StepRuntimeRequirements
 from saki_plugin_sdk.types import StepRuntimeContext
+from saki_plugin_sdk.capability_types import HostCapabilitySnapshot, RuntimeCapabilitySnapshot, GpuDeviceCapability
+from saki_plugin_sdk.profile_spec import RuntimeProfileSpec, parse_runtime_profiles
+from saki_plugin_sdk.device_binding import DeviceBinding
+from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
+from saki_plugin_sdk.binding_policy import DevicePriorityStrategy, normalize_backend_name, resolve_device_binding
+from saki_plugin_sdk.specification import evaluate_profile_spec
 from saki_plugin_sdk.config import (
     PluginConfig,
     ConfigSchema,
@@ -26,12 +32,6 @@ from saki_plugin_sdk.cond import (
     evaluate_visible,
     filter_options,
 )
-from saki_plugin_sdk.hardware import (
-    ACCELERATOR_PRIORITY,
-    available_accelerators,
-    normalize_accelerator_name,
-    probe_hardware,
-)
 from saki_plugin_sdk.data_split import resolve_train_val_split
 
 __all__ = [
@@ -42,6 +42,17 @@ __all__ = [
     "TrainOutput",
     "StepRuntimeRequirements",
     "StepRuntimeContext",
+    "HostCapabilitySnapshot",
+    "RuntimeCapabilitySnapshot",
+    "GpuDeviceCapability",
+    "RuntimeProfileSpec",
+    "parse_runtime_profiles",
+    "DeviceBinding",
+    "ExecutionBindingContext",
+    "DevicePriorityStrategy",
+    "normalize_backend_name",
+    "resolve_device_binding",
+    "evaluate_profile_spec",
     # Configuration
     "PluginConfig",
     "ConfigSchema",
@@ -66,9 +77,5 @@ __all__ = [
     "evaluate_visible",
     "filter_options",
     # Shared runtime utilities
-    "ACCELERATOR_PRIORITY",
-    "available_accelerators",
-    "normalize_accelerator_name",
-    "probe_hardware",
     "resolve_train_val_split",
 ]

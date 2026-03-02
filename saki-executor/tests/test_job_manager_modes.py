@@ -10,7 +10,7 @@ from saki_executor.plugins.external_handle import ExternalPluginHandle
 from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
-from saki_plugin_sdk import ExecutorPlugin, PluginManifest, StepRuntimeContext, TrainOutput
+from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, PluginManifest, StepRuntimeContext, TrainOutput
 
 
 class _InProcessProxy(ExecutorPlugin):
@@ -372,13 +372,19 @@ class _ContextProbePlugin(_MinimalPlugin):
         self.context_ids: list[int] = []
         self.context_snapshots: list[dict[str, Any]] = []
 
-    def _capture_context(self, context: StepRuntimeContext | None) -> None:
+    def _capture_context(self, context: StepRuntimeContext | ExecutionBindingContext | None) -> None:
         if context is None:
             return
-        self.context_ids.append(id(context))
-        self.context_snapshots.append(context.to_dict())
+        step_context = context.step_context if isinstance(context, ExecutionBindingContext) else context
+        self.context_ids.append(id(step_context))
+        self.context_snapshots.append(step_context.to_dict())
 
-    def validate_params(self, params: dict[str, Any], *, context: StepRuntimeContext | None = None) -> None:
+    def validate_params(
+        self,
+        params: dict[str, Any],
+        *,
+        context: StepRuntimeContext | ExecutionBindingContext | None = None,
+    ) -> None:
         del params
         self._capture_context(context)
 
@@ -391,7 +397,7 @@ class _ContextProbePlugin(_MinimalPlugin):
             dataset_ir,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> None:
         del workspace, labels, samples, annotations, dataset_ir, splits
         self._capture_context(context)
@@ -402,7 +408,7 @@ class _ContextProbePlugin(_MinimalPlugin):
             params: dict[str, Any],
             emit,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
         self._capture_context(context)
         return await super().train(
@@ -692,6 +698,15 @@ async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Pat
             "display_name": "Strict External Plugin",
             "supported_step_types": ["train"],
             "supported_strategies": ["uncertainty_1_minus_max_conf"],
+            "runtime_profiles": [
+                {
+                    "id": "cpu",
+                    "priority": 100,
+                    "when": "host.backends.includes('cpu')",
+                    "dependency_groups": ["profile-cpu"],
+                    "allowed_backends": ["cpu"],
+                }
+            ],
             "config_schema": {
                 "title": "Strict Config",
                 "fields": [

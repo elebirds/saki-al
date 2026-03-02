@@ -6,7 +6,14 @@ import threading
 from typing import Any, Callable
 import warnings
 
-from saki_plugin_sdk import EventCallback, StepRuntimeContext, TrainArtifact, TrainOutput, WorkspaceProtocol
+from saki_plugin_sdk import (
+    EventCallback,
+    ExecutionBindingContext,
+    RuntimeCapabilitySnapshot,
+    TrainArtifact,
+    TrainOutput,
+    WorkspaceProtocol,
+)
 from saki_plugin_sdk.manifest import PluginManifest
 from saki_plugin_yolo_det.common import infer_image_hw, to_bool, to_float, to_int
 from saki_plugin_yolo_det.config_service import YoloConfigService
@@ -24,6 +31,7 @@ from saki_plugin_yolo_det.train_async import (
     run_train_with_epoch_stream,
 )
 from saki_plugin_yolo_det.train_sync_runner import run_train_sync
+from saki_plugin_yolo_det.runtime_probe_torch import probe_torch_runtime_capability
 
 
 class YoloRuntimeService:
@@ -37,12 +45,11 @@ class YoloRuntimeService:
         "SimHei",
     )
 
-    def __init__(self, *, supported_accelerators: list[str] | None = None) -> None:
+    def __init__(self) -> None:
         self._stop_flag = threading.Event()
         self._font_setup_lock = threading.Lock()
         self._font_setup_done = False
         self._config_service = YoloConfigService()
-        self._supported_accelerators = list(supported_accelerators or ["cuda", "mps", "cpu"])
         self._eval_service = YoloEvalService(
             config_service=self._config_service,
             load_yolo=self._load_yolo,
@@ -60,6 +67,9 @@ class YoloRuntimeService:
 
     def validate_params(self, params: dict[str, Any]) -> None:
         self._config_service.validate_params(params)
+
+    def probe_runtime_capability(self) -> RuntimeCapabilitySnapshot:
+        return probe_torch_runtime_capability()
 
     @staticmethod
     def _infer_yolo_task_from_ir(dataset_ir: Any) -> str:
@@ -86,7 +96,7 @@ class YoloRuntimeService:
         annotations: list[dict[str, Any]],
         dataset_ir: Any,
         splits: dict[str, list[dict[str, Any]]] | None = None,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> None:
         del annotations, context
         yolo_task = ""
@@ -112,25 +122,22 @@ class YoloRuntimeService:
         workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         self._stop_flag.clear()
         raw_params = dict(params or {})
-        raw_params.setdefault("split_seed", context.split_seed)
-        raw_params.setdefault("train_seed", context.train_seed)
-        raw_params.setdefault("sampling_seed", context.sampling_seed)
-        raw_params.setdefault("round_index", context.round_index)
-        raw_params.setdefault("_resolved_device_backend", context.resolved_device_backend)
+        step_context = context.step_context
+        raw_params.setdefault("split_seed", step_context.split_seed)
+        raw_params.setdefault("train_seed", step_context.train_seed)
+        raw_params.setdefault("sampling_seed", step_context.sampling_seed)
+        raw_params.setdefault("round_index", step_context.round_index)
+        raw_params.setdefault("_resolved_device_backend", context.device_binding.backend)
 
         resolved_params = self._config_service.resolve_config(raw_params)
         config = await resolve_train_config(
             workspace=workspace,
             plugin_config=resolved_params,
-            resolve_device=lambda payload: self._config_service.resolve_device(
-                payload,
-                supported_accelerators=self._supported_accelerators,
-                preferred_backend=context.resolved_device_backend,
-            ),
+            execution_context=context,
             resolve_model_ref=self._config_service.resolve_model_ref,
         )
         await emit(
@@ -175,7 +182,7 @@ class YoloRuntimeService:
         workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> TrainOutput:
         self._stop_flag.clear()
         return await self._eval_service.eval(
@@ -183,7 +190,6 @@ class YoloRuntimeService:
             params=params,
             emit=emit,
             context=context,
-            supported_accelerators=self._supported_accelerators,
         )
 
     async def predict_unlabeled(
@@ -193,7 +199,7 @@ class YoloRuntimeService:
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         self._stop_flag.clear()
         return await self._predict_service.predict_unlabeled(
@@ -202,7 +208,6 @@ class YoloRuntimeService:
             strategy=strategy,
             params=params,
             context=context,
-            supported_accelerators=self._supported_accelerators,
         )
 
     async def predict_unlabeled_batch(
@@ -212,7 +217,7 @@ class YoloRuntimeService:
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         self._stop_flag.clear()
         return await self._predict_service.predict_unlabeled_batch(
@@ -221,7 +226,6 @@ class YoloRuntimeService:
             strategy=strategy,
             params=params,
             context=context,
-            supported_accelerators=self._supported_accelerators,
         )
 
     async def stop(self, step_id: str) -> None:

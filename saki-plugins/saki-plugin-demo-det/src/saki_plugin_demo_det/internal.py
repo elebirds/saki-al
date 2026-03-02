@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from saki_plugin_sdk import EventCallback, StepRuntimeContext, TrainArtifact, TrainOutput, WorkspaceProtocol
+from saki_plugin_sdk import ExecutionBindingContext, EventCallback, TrainArtifact, TrainOutput, WorkspaceProtocol
 from saki_plugin_sdk.strategies.builtin import score_by_strategy
 
 
@@ -18,7 +18,7 @@ class DemoDetectionInternal:
             dataset_ir: Any,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> None:
         del splits, context
         payload = {
@@ -38,8 +38,9 @@ class DemoDetectionInternal:
             params: dict[str, Any],
             emit: EventCallback,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
+        step_context = context.step_context
         epochs = int(params.get("epochs", 5))
         steps_per_epoch = int(params.get("steps_per_epoch", 20))
 
@@ -49,9 +50,9 @@ class DemoDetectionInternal:
                 "level": "INFO",
                 "message": (
                     "training started "
-                    f"step_type={context.step_type} mode={context.mode} "
-                    f"split_seed={context.split_seed} train_seed={context.train_seed} "
-                    f"sampling_seed={context.sampling_seed}"
+                    f"step_type={step_context.step_type} mode={step_context.mode} "
+                    f"split_seed={step_context.split_seed} train_seed={step_context.train_seed} "
+                    f"sampling_seed={step_context.sampling_seed}"
                 ),
             },
         )
@@ -65,11 +66,11 @@ class DemoDetectionInternal:
             await emit("progress", {"epoch": epoch, "step": steps_per_epoch, "total_steps": steps_per_epoch, "eta_sec": 0})
             await emit("metric", {"step": epoch, "epoch": epoch, "metrics": metrics})
 
-        metrics["context_step_type"] = context.step_type
-        metrics["context_mode"] = context.mode
-        metrics["context_split_seed"] = float(context.split_seed)
-        metrics["context_train_seed"] = float(context.train_seed)
-        metrics["context_sampling_seed"] = float(context.sampling_seed)
+        metrics["context_step_type"] = step_context.step_type
+        metrics["context_mode"] = step_context.mode
+        metrics["context_split_seed"] = float(step_context.split_seed)
+        metrics["context_train_seed"] = float(step_context.train_seed)
+        metrics["context_sampling_seed"] = float(step_context.sampling_seed)
 
         model_path = workspace.artifacts_dir / "best.pt"
         report_path = workspace.artifacts_dir / "report.json"
@@ -102,7 +103,7 @@ class DemoDetectionInternal:
             params: dict[str, Any],
             emit: EventCallback,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
         del params, context
         await emit("log", {"level": "INFO", "message": "eval step started"})
@@ -142,7 +143,7 @@ class DemoDetectionInternal:
             strategy: str,
             params: dict[str, Any],
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         del workspace, context
         candidates: list[dict[str, Any]] = []

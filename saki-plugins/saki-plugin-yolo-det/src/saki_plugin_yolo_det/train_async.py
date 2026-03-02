@@ -6,15 +6,26 @@ from pathlib import Path
 import threading
 from typing import Any, Awaitable, Callable
 
-from saki_plugin_sdk import PluginConfig, WorkspaceProtocol
+from saki_plugin_sdk import ExecutionBindingContext, PluginConfig, WorkspaceProtocol
 from saki_plugin_yolo_det.types import TrainConfig
 from saki_plugin_sdk.base import EventCallback
 
 
 ToIntFn = Callable[[Any, int], int]
 ToBoolFn = Callable[[Any, bool], bool]
-ResolveDeviceFn = Callable[[Any], tuple[Any, str, str]]
 ResolveModelRefFn = Callable[..., Awaitable[str]]
+
+
+def _to_yolo_device_spec(binding_backend: str, binding_device_spec: str) -> Any:
+    backend = str(binding_backend or "").strip().lower()
+    spec = str(binding_device_spec or "").strip().lower()
+    if backend == "cuda":
+        if spec.startswith("cuda:"):
+            return spec.split(":", 1)[1] or "0"
+        return spec or "0"
+    if backend == "mps":
+        return "mps"
+    return "cpu"
 
 
 def _format_epoch_metric_summary(metrics_row: dict[str, Any]) -> str:
@@ -42,7 +53,7 @@ async def resolve_train_config(
     *,
     workspace: WorkspaceProtocol,
     plugin_config: PluginConfig,
-    resolve_device: ResolveDeviceFn,
+    execution_context: ExecutionBindingContext,
     resolve_model_ref: ResolveModelRefFn,
 ) -> TrainConfig:
     """Build a ``TrainConfig`` from a resolved ``PluginConfig``.
@@ -50,7 +61,12 @@ async def resolve_train_config(
     All type coercion / defaults are already handled by ``PluginConfig``,
     so we can access fields directly.
     """
-    device, requested_device, resolved_backend = resolve_device(plugin_config)
+    requested_device = str(plugin_config.get("device", "auto") or "auto").strip().lower()
+    resolved_backend = str(execution_context.device_binding.backend or "").strip().lower()
+    resolved_device_spec = str(execution_context.device_binding.device_spec or "").strip()
+    if not resolved_backend:
+        raise RuntimeError("execution binding backend is empty")
+    device = _to_yolo_device_spec(resolved_backend, resolved_device_spec)
     resolved_base_model = await resolve_model_ref(
         workspace=workspace,
         params=plugin_config,

@@ -473,7 +473,7 @@ dev = [{ name = "pytest", specifier = ">=8.3.0" }]
 
 [[package]]
 name = "saki-plugin-demo-det"
-version = "0.1.0"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "saki-ir" },
@@ -493,11 +493,11 @@ requires-dist = [
     { name = "saki-ir", editable = "../../shared/saki-ir/python" },
     { name = "saki-plugin-sdk", editable = "../../saki-plugin-sdk" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["profile-cpu", "dev"]
 
 [[package]]
 name = "saki-plugin-sdk"
-version = "0.1.0"
+version = "3.0.0"
 source = { editable = "../../saki-plugin-sdk" }
 dependencies = [
     { name = "loguru" },

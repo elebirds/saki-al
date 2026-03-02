@@ -16,7 +16,7 @@ from saki_executor.steps.services import ArtifactUploader, DataGateway, Sampling
 from saki_executor.steps.state import ExecutorState, StepStatus
 from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.registry import PluginRegistry
-from saki_plugin_sdk import ExecutorPlugin, StepReporter, StepRuntimeContext, WorkspaceProtocol
+from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, StepReporter, WorkspaceProtocol
 
 SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage | list[pb.RuntimeMessage]]]
@@ -298,7 +298,7 @@ class StepManager:
         protected: set[str],
         query_type: str,
         topk: int,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         return await self._sampling_service.collect_topk_candidates_streaming(
             plugin=plugin,

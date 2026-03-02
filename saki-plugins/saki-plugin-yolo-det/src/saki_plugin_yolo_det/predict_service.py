@@ -14,7 +14,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
 
-from saki_plugin_sdk import StepRuntimeContext, WorkspaceProtocol
+from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
 from saki_plugin_sdk.strategies.aug_iou import build_detection_boxes, score_aug_iou_disagreement
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
 from saki_plugin_yolo_det.common import clamp, to_float, to_int
@@ -41,8 +41,7 @@ class YoloPredictService:
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
-        context: StepRuntimeContext,
-        supported_accelerators: list[str],
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         return await self.predict_unlabeled_batch(
             workspace=workspace,
@@ -50,7 +49,6 @@ class YoloPredictService:
             strategy=strategy,
             params=params,
             context=context,
-            supported_accelerators=supported_accelerators,
         )
 
     async def predict_unlabeled_batch(
@@ -60,8 +58,7 @@ class YoloPredictService:
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
-        context: StepRuntimeContext,
-        supported_accelerators: list[str],
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         self._stop_flag.clear()
         cfg = self._config_service.resolve_config(params)
@@ -69,13 +66,23 @@ class YoloPredictService:
         topk = max(1, to_int(cfg.topk if "topk" in cfg else cfg.sampling_topk if "sampling_topk" in cfg else 200), 200)
         conf = to_float(cfg.predict_conf, 0.1)
         imgsz = to_int(cfg.imgsz, 640)
-        random_seed = max(0, to_int(cfg.sampling_seed if "sampling_seed" in cfg else cfg.random_seed if "random_seed" in cfg else context.sampling_seed), 0)
-        round_index = max(1, to_int(cfg.round_index if "round_index" in cfg else context.round_index), 1)
-        device, _requested_device, _resolved_backend = self._config_service.resolve_device(
-            cfg,
-            supported_accelerators=supported_accelerators,
-            preferred_backend=context.resolved_device_backend,
+        step_context = context.step_context
+        random_seed = max(
+            0,
+            to_int(
+                cfg.sampling_seed if "sampling_seed" in cfg else cfg.random_seed if "random_seed" in cfg else step_context.sampling_seed
+            ),
+            0,
         )
+        round_index = max(1, to_int(cfg.round_index if "round_index" in cfg else step_context.round_index), 1)
+        backend = str(context.device_binding.backend or "").strip().lower()
+        device_spec = str(context.device_binding.device_spec or "").strip().lower()
+        if backend == "cuda":
+            device = device_spec.split(":", 1)[1] if device_spec.startswith("cuda:") else (device_spec or "0")
+        elif backend == "mps":
+            device = "mps"
+        else:
+            device = "cpu"
 
         best_path = workspace.artifacts_dir / "best.pt"
         fallback_model = await self._config_service.resolve_model_ref(workspace=workspace, params=cfg)

@@ -7,56 +7,41 @@ and exposes the path to the plugin's Python interpreter.
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
-from loguru import logger
+from saki_executor.runtime.environment.environment_factory import EnvironmentFactory
+from saki_plugin_sdk.profile_spec import RuntimeProfileSpec
 
 
 def ensure_plugin_venv(plugin_dir: Path, *, auto_sync: bool = True) -> Path:
-    """Return the Python interpreter path inside the plugin's venv.
+    return ensure_plugin_venv_for_profile(
+        plugin_dir=plugin_dir,
+        plugin_id=Path(plugin_dir).name,
+        plugin_version="0.0.0",
+        profile=RuntimeProfileSpec(
+            id="cpu",
+            priority=100,
+            when="host.backends.includes('cpu')",
+            dependency_groups=["profile-cpu"],
+            allowed_backends=["cpu"],
+        ),
+        auto_sync=auto_sync,
+    )
 
-    If ``auto_sync`` is True and the venv does not exist (or a
-    ``pyproject.toml`` is present), ``uv sync`` will be executed to
-    create / update the environment.
 
-    Returns the absolute path to ``.venv/bin/python`` inside
-    *plugin_dir*.  The symlink is intentionally **not** resolved so
-    that Python keeps the venv context (pyvenv.cfg / site-packages).
-    """
-    # Make plugin_dir absolute (resolve parent dirs, but keep python
-    # symlink intact later).
+def ensure_plugin_venv_for_profile(
+    *,
+    plugin_dir: Path,
+    plugin_id: str,
+    plugin_version: str,
+    profile: RuntimeProfileSpec,
+    auto_sync: bool = True,
+) -> Path:
     plugin_dir = Path(os.path.abspath(plugin_dir))
-
-    venv_dir = plugin_dir / ".venv"
-    python_path = venv_dir / "bin" / "python"
-
-    pyproject = plugin_dir / "pyproject.toml"
-    needs_sync = auto_sync and (not python_path.exists() or not venv_dir.exists())
-
-    if needs_sync and pyproject.exists():
-        logger.info("正在同步插件虚拟环境，目录={}", plugin_dir)
-        result = subprocess.run(
-            ["uv", "sync"],
-            cwd=str(plugin_dir),
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip()
-            raise RuntimeError(
-                f"uv sync failed for plugin at {plugin_dir}: "
-                f"exit_code={result.returncode} stderr={stderr[:500]}"
-            )
-        logger.info("插件虚拟环境同步完成，目录={}", plugin_dir)
-
-    if not python_path.exists():
-        raise RuntimeError(
-            f"plugin Python interpreter not found at {python_path}. "
-            f"Run 'uv sync' in {plugin_dir} first."
-        )
-
-    # Do NOT call .resolve() — it follows the symlink and
-    # the resulting system-python path loses venv site-packages.
-    return python_path
+    factory = EnvironmentFactory(auto_sync=auto_sync)
+    return factory.ensure_profile_python(
+        plugin_id=plugin_id,
+        plugin_version=plugin_version,
+        plugin_dir=plugin_dir,
+        profile=profile,
+    )

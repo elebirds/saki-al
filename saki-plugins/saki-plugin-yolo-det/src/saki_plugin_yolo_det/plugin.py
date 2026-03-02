@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from saki_plugin_sdk import (
+    ExecutionBindingContext,
     EventCallback,
     ExecutorPlugin,
+    RuntimeCapabilitySnapshot,
     StepRuntimeContext,
     TrainOutput,
     WorkspaceProtocol,
@@ -24,7 +26,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
     def __init__(self) -> None:
         super().__init__()
         self._manifest = self._load_manifest()
-        self._runtime = YoloRuntimeService(supported_accelerators=self.supported_accelerators)
+        self._runtime = YoloRuntimeService()
 
     async def on_load(self, context: dict[str, Any]) -> None:
         del context
@@ -49,10 +51,18 @@ class YoloDetectionPlugin(ExecutorPlugin):
         self,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext | None = None,
+        context: StepRuntimeContext | ExecutionBindingContext | None = None,
     ) -> None:
         del context
         self._runtime.validate_params(params)
+
+    async def probe_runtime_capability(
+        self,
+        *,
+        context: StepRuntimeContext,
+    ) -> RuntimeCapabilitySnapshot:
+        del context
+        return self._runtime.probe_runtime_capability()
 
     async def prepare_data(
             self,
@@ -63,7 +73,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             dataset_ir: Any,
             splits: dict[str, list[dict[str, Any]]] | None = None,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> None:
         self.logger.info(f"正在准备数据集，样本数：{len(samples)}")
         await self._runtime.prepare_data(
@@ -83,7 +93,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit: EventCallback,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
         self.logger.info(f"开始训练，参数键：{list(params.keys())}")
         return await self._runtime.train(
@@ -99,7 +109,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
             params: dict[str, Any],
             emit: EventCallback,
             *,
-            context: StepRuntimeContext,
+            context: ExecutionBindingContext,
     ) -> TrainOutput:
         self.logger.info(f"开始评估，参数键：{list(params.keys())}")
         return await self._runtime.eval(
@@ -116,7 +126,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
         strategy: str,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         self.logger.info(
             f"正在执行 {strategy} 预测，未标注样本数：{len(unlabeled_samples)}"
@@ -136,7 +146,7 @@ class YoloDetectionPlugin(ExecutorPlugin):
         strategy: str,
         params: dict[str, Any],
         *,
-        context: StepRuntimeContext,
+        context: ExecutionBindingContext,
     ) -> list[dict[str, Any]]:
         return await self._runtime.predict_unlabeled_batch(
             workspace=workspace,

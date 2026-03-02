@@ -21,7 +21,7 @@ from saki_executor.grpc_gen import runtime_control_pb2_grpc as pb_grpc
 from saki_executor.steps.manager import StepManager
 from saki_executor.steps.state import ExecutorState
 from saki_executor.plugins.registry import PluginRegistry
-from saki_plugin_sdk import probe_hardware
+from saki_executor.runtime.capability.host_probe_service import HostProbeService
 
 
 class AgentClient:
@@ -41,6 +41,7 @@ class AgentClient:
 
         self._handled_control_acks: OrderedDict[str, pb.RuntimeMessage] = OrderedDict()
         self._max_cached_control_acks = 2048
+        self._host_probe_service = HostProbeService()
 
     async def send_message(self, message: pb.RuntimeMessage) -> None:
         if not isinstance(message, pb.RuntimeMessage):
@@ -133,7 +134,11 @@ class AgentClient:
         return True
 
     def _resource_payload(self) -> dict[str, Any]:
-        return probe_hardware(cpu_workers=settings.CPU_WORKERS, memory_mb=settings.MEMORY_MB)
+        snapshot = self._host_probe_service.probe(
+            cpu_workers=settings.CPU_WORKERS,
+            memory_mb=settings.MEMORY_MB,
+        )
+        return self._host_probe_service.to_resource_payload(snapshot)
 
     def _register_message(self) -> pb.RuntimeMessage:
         plugins = []

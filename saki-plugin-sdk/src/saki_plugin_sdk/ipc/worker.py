@@ -23,6 +23,7 @@ from typing import Any
 from loguru import logger
 
 from saki_plugin_sdk.base import ExecutorPlugin
+from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
 from saki_plugin_sdk.ipc import protocol
 from saki_plugin_sdk.logger import reset_log_bridge, set_log_bridge
 from saki_plugin_sdk.types import StepRuntimeContext
@@ -115,7 +116,7 @@ async def _run_prepare_data(
     *,
     plugin: ExecutorPlugin,
     payload: dict[str, Any],
-    runtime_context: StepRuntimeContext,
+    execution_context: ExecutionBindingContext,
 ) -> None:
     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
     labels = protocol.read_json(Path(str(payload.get("labels_path") or "")))
@@ -151,7 +152,7 @@ async def _run_prepare_data(
         annotations=annotations,
         dataset_ir=dataset_ir,
         splits=splits,
-        context=runtime_context,
+        context=execution_context,
     )
 
 
@@ -163,7 +164,7 @@ async def _run_train_like(
     request_id: str,
     pub_socket,
     method_name: str,
-    runtime_context: StepRuntimeContext,
+    execution_context: ExecutionBindingContext,
 ) -> str:
     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
     params = protocol.read_json(Path(str(payload.get("params_path") or "")))
@@ -186,7 +187,7 @@ async def _run_train_like(
         workspace=workspace,
         params=params,
         emit=_emit,
-        context=runtime_context,
+        context=execution_context,
     )
     result_path = Path(str(payload.get("result_path") or ""))
     protocol.write_json(result_path, protocol.train_output_to_dict(output))
@@ -197,7 +198,7 @@ async def _run_predict(
     *,
     plugin: ExecutorPlugin,
     payload: dict[str, Any],
-    runtime_context: StepRuntimeContext,
+    execution_context: ExecutionBindingContext,
 ) -> str:
     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
     samples = protocol.read_json(Path(str(payload.get("samples_path") or "")))
@@ -212,7 +213,7 @@ async def _run_predict(
         unlabeled_samples=samples,
         strategy=strategy,
         params=params,
-        context=runtime_context,
+        context=execution_context,
     )
     result_path = Path(str(payload.get("result_path") or ""))
     protocol.write_json(result_path, {"candidates": candidates})
@@ -265,6 +266,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
         )
 
         running = True
+        bound_execution_context: ExecutionBindingContext | None = None
         while running:
             raw = rep_socket.recv_json()
             envelope = protocol.WorkerReplyEnvelope(
@@ -289,7 +291,38 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     rep_socket.send_json(envelope.to_dict())
                     continue
 
-                runtime_context = protocol.parse_runtime_context(payload)
+                if action == "probe_runtime_capability":
+                    runtime_context = protocol.parse_runtime_context(payload)
+                    result_path = Path(str(payload.get("result_path") or ""))
+                    with _bind_plugin_log_bridge(
+                        pub_socket=pub_socket,
+                        step_id=args.step_id,
+                        plugin_id=args.plugin_id,
+                        request_id=cmd.request_id,
+                    ):
+                        runtime_capability = _await(
+                            plugin.probe_runtime_capability(context=runtime_context)
+                        )
+                    protocol.write_json(result_path, {"runtime_capability": runtime_capability.to_dict()})
+                    rep_socket.send_json(
+                        protocol.WorkerReplyEnvelope(
+                            request_id=cmd.request_id,
+                            ok=True,
+                            error_code="",
+                            error_message="",
+                            result_path=str(result_path),
+                        ).to_dict()
+                    )
+                    continue
+
+                if action == "bind_execution_context":
+                    bound_execution_context = protocol.parse_execution_binding_context(payload)
+                    rep_socket.send_json(envelope.to_dict())
+                    continue
+
+                execution_context = bound_execution_context
+                if execution_context is None:
+                    execution_context = protocol.parse_execution_binding_context(payload)
 
                 if action == "prepare_data":
                     workspace = _build_workspace(str(payload.get("workspace_root") or ""))
@@ -305,7 +338,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                                 _run_prepare_data(
                                     plugin=plugin,
                                     payload=payload,
-                                    runtime_context=runtime_context,
+                                    execution_context=execution_context,
                                 )
                             )
                         finally:
@@ -331,7 +364,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                                     request_id=cmd.request_id,
                                     pub_socket=pub_socket,
                                     method_name=action,
-                                    runtime_context=runtime_context,
+                                    execution_context=execution_context,
                                 )
                             )
                             rep_socket.send_json(
@@ -361,7 +394,7 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                                 _run_predict(
                                     plugin=plugin,
                                     payload=payload,
-                                    runtime_context=runtime_context,
+                                    execution_context=execution_context,
                                 )
                             )
                             rep_socket.send_json(

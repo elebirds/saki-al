@@ -1414,7 +1414,7 @@ dev = [{ name = "pytest", specifier = ">=8.3.0" }]
 
 [[package]]
 name = "saki-plugin-sdk"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "../../saki-plugin-sdk" }
 dependencies = [
     { name = "loguru" },
@@ -1438,26 +1438,53 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "saki-plugin-yolo-det"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
-    { name = "numpy" },
-    { name = "pillow" },
     { name = "saki-ir" },
     { name = "saki-plugin-sdk" },
+]
+
+[package.optional-dependencies]
+profile-cpu = [
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "torch" },
+    { name = "ultralytics" },
+]
+profile-cuda = [
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "torch" },
+    { name = "ultralytics" },
+]
+profile-mps = [
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "torch" },
     { name = "ultralytics" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "numpy", specifier = ">=2.0.0" },
-    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "numpy", marker = "extra == 'profile-cpu'", specifier = ">=2.0.0" },
+    { name = "numpy", marker = "extra == 'profile-cuda'", specifier = ">=2.0.0" },
+    { name = "numpy", marker = "extra == 'profile-mps'", specifier = ">=2.0.0" },
+    { name = "pillow", marker = "extra == 'profile-cpu'", specifier = ">=10.0.0" },
+    { name = "pillow", marker = "extra == 'profile-cuda'", specifier = ">=10.0.0" },
+    { name = "pillow", marker = "extra == 'profile-mps'", specifier = ">=10.0.0" },
     { name = "saki-ir", editable = "../../shared/saki-ir/python" },
     { name = "saki-plugin-sdk", editable = "../../saki-plugin-sdk" },
-    { name = "ultralytics", specifier = ">=8.3.0" },
+    { name = "torch", marker = "extra == 'profile-cpu'", specifier = ">=2.2.0" },
+    { name = "torch", marker = "extra == 'profile-cuda'", specifier = ">=2.2.0" },
+    { name = "torch", marker = "extra == 'profile-mps'", specifier = ">=2.2.0" },
+    { name = "ultralytics", marker = "extra == 'profile-cpu'", specifier = ">=8.3.0" },
+    { name = "ultralytics", marker = "extra == 'profile-cuda'", specifier = ">=8.3.0" },
+    { name = "ultralytics", marker = "extra == 'profile-mps'", specifier = ">=8.3.0" },
 ]
+provides-extras = ["profile-cpu", "profile-cuda", "profile-mps"]
 
 [[package]]
 name = "scipy"

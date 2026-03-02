@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from saki_plugin_sdk.workspace import Workspace
+from saki_plugin_sdk.types import StepRuntimeContext
+from saki_plugin_sdk.workspace_protocol import WorkspaceProtocol
 
 
 EventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -177,6 +178,38 @@ class ExecutorPlugin(ABC):
         return []
 
     @property
+    def request_config_schema(self) -> dict[str, Any]:
+        manifest = self.manifest
+        if manifest and isinstance(getattr(manifest, "config_schema", None), dict):
+            return dict(manifest.config_schema)
+        return {}
+
+    @property
+    def default_request_config(self) -> dict[str, Any]:
+        manifest = self.manifest
+        if manifest and isinstance(getattr(manifest, "default_config", None), dict):
+            return dict(manifest.default_config)
+        return {}
+
+    def resolve_config(
+        self,
+        mode: str,
+        raw_config: dict[str, Any] | None,
+        *,
+        context: dict[str, Any] | None = None,
+        validate: bool = True,
+    ) -> "PluginConfig":
+        del mode
+        from saki_plugin_sdk.config import ConfigSchema, PluginConfig
+
+        return PluginConfig.resolve(
+            schema=ConfigSchema.model_validate(self.request_config_schema or {}),
+            raw_config=raw_config,
+            context=context,
+            validate=validate,
+        )
+
+    @property
     def supported_accelerators(self) -> list[str]:
         """List of supported accelerator types.
 
@@ -215,7 +248,7 @@ class ExecutorPlugin(ABC):
         """
         pass
 
-    async def on_start(self, step_id: str, workspace: Workspace) -> None:
+    async def on_start(self, step_id: str, workspace: WorkspaceProtocol) -> None:
         """Called before step execution begins.
 
         Override to initialize step-specific resources.
@@ -225,7 +258,7 @@ class ExecutorPlugin(ABC):
         ----------
         step_id : str
             The step identifier.
-        workspace : Workspace
+        workspace : WorkspaceProtocol
             The step workspace directory.
         """
         setattr(self, "_step_id", step_id)
@@ -233,7 +266,7 @@ class ExecutorPlugin(ABC):
         if logger and hasattr(logger, "step_id"):
             logger.step_id = step_id
 
-    async def on_stop(self, step_id: str, workspace: Workspace) -> None:
+    async def on_stop(self, step_id: str, workspace: WorkspaceProtocol) -> None:
         """Called after step execution completes (success or failure).
 
         Override to cleanup step-specific resources.
@@ -243,7 +276,7 @@ class ExecutorPlugin(ABC):
         ----------
         step_id : str
             The step identifier.
-        workspace : Workspace
+        workspace : WorkspaceProtocol
             The step workspace directory.
         """
         pass
@@ -284,15 +317,17 @@ class ExecutorPlugin(ABC):
     @abstractmethod
     async def train(
             self,
-            workspace: Workspace,
+            workspace: WorkspaceProtocol,
             params: dict[str, Any],
             emit: EventCallback,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
         """Execute training step.
 
         Parameters
         ----------
-        workspace : Workspace
+        workspace : WorkspaceProtocol
             Step workspace directory.
         params : dict[str, Any]
             Resolved configuration parameters.
@@ -309,16 +344,18 @@ class ExecutorPlugin(ABC):
     @abstractmethod
     async def predict_unlabeled(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
+        *,
+        context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
         """Run prediction on unlabeled samples.
 
         Parameters
         ----------
-        workspace : Workspace
+        workspace : WorkspaceProtocol
             Step workspace directory.
         unlabeled_samples : list[dict[str, Any]]
             Samples to predict.
@@ -337,6 +374,20 @@ class ExecutorPlugin(ABC):
     # -------------------------------------------------------------------
     # Optional execution methods (with default implementations)
     # -------------------------------------------------------------------
+
+    def validate_params(
+        self,
+        params: dict[str, Any],
+        *,
+        context: StepRuntimeContext | None = None,
+    ) -> None:
+        context_payload = context.to_dict() if context else None
+        self.resolve_config(
+            mode=str(params.get("mode") or "manual"),
+            raw_config=params,
+            context=context_payload,
+            validate=True,
+        )
 
     def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
         normalized = str(step_type or "").strip().lower()
@@ -378,25 +429,29 @@ class ExecutorPlugin(ABC):
 
     async def prepare_data(
             self,
-            workspace: Workspace,
+            workspace: WorkspaceProtocol,
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir: Any,
             splits: dict[str, list[dict[str, Any]]] | None = None,
+            *,
+            context: StepRuntimeContext,
     ) -> None:
         """Prepare training data (optional override).
 
         The default implementation does nothing.
         """
-        del workspace, labels, samples, annotations, dataset_ir, splits
+        del workspace, labels, samples, annotations, dataset_ir, splits, context
 
     async def predict_unlabeled_batch(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
+        *,
+        context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
         """Batch prediction (delegates to ``predict_unlabeled`` by default)."""
         return await self.predict_unlabeled(
@@ -404,32 +459,37 @@ class ExecutorPlugin(ABC):
             unlabeled_samples=unlabeled_samples,
             strategy=strategy,
             params=params,
+            context=context,
         )
 
     async def eval(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
     ) -> TrainOutput:
         """Execute evaluation step.
 
         Plugins that declare ``eval`` in ``supported_step_types`` should override.
         """
-        del workspace, params, emit
+        del workspace, params, emit, context
         raise NotImplementedError("eval step is not implemented by this plugin")
 
     async def predict(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
     ) -> TrainOutput:
         """Execute predict step.
 
         Plugins that declare ``predict`` in ``supported_step_types`` should override.
         """
-        del workspace, params, emit
+        del workspace, params, emit, context
         raise NotImplementedError("predict step is not implemented by this plugin")
 
     async def stop(self, step_id: str) -> None:

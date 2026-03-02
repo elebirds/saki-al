@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from saki_plugin_sdk.base import TrainArtifact, TrainOutput
+from saki_plugin_sdk.types import StepRuntimeContext
 
 WORKER_EVENT_TOPICS = ("progress", "log", "metric", "status", "artifact", "worker")
+WORKER_PROTOCOL_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -16,12 +18,14 @@ class WorkerCommandEnvelope:
     request_id: str
     action: str
     step_id: str
+    protocol_version: int = WORKER_PROTOCOL_VERSION
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "request_id": self.request_id,
             "action": self.action,
             "step_id": self.step_id,
+            "protocol_version": self.protocol_version,
         }
 
     @classmethod
@@ -30,6 +34,7 @@ class WorkerCommandEnvelope:
             request_id=str(payload.get("request_id") or ""),
             action=str(payload.get("action") or ""),
             step_id=str(payload.get("step_id") or ""),
+            protocol_version=int(payload.get("protocol_version") or 1),
         )
 
 
@@ -90,10 +95,14 @@ def build_command_payload(
     *,
     envelope: WorkerCommandEnvelope,
     payload: dict[str, Any] | None = None,
+    context: StepRuntimeContext | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    body = dict(payload or {})
+    if context is not None:
+        body["context"] = context.to_dict() if isinstance(context, StepRuntimeContext) else dict(context)
     return {
         "envelope": envelope.to_dict(),
-        "payload": payload or {},
+        "payload": body,
     }
 
 
@@ -104,7 +113,19 @@ def parse_command_payload(raw: dict[str, Any]) -> tuple[WorkerCommandEnvelope, d
         raise ValueError("missing command envelope")
     if not isinstance(payload, dict):
         payload = {}
-    return WorkerCommandEnvelope.from_dict(envelope_payload), payload
+    envelope = WorkerCommandEnvelope.from_dict(envelope_payload)
+    if envelope.protocol_version != WORKER_PROTOCOL_VERSION:
+        raise ValueError(
+            f"unsupported protocol_version={envelope.protocol_version}, expected={WORKER_PROTOCOL_VERSION}"
+        )
+    return envelope, payload
+
+
+def parse_runtime_context(payload: dict[str, Any]) -> StepRuntimeContext:
+    context_raw = payload.get("context")
+    if not isinstance(context_raw, dict):
+        raise ValueError("missing runtime context")
+    return StepRuntimeContext.from_dict(context_raw)
 
 
 def build_event_frames(

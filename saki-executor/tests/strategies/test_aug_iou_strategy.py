@@ -1,4 +1,4 @@
-from saki_executor.strategies.aug_iou import DetectionBox, score_aug_iou_disagreement
+from saki_plugin_sdk.strategies.aug_iou import DetectionBox, score_aug_iou_disagreement
 
 
 def _box(cls_id: int, conf: float, x1: float, y1: float, x2: float, y2: float) -> DetectionBox:

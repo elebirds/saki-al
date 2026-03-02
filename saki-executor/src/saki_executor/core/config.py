@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     EXECUTOR_ID: str = "executor-1"
-    EXECUTOR_VERSION: str = "0.1.0"
+    EXECUTOR_VERSION: str = "2.0.0"
 
     API_GRPC_TARGET: str = "localhost:50051"
     INTERNAL_TOKEN: str = "dev-secret"

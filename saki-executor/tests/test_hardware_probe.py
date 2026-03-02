@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import types
 
-from saki_executor.hardware import probe
+from saki_plugin_sdk import hardware as probe
 
 
 def test_probe_hardware_cpu_only(monkeypatch):

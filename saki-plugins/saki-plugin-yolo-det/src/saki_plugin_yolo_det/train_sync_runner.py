@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Event
 from typing import Any, Callable
 
-from saki_plugin_sdk import Workspace
+from saki_plugin_sdk import WorkspaceProtocol
 from saki_plugin_yolo_det.artifact_collector import (
     collect_optional_artifacts,
     copy_best_weights,
@@ -42,7 +42,7 @@ def _collect_epoch_raw_metrics(*, trainer: Any, to_float: ToFloatFn) -> dict[str
 
 def run_train_sync(
     *,
-    workspace: Workspace,
+    workspace: WorkspaceProtocol,
     dataset_yaml: Path,
     base_model: str,
     epochs: int,

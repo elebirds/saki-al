@@ -5,10 +5,11 @@ from typing import Any
 import pytest
 
 from saki_executor.plugins.ipc.client import PluginWorkerClient
-from saki_executor.plugins.ipc import protocol
 from saki_executor.plugins.registry import PluginRegistry
 from saki_executor.steps.workspace import Workspace
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
+from saki_plugin_sdk import StepRuntimeContext
+from saki_plugin_sdk.ipc import protocol
 
 
 @pytest.mark.anyio
@@ -56,6 +57,18 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
     protocol.write_json(predict_params_path, {"topk": 1})
     dataset_ir = irpb.DataBatchIR()
     dataset_ir_path.write_bytes(dataset_ir.SerializeToString())
+    runtime_context = StepRuntimeContext(
+        step_id=step_id,
+        round_id="round-1",
+        round_index=1,
+        attempt=1,
+        step_type="train",
+        mode="simulation",
+        split_seed=1,
+        train_seed=2,
+        sampling_seed=3,
+        resolved_device_backend="cpu",
+    )
 
     try:
         await client.start()
@@ -69,6 +82,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
                 "annotations_path": str(annotations_path),
                 "dataset_ir_path": str(dataset_ir_path),
             },
+            context=runtime_context,
         )
         train_reply = await client.request(
             action="train",
@@ -77,11 +91,17 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
                 "params_path": str(params_path),
                 "result_path": str(train_result_path),
             },
+            context=runtime_context,
         )
         assert Path(train_reply.result_path).exists()
         train_payload = protocol.read_json(Path(train_reply.result_path))
         assert isinstance(train_payload, dict)
         assert "metrics" in train_payload
+        metrics = train_payload.get("metrics")
+        assert isinstance(metrics, dict)
+        assert metrics.get("context_step_type") == "train"
+        assert metrics.get("context_mode") == "simulation"
+        assert float(metrics.get("context_train_seed") or 0) == 2.0
 
         predict_reply = await client.request(
             action="predict_unlabeled_batch",
@@ -92,6 +112,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
                 "params_path": str(predict_params_path),
                 "result_path": str(predict_result_path),
             },
+            context=runtime_context,
         )
         predict_payload = protocol.read_json(Path(predict_reply.result_path))
         assert isinstance(predict_payload, dict)

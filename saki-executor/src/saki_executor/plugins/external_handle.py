@@ -14,8 +14,14 @@ from pathlib import Path
 from typing import Any
 
 from saki_plugin_sdk.manifest import PluginManifest
-from saki_executor.plugins.base import EventCallback, ExecutorPlugin, StepRuntimeRequirements, TrainOutput
-from saki_executor.steps.workspace import Workspace
+from saki_plugin_sdk import (
+    EventCallback,
+    ExecutorPlugin,
+    StepRuntimeContext,
+    StepRuntimeRequirements,
+    TrainOutput,
+    WorkspaceProtocol,
+)
 
 
 class ExternalPluginHandle(ExecutorPlugin):
@@ -88,9 +94,13 @@ class ExternalPluginHandle(ExecutorPlugin):
     def entrypoint(self) -> str:
         return self._manifest.entrypoint
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        # Lightweight host-side validation; full validation happens in worker.
-        pass
+    def validate_params(
+        self,
+        params: dict[str, Any],
+        *,
+        context: StepRuntimeContext | None = None,
+    ) -> None:
+        super().validate_params(params, context=context)
 
     def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
         default = super().get_step_runtime_requirements(step_type)
@@ -120,22 +130,75 @@ class ExternalPluginHandle(ExecutorPlugin):
     # All execution goes through SubprocessPluginProxy.
     # ------------------------------------------------------------------
 
-    async def prepare_data(self, workspace: Workspace, labels, samples, annotations, dataset_ir, splits=None):
+    async def prepare_data(
+        self,
+        workspace: WorkspaceProtocol,
+        labels,
+        samples,
+        annotations,
+        dataset_ir,
+        splits=None,
+        *,
+        context: StepRuntimeContext,
+    ):
+        del workspace, labels, samples, annotations, dataset_ir, splits, context
         raise RuntimeError("ExternalPluginHandle.prepare_data must not be called directly; use SubprocessPluginProxy")
 
-    async def train(self, workspace: Workspace, params: dict[str, Any], emit: EventCallback) -> TrainOutput:
+    async def train(
+        self,
+        workspace: WorkspaceProtocol,
+        params: dict[str, Any],
+        emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
+    ) -> TrainOutput:
+        del workspace, params, emit, context
         raise RuntimeError("ExternalPluginHandle.train must not be called directly; use SubprocessPluginProxy")
 
-    async def predict_unlabeled(self, workspace, unlabeled_samples, strategy, params):
+    async def predict_unlabeled(
+        self,
+        workspace,
+        unlabeled_samples,
+        strategy,
+        params,
+        *,
+        context: StepRuntimeContext,
+    ):
+        del workspace, unlabeled_samples, strategy, params, context
         raise RuntimeError("ExternalPluginHandle.predict_unlabeled must not be called directly")
 
-    async def predict_unlabeled_batch(self, workspace, unlabeled_samples, strategy, params):
+    async def predict_unlabeled_batch(
+        self,
+        workspace,
+        unlabeled_samples,
+        strategy,
+        params,
+        *,
+        context: StepRuntimeContext,
+    ):
+        del workspace, unlabeled_samples, strategy, params, context
         raise RuntimeError("ExternalPluginHandle.predict_unlabeled_batch must not be called directly")
 
-    async def eval(self, workspace: Workspace, params: dict[str, Any], emit: EventCallback) -> TrainOutput:
+    async def eval(
+        self,
+        workspace: WorkspaceProtocol,
+        params: dict[str, Any],
+        emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
+    ) -> TrainOutput:
+        del workspace, params, emit, context
         raise RuntimeError("ExternalPluginHandle.eval must not be called directly; use SubprocessPluginProxy")
 
-    async def predict(self, workspace: Workspace, params: dict[str, Any], emit: EventCallback) -> TrainOutput:
+    async def predict(
+        self,
+        workspace: WorkspaceProtocol,
+        params: dict[str, Any],
+        emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
+    ) -> TrainOutput:
+        del workspace, params, emit, context
         raise RuntimeError("ExternalPluginHandle.predict must not be called directly; use SubprocessPluginProxy")
 
     async def stop(self, step_id: str) -> None:

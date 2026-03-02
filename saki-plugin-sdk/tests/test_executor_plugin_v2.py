@@ -1,0 +1,97 @@
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from saki_plugin_sdk import (
+    EventCallback,
+    ExecutorPlugin,
+    PluginManifest,
+    PluginValidationError,
+    StepRuntimeContext,
+    TrainOutput,
+    Workspace,
+    WorkspaceProtocol,
+)
+
+
+class _DummyPlugin(ExecutorPlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self._manifest = PluginManifest.model_validate(
+            {
+                "plugin_id": "dummy_v2",
+                "version": "2.0.0",
+                "display_name": "Dummy V2",
+                "supported_step_types": ["train", "score"],
+                "supported_strategies": ["random_baseline"],
+                "config_schema": {
+                    "title": "Dummy Config",
+                    "fields": [
+                        {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1, "default": 5},
+                        {"key": "batch", "label": "Batch", "type": "integer", "required": True, "min": 1, "default": 8},
+                    ],
+                },
+                "default_config": {
+                    "epochs": 5,
+                    "batch": 8,
+                },
+            }
+        )
+
+    async def train(
+        self,
+        workspace: WorkspaceProtocol,
+        params: dict[str, Any],
+        emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
+    ) -> TrainOutput:
+        del workspace, params, emit, context
+        return TrainOutput(metrics={}, artifacts=[])
+
+    async def predict_unlabeled(
+        self,
+        workspace: WorkspaceProtocol,
+        unlabeled_samples: list[dict[str, Any]],
+        strategy: str,
+        params: dict[str, Any],
+        *,
+        context: StepRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        del workspace, unlabeled_samples, strategy, params, context
+        return []
+
+
+def _context() -> StepRuntimeContext:
+    return StepRuntimeContext(
+        step_id="step-1",
+        round_id="round-1",
+        round_index=1,
+        attempt=1,
+        step_type="train",
+        mode="active_learning",
+        split_seed=11,
+        train_seed=22,
+        sampling_seed=33,
+        resolved_device_backend="cpu",
+    )
+
+
+def test_executor_plugin_resolve_config_applies_default_and_coercion():
+    plugin = _DummyPlugin()
+    config = plugin.resolve_config(
+        "active_learning",
+        {"epochs": "12"},
+        context=_context().to_dict(),
+    )
+    assert config.epochs == 12
+    assert config.batch == 8
+
+
+def test_executor_plugin_validate_params_uses_schema():
+    plugin = _DummyPlugin()
+    plugin.validate_params({"epochs": 3, "batch": 4}, context=_context())
+    with pytest.raises(PluginValidationError):
+        plugin.validate_params({"epochs": 0, "batch": 4}, context=_context())

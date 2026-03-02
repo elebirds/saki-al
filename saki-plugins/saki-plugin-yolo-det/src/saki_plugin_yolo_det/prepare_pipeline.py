@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from saki_plugin_yolo_det.split_policy import resolve_train_val_split
 from saki_plugin_yolo_det.types import PreparedDataset
-from saki_plugin_sdk import Workspace
+from saki_plugin_sdk import WorkspaceProtocol
 from saki_ir import ConversionContext, ConversionReport, save_yolo_dataset
 from saki_ir.convert.base import build_batch, split_batch
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
@@ -30,7 +30,7 @@ _YOLO_TASK_FORMAT_MAP: dict[str, str] = {
 
 def prepare_yolo_dataset(
     *,
-    workspace: Workspace,
+    workspace: WorkspaceProtocol,
     labels: list[dict[str, Any]],
     samples: list[dict[str, Any]],
     infer_image_hw: Callable[[Path], tuple[int, int]],

@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from saki_executor.agent import codec as runtime_codec
-from saki_executor.plugins.base import StepRuntimeRequirements
 from saki_executor.plugins.ipc.proxy_plugin import SubprocessPluginProxy
 from saki_executor.steps.contracts import SUPPORTED_LOOP_MODES, StepExecutionRequest, StepFinalResult
 from saki_executor.steps.orchestration.event_emitter import StepEventEmitter
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
 from saki_executor.steps.state import ExecutorState, StepStatus
 from saki_executor.steps.workspace import Workspace
-from saki_executor.sdk.reporter import StepReporter
+from saki_executor.steps.workspace_adapter import WorkspaceAdapter
+from saki_plugin_sdk import StepReporter, StepRuntimeRequirements, StepRuntimeContext, WorkspaceProtocol
 
 if TYPE_CHECKING:
     from saki_executor.steps.manager import StepManager
@@ -66,6 +66,7 @@ class StepPipelineRunner:
         self._request = request
         self._task_id = request.step_id
         self._effective_plugin_params: dict[str, Any] = {}
+        self._runtime_context: StepRuntimeContext | None = None
 
     async def run(self) -> StepFinalResult:
         self._validate_request()
@@ -162,7 +163,18 @@ class StepPipelineRunner:
         raw_plugin_config = self._request.resolved_params.get("plugin")
         if not isinstance(raw_plugin_config, dict):
             raw_plugin_config = dict(self._request.resolved_params)
-        plugin_config = plugin.resolve_config(self._request.mode, raw_plugin_config)
+        runtime_context_candidate = self._build_runtime_context()
+        try:
+            plugin_config = plugin.resolve_config(
+                self._request.mode,
+                raw_plugin_config,
+                context=runtime_context_candidate.to_dict(),
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"plugin config resolve failed plugin_id={self._request.plugin_id} "
+                f"step_id={self._request.step_id}: {exc}"
+            ) from exc
         # Inject runtime seeds / round metadata – produce a plain dict for
         # IPC-serialisable downstream consumption.
         effective_plugin_params = plugin_config.to_dict()
@@ -171,9 +183,57 @@ class StepPipelineRunner:
                 effective_plugin_params[key] = self._request.resolved_params.get(key)
         effective_plugin_params["step_type"] = self._request.step_type
         effective_plugin_params["mode"] = self._request.mode
-        plugin.validate_params(effective_plugin_params)
+        resolved_backend = str(
+            effective_plugin_params.get("_resolved_device_backend")
+            or self._request.resolved_params.get("_resolved_device_backend")
+            or ""
+        ).strip().lower()
+        runtime_context = self._build_runtime_context(
+            resolved_device_backend=resolved_backend,
+        )
+        try:
+            plugin.validate_params(effective_plugin_params, context=runtime_context)
+        except Exception as exc:
+            raise RuntimeError(
+                f"plugin params validate failed plugin_id={self._request.plugin_id} "
+                f"step_id={self._request.step_id}: {exc}"
+            ) from exc
         self._effective_plugin_params = effective_plugin_params
+        self._runtime_context = runtime_context
         return plugin
+
+    def _build_runtime_context(
+        self,
+        *,
+        resolved_device_backend: str | None = None,
+    ) -> StepRuntimeContext:
+        def _safe_int(value: Any, default: int) -> int:
+            try:
+                return int(value)
+            except Exception:
+                return default
+
+        return StepRuntimeContext(
+            step_id=self._request.step_id,
+            round_id=self._request.round_id,
+            round_index=max(0, _safe_int(self._request.round_index, 0)),
+            attempt=max(1, _safe_int(self._request.attempt, 1)),
+            step_type=self._request.step_type,
+            mode=self._request.mode,
+            split_seed=max(0, _safe_int(self._request.resolved_params.get("split_seed"), 0)),
+            train_seed=max(0, _safe_int(self._request.resolved_params.get("train_seed"), 0)),
+            sampling_seed=max(0, _safe_int(self._request.resolved_params.get("sampling_seed"), 0)),
+            resolved_device_backend=str(
+                resolved_device_backend
+                if resolved_device_backend is not None
+                else (self._request.resolved_params.get("_resolved_device_backend") or "")
+            ).strip().lower(),
+        )
+
+    def _require_runtime_context(self) -> StepRuntimeContext:
+        if self._runtime_context is None:
+            raise RuntimeError(f"runtime context is not initialized: {self._request.step_id}")
+        return self._runtime_context
 
     def _build_execution_plugin(self, *, metadata_plugin: Any, emitter: StepEventEmitter):
         # Extract external plugin info if available
@@ -195,13 +255,14 @@ class StepPipelineRunner:
         if callable(shutdown):
             await shutdown()
 
-    def _prepare_workspace(self) -> tuple[Workspace, StepReporter, StepEventEmitter]:
-        workspace = Workspace(
+    def _prepare_workspace(self) -> tuple[WorkspaceAdapter, StepReporter, StepEventEmitter]:
+        raw_workspace = Workspace(
             self._manager.runs_dir,
             self._task_id,
             round_id=self._request.round_id,
             attempt=self._request.attempt,
         )
+        workspace = WorkspaceAdapter(raw_workspace)
         workspace.ensure()
         workspace.write_config(self._request.raw_payload)
         reporter = StepReporter(self._task_id, workspace.events_path)
@@ -225,7 +286,7 @@ class StepPipelineRunner:
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         runtime_requirements: StepRuntimeRequirements,
     ) -> tuple[Any, set[str]]:
@@ -235,30 +296,36 @@ class StepPipelineRunner:
             emitter=emitter,
             runtime_requirements=runtime_requirements,
         )
-        output = await plugin.train(workspace, self._effective_plugin_params, emitter.emit)
+        output = await plugin.train(
+            workspace,
+            self._effective_plugin_params,
+            emitter.emit,
+            context=self._require_runtime_context(),
+        )
         return output, protected
 
     async def _prepare_plugin_data(
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
     ) -> set[str]:
+        runtime_context = self._require_runtime_context()
+        plugin_params_snapshot = {
+            key: self._effective_plugin_params.get(key)
+            for key in sorted(self._effective_plugin_params.keys())
+            if not str(key).startswith("_")
+        }
         params_snapshot = {
-            "yolo_task": self._effective_plugin_params.get("yolo_task"),
-            "epochs": self._effective_plugin_params.get("epochs"),
-            "batch": self._effective_plugin_params.get("batch", self._effective_plugin_params.get("batch_size")),
-            "imgsz": self._effective_plugin_params.get("imgsz"),
-            "model_source": self._effective_plugin_params.get("model_source"),
-            "model_preset": self._effective_plugin_params.get("model_preset"),
-            "split_seed": self._request.resolved_params.get("split_seed"),
-            "train_seed": self._request.resolved_params.get("train_seed"),
-            "sampling_seed": self._request.resolved_params.get("sampling_seed"),
-            "mode": self._request.mode,
-            "step_type": self._request.step_type,
-            "round_index": self._request.round_index,
-            "step_id": self._request.step_id,
+            "split_seed": runtime_context.split_seed,
+            "train_seed": runtime_context.train_seed,
+            "sampling_seed": runtime_context.sampling_seed,
+            "mode": runtime_context.mode,
+            "step_type": runtime_context.step_type,
+            "round_index": runtime_context.round_index,
+            "step_id": runtime_context.step_id,
+            "plugin_params": plugin_params_snapshot,
         }
         await emitter.emit("log", {"level": "INFO", "message": f"effective training params: {params_snapshot}"})
         data_service = TrainingDataService(
@@ -268,40 +335,26 @@ class StepPipelineRunner:
         )
         data_bundle = await data_service.prepare(
             request=self._request,
-            plugin=plugin,
+            plugin_params=self._effective_plugin_params,
+            runtime_context=runtime_context,
             emit=emitter.emit,
         )
-        prepare_data = getattr(plugin, "prepare_data")
-        # Inject plugin-specific config into splits for prepare_data.
-        # This avoids changing the prepare_data interface across the entire chain.
-        splits = dict(data_bundle.splits)
-        for _inject_key in ("yolo_task",):
-            if _inject_key in self._effective_plugin_params:
-                splits[_inject_key] = self._effective_plugin_params[_inject_key]
-        try:
-            await prepare_data(
-                workspace=workspace,
-                labels=data_bundle.labels,
-                samples=data_bundle.samples,
-                annotations=data_bundle.train_annotations,
-                dataset_ir=data_bundle.ir_batch,
-                splits=splits,
-            )
-        except TypeError:
-            await prepare_data(
-                workspace,
-                data_bundle.labels,
-                data_bundle.samples,
-                data_bundle.train_annotations,
-                data_bundle.ir_batch,
-            )
+        await plugin.prepare_data(
+            workspace=workspace,
+            labels=data_bundle.labels,
+            samples=data_bundle.samples,
+            annotations=data_bundle.train_annotations,
+            dataset_ir=data_bundle.ir_batch,
+            splits=dict(data_bundle.splits),
+            context=runtime_context,
+        )
         return data_bundle.protected
 
     async def _prepare_data_for_step(
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         runtime_requirements: StepRuntimeRequirements,
     ) -> set[str]:
@@ -386,6 +439,12 @@ class StepPipelineRunner:
         return protected
 
     def _build_data_cache_fingerprint(self) -> str:
+        runtime_context = self._require_runtime_context()
+        plugin_subset = {
+            key: self._effective_plugin_params.get(key)
+            for key in sorted(self._effective_plugin_params.keys())
+            if not str(key).startswith("_")
+        }
         payload = {
             "version": 1,
             "round_id": self._request.round_id,
@@ -393,12 +452,9 @@ class StepPipelineRunner:
             "project_id": self._request.project_id,
             "input_commit_id": self._request.input_commit_id,
             "plugin_id": self._request.plugin_id,
-            "mode": self._request.mode,
-            "split_seed": self._request.resolved_params.get("split_seed"),
-            "plugin_subset": {
-                "yolo_task": self._effective_plugin_params.get("yolo_task"),
-                "val_split_ratio": self._effective_plugin_params.get("val_split_ratio"),
-            },
+            "mode": runtime_context.mode,
+            "split_seed": runtime_context.split_seed,
+            "plugin_subset": plugin_subset,
         }
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -406,7 +462,7 @@ class StepPipelineRunner:
     async def _prepare_trained_model_if_needed(
         self,
         *,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         runtime_requirements: StepRuntimeRequirements,
     ) -> None:
@@ -464,7 +520,7 @@ class StepPipelineRunner:
     async def _cache_primary_model_after_train(
         self,
         *,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         runtime_requirements: StepRuntimeRequirements,
         output_artifacts: list[Any],
@@ -524,7 +580,7 @@ class StepPipelineRunner:
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         reporter: StepReporter,
         runtime_requirements: StepRuntimeRequirements,
@@ -551,7 +607,7 @@ class StepPipelineRunner:
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         reporter: StepReporter,
         runtime_requirements: StepRuntimeRequirements,
@@ -578,7 +634,7 @@ class StepPipelineRunner:
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         reporter: StepReporter,
         runtime_requirements: StepRuntimeRequirements,
@@ -589,7 +645,12 @@ class StepPipelineRunner:
             emitter=emitter,
             runtime_requirements=runtime_requirements,
         )
-        output = await plugin.eval(workspace, self._effective_plugin_params, emitter.emit)
+        output = await plugin.eval(
+            workspace,
+            self._effective_plugin_params,
+            emitter.emit,
+            context=self._require_runtime_context(),
+        )
         artifacts, optional_upload_failures = await self._upload_artifacts(
             output_artifacts=output.artifacts,
             reporter=reporter,
@@ -621,7 +682,7 @@ class StepPipelineRunner:
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         runtime_requirements: StepRuntimeRequirements,
         profile: _InferenceTaskProfile,
@@ -648,7 +709,7 @@ class StepPipelineRunner:
         self,
         *,
         plugin: Any,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         emitter: StepEventEmitter,
         protected: set[str],
         profile: _InferenceTaskProfile | None = None,
@@ -700,8 +761,9 @@ class StepPipelineRunner:
         sampling_params = dict(self._effective_plugin_params)
         sampling_params.update(sampling_cfg)
         sampling_params["sampling_topk"] = candidate_limit
+        runtime_context = self._require_runtime_context()
         sampling_params["sampling_seed"] = int(
-            self._request.resolved_params.get("sampling_seed", sampling_params.get("sampling_seed", 0))
+            sampling_params.get("sampling_seed", runtime_context.sampling_seed)
         )
         return await self._manager._collect_topk_candidates_streaming(  # noqa: SLF001
             plugin=plugin,
@@ -714,6 +776,7 @@ class StepPipelineRunner:
             protected=protected,
             query_type=query_type,
             topk=candidate_limit,
+            context=runtime_context,
         )
 
     async def _finalize_result(

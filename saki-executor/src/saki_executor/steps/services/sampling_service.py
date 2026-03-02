@@ -6,8 +6,7 @@ from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.steps.contracts import FetchedPage
-from saki_executor.steps.workspace import Workspace
-from saki_executor.plugins.base import ExecutorPlugin
+from saki_plugin_sdk import ExecutorPlugin, StepRuntimeContext, WorkspaceProtocol
 
 FetchPageFn = Callable[..., Awaitable[FetchedPage]]
 
@@ -28,7 +27,7 @@ class SamplingService:
         self,
         *,
         plugin: ExecutorPlugin,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         step_id: str,
         project_id: str,
         commit_id: str,
@@ -37,6 +36,7 @@ class SamplingService:
         protected: set[str],
         query_type: str,
         topk: int,
+        context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
         page_size = max(1, min(5000, int(params.get("unlabeled_page_size", 1000))))
         target_topk = int(topk)
@@ -91,6 +91,7 @@ class SamplingService:
                 unlabeled_samples=chunk,
                 strategy=strategy,
                 params=call_params,
+                context=context,
             )
             if keep_all:
                 rows.extend(self._normalize_batch(batch or []))

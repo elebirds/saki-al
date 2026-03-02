@@ -4,10 +4,16 @@ from pathlib import Path
 from typing import Any
 import uuid
 
-from saki_executor.plugins.base import EventCallback, ExecutorPlugin, StepRuntimeRequirements, TrainOutput
 from saki_executor.plugins.ipc.client import PluginWorkerClient
-from saki_executor.plugins.ipc import protocol
-from saki_executor.steps.workspace import Workspace
+from saki_plugin_sdk import (
+    EventCallback,
+    ExecutorPlugin,
+    StepRuntimeContext,
+    StepRuntimeRequirements,
+    TrainOutput,
+    WorkspaceProtocol,
+)
+from saki_plugin_sdk.ipc import protocol
 
 
 class SubprocessPluginProxy(ExecutorPlugin):
@@ -67,20 +73,27 @@ class SubprocessPluginProxy(ExecutorPlugin):
     def supports_auto_fallback(self) -> bool:
         return bool(self._metadata.supports_auto_fallback)
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        self._metadata.validate_params(params)
+    def validate_params(
+        self,
+        params: dict[str, Any],
+        *,
+        context: StepRuntimeContext | None = None,
+    ) -> None:
+        self._metadata.validate_params(params, context=context)
 
     def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
         return self._metadata.get_step_runtime_requirements(step_type)
 
     async def prepare_data(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         labels: list[dict[str, Any]],
         samples: list[dict[str, Any]],
         annotations: list[dict[str, Any]],
         dataset_ir: Any,
         splits: dict[str, list[dict[str, Any]]] | None = None,
+        *,
+        context: StepRuntimeContext,
     ) -> None:
         await self._worker.start()
         payload_dir = self._payload_dir(workspace)
@@ -107,54 +120,65 @@ class SubprocessPluginProxy(ExecutorPlugin):
                 "splits_path": str(splits_path),
                 "dataset_ir_path": str(dataset_ir_path),
             },
+            context=context,
         )
 
     async def train(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
     ) -> TrainOutput:
         return await self._run_train_output_action(
             action="train",
             workspace=workspace,
             params=params,
             emit=emit,
+            context=context,
         )
 
     async def eval(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
     ) -> TrainOutput:
         return await self._run_train_output_action(
             action="eval",
             workspace=workspace,
             params=params,
             emit=emit,
+            context=context,
         )
 
     async def predict(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
+        *,
+        context: StepRuntimeContext,
     ) -> TrainOutput:
         return await self._run_train_output_action(
             action="predict",
             workspace=workspace,
             params=params,
             emit=emit,
+            context=context,
         )
 
     async def _run_train_output_action(
         self,
         *,
         action: str,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         params: dict[str, Any],
         emit: EventCallback,
+        context: StepRuntimeContext,
     ) -> TrainOutput:
         self._emit = emit
         await self._worker.start()
@@ -169,6 +193,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
                 "params_path": str(params_path),
                 "result_path": str(result_path),
             },
+            context=context,
         )
         output_path = Path(reply.result_path or str(result_path))
         if not output_path.exists():
@@ -180,24 +205,29 @@ class SubprocessPluginProxy(ExecutorPlugin):
 
     async def predict_unlabeled(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
+        *,
+        context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
         return await self.predict_unlabeled_batch(
             workspace=workspace,
             unlabeled_samples=unlabeled_samples,
             strategy=strategy,
             params=params,
+            context=context,
         )
 
     async def predict_unlabeled_batch(
         self,
-        workspace: Workspace,
+        workspace: WorkspaceProtocol,
         unlabeled_samples: list[dict[str, Any]],
         strategy: str,
         params: dict[str, Any],
+        *,
+        context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
         await self._worker.start()
         payload_dir = self._payload_dir(workspace)
@@ -216,6 +246,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
                 "params_path": str(params_path),
                 "result_path": str(result_path),
             },
+            context=context,
         )
         output_path = Path(reply.result_path or str(result_path))
         if not output_path.exists():
@@ -255,7 +286,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
         await self._emit(event_type, payload)
 
     @staticmethod
-    def _payload_dir(workspace: Workspace) -> Path:
+    def _payload_dir(workspace: WorkspaceProtocol) -> Path:
         path = workspace.cache_dir / "plugin_worker_payloads"
         path.mkdir(parents=True, exist_ok=True)
         return path

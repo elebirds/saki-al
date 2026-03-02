@@ -4,78 +4,23 @@ import asyncio
 import json
 from typing import Any
 
-from saki_plugin_sdk import TrainArtifact, TrainOutput, EventCallback, Workspace
+from saki_plugin_sdk import EventCallback, StepRuntimeContext, TrainArtifact, TrainOutput, WorkspaceProtocol
 from saki_plugin_sdk.strategies.builtin import score_by_strategy
 
 
 class DemoDetectionInternal:
-    @property
-    def plugin_id(self) -> str:
-        return "demo_det_v1"
-
-    @property
-    def version(self) -> str:
-        return "0.1.1"
-
-    @property
-    def display_name(self) -> str:
-        return "Demo Detection (Mock)"
-
-    @property
-    def supported_step_types(self) -> list[str]:
-        return [
-            "train",
-            "score",
-            "predict",
-            "eval",
-            "custom",
-        ]
-
-    @property
-    def supported_strategies(self) -> list[str]:
-        return [
-            "uncertainty_1_minus_max_conf",
-            "aug_iou_disagreement",
-            "random_baseline",
-        ]
-
-    def config_schema(self, mode: str | None = None) -> dict[str, Any]:
-        del mode
-        return {
-            "title": "Demo Detection Request Config",
-            "fields": [
-                {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1, "max": 500},
-                {"key": "batch_size", "label": "Batch Size", "type": "integer", "required": True, "min": 1, "max": 2048},
-                {"key": "steps_per_epoch", "label": "Steps / Epoch", "type": "integer", "required": False, "min": 1, "max": 5000},
-            ],
-        }
-
-    def default_config(self, mode: str | None = None) -> dict[str, Any]:
-        del mode
-        return {
-            "epochs": 5,
-            "batch_size": 8,
-            "steps_per_epoch": 20,
-        }
-
-    def validate_params(self, params: dict[str, Any]) -> None:
-        epochs = int(params.get("epochs", 5))
-        if epochs <= 0:
-            raise ValueError("epochs must be > 0")
-        batch_size = int(params.get("batch_size", 8))
-        if batch_size <= 0:
-            raise ValueError("batch_size must be > 0")
-
     async def prepare_data(
             self,
-            workspace: Workspace,
+            workspace: WorkspaceProtocol,
             labels: list[dict[str, Any]],
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir: Any,
             splits: dict[str, list[dict[str, Any]]] | None = None,
+            *,
+            context: StepRuntimeContext,
     ) -> None:
-        del splits
+        del splits, context
         payload = {
             "labels": labels,
             "sample_count": len(samples),
@@ -89,14 +34,27 @@ class DemoDetectionInternal:
 
     async def train(
             self,
-            workspace: Workspace,
+            workspace: WorkspaceProtocol,
             params: dict[str, Any],
             emit: EventCallback,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
         epochs = int(params.get("epochs", 5))
         steps_per_epoch = int(params.get("steps_per_epoch", 20))
 
-        await emit("log", {"level": "INFO", "message": "training started"})
+        await emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": (
+                    "training started "
+                    f"step_type={context.step_type} mode={context.mode} "
+                    f"split_seed={context.split_seed} train_seed={context.train_seed} "
+                    f"sampling_seed={context.sampling_seed}"
+                ),
+            },
+        )
         metrics: dict[str, Any] = {}
         for epoch in range(1, epochs + 1):
             await asyncio.sleep(0.1)
@@ -106,6 +64,12 @@ class DemoDetectionInternal:
             metrics = {"loss": loss, "map50": map50, "recall": recall}
             await emit("progress", {"epoch": epoch, "step": steps_per_epoch, "total_steps": steps_per_epoch, "eta_sec": 0})
             await emit("metric", {"step": epoch, "epoch": epoch, "metrics": metrics})
+
+        metrics["context_step_type"] = context.step_type
+        metrics["context_mode"] = context.mode
+        metrics["context_split_seed"] = float(context.split_seed)
+        metrics["context_train_seed"] = float(context.train_seed)
+        metrics["context_sampling_seed"] = float(context.sampling_seed)
 
         model_path = workspace.artifacts_dir / "best.pt"
         report_path = workspace.artifacts_dir / "report.json"
@@ -134,11 +98,13 @@ class DemoDetectionInternal:
 
     async def eval(
             self,
-            workspace: Workspace,
+            workspace: WorkspaceProtocol,
             params: dict[str, Any],
             emit: EventCallback,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
-        del params
+        del params, context
         await emit("log", {"level": "INFO", "message": "eval step started"})
         manifest_path = workspace.data_dir / "dataset_manifest.json"
         sample_count = 0
@@ -171,11 +137,14 @@ class DemoDetectionInternal:
 
     async def predict_unlabeled(
             self,
-            workspace: Workspace,
+            workspace: WorkspaceProtocol,
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
+        del workspace, context
         candidates: list[dict[str, Any]] = []
         for sample in unlabeled_samples:
             sample_id = str(sample.get("id") or "")

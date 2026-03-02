@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Callable
 
-from saki_plugin_sdk import Workspace, TrainArtifact
+from saki_plugin_sdk import TrainArtifact, WorkspaceProtocol
 
 ToFloatFn = Callable[[Any, float], float]
 
@@ -18,7 +18,7 @@ def resolve_save_dir(train_output: Any, model: Any) -> Path:
     return Path(str(save_dir_raw))
 
 
-def copy_best_weights(*, save_dir: Path, workspace: Workspace) -> Path:
+def copy_best_weights(*, save_dir: Path, workspace: WorkspaceProtocol) -> Path:
     best_path = save_dir / "weights" / "best.pt"
     if not best_path.exists():
         fallback = save_dir / "weights" / "last.pt"
@@ -31,7 +31,7 @@ def copy_best_weights(*, save_dir: Path, workspace: Workspace) -> Path:
     return final_best
 
 
-def collect_optional_artifacts(*, save_dir: Path, workspace: Workspace) -> list[TrainArtifact]:
+def collect_optional_artifacts(*, save_dir: Path, workspace: WorkspaceProtocol) -> list[TrainArtifact]:
     extra_artifacts: list[TrainArtifact] = []
     confusion_candidates = [
         ("confusion_matrix.png", "confusion_matrix"),

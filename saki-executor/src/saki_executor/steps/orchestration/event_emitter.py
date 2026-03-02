@@ -4,7 +4,7 @@ import asyncio
 from typing import Any, Awaitable, Callable
 
 from saki_executor.steps.state import StepStatus
-from saki_executor.sdk.reporter import StepReporter
+from saki_plugin_sdk import StepReporter
 
 PushEventFn = Callable[[dict[str, Any]], Awaitable[None]]
 

@@ -1,3 +1,3 @@
-from saki_executor.sdk.reporter import StepReporter
+from saki_plugin_sdk import StepReporter
 
 __all__ = ["StepReporter"]

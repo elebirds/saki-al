@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from saki_executor.plugins.ipc import protocol
-from saki_executor.plugins.base import TrainArtifact, TrainOutput
+from saki_plugin_sdk import TrainArtifact, TrainOutput
+from saki_plugin_sdk.ipc import protocol
 
 
 def test_event_frames_roundtrip_json_payload():

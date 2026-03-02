@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from loguru import logger
 
-from saki_executor.plugins.base import ExecutorPlugin
 from saki_executor.plugins.external_handle import ExternalPluginHandle
 
 

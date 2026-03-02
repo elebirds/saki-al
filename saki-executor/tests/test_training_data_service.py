@@ -7,6 +7,7 @@ import pytest
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.steps.contracts import StepExecutionRequest
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
+from saki_plugin_sdk import StepRuntimeContext
 
 
 @pytest.mark.anyio
@@ -42,7 +43,7 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
         step_type="train",
         dispatch_kind="orchestrator",
         plugin_id="plugin-a",
-        resolved_params={"split_seed": 0, "plugin": {"val_split_ratio": 0.2}},
+        resolved_params={"split_seed": 99, "plugin": {"val_split_ratio": 0.49}},
         project_id="project-1",
         input_commit_id="commit-1",
         query_strategy=None,
@@ -63,9 +64,22 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
     async def emit(event_type: str, payload: dict):
         del event_type, payload
 
+    runtime_context = StepRuntimeContext(
+        step_id="step-1",
+        round_id="round-1",
+        round_index=1,
+        attempt=1,
+        step_type="train",
+        mode="active_learning",
+        split_seed=3,
+        train_seed=4,
+        sampling_seed=5,
+        resolved_device_backend="cpu",
+    )
     bundle = await service.prepare(
         request=request,
-        plugin=object(),
+        plugin_params={"val_split_ratio": 0.2},
+        runtime_context=runtime_context,
         emit=emit,
     )
 
@@ -73,3 +87,7 @@ async def test_prepare_filters_unconfirmed_model_annotations(tmp_path):
     assert bundle.train_annotations[0]["id"] == "ann-confirmed"
     assert bundle.train_annotations[0]["source"] == "confirmed_model"
     assert all(str(item.get("source") or "").lower() != "model" for item in bundle.train_annotations)
+    assert all(int(item.get("_split_seed") or 0) == 3 for item in bundle.samples)
+    assert all(abs(float(item.get("_val_split_ratio") or 0.0) - 0.2) < 1e-9 for item in bundle.samples)
+    assert set(bundle.splits.keys()) == {"train", "val"}
+    assert "yolo_task" not in bundle.splits

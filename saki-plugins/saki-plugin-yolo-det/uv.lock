@@ -1414,7 +1414,7 @@ dev = [{ name = "pytest", specifier = ">=8.3.0" }]
 
 [[package]]
 name = "saki-plugin-sdk"
-version = "0.1.0"
+version = "2.0.0"
 source = { editable = "../../saki-plugin-sdk" }
 dependencies = [
     { name = "loguru" },
@@ -1438,7 +1438,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "saki-plugin-yolo-det"
-version = "0.1.0"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

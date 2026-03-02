@@ -18,10 +18,10 @@ from saki_executor.agent import codec as runtime_codec
 from saki_executor.core.config import settings
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.grpc_gen import runtime_control_pb2_grpc as pb_grpc
-from saki_executor.hardware.probe import probe_hardware
 from saki_executor.steps.manager import StepManager
 from saki_executor.steps.state import ExecutorState
 from saki_executor.plugins.registry import PluginRegistry
+from saki_plugin_sdk import probe_hardware
 
 
 class AgentClient:

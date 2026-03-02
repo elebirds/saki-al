@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import random
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.steps.contracts import StepExecutionRequest
 from saki_executor.steps.services import IRDatasetBuildReport, build_training_batch_ir
-from saki_executor.plugins.base import ExecutorPlugin
+from saki_plugin_sdk import StepRuntimeContext, resolve_train_val_split
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 FetchAllFn = Callable[[str, str, str, str], Awaitable[list[dict[str, Any]]]]
@@ -42,7 +41,8 @@ class TrainingDataService:
         self,
         *,
         request: StepExecutionRequest,
-        plugin: ExecutorPlugin,
+        plugin_params: dict[str, Any],
+        runtime_context: StepRuntimeContext,
         emit: EmitFn,
     ) -> TrainingDataBundle:
         labels = await self._fetch_all(
@@ -81,12 +81,11 @@ class TrainingDataService:
             if str(item.get("id") or "") in labeled_sample_ids
         ]
         try:
-            split_seed = max(0, int(request.resolved_params.get("split_seed") or 0))
+            split_seed = max(0, int(runtime_context.split_seed))
         except Exception:
             split_seed = 0
-        plugin_cfg = request.resolved_params.get("plugin")
-        plugin_cfg = plugin_cfg if isinstance(plugin_cfg, dict) else {}
-        val_ratio_raw = plugin_cfg.get("val_split_ratio", request.resolved_params.get("val_split_ratio", 0.2))
+        plugin_cfg = plugin_params if isinstance(plugin_params, dict) else {}
+        val_ratio_raw = plugin_cfg.get("val_split_ratio", 0.2)
         try:
             val_ratio = float(val_ratio_raw)
         except Exception:
@@ -99,7 +98,7 @@ class TrainingDataService:
             train_ids, val_ids, val_degraded = snapshot_split
             split_source = "snapshot"
         else:
-            train_ids, val_ids, val_degraded = self._split_samples(
+            train_ids, val_ids, val_degraded = resolve_train_val_split(
                 sample_ids=[str(item.get("id") or "") for item in supervised_samples if str(item.get("id") or "")],
                 split_seed=split_seed,
                 val_ratio=val_ratio,
@@ -124,7 +123,7 @@ class TrainingDataService:
             {
                 "level": "INFO",
                 "message": (
-                    f"training split resolved round_index={request.round_index} "
+                    f"training split resolved round_index={runtime_context.round_index} "
                     f"source={split_source} "
                     f"seed={split_seed} val_ratio={val_ratio:.3f} "
                     f"train={len(splits['train'])} val={len(splits['val'])} "
@@ -207,27 +206,3 @@ class TrainingDataService:
         if not train_ids:
             return None
         return train_ids, val_ids, len(val_ids) == 0
-
-    @staticmethod
-    def _split_samples(
-        *,
-        sample_ids: list[str],
-        split_seed: int,
-        val_ratio: float,
-    ) -> tuple[set[str], set[str], bool]:
-        filtered = [item for item in sample_ids if item]
-        if len(filtered) < 5:
-            return set(filtered), set(), True
-        randomizer = random.Random(split_seed)
-        shuffled = list(filtered)
-        randomizer.shuffle(shuffled)
-        val_count = max(1, int(round(len(shuffled) * val_ratio)))
-        if len(shuffled)-val_count < 1:
-            val_count = max(1, len(shuffled) - 1)
-        if val_count <= 0:
-            return set(filtered), set(), True
-        val_ids = set(shuffled[:val_count])
-        train_ids = set(shuffled[val_count:])
-        if not train_ids or not val_ids:
-            return set(filtered), set(), True
-        return train_ids, val_ids, False

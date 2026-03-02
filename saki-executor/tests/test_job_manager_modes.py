@@ -6,10 +6,11 @@ import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
+from saki_executor.plugins.external_handle import ExternalPluginHandle
 from saki_executor.steps.manager import StepManager
-from saki_executor.plugins.base import ExecutorPlugin, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
+from saki_plugin_sdk import ExecutorPlugin, PluginManifest, StepRuntimeContext, TrainOutput
 
 
 class _InProcessProxy(ExecutorPlugin):
@@ -34,8 +35,13 @@ class _InProcessProxy(ExecutorPlugin):
     def supported_strategies(self) -> list[str]:
         return self._plugin.supported_strategies
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        self._plugin.validate_params(params)
+    def validate_params(
+        self,
+        params: dict[str, Any],
+        *,
+        context: StepRuntimeContext | None = None,
+    ) -> None:
+        self._plugin.validate_params(params, context=context)
 
     async def prepare_data(
             self,
@@ -44,26 +50,41 @@ class _InProcessProxy(ExecutorPlugin):
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
+            *,
+            context: StepRuntimeContext,
     ) -> None:
-        await self._plugin.prepare_data(workspace, labels, samples, annotations, dataset_ir)
+        await self._plugin.prepare_data(
+            workspace,
+            labels,
+            samples,
+            annotations,
+            dataset_ir,
+            splits=splits,
+            context=context,
+        )
 
     async def train(
             self,
             workspace,
             params: dict[str, Any],
             emit,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
         del emit
-        return await self._plugin.train(workspace, params, self._emit)
+        return await self._plugin.train(workspace, params, self._emit, context=context)
 
     async def eval(
             self,
             workspace,
             params: dict[str, Any],
             emit,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
         del emit
-        return await self._plugin.eval(workspace, params, self._emit)
+        return await self._plugin.eval(workspace, params, self._emit, context=context)
 
     async def predict_unlabeled(
             self,
@@ -71,8 +92,16 @@ class _InProcessProxy(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        return await self._plugin.predict_unlabeled(workspace, unlabeled_samples, strategy, params)
+        return await self._plugin.predict_unlabeled(
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            context=context,
+        )
 
     async def predict_unlabeled_batch(
             self,
@@ -80,8 +109,16 @@ class _InProcessProxy(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        return await self._plugin.predict_unlabeled_batch(workspace, unlabeled_samples, strategy, params)
+        return await self._plugin.predict_unlabeled_batch(
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            context=context,
+        )
 
     async def stop(self, step_id: str) -> None:
         await self._plugin.stop(step_id)
@@ -119,8 +156,8 @@ class _ModeAwarePlugin(ExecutorPlugin):
     def supported_strategies(self) -> list[str]:
         return ["uncertainty_1_minus_max_conf"]
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        del params
+    def validate_params(self, params: dict[str, Any], *, context: StepRuntimeContext | None = None) -> None:
+        del params, context
         return
 
     async def prepare_data(
@@ -130,8 +167,11 @@ class _ModeAwarePlugin(ExecutorPlugin):
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
+            *,
+            context: StepRuntimeContext,
     ) -> None:
-        del workspace, labels, dataset_ir
+        del workspace, labels, dataset_ir, splits, context
         self.prepare_samples_count = len(samples)
         self.prepare_annotations_count = len(annotations)
 
@@ -140,8 +180,10 @@ class _ModeAwarePlugin(ExecutorPlugin):
             workspace,
             params: dict[str, Any],
             emit,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
-        del workspace, params
+        del workspace, params, context
         self.train_calls += 1
         await emit("metric", {"step": 1, "epoch": 1, "metrics": {"loss": 0.1}})
         return TrainOutput(metrics={"loss": 0.1}, artifacts=[])
@@ -151,8 +193,10 @@ class _ModeAwarePlugin(ExecutorPlugin):
             workspace,
             params: dict[str, Any],
             emit,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
-        del workspace, params
+        del workspace, params, context
         self.eval_calls += 1
         await emit("metric", {"step": 1, "epoch": 1, "metrics": {"eval_loss": 0.12}})
         return TrainOutput(metrics={"eval_loss": 0.12}, artifacts=[])
@@ -163,8 +207,10 @@ class _ModeAwarePlugin(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        del workspace, strategy, params
+        del workspace, strategy, params, context
         self.predict_calls += 1
         return [
             {
@@ -192,8 +238,10 @@ class _BatchScoringPlugin(_ModeAwarePlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        del workspace, strategy, params
+        del workspace, strategy, params, context
         self.batch_calls += 1
         candidates: list[dict[str, Any]] = []
         for sample in unlabeled_samples:
@@ -217,8 +265,16 @@ class _BatchTopKStrictPlugin(_BatchScoringPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        candidates = await super().predict_unlabeled_batch(workspace, unlabeled_samples, strategy, params)
+        candidates = await super().predict_unlabeled_batch(
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            context=context,
+        )
         raw_topk = params.get("topk", params.get("sampling_topk", 0))
         try:
             topk = int(raw_topk)
@@ -241,9 +297,17 @@ class _CaptureModelParamsPlugin(_ModeAwarePlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
         self.last_predict_params = dict(params)
-        return await super().predict_unlabeled(workspace, unlabeled_samples, strategy, params)
+        return await super().predict_unlabeled(
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            context=context,
+        )
 
 
 class _MinimalPlugin(ExecutorPlugin):
@@ -272,8 +336,10 @@ class _MinimalPlugin(ExecutorPlugin):
             workspace,
             params: dict[str, Any],
             emit,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
-        del workspace, params
+        del workspace, params, context
         self.train_calls += 1
         await emit("metric", {"step": 1, "epoch": 1, "metrics": {"loss": 0.2}})
         return TrainOutput(metrics={"loss": 0.2}, artifacts=[])
@@ -284,8 +350,10 @@ class _MinimalPlugin(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        del workspace, strategy, params
+        del workspace, strategy, params, context
         self.predict_calls += 1
         return [
             {
@@ -296,6 +364,53 @@ class _MinimalPlugin(ExecutorPlugin):
             for item in unlabeled_samples
             if item.get("id")
         ]
+
+
+class _ContextProbePlugin(_MinimalPlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self.context_ids: list[int] = []
+        self.context_snapshots: list[dict[str, Any]] = []
+
+    def _capture_context(self, context: StepRuntimeContext | None) -> None:
+        if context is None:
+            return
+        self.context_ids.append(id(context))
+        self.context_snapshots.append(context.to_dict())
+
+    def validate_params(self, params: dict[str, Any], *, context: StepRuntimeContext | None = None) -> None:
+        del params
+        self._capture_context(context)
+
+    async def prepare_data(
+            self,
+            workspace,
+            labels: list[dict[str, Any]],
+            samples: list[dict[str, Any]],
+            annotations: list[dict[str, Any]],
+            dataset_ir,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
+            *,
+            context: StepRuntimeContext,
+    ) -> None:
+        del workspace, labels, samples, annotations, dataset_ir, splits
+        self._capture_context(context)
+
+    async def train(
+            self,
+            workspace,
+            params: dict[str, Any],
+            emit,
+            *,
+            context: StepRuntimeContext,
+    ) -> TrainOutput:
+        self._capture_context(context)
+        return await super().train(
+            workspace,
+            params,
+            emit,
+            context=context,
+        )
 
 
 class _SlowTrainPlugin(ExecutorPlugin):
@@ -320,8 +435,10 @@ class _SlowTrainPlugin(ExecutorPlugin):
             workspace,
             params: dict[str, Any],
             emit,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
-        del workspace, params
+        del workspace, params, context
         for index in range(1, 200):
             await asyncio.sleep(0.02)
             await emit("metric", {"step": index, "epoch": index, "metrics": {"loss": 0.5}})
@@ -332,8 +449,10 @@ class _SlowTrainPlugin(ExecutorPlugin):
             workspace,
             params: dict[str, Any],
             emit,
+            *,
+            context: StepRuntimeContext,
     ) -> TrainOutput:
-        return await self.train(workspace, params, emit)
+        return await self.train(workspace, params, emit, context=context)
 
     async def predict_unlabeled(
             self,
@@ -341,8 +460,10 @@ class _SlowTrainPlugin(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        del workspace, unlabeled_samples, strategy, params
+        del workspace, unlabeled_samples, strategy, params, context
         return []
 
     async def stop(self, step_id: str) -> None:
@@ -488,6 +609,154 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
     assert plugin.predict_calls == 0
     assert plugin.prepare_samples_count == 2
     assert plugin.prepare_annotations_count == 2
+
+
+@pytest.mark.anyio
+async def test_runtime_context_built_once_and_reused_across_step_pipeline(tmp_path: Path):
+    plugin = _ContextProbePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+    accepted = await manager.assign_step(
+        "assign-context-once-1",
+        {
+            "step_id": "task-context-once-1",
+            "round_id": "job-context-once-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {
+                "split_seed": 17,
+                "train_seed": 27,
+                "sampling_seed": 37,
+            },
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    assert result_messages[0].step_result.status == pb.SUCCEEDED
+
+    assert len(plugin.context_ids) >= 3
+    assert len(set(plugin.context_ids)) == 1
+    assert len(plugin.context_snapshots) == len(plugin.context_ids)
+    first = plugin.context_snapshots[0]
+    assert all(snapshot == first for snapshot in plugin.context_snapshots[1:])
+    assert int(first.get("split_seed") or 0) == 17
+    assert int(first.get("train_seed") or 0) == 27
+    assert int(first.get("sampling_seed") or 0) == 37
+    assert str(first.get("step_type") or "") == "train"
+    assert str(first.get("mode") or "") == "simulation"
+
+
+@pytest.mark.anyio
+async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Path, monkeypatch):
+    proxy_started = False
+
+    class _FailIfProxyBuilt:
+        def __init__(self, *args, **kwargs):
+            nonlocal proxy_started
+            proxy_started = True
+            raise AssertionError("proxy should not be built when host validation fails")
+
+    monkeypatch.setattr("saki_executor.steps.orchestration.runner.SubprocessPluginProxy", _FailIfProxyBuilt)
+
+    manifest = PluginManifest.model_validate(
+        {
+            "plugin_id": "strict_external_plugin",
+            "version": "2.0.0",
+            "display_name": "Strict External Plugin",
+            "supported_step_types": ["train"],
+            "supported_strategies": ["uncertainty_1_minus_max_conf"],
+            "config_schema": {
+                "title": "Strict Config",
+                "fields": [
+                    {"key": "epochs", "label": "Epochs", "type": "integer", "required": True, "min": 1},
+                ],
+            },
+            "entrypoint": "dummy.worker:main",
+        }
+    )
+    plugin_dir = tmp_path / "strict_external_plugin"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    handle = ExternalPluginHandle(
+        manifest=manifest,
+        plugin_dir=plugin_dir,
+        python_path=Path(__file__),
+    )
+    registry = PluginRegistry()
+    registry.register(handle)
+    manager = StepManager(
+        runs_dir=str(tmp_path / "runs"),
+        cache=AssetCache(root_dir=str(tmp_path / "cache"), max_bytes=1024 * 1024),
+        plugin_registry=registry,
+        strict_train_model_handoff=False,
+    )
+    sent_messages: list[pb.RuntimeMessage] = []
+    request_called = False
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        nonlocal request_called
+        request_called = True
+        raise AssertionError(f"request path should not run, payload={message.WhichOneof('payload')}")
+
+    manager.set_transport(fake_send, fake_request)
+    accepted = await manager.assign_step(
+        "assign-strict-external-1",
+        {
+            "step_id": "task-strict-external-1",
+            "round_id": "job-strict-external-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": "strict_external_plugin",
+            "mode": "simulation",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.FAILED
+    error_message = str(result.error_message or "")
+    assert "plugin_id=strict_external_plugin step_id=task-strict-external-1" in error_message
+    assert "required" in error_message
+    assert proxy_started is False
+    assert request_called is False
 
 
 @pytest.mark.anyio

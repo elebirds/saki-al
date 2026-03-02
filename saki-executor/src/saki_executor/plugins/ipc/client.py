@@ -11,9 +11,10 @@ import uuid
 from loguru import logger
 
 from saki_executor.core.config import settings
-from saki_executor.plugins.ipc import protocol
 from saki_executor.plugins.ipc.log_coalescer import LogCoalescer
 from saki_executor.plugins.ipc.log_normalizer import normalize_log_payload, normalize_stdio_log_line
+from saki_plugin_sdk import StepRuntimeContext
+from saki_plugin_sdk.ipc import protocol
 
 try:
     import zmq
@@ -84,6 +85,7 @@ class PluginWorkerClient:
         *,
         action: str,
         payload: dict[str, Any],
+        context: StepRuntimeContext | dict[str, Any] | None = None,
         timeout_sec: int | None = None,
     ) -> protocol.WorkerReplyEnvelope:
         if self._closed:
@@ -100,9 +102,29 @@ class PluginWorkerClient:
                 action=action,
                 step_id=self._step_id,
             )
+            resolved_context = context
+            payload_context = payload.get("context") if isinstance(payload, dict) else None
+            if (
+                resolved_context is None
+                and action != "ping"
+                and not isinstance(payload_context, dict)
+            ):
+                resolved_context = StepRuntimeContext(
+                    step_id=self._step_id,
+                    round_id="",
+                    round_index=0,
+                    attempt=1,
+                    step_type="train",
+                    mode="manual",
+                    split_seed=0,
+                    train_seed=0,
+                    sampling_seed=0,
+                    resolved_device_backend="",
+                )
             command_payload = protocol.build_command_payload(
                 envelope=cmd,
                 payload=payload,
+                context=resolved_context,
             )
             await self._req_socket.send_json(command_payload)
             raw_reply = await self._recv_reply_or_raise(timeout_sec=timeout_sec)

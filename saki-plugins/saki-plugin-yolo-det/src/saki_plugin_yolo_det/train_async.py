@@ -6,7 +6,7 @@ from pathlib import Path
 import threading
 from typing import Any, Awaitable, Callable
 
-from saki_plugin_sdk import PluginConfig, Workspace
+from saki_plugin_sdk import PluginConfig, WorkspaceProtocol
 from saki_plugin_yolo_det.types import TrainConfig
 from saki_plugin_sdk.base import EventCallback
 
@@ -40,7 +40,7 @@ def _format_epoch_metric_summary(metrics_row: dict[str, Any]) -> str:
 
 async def resolve_train_config(
     *,
-    workspace: Workspace,
+    workspace: WorkspaceProtocol,
     plugin_config: PluginConfig,
     resolve_device: ResolveDeviceFn,
     resolve_model_ref: ResolveModelRefFn,
@@ -72,7 +72,7 @@ async def resolve_train_config(
 
 async def run_train_with_epoch_stream(
     *,
-    workspace: Workspace,
+    workspace: WorkspaceProtocol,
     config: TrainConfig,
     emit: EventCallback,
     run_train_sync: Callable[..., dict[str, Any]],
@@ -179,7 +179,7 @@ async def run_train_with_epoch_stream(
     return train_result
 
 
-def load_prepare_stats(workspace: Workspace) -> dict[str, Any]:
+def load_prepare_stats(workspace: WorkspaceProtocol) -> dict[str, Any]:
     path = workspace.data_dir / "dataset_manifest.json"
     if not path.exists():
         return {}

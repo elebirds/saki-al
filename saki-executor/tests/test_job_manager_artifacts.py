@@ -10,9 +10,9 @@ from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.steps.manager import StepManager
 from saki_executor.steps.services.artifact_uploader import ArtifactUploader
 import saki_executor.steps.services.artifact_uploader as uploader_module
-from saki_executor.plugins.base import ExecutorPlugin, TrainArtifact, TrainOutput
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
+from saki_plugin_sdk import ExecutorPlugin, StepRuntimeContext, TrainArtifact, TrainOutput
 
 
 class _InProcessProxy(ExecutorPlugin):
@@ -37,8 +37,13 @@ class _InProcessProxy(ExecutorPlugin):
     def supported_strategies(self) -> list[str]:
         return self._plugin.supported_strategies
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        self._plugin.validate_params(params)
+    def validate_params(
+        self,
+        params: dict[str, Any],
+        *,
+        context: StepRuntimeContext | None = None,
+    ) -> None:
+        self._plugin.validate_params(params, context=context)
 
     async def prepare_data(
             self,
@@ -47,12 +52,23 @@ class _InProcessProxy(ExecutorPlugin):
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
+            *,
+            context: StepRuntimeContext,
     ) -> None:
-        await self._plugin.prepare_data(workspace, labels, samples, annotations, dataset_ir)
+        await self._plugin.prepare_data(
+            workspace,
+            labels,
+            samples,
+            annotations,
+            dataset_ir,
+            splits=splits,
+            context=context,
+        )
 
-    async def train(self, workspace, params: dict[str, Any], emit) -> TrainOutput:
+    async def train(self, workspace, params: dict[str, Any], emit, *, context: StepRuntimeContext) -> TrainOutput:
         del emit
-        return await self._plugin.train(workspace, params, self._emit)
+        return await self._plugin.train(workspace, params, self._emit, context=context)
 
     async def predict_unlabeled(
             self,
@@ -60,8 +76,16 @@ class _InProcessProxy(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        return await self._plugin.predict_unlabeled(workspace, unlabeled_samples, strategy, params)
+        return await self._plugin.predict_unlabeled(
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            context=context,
+        )
 
     async def predict_unlabeled_batch(
             self,
@@ -69,8 +93,16 @@ class _InProcessProxy(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        return await self._plugin.predict_unlabeled_batch(workspace, unlabeled_samples, strategy, params)
+        return await self._plugin.predict_unlabeled_batch(
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            context=context,
+        )
 
     async def stop(self, step_id: str) -> None:
         await self._plugin.stop(step_id)
@@ -101,8 +133,8 @@ class _ArtifactPlugin(ExecutorPlugin):
     def supported_strategies(self) -> list[str]:
         return ["uncertainty_1_minus_max_conf"]
 
-    def validate_params(self, params: dict[str, Any]) -> None:
-        del params
+    def validate_params(self, params: dict[str, Any], *, context: StepRuntimeContext | None = None) -> None:
+        del params, context
 
     async def prepare_data(
             self,
@@ -111,11 +143,21 @@ class _ArtifactPlugin(ExecutorPlugin):
             samples: list[dict[str, Any]],
             annotations: list[dict[str, Any]],
             dataset_ir,
+            splits: dict[str, list[dict[str, Any]]] | None = None,
+            *,
+            context: StepRuntimeContext,
     ) -> None:
-        del workspace, labels, samples, annotations, dataset_ir
+        del workspace, labels, samples, annotations, dataset_ir, splits, context
 
-    async def train(self, workspace, params: dict[str, Any], emit) -> TrainOutput:
-        del params
+    async def train(
+        self,
+        workspace,
+        params: dict[str, Any],
+        emit,
+        *,
+        context: StepRuntimeContext,
+    ) -> TrainOutput:
+        del params, context
         best_path = workspace.artifacts_dir / "best.pt"
         report_path = workspace.artifacts_dir / "report.json"
         optional_path = workspace.artifacts_dir / "confusion_matrix.png"
@@ -167,8 +209,10 @@ class _ArtifactPlugin(ExecutorPlugin):
             unlabeled_samples: list[dict[str, Any]],
             strategy: str,
             params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
     ) -> list[dict[str, Any]]:
-        del workspace, unlabeled_samples, strategy, params
+        del workspace, unlabeled_samples, strategy, params, context
         return []
 
     async def stop(self, step_id: str) -> None:

@@ -9,6 +9,7 @@ import {
     InputNumber,
     Modal,
     Select,
+    Slider,
     Spin,
     Table,
     Tag,
@@ -503,10 +504,22 @@ const ProjectLoopOverview: React.FC = () => {
                                 <Input placeholder="全量标注 commit id"/>
                             </Form.Item>
                             <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
-                                <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
+                                <Slider
+                                    min={0.001}
+                                    max={1}
+                                    step={0.001}
+                                    marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                    tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                />
                             </Form.Item>
                             <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
-                                <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
+                                <Slider
+                                    min={0.001}
+                                    max={1}
+                                    step={0.001}
+                                    marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                    tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                />
                             </Form.Item>
                             <Form.Item name={['simulationConfig', 'seeds']} label="随机种子列表">
                                 <Select mode="tags" tokenSeparators={[',']} placeholder="例如：0,1,2,3,4"/>

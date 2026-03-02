@@ -583,6 +583,8 @@ class RuntimeControlIngressService:
             return irpb.ANNOTATION_SOURCE_MANUAL
         if val == "model":
             return irpb.ANNOTATION_SOURCE_MODEL
+        if val == "confirmed_model":
+            return irpb.ANNOTATION_SOURCE_CONFIRMED_MODEL
         if val == "system":
             return irpb.ANNOTATION_SOURCE_SYSTEM
         if val == "imported":

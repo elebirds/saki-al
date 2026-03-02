@@ -9,6 +9,7 @@ export interface DualViewAnnotation {
     labelName: string;  // For display convenience
     labelColor: string; // For display convenience
     annotatorId?: string | null;  // ID of the user who created the annotation
+    source?: AnnotationSource;
     // Primary view (Time-Energy) - always a rect or OBB
     primary: {
         type: DetectionAnnotationType;
@@ -39,7 +40,14 @@ export interface MappedRegion {
 // ============================================================================
 
 export type AnnotationType = 'rect' | 'obb' | 'polygon' | 'polyline' | 'point' | 'keypoints';
-export type AnnotationSource = 'manual' | 'auto' | 'model' | 'system' | 'imported' | 'fedo_mapping';
+export type AnnotationSource =
+    | 'manual'
+    | 'auto'
+    | 'model'
+    | 'confirmed_model'
+    | 'system'
+    | 'imported'
+    | 'fedo_mapping';
 
 export const ANNOTATION_TYPE_RECT = 'rect' as const;
 export const ANNOTATION_TYPE_OBB = 'obb' as const;

@@ -331,6 +331,14 @@
       "noAnnotations": "No annotations",
       "submitNext": "Save Draft & Next",
       "submitNextEmpty": "Mark Empty & Next",
+      "confirmSelected": "Confirm Selected",
+      "confirmAll": "Confirm All",
+      "clearUnconfirmed": "Clear Unconfirmed",
+      "noPendingModelSelected": "Please select a pending model box first",
+      "noPendingModelAnnotations": "No pending model boxes in current sample",
+      "confirmSelectedDone": "Selected model box confirmed",
+      "confirmAllDone": "{{count}} model boxes confirmed",
+      "clearUnconfirmedDone": "{{count}} unconfirmed model boxes cleared",
       "loading": "Loading...",
       "label": "Label:",
       "noLabelSelected": "Please select a label first",
@@ -363,6 +371,7 @@
         "others": "Others' annotation",
         "auto": "Auto-generated",
         "model": "Model",
+        "confirmedModel": "Confirmed Model",
         "system": "System",
         "imported": "Imported",
         "fedoMapping": "FEDO Mapping"
@@ -788,6 +797,7 @@
       "branches": "Branches",
       "commits": "Commits",
       "loops": "AL Loops",
+      "predictionTasks": "Prediction Tasks",
       "insights": "Insights",
       "settings": "Settings"
     }

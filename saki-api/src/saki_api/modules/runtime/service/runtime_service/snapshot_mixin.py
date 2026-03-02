@@ -8,6 +8,7 @@ import random
 import uuid
 from collections import Counter
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import Enum
 from typing import Any
 
@@ -17,10 +18,12 @@ from sqlmodel import select
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.exceptions import ConflictAppException
 from saki_api.infra.db.transaction import transactional
+from saki_api.modules.annotation.domain.annotation import Annotation
 from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.annotation.domain.draft import AnnotationDraft
 from saki_api.modules.annotation.repo.draft import AnnotationDraftRepository
 from saki_api.modules.project.domain.branch import Branch
+from saki_api.modules.project.domain.commit import Commit
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.project import ProjectDataset
@@ -41,6 +44,7 @@ from saki_api.modules.shared.modeling.enums import (
     SnapshotPartition,
     SnapshotUpdateMode,
     SnapshotValPolicy,
+    StepDispatchKind,
     StepStatus,
     StepType,
     VisibilitySource,
@@ -1895,6 +1899,43 @@ class SnapshotMixin:
         return []
 
     @staticmethod
+    def _single_prediction_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(snapshot, dict):
+            return {}
+        if isinstance(snapshot.get("top_prediction"), dict):
+            return dict(snapshot.get("top_prediction") or {})
+        keys = {
+            "label_id",
+            "labelId",
+            "category_id",
+            "categoryId",
+            "cls_id",
+            "clsId",
+            "class_id",
+            "classId",
+            "geometry",
+            "xyxy",
+            "bbox_xywh",
+            "obb",
+            "attrs",
+            "confidence",
+            "conf",
+        }
+        if any(key in snapshot for key in keys):
+            return dict(snapshot)
+        return {}
+
+    @classmethod
+    def _prediction_entries_from_snapshot(cls, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        predictions = cls._prediction_list_from_snapshot(snapshot)
+        if predictions:
+            return [dict(row) for row in predictions]
+        single = cls._single_prediction_from_snapshot(snapshot)
+        if single:
+            return [single]
+        return []
+
+    @staticmethod
     def _rect_geometry_from_xyxy(raw: Any) -> dict[str, Any]:
         if not isinstance(raw, list) or len(raw) < 4:
             return {}
@@ -1937,119 +1978,350 @@ class SnapshotMixin:
         except Exception:
             return None
 
-    @transactional
-    async def generate_prediction_set(
+    @classmethod
+    def _resolve_prediction_label_id(
+        cls,
+        *,
+        snapshot: dict[str, Any],
+        prediction: dict[str, Any],
+        ordered_label_ids: list[uuid.UUID],
+    ) -> uuid.UUID | None:
+        label_id = cls._safe_uuid(
+            cls._first_non_none(
+                prediction.get("label_id"),
+                prediction.get("labelId"),
+                prediction.get("category_id"),
+                prediction.get("categoryId"),
+                snapshot.get("label_id"),
+                snapshot.get("labelId"),
+                snapshot.get("category_id"),
+                snapshot.get("categoryId"),
+            )
+        )
+        if label_id is not None:
+            return label_id
+        cls_idx = cls._parse_cls_index(
+            cls._first_non_none(
+                prediction.get("cls_id"),
+                prediction.get("clsId"),
+                prediction.get("class_id"),
+                prediction.get("classId"),
+                snapshot.get("cls_id"),
+                snapshot.get("clsId"),
+                snapshot.get("class_id"),
+                snapshot.get("classId"),
+            )
+        )
+        if cls_idx is not None and 0 <= cls_idx < len(ordered_label_ids):
+            return ordered_label_ids[cls_idx]
+        return None
+
+    @classmethod
+    def _resolve_prediction_geometry(
+        cls,
+        *,
+        snapshot: dict[str, Any],
+        prediction: dict[str, Any],
+    ) -> dict[str, Any]:
+        geometry = prediction.get("geometry")
+        geometry = dict(geometry) if isinstance(geometry, dict) else {}
+        if not geometry and isinstance(snapshot.get("geometry"), dict):
+            geometry = dict(snapshot.get("geometry") or {})
+        if not geometry:
+            geometry = cls._rect_geometry_from_xyxy(prediction.get("xyxy"))
+        if not geometry:
+            geometry = cls._rect_geometry_from_xywh(prediction.get("bbox_xywh"))
+        if not geometry and isinstance(prediction.get("obb"), dict):
+            geometry = {"obb": dict(prediction.get("obb") or {})}
+        if not geometry:
+            geometry = cls._rect_geometry_from_xyxy(snapshot.get("xyxy"))
+        if not geometry:
+            geometry = cls._rect_geometry_from_xywh(snapshot.get("bbox_xywh"))
+        if not geometry and isinstance(snapshot.get("obb"), dict):
+            geometry = {"obb": dict(snapshot.get("obb") or {})}
+        return geometry
+
+    @staticmethod
+    def _resolve_prediction_attrs(
+        *,
+        snapshot: dict[str, Any],
+        prediction: dict[str, Any],
+    ) -> dict[str, Any]:
+        attrs = prediction.get("attrs")
+        attrs = dict(attrs) if isinstance(attrs, dict) else {}
+        if not attrs and isinstance(snapshot.get("attrs"), dict):
+            attrs = dict(snapshot.get("attrs") or {})
+        return attrs
+
+    @classmethod
+    def _resolve_prediction_confidence(
+        cls,
+        *,
+        snapshot: dict[str, Any],
+        prediction: dict[str, Any],
+        fallback: float,
+    ) -> float:
+        confidence_raw = cls._first_non_none(
+            prediction.get("confidence"),
+            prediction.get("conf"),
+            snapshot.get("confidence"),
+            snapshot.get("conf"),
+        )
+        return cls._safe_float(confidence_raw, default=fallback)
+
+    async def _resolve_branch_name(self, branch_id: uuid.UUID) -> str:
+        branch_row = await self.session.exec(select(Branch.name).where(Branch.id == branch_id))
+        branch_name = branch_row.first()
+        return str(branch_name or "master")
+
+    @staticmethod
+    def _prediction_scope_status(*, scope_type: str, scope_payload: dict[str, Any]) -> str:
+        if scope_type != "sample_status":
+            raise BadRequestAppException("scope_type must be sample_status")
+        status = str(scope_payload.get("status") or "all").strip().lower()
+        if status not in {"all", "unlabeled", "labeled", "draft"}:
+            raise BadRequestAppException("scope_payload.status must be one of all/unlabeled/labeled/draft")
+        return status
+
+    async def _resolve_artifact_download_url(self, *, uri: str, expires_in_hours: int = 6) -> str:
+        normalized = str(uri or "").strip()
+        if not normalized:
+            raise BadRequestAppException("artifact uri is empty")
+        if normalized.startswith("http://") or normalized.startswith("https://"):
+            return normalized
+        if normalized.startswith("s3://"):
+            _, _, bucket_and_path = normalized.partition("s3://")
+            _, _, object_path = bucket_and_path.partition("/")
+            if not object_path:
+                raise BadRequestAppException(f"invalid s3 uri: {normalized}")
+            return self.storage.get_presigned_url(
+                object_name=object_path,
+                expires_delta=timedelta(hours=max(1, expires_in_hours)),
+            )
+        raise BadRequestAppException(f"unsupported artifact uri: {normalized}")
+
+    @staticmethod
+    def _match_artifact_payload(
+        *,
+        artifacts: dict[str, Any] | None,
+        artifact_name: str,
+    ) -> tuple[str, dict[str, Any]] | None:
+        if not isinstance(artifacts, dict):
+            return None
+        target = str(artifact_name or "").strip()
+        if not target:
+            return None
+
+        exact = artifacts.get(target)
+        if isinstance(exact, dict):
+            return target, dict(exact)
+
+        target_norm = target.lower()
+        for raw_key, raw_value in artifacts.items():
+            if not isinstance(raw_value, dict):
+                continue
+            key = str(raw_key or "").strip()
+            if not key:
+                continue
+            if key.lower() == target_norm:
+                return key, dict(raw_value)
+            leaf = key.rsplit("/", 1)[-1]
+            if leaf.lower() == target_norm:
+                return key, dict(raw_value)
+        return None
+
+    async def _resolve_round_artifact_payload(
         self,
         *,
-        loop_id: uuid.UUID,
-        payload: dict[str, Any],
+        round_row: Round,
+        artifact_name: str,
+    ) -> dict[str, Any]:
+        from_final = self._match_artifact_payload(
+            artifacts=round_row.final_artifacts if isinstance(round_row.final_artifacts, dict) else {},
+            artifact_name=artifact_name,
+        )
+        if from_final is not None:
+            _, payload = from_final
+            return payload
+
+        raise BadRequestAppException(f"round artifact '{artifact_name}' not found")
+
+    async def _resolve_prediction_model_source(
+        self,
+        *,
+        project_id: uuid.UUID,
+        plugin_id: str,
+        model_source: dict[str, Any],
+    ) -> tuple[uuid.UUID | None, str, str]:
+        kind = str(model_source.get("kind") or "").strip().lower()
+        artifact_name = str(model_source.get("artifact_name") or "best.pt").strip() or "best.pt"
+        if kind == "round_artifact":
+            source_round_id = self._safe_uuid(model_source.get("round_id"))
+            if source_round_id is None:
+                raise BadRequestAppException("model_source.round_id is required when kind=round_artifact")
+            source_round = await self.repository.get_by_id_or_raise(source_round_id)
+            if source_round.project_id != project_id:
+                raise BadRequestAppException("model_source.round_id does not belong to project")
+            if str(source_round.plugin_id or "").strip() != plugin_id:
+                raise BadRequestAppException("plugin_id mismatch with model_source.round_id.plugin_id")
+            artifact = await self._resolve_round_artifact_payload(
+                round_row=source_round,
+                artifact_name=artifact_name,
+            )
+            uri = str(artifact.get("uri") or "")
+            return None, await self._resolve_artifact_download_url(uri=uri), artifact_name
+
+        if kind == "model":
+            model_id = self._safe_uuid(model_source.get("model_id"))
+            if model_id is None:
+                raise BadRequestAppException("model_source.model_id is required when kind=model")
+            model = await self.model_repo.get_by_id_or_raise(model_id)
+            if model.project_id != project_id:
+                raise BadRequestAppException("model_source.model_id does not belong to project")
+            if str(model.plugin_id or "").strip() != plugin_id:
+                raise BadRequestAppException("plugin_id mismatch with model.plugin_id")
+            artifact_match = self._match_artifact_payload(
+                artifacts=model.artifacts if isinstance(model.artifacts, dict) else {},
+                artifact_name=artifact_name,
+            )
+            if artifact_match is None:
+                raise BadRequestAppException(f"model artifact '{artifact_name}' not found")
+            _, artifact = artifact_match
+            uri = str(artifact.get("uri") or "")
+            return model.id, await self._resolve_artifact_download_url(uri=uri), artifact_name
+
+        raise BadRequestAppException("model_source.kind must be one of round_artifact/model")
+
+    async def _filter_candidates_by_sample_scope(
+        self,
+        *,
+        project_id: uuid.UUID,
+        target_branch_id: uuid.UUID,
+        base_commit_id: uuid.UUID | None,
         actor_user_id: uuid.UUID | None,
-    ) -> PredictionSet:
-        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        source_round_raw = payload.get("source_round_id")
-        source_step_raw = payload.get("source_step_id")
-        source_round_id = uuid.UUID(str(source_round_raw)) if source_round_raw else None
-        source_step_id = uuid.UUID(str(source_step_raw)) if source_step_raw else None
-        source_round, source_step = await self._resolve_prediction_source_step(
-            loop_id=loop_id,
-            source_round_id=source_round_id,
-            source_step_id=source_step_id,
+        scope_type: str,
+        scope_payload: dict[str, Any],
+        candidates: list[StepCandidateItem],
+    ) -> list[StepCandidateItem]:
+        status = self._prediction_scope_status(scope_type=scope_type, scope_payload=scope_payload)
+        if status == "all":
+            return candidates
+
+        sample_ids = [row.sample_id for row in candidates]
+        if not sample_ids:
+            return candidates
+
+        if status in {"labeled", "unlabeled"}:
+            labeled_sample_ids: set[uuid.UUID] = set()
+            if base_commit_id is not None:
+                labeled_stmt = select(distinct(CommitSampleState.sample_id)).where(
+                    CommitSampleState.commit_id == base_commit_id,
+                    CommitSampleState.sample_id.in_(sample_ids),
+                    CommitSampleState.state.in_(
+                        (
+                            CommitSampleReviewState.LABELED,
+                            CommitSampleReviewState.EMPTY_CONFIRMED,
+                        )
+                    ),
+                )
+                labeled_sample_ids = set((await self.session.exec(labeled_stmt)).all())
+            allow_ids = labeled_sample_ids if status == "labeled" else (set(sample_ids) - labeled_sample_ids)
+            return [row for row in candidates if row.sample_id in allow_ids]
+
+        if actor_user_id is None:
+            raise BadRequestAppException("actor user is required when scope_payload.status=draft")
+        branch_row = await self.session.get(Branch, target_branch_id)
+        if branch_row is None or branch_row.project_id != project_id:
+            raise BadRequestAppException("target branch not found when filtering draft scope")
+        draft_stmt = select(distinct(AnnotationDraft.sample_id)).where(
+            AnnotationDraft.project_id == project_id,
+            AnnotationDraft.user_id == actor_user_id,
+            AnnotationDraft.branch_name == branch_row.name,
+            AnnotationDraft.sample_id.in_(sample_ids),
         )
+        draft_sample_ids = set((await self.session.exec(draft_stmt)).all())
+        return [row for row in candidates if row.sample_id in draft_sample_ids]
 
-        scope_type = str(payload.get("scope_type") or "snapshot_scope").strip() or "snapshot_scope"
-        scope_payload = payload.get("scope_payload") if isinstance(payload.get("scope_payload"), dict) else {}
-        params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    @staticmethod
+    def _annotation_to_draft_payload_row(annotation: Annotation) -> dict[str, Any]:
+        return {
+            "id": str(annotation.id),
+            "project_id": str(annotation.project_id),
+            "sample_id": str(annotation.sample_id),
+            "label_id": str(annotation.label_id),
+            "group_id": str(annotation.group_id),
+            "lineage_id": str(annotation.lineage_id),
+            "parent_id": str(annotation.parent_id) if annotation.parent_id else None,
+            "view_role": str(annotation.view_role or "main"),
+            "type": str(annotation.type.value if hasattr(annotation.type, "value") else annotation.type),
+            "source": str(annotation.source.value if hasattr(annotation.source, "value") else annotation.source),
+            "geometry": dict(annotation.geometry or {}),
+            "attrs": dict(annotation.attrs or {}),
+            "confidence": float(annotation.confidence or 0.0),
+            "annotator_id": str(annotation.annotator_id) if annotation.annotator_id else None,
+        }
 
-        base_commit_raw = payload.get("base_commit_id")
-        base_commit_id: uuid.UUID | None = None
-        if base_commit_raw:
-            base_commit_id = uuid.UUID(str(base_commit_raw))
-        elif source_round.input_commit_id:
-            base_commit_id = source_round.input_commit_id
-
-        model_id_raw = payload.get("model_id")
-        model_id: uuid.UUID | None = uuid.UUID(str(model_id_raw)) if model_id_raw else None
-
-        prediction_set = await self.prediction_set_repo.create(
-            {
-                "loop_id": loop_id,
-                "source_round_id": source_round.id,
-                "source_step_id": source_step.id,
-                "model_id": model_id,
-                "base_commit_id": base_commit_id,
-                "scope_type": scope_type,
-                "scope_payload": scope_payload,
-                "status": "generating",
-                "total_items": 0,
-                "params": params,
-                "created_by": actor_user_id,
-            }
+    async def _load_commit_annotations_by_sample(
+        self,
+        *,
+        commit_id: uuid.UUID | None,
+        sample_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, list[dict[str, Any]]]:
+        if commit_id is None or not sample_ids:
+            return {}
+        stmt = (
+            select(CommitAnnotationMap.sample_id, Annotation)
+            .join(Annotation, Annotation.id == CommitAnnotationMap.annotation_id)
+            .where(
+                CommitAnnotationMap.commit_id == commit_id,
+                CommitAnnotationMap.sample_id.in_(sample_ids),
+            )
         )
+        rows = list((await self.session.exec(stmt)).all())
+        result: dict[uuid.UUID, list[dict[str, Any]]] = {}
+        for sample_id, annotation in rows:
+            result.setdefault(sample_id, []).append(self._annotation_to_draft_payload_row(annotation))
+        return result
 
-        source_candidates = await self.step_candidate_repo.list_by_step(source_step.id)
+    async def _build_prediction_rows_from_candidates(
+        self,
+        *,
+        project_id: uuid.UUID,
+        candidates: list[StepCandidateItem],
+    ) -> list[dict[str, Any]]:
         label_rows = list(
             (
                 await self.session.exec(
                     select(Label)
-                    .where(Label.project_id == loop.project_id)
-                    .order_by(Label.sort_order.asc(), Label.id.asc())
+                    .where(Label.project_id == project_id)
+                    .order_by(Label.id.asc())
                 )
             ).all()
         )
         ordered_label_ids = [row.id for row in label_rows]
         prediction_rows: list[dict[str, Any]] = []
-        for candidate in source_candidates:
+        for candidate in candidates:
             snapshot = self._extract_prediction_snapshot(candidate)
-            predictions = self._prediction_list_from_snapshot(snapshot)
-            top_prediction = predictions[0] if predictions else {}
-
-            label_id = self._safe_uuid(
-                self._first_non_none(
-                    snapshot.get("label_id"),
-                    snapshot.get("labelId"),
-                    snapshot.get("category_id"),
-                    snapshot.get("categoryId"),
-                    top_prediction.get("label_id"),
-                    top_prediction.get("labelId"),
-                    top_prediction.get("category_id"),
-                    top_prediction.get("categoryId"),
-                )
+            prediction_entries = self._prediction_entries_from_snapshot(snapshot)
+            top_prediction = prediction_entries[0] if prediction_entries else {}
+            label_id = self._resolve_prediction_label_id(
+                snapshot=snapshot,
+                prediction=top_prediction,
+                ordered_label_ids=ordered_label_ids,
             )
-            if label_id is None:
-                cls_idx = self._parse_cls_index(
-                    self._first_non_none(
-                        snapshot.get("cls_id"),
-                        snapshot.get("clsId"),
-                        top_prediction.get("cls_id"),
-                        top_prediction.get("clsId"),
-                        top_prediction.get("class_id"),
-                        top_prediction.get("classId"),
-                    )
-                )
-                if cls_idx is not None and 0 <= cls_idx < len(ordered_label_ids):
-                    label_id = ordered_label_ids[cls_idx]
-
-            geometry = snapshot.get("geometry")
-            geometry = dict(geometry) if isinstance(geometry, dict) else {}
-            if not geometry and isinstance(top_prediction.get("geometry"), dict):
-                geometry = dict(top_prediction.get("geometry") or {})
-            if not geometry:
-                geometry = self._rect_geometry_from_xyxy(top_prediction.get("xyxy"))
-            if not geometry:
-                geometry = self._rect_geometry_from_xywh(top_prediction.get("bbox_xywh"))
-            if not geometry and isinstance(top_prediction.get("obb"), dict):
-                geometry = {"obb": dict(top_prediction.get("obb") or {})}
-
-            attrs = snapshot.get("attrs")
-            attrs = dict(attrs) if isinstance(attrs, dict) else {}
-            if not attrs and isinstance(top_prediction.get("attrs"), dict):
-                attrs = dict(top_prediction.get("attrs") or {})
-
-            confidence_raw = self._first_non_none(
-                snapshot.get("confidence"),
-                top_prediction.get("confidence"),
-                top_prediction.get("conf"),
+            geometry = self._resolve_prediction_geometry(snapshot=snapshot, prediction=top_prediction)
+            attrs = self._resolve_prediction_attrs(snapshot=snapshot, prediction=top_prediction)
+            confidence = self._resolve_prediction_confidence(
+                snapshot=snapshot,
+                prediction=top_prediction,
+                fallback=float(candidate.score or 0.0),
             )
+
+            meta_payload = dict(snapshot or {})
+            if prediction_entries and not isinstance(meta_payload.get("base_predictions"), list) and not isinstance(
+                meta_payload.get("predictions"), list
+            ):
+                meta_payload["predictions"] = prediction_entries
 
             prediction_rows.append(
                 {
@@ -2059,29 +2331,283 @@ class SnapshotMixin:
                     "label_id": label_id,
                     "geometry": geometry,
                     "attrs": attrs,
-                    "confidence": self._safe_float(confidence_raw, default=float(candidate.score or 0.0)),
-                    "meta": snapshot if isinstance(snapshot, dict) else {},
+                    "confidence": confidence,
+                    "meta": meta_payload,
                 }
             )
+        return prediction_rows
 
-        await self.prediction_item_repo.replace_rows(
-            prediction_set_id=prediction_set.id,
-            rows=prediction_rows,
-        )
-        prediction_set = await self.prediction_set_repo.update(
-            prediction_set.id,
-            {
-                "status": "ready",
-                "total_items": int(len(prediction_rows)),
-            },
-        )
-        if prediction_set is None:
-            raise BadRequestAppException("failed to persist generated prediction_set")
+    @staticmethod
+    def _task_status_from_step(step_state: StepStatus | None) -> str:
+        if step_state in {StepStatus.DISPATCHING, StepStatus.RUNNING, StepStatus.RETRYING}:
+            return "running"
+        if step_state in {StepStatus.FAILED, StepStatus.CANCELLED, StepStatus.SKIPPED}:
+            return "failed"
+        if step_state == StepStatus.SUCCEEDED:
+            return "materializing"
+        return "queued"
+
+    @staticmethod
+    def _attach_task_projection(prediction_set: PredictionSet, step: Step | None) -> PredictionSet:
+        del step
         return prediction_set
 
-    async def list_prediction_sets(self, *, loop_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:
-        await self.loop_repo.get_by_id_or_raise(loop_id)
-        return await self.prediction_set_repo.list_by_loop(loop_id=loop_id, limit=limit)
+    @transactional
+    async def generate_prediction_set(
+        self,
+        *,
+        project_id: uuid.UUID,
+        payload: dict[str, Any],
+        actor_user_id: uuid.UUID | None,
+    ) -> PredictionSet:
+        if actor_user_id is None:
+            raise BadRequestAppException("actor user is required when generating prediction_set")
+
+        plugin_id = str(payload.get("plugin_id") or "").strip()
+        if not plugin_id:
+            raise BadRequestAppException("plugin_id is required")
+
+        target_round_id = self._safe_uuid(payload.get("target_round_id"))
+        if target_round_id is None:
+            raise BadRequestAppException("target_round_id is required")
+        target_round = await self.repository.get_by_id_or_raise(target_round_id)
+        if target_round.project_id != project_id:
+            raise BadRequestAppException("target_round_id does not belong to project")
+        if str(target_round.plugin_id or "").strip() != plugin_id:
+            raise BadRequestAppException("plugin_id must match target_round.plugin_id")
+
+        target_branch_id = self._safe_uuid(payload.get("target_branch_id"))
+        if target_branch_id is None:
+            raise BadRequestAppException("target_branch_id is required")
+        target_branch = await self.session.get(Branch, target_branch_id)
+        if target_branch is None or target_branch.project_id != project_id:
+            raise BadRequestAppException("target_branch_id does not belong to project")
+
+        base_commit_id = self._safe_uuid(payload.get("base_commit_id"))
+        if base_commit_id is None:
+            raise BadRequestAppException("base_commit_id is required")
+        base_commit = await self.session.get(Commit, base_commit_id)
+        if base_commit is None or base_commit.project_id != project_id:
+            raise BadRequestAppException("base_commit_id does not belong to project")
+
+        model_source = payload.get("model_source")
+        if not isinstance(model_source, dict):
+            raise BadRequestAppException("model_source is required")
+        model_id, model_download_url, artifact_name = await self._resolve_prediction_model_source(
+            project_id=project_id,
+            plugin_id=plugin_id,
+            model_source=model_source,
+        )
+
+        scope_type = str(payload.get("scope_type") or "sample_status").strip() or "sample_status"
+        scope_payload = payload.get("scope_payload") if isinstance(payload.get("scope_payload"), dict) else {}
+        self._prediction_scope_status(scope_type=scope_type, scope_payload=scope_payload)
+
+        predict_conf_raw = payload.get("predict_conf")
+        predict_conf: float | None = None
+        if predict_conf_raw is not None:
+            try:
+                predict_conf = float(predict_conf_raw)
+            except Exception as exc:
+                raise BadRequestAppException("predict_conf must be a valid number") from exc
+            if predict_conf < 0.0 or predict_conf > 1.0:
+                raise BadRequestAppException("predict_conf must be in range [0, 1]")
+
+        params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+        persisted_params = dict(params)
+
+        step_params = dict(params)
+        plugin_params = step_params.get("plugin")
+        plugin_params = dict(plugin_params) if isinstance(plugin_params, dict) else {}
+        plugin_params["model_source"] = "custom_url"
+        plugin_params["model_custom_ref"] = model_download_url
+        plugin_params["artifact_name"] = artifact_name
+        if predict_conf is not None:
+            plugin_params["predict_conf"] = float(predict_conf)
+        step_params["plugin"] = plugin_params
+
+        round_sampling_raw = target_round.resolved_params.get("sampling") if isinstance(target_round.resolved_params, dict) else {}
+        round_sampling = round_sampling_raw if isinstance(round_sampling_raw, dict) else {}
+        sampling = step_params.get("sampling")
+        sampling = dict(sampling) if isinstance(sampling, dict) else {}
+        disallowed_sampling_keys = {"topk", "review_pool_size", "review_pool_multiplier"}
+        if any(key in sampling for key in disallowed_sampling_keys) or any(
+            key in step_params for key in disallowed_sampling_keys
+        ):
+            raise BadRequestAppException(
+                "predict does not support topk/review_pool parameters; remove sampling.topk and sampling.review_pool_*"
+            )
+        strategy = str(
+            sampling.get("strategy")
+            or round_sampling.get("strategy")
+            or "uncertainty_1_minus_max_conf"
+        ).strip() or "uncertainty_1_minus_max_conf"
+        sampling["strategy"] = strategy
+        sampling.setdefault("topk", 0)
+        step_params["sampling"] = sampling
+        step_params["skip_sampling"] = False
+
+        task_meta = {
+            "plugin_id": plugin_id,
+            "target_round_id": str(target_round.id),
+            "target_branch_id": str(target_branch_id),
+            "base_commit_id": str(base_commit_id),
+            "scope_type": scope_type,
+            "scope_payload": dict(scope_payload),
+            "predict_conf": predict_conf,
+            "model_source": {
+                "kind": str(model_source.get("kind") or ""),
+                "round_id": str(model_source.get("round_id") or ""),
+                "model_id": str(model_source.get("model_id") or ""),
+                "artifact_name": artifact_name,
+            },
+        }
+        persisted_params["_prediction_task"] = task_meta
+        step_params["_prediction_task"] = task_meta
+
+        max_step_index_stmt = select(func.max(Step.step_index)).where(Step.round_id == target_round.id)
+        max_step_index = (await self.session.exec(max_step_index_stmt)).one_or_none()
+        next_step_index = int(max_step_index or 0) + 1
+
+        step = await self.step_repo.create(
+            {
+                "round_id": target_round.id,
+                "step_type": StepType.PREDICT,
+                "dispatch_kind": StepDispatchKind.DISPATCHABLE,
+                "state": StepStatus.READY,
+                "round_index": int(target_round.round_index or 0),
+                "step_index": next_step_index,
+                "depends_on_step_ids": [],
+                "resolved_params": step_params,
+                "metrics": {},
+                "artifacts": {},
+                "input_commit_id": base_commit_id,
+                "attempt": 1,
+                "max_attempts": 1,
+            }
+        )
+
+        prediction_set = await self.prediction_set_repo.create(
+            {
+                "project_id": project_id,
+                "loop_id": target_round.loop_id,
+                "plugin_id": plugin_id,
+                "source_round_id": target_round.id,
+                "source_step_id": step.id,
+                "model_id": model_id,
+                "base_commit_id": base_commit_id,
+                "scope_type": scope_type,
+                "scope_payload": dict(scope_payload),
+                "status": "queued",
+                "total_items": 0,
+                "params": persisted_params,
+                "created_by": actor_user_id,
+                "last_error": None,
+            }
+        )
+        return self._attach_task_projection(prediction_set, step)
+
+    @transactional
+    async def settle_prediction_task(self, *, prediction_set_id: uuid.UUID) -> PredictionSet:
+        prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
+        source_step_id = self._safe_uuid(prediction_set.source_step_id)
+        step = await self.step_repo.get_by_id(source_step_id) if source_step_id else None
+        if step is None:
+            failed = await self.prediction_set_repo.update(
+                prediction_set.id,
+                {
+                    "status": "failed",
+                    "last_error": "source step not found",
+                },
+            )
+            return self._attach_task_projection(failed or prediction_set, None)
+
+        step_state = step.state if isinstance(step.state, StepStatus) else self._parse_enum(
+            StepStatus,
+            step.state,
+            field_name="step.state",
+            default=StepStatus.PENDING,
+        )
+
+        if step_state == StepStatus.SUCCEEDED and str(prediction_set.status or "").lower() not in {"ready", "applied"}:
+            prediction_set = await self.prediction_set_repo.update(
+                prediction_set.id,
+                {
+                    "status": "materializing",
+                    "last_error": None,
+                },
+            ) or prediction_set
+
+            task_meta = prediction_set.params.get("_prediction_task") if isinstance(prediction_set.params, dict) else {}
+            target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
+            if target_branch_id is None:
+                loop = await self.loop_repo.get_by_id(prediction_set.loop_id) if prediction_set.loop_id else None
+                target_branch_id = loop.branch_id if loop else None
+            if target_branch_id is None:
+                raise BadRequestAppException("prediction_set is missing target_branch_id")
+            base_commit_id = prediction_set.base_commit_id or step.input_commit_id
+            if base_commit_id is None:
+                branch_row = await self.session.get(Branch, target_branch_id)
+                base_commit_id = branch_row.head_commit_id if branch_row else None
+
+            source_candidates = await self.step_candidate_repo.list_by_step(step.id)
+            filtered_candidates = await self._filter_candidates_by_sample_scope(
+                project_id=prediction_set.project_id,
+                target_branch_id=target_branch_id,
+                base_commit_id=base_commit_id,
+                actor_user_id=prediction_set.created_by,
+                scope_type=str(prediction_set.scope_type or "sample_status"),
+                scope_payload=dict(prediction_set.scope_payload or {}),
+                candidates=source_candidates,
+            )
+            prediction_rows = await self._build_prediction_rows_from_candidates(
+                project_id=prediction_set.project_id,
+                candidates=filtered_candidates,
+            )
+            await self.prediction_item_repo.replace_rows(
+                prediction_set_id=prediction_set.id,
+                rows=prediction_rows,
+            )
+            prediction_set = await self.prediction_set_repo.update(
+                prediction_set.id,
+                {
+                    "status": "ready",
+                    "total_items": int(len(prediction_rows)),
+                    "last_error": None,
+                },
+            ) or prediction_set
+            return self._attach_task_projection(prediction_set, step)
+
+        desired_status = self._task_status_from_step(step_state)
+        if desired_status == "failed":
+            desired_last_error = str(step.last_error or "")
+        else:
+            desired_last_error = None
+        if str(prediction_set.status or "").lower() not in {"ready", "applied"} and (
+            str(prediction_set.status or "").lower() != desired_status
+            or str(prediction_set.last_error or "") != str(desired_last_error or "")
+        ):
+            prediction_set = await self.prediction_set_repo.update(
+                prediction_set.id,
+                {
+                    "status": desired_status,
+                    "last_error": desired_last_error,
+                },
+            ) or prediction_set
+        return self._attach_task_projection(prediction_set, step)
+
+    async def list_prediction_sets(self, *, project_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:
+        rows = await self.prediction_set_repo.list_by_project(project_id=project_id, limit=limit)
+        settled_rows: list[PredictionSet] = []
+        for row in rows:
+            settled_rows.append(await self.settle_prediction_task(prediction_set_id=row.id))
+        return settled_rows
+
+    async def list_prediction_tasks(self, *, project_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:
+        return await self.list_prediction_sets(project_id=project_id, limit=limit)
+
+    async def get_prediction_task(self, *, task_id: uuid.UUID) -> PredictionSet:
+        return await self.settle_prediction_task(prediction_set_id=task_id)
 
     async def get_prediction_set_detail(
         self,
@@ -2089,7 +2615,7 @@ class SnapshotMixin:
         prediction_set_id: uuid.UUID,
         item_limit: int = 2000,
     ) -> tuple[PredictionSet, list[PredictionItem]]:
-        prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
+        prediction_set = await self.settle_prediction_task(prediction_set_id=prediction_set_id)
         items = await self.prediction_item_repo.list_by_prediction_set(prediction_set_id, limit=item_limit)
         return prediction_set, items
 
@@ -2104,8 +2630,8 @@ class SnapshotMixin:
     ) -> dict[str, Any]:
         if actor_user_id is None:
             raise BadRequestAppException("actor user is required when applying prediction_set")
-        prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
-        loop = await self.loop_repo.get_by_id_or_raise(prediction_set.loop_id)
+        prediction_set = await self.settle_prediction_task(prediction_set_id=prediction_set_id)
+        project_id = prediction_set.project_id
         items = await self.prediction_item_repo.list_by_prediction_set(prediction_set_id, limit=100000)
         if not items:
             return {
@@ -2115,36 +2641,118 @@ class SnapshotMixin:
             }
 
         resolved_branch_name = str(branch_name or "").strip()
-        if not resolved_branch_name:
-            branch = await self.session.get(Branch, loop.branch_id)
-            resolved_branch_name = str(getattr(branch, "name", "") or "").strip() or "master"
+        branch_row: Branch | None = None
+        if resolved_branch_name:
+            branch_stmt = select(Branch).where(
+                Branch.project_id == project_id,
+                Branch.name == resolved_branch_name,
+            )
+            branch_row = (await self.session.exec(branch_stmt)).first()
+            if branch_row is None:
+                raise BadRequestAppException(f"branch '{resolved_branch_name}' not found in project")
+        else:
+            task_meta = prediction_set.params.get("_prediction_task") if isinstance(prediction_set.params, dict) else {}
+            target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
+            if target_branch_id is not None:
+                branch_row = await self.session.get(Branch, target_branch_id)
+            if branch_row is None and prediction_set.loop_id is not None:
+                loop = await self.loop_repo.get_by_id(prediction_set.loop_id)
+                if loop is not None:
+                    branch_row = await self.session.get(Branch, loop.branch_id)
+        if branch_row is None:
+            raise BadRequestAppException("target branch not found when applying prediction_set")
+
+        resolved_branch_name = str(getattr(branch_row, "name", "") or "").strip() or "master"
+        branch_head_commit_id: uuid.UUID | None = getattr(branch_row, "head_commit_id", None)
+
+        label_rows = list(
+            (
+                await self.session.exec(
+                    select(Label)
+                    .where(Label.project_id == project_id)
+                    .order_by(Label.id.asc())
+                )
+            ).all()
+        )
+        ordered_label_ids = [row.id for row in label_rows]
+
+        draft_repo = AnnotationDraftRepository(self.session)
+        grouped_items: dict[uuid.UUID, list[PredictionItem]] = {}
+        for row in items:
+            grouped_items.setdefault(row.sample_id, []).append(row)
+        committed_base_by_sample = await self._load_commit_annotations_by_sample(
+            commit_id=branch_head_commit_id,
+            sample_ids=list(grouped_items.keys()),
+        )
 
         applied_count = 0
-        if not dry_run:
-            draft_repo = AnnotationDraftRepository(self.session)
-            grouped_items: dict[uuid.UUID, list[PredictionItem]] = {}
-            for item in items:
-                grouped_items.setdefault(item.sample_id, []).append(item)
-            for sample_id, group in grouped_items.items():
-                existing = await draft_repo.get_by_unique(
-                    project_id=loop.project_id,
-                    sample_id=sample_id,
-                    user_id=actor_user_id,
-                    branch_name=resolved_branch_name,
-                )
-                existing_payload = dict(existing.payload or {}) if existing and isinstance(existing.payload, dict) else {}
-                existing_annotations = existing_payload.get("annotations")
-                base_annotations = [
-                    ann
-                    for ann in (existing_annotations if isinstance(existing_annotations, list) else [])
-                    if str(ann.get("source") or "").strip().lower() != "model"
-                ]
+        for sample_id, group in grouped_items.items():
+            existing = await draft_repo.get_by_unique(
+                project_id=project_id,
+                sample_id=sample_id,
+                user_id=actor_user_id,
+                branch_name=resolved_branch_name,
+            )
+            existing_payload = dict(existing.payload or {}) if existing and isinstance(existing.payload, dict) else {}
+            existing_annotations_raw = existing_payload.get("annotations")
+            if existing is not None and isinstance(existing_annotations_raw, list):
+                source_annotations = [dict(ann) for ann in existing_annotations_raw if isinstance(ann, dict)]
+            else:
+                source_annotations = list(committed_base_by_sample.get(sample_id, []))
 
-                model_annotations: list[dict[str, Any]] = []
-                for item in sorted(group, key=lambda row: int(row.rank or 0)):
-                    if item.label_id is None:
+            base_annotations = [
+                ann
+                for ann in source_annotations
+                if str(ann.get("source") or "").strip().lower() != "model"
+            ]
+
+            model_annotations: list[dict[str, Any]] = []
+            for prediction_item in sorted(group, key=lambda row: int(row.rank or 0)):
+                snapshot = dict(prediction_item.meta or {}) if isinstance(prediction_item.meta, dict) else {}
+                prediction_entries = self._prediction_entries_from_snapshot(snapshot)
+                if not prediction_entries:
+                    fallback_prediction = {
+                        "label_id": str(prediction_item.label_id) if prediction_item.label_id else None,
+                        "geometry": dict(prediction_item.geometry or {}),
+                        "attrs": dict(prediction_item.attrs or {}),
+                        "confidence": float(prediction_item.confidence or 0.0),
+                    }
+                    prediction_entries = [fallback_prediction]
+
+                for entry in prediction_entries:
+                    prediction = dict(entry) if isinstance(entry, dict) else {}
+                    label_id = self._resolve_prediction_label_id(
+                        snapshot=snapshot,
+                        prediction=prediction,
+                        ordered_label_ids=ordered_label_ids,
+                    )
+                    if label_id is None and prediction_item.label_id is not None:
+                        label_id = prediction_item.label_id
+                    if label_id is None:
                         continue
-                    geometry = dict(item.geometry or {})
+
+                    geometry = self._resolve_prediction_geometry(
+                        snapshot=snapshot,
+                        prediction=prediction,
+                    )
+                    if not geometry and isinstance(prediction_item.geometry, dict):
+                        geometry = dict(prediction_item.geometry or {})
+                    if not geometry:
+                        continue
+
+                    attrs = self._resolve_prediction_attrs(
+                        snapshot=snapshot,
+                        prediction=prediction,
+                    )
+                    if not attrs and isinstance(prediction_item.attrs, dict):
+                        attrs = dict(prediction_item.attrs or {})
+
+                    confidence = self._resolve_prediction_confidence(
+                        snapshot=snapshot,
+                        prediction=prediction,
+                        fallback=float(prediction_item.confidence or prediction_item.score or 0.0),
+                    )
+
                     annotation_id = str(uuid.uuid4())
                     annotation_type = "obb" if isinstance(geometry.get("obb"), dict) else "rect"
                     model_annotations.append(
@@ -2152,36 +2760,43 @@ class SnapshotMixin:
                             "id": annotation_id,
                             "group_id": annotation_id,
                             "lineage_id": annotation_id,
-                            "project_id": str(loop.project_id),
+                            "project_id": str(project_id),
                             "sample_id": str(sample_id),
-                            "label_id": str(item.label_id),
+                            "label_id": str(label_id),
                             "type": annotation_type,
                             "geometry": geometry,
-                            "attrs": dict(item.attrs or {}),
+                            "attrs": attrs,
                             "source": "model",
-                            "confidence": float(item.confidence or 0.0),
+                            "confidence": confidence,
                             "annotator_id": str(actor_user_id),
                         }
                     )
-                if not model_annotations:
-                    continue
-                applied_count += len(model_annotations)
-                payload_to_write = {
-                    **existing_payload,
-                    "annotations": base_annotations + model_annotations,
-                }
-                if existing is None:
-                    await draft_repo.create(
-                        {
-                            "project_id": loop.project_id,
-                            "sample_id": sample_id,
-                            "user_id": actor_user_id,
-                            "branch_name": resolved_branch_name,
-                            "payload": payload_to_write,
-                        }
-                    )
-                else:
-                    await draft_repo.update(existing.id, {"payload": payload_to_write})
+
+            if not model_annotations:
+                continue
+
+            applied_count += len(model_annotations)
+            if dry_run:
+                continue
+
+            payload_to_write = {
+                **existing_payload,
+                "annotations": base_annotations + model_annotations,
+            }
+            if existing is None:
+                await draft_repo.create(
+                    {
+                        "project_id": project_id,
+                        "sample_id": sample_id,
+                        "user_id": actor_user_id,
+                        "branch_name": resolved_branch_name,
+                        "payload": payload_to_write,
+                    }
+                )
+            else:
+                await draft_repo.update(existing.id, {"payload": payload_to_write})
+
+        if not dry_run:
             prediction_set = await self.prediction_set_repo.update(
                 prediction_set.id,
                 {
@@ -2191,6 +2806,6 @@ class SnapshotMixin:
 
         return {
             "prediction_set_id": prediction_set.id,
-            "applied_count": int(applied_count if not dry_run else len(items)),
+            "applied_count": int(applied_count),
             "status": str(prediction_set.status or ("ready" if dry_run else "applied")),
         }

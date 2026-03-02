@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,16 @@ from saki_executor.sdk.reporter import StepReporter
 
 if TYPE_CHECKING:
     from saki_executor.steps.manager import StepManager
+
+
+@dataclass(frozen=True, slots=True)
+class _InferenceTaskProfile:
+    name: str
+    query_type: str
+    candidate_limit_mode: str
+    default_strategy: str
+    metric_key: str
+    skip_when_strategy_empty: bool
 
 
 class StepPipelineRunner:
@@ -75,12 +86,14 @@ class StepPipelineRunner:
         optional_upload_failures: list[str]
 
         try:
-            if self._request.step_type in self._SCORE_ONLY_STEP_TYPES:
-                metrics, artifacts, candidates, optional_upload_failures = await self._run_score_pipeline(
+            if self._request.step_type in (self._SCORE_ONLY_STEP_TYPES | self._PREDICT_ONLY_STEP_TYPES):
+                inference_profile = self._inference_profile_for_step(self._request.step_type)
+                metrics, artifacts, candidates, optional_upload_failures = await self._run_inference_pipeline(
                     plugin=plugin,
                     workspace=workspace,
                     emitter=emitter,
                     runtime_requirements=runtime_requirements,
+                    profile=inference_profile,
                 )
             elif self._request.step_type in self._EVAL_ONLY_STEP_TYPES:
                 metrics, artifacts, candidates, optional_upload_failures = await self._run_eval_pipeline(
@@ -88,13 +101,6 @@ class StepPipelineRunner:
                     workspace=workspace,
                     emitter=emitter,
                     reporter=reporter,
-                    runtime_requirements=runtime_requirements,
-                )
-            elif self._request.step_type in self._PREDICT_ONLY_STEP_TYPES:
-                metrics, artifacts, candidates, optional_upload_failures = await self._run_predict_pipeline(
-                    plugin=plugin,
-                    workspace=workspace,
-                    emitter=emitter,
                     runtime_requirements=runtime_requirements,
                 )
             elif self._request.step_type in self._TRAIN_ONLY_STEP_TYPES:
@@ -590,29 +596,35 @@ class StepPipelineRunner:
         )
         return output.metrics, artifacts, [], optional_upload_failures
 
-    async def _run_predict_pipeline(
-        self,
-        *,
-        plugin: Any,
-        workspace: Workspace,
-        emitter: StepEventEmitter,
-        runtime_requirements: StepRuntimeRequirements,
-    ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
-        # PREDICT currently复用 score 语义，输出候选及预测快照供 prediction_set 持久化。
-        return await self._run_score_pipeline(
-            plugin=plugin,
-            workspace=workspace,
-            emitter=emitter,
-            runtime_requirements=runtime_requirements,
+    @staticmethod
+    def _inference_profile_for_step(step_type: str) -> _InferenceTaskProfile:
+        normalized = str(step_type or "").strip().lower()
+        if normalized == "predict":
+            return _InferenceTaskProfile(
+                name="predict",
+                query_type="samples",
+                candidate_limit_mode="keep_all",
+                default_strategy="uncertainty_1_minus_max_conf",
+                metric_key="predict_candidate_count",
+                skip_when_strategy_empty=False,
+            )
+        return _InferenceTaskProfile(
+            name="score",
+            query_type="unlabeled_samples",
+            candidate_limit_mode="review_pool",
+            default_strategy="",
+            metric_key="score_candidate_count",
+            skip_when_strategy_empty=True,
         )
 
-    async def _run_score_pipeline(
+    async def _run_inference_pipeline(
         self,
         *,
         plugin: Any,
         workspace: Workspace,
         emitter: StepEventEmitter,
         runtime_requirements: StepRuntimeRequirements,
+        profile: _InferenceTaskProfile,
     ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
         protected = await self._prepare_data_for_step(
             plugin=plugin,
@@ -625,9 +637,10 @@ class StepPipelineRunner:
             workspace=workspace,
             emitter=emitter,
             protected=protected,
+            profile=profile,
         )
         metrics: dict[str, Any] = {
-            "score_candidate_count": float(len(candidates)),
+            profile.metric_key: float(len(candidates)),
         }
         return metrics, {}, candidates, []
 
@@ -638,9 +651,22 @@ class StepPipelineRunner:
         workspace: Workspace,
         emitter: StepEventEmitter,
         protected: set[str],
+        profile: _InferenceTaskProfile | None = None,
     ) -> list[dict[str, Any]]:
+        mode = self._request.mode
+        query_type = "unlabeled_samples"
+        candidate_limit_mode = "topk"
+        default_strategy = ""
+        skip_when_strategy_empty = True
+        if profile is not None:
+            query_type = profile.query_type
+            candidate_limit_mode = profile.candidate_limit_mode
+            default_strategy = profile.default_strategy
+            skip_when_strategy_empty = profile.skip_when_strategy_empty
+
+        is_keep_all = candidate_limit_mode == "keep_all"
         skip_sampling = bool(self._request.resolved_params.get("skip_sampling", False))
-        if self._request.mode == "manual":
+        if mode == "manual" and not is_keep_all:
             await emitter.emit("log", {"level": "INFO", "message": "manual mode: skip sampling"})
             return []
         if skip_sampling:
@@ -652,18 +678,25 @@ class StepPipelineRunner:
         strategy = str(
             sampling_cfg.get("strategy")
             or self._request.query_strategy
-            or ""
+            or default_strategy
         ).strip()
         if not strategy:
-            await emitter.emit("log", {"level": "INFO", "message": "sampling strategy is empty, skip sampling"})
-            return []
+            if skip_when_strategy_empty:
+                await emitter.emit("log", {"level": "INFO", "message": "sampling strategy is empty, skip sampling"})
+                return []
+            strategy = "uncertainty_1_minus_max_conf"
         topk = int(sampling_cfg.get("topk", self._request.resolved_params.get("topk", 200)))
         review_pool_size = int(sampling_cfg.get("review_pool_size", 0) or 0)
         if review_pool_size <= 0:
             review_pool_multiplier = int(sampling_cfg.get("review_pool_multiplier", 3) or 3)
             review_pool_multiplier = max(1, review_pool_multiplier)
             review_pool_size = max(topk, topk * review_pool_multiplier)
-        candidate_limit = max(topk, review_pool_size) if self._request.step_type == "score" else topk
+        if candidate_limit_mode == "keep_all":
+            candidate_limit = 0
+        elif candidate_limit_mode == "review_pool":
+            candidate_limit = max(topk, review_pool_size)
+        else:
+            candidate_limit = topk
         sampling_params = dict(self._effective_plugin_params)
         sampling_params.update(sampling_cfg)
         sampling_params["sampling_topk"] = candidate_limit
@@ -679,6 +712,7 @@ class StepPipelineRunner:
             strategy=strategy,
             params=sampling_params,
             protected=protected,
+            query_type=query_type,
             topk=candidate_limit,
         )
 

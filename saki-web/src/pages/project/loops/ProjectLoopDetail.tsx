@@ -11,11 +11,11 @@ import {
     Empty,
     Form,
     Input,
-    InputNumber,
     Modal,
     Popconfirm,
     Progress,
     Select,
+    Slider,
     Statistic,
     Spin,
     Table,
@@ -211,6 +211,8 @@ const ProjectLoopDetail: React.FC = () => {
     const [predictionLoading, setPredictionLoading] = useState(false);
     const [predictionSubmitting, setPredictionSubmitting] = useState(false);
     const [applyingPredictionSetId, setApplyingPredictionSetId] = useState<string>('');
+    const [predictionScopeOpen, setPredictionScopeOpen] = useState(false);
+    const [predictionScopeStatus, setPredictionScopeStatus] = useState<'all' | 'unlabeled' | 'labeled' | 'draft'>('all');
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
     const [snapshotUpdateOpen, setSnapshotUpdateOpen] = useState(false);
     const [selectionAdjustOpen, setSelectionAdjustOpen] = useState(false);
@@ -278,8 +280,8 @@ const ProjectLoopDetail: React.FC = () => {
         } else {
             setSnapshotInfo(null);
         }
-        const predictionRows = await api.listPredictionSets(loopId, 20).catch(() => []);
-        setPredictionSets(predictionRows);
+        const predictionRows = await api.listPredictionSets(projectId, 50).catch(() => []);
+        setPredictionSets(predictionRows.filter((item) => item.loopId === loopId));
     }, [loopId, projectId]);
 
     const loadData = useCallback(async () => {
@@ -568,42 +570,66 @@ const ProjectLoopDetail: React.FC = () => {
     };
 
     const refreshPredictionSets = useCallback(async () => {
-        if (!loopId) return;
+        if (!loopId || !projectId) return;
         setPredictionLoading(true);
         try {
-            const rows = await api.listPredictionSets(loopId, 20);
-            setPredictionSets(rows);
+            const rows = await api.listPredictionSets(projectId, 50);
+            setPredictionSets(rows.filter((item) => item.loopId === loopId));
         } catch (error: any) {
             messageApi.error(error?.message || '加载 PredictionSet 失败');
         } finally {
             setPredictionLoading(false);
         }
-    }, [loopId, messageApi]);
+    }, [loopId, projectId, messageApi]);
 
-    const handleGeneratePredictionSet = useCallback(async () => {
-        if (!loopId) return;
-        const sourceRoundId = latestRound?.id;
-        if (!sourceRoundId) {
+    const handleGeneratePredictionSet = useCallback(async (status: 'all' | 'unlabeled' | 'labeled' | 'draft') => {
+        if (!loopId || !projectId) return;
+        const targetRoundId = latestRound?.id;
+        if (!targetRoundId || !loop) {
             messageApi.warning('当前没有可用 round 生成 PredictionSet');
+            return;
+        }
+        const pluginId = String(latestRound?.pluginId || loop.modelArch || '').trim();
+        if (!pluginId) {
+            messageApi.warning('当前 round 缺少 plugin 信息，无法创建任务');
+            return;
+        }
+        const branches = await api.getProjectBranches(projectId).catch(() => []);
+        const targetBranch = branches.find((item) => item.id === loop.branchId);
+        if (!targetBranch?.headCommitId) {
+            messageApi.warning('无法解析目标分支或基线 Commit');
             return;
         }
         setPredictionSubmitting(true);
         try {
-            const row = await api.generatePredictionSet(loopId, {sourceRoundId});
+            const row = await api.generatePredictionSet(projectId, {
+                pluginId,
+                targetRoundId,
+                modelSource: {
+                    kind: 'round_artifact',
+                    roundId: targetRoundId,
+                    artifactName: 'best.pt',
+                },
+                targetBranchId: loop.branchId,
+                baseCommitId: targetBranch.headCommitId,
+                scopeType: 'sample_status',
+                scopePayload: {status},
+            });
             messageApi.success(`PredictionSet 已生成：${row.id}`);
             await refreshPredictionSets();
+            setPredictionScopeOpen(false);
         } catch (error: any) {
             messageApi.error(error?.message || '生成 PredictionSet 失败');
         } finally {
             setPredictionSubmitting(false);
         }
-    }, [loopId, latestRound?.id, refreshPredictionSets, messageApi]);
+    }, [loopId, projectId, latestRound?.id, latestRound?.pluginId, loop, refreshPredictionSets, messageApi]);
 
     const handleApplyPredictionSet = useCallback(async (predictionSetId: string) => {
         if (!predictionSetId) return;
         setApplyingPredictionSetId(predictionSetId);
         try {
-            const result = await api.applyPredictionSet(predictionSetId, {writeTarget: 'draft'});
+            const result = await api.applyPredictionSet(predictionSetId, {});
             messageApi.success(`已应用到 Draft：${result.appliedCount} 条`);
             await refreshPredictionSets();
         } catch (error: any) {
@@ -1091,11 +1117,14 @@ const ProjectLoopDetail: React.FC = () => {
                 title="PredictionSet（循环外预测辅助标注）"
                 extra={(
                     <div className="flex items-center gap-2">
+                        <Button onClick={() => navigate(`/projects/${projectId}/prediction-tasks`)}>
+                            任务页
+                        </Button>
                         <Button onClick={() => void refreshPredictionSets()} loading={predictionLoading}>
                             刷新
                         </Button>
-                        <Button type="primary" onClick={() => void handleGeneratePredictionSet()} loading={predictionSubmitting}>
-                            生成（最新 Round）
+                        <Button type="primary" onClick={() => setPredictionScopeOpen(true)} loading={predictionSubmitting}>
+                            创建任务（最新 Round）
                         </Button>
                     </div>
                 )}
@@ -1154,6 +1183,28 @@ const ProjectLoopDetail: React.FC = () => {
                     ]}
                 />
             </Card>
+
+            <Modal
+                title="生成 PredictionSet"
+                open={predictionScopeOpen}
+                onCancel={() => setPredictionScopeOpen(false)}
+                onOk={() => void handleGeneratePredictionSet(predictionScopeStatus)}
+                okText="生成"
+                confirmLoading={predictionSubmitting}
+            >
+                <div className="mb-2 text-github-muted">请选择样本范围（样本级）：</div>
+                <Select
+                    className="w-full"
+                    value={predictionScopeStatus}
+                    onChange={(value) => setPredictionScopeStatus(value as 'all' | 'unlabeled' | 'labeled' | 'draft')}
+                    options={[
+                        {label: '全部样本', value: 'all'},
+                        {label: '仅未标注', value: 'unlabeled'},
+                        {label: '仅已标注', value: 'labeled'},
+                        {label: '仅草稿样本', value: 'draft'},
+                    ]}
+                />
+            </Modal>
 
             <Card className="!border-github-border !bg-github-panel" title="当前 Loop 的 Rounds">
                 <Table
@@ -1323,13 +1374,13 @@ const ProjectLoopDetail: React.FC = () => {
                         <Input placeholder="可选，不填则按规则生成"/>
                     </Form.Item>
                     <Form.Item name="trainSeedRatio" label="Train Seed Ratio">
-                        <InputNumber className="w-full" min={0} max={1} step={0.01}/>
+                        <Slider min={0} max={1} step={0.01} tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(2) : '')}}/>
                     </Form.Item>
                     <Form.Item name="valRatio" label="Val Ratio">
-                        <InputNumber className="w-full" min={0} max={1} step={0.01}/>
+                        <Slider min={0} max={1} step={0.01} tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(2) : '')}}/>
                     </Form.Item>
                     <Form.Item name="testRatio" label="Test Ratio">
-                        <InputNumber className="w-full" min={0} max={1} step={0.01}/>
+                        <Slider min={0} max={1} step={0.01} tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(2) : '')}}/>
                     </Form.Item>
                     <Form.Item name="valPolicy" label="Val Policy">
                         <Select
@@ -1379,10 +1430,10 @@ const ProjectLoopDetail: React.FC = () => {
                     {updateMode === 'append_split' ? (
                         <>
                             <Form.Item name="batchTestRatio" label="Batch Test Ratio">
-                                <InputNumber className="w-full" min={0} max={1} step={0.01}/>
+                                <Slider min={0} max={1} step={0.01} tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(2) : '')}}/>
                             </Form.Item>
                             <Form.Item name="batchValRatio" label="Batch Val Ratio">
-                                <InputNumber className="w-full" min={0} max={1} step={0.01}/>
+                                <Slider min={0} max={1} step={0.01} tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(2) : '')}}/>
                             </Form.Item>
                         </>
                     ) : null}

@@ -1,4 +1,5 @@
 from saki_executor.steps.services.ir_dataset_builder import build_training_batch_ir
+from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 
 def test_build_training_batch_ir_supports_legacy_absolute_obb_payload():
@@ -78,3 +79,23 @@ def test_build_training_batch_ir_converts_normalized_obb_to_absolute_geometry():
     assert ann.geometry.obb.width == 400.0
     assert ann.geometry.obb.height == 100.0
     assert ann.geometry.obb.angle_deg_ccw == 15.0
+
+
+def test_build_training_batch_ir_maps_confirmed_model_source():
+    batch, report = build_training_batch_ir(
+        labels=[{"id": "label-1", "name": "ship"}],
+        samples=[{"id": "sample-1", "width": 640, "height": 480}],
+        annotations=[
+            {
+                "id": "ann-1",
+                "sample_id": "sample-1",
+                "category_id": "label-1",
+                "bbox_xywh": [12.0, 20.0, 30.0, 40.0],
+                "source": "confirmed_model",
+            }
+        ],
+    )
+
+    assert report.annotation_count == 1
+    ann = next(item.annotation for item in batch.items if item.WhichOneof("item") == "annotation")
+    assert ann.source == irpb.ANNOTATION_SOURCE_CONFIRMED_MODEL

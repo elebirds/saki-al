@@ -14,7 +14,9 @@ from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUID
 class PredictionSet(UUIDMixin, TimestampMixin, SQLModel, table=True):
     __tablename__ = "prediction_set"
 
-    loop_id: uuid.UUID = Field(foreign_key="loop.id", index=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    loop_id: uuid.UUID | None = Field(default=None, foreign_key="loop.id", index=True)
+    plugin_id: str = Field(default="", max_length=255, index=True)
     source_round_id: uuid.UUID | None = Field(default=None, foreign_key="round.id", index=True)
     source_step_id: uuid.UUID | None = Field(default=None, foreign_key="step.id", index=True)
     model_id: uuid.UUID | None = Field(default=None, foreign_key="model.id", index=True)
@@ -25,4 +27,5 @@ class PredictionSet(UUIDMixin, TimestampMixin, SQLModel, table=True):
     status: str = Field(default="pending", max_length=32, index=True)
     total_items: int = Field(default=0, ge=0)
     params: dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
+    last_error: str | None = Field(default=None, max_length=4000)
     created_by: uuid.UUID | None = Field(default=None, foreign_key="user.id", index=True)

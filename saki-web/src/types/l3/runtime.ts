@@ -400,19 +400,32 @@ export interface RuntimeRoundArtifactsResponse {
     items: RuntimeRoundArtifact[];
 }
 
-export interface PredictionSetGenerateRequest {
-    sourceRoundId?: string;
-    sourceStepId?: string;
+export interface PredictionModelSource {
+    kind: 'round_artifact' | 'model';
+    roundId?: string;
     modelId?: string;
-    baseCommitId?: string;
-    scopeType?: string;
-    scopePayload?: Record<string, any>;
+    artifactName?: string;
+}
+
+export interface PredictionSetGenerateRequest {
+    pluginId: string;
+    targetRoundId: string;
+    modelSource: PredictionModelSource;
+    targetBranchId: string;
+    baseCommitId: string;
+    predictConf?: number;
+    scopeType?: 'sample_status' | string;
+    scopePayload?: {
+        status?: 'all' | 'unlabeled' | 'labeled' | 'draft';
+    } & Record<string, any>;
     params?: Record<string, any>;
 }
 
 export interface PredictionSetRead {
     id: string;
-    loopId: string;
+    projectId: string;
+    loopId?: string | null;
+    pluginId: string;
     sourceRoundId?: string | null;
     sourceStepId?: string | null;
     modelId?: string | null;
@@ -422,10 +435,15 @@ export interface PredictionSetRead {
     status: string;
     totalItems: number;
     params: Record<string, any>;
+    lastError?: string | null;
+    taskStepId?: string | null;
+    taskStepState?: RuntimeStepState | null;
     createdBy?: string | null;
     createdAt: string;
     updatedAt: string;
 }
+
+export type PredictionTaskRead = PredictionSetRead;
 
 export interface PredictionItemRead {
     sampleId: string;
@@ -444,8 +462,7 @@ export interface PredictionSetDetailRead {
 }
 
 export interface PredictionSetApplyRequest {
-    writeTarget?: 'draft';
-    draftName?: string;
+    branchName?: string;
     dryRun?: boolean;
 }
 

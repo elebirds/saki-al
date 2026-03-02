@@ -19,6 +19,7 @@ class IRDatasetBuildReport:
 _ANNOTATION_SOURCE_MAP: dict[str, int] = {
     "manual": irpb.ANNOTATION_SOURCE_MANUAL,
     "model": irpb.ANNOTATION_SOURCE_MODEL,
+    "confirmed_model": irpb.ANNOTATION_SOURCE_CONFIRMED_MODEL,
     "system": irpb.ANNOTATION_SOURCE_SYSTEM,
     "imported": irpb.ANNOTATION_SOURCE_IMPORTED,
 }

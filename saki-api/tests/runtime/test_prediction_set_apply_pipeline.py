@@ -10,9 +10,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.modules.shared.modeling  # noqa: F401  # Ensure SQLModel metadata registration.
 from saki_api.modules.access.domain.access import User
+from saki_api.modules.annotation.domain.annotation import Annotation
+from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
 from saki_api.modules.annotation.domain.draft import AnnotationDraft
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
+from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import Project, ProjectDataset
 from saki_api.modules.runtime.domain.loop import Loop
@@ -20,9 +23,18 @@ from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
-from saki_api.modules.shared.modeling.enums import AuthorType, StepStatus, StepType, TaskType
+from saki_api.modules.shared.modeling.enums import (
+    AnnotationSource,
+    AnnotationType,
+    AuthorType,
+    CommitSampleReviewState,
+    StepStatus,
+    StepType,
+    TaskType,
+)
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
+from saki_api.core.exceptions import BadRequestAppException
 
 
 @dataclass
@@ -30,11 +42,11 @@ class _PredictionSetSeedContext:
     actor: User
     project: Project
     branch: Branch
+    init_commit: Commit
     loop: Loop
     round_row: Round
-    score_step: Step
     sample: Sample
-    labels_sorted: list[Label]
+    labels_sorted_by_id: list[Label]
 
 
 @pytest.fixture
@@ -112,25 +124,17 @@ async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedC
         project_id=project.id,
         loop_id=loop.id,
         round_index=1,
+        plugin_id="demo_det_v1",
         input_commit_id=init_commit.id,
+        final_artifacts={"best.pt": {"kind": "weights", "uri": "https://example.com/models/best.pt"}},
     )
     session.add(round_row)
-    await session.flush()
-
-    score_step = Step(
-        round_id=round_row.id,
-        step_type=StepType.SCORE,
-        round_index=1,
-        step_index=1,
-        state=StepStatus.SUCCEEDED,
-    )
-    session.add(score_step)
     await session.flush()
 
     labels_sorted = list(
         (
             await session.exec(
-                select(Label).where(Label.project_id == project.id).order_by(Label.sort_order.asc(), Label.id.asc())
+                select(Label).where(Label.project_id == project.id).order_by(Label.id.asc())
             )
         ).all()
     )
@@ -140,48 +144,257 @@ async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedC
         actor=actor,
         project=project,
         branch=branch,
+        init_commit=init_commit,
         loop=loop,
         round_row=round_row,
-        score_step=score_step,
         sample=sample,
-        labels_sorted=labels_sorted,
+        labels_sorted_by_id=labels_sorted,
     )
 
 
+async def _seed_committed_annotation(
+    *,
+    session: AsyncSession,
+    commit_id: uuid.UUID,
+    project_id: uuid.UUID,
+    sample_id: uuid.UUID,
+    label_id: uuid.UUID,
+    annotator_id: uuid.UUID,
+) -> Annotation:
+    annotation_id = uuid.uuid4()
+    annotation = Annotation(
+        id=annotation_id,
+        project_id=project_id,
+        sample_id=sample_id,
+        label_id=label_id,
+        group_id=annotation_id,
+        lineage_id=annotation_id,
+        view_role="main",
+        parent_id=None,
+        type=AnnotationType.RECT,
+        source=AnnotationSource.MANUAL,
+        geometry={"rect": {"x": 1.0, "y": 2.0, "width": 3.0, "height": 4.0}},
+        attrs={"seed": "manual"},
+        confidence=1.0,
+        annotator_id=annotator_id,
+    )
+    session.add(annotation)
+    await session.flush()
+
+    session.add(
+        CommitAnnotationMap(
+            commit_id=commit_id,
+            sample_id=sample_id,
+            annotation_id=annotation.id,
+            project_id=project_id,
+        )
+    )
+    await session.flush()
+    return annotation
+
+
+async def _create_prediction_task(
+    *,
+    service: RuntimeService,
+    ctx: _PredictionSetSeedContext,
+    scope_status: str = "all",
+    predict_conf: float | None = None,
+    params: dict | None = None,
+):
+    payload = {
+        "plugin_id": "demo_det_v1",
+        "target_round_id": str(ctx.round_row.id),
+        "model_source": {
+            "kind": "round_artifact",
+            "round_id": str(ctx.round_row.id),
+            "artifact_name": "best.pt",
+        },
+        "target_branch_id": str(ctx.branch.id),
+        "base_commit_id": str(ctx.init_commit.id),
+        "scope_type": "sample_status",
+        "scope_payload": {"status": scope_status},
+        "params": dict(params or {}),
+    }
+    if predict_conf is not None:
+        payload["predict_conf"] = float(predict_conf)
+    return await service.generate_prediction_set(
+        project_id=ctx.project.id,
+        payload=payload,
+        actor_user_id=ctx.actor.id,
+    )
+
+
+async def _finish_predict_step(
+    *,
+    session: AsyncSession,
+    step_id: uuid.UUID,
+    rows: list[dict],
+) -> None:
+    for idx, row in enumerate(rows, start=1):
+        session.add(
+            StepCandidateItem(
+                step_id=step_id,
+                sample_id=row["sample_id"],
+                rank=idx,
+                score=float(row.get("score", 0.0)),
+                reason=dict(row.get("reason") or {}),
+                prediction_snapshot=dict(row.get("prediction_snapshot") or {}),
+            )
+        )
+
+    step = await session.get(Step, step_id)
+    assert step is not None
+    step.state = StepStatus.SUCCEEDED
+    session.add(step)
+    await session.commit()
+
+
 @pytest.mark.anyio
-async def test_generate_prediction_set_from_reason_snapshot_with_cls_mapping(prediction_set_env):
+async def test_generate_prediction_set_creates_predict_step_and_queued_task(prediction_set_env):
     session_local = prediction_set_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
-        session.add(
-            StepCandidateItem(
-                step_id=ctx.score_step.id,
-                sample_id=ctx.sample.id,
-                rank=1,
-                score=0.77,
-                reason={
-                    "strategy": "uncertainty",
-                    "prediction_snapshot": {
-                        "base_predictions": [
-                            {
-                                "cls_id": 0,
-                                "conf": 0.91,
-                                "xyxy": [10, 20, 110, 120],
-                            }
-                        ]
-                    },
+        service = RuntimeService(session)
+
+        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+
+        assert prediction_set.status == "queued"
+        assert prediction_set.project_id == ctx.project.id
+        assert prediction_set.plugin_id == "demo_det_v1"
+        assert prediction_set.source_step_id is not None
+
+        created_step = await session.get(Step, prediction_set.source_step_id)
+        assert created_step is not None
+        assert created_step.step_type == StepType.PREDICT
+        assert created_step.state == StepStatus.READY
+
+
+@pytest.mark.anyio
+async def test_generate_prediction_set_persists_predict_conf_to_plugin_params(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+
+        prediction_set = await _create_prediction_task(
+            service=service,
+            ctx=ctx,
+            scope_status="all",
+            predict_conf=0.02,
+        )
+        assert prediction_set.source_step_id is not None
+        created_step = await session.get(Step, prediction_set.source_step_id)
+        assert created_step is not None
+        plugin_params = (
+            created_step.resolved_params.get("plugin")
+            if isinstance(created_step.resolved_params, dict)
+            else {}
+        )
+        assert isinstance(plugin_params, dict)
+        assert float(plugin_params.get("predict_conf")) == pytest.approx(0.02)
+
+
+@pytest.mark.anyio
+async def test_generate_prediction_set_rejects_invalid_predict_conf(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        with pytest.raises(BadRequestAppException, match="predict_conf must be in range \\[0, 1\\]"):
+            await _create_prediction_task(
+                service=service,
+                ctx=ctx,
+                scope_status="all",
+                predict_conf=1.5,
+            )
+
+
+@pytest.mark.anyio
+async def test_generate_prediction_set_rejects_sampling_topk_for_predict(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        with pytest.raises(BadRequestAppException, match="predict does not support topk/review_pool parameters"):
+            await _create_prediction_task(
+                service=service,
+                ctx=ctx,
+                scope_status="all",
+                params={
+                    "sampling": {
+                        "strategy": "uncertainty_1_minus_max_conf",
+                        "topk": 100,
+                    }
                 },
-                prediction_snapshot={},
+            )
+
+
+@pytest.mark.anyio
+async def test_generate_prediction_set_round_artifact_requires_round_final_artifacts(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        ctx.round_row.final_artifacts = {}
+        session.add(ctx.round_row)
+        session.add(
+            Step(
+                round_id=ctx.round_row.id,
+                step_type=StepType.TRAIN,
+                state=StepStatus.SUCCEEDED,
+                round_index=ctx.round_row.round_index,
+                step_index=1,
+                input_commit_id=ctx.init_commit.id,
+                artifacts={
+                    "best.pt": {
+                        "kind": "weights",
+                        "uri": "https://example.com/models/from-step-best.pt",
+                    }
+                },
             )
         )
         await session.commit()
 
         service = RuntimeService(session)
-        prediction_set = await service.generate_prediction_set(
-            loop_id=ctx.loop.id,
-            payload={"source_step_id": str(ctx.score_step.id)},
-            actor_user_id=ctx.actor.id,
+        with pytest.raises(BadRequestAppException, match="round artifact 'best.pt' not found"):
+            await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+
+
+@pytest.mark.anyio
+async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+
+        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        assert prediction_set.source_step_id is not None
+        await _finish_predict_step(
+            session=session,
+            step_id=prediction_set.source_step_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.77,
+                    "reason": {
+                        "strategy": "uncertainty",
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "cls_id": 0,
+                                    "conf": 0.91,
+                                    "xyxy": [10, 20, 110, 120],
+                                }
+                            ]
+                        },
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
         )
+
+        settled = await service.get_prediction_task(task_id=prediction_set.id)
+        assert settled.status == "ready"
+
         _, items = await service.get_prediction_set_detail(
             prediction_set_id=prediction_set.id,
             item_limit=10,
@@ -189,7 +402,7 @@ async def test_generate_prediction_set_from_reason_snapshot_with_cls_mapping(pre
         assert len(items) == 1
         item = items[0]
         assert item.sample_id == ctx.sample.id
-        assert item.label_id == ctx.labels_sorted[0].id
+        assert item.label_id == ctx.labels_sorted_by_id[0].id
         assert item.confidence == pytest.approx(0.91)
         rect = (item.geometry or {}).get("rect") or {}
         assert rect.get("x") == pytest.approx(10.0)
@@ -199,45 +412,98 @@ async def test_generate_prediction_set_from_reason_snapshot_with_cls_mapping(pre
 
 
 @pytest.mark.anyio
-async def test_apply_prediction_set_writes_model_annotations_with_type_and_ids(prediction_set_env):
+async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_env):
     session_local = prediction_set_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
+        sample_b = Sample(dataset_id=ctx.sample.dataset_id, name="sample-b", asset_group={})
+        session.add(sample_b)
+        await session.flush()
+
         session.add(
-            StepCandidateItem(
-                step_id=ctx.score_step.id,
+            CommitSampleState(
+                commit_id=ctx.init_commit.id,
                 sample_id=ctx.sample.id,
-                rank=1,
-                score=0.8,
-                reason={
-                    "prediction_snapshot": {
-                        "base_predictions": [
-                            {
-                                "cls_id": 1,
-                                "conf": 0.88,
-                                "xyxy": [5, 6, 15, 26],
-                            }
-                        ]
-                    }
-                },
-                prediction_snapshot={},
+                project_id=ctx.project.id,
+                state=CommitSampleReviewState.LABELED,
             )
         )
         await session.commit()
 
         service = RuntimeService(session)
-        prediction_set = await service.generate_prediction_set(
-            loop_id=ctx.loop.id,
-            payload={"source_step_id": str(ctx.score_step.id)},
-            actor_user_id=ctx.actor.id,
+        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="unlabeled")
+        assert prediction_set.source_step_id is not None
+
+        await _finish_predict_step(
+            session=session,
+            step_id=prediction_set.source_step_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.66,
+                    "reason": {"prediction_snapshot": {"base_predictions": [{"cls_id": 0, "xyxy": [1, 2, 11, 12]}]}},
+                    "prediction_snapshot": {},
+                },
+                {
+                    "sample_id": sample_b.id,
+                    "score": 0.55,
+                    "reason": {"prediction_snapshot": {"base_predictions": [{"cls_id": 0, "xyxy": [2, 3, 12, 13]}]}},
+                    "prediction_snapshot": {},
+                },
+            ],
         )
+
+        _, items = await service.get_prediction_set_detail(prediction_set_id=prediction_set.id, item_limit=10)
+        assert len(items) == 1
+        assert items[0].sample_id == sample_b.id
+
+
+@pytest.mark.anyio
+async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predictions(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        committed_ann = await _seed_committed_annotation(
+            session=session,
+            commit_id=ctx.init_commit.id,
+            project_id=ctx.project.id,
+            sample_id=ctx.sample.id,
+            label_id=ctx.labels_sorted_by_id[0].id,
+            annotator_id=ctx.actor.id,
+        )
+        await session.commit()
+
+        service = RuntimeService(session)
+        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        assert prediction_set.source_step_id is not None
+
+        await _finish_predict_step(
+            session=session,
+            step_id=prediction_set.source_step_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.8,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {"cls_id": 1, "conf": 0.88, "xyxy": [5, 6, 15, 26]},
+                                {"cls_id": 0, "conf": 0.77, "xyxy": [30, 40, 70, 90]},
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+
         result = await service.apply_prediction_set(
             prediction_set_id=prediction_set.id,
             actor_user_id=ctx.actor.id,
             branch_name="master",
             dry_run=False,
         )
-        assert result["applied_count"] == 1
+        assert result["applied_count"] == 2
 
         draft = await session.exec(
             select(AnnotationDraft).where(
@@ -251,13 +517,21 @@ async def test_apply_prediction_set_writes_model_annotations_with_type_and_ids(p
         assert row is not None
         payload = row.payload if isinstance(row.payload, dict) else {}
         annotations = payload.get("annotations") if isinstance(payload.get("annotations"), list) else []
-        assert len(annotations) == 1
-        ann = annotations[0]
-        assert ann.get("source") == "model"
-        assert ann.get("type") == "rect"
-        assert ann.get("label_id") == str(ctx.labels_sorted[1].id)
-        assert isinstance(ann.get("group_id"), str) and ann.get("group_id")
-        assert isinstance(ann.get("lineage_id"), str) and ann.get("lineage_id")
+        assert len(annotations) == 3
+
+        manual_rows = [row for row in annotations if str(row.get("source") or "").lower() == "manual"]
+        model_rows = [row for row in annotations if str(row.get("source") or "").lower() == "model"]
+        assert len(manual_rows) == 1
+        assert len(model_rows) == 2
+
+        manual = manual_rows[0]
+        assert manual.get("id") == str(committed_ann.id)
+        assert manual.get("label_id") == str(committed_ann.label_id)
+
+        for ann in model_rows:
+            assert ann.get("type") == "rect"
+            assert isinstance(ann.get("group_id"), str) and ann.get("group_id")
+            assert isinstance(ann.get("lineage_id"), str) and ann.get("lineage_id")
 
 
 @pytest.mark.anyio
@@ -265,33 +539,33 @@ async def test_apply_prediction_set_skips_unresolvable_label(prediction_set_env)
     session_local = prediction_set_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
-        session.add(
-            StepCandidateItem(
-                step_id=ctx.score_step.id,
-                sample_id=ctx.sample.id,
-                rank=1,
-                score=0.5,
-                reason={
-                    "prediction_snapshot": {
-                        "base_predictions": [
-                            {
-                                "conf": 0.5,
-                                "xyxy": [1, 2, 3, 4],
-                            }
-                        ]
-                    }
-                },
-                prediction_snapshot={},
-            )
-        )
-        await session.commit()
-
         service = RuntimeService(session)
-        prediction_set = await service.generate_prediction_set(
-            loop_id=ctx.loop.id,
-            payload={"source_step_id": str(ctx.score_step.id)},
-            actor_user_id=ctx.actor.id,
+
+        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        assert prediction_set.source_step_id is not None
+
+        await _finish_predict_step(
+            session=session,
+            step_id=prediction_set.source_step_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.5,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "conf": 0.5,
+                                    "xyxy": [1, 2, 3, 4],
+                                }
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
         )
+
         result = await service.apply_prediction_set(
             prediction_set_id=prediction_set.id,
             actor_user_id=ctx.actor.id,
@@ -309,3 +583,28 @@ async def test_apply_prediction_set_skips_unresolvable_label(prediction_set_env)
             )
         )
         assert draft_row.one_or_none() is None
+
+
+@pytest.mark.anyio
+async def test_generate_prediction_set_requires_base_commit_id(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        with pytest.raises(BadRequestAppException):
+            await service.generate_prediction_set(
+                project_id=ctx.project.id,
+                payload={
+                    "plugin_id": "demo_det_v1",
+                    "target_round_id": str(ctx.round_row.id),
+                    "model_source": {
+                        "kind": "round_artifact",
+                        "round_id": str(ctx.round_row.id),
+                        "artifact_name": "best.pt",
+                    },
+                    "target_branch_id": str(ctx.branch.id),
+                    "scope_type": "sample_status",
+                    "scope_payload": {"status": "all"},
+                },
+                actor_user_id=ctx.actor.id,
+            )

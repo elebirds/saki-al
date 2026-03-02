@@ -23,3 +23,12 @@ class PredictionSetRepository(BaseRepository[PredictionSet]):
             .limit(max(1, min(int(limit or 100), 1000)))
         )
         return list((await self.session.exec(stmt)).all())
+
+    async def list_by_project(self, project_id: uuid.UUID, *, limit: int = 100) -> list[PredictionSet]:
+        stmt = (
+            select(PredictionSet)
+            .where(PredictionSet.project_id == project_id)
+            .order_by(PredictionSet.created_at.desc())
+            .limit(max(1, min(int(limit or 100), 1000)))
+        )
+        return list((await self.session.exec(stmt)).all())

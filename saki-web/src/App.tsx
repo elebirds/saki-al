@@ -19,6 +19,7 @@ import ProjectLoopOverview from './pages/project/loops/ProjectLoopOverview';
 import ProjectLoopDetail from './pages/project/loops/ProjectLoopDetail';
 import ProjectLoopConfig from './pages/project/loops/ProjectLoopConfig';
 import ProjectLoopRoundDetail from './pages/project/loops/ProjectLoopRoundDetail';
+import ProjectPredictionTasks from './pages/project/loops/ProjectPredictionTasks';
 import UserManagement from './pages/user/UserManagement';
 import RoleManagement from './pages/user/RoleManagement';
 import UserProfile from './pages/user/UserProfile';
@@ -77,6 +78,7 @@ const App: React.FC = () => {
                                     <Route path="loops/:loopId" element={<ProjectLoopDetail/>}/>
                                     <Route path="loops/:loopId/config" element={<ProjectLoopConfig/>}/>
                                     <Route path="loops/:loopId/rounds/:roundId" element={<ProjectLoopRoundDetail/>}/>
+                                    <Route path="prediction-tasks" element={<ProjectPredictionTasks/>}/>
                                     <Route path="insights" element={<ProjectInsights/>}/>
                                     <Route path="settings" element={<ProjectSettings/>}/>
                                     <Route path="workspace" element={<ProjectWorkspace/>}/>

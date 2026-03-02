@@ -251,6 +251,7 @@ def _annotation_source_to_text(source: int) -> str:
     mapping = {
         irpb.ANNOTATION_SOURCE_MANUAL: "manual",
         irpb.ANNOTATION_SOURCE_MODEL: "model",
+        irpb.ANNOTATION_SOURCE_CONFIRMED_MODEL: "confirmed_model",
         irpb.ANNOTATION_SOURCE_SYSTEM: "system",
         irpb.ANNOTATION_SOURCE_IMPORTED: "imported",
     }

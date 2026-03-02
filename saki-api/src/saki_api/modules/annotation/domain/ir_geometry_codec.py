@@ -115,6 +115,8 @@ def _annotation_source_to_ir(source: AnnotationSource) -> irpb.AnnotationSource:
         return irpb.ANNOTATION_SOURCE_MANUAL
     if source == AnnotationSource.MODEL:
         return irpb.ANNOTATION_SOURCE_MODEL
+    if source == AnnotationSource.CONFIRMED_MODEL:
+        return irpb.ANNOTATION_SOURCE_CONFIRMED_MODEL
     if source == AnnotationSource.SYSTEM:
         return irpb.ANNOTATION_SOURCE_SYSTEM
     if source == AnnotationSource.IMPORTED:

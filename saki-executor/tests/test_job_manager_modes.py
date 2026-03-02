@@ -65,24 +65,6 @@ class _InProcessProxy(ExecutorPlugin):
         del emit
         return await self._plugin.eval(workspace, params, self._emit)
 
-    async def export(
-            self,
-            workspace,
-            params: dict[str, Any],
-            emit,
-    ) -> TrainOutput:
-        del emit
-        return await self._plugin.export(workspace, params, self._emit)
-
-    async def upload_artifact(
-            self,
-            workspace,
-            params: dict[str, Any],
-            emit,
-    ) -> TrainOutput:
-        del emit
-        return await self._plugin.upload_artifact(workspace, params, self._emit)
-
     async def predict_unlabeled(
             self,
             workspace,
@@ -119,8 +101,6 @@ class _ModeAwarePlugin(ExecutorPlugin):
         self.prepare_annotations_count = 0
         self.train_calls = 0
         self.eval_calls = 0
-        self.export_calls = 0
-        self.upload_artifact_calls = 0
         self.predict_calls = 0
 
     @property
@@ -133,7 +113,7 @@ class _ModeAwarePlugin(ExecutorPlugin):
 
     @property
     def supported_step_types(self) -> list[str]:
-        return ["train", "score", "eval", "export", "upload_artifact", "custom"]
+        return ["train", "score", "predict", "eval", "custom"]
 
     @property
     def supported_strategies(self) -> list[str]:
@@ -176,26 +156,6 @@ class _ModeAwarePlugin(ExecutorPlugin):
         self.eval_calls += 1
         await emit("metric", {"step": 1, "epoch": 1, "metrics": {"eval_loss": 0.12}})
         return TrainOutput(metrics={"eval_loss": 0.12}, artifacts=[])
-
-    async def export(
-            self,
-            workspace,
-            params: dict[str, Any],
-            emit,
-    ) -> TrainOutput:
-        del workspace, params, emit
-        self.export_calls += 1
-        return TrainOutput(metrics={}, artifacts=[])
-
-    async def upload_artifact(
-            self,
-            workspace,
-            params: dict[str, Any],
-            emit,
-    ) -> TrainOutput:
-        del workspace, params, emit
-        self.upload_artifact_calls += 1
-        return TrainOutput(metrics={}, artifacts=[])
 
     async def predict_unlabeled(
             self,
@@ -240,9 +200,34 @@ class _BatchScoringPlugin(_ModeAwarePlugin):
             sample_id = str(sample.get("id") or "")
             if not sample_id:
                 continue
-            score = float(sample_id.replace("u", ""))
+            digits = "".join(ch for ch in sample_id if ch.isdigit())
+            score = float(digits or 0)
             candidates.append({"sample_id": sample_id, "score": score, "reason": {"s": score}})
         return candidates
+
+
+class _BatchTopKStrictPlugin(_BatchScoringPlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen_topk: list[int] = []
+
+    async def predict_unlabeled_batch(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        candidates = await super().predict_unlabeled_batch(workspace, unlabeled_samples, strategy, params)
+        raw_topk = params.get("topk", params.get("sampling_topk", 0))
+        try:
+            topk = int(raw_topk)
+        except Exception:
+            topk = 0
+        self.seen_topk.append(topk)
+        if topk <= 0:
+            return []
+        return candidates[:topk]
 
 
 class _CaptureModelParamsPlugin(_ModeAwarePlugin):
@@ -868,6 +853,192 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 0
     assert plugin.batch_calls == 0
+
+
+@pytest.mark.anyio
+async def test_predict_step_uses_samples_query_and_keeps_all_candidates(tmp_path: Path):
+    plugin = _BatchScoringPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+    query_types: list[int] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        query_types.append(int(request.query_type))
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-predict-1",
+        {
+            "step_id": "task-predict-1",
+            "round_id": "job-predict-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "predict",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.SUCCEEDED
+    assert len(result.candidates) == 4
+    assert pb.SAMPLES in query_types
+    assert pb.UNLABELED_SAMPLES not in query_types
+    assert plugin.batch_calls >= 1
+
+
+@pytest.mark.anyio
+async def test_predict_step_keep_all_overrides_topk_for_strict_plugins(tmp_path: Path):
+    plugin = _BatchTopKStrictPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+    query_types: list[int] = []
+    sample_items = _mock_data_items(pb.SAMPLES)
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        query_types.append(int(request.query_type))
+        if request.query_type == pb.SAMPLES:
+            try:
+                offset = int(str(request.cursor or "0") or "0")
+            except Exception:
+                offset = 0
+            limit = int(request.limit or 0) or len(sample_items)
+            limit = max(1, limit)
+            page = sample_items[offset: offset + limit]
+            next_cursor = str(offset + limit) if offset + limit < len(sample_items) else ""
+            return build_data_response_message(
+                request_id=f"resp-{request.request_id}",
+                reply_to=request.request_id,
+                step_id=request.step_id,
+                query_type=request.query_type,
+                items=page,
+                next_cursor=next_cursor,
+            )
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=[],
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-predict-topk-strict-1",
+        {
+            "step_id": "task-predict-topk-strict-1",
+            "round_id": "job-predict-topk-strict-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "predict",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {
+                "unlabeled_page_size": 2,
+            },
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.SUCCEEDED
+    assert len(result.candidates) == len(sample_items)
+    assert pb.SAMPLES in query_types
+    assert pb.UNLABELED_SAMPLES not in query_types
+    assert plugin.batch_calls >= 2
+    assert plugin.seen_topk and all(v > 0 for v in plugin.seen_topk)
+
+
+@pytest.mark.anyio
+async def test_predict_step_in_manual_mode_is_not_short_circuited(tmp_path: Path):
+    plugin = _ModeAwarePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-manual-predict-1",
+        {
+            "step_id": "task-manual-predict-1",
+            "round_id": "job-manual-predict-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "manual",
+            "step_type": "predict",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {
+                "sampling": {
+                    "strategy": "uncertainty_1_minus_max_conf",
+                },
+            },
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.SUCCEEDED
+    assert len(result.candidates) > 0
+    assert plugin.predict_calls > 0
 
 
 @pytest.mark.anyio

@@ -30,7 +30,7 @@ export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
         labelName: dual.labelName,
         labelColor: dual.labelColor,
         type: dual.primary.type as AnnotationType,
-        source: 'manual',
+        source: dual.source || 'manual',
         geometry: canvasDataToGeometry(dual.primary.type as AnnotationType, dual.primary.bbox as Record<string, any>),
         attrs: {
             view: VIEW_TIME_ENERGY,
@@ -64,6 +64,7 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
         labelName: ann.labelName || '',
         labelColor: ann.labelColor || '#ff0000',
         annotatorId: ann.annotatorId,
+        source: ann.source || 'manual',
         primary: {
             type: ann.type as DetectionAnnotationType,
             bbox,
@@ -167,7 +168,6 @@ export function isGeneratedAnnotation(ann: Annotation): boolean {
     return (
         source === 'auto' ||
         source === 'system' ||
-        source === 'model' ||
         source === 'fedo_mapping'
     );
 }

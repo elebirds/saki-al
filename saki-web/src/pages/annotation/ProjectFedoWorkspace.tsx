@@ -1,4 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Button, message} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {AnnotationWorkspaceLayout, DualCanvasArea, DualCanvasAreaRef} from '../../components/annotation';
@@ -18,7 +19,7 @@ import {useAnnotationShortcuts, useAnnotationState, useAnnotationSync, useWorksp
 import {useProjectSampleList} from '../../hooks/project/useProjectSampleList';
 import {useResourcePermission} from '../../hooks/permission/usePermission';
 import {canModifyAnnotation} from '../../store/permissionStore';
-import {hydrateDraftPayload} from '../../utils/annotationGeometry';
+import {attrsFromAnnotationLike, hydrateDraftPayload} from '../../utils/annotationGeometry';
 import {generateUUID} from '../../utils/uuid';
 import {useFedoAnnotations} from '../../hooks/annotation/useFedoAnnotations';
 import {parseProjectSampleSort} from '../../utils/projectSampleSort';
@@ -203,6 +204,23 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
         });
     }, [labelMap, projectId, currentSample?.id]);
 
+    const buildDraftItem = useCallback((annotation: Annotation): AnnotationDraftItem => ({
+        id: annotation.id,
+        projectId: projectId || undefined,
+        sampleId: currentSample?.id,
+        labelId: annotation.labelId,
+        groupId: annotation.groupId || annotation.id,
+        lineageId: annotation.lineageId || annotation.id,
+        parentId: annotation.parentId ?? null,
+        viewRole: annotation.viewRole || 'main',
+        type: annotation.type,
+        source: annotation.source || 'manual',
+        geometry: annotation.geometry,
+        attrs: attrsFromAnnotationLike(annotation),
+        confidence: annotation.confidence ?? 1,
+        annotatorId: annotation.annotatorId ?? user?.id ?? null,
+    }), [projectId, currentSample?.id, user?.id]);
+
     const handleSyncActions = useCallback(async (actions: {
         type: 'add' | 'update' | 'delete';
         groupId: string;
@@ -243,6 +261,84 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
         const mapped = mapDraftPayloadToAnnotations(payload);
         applyBaseAnnotations(mapped);
     }, [applyBaseAnnotations, mapDraftPayloadToAnnotations]);
+
+    const syncAndApplyWorkspace = useCallback(async (actions: {
+        type: 'add' | 'update' | 'delete';
+        groupId: string;
+        data?: AnnotationDraftItem;
+    }[]) => {
+        const updated = await handleSyncActions(actions);
+        if (updated) {
+            applyBaseAnnotations(updated);
+        }
+    }, [handleSyncActions, applyBaseAnnotations]);
+
+    const pendingModelGroups = useMemo(() => {
+        const map = new Map<string, Annotation>();
+        canvasAnnotations.forEach((ann) => {
+            if (String(ann.source || '').toLowerCase() !== 'model') return;
+            const groupId = ann.groupId || ann.id;
+            if (!groupId || map.has(groupId)) return;
+            map.set(groupId, ann);
+        });
+        return map;
+    }, [canvasAnnotations]);
+
+    const selectedModelAnnotation = useMemo(() => {
+        if (!annotationState.selectedId) return null;
+        const row = canvasAnnotations.find((ann) => ann.id === annotationState.selectedId);
+        if (!row) return null;
+        return String(row.source || '').toLowerCase() === 'model' ? row : null;
+    }, [annotationState.selectedId, canvasAnnotations]);
+
+    const handleConfirmSelectedModel = useCallback(async () => {
+        if (!selectedModelAnnotation) {
+            message.warning(t('annotation.workspace.noPendingModelSelected'));
+            return;
+        }
+        const groupId = selectedModelAnnotation.groupId || selectedModelAnnotation.id;
+        await syncAndApplyWorkspace([{
+            type: 'update',
+            groupId,
+            data: buildDraftItem({
+                ...selectedModelAnnotation,
+                groupId,
+                source: 'confirmed_model',
+            }),
+        }]);
+        message.success(t('annotation.workspace.confirmSelectedDone'));
+    }, [selectedModelAnnotation, syncAndApplyWorkspace, buildDraftItem, t]);
+
+    const handleConfirmAllModel = useCallback(async () => {
+        if (pendingModelGroups.size === 0) {
+            message.warning(t('annotation.workspace.noPendingModelAnnotations'));
+            return;
+        }
+        const actions = Array.from(pendingModelGroups.entries()).map(([groupId, ann]) => ({
+            type: 'update' as const,
+            groupId,
+            data: buildDraftItem({
+                ...ann,
+                groupId,
+                source: 'confirmed_model',
+            }),
+        }));
+        await syncAndApplyWorkspace(actions);
+        message.success(t('annotation.workspace.confirmAllDone', {count: actions.length}));
+    }, [pendingModelGroups, syncAndApplyWorkspace, buildDraftItem, t]);
+
+    const handleClearUnconfirmedModel = useCallback(async () => {
+        if (pendingModelGroups.size === 0) {
+            message.warning(t('annotation.workspace.noPendingModelAnnotations'));
+            return;
+        }
+        const actions = Array.from(pendingModelGroups.keys()).map((groupId) => ({
+            type: 'delete' as const,
+            groupId,
+        }));
+        await syncAndApplyWorkspace(actions);
+        message.success(t('annotation.workspace.clearUnconfirmedDone', {count: actions.length}));
+    }, [pendingModelGroups, syncAndApplyWorkspace, t]);
 
     const loadAnnotations = useCallback(async () => {
         if (!projectId || !currentSample?.id) return;
@@ -437,14 +533,34 @@ const ProjectFedoWorkspace: React.FC<ProjectFedoWorkspaceProps> = ({dataset, ena
                 isSyncReady
                 onBack={backToSamples}
                 toolbarExtraActions={
-                    <button
-                        className="px-3 py-1 text-sm font-medium text-white bg-[#1677ff] rounded disabled:opacity-50"
-                        onClick={() => setCommitModalOpen(true)}
-                        disabled={!canCommit}
-                        type="button"
-                    >
-                        {t('annotation.workspace.commitDrafts')}
-                    </button>
+                    <>
+                        <Button
+                            onClick={() => void handleConfirmSelectedModel()}
+                            disabled={!canAnnotate || !selectedModelAnnotation}
+                        >
+                            {t('annotation.workspace.confirmSelected')}
+                        </Button>
+                        <Button
+                            onClick={() => void handleConfirmAllModel()}
+                            disabled={!canAnnotate || pendingModelGroups.size === 0}
+                        >
+                            {t('annotation.workspace.confirmAll')}
+                        </Button>
+                        <Button
+                            danger
+                            onClick={() => void handleClearUnconfirmedModel()}
+                            disabled={!canAnnotate || pendingModelGroups.size === 0}
+                        >
+                            {t('annotation.workspace.clearUnconfirmed')}
+                        </Button>
+                        <Button
+                            type="primary"
+                            onClick={() => setCommitModalOpen(true)}
+                            disabled={!canCommit}
+                        >
+                            {t('annotation.workspace.commitDrafts')}
+                        </Button>
+                    </>
                 }
                 onSampleSelect={handleSampleSelect}
                 onSamplePageChange={handleSamplePageChange}

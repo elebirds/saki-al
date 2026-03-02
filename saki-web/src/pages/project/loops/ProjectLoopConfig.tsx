@@ -7,6 +7,7 @@ import {
     Input,
     InputNumber,
     Select,
+    Slider,
     Spin,
     message,
 } from 'antd';
@@ -349,12 +350,24 @@ const ProjectLoopConfig: React.FC = () => {
                                 </div>
                                 <div>
                                     <Form.Item name={['simulationConfig', 'seedRatio']} label="初始种子比例">
-                                        <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
+                                        <Slider
+                                            min={0.001}
+                                            max={1}
+                                            step={0.001}
+                                            marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                            tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                        />
                                     </Form.Item>
                                 </div>
                                 <div>
                                     <Form.Item name={['simulationConfig', 'stepRatio']} label="每轮提升比例">
-                                        <InputNumber min={0.001} max={1} step={0.01} className="w-full"/>
+                                        <Slider
+                                            min={0.001}
+                                            max={1}
+                                            step={0.001}
+                                            marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                            tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                        />
                                     </Form.Item>
                                 </div>
                                 <div>

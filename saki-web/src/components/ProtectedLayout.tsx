@@ -168,6 +168,12 @@ const ProtectedLayout: React.FC = () => {
         }
         if (canViewProjectLoops) {
             items.push({key: 'loops', label: t('project.tabs.loops'), path: 'loops', icon: <ExperimentOutlined/>})
+            items.push({
+                key: 'prediction-tasks',
+                label: t('project.tabs.predictionTasks'),
+                path: 'prediction-tasks',
+                icon: <ClusterOutlined/>,
+            })
         }
         if (canViewProjectInsights) {
             items.push({key: 'insights', label: t('project.tabs.insights'), path: 'insights', icon: <BarChartOutlined/>})

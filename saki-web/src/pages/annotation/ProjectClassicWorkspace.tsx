@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {message} from 'antd';
+import {Button, message} from 'antd';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {AnnotationCanvas, AnnotationCanvasRef} from '../../components/canvas';
@@ -399,6 +399,74 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
         handleNext();
     }, [annotationState.annotations.length, flushDraft, handleNext]);
 
+    const modelGroups = useMemo(() => {
+        const map = new Map<string, Annotation>();
+        annotationState.annotations.forEach((ann) => {
+            if (String(ann.source || '').toLowerCase() !== 'model') return;
+            const groupId = ann.groupId || ann.id;
+            if (!groupId || map.has(groupId)) return;
+            map.set(groupId, ann);
+        });
+        return map;
+    }, [annotationState.annotations]);
+
+    const selectedModelAnnotation = useMemo(() => {
+        if (!annotationState.selectedId) return null;
+        const row = annotationState.annotations.find((ann) => ann.id === annotationState.selectedId);
+        if (!row) return null;
+        if (String(row.source || '').toLowerCase() !== 'model') return null;
+        return row;
+    }, [annotationState.annotations, annotationState.selectedId]);
+
+    const handleConfirmSelectedModel = useCallback(async () => {
+        if (!selectedModelAnnotation) {
+            message.warning(t('annotation.workspace.noPendingModelSelected'));
+            return;
+        }
+        const groupId = selectedModelAnnotation.groupId || selectedModelAnnotation.id;
+        await syncAndApply([{
+            type: 'update',
+            groupId,
+            data: buildDraftItem({
+                ...selectedModelAnnotation,
+                groupId,
+                source: 'confirmed_model',
+            }),
+        }]);
+        message.success(t('annotation.workspace.confirmSelectedDone'));
+    }, [selectedModelAnnotation, syncAndApply, buildDraftItem, t]);
+
+    const handleConfirmAllModel = useCallback(async () => {
+        if (modelGroups.size === 0) {
+            message.warning(t('annotation.workspace.noPendingModelAnnotations'));
+            return;
+        }
+        const actions = Array.from(modelGroups.entries()).map(([groupId, ann]) => ({
+            type: 'update' as const,
+            groupId,
+            data: buildDraftItem({
+                ...ann,
+                groupId,
+                source: 'confirmed_model',
+            }),
+        }));
+        await syncAndApply(actions);
+        message.success(t('annotation.workspace.confirmAllDone', {count: actions.length}));
+    }, [modelGroups, syncAndApply, buildDraftItem, t]);
+
+    const handleClearUnconfirmedModel = useCallback(async () => {
+        if (modelGroups.size === 0) {
+            message.warning(t('annotation.workspace.noPendingModelAnnotations'));
+            return;
+        }
+        const actions = Array.from(modelGroups.keys()).map((groupId) => ({
+            type: 'delete' as const,
+            groupId,
+        }));
+        await syncAndApply(actions);
+        message.success(t('annotation.workspace.clearUnconfirmedDone', {count: actions.length}));
+    }, [modelGroups, syncAndApply, t]);
+
     const handleCommit = useCallback(async (messageText: string) => {
         if (!projectId) return;
         setCommitLoading(true);
@@ -458,14 +526,34 @@ const ProjectClassicWorkspace: React.FC<ProjectClassicWorkspaceProps> = ({datase
                 isSyncReady
                 onBack={backToSamples}
                 toolbarExtraActions={
-                    <button
-                        className="px-3 py-1 text-sm font-medium text-white bg-[#1677ff] rounded disabled:opacity-50"
-                        onClick={() => setCommitModalOpen(true)}
-                        disabled={!canCommit}
-                        type="button"
-                    >
-                        {t('annotation.workspace.commitDrafts')}
-                    </button>
+                    <>
+                        <Button
+                            onClick={() => void handleConfirmSelectedModel()}
+                            disabled={!canAnnotate || !selectedModelAnnotation}
+                        >
+                            {t('annotation.workspace.confirmSelected')}
+                        </Button>
+                        <Button
+                            onClick={() => void handleConfirmAllModel()}
+                            disabled={!canAnnotate || modelGroups.size === 0}
+                        >
+                            {t('annotation.workspace.confirmAll')}
+                        </Button>
+                        <Button
+                            danger
+                            onClick={() => void handleClearUnconfirmedModel()}
+                            disabled={!canAnnotate || modelGroups.size === 0}
+                        >
+                            {t('annotation.workspace.clearUnconfirmed')}
+                        </Button>
+                        <Button
+                            type="primary"
+                            onClick={() => setCommitModalOpen(true)}
+                            disabled={!canCommit}
+                        >
+                            {t('annotation.workspace.commitDrafts')}
+                        </Button>
+                    </>
                 }
                 onSampleSelect={handleSampleSelect}
                 onSamplePageChange={handleSamplePageChange}

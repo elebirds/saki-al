@@ -25,11 +25,12 @@ const (
 type AnnotationSource int32
 
 const (
-	AnnotationSource_ANNOTATION_SOURCE_UNSPECIFIED AnnotationSource = 0
-	AnnotationSource_ANNOTATION_SOURCE_MANUAL      AnnotationSource = 1
-	AnnotationSource_ANNOTATION_SOURCE_MODEL       AnnotationSource = 2
-	AnnotationSource_ANNOTATION_SOURCE_SYSTEM      AnnotationSource = 3
-	AnnotationSource_ANNOTATION_SOURCE_IMPORTED    AnnotationSource = 4
+	AnnotationSource_ANNOTATION_SOURCE_UNSPECIFIED     AnnotationSource = 0
+	AnnotationSource_ANNOTATION_SOURCE_MANUAL          AnnotationSource = 1
+	AnnotationSource_ANNOTATION_SOURCE_MODEL           AnnotationSource = 2
+	AnnotationSource_ANNOTATION_SOURCE_SYSTEM          AnnotationSource = 3
+	AnnotationSource_ANNOTATION_SOURCE_IMPORTED        AnnotationSource = 4
+	AnnotationSource_ANNOTATION_SOURCE_CONFIRMED_MODEL AnnotationSource = 5
 )
 
 // Enum value maps for AnnotationSource.
@@ -40,13 +41,15 @@ var (
 		2: "ANNOTATION_SOURCE_MODEL",
 		3: "ANNOTATION_SOURCE_SYSTEM",
 		4: "ANNOTATION_SOURCE_IMPORTED",
+		5: "ANNOTATION_SOURCE_CONFIRMED_MODEL",
 	}
 	AnnotationSource_value = map[string]int32{
-		"ANNOTATION_SOURCE_UNSPECIFIED": 0,
-		"ANNOTATION_SOURCE_MANUAL":      1,
-		"ANNOTATION_SOURCE_MODEL":       2,
-		"ANNOTATION_SOURCE_SYSTEM":      3,
-		"ANNOTATION_SOURCE_IMPORTED":    4,
+		"ANNOTATION_SOURCE_UNSPECIFIED":     0,
+		"ANNOTATION_SOURCE_MANUAL":          1,
+		"ANNOTATION_SOURCE_MODEL":           2,
+		"ANNOTATION_SOURCE_SYSTEM":          3,
+		"ANNOTATION_SOURCE_IMPORTED":        4,
+		"ANNOTATION_SOURCE_CONFIRMED_MODEL": 5,
 	}
 )
 
@@ -1171,13 +1174,14 @@ const file_saki_ir_v1_annotation_ir_proto_rawDesc = "" +
 	"\x05stats\x18\a \x01(\v2\x18.saki.ir.v1.PayloadStatsR\x05stats\"]\n" +
 	"\x0eEncodedPayload\x121\n" +
 	"\x06header\x18\x01 \x01(\v2\x19.saki.ir.v1.PayloadHeaderR\x06header\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload*\xae\x01\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload*\xd5\x01\n" +
 	"\x10AnnotationSource\x12!\n" +
 	"\x1dANNOTATION_SOURCE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18ANNOTATION_SOURCE_MANUAL\x10\x01\x12\x1b\n" +
 	"\x17ANNOTATION_SOURCE_MODEL\x10\x02\x12\x1c\n" +
 	"\x18ANNOTATION_SOURCE_SYSTEM\x10\x03\x12\x1e\n" +
-	"\x1aANNOTATION_SOURCE_IMPORTED\x10\x04*Q\n" +
+	"\x1aANNOTATION_SOURCE_IMPORTED\x10\x04\x12%\n" +
+	"!ANNOTATION_SOURCE_CONFIRMED_MODEL\x10\x05*Q\n" +
 	"\rPayloadSchema\x12\x1e\n" +
 	"\x1aPAYLOAD_SCHEMA_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cPAYLOAD_SCHEMA_DATA_BATCH_IR\x10\x01*d\n" +

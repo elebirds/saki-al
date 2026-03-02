@@ -35,12 +35,15 @@ class SamplingService:
         strategy: str,
         params: dict[str, Any],
         protected: set[str],
+        query_type: str,
         topk: int,
     ) -> list[dict[str, Any]]:
         page_size = max(1, min(5000, int(params.get("unlabeled_page_size", 1000))))
-        target_topk = max(1, topk)
+        target_topk = int(topk)
+        keep_all = target_topk <= 0
         cursor: str | None = None
         heap: list[tuple[float, int, dict[str, Any]]] = []
+        rows: list[dict[str, Any]] = []
         counter = 0
 
         while True:
@@ -49,7 +52,7 @@ class SamplingService:
 
             response = await self._fetch_page(
                 step_id=step_id,
-                query_type="unlabeled_samples",
+                query_type=query_type,
                 project_id=project_id,
                 commit_id=commit_id,
                 cursor=cursor,
@@ -73,34 +76,43 @@ class SamplingService:
                 item["local_path"] = str(cached_path)
                 protected.add(str(asset_hash))
 
+            call_params = params
+            if keep_all:
+                # keep_all means "do not truncate by topk"; some plugins still slice by topk,
+                # so force per-page topk to current page size to preserve full recall.
+                page_topk = len(chunk)
+                if page_topk > 0:
+                    call_params = dict(params)
+                    call_params["topk"] = page_topk
+                    call_params["sampling_topk"] = page_topk
+
             batch = await plugin.predict_unlabeled_batch(
                 workspace=workspace,
                 unlabeled_samples=chunk,
                 strategy=strategy,
-                params=params,
+                params=call_params,
             )
-            self._merge_batch_into_heap(
-                heap=heap,
-                batch=batch or [],
-                target_topk=target_topk,
-                counter_start=counter,
-            )
+            if keep_all:
+                rows.extend(self._normalize_batch(batch or []))
+            else:
+                self._merge_batch_into_heap(
+                    heap=heap,
+                    batch=batch or [],
+                    target_topk=target_topk,
+                    counter_start=counter,
+                )
             counter += len(batch or [])
             cursor = response.next_cursor
             if not cursor:
                 break
 
+        if keep_all:
+            return self._build_ranked_output_from_rows(rows)
         return self._build_ranked_output(heap)
 
     @staticmethod
-    def _merge_batch_into_heap(
-        *,
-        heap: list[tuple[float, int, dict[str, Any]]],
-        batch: list[dict[str, Any]],
-        target_topk: int,
-        counter_start: int,
-    ) -> None:
-        counter = counter_start
+    def _normalize_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
         for candidate in batch:
             sample_id = str(candidate.get("sample_id") or "")
             if not sample_id:
@@ -115,11 +127,26 @@ class SamplingService:
             prediction_snapshot = candidate.get("prediction_snapshot")
             if isinstance(prediction_snapshot, dict) and prediction_snapshot:
                 reason_payload = {**reason_payload, "prediction_snapshot": prediction_snapshot}
-            payload = {
-                "sample_id": sample_id,
-                "score": score,
-                "reason": reason_payload,
-            }
+            normalized.append(
+                {
+                    "sample_id": sample_id,
+                    "score": score,
+                    "reason": reason_payload,
+                }
+            )
+        return normalized
+
+    @staticmethod
+    def _merge_batch_into_heap(
+        *,
+        heap: list[tuple[float, int, dict[str, Any]]],
+        batch: list[dict[str, Any]],
+        target_topk: int,
+        counter_start: int,
+    ) -> None:
+        counter = counter_start
+        for payload in SamplingService._normalize_batch(batch):
+            score = float(payload.get("score") or 0.0)
             counter += 1
             key = (score, counter, payload)
             if len(heap) < target_topk:
@@ -139,4 +166,16 @@ class SamplingService:
             if isinstance(reason, dict):
                 payload["reason"] = {**reason, "rank": rank}
             output.append(payload)
+        return output
+
+    @staticmethod
+    def _build_ranked_output_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        ranked = sorted(rows, key=lambda item: float(item.get("score") or 0.0), reverse=True)
+        output: list[dict[str, Any]] = []
+        for rank, payload in enumerate(ranked, start=1):
+            row = dict(payload)
+            reason = row.get("reason")
+            if isinstance(reason, dict):
+                row["reason"] = {**reason, "rank": rank}
+            output.append(row)
         return output

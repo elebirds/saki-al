@@ -56,7 +56,7 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
     const label = ann.labelName || '';
 
     // 判断是否为生成的标注（auto-generated）
-    const isGenerated = ann.source === 'auto' || ann.source === 'system' || ann.source === 'model' || ann.source === 'fedo_mapping';
+    const isGenerated = ann.source === 'auto' || ann.source === 'system' || ann.source === 'fedo_mapping';
 
     // 生成的标注不能拖拽和变换，没有编辑权限的标注也不能
     const canDrag = currentTool === ANNOTATION_TOOL_SELECT && !isGenerated && canEdit;

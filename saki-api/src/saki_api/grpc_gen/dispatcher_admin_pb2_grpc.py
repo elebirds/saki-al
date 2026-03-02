@@ -79,6 +79,11 @@ class DispatcherAdminStub(object):
                 request_serializer=dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
                 _registered_method=True)
+        self.DispatchStep = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/DispatchStep',
+                request_serializer=dispatcher__admin__pb2.DispatchStepRequest.SerializeToString,
+                response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
+                _registered_method=True)
         self.GetRuntimeSummary = channel.unary_unary(
                 '/saki.dispatcher.admin.v1.DispatcherAdmin/GetRuntimeSummary',
                 request_serializer=dispatcher__admin__pb2.RuntimeSummaryRequest.SerializeToString,
@@ -168,6 +173,12 @@ class DispatcherAdminServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def DispatchStep(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetRuntimeSummary(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -250,6 +261,11 @@ def add_DispatcherAdminServicer_to_server(servicer, server):
             'StopStep': grpc.unary_unary_rpc_method_handler(
                     servicer.StopStep,
                     request_deserializer=dispatcher__admin__pb2.StepCommandRequest.FromString,
+                    response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
+            ),
+            'DispatchStep': grpc.unary_unary_rpc_method_handler(
+                    servicer.DispatchStep,
+                    request_deserializer=dispatcher__admin__pb2.DispatchStepRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
             'GetRuntimeSummary': grpc.unary_unary_rpc_method_handler(
@@ -525,6 +541,33 @@ class DispatcherAdmin(object):
             target,
             '/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep',
             dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
+            dispatcher__admin__pb2.CommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DispatchStep(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/DispatchStep',
+            dispatcher__admin__pb2.DispatchStepRequest.SerializeToString,
             dispatcher__admin__pb2.CommandResponse.FromString,
             options,
             channel_credentials,

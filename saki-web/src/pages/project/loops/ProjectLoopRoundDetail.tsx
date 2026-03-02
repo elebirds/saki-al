@@ -1069,6 +1069,13 @@ const ProjectLoopRoundDetail: React.FC = () => {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'}</Tag>
+                        <Button
+                            onClick={() => navigate(
+                                `/projects/${projectId}/prediction-tasks?targetRoundId=${round.id}&artifactName=best.pt`,
+                            )}
+                        >
+                            预测任务快捷入口
+                        </Button>
                         {round.state === 'failed' ? (
                             <Button type="primary" loading={retrying} onClick={handleRetryRound}>
                                 重跑本轮

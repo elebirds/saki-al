@@ -565,6 +565,27 @@ func (s *Service) StopStep(ctx context.Context, commandID string, stepID string,
 	})
 }
 
+func (s *Service) DispatchStep(ctx context.Context, commandID string, stepID string) (CommandResult, error) {
+	return s.withCommand(ctx, commandID, "dispatch_step", stepID, func(tx pgx.Tx, _ string) (string, string, error) {
+		stepPGID, err := parseUUID(stepID)
+		if err != nil {
+			return "rejected", "step not found", nil
+		}
+		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return "rejected", "step not found", nil
+			}
+			return "", "", err
+		}
+		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
+			return "rejected", "step is in terminal state", nil
+		}
+		s.dispatcher.QueueStep(stepPGID.String())
+		return "applied", "dispatch_step queued", nil
+	})
+}
+
 func (s *Service) listTickLoopIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListTickLoopIDs(ctx, int32(max(1, limit)))
 }

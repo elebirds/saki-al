@@ -143,6 +143,17 @@ func (s *Server) StopStep(ctx context.Context, req *dispatcheradminv1.StepComman
 	return convertCommandResult(result), nil
 }
 
+func (s *Server) DispatchStep(ctx context.Context, req *dispatcheradminv1.DispatchStepRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetStepId(), "step_id"); err != nil {
+		return nil, err
+	}
+	result, err := s.commands.DispatchStep(ctx, req.GetCommandId(), req.GetStepId())
+	if err != nil {
+		return nil, err
+	}
+	return convertCommandResult(result), nil
+}
+
 func (s *Server) GetRuntimeSummary(_ context.Context, _ *dispatcheradminv1.RuntimeSummaryRequest) (*dispatcheradminv1.RuntimeSummaryResponse, error) {
 	snapshot := s.dispatcher.Summary()
 	response := &dispatcheradminv1.RuntimeSummaryResponse{

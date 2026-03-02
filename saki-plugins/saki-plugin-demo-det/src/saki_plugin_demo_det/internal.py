@@ -15,7 +15,7 @@ class DemoDetectionInternal:
 
     @property
     def version(self) -> str:
-        return "0.1.0"
+        return "0.1.1"
 
     @property
     def display_name(self) -> str:
@@ -26,9 +26,8 @@ class DemoDetectionInternal:
         return [
             "train",
             "score",
+            "predict",
             "eval",
-            "export",
-            "upload_artifact",
             "custom",
         ]
 
@@ -164,52 +163,6 @@ class DemoDetectionInternal:
                     kind="report",
                     name="eval_report.json",
                     path=report_path,
-                    content_type="application/json",
-                    required=True,
-                )
-            ],
-        )
-
-    async def export(
-            self,
-            workspace: Workspace,
-            params: dict[str, Any],
-            emit: EventCallback,
-    ) -> TrainOutput:
-        del params
-        await emit("log", {"level": "INFO", "message": "export step started"})
-        export_path = workspace.artifacts_dir / "model.onnx"
-        export_path.write_text("demo-exported-onnx", encoding="utf-8")
-        return TrainOutput(
-            metrics={"exported": 1.0},
-            artifacts=[
-                TrainArtifact(
-                    kind="model_export",
-                    name="model.onnx",
-                    path=export_path,
-                    content_type="application/octet-stream",
-                    required=True,
-                )
-            ],
-        )
-
-    async def upload_artifact(
-            self,
-            workspace: Workspace,
-            params: dict[str, Any],
-            emit: EventCallback,
-    ) -> TrainOutput:
-        del params
-        await emit("log", {"level": "INFO", "message": "upload_artifact step started"})
-        manifest_path = workspace.artifacts_dir / "upload_manifest.json"
-        manifest_path.write_text(json.dumps({"status": "ready"}, ensure_ascii=False, indent=2), encoding="utf-8")
-        return TrainOutput(
-            metrics={"upload_manifest_ready": 1.0},
-            artifacts=[
-                TrainArtifact(
-                    kind="report",
-                    name="upload_manifest.json",
-                    path=manifest_path,
                     content_type="application/json",
                     required=True,
                 )

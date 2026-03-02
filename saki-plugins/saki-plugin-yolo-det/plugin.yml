@@ -1,14 +1,13 @@
 plugin_id: "yolo_det_v1"
-version: "0.3.0"
+version: "0.3.1"
 display_name: "YOLO Detection"
 sdk_version: ">=0.2.0"
 
 supported_step_types:
   - train
   - score
+  - predict
   - eval
-  - export
-  - upload_artifact
   - custom
 
 supported_strategies:

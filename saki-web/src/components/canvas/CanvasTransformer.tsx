@@ -20,7 +20,6 @@ const CanvasTransformer = forwardRef<Konva.Transformer, CanvasTransformerProps>(
     // 判断是否为生成的标注（auto-generated）
     const isGenerated = selectedAnnotation?.source === 'auto' ||
         selectedAnnotation?.source === 'system' ||
-        selectedAnnotation?.source === 'model' ||
         selectedAnnotation?.source === 'fedo_mapping';
 
     // 只有主标注（非生成的）且有编辑权限才能调整大小

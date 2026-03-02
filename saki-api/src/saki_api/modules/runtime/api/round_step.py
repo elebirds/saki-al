@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -377,19 +377,30 @@ class RoundMissingSamplesResponse(BaseModel):
     has_more: bool = False
 
 
-class PredictionSetGenerateRequest(BaseModel):
-    source_round_id: Optional[uuid.UUID] = None
-    source_step_id: Optional[uuid.UUID] = None
+class PredictionModelSource(BaseModel):
+    kind: Literal["round_artifact", "model"]
+    round_id: Optional[uuid.UUID] = None
     model_id: Optional[uuid.UUID] = None
-    base_commit_id: Optional[uuid.UUID] = None
-    scope_type: str = "snapshot_scope"
+    artifact_name: str = "best.pt"
+
+
+class PredictionSetGenerateRequest(BaseModel):
+    plugin_id: str
+    target_round_id: uuid.UUID
+    model_source: PredictionModelSource
+    target_branch_id: uuid.UUID
+    base_commit_id: uuid.UUID
+    predict_conf: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    scope_type: str = "sample_status"
     scope_payload: Dict[str, Any] = Field(default_factory=dict)
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
 class PredictionSetRead(BaseModel):
     id: uuid.UUID
-    loop_id: uuid.UUID
+    project_id: uuid.UUID
+    loop_id: Optional[uuid.UUID] = None
+    plugin_id: str
     source_round_id: Optional[uuid.UUID] = None
     source_step_id: Optional[uuid.UUID] = None
     model_id: Optional[uuid.UUID] = None
@@ -399,9 +410,16 @@ class PredictionSetRead(BaseModel):
     status: str
     total_items: int = 0
     params: Dict[str, Any] = Field(default_factory=dict)
+    last_error: Optional[str] = None
+    task_step_id: Optional[uuid.UUID] = None
+    task_step_state: Optional[StepStatus] = None
     created_by: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
+
+
+class PredictionTaskRead(PredictionSetRead):
+    pass
 
 
 class PredictionItemRead(BaseModel):

@@ -297,6 +297,7 @@ class StepManager:
         strategy: str,
         params: dict[str, Any],
         protected: set[str],
+        query_type: str,
         topk: int,
     ) -> list[dict[str, Any]]:
         return await self._sampling_service.collect_topk_candidates_streaming(
@@ -308,5 +309,6 @@ class StepManager:
             strategy=strategy,
             params=params,
             protected=protected,
+            query_type=query_type,
             topk=topk,
         )

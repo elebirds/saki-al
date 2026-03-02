@@ -147,7 +147,7 @@ class YoloDetectionInternal:
 
     @property
     def version(self) -> str:
-        return "0.2.0"
+        return "0.3.1"
 
     @property
     def display_name(self) -> str:
@@ -158,9 +158,8 @@ class YoloDetectionInternal:
         return [
             "train",
             "score",
+            "predict",
             "eval",
-            "export",
-            "upload_artifact",
             "custom",
         ]
 
@@ -444,103 +443,6 @@ class YoloDetectionInternal:
             )
         return TrainOutput(metrics=metrics, artifacts=artifacts)
 
-    async def export(
-        self,
-        workspace: Workspace,
-        params: dict[str, Any],
-        emit: EventCallback,
-    ) -> TrainOutput:
-        self._stop_flag.clear()
-        cfg = self.resolve_config(mode="manual", raw_config=params)
-        device, requested_device, resolved_backend = self._resolve_device(cfg)
-        model_path = await self._resolve_best_or_fallback_model(workspace=workspace, params=cfg)
-        export_format = str(params.get("export_format") or params.get("format") or "onnx").strip().lower() or "onnx"
-        imgsz = _to_int(cfg.imgsz, 640)
-
-        await emit(
-            "log",
-            {
-                "level": "INFO",
-                "message": (
-                    f"YOLO export started model={model_path} format={export_format} imgsz={imgsz} "
-                    f"requested_device={requested_device} resolved_backend={resolved_backend} device={device}"
-                ),
-            },
-        )
-
-        exported_path = await asyncio.to_thread(
-            self._run_export_sync,
-            model_path=model_path,
-            export_format=export_format,
-            imgsz=imgsz,
-            device=device,
-        )
-        export_file = Path(exported_path)
-        if not export_file.exists():
-            raise RuntimeError(f"export output not found: {export_file}")
-
-        report_path = workspace.artifacts_dir / "export_report.json"
-        report_path.write_text(
-            json.dumps(
-                {
-                    "model_path": model_path,
-                    "export_format": export_format,
-                    "exported_path": str(export_file),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-
-        return TrainOutput(
-            metrics={"export_success": 1.0},
-            artifacts=[
-                TrainArtifact(
-                    kind="model_export",
-                    name=export_file.name,
-                    path=export_file,
-                    content_type="application/octet-stream",
-                    required=True,
-                ),
-                TrainArtifact(
-                    kind="report",
-                    name="export_report.json",
-                    path=report_path,
-                    content_type="application/json",
-                    required=True,
-                ),
-            ],
-        )
-
-    async def upload_artifact(
-        self,
-        workspace: Workspace,
-        params: dict[str, Any],
-        emit: EventCallback,
-    ) -> TrainOutput:
-        del params
-        await emit("log", {"level": "INFO", "message": "upload_artifact step started"})
-        files = [item for item in workspace.artifacts_dir.iterdir() if item.is_file()]
-        manifest = {
-            "artifact_count": len(files),
-            "artifacts": [item.name for item in files],
-        }
-        manifest_path = workspace.artifacts_dir / "upload_manifest.json"
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-        return TrainOutput(
-            metrics={"artifact_count": float(len(files))},
-            artifacts=[
-                TrainArtifact(
-                    kind="report",
-                    name="upload_manifest.json",
-                    path=manifest_path,
-                    content_type="application/json",
-                    required=True,
-                )
-            ],
-        )
-
     def _write_training_report(
         self,
         *,
@@ -745,24 +647,6 @@ class YoloDetectionInternal:
             "save_dir": str(save_dir) if save_dir else "",
             "extra_artifacts": extra_artifacts,
         }
-
-    def _run_export_sync(
-        self,
-        *,
-        model_path: str,
-        export_format: str,
-        imgsz: int,
-        device: Any,
-    ) -> str:
-        YOLO = self._load_yolo()
-        model = YOLO(model_path)
-        exported = model.export(
-            format=export_format,
-            imgsz=imgsz,
-            device=device,
-            verbose=False,
-        )
-        return str(exported or "")
 
     def _ensure_image_deps(self) -> None:
         if Image is None or np is None:

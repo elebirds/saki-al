@@ -546,6 +546,8 @@ class ExportService:
             return IRAnnotationSource.ANNOTATION_SOURCE_MANUAL
         if source == DBAnnotationSource.MODEL:
             return IRAnnotationSource.ANNOTATION_SOURCE_MODEL
+        if source == DBAnnotationSource.CONFIRMED_MODEL:
+            return IRAnnotationSource.ANNOTATION_SOURCE_CONFIRMED_MODEL
         if source == DBAnnotationSource.SYSTEM:
             return IRAnnotationSource.ANNOTATION_SOURCE_SYSTEM
         if source == DBAnnotationSource.IMPORTED:

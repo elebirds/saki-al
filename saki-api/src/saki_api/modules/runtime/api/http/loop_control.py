@@ -24,6 +24,7 @@ from saki_api.modules.runtime.api.round_step import (
     PredictionSetDetailRead,
     PredictionSetGenerateRequest,
     PredictionSetRead,
+    PredictionTaskRead,
     RoundPredictionCleanupResponse,
     SnapshotVersionRead,
     SnapshotVersionSummaryRead,
@@ -88,6 +89,34 @@ async def _dispatch_loop_command(
     except Exception as exc:
         logger.warning("dispatcher loop command failed command={} loop_id={} error={}", command, loop_id, exc)
         raise InternalServerErrorAppException("dispatcher loop command failed") from exc
+
+
+def _to_prediction_set_read(row, *, task_step=None) -> PredictionSetRead:
+    return PredictionSetRead(
+        id=row.id,
+        project_id=row.project_id,
+        loop_id=row.loop_id,
+        plugin_id=str(row.plugin_id or ""),
+        source_round_id=row.source_round_id,
+        source_step_id=row.source_step_id,
+        model_id=row.model_id,
+        base_commit_id=row.base_commit_id,
+        scope_type=str(row.scope_type or ""),
+        scope_payload=dict(row.scope_payload or {}),
+        status=str(row.status or ""),
+        total_items=int(row.total_items or 0),
+        params=dict(row.params or {}),
+        last_error=row.last_error,
+        task_step_id=getattr(task_step, "id", None),
+        task_step_state=getattr(task_step, "state", None),
+        created_by=row.created_by,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _to_prediction_task_read(row, *, task_step=None) -> PredictionTaskRead:
+    return PredictionTaskRead(**_to_prediction_set_read(row, task_step=task_step).model_dump())
 
 
 @router.post("/loops/{loop_id}:act", response_model=LoopActionResponse)
@@ -247,48 +276,103 @@ async def get_loop_gate(
     return LoopGateResponse(**payload)
 
 
-@router.post("/loops/{loop_id}/prediction-sets:generate", response_model=PredictionSetRead)
+@router.post("/projects/{project_id}/prediction-sets:generate", response_model=PredictionSetRead)
 async def generate_prediction_set(
     *,
-    loop_id: uuid.UUID,
+    project_id: uuid.UUID,
     payload: PredictionSetGenerateRequest,
     runtime_service: RuntimeServiceDep,
+    dispatcher_admin_client: DispatcherAdminClientDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
-        project_id=loop.project_id,
+        project_id=project_id,
         required=Permissions.LOOP_MANAGE,
     )
     result = await runtime_service.generate_prediction_set(
-        loop_id=loop_id,
+        project_id=project_id,
         payload=payload.model_dump(exclude_none=True),
         actor_user_id=current_user_id,
     )
-    return PredictionSetRead.model_validate(result, from_attributes=True)
+    task_step_id = result.source_step_id
+    if task_step_id is not None and dispatcher_admin_client.enabled:
+        try:
+            await dispatcher_admin_client.dispatch_step(str(task_step_id))
+        except Exception as exc:
+            logger.warning("dispatch prediction task failed task_step_id={} error={}", task_step_id, exc)
+            await runtime_service.prediction_set_repo.update(
+                result.id,
+                {"last_error": f"dispatch failed: {exc}"},
+            )
+    settled = await runtime_service.get_prediction_task(task_id=result.id)
+    settled_step = await runtime_service.step_repo.get_by_id(settled.source_step_id) if settled.source_step_id else None
+    return _to_prediction_set_read(settled, task_step=settled_step)
 
 
-@router.get("/loops/{loop_id}/prediction-sets", response_model=list[PredictionSetRead])
+@router.get("/projects/{project_id}/prediction-sets", response_model=list[PredictionSetRead])
 async def list_prediction_sets(
     *,
-    loop_id: uuid.UUID,
+    project_id: uuid.UUID,
     limit: int = 100,
     runtime_service: RuntimeServiceDep,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
-        project_id=loop.project_id,
+        project_id=project_id,
         required=Permissions.LOOP_READ,
     )
-    rows = await runtime_service.list_prediction_sets(loop_id=loop_id, limit=limit)
-    return [PredictionSetRead.model_validate(row, from_attributes=True) for row in rows]
+    rows = await runtime_service.list_prediction_sets(project_id=project_id, limit=limit)
+    step_ids = [row.source_step_id for row in rows if row.source_step_id is not None]
+    steps = await runtime_service.step_repo.get_by_ids(step_ids)
+    step_by_id = {item.id: item for item in steps}
+    return [_to_prediction_set_read(row, task_step=step_by_id.get(row.source_step_id)) for row in rows]
+
+
+@router.get("/projects/{project_id}/prediction-tasks", response_model=list[PredictionTaskRead])
+async def list_prediction_tasks(
+    *,
+    project_id: uuid.UUID,
+    limit: int = 100,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=project_id,
+        required=Permissions.LOOP_READ,
+    )
+    rows = await runtime_service.list_prediction_tasks(project_id=project_id, limit=limit)
+    step_ids = [row.source_step_id for row in rows if row.source_step_id is not None]
+    steps = await runtime_service.step_repo.get_by_ids(step_ids)
+    step_by_id = {item.id: item for item in steps}
+    return [_to_prediction_task_read(row, task_step=step_by_id.get(row.source_step_id)) for row in rows]
+
+
+@router.get("/prediction-tasks/{task_id}", response_model=PredictionTaskRead)
+async def get_prediction_task(
+    *,
+    task_id: uuid.UUID,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    row = await runtime_service.get_prediction_task(task_id=task_id)
+    await _ensure_project_perm(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=row.project_id,
+        required=Permissions.LOOP_READ,
+    )
+    step = await runtime_service.step_repo.get_by_id(row.source_step_id) if row.source_step_id else None
+    return _to_prediction_task_read(row, task_step=step)
 
 
 @router.get("/prediction-sets/{prediction_set_id}", response_model=PredictionSetDetailRead)
@@ -304,15 +388,21 @@ async def get_prediction_set_detail(
         prediction_set_id=prediction_set_id,
         item_limit=item_limit,
     )
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(prediction_set.loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
-        project_id=loop.project_id,
+        project_id=prediction_set.project_id,
         required=Permissions.LOOP_READ,
     )
     return PredictionSetDetailRead(
-        prediction_set=PredictionSetRead.model_validate(prediction_set, from_attributes=True),
+        prediction_set=_to_prediction_set_read(
+            prediction_set,
+            task_step=(
+                await runtime_service.step_repo.get_by_id(prediction_set.source_step_id)
+                if prediction_set.source_step_id
+                else None
+            ),
+        ),
         items=[
             {
                 "sample_id": row.sample_id,
@@ -339,11 +429,10 @@ async def apply_prediction_set(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     prediction_set = await runtime_service.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
-    loop = await runtime_service.loop_repo.get_by_id_or_raise(prediction_set.loop_id)
     await _ensure_project_perm(
         session=session,
         current_user_id=current_user_id,
-        project_id=loop.project_id,
+        project_id=prediction_set.project_id,
         required=Permissions.LOOP_MANAGE,
     )
     result = await runtime_service.apply_prediction_set(

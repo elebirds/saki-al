@@ -54,6 +54,8 @@ class AnnotationSource(str, Enum):
     SYSTEM = "system"
     # Imported from external source
     IMPORTED = "imported"
+    # Model prediction confirmed by user
+    CONFIRMED_MODEL = "confirmed_model"
 
 
 class DatasetType(str, Enum):

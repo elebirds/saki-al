@@ -1265,12 +1265,22 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
                     camap_mappings.append((sample_id, existing_ann.id))
                     continue
 
+                try:
+                    label_id = uuid.UUID(str(normalized_item.get("label_id")))
+                    group_id = uuid.UUID(str(normalized_item.get("group_id")))
+                    lineage_id = uuid.UUID(str(normalized_item.get("lineage_id")))
+                    annotator_id = uuid.UUID(str(normalized_item.get("annotator_id") or author_id))
+                except Exception as exc:
+                    raise BadRequestAppException(
+                        "annotation label_id/group_id/lineage_id/annotator_id must be UUID"
+                    ) from exc
+
                 annotation = Annotation(
                     project_id=item.get("project_id") or project_id,
                     sample_id=sample_id,
-                    label_id=normalized_item.get("label_id"),
-                    group_id=normalized_item.get("group_id"),
-                    lineage_id=normalized_item.get("lineage_id"),
+                    label_id=label_id,
+                    group_id=group_id,
+                    lineage_id=lineage_id,
                     parent_id=existing_ann.id if existing_ann else None,
                     view_role=normalized_item.get("view_role") or "main",
                     type=normalized_item.get("type"),
@@ -1278,7 +1288,7 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
                     geometry=normalized_item.get("geometry") or {},
                     attrs=normalized_item.get("attrs") or {},
                     confidence=float(normalized_item.get("confidence") or 1.0),
-                    annotator_id=normalized_item.get("annotator_id") or author_id,
+                    annotator_id=annotator_id,
                 )
                 self.session.add(annotation)
                 new_annotations.append(annotation)

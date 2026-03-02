@@ -55,6 +55,7 @@ import {
     PredictionSetDetailRead,
     PredictionSetGenerateRequest,
     PredictionSetRead,
+    PredictionTaskRead,
     SimulationComparison,
     SimulationExperimentCreateRequest,
     SimulationExperimentCreateResponse,
@@ -256,8 +257,10 @@ export interface ApiService {
     actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse>;
     getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;
     getLoopGate(loopId: string): Promise<LoopGateResponse>;
-    generatePredictionSet(loopId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead>;
-    listPredictionSets(loopId: string, limit?: number): Promise<PredictionSetRead[]>;
+    generatePredictionSet(projectId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead>;
+    listPredictionSets(projectId: string, limit?: number): Promise<PredictionSetRead[]>;
+    listPredictionTasks(projectId: string, limit?: number): Promise<PredictionTaskRead[]>;
+    getPredictionTask(taskId: string): Promise<PredictionTaskRead>;
     getPredictionSetDetail(predictionSetId: string, itemLimit?: number): Promise<PredictionSetDetailRead>;
     applyPredictionSet(
         predictionSetId: string,

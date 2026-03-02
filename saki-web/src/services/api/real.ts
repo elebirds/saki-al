@@ -55,6 +55,7 @@ import {
     PredictionSetDetailRead,
     PredictionSetGenerateRequest,
     PredictionSetRead,
+    PredictionTaskRead,
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
     LoopSummary,
@@ -973,18 +974,30 @@ export class RealApiService implements ApiService {
         };
     }
 
-    async generatePredictionSet(loopId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead> {
+    async generatePredictionSet(projectId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead> {
         const response = await this.client.post<PredictionSetRead>(
-            `/loops/${loopId}/prediction-sets:generate`,
+            `/projects/${projectId}/prediction-sets:generate`,
             payload ?? {},
         );
         return response.data;
     }
 
-    async listPredictionSets(loopId: string, limit: number = 100): Promise<PredictionSetRead[]> {
-        const response = await this.client.get<PredictionSetRead[]>(`/loops/${loopId}/prediction-sets`, {
+    async listPredictionSets(projectId: string, limit: number = 100): Promise<PredictionSetRead[]> {
+        const response = await this.client.get<PredictionSetRead[]>(`/projects/${projectId}/prediction-sets`, {
             params: {limit},
         });
+        return response.data;
+    }
+
+    async listPredictionTasks(projectId: string, limit: number = 100): Promise<PredictionTaskRead[]> {
+        const response = await this.client.get<PredictionTaskRead[]>(`/projects/${projectId}/prediction-tasks`, {
+            params: {limit},
+        });
+        return response.data;
+    }
+
+    async getPredictionTask(taskId: string): Promise<PredictionTaskRead> {
+        const response = await this.client.get<PredictionTaskRead>(`/prediction-tasks/${taskId}`);
         return response.data;
     }
 

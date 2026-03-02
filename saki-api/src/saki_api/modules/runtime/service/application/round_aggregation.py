@@ -21,8 +21,12 @@ def build_round_update_from_steps(*, round_row: Round, steps: Iterable[Step]) ->
             final_metrics={},
             final_artifacts={},
         )
+    ordered_steps = sorted(
+        step_rows,
+        key=lambda step: (int(step.step_index or 0), str(step.created_at or "")),
+    )
 
-    snapshot = summarize_step_states(step.state for step in step_rows)
+    snapshot = summarize_step_states(step.state for step in ordered_steps)
     round_state = snapshot.state
 
     payload = RoundUpdate(
@@ -35,9 +39,22 @@ def build_round_update_from_steps(*, round_row: Round, steps: Iterable[Step]) ->
     if round_state in TERMINAL_ROUND_STATES and not round_row.ended_at:
         payload.ended_at = datetime.now(UTC)
 
-    last_step = step_rows[-1]
+    last_step = ordered_steps[-1]
     payload.final_metrics = dict(last_step.metrics or {})
-    payload.final_artifacts = dict(last_step.artifacts or {})
+    merged_artifacts: dict[str, dict] = {}
+    for step in ordered_steps:
+        step_artifacts = step.artifacts if isinstance(step.artifacts, dict) else {}
+        for raw_name, raw_artifact in step_artifacts.items():
+            name = str(raw_name or "").strip()
+            if not name:
+                continue
+            if not isinstance(raw_artifact, dict):
+                continue
+            uri = str(raw_artifact.get("uri") or "").strip()
+            if not uri:
+                continue
+            merged_artifacts[name] = dict(raw_artifact)
+    payload.final_artifacts = merged_artifacts
     if last_step.output_commit_id:
         payload.output_commit_id = last_step.output_commit_id
     if last_step.last_error:

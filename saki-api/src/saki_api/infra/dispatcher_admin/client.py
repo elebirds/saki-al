@@ -165,6 +165,22 @@ class DispatcherAdminClient:
             metadata=self._metadata(),
         )
 
+    async def dispatch_step(
+            self,
+            step_id: str,
+            *,
+            command_id: str | None = None,
+    ) -> pb.CommandResponse:
+        stub = await self._get_stub()
+        return await stub.DispatchStep(
+            pb.DispatchStepRequest(
+                command_id=command_id or str(uuid.uuid4()),
+                step_id=str(step_id),
+            ),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )
+
     async def get_runtime_summary(self) -> pb.RuntimeSummaryResponse:
         stub = await self._get_stub()
         return await stub.GetRuntimeSummary(

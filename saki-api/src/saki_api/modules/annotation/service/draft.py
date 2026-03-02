@@ -171,10 +171,47 @@ class AnnotationDraftService(CrudServiceBase[AnnotationDraft, AnnotationDraftRep
             raise BadRequestAppException("No drafts to commit")
 
         annotation_changes: List[Dict[str, Any]] = []
+        touched_sample_ids: List[uuid.UUID] = []
+        touched_sample_id_set: set[uuid.UUID] = set()
+        committed_draft_sample_ids: set[uuid.UUID] = set()
         for draft in drafts:
             payload = draft.payload or {}
-            items = payload.get("annotations") or []
+            items = payload.get("annotations") if isinstance(payload.get("annotations"), list) else []
+            meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+            reviewed_empty = bool(meta.get("reviewed_empty"))
+
+            unconfirmed_group_ids: set[str] = set()
             for item in items:
+                if not isinstance(item, dict):
+                    continue
+                source = str(item.get("source") or "").strip().lower()
+                if source != "model":
+                    continue
+                group_id = str(item.get("group_id") or item.get("groupId") or item.get("id") or "").strip()
+                if group_id:
+                    unconfirmed_group_ids.add(group_id)
+
+            committable_items: List[Dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                source = str(item.get("source") or "").strip().lower()
+                group_id = str(item.get("group_id") or item.get("groupId") or item.get("id") or "").strip()
+                if source == "model":
+                    continue
+                if group_id and group_id in unconfirmed_group_ids:
+                    continue
+                committable_items.append(item)
+
+            if not committable_items and not reviewed_empty:
+                continue
+
+            if draft.sample_id not in touched_sample_id_set:
+                touched_sample_id_set.add(draft.sample_id)
+                touched_sample_ids.append(draft.sample_id)
+            committed_draft_sample_ids.add(draft.sample_id)
+
+            for item in committable_items:
                 # Ensure required fields
                 if not item.get("project_id"):
                     item["project_id"] = str(project_id)
@@ -184,21 +221,25 @@ class AnnotationDraftService(CrudServiceBase[AnnotationDraft, AnnotationDraftRep
                     item["annotator_id"] = str(user_id)
                 annotation_changes.append(item)
 
+        if not touched_sample_ids:
+            raise BadRequestAppException("No committable drafts: please confirm model annotations first")
+
         commit = await self.project_service.save_annotations(
             project_id=project_id,
             branch_name=branch_name,
             annotation_changes=annotation_changes,
             commit_message=commit_message,
             author_id=user_id,
-            touched_sample_ids=[d.sample_id for d in drafts],
+            touched_sample_ids=touched_sample_ids,
         )
 
-        used_sample_ids = [d.sample_id for d in drafts]
-        await self.repository.delete_by_user_project(
-            user_id=user_id,
-            project_id=project_id,
-            branch_name=branch_name,
-            sample_id=None,
-        )
+        used_sample_ids = list(touched_sample_ids)
+        for sample_id in committed_draft_sample_ids:
+            await self.repository.delete_by_user_project(
+                user_id=user_id,
+                project_id=project_id,
+                branch_name=branch_name,
+                sample_id=sample_id,
+            )
 
         return commit, used_sample_ids

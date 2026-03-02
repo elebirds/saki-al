@@ -58,7 +58,7 @@ class StepExecutionRequest:
         has_sampling = bool(sampling_cfg) or any(
             key in resolved_params for key in ("topk", "query_strategy", "sampling_topk")
         )
-        if mode == "manual" and has_sampling:
+        if mode == "manual" and has_sampling and step_type != "predict":
             raise ValueError("manual mode does not allow sampling params")
         if mode in {"active_learning", "simulation"} and step_type in SAMPLING_REQUIRED_STEP_TYPES:
             strategy = str(sampling_cfg.get("strategy") or query_strategy or "").strip()

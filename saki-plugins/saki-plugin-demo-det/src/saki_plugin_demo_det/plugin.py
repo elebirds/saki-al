@@ -77,21 +77,5 @@ class DemoDetectionPlugin(ExecutorPlugin):
     ) -> TrainOutput:
         return await self._internal.eval(workspace, params, emit)
 
-    async def export(
-            self,
-            workspace: Workspace,
-            params: dict[str, Any],
-            emit: EventCallback,
-    ) -> TrainOutput:
-        return await self._internal.export(workspace, params, emit)
-
-    async def upload_artifact(
-            self,
-            workspace: Workspace,
-            params: dict[str, Any],
-            emit: EventCallback,
-    ) -> TrainOutput:
-        return await self._internal.upload_artifact(workspace, params, emit)
-
     async def stop(self, step_id: str) -> None:
         await self._internal.stop(step_id)

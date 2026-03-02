@@ -1,14 +1,13 @@
 plugin_id: "demo_det_v1"
-version: "0.1.0"
+version: "0.1.1"
 display_name: "Demo Detection (Mock)"
 sdk_version: ">=0.1.0"
 
 supported_step_types:
   - train
   - score
+  - predict
   - eval
-  - export
-  - upload_artifact
   - custom
 
 supported_strategies:

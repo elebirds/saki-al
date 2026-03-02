@@ -64,10 +64,15 @@ class TrainingDataService:
             request.input_commit_id,
         )
 
-        train_annotations = annotations
+        # `model` means unconfirmed assistant boxes and must never enter training.
+        train_annotations = [
+            item
+            for item in annotations
+            if str(item.get("source") or "").strip().lower() != "model"
+        ]
         labeled_sample_ids = {
             str(item.get("sample_id") or "")
-            for item in annotations
+            for item in train_annotations
             if item.get("sample_id")
         }
         supervised_samples = [

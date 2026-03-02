@@ -32,6 +32,11 @@ message StepCommandRequest {
   string reason = 3;
 }
 
+message DispatchStepRequest {
+  string command_id = 1;
+  string step_id = 2;
+}
+
 message CommandResponse {
   string command_id = 1;
   string status = 2;
@@ -108,6 +113,7 @@ service DispatcherAdmin {
   rpc StopRound(RoundCommandRequest) returns (CommandResponse);
   rpc RetryRound(RetryRoundRequest) returns (CommandResponse);
   rpc StopStep(StepCommandRequest) returns (CommandResponse);
+  rpc DispatchStep(DispatchStepRequest) returns (CommandResponse);
   rpc GetRuntimeSummary(RuntimeSummaryRequest) returns (RuntimeSummaryResponse);
   rpc GetExecutor(ExecutorReadRequest) returns (ExecutorReadResponse);
   rpc ListExecutors(ExecutorListRequest) returns (ExecutorListResponse);

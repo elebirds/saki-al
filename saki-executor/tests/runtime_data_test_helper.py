@@ -116,6 +116,8 @@ def _source_to_ir_enum(source: str) -> int:
         return irpb.ANNOTATION_SOURCE_MANUAL
     if value == "model":
         return irpb.ANNOTATION_SOURCE_MODEL
+    if value == "confirmed_model":
+        return irpb.ANNOTATION_SOURCE_CONFIRMED_MODEL
     if value == "system":
         return irpb.ANNOTATION_SOURCE_SYSTEM
     if value == "imported":

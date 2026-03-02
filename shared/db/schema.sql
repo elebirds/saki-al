@@ -557,15 +557,19 @@ CREATE TABLE public.model (
     id uuid NOT NULL,
     project_id uuid NOT NULL,
     source_commit_id uuid,
+    source_round_id uuid,
+    source_step_id uuid,
     parent_model_id uuid,
     plugin_id character varying NOT NULL,
     model_arch character varying NOT NULL,
     name character varying NOT NULL,
     version_tag character varying NOT NULL,
+    primary_artifact_name character varying NOT NULL,
     weights_path character varying NOT NULL,
     status character varying NOT NULL,
     metrics jsonb,
     artifacts jsonb,
+    publish_manifest jsonb NOT NULL,
     promoted_at timestamp without time zone,
     created_by uuid
 );
@@ -1707,6 +1711,27 @@ CREATE INDEX ix_model_source_commit_id ON public.model USING btree (source_commi
 
 
 --
+-- Name: ix_model_source_round_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_source_round_id ON public.model USING btree (source_round_id);
+
+
+--
+-- Name: ix_model_source_step_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_source_step_id ON public.model USING btree (source_step_id);
+
+
+--
+-- Name: uq_model_publish_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_model_publish_key ON public.model USING btree (project_id, source_round_id, primary_artifact_name, version_tag) WHERE (source_round_id IS NOT NULL);
+
+
+--
 -- Name: ix_project_name; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2356,6 +2381,22 @@ ALTER TABLE ONLY public.model
 
 ALTER TABLE ONLY public.model
     ADD CONSTRAINT fk_model_source_commit_id_commit FOREIGN KEY (source_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: model fk_model_source_round_id_round; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_source_round_id_round FOREIGN KEY (source_round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: model fk_model_source_step_id_step; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_source_step_id_step FOREIGN KEY (source_step_id) REFERENCES public.step(id);
 
 
 --

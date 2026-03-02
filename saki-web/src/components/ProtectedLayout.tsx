@@ -44,6 +44,7 @@ const ProtectedLayout: React.FC = () => {
     const canViewProjectBranches = canProject('branch:read:assigned')
     const canViewProjectCommits = canProject('commit:read:assigned')
     const canViewProjectLoops = canProject('loop:manage:assigned') || can('loop:manage') || isSuperAdmin
+    const canViewProjectModels = canProject('model:read:assigned')
     const canViewProjectInsights =
         canProject('loop:read:assigned') &&
         canProject('round:read:assigned') &&
@@ -175,6 +176,9 @@ const ProtectedLayout: React.FC = () => {
                 icon: <ClusterOutlined/>,
             })
         }
+        if (canViewProjectModels) {
+            items.push({key: 'models', label: t('project.tabs.models'), path: 'models', icon: <DatabaseOutlined/>})
+        }
         if (canViewProjectInsights) {
             items.push({key: 'insights', label: t('project.tabs.insights'), path: 'insights', icon: <BarChartOutlined/>})
         }
@@ -189,6 +193,7 @@ const ProtectedLayout: React.FC = () => {
         canViewProjectBranches,
         canViewProjectCommits,
         canViewProjectLoops,
+        canViewProjectModels,
         canViewProjectInsights,
         canViewProjectSettings,
     ])

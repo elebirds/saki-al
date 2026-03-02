@@ -66,6 +66,8 @@ import {
     RuntimeExecutorStatsResponse,
     ProjectModel,
     ModelArtifactDownload,
+    ModelPublishFromRoundRequest,
+    ProjectModelQuery,
     ResourceMember,
     ResourceMemberCreate,
     ResourceMemberUpdate,
@@ -317,14 +319,11 @@ export interface ApiService {
 
     getRuntimeExecutor(executorId: string): Promise<RuntimeExecutorRead>;
 
-    registerModelFromRound(projectId: string, payload: {
-        roundId: string;
-        name?: string;
-        versionTag?: string;
-        status?: string;
-    }): Promise<ProjectModel>;
+    publishModelFromRound(projectId: string, payload: ModelPublishFromRoundRequest): Promise<ProjectModel>;
 
-    getProjectModels(projectId: string, limit?: number): Promise<ProjectModel[]>;
+    getProjectModels(projectId: string, limitOrQuery?: number | ProjectModelQuery): Promise<ProjectModel[]>;
+
+    getModel(modelId: string): Promise<ProjectModel>;
 
     promoteModel(modelId: string, status?: string): Promise<ProjectModel>;
 

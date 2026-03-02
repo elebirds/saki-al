@@ -1071,6 +1071,13 @@ const ProjectLoopRoundDetail: React.FC = () => {
                         <Tag color={wsConnected ? 'success' : 'default'}>{wsConnected ? 'WebSocket 已连接' : 'WebSocket 未连接'}</Tag>
                         <Button
                             onClick={() => navigate(
+                                `/projects/${projectId}/models?roundId=${round.id}`,
+                            )}
+                        >
+                            发布模型
+                        </Button>
+                        <Button
+                            onClick={() => navigate(
                                 `/projects/${projectId}/prediction-tasks?targetRoundId=${round.id}&artifactName=best.pt`,
                             )}
                         >

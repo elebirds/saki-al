@@ -332,6 +332,7 @@ const ProjectOverview: React.FC = () => {
                 </div>
 
                 <ProjectSidebar
+                    projectId={projectId}
                     description={project.description}
                     taskTypeLabel={taskTypeLabel}
                     statusLabel={statusLabel}

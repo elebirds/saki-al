@@ -10,6 +10,7 @@ import ProjectCommits from './pages/project/ProjectCommits';
 import ProjectCommitDetail from './pages/project/ProjectCommitDetail';
 import ProjectSamplesAnnotations from './pages/project/ProjectSamplesAnnotations';
 import ProjectInsights from './pages/project/ProjectInsights';
+import ProjectModels from './pages/project/ProjectModels';
 import ProjectSettings from './pages/project/ProjectSettings';
 import ProjectWorkspace from './pages/project/ProjectWorkspace';
 import ProjectExportWorkspace from './pages/export/ProjectExportWorkspace';
@@ -79,6 +80,7 @@ const App: React.FC = () => {
                                     <Route path="loops/:loopId/config" element={<ProjectLoopConfig/>}/>
                                     <Route path="loops/:loopId/rounds/:roundId" element={<ProjectLoopRoundDetail/>}/>
                                     <Route path="prediction-tasks" element={<ProjectPredictionTasks/>}/>
+                                    <Route path="models" element={<ProjectModels/>}/>
                                     <Route path="insights" element={<ProjectInsights/>}/>
                                     <Route path="settings" element={<ProjectSettings/>}/>
                                     <Route path="workspace" element={<ProjectWorkspace/>}/>

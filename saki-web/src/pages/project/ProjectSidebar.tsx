@@ -1,10 +1,12 @@
 import React from 'react'
 import {Avatar, Button, Tag, Tooltip} from 'antd'
 import {DatabaseOutlined, ForkOutlined, NodeIndexOutlined} from '@ant-design/icons'
+import {useNavigate} from 'react-router-dom'
 import {ResourceMember} from '../../types'
 import {useTranslation} from 'react-i18next'
 
 export interface ProjectSidebarProps {
+    projectId?: string
     description?: string | null
     taskTypeLabel?: string
     statusLabel?: string
@@ -31,6 +33,7 @@ const statusColors: Record<string, string> = {
 }
 
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
+                                                           projectId,
                                                            description,
                                                            taskTypeLabel,
                                                            statusLabel,
@@ -40,6 +43,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                                                            sampleStatus,
                                                        }) => {
     const {t} = useTranslation()
+    const navigate = useNavigate()
     const totalSamples = sampleStatus?.total || 0
     const segments = totalSamples
         ? [
@@ -131,8 +135,15 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             <div className="border-t border-github-border pt-4 mb-4">
                 <h3 className="font-semibold text-github-text mb-2">{t('project.sidebar.models.title')}</h3>
                 <p className="text-sm text-github-muted mb-1">{t('project.sidebar.models.empty')}</p>
-                <Button type="link" className="!text-github-link !p-0" disabled>
-                    {t('project.sidebar.models.comingSoon')}
+                <Button
+                    type="link"
+                    className="!text-github-link !p-0"
+                    onClick={() => {
+                        if (!projectId) return
+                        navigate(`/projects/${projectId}/models`)
+                    }}
+                >
+                    {t('project.sidebar.models.title')}
                 </Button>
             </div>
 

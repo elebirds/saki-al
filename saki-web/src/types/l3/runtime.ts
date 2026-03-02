@@ -699,21 +699,41 @@ export interface ModelArtifact {
 export interface ProjectModel {
     id: string;
     projectId: string;
-    roundId?: string | null;
-    inputCommitId?: string | null;
+    sourceCommitId?: string | null;
+    sourceRoundId?: string | null;
+    sourceStepId?: string | null;
     parentModelId?: string | null;
     pluginId: string;
     modelArch: string;
     name: string;
     versionTag: string;
+    primaryArtifactName: string;
     weightsPath: string;
     status: string;
     metrics: Record<string, any>;
     artifacts: Record<string, any>;
+    publishManifest: Record<string, any>;
     promotedAt?: string | null;
     createdBy?: string | null;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface ModelPublishFromRoundRequest {
+    roundId: string;
+    name?: string;
+    primaryArtifactName?: string;
+    versionTag?: string;
+    status?: string;
+}
+
+export interface ProjectModelQuery {
+    limit?: number;
+    offset?: number;
+    status?: string;
+    pluginId?: string;
+    roundId?: string;
+    q?: string;
 }
 
 export interface RuntimeRequestConfigFieldOption {

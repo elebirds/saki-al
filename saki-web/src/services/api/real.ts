@@ -414,8 +414,13 @@ function normalizeRuntimeExecutorList(response: RuntimeExecutorListResponse): Ru
 function normalizeProjectModel(model: ProjectModel): ProjectModel {
     return {
         ...model,
-        roundId: (model as any).roundId ?? null,
-        inputCommitId: (model as any).inputCommitId ?? null,
+        sourceCommitId: (model as any).sourceCommitId ?? null,
+        sourceRoundId: (model as any).sourceRoundId ?? (model as any).roundId ?? null,
+        sourceStepId: (model as any).sourceStepId ?? null,
+        primaryArtifactName: String((model as any).primaryArtifactName || 'best.pt'),
+        publishManifest: (model as any).publishManifest && typeof (model as any).publishManifest === 'object'
+            ? (model as any).publishManifest
+            : {},
     };
 }
 
@@ -1226,25 +1231,51 @@ export class RealApiService implements ApiService {
         return normalizeRuntimeExecutor(response.data);
     }
 
-    async registerModelFromRound(
+    async publishModelFromRound(
         projectId: string,
         payload: {
             roundId: string;
             name?: string;
+            primaryArtifactName?: string;
             versionTag?: string;
             status?: string;
         }
     ): Promise<ProjectModel> {
         const response = await this.client.post<ProjectModel>(
-            `/projects/${projectId}/models:register-from-round`,
+            `/projects/${projectId}/models:publish-from-round`,
             payload,
         );
         return normalizeProjectModel(response.data);
     }
 
-    async getProjectModels(projectId: string, limit: number = 100): Promise<ProjectModel[]> {
-        const response = await this.client.get<ProjectModel[]>(`/projects/${projectId}/models`, {params: {limit}});
+    async getProjectModels(
+        projectId: string,
+        limitOrQuery: number | {
+            limit?: number;
+            offset?: number;
+            status?: string;
+            pluginId?: string;
+            roundId?: string;
+            q?: string;
+        } = 100,
+    ): Promise<ProjectModel[]> {
+        const params = typeof limitOrQuery === 'number'
+            ? {limit: limitOrQuery}
+            : {
+                limit: limitOrQuery.limit ?? 100,
+                offset: limitOrQuery.offset ?? 0,
+                status: limitOrQuery.status,
+                plugin_id: limitOrQuery.pluginId,
+                round_id: limitOrQuery.roundId,
+                q: limitOrQuery.q,
+            };
+        const response = await this.client.get<ProjectModel[]>(`/projects/${projectId}/models`, {params});
         return response.data.map((item) => normalizeProjectModel(item));
+    }
+
+    async getModel(modelId: string): Promise<ProjectModel> {
+        const response = await this.client.get<ProjectModel>(`/models/${modelId}`);
+        return normalizeProjectModel(response.data);
     }
 
     async promoteModel(modelId: string, status: string = 'production'): Promise<ProjectModel> {

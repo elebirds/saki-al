@@ -32,6 +32,7 @@ export function dualToAnnotations(dual: DualViewAnnotation): Annotation[] {
         type: dual.primary.type as AnnotationType,
         source: dual.source || 'manual',
         geometry: canvasDataToGeometry(dual.primary.type as AnnotationType, dual.primary.bbox as Record<string, any>),
+        confidence: dual.confidence,
         attrs: {
             view: VIEW_TIME_ENERGY,
         },
@@ -65,6 +66,7 @@ export function annotationToDual(ann: Annotation, regions: MappedRegion[] = []):
         labelColor: ann.labelColor || '#ff0000',
         annotatorId: ann.annotatorId,
         source: ann.source || 'manual',
+        confidence: ann.confidence,
         primary: {
             type: ann.type as DetectionAnnotationType,
             bbox,
@@ -116,6 +118,7 @@ export function generatedToAnnotations(
             type: type,
             source: source,
             geometry: gen.geometry || canvasDataToGeometry(type, bboxData as Record<string, any>),
+            confidence: Number.isFinite(Number(gen.confidence)) ? Number(gen.confidence) : undefined,
             annotatorId: gen.annotatorId || gen.annotator_id || annotatorId,
             attrs: {
                 ...attrs,

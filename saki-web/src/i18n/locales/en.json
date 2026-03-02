@@ -365,6 +365,7 @@
       "cannotEditOthersAnnotation": "You can only edit your own annotations",
       "cannotDeleteOthersAnnotation": "You can only delete your own annotations",
       "readOnly": "Read-only",
+      "confidenceShort": "Conf {{confidence}}",
       "annotationSource": {
         "manual": "Manual",
         "mine": "My annotation",

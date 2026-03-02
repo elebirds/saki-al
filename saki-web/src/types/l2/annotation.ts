@@ -10,6 +10,7 @@ export interface DualViewAnnotation {
     labelColor: string; // For display convenience
     annotatorId?: string | null;  // ID of the user who created the annotation
     source?: AnnotationSource;
+    confidence?: number;
     // Primary view (Time-Energy) - always a rect or OBB
     primary: {
         type: DetectionAnnotationType;

@@ -3,6 +3,7 @@ import {Rect, Text as KonvaText} from 'react-konva';
 import Konva from 'konva';
 import {Annotation, ANNOTATION_TOOL_SELECT, ANNOTATION_TYPE_RECT, AnnotationToolType} from '../../types';
 import {canvasDataToGeometry, geometryToCanvasData} from '../../utils/annotationGeometry';
+import {formatConfidence, isConfidenceVisibleSource} from '../../utils/annotationConfidence';
 
 // Helper to extract bbox from Annotation.geometry
 interface BBox {
@@ -53,7 +54,10 @@ const AnnotationItem: FC<AnnotationItemProps> = ({
     // Extract bbox from geometry field
     const bbox = useMemo(() => getBBox(ann), [ann]);
     const color = ann.labelColor || '#ff0000';
-    const label = ann.labelName || '';
+    const formattedConfidence = isConfidenceVisibleSource(ann.source)
+        ? formatConfidence(ann.confidence)
+        : null;
+    const label = [ann.labelName || '', formattedConfidence || ''].filter(Boolean).join(' ');
 
     // 判断是否为生成的标注（auto-generated）
     const isGenerated = ann.source === 'auto' || ann.source === 'system' || ann.source === 'fedo_mapping';

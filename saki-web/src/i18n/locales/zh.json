@@ -365,6 +365,7 @@
       "cannotEditOthersAnnotation": "您只能编辑自己的标注",
       "cannotDeleteOthersAnnotation": "您只能删除自己的标注",
       "readOnly": "只读",
+      "confidenceShort": "置信度 {{confidence}}",
       "annotationSource": {
         "manual": "手动",
         "mine": "我的标注",

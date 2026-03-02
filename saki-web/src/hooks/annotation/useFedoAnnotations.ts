@@ -143,6 +143,7 @@ export function useFedoAnnotations(
                 labelColor: dual.labelColor,
                 type: dual.primary.type as AnnotationType,
                 source: dual.source || 'manual',
+                confidence: dual.confidence,
                 annotatorId: dual.annotatorId,
                 geometry: canvasDataToGeometry(dual.primary.type as AnnotationType, dual.primary.bbox as Record<string, any>),
                 attrs: {
@@ -329,6 +330,7 @@ export function useFedoAnnotations(
             labelColor: annotationState.selectedLabel.color || '#ff0000',
             annotatorId: currentUserId,
             source: 'manual',
+            confidence: 1,
             primary: {
                 type: event.type,
                 bbox: event.bbox,
@@ -356,6 +358,7 @@ export function useFedoAnnotations(
             viewRole: 'main',
             type: event.type,
             source: 'manual',
+            confidence: 1,
             geometry: canvasDataToGeometry(event.type, event.bbox as Record<string, any>),
             attrs: {view},
             annotatorId: currentUserId,
@@ -383,6 +386,7 @@ export function useFedoAnnotations(
             const updatedDual: DualViewAnnotation = {
                 ...dual,
                 source: updatedAnn.source || dual.source || 'manual',
+                confidence: updatedAnn.confidence ?? dual.confidence,
                 primary: {
                     type: updatedAnn.type as DetectionAnnotationType,
                     bbox: {

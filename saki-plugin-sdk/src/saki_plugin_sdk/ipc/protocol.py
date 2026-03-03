@@ -32,11 +32,14 @@ class WorkerCommandEnvelope:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "WorkerCommandEnvelope":
+        protocol_version_raw = payload.get("protocol_version")
+        if protocol_version_raw is None:
+            raise ValueError("missing protocol_version")
         return cls(
             request_id=str(payload.get("request_id") or ""),
             action=str(payload.get("action") or ""),
             step_id=str(payload.get("step_id") or ""),
-            protocol_version=int(payload.get("protocol_version") or 1),
+            protocol_version=int(protocol_version_raw),
         )
 
 

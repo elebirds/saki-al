@@ -9,6 +9,7 @@ from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.commands.server import CommandServer
 from saki_executor.core.config import settings
 from saki_executor.core.logging import setup_logging
+from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
 from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 
@@ -26,6 +27,12 @@ async def run() -> None:
     registry = PluginRegistry()
     registry.discover_plugins(settings.PLUGINS_DIR)
 
+    host_capability_cache = HostCapabilityCache(
+        cpu_workers=settings.CPU_WORKERS,
+        memory_mb=settings.MEMORY_MB,
+    )
+    host_snapshot = host_capability_cache.refresh()
+
     cache = AssetCache(root_dir=settings.CACHE_DIR, max_bytes=settings.CACHE_MAX_BYTES)
     manager = StepManager(
         runs_dir=settings.RUNS_DIR,
@@ -33,6 +40,7 @@ async def run() -> None:
         plugin_registry=registry,
         round_shared_cache_enabled=settings.ROUND_SHARED_CACHE_ENABLED,
         strict_train_model_handoff=settings.STRICT_TRAIN_MODEL_HANDOFF,
+        host_capability_cache=host_capability_cache,
     )
     client = AgentClient(plugin_registry=registry, step_manager=manager)
     manager.set_transport(client.send_message, client.request_message)
@@ -51,12 +59,19 @@ async def run() -> None:
         shutdown_event=shutdown_event,
     )
 
+    host_backends = ["cpu"]
+    if host_snapshot.gpus:
+        host_backends.insert(0, "cuda")
+    if host_snapshot.metal_available:
+        host_backends.insert(1 if "cuda" in host_backends else 0, "mps")
+
     logger.info(
-        "saki-executor 启动完成 executor_id={} version={} grpc_target={} plugins={}",
+        "saki-executor 启动完成 executor_id={} version={} grpc_target={} plugins={} host.backends={}",
         settings.EXECUTOR_ID,
         settings.EXECUTOR_VERSION,
         settings.API_GRPC_TARGET,
         [plugin.plugin_id for plugin in registry.all()],
+        host_backends,
     )
 
     client_task = asyncio.create_task(client.run(shutdown_event=shutdown_event), name="grpc-client")

@@ -130,19 +130,6 @@ def _coerce(value: Any, field_type: str) -> Any:
         return value
 
 
-def _is_conditional_list(value: Any) -> bool:
-    """Return True if *value* looks like a conditional-default list (old format).
-
-    This is used to skip old-style conditional defaults during config resolution.
-    """
-    return (
-        isinstance(value, list)
-        and len(value) > 0
-        and isinstance(value[0], dict)
-        and "value" in value[0]
-    )
-
-
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
@@ -207,7 +194,6 @@ class PluginConfig(BaseModel):
     - Type validation (Pydantic automatic)
     - Serialization/deserialization (model_dump, model_validate)
     - JSON Schema export (model_json_schema)
-    - Dictionary compatibility methods (get, keys, values, items)
 
     Parameters
     ----------
@@ -269,9 +255,7 @@ class PluginConfig(BaseModel):
         for field in schema.fields:
             # Field-level default (scalar values only)
             if field.default is not None:
-                # Skip conditional-default lists (old format, no longer supported)
-                if not _is_conditional_list(field.default):
-                    config[field.key] = field.default
+                config[field.key] = field.default
 
         # 2. Overlay user config
         if isinstance(raw_config, dict):
@@ -374,8 +358,8 @@ class PluginConfig(BaseModel):
         diff_result: dict[str, tuple[Any, Any]] = {}
         all_keys = set(list(self.model_dump().keys()) + list(other.model_dump().keys()))
         for key in all_keys:
-            self_val = self.get(key, None)
-            other_val = other.get(key, None)
+            self_val = getattr(self, key, None)
+            other_val = getattr(other, key, None)
             if self_val != other_val:
                 diff_result[key] = (self_val, other_val)
         return diff_result
@@ -392,7 +376,7 @@ class PluginConfig(BaseModel):
             return []
         errors: list[str] = []
         for field in self._schema.fields:
-            errors.extend(_validate_field(field.key, self.get(field.key), field))
+            errors.extend(_validate_field(field.key, getattr(self, field.key, None), field))
         return errors
 
     def get_grouped_fields(self) -> dict[str, list[ConfigField]]:
@@ -413,26 +397,6 @@ class PluginConfig(BaseModel):
                 groups[group] = []
             groups[group].append(field)
         return groups
-
-    # -------------------------------------------------------------------
-    # Dictionary compatibility methods
-    # -------------------------------------------------------------------
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """Get a field value, returning *default* if not found."""
-        return getattr(self, key, default)
-
-    def keys(self):
-        """Return configuration keys."""
-        return self.model_dump().keys()
-
-    def values(self):
-        """Return configuration values."""
-        return self.model_dump().values()
-
-    def items(self):
-        """Return (key, value) pairs."""
-        return self.model_dump().items()
 
     def to_dict(self) -> dict[str, Any]:
         """Return a shallow copy of the underlying mapping."""

@@ -199,9 +199,9 @@ class PipelineStageService:
             }
             await emitter.emit("log", {"level": "INFO", "message": f"effective training params: {params_snapshot}"})
             data_service = TrainingDataService(
-                fetch_all=self._manager._fetch_all,  # noqa: SLF001
+                fetch_all=self._manager.fetch_all_data,
                 cache=self._manager.cache,
-                stop_event=self._manager._stop_event,  # noqa: SLF001
+                stop_event=self._manager.stop_event,
             )
             data_bundle = await data_service.prepare(
                 request=self._request,
@@ -573,7 +573,7 @@ class PipelineStageService:
         sampling_params["sampling_seed"] = int(
             sampling_params.get("sampling_seed", runtime_context.sampling_seed)
         )
-        return await self._manager._collect_topk_candidates_streaming(  # noqa: SLF001
+        return await self._manager.collect_topk_candidates_streaming(
             plugin=plugin,
             workspace=workspace,
             step_id=self._request.step_id,
@@ -599,7 +599,7 @@ class PipelineStageService:
             artifact_path = Path(artifact.path)
             required = bool(getattr(artifact, "required", False))
             try:
-                ticket = await self._manager._request_upload_ticket(  # noqa: SLF001
+                ticket = await self._manager.request_upload_ticket(
                     step_id=self._request.step_id,
                     artifact_name=artifact.name,
                     content_type=artifact.content_type,
@@ -608,7 +608,7 @@ class PipelineStageService:
                 storage_uri = ticket.storage_uri
                 headers = dict(ticket.headers)
                 size = artifact_path.stat().st_size
-                await self._manager._upload_artifact_with_retry(  # noqa: SLF001
+                await self._manager.upload_artifact_with_retry(
                     artifact_path=artifact_path,
                     upload_url=upload_url,
                     headers=headers,
@@ -630,7 +630,7 @@ class PipelineStageService:
                 "uri": storage_uri,
                 "meta": artifact.meta or {"size": size},
             }
-            await self._manager._push_event(  # noqa: SLF001
+            await self._manager.push_step_event(
                 self._request.step_id,
                 reporter.artifact(
                     kind=artifact.kind,

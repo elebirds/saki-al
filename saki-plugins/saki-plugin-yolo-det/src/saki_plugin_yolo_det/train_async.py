@@ -61,7 +61,7 @@ async def resolve_train_config(
     All type coercion / defaults are already handled by ``PluginConfig``,
     so we can access fields directly.
     """
-    requested_device = str(plugin_config.get("device", "auto") or "auto").strip().lower()
+    requested_device = str(getattr(plugin_config, "device", "auto") or "auto").strip().lower()
     resolved_backend = str(execution_context.device_binding.backend or "").strip().lower()
     resolved_device_spec = str(execution_context.device_binding.device_spec or "").strip()
     if not resolved_backend:
@@ -75,13 +75,13 @@ async def resolve_train_config(
         epochs=int(plugin_config.epochs),
         batch=int(plugin_config.batch),
         imgsz=int(plugin_config.imgsz),
-        patience=int(plugin_config.get("patience", 20)),
+        patience=int(getattr(plugin_config, "patience", 20)),
         device=device,
         requested_device=requested_device,
         resolved_backend=resolved_backend,
         resolved_base_model=resolved_base_model,
-        train_seed=max(0, int(plugin_config.get("train_seed", 0) or 0)),
-        deterministic=bool(plugin_config.get("deterministic", False)),
+        train_seed=max(0, int(getattr(plugin_config, "train_seed", 0) or 0)),
+        deterministic=bool(getattr(plugin_config, "deterministic", False)),
         yolo_task=str(plugin_config.yolo_task),
     )
 

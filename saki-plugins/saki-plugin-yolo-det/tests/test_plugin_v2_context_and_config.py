@@ -17,7 +17,9 @@ from saki_plugin_sdk import (
     WorkspaceProtocol,
 )
 from saki_plugin_yolo_det.config_service import YoloConfigService
+from saki_plugin_yolo_det.runtime_service import YoloRuntimeService
 from saki_plugin_yolo_det.plugin import YoloDetectionPlugin
+from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 
 class _RuntimeStub:
@@ -242,3 +244,74 @@ def test_config_service_init_fails_when_task_has_no_preset(monkeypatch):
     )
     with pytest.raises(ValueError, match="at least one preset"):
         YoloConfigService()
+
+
+@pytest.mark.anyio
+async def test_runtime_prepare_data_ignores_yolo_task_split_hint(tmp_path: Path, monkeypatch):
+    runtime = YoloRuntimeService()
+    workspace = Workspace(str(tmp_path / "runs"), "step-prepare-1")
+    workspace.ensure()
+    dataset_ir = irpb.DataBatchIR()
+    captured: dict[str, Any] = {}
+
+    def _fake_prepare_yolo_dataset(**kwargs):
+        captured["yolo_task"] = kwargs.get("yolo_task")
+
+    monkeypatch.setattr(
+        "saki_plugin_yolo_det.runtime_service.prepare_yolo_dataset",
+        _fake_prepare_yolo_dataset,
+    )
+
+    step_context = StepRuntimeContext(
+        step_id="step-prepare-1",
+        round_id="round-prepare-1",
+        round_index=0,
+        attempt=1,
+        step_type="train",
+        mode="manual",
+        split_seed=1,
+        train_seed=2,
+        sampling_seed=3,
+        resolved_device_backend="cpu",
+    )
+    context = ExecutionBindingContext(
+        step_context=step_context,
+        host_capability=HostCapabilitySnapshot.from_dict(
+            {
+                "cpu_workers": 8,
+                "memory_mb": 8192,
+                "gpus": [],
+                "metal_available": False,
+                "platform": "darwin",
+                "arch": "arm64",
+                "driver_info": {},
+            }
+        ),
+        runtime_capability=RuntimeCapabilitySnapshot(
+            framework="torch",
+            framework_version="2.2.0",
+            backends=["cpu"],
+            backend_details={},
+            errors=[],
+        ),
+        device_binding=DeviceBinding(
+            backend="cpu",
+            device_spec="cpu",
+            precision="fp32",
+            profile_id="cpu",
+            reason="test",
+            fallback_applied=False,
+        ),
+        profile_id="cpu",
+    )
+
+    await runtime.prepare_data(
+        workspace=workspace,
+        labels=[],
+        samples=[],
+        annotations=[],
+        dataset_ir=dataset_ir,
+        splits={"yolo_task": "obb"},
+        context=context,
+    )
+    assert captured["yolo_task"] == "detect"

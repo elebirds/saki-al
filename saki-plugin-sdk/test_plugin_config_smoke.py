@@ -65,8 +65,8 @@ except ValueError as e:
 except PluginValidationError as e:
     assert "minimum" in str(e)
 
-# Test dict-like access
+# Test attribute access
 assert "epochs" in cfg.to_dict()
-assert cfg.get("missing", 42) == 42
+assert getattr(cfg, "missing", 42) == 42
 
 print("ALL PASS")

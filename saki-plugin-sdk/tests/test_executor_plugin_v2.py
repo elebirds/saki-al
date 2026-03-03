@@ -49,6 +49,13 @@ class _DummyPlugin(ExecutorPlugin):
                     "epochs": 5,
                     "batch": 8,
                 },
+                "step_runtime_requirements": {
+                    "score": {
+                        "requires_prepare_data": True,
+                        "requires_trained_model": True,
+                        "primary_model_artifact_name": "score.pt",
+                    }
+                },
             }
         )
 
@@ -141,3 +148,13 @@ def test_executor_plugin_validate_params_uses_schema():
     plugin.validate_params({"epochs": 3, "batch": 4}, context=_execution_context())
     with pytest.raises(PluginValidationError):
         plugin.validate_params({"epochs": 0, "batch": 4}, context=_context())
+
+
+def test_executor_plugin_runtime_requirements_use_manifest_overrides():
+    plugin = _DummyPlugin()
+    score = plugin.get_step_runtime_requirements("score")
+    train = plugin.get_step_runtime_requirements("train")
+    assert score.requires_prepare_data is True
+    assert score.requires_trained_model is True
+    assert score.primary_model_artifact_name == "score.pt"
+    assert train.primary_model_artifact_name == "best.pt"

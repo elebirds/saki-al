@@ -89,6 +89,10 @@ class CommandServer:
             self._print_plugins()
             return
 
+        if command in {"refresh-hw", "refresh_hw", "refresh-hardware"}:
+            await self._refresh_hardware()
+            return
+
         if command in {"connect", "cn"}:
             await self.client.connect()
             return
@@ -119,6 +123,7 @@ class CommandServer:
             "  help                 查看帮助\n"
             "  status               查看当前执行器状态\n"
             "  plugins              查看已加载插件\n"
+            "  refresh-hw           手动刷新宿主硬件探测缓存\n"
             "  connect              启用并发起连接\n"
             "  disconnect [--force] 断开并暂停连接（任务运行中默认拒绝，--force 会先 stop）\n"
             "  stop [step_id]       停止当前任务或指定 step_id\n"
@@ -143,6 +148,7 @@ class CommandServer:
             "  pending_requests={}\n"
             "  outbound_queue={}\n"
             "  last_heartbeat_ts={}\n"
+            "  host_capability_last_probe_ts={}\n"
             "  log_level={}",
             runtime_status["executor_state"],
             runtime_status["busy"],
@@ -155,7 +161,23 @@ class CommandServer:
             transport_status["pending_requests"],
             transport_status["outbox_size"],
             transport_status["last_heartbeat_ts"],
+            runtime_status["host_capability_last_probe_ts"],
             get_log_level(),
+        )
+
+    async def _refresh_hardware(self) -> None:
+        snapshot = await asyncio.to_thread(self.step_manager.refresh_host_capability)
+        backends = ["cpu"]
+        if snapshot.gpus:
+            backends.insert(0, "cuda")
+        if snapshot.metal_available:
+            backends.insert(1 if "cuda" in backends else 0, "mps")
+        logger.info(
+            "宿主硬件探测缓存已刷新 backends={} cpu_workers={} memory_mb={} gpu_count={}",
+            backends,
+            snapshot.cpu_workers,
+            snapshot.memory_mb,
+            len(snapshot.gpus),
         )
 
     def _print_plugins(self) -> None:

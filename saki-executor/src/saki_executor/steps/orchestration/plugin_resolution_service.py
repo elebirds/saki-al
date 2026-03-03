@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from saki_executor.core.config import settings
-from saki_executor.runtime.capability.host_probe_service import HostProbeService
 from saki_executor.runtime.profile.profile_selector import ProfileSelectorStrategy
 from saki_executor.steps.contracts import StepExecutionRequest
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage, wrap_stage_error
@@ -13,7 +11,6 @@ from saki_plugin_sdk import RuntimeProfileSpec, StepRuntimeContext, parse_runtim
 
 class PluginResolutionService:
     def __init__(self) -> None:
-        self._host_probe_service = HostProbeService()
         self._profile_selector = ProfileSelectorStrategy()
 
     def resolve(self, *, manager: Any, request: StepExecutionRequest) -> StepExecutionPlan:
@@ -41,10 +38,7 @@ class PluginResolutionService:
                 ),
             )
 
-        host_capability = self._host_probe_service.probe(
-            cpu_workers=settings.CPU_WORKERS,
-            memory_mb=settings.MEMORY_MB,
-        )
+        host_capability = manager.get_host_capability_snapshot()
 
         raw_plugin_config = request.resolved_params.get("plugin")
         if not isinstance(raw_plugin_config, dict):

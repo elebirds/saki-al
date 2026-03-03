@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Mapping
 
 from saki_plugin_sdk.capability_types import RuntimeCapabilitySnapshot
 from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
@@ -37,6 +37,71 @@ class StepRuntimeRequirements:
     requires_prepare_data: bool
     requires_trained_model: bool
     primary_model_artifact_name: str = "best.pt"
+
+
+def default_step_runtime_requirements(step_type: str) -> StepRuntimeRequirements:
+    normalized = str(step_type or "").strip().lower()
+    if normalized == "train":
+        return StepRuntimeRequirements(
+            requires_prepare_data=True,
+            requires_trained_model=False,
+            primary_model_artifact_name="best.pt",
+        )
+    if normalized == "score":
+        return StepRuntimeRequirements(
+            requires_prepare_data=False,
+            requires_trained_model=True,
+            primary_model_artifact_name="best.pt",
+        )
+    if normalized == "eval":
+        return StepRuntimeRequirements(
+            requires_prepare_data=True,
+            requires_trained_model=True,
+            primary_model_artifact_name="best.pt",
+        )
+    if normalized == "predict":
+        return StepRuntimeRequirements(
+            requires_prepare_data=False,
+            requires_trained_model=True,
+            primary_model_artifact_name="best.pt",
+        )
+    if normalized == "custom":
+        return StepRuntimeRequirements(
+            requires_prepare_data=True,
+            requires_trained_model=False,
+            primary_model_artifact_name="best.pt",
+        )
+    return StepRuntimeRequirements(
+        requires_prepare_data=True,
+        requires_trained_model=False,
+        primary_model_artifact_name="best.pt",
+    )
+
+
+def resolve_step_runtime_requirements(
+    step_type: str,
+    requirements_map: Mapping[str, Any] | None = None,
+) -> StepRuntimeRequirements:
+    default = default_step_runtime_requirements(step_type)
+    if not isinstance(requirements_map, Mapping):
+        return default
+
+    normalized = str(step_type or "").strip().lower()
+    raw = requirements_map.get(normalized)
+    if raw is None:
+        raw = requirements_map.get(step_type)
+    if not isinstance(raw, Mapping):
+        return default
+
+    artifact_name = str(
+        raw.get("primary_model_artifact_name", default.primary_model_artifact_name)
+        or default.primary_model_artifact_name
+    ).strip()
+    return StepRuntimeRequirements(
+        requires_prepare_data=bool(raw.get("requires_prepare_data", default.requires_prepare_data)),
+        requires_trained_model=bool(raw.get("requires_trained_model", default.requires_trained_model)),
+        primary_model_artifact_name=artifact_name,
+    )
 
 
 class ExecutorPlugin(ABC):
@@ -400,42 +465,9 @@ class ExecutorPlugin(ABC):
         return RuntimeCapabilitySnapshot.empty(framework="")
 
     def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
-        normalized = str(step_type or "").strip().lower()
-        if normalized == "train":
-            return StepRuntimeRequirements(
-                requires_prepare_data=True,
-                requires_trained_model=False,
-                primary_model_artifact_name="best.pt",
-            )
-        if normalized == "score":
-            return StepRuntimeRequirements(
-                requires_prepare_data=False,
-                requires_trained_model=True,
-                primary_model_artifact_name="best.pt",
-            )
-        if normalized == "eval":
-            return StepRuntimeRequirements(
-                requires_prepare_data=True,
-                requires_trained_model=True,
-                primary_model_artifact_name="best.pt",
-            )
-        if normalized == "predict":
-            return StepRuntimeRequirements(
-                requires_prepare_data=False,
-                requires_trained_model=True,
-                primary_model_artifact_name="best.pt",
-            )
-        if normalized == "custom":
-            return StepRuntimeRequirements(
-                requires_prepare_data=True,
-                requires_trained_model=False,
-                primary_model_artifact_name="best.pt",
-            )
-        return StepRuntimeRequirements(
-            requires_prepare_data=True,
-            requires_trained_model=False,
-            primary_model_artifact_name="best.pt",
-        )
+        manifest = self.manifest
+        requirements_map = getattr(manifest, "step_runtime_requirements", {}) if manifest is not None else {}
+        return resolve_step_runtime_requirements(step_type, requirements_map)
 
     async def prepare_data(
             self,

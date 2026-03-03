@@ -9,7 +9,9 @@ from loguru import logger
 
 from saki_executor.agent import codec as runtime_codec
 from saki_executor.cache.asset_cache import AssetCache
+from saki_executor.core.config import settings
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
+from saki_executor.runtime.capability.host_capability_cache import HostCapabilityCache
 from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, StepExecutionRequest
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage
 from saki_executor.steps.orchestration.runner import StepPipelineRunner
@@ -17,7 +19,7 @@ from saki_executor.steps.services import ArtifactUploader, DataGateway, Sampling
 from saki_executor.steps.state import ExecutorState, StepStatus
 from saki_executor.steps.workspace import Workspace
 from saki_executor.plugins.registry import PluginRegistry
-from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, StepReporter, WorkspaceProtocol
+from saki_plugin_sdk import ExecutionBindingContext, ExecutorPlugin, HostCapabilitySnapshot, StepReporter, WorkspaceProtocol
 
 SendFn = Callable[[pb.RuntimeMessage], Awaitable[None]]
 RequestFn = Callable[[pb.RuntimeMessage], Awaitable[pb.RuntimeMessage | list[pb.RuntimeMessage]]]
@@ -36,6 +38,7 @@ class StepManager:
         send_message: SendFn | None = None,
         request_message: RequestFn | None = None,
         http_client_factory: HttpClientFactory | None = None,
+        host_capability_cache: HostCapabilityCache | None = None,
     ) -> None:
         self.runs_dir = runs_dir
         self.cache = cache
@@ -44,6 +47,10 @@ class StepManager:
         self.strict_train_model_handoff = bool(strict_train_model_handoff)
         self._send_message = send_message
         self._request_message = request_message
+        self._host_capability_cache = host_capability_cache or HostCapabilityCache(
+            cpu_workers=settings.CPU_WORKERS,
+            memory_mb=settings.MEMORY_MB,
+        )
 
         self.executor_state = ExecutorState.IDLE
         self.current_step_id: str | None = None
@@ -76,7 +83,109 @@ class StepManager:
             "current_step_id": self.current_step_id,
             "last_step_id": self.last_step_id,
             "last_step_status": self.last_step_status.value if self.last_step_status else None,
+            "host_capability_last_probe_ts": self._host_capability_cache.last_probe_ts if self._host_capability_cache else None,
         }
+
+    @property
+    def stop_event(self) -> asyncio.Event:
+        return self._stop_event
+
+    def set_active_plugin(self, plugin: ExecutorPlugin | None) -> None:
+        self._active_plugin = plugin
+
+    def get_host_capability_snapshot(self) -> HostCapabilitySnapshot:
+        if self._host_capability_cache is None:
+            raise RuntimeError("host capability cache is not configured")
+        return self._host_capability_cache.get_snapshot()
+
+    def refresh_host_capability(self) -> HostCapabilitySnapshot:
+        if self._host_capability_cache is None:
+            raise RuntimeError("host capability cache is not configured")
+        return self._host_capability_cache.refresh()
+
+    def get_host_resource_payload(self) -> dict[str, Any]:
+        if self._host_capability_cache is None:
+            raise RuntimeError("host capability cache is not configured")
+        return self._host_capability_cache.get_resource_payload()
+
+    async def send_runtime_message(self, message: pb.RuntimeMessage) -> None:
+        if self._send_message is None:
+            raise RuntimeError("step manager send transport is not configured")
+        await self._send_message(message)
+
+    async def push_step_event(self, step_id: str, event: dict[str, Any]) -> None:
+        await self._push_event(step_id, event)
+
+    async def request_upload_ticket(
+        self,
+        *,
+        step_id: str,
+        artifact_name: str,
+        content_type: str,
+    ) -> ArtifactUploadTicket:
+        return await self._request_upload_ticket(
+            step_id=step_id,
+            artifact_name=artifact_name,
+            content_type=content_type,
+        )
+
+    async def upload_artifact_with_retry(
+        self,
+        *,
+        artifact_path: Path,
+        upload_url: str,
+        headers: dict[str, str],
+    ) -> None:
+        await self._upload_artifact_with_retry(
+            artifact_path=artifact_path,
+            upload_url=upload_url,
+            headers=headers,
+        )
+
+    async def fetch_all_data(
+        self,
+        step_id: str,
+        query_type: str,
+        project_id: str,
+        commit_id: str,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        return await self._fetch_all(
+            step_id=step_id,
+            query_type=query_type,
+            project_id=project_id,
+            commit_id=commit_id,
+            limit=limit,
+        )
+
+    async def collect_topk_candidates_streaming(
+        self,
+        *,
+        plugin: ExecutorPlugin,
+        workspace: WorkspaceProtocol,
+        step_id: str,
+        project_id: str,
+        commit_id: str,
+        strategy: str,
+        params: dict[str, Any],
+        protected: set[str],
+        query_type: str,
+        topk: int,
+        context: ExecutionBindingContext,
+    ) -> list[dict[str, Any]]:
+        return await self._collect_topk_candidates_streaming(
+            plugin=plugin,
+            workspace=workspace,
+            step_id=step_id,
+            project_id=project_id,
+            commit_id=commit_id,
+            strategy=strategy,
+            params=params,
+            protected=protected,
+            query_type=query_type,
+            topk=topk,
+            context=context,
+        )
 
     async def assign_step(self, request_id: str, payload: dict[str, Any]) -> bool:
         request = StepExecutionRequest.from_payload(payload)

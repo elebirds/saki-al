@@ -109,29 +109,10 @@ class PluginWorkerClient:
                 action=action,
                 step_id=self._step_id,
             )
-            resolved_runtime_context = runtime_context
-            payload_runtime_context = payload.get("runtime_context") if isinstance(payload, dict) else None
-            if (
-                resolved_runtime_context is None
-                and action == "probe_runtime_capability"
-                and not isinstance(payload_runtime_context, dict)
-            ):
-                resolved_runtime_context = StepRuntimeContext(
-                    step_id=self._step_id,
-                    round_id="",
-                    round_index=0,
-                    attempt=1,
-                    step_type="train",
-                    mode="manual",
-                    split_seed=0,
-                    train_seed=0,
-                    sampling_seed=0,
-                    resolved_device_backend="",
-                )
             command_payload = protocol.build_command_payload(
                 envelope=cmd,
                 payload=payload,
-                runtime_context=resolved_runtime_context,
+                runtime_context=runtime_context,
                 execution_binding_context=execution_binding_context,
             )
             await self._req_socket.send_json(command_payload)

@@ -68,6 +68,12 @@ class YoloConfigService:
             task_presets[task] = tuple(ordered_values)
         return task_presets
 
+    @staticmethod
+    def _read_param(payload: Any, key: str, default: Any = None) -> Any:
+        if isinstance(payload, dict):
+            return payload.get(key, default)
+        return getattr(payload, key, default)
+
     def _presets_for_task(self, yolo_task: str) -> tuple[str, ...]:
         task = str(yolo_task or "").strip().lower()
         presets = self._task_presets.get(task)
@@ -90,7 +96,7 @@ class YoloConfigService:
         allowed_presets = self._presets_for_task(yolo_task)
 
         source = str(config.model_source).strip().lower()
-        preset_val = config.get("model_preset", None)
+        preset_val = self._read_param(config, "model_preset")
         preset = str(preset_val or "").strip()
         if source == "preset":
             if not preset:
@@ -101,7 +107,7 @@ class YoloConfigService:
                     f"allowed={list(allowed_presets)}"
                 )
 
-        custom_ref_val = config.get("model_custom_ref", None)
+        custom_ref_val = self._read_param(config, "model_custom_ref")
         custom_ref = str(custom_ref_val or "").strip()
         if source != "preset" and not custom_ref:
             raise ValueError("model_custom_ref is required for custom model source")
@@ -124,12 +130,12 @@ class YoloConfigService:
         workspace: WorkspaceProtocol,
         params: Any,
     ) -> str:
-        source = str(params.get("model_source") or "preset").strip().lower()
-        yolo_task = str(params.get("yolo_task") or "obb").strip().lower()
+        source = str(self._read_param(params, "model_source", "preset") or "preset").strip().lower()
+        yolo_task = str(self._read_param(params, "yolo_task", "obb") or "obb").strip().lower()
         allowed_presets = self._presets_for_task(yolo_task)
 
         if source == "preset":
-            preset = str(params.get("model_preset") or "").strip()
+            preset = str(self._read_param(params, "model_preset") or "").strip()
             if not preset:
                 preset = allowed_presets[0]
             if preset not in allowed_presets:
@@ -139,7 +145,7 @@ class YoloConfigService:
                 )
             return preset
 
-        custom_ref = str(params.get("model_custom_ref") or "").strip()
+        custom_ref = str(self._read_param(params, "model_custom_ref") or "").strip()
         if not custom_ref:
             raise RuntimeError("model_custom_ref is required")
 

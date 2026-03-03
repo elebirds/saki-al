@@ -13,11 +13,7 @@ from saki_plugin_sdk import (
     TrainOutput,
     WorkspaceProtocol,
 )
-from saki_plugin_yolo_det.common import infer_image_hw as _runtime_infer_image_hw
 from saki_plugin_yolo_det.runtime_service import YoloRuntimeService
-
-# Keep this symbol on module-level for backward-compatible tests/monkeypatch.
-_infer_image_hw = _runtime_infer_image_hw
 
 
 class YoloDetectionPlugin(ExecutorPlugin):
@@ -161,4 +157,4 @@ class YoloDetectionPlugin(ExecutorPlugin):
         await self._runtime.stop(step_id)
 
 
-__all__ = ["YoloDetectionPlugin", "_infer_image_hw"]
+__all__ = ["YoloDetectionPlugin"]

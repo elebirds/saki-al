@@ -93,3 +93,16 @@ def test_parse_command_payload_rejects_non_v3():
     }
     with pytest.raises(ValueError, match="unsupported protocol_version"):
         protocol.parse_command_payload(raw)
+
+
+def test_parse_command_payload_requires_protocol_version():
+    raw = {
+        "envelope": {
+            "request_id": "req-3",
+            "action": "train",
+            "step_id": "step-ipc",
+        },
+        "payload": {},
+    }
+    with pytest.raises(ValueError, match="missing protocol_version"):
+        protocol.parse_command_payload(raw)

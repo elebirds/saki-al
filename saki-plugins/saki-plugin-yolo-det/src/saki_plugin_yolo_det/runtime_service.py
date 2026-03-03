@@ -99,11 +99,7 @@ class YoloRuntimeService:
         context: ExecutionBindingContext,
     ) -> None:
         del annotations, context
-        yolo_task = ""
-        if isinstance(splits, dict):
-            yolo_task = str(splits.get("yolo_task") or "").strip().lower()
-        if yolo_task not in {"detect", "obb"}:
-            yolo_task = self._infer_yolo_task_from_ir(dataset_ir)
+        yolo_task = self._infer_yolo_task_from_ir(dataset_ir)
 
         prepare_yolo_dataset(
             workspace=workspace,

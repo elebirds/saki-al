@@ -63,18 +63,18 @@ class YoloPredictService:
         self._stop_flag.clear()
         cfg = self._config_service.resolve_config(params)
 
-        topk = max(1, to_int(cfg.topk if "topk" in cfg else cfg.sampling_topk if "sampling_topk" in cfg else 200), 200)
+        topk = max(1, to_int(getattr(cfg, "topk", getattr(cfg, "sampling_topk", 200)), 200))
         conf = to_float(cfg.predict_conf, 0.1)
         imgsz = to_int(cfg.imgsz, 640)
         step_context = context.step_context
         random_seed = max(
             0,
             to_int(
-                cfg.sampling_seed if "sampling_seed" in cfg else cfg.random_seed if "random_seed" in cfg else step_context.sampling_seed
+                getattr(cfg, "sampling_seed", getattr(cfg, "random_seed", step_context.sampling_seed))
             ),
             0,
         )
-        round_index = max(1, to_int(cfg.round_index if "round_index" in cfg else step_context.round_index), 1)
+        round_index = max(1, to_int(getattr(cfg, "round_index", step_context.round_index)), 1)
         backend = str(context.device_binding.backend or "").strip().lower()
         device_spec = str(context.device_binding.device_spec or "").strip().lower()
         if backend == "cuda":

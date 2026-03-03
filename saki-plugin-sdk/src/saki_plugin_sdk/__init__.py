@@ -1,6 +1,14 @@
 """Saki Plugin SDK – base classes, IPC protocol, workspace utilities, and built-in strategies."""
 
-from saki_plugin_sdk.base import EventCallback, ExecutorPlugin, TrainArtifact, TrainOutput, StepRuntimeRequirements
+from saki_plugin_sdk.base import (
+    EventCallback,
+    ExecutorPlugin,
+    TrainArtifact,
+    TrainOutput,
+    StepRuntimeRequirements,
+    default_step_runtime_requirements,
+    resolve_step_runtime_requirements,
+)
 from saki_plugin_sdk.types import StepRuntimeContext
 from saki_plugin_sdk.capability_types import HostCapabilitySnapshot, RuntimeCapabilitySnapshot, GpuDeviceCapability
 from saki_plugin_sdk.profile_spec import RuntimeProfileSpec, parse_runtime_profiles
@@ -39,6 +47,8 @@ __all__ = [
     "TrainArtifact",
     "TrainOutput",
     "StepRuntimeRequirements",
+    "default_step_runtime_requirements",
+    "resolve_step_runtime_requirements",
     "StepRuntimeContext",
     "HostCapabilitySnapshot",
     "RuntimeCapabilitySnapshot",

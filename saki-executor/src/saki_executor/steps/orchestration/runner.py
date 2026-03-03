@@ -185,7 +185,7 @@ class StepPipelineRunner:
             entrypoint_module=plan.entrypoint_module or getattr(plan.metadata_plugin, "entrypoint", None),
             extra_env=dict(plan.extra_env),
         )
-        self._manager._active_plugin = plugin  # noqa: SLF001
+        self._manager.set_active_plugin(plugin)
         return plugin
 
     async def _prepare_execution_binding(
@@ -276,11 +276,11 @@ class StepPipelineRunner:
         reporter = StepReporter(self._task_id, workspace.events_path)
 
         async def _push_event(event: dict[str, Any]) -> None:
-            await self._manager._push_event(self._task_id, event)  # noqa: SLF001
+            await self._manager.push_step_event(self._task_id, event)
 
         emitter = StepEventEmitter(
             reporter=reporter,
-            stop_event=self._manager._stop_event,  # noqa: SLF001
+            stop_event=self._manager.stop_event,
             push_event=_push_event,
         )
         return workspace, reporter, emitter
@@ -304,7 +304,7 @@ class StepPipelineRunner:
         self._manager.executor_state = ExecutorState.FINALIZING
         if optional_upload_failures:
             reason = "optional artifact upload failed: " + "; ".join(optional_upload_failures)
-            await self._manager._push_event(self._task_id, reporter.status(StepStatus.FAILED.value, reason))  # noqa: SLF001
+            await self._manager.push_step_event(self._task_id, reporter.status(StepStatus.FAILED.value, reason))
             await self._send_result(
                 status=StepStatus.FAILED,
                 metrics=metrics,
@@ -321,7 +321,7 @@ class StepPipelineRunner:
                 candidates=candidates,
                 error_message=reason,
             )
-        await self._manager._push_event(self._task_id, reporter.status(StepStatus.SUCCEEDED.value, "step succeeded"))  # noqa: SLF001
+        await self._manager.push_step_event(self._task_id, reporter.status(StepStatus.SUCCEEDED.value, "step succeeded"))
         await self._send_result(
             status=StepStatus.SUCCEEDED,
             metrics=metrics,
@@ -347,9 +347,7 @@ class StepPipelineRunner:
         candidates: list[dict[str, Any]],
         error_message: str = "",
     ) -> None:
-        if self._manager._send_message is None:  # noqa: SLF001
-            raise RuntimeError("step manager send transport is not configured")
-        await self._manager._send_message(  # noqa: SLF001
+        await self._manager.send_runtime_message(
             runtime_codec.build_step_result_message(
                 request_id=str(uuid.uuid4()),
                 step_id=self._task_id,

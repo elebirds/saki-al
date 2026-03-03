@@ -47,7 +47,7 @@ class YoloEvalService:
         if not dataset_yaml.exists():
             raise RuntimeError(f"dataset file not found: {dataset_yaml}")
 
-        requested_device = str(cfg.get("device", "auto") or "auto").strip().lower()
+        requested_device = str(getattr(cfg, "device", "auto") or "auto").strip().lower()
         resolved_backend = str(context.device_binding.backend or "").strip().lower()
         device = _to_yolo_device(resolved_backend, str(context.device_binding.device_spec or ""))
         model_path = await self._config_service.resolve_best_or_fallback_model(workspace=workspace, params=cfg)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 from typing import Any
 import uuid
 
+from saki_executor.core.config import settings
 from saki_executor.plugins.ipc.client import PluginWorkerClient
 from saki_plugin_sdk import (
     ExecutionBindingContext,
@@ -295,9 +297,11 @@ class SubprocessPluginProxy(ExecutorPlugin):
     async def stop(self, step_id: str) -> None:
         del step_id
         await self._worker.terminate()
+        self._cleanup_step_payload_dir()
 
     async def shutdown(self) -> None:
         await self._worker.close()
+        self._cleanup_step_payload_dir()
 
     async def _on_worker_event(self, event_type: str, payload: dict[str, Any]) -> None:
         if event_type == "worker":
@@ -325,6 +329,10 @@ class SubprocessPluginProxy(ExecutorPlugin):
         return path
 
     def _payload_dir_for_step_cache(self) -> Path:
-        path = Path("/tmp") / "saki_plugin_worker_payloads" / self._step_id
+        path = Path(settings.PLUGIN_WORKER_IPC_DIR) / "payloads" / self._step_id
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    def _cleanup_step_payload_dir(self) -> None:
+        path = Path(settings.PLUGIN_WORKER_IPC_DIR) / "payloads" / self._step_id
+        shutil.rmtree(path, ignore_errors=True)

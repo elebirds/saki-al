@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import asc, desc, distinct, func, or_
 from sqlmodel import select
 
+from saki_ir import IRValidationError, normalize_prediction_candidate, normalize_prediction_snapshot
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.core.exceptions import ConflictAppException
 from saki_api.infra.db.transaction import transactional
@@ -1873,103 +1874,33 @@ class SnapshotMixin:
             return float(default)
 
     @staticmethod
-    def _first_non_none(*values: Any) -> Any:
-        for value in values:
-            if value is not None:
-                return value
-        return None
+    def _prediction_resolve_error_from_ir(
+        exc: IRValidationError,
+        *,
+        sample_id: str = "",
+    ) -> PredictionResolveError:
+        issue = exc.issues[0] if exc.issues else None
+        code = str(issue.code if issue else "IR_PREDICTION_FIELD_TYPE")
+        if issue is None:
+            message = exc.to_message()
+        else:
+            issue_path = str(issue.path or "<root>")
+            message = f"{issue.message} (path={issue_path})"
+        return PredictionResolveError(
+            code=code,
+            message=message,
+            sample_id=sample_id,
+        )
 
     @staticmethod
-    def _extract_prediction_snapshot(candidate: StepCandidateItem) -> dict[str, Any]:
-        primary = candidate.prediction_snapshot if isinstance(candidate.prediction_snapshot, dict) else {}
-        reason = candidate.reason if isinstance(candidate.reason, dict) else {}
-        fallback_raw = reason.get("prediction_snapshot")
-        fallback = fallback_raw if isinstance(fallback_raw, dict) else {}
-
-        if primary and fallback:
-            merged = dict(fallback)
-            merged.update(primary)
-            return merged
-        if primary:
-            return dict(primary)
-        if fallback:
-            return dict(fallback)
-        return {}
-
-    @staticmethod
-    def _prediction_list_from_snapshot(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    def _prediction_entries_from_snapshot(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+        if not isinstance(snapshot, dict):
+            return []
         for key in ("base_predictions", "predictions"):
             rows = snapshot.get(key)
             if isinstance(rows, list):
-                return [row for row in rows if isinstance(row, dict)]
+                return [dict(row) for row in rows if isinstance(row, dict)]
         return []
-
-    @staticmethod
-    def _single_prediction_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(snapshot, dict):
-            return {}
-        if isinstance(snapshot.get("top_prediction"), dict):
-            return dict(snapshot.get("top_prediction") or {})
-        keys = {
-            "label_id",
-            "class_index",
-            "class_name",
-            "geometry",
-            "attrs",
-            "confidence",
-        }
-        if any(key in snapshot for key in keys):
-            return dict(snapshot)
-        return {}
-
-    @classmethod
-    def _prediction_entries_from_snapshot(cls, snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-        predictions = cls._prediction_list_from_snapshot(snapshot)
-        if predictions:
-            return [dict(row) for row in predictions]
-        single = cls._single_prediction_from_snapshot(snapshot)
-        if single:
-            return [single]
-        return []
-
-    @classmethod
-    def _resolve_prediction_geometry(
-        cls,
-        *,
-        snapshot: dict[str, Any],
-        prediction: dict[str, Any],
-    ) -> dict[str, Any]:
-        geometry = prediction.get("geometry")
-        geometry = dict(geometry) if isinstance(geometry, dict) else {}
-        if not geometry and isinstance(snapshot.get("geometry"), dict):
-            geometry = dict(snapshot.get("geometry") or {})
-        return geometry
-
-    @staticmethod
-    def _resolve_prediction_attrs(
-        *,
-        snapshot: dict[str, Any],
-        prediction: dict[str, Any],
-    ) -> dict[str, Any]:
-        attrs = prediction.get("attrs")
-        attrs = dict(attrs) if isinstance(attrs, dict) else {}
-        if not attrs and isinstance(snapshot.get("attrs"), dict):
-            attrs = dict(snapshot.get("attrs") or {})
-        return attrs
-
-    @classmethod
-    def _resolve_prediction_confidence(
-        cls,
-        *,
-        snapshot: dict[str, Any],
-        prediction: dict[str, Any],
-        fallback: float,
-    ) -> float:
-        confidence_raw = cls._first_non_none(
-            prediction.get("confidence"),
-            snapshot.get("confidence"),
-        )
-        return cls._safe_float(confidence_raw, default=fallback)
 
     async def _resolve_branch_name(self, branch_id: uuid.UUID) -> str:
         branch_row = await self.session.exec(select(Branch.name).where(Branch.id == branch_id))
@@ -2001,6 +1932,7 @@ class SnapshotMixin:
                 expires_delta=timedelta(hours=max(1, expires_in_hours)),
             )
         raise BadRequestAppException(f"unsupported artifact uri: {normalized}")
+
 
     @staticmethod
     def _match_artifact_payload(
@@ -2223,21 +2155,45 @@ class SnapshotMixin:
     ) -> list[dict[str, Any]]:
         resolver = await self._prediction_resolver_for_set(prediction_set_id=prediction_set_id)
         prediction_rows: list[dict[str, Any]] = []
-        for candidate in candidates:
-            snapshot = self._extract_prediction_snapshot(candidate)
+        for idx, candidate in enumerate(candidates):
+            raw_candidate: dict[str, Any] = {
+                "sample_id": str(candidate.sample_id),
+                "score": float(candidate.score or 0.0),
+                "reason": dict(candidate.reason or {}) if isinstance(candidate.reason, dict) else {},
+            }
+            if isinstance(candidate.prediction_snapshot, dict):
+                raw_candidate["prediction_snapshot"] = dict(candidate.prediction_snapshot or {})
+            try:
+                normalized_candidate = normalize_prediction_candidate(raw_candidate, path=f"candidate[{idx}]")
+            except IRValidationError as exc:
+                raise self._prediction_resolve_error_from_ir(exc, sample_id=str(candidate.sample_id)) from exc
+
+            reason_payload = normalized_candidate.get("reason")
+            reason_payload = dict(reason_payload) if isinstance(reason_payload, dict) else {}
+            snapshot_raw = normalized_candidate.get("prediction_snapshot")
+            if snapshot_raw is None:
+                snapshot_raw = reason_payload.get("prediction_snapshot")
+            snapshot = dict(snapshot_raw) if isinstance(snapshot_raw, dict) else {}
             prediction_entries = self._prediction_entries_from_snapshot(snapshot)
-            top_prediction = prediction_entries[0] if prediction_entries else {}
+            if not prediction_entries:
+                raise PredictionResolveError(
+                    code="PREDICTION_LABEL_UNRESOLVED",
+                    message="prediction_snapshot.base_predictions/predictions is empty",
+                    sample_id=str(candidate.sample_id),
+                )
+            primary_prediction = prediction_entries[0]
             decision = resolver.resolve(
                 snapshot=snapshot,
-                prediction=top_prediction,
+                prediction=primary_prediction,
                 sample_id=str(candidate.sample_id),
             )
-            geometry = self._resolve_prediction_geometry(snapshot=snapshot, prediction=top_prediction)
-            attrs = self._resolve_prediction_attrs(snapshot=snapshot, prediction=top_prediction)
-            confidence = self._resolve_prediction_confidence(
-                snapshot=snapshot,
-                prediction=top_prediction,
-                fallback=float(candidate.score or 0.0),
+            geometry_raw = primary_prediction.get("geometry")
+            geometry = dict(geometry_raw) if isinstance(geometry_raw, dict) else {}
+            attrs_raw = primary_prediction.get("attrs")
+            attrs = dict(attrs_raw) if isinstance(attrs_raw, dict) else {}
+            confidence = self._safe_float(
+                primary_prediction.get("confidence"),
+                default=float(normalized_candidate.get("score") or candidate.score or 0.0),
             )
 
             meta_payload = dict(snapshot or {})
@@ -2662,16 +2618,43 @@ class SnapshotMixin:
 
             model_annotations: list[dict[str, Any]] = []
             for prediction_item in sorted(group, key=lambda row: int(row.rank or 0)):
-                snapshot = dict(prediction_item.meta or {}) if isinstance(prediction_item.meta, dict) else {}
+                snapshot_raw = dict(prediction_item.meta or {}) if isinstance(prediction_item.meta, dict) else {}
+                try:
+                    snapshot = normalize_prediction_snapshot(
+                        snapshot_raw,
+                        path=f"prediction_item[{int(prediction_item.rank or 0)}].meta",
+                    )
+                except IRValidationError as exc:
+                    resolve_error = self._prediction_resolve_error_from_ir(exc, sample_id=str(sample_id))
+                    prediction_set = await self.prediction_set_repo.update(
+                        prediction_set.id,
+                        {
+                            "status": "failed",
+                            "last_error": resolve_error.to_error_message(),
+                        },
+                    ) or prediction_set
+                    return {
+                        "prediction_set_id": prediction_set.id,
+                        "applied_count": 0,
+                        "status": str(prediction_set.status or "failed"),
+                    }
                 prediction_entries = self._prediction_entries_from_snapshot(snapshot)
                 if not prediction_entries:
-                    fallback_prediction = {
-                        "label_id": str(prediction_item.label_id) if prediction_item.label_id else None,
-                        "geometry": dict(prediction_item.geometry or {}),
-                        "attrs": dict(prediction_item.attrs or {}),
-                        "confidence": float(prediction_item.confidence or 0.0),
+                    prediction_set = await self.prediction_set_repo.update(
+                        prediction_set.id,
+                        {
+                            "status": "failed",
+                            "last_error": (
+                                "[PREDICTION_LABEL_UNRESOLVED] prediction_snapshot.base_predictions/predictions "
+                                "is empty (phase=prediction_resolve)"
+                            ),
+                        },
+                    ) or prediction_set
+                    return {
+                        "prediction_set_id": prediction_set.id,
+                        "applied_count": 0,
+                        "status": str(prediction_set.status or "failed"),
                     }
-                    prediction_entries = [fallback_prediction]
 
                 for entry in prediction_entries:
                     prediction = dict(entry) if isinstance(entry, dict) else {}
@@ -2679,7 +2662,6 @@ class SnapshotMixin:
                         decision = resolver.resolve(
                             snapshot=snapshot,
                             prediction=prediction,
-                            fallback_label_id=prediction_item.label_id,
                             sample_id=str(sample_id),
                         )
                     except PredictionResolveError as exc:
@@ -2697,26 +2679,16 @@ class SnapshotMixin:
                         }
                     label_id = decision.label_id
 
-                    geometry = self._resolve_prediction_geometry(
-                        snapshot=snapshot,
-                        prediction=prediction,
-                    )
-                    if not geometry and isinstance(prediction_item.geometry, dict):
-                        geometry = dict(prediction_item.geometry or {})
+                    geometry_raw = prediction.get("geometry")
+                    geometry = dict(geometry_raw) if isinstance(geometry_raw, dict) else {}
                     if not geometry:
                         continue
 
-                    attrs = self._resolve_prediction_attrs(
-                        snapshot=snapshot,
-                        prediction=prediction,
-                    )
-                    if not attrs and isinstance(prediction_item.attrs, dict):
-                        attrs = dict(prediction_item.attrs or {})
-
-                    confidence = self._resolve_prediction_confidence(
-                        snapshot=snapshot,
-                        prediction=prediction,
-                        fallback=float(prediction_item.confidence or prediction_item.score or 0.0),
+                    attrs_raw = prediction.get("attrs")
+                    attrs = dict(attrs_raw) if isinstance(attrs_raw, dict) else {}
+                    confidence = self._safe_float(
+                        prediction.get("confidence"),
+                        default=float(prediction_item.confidence or prediction_item.score or 0.0),
                     )
 
                     annotation_id = str(uuid.uuid4())

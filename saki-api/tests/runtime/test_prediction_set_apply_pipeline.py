@@ -689,7 +689,7 @@ async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_e
         assert draft_row.one_or_none() is None
         settled = await service.get_prediction_task(task_id=prediction_set.id)
         assert str(settled.status or "").lower() == "failed"
-        assert "PREDICTION_LABEL_UNRESOLVED" in str(settled.last_error or "")
+        assert "IR_PREDICTION_FIELD_MISSING" in str(settled.last_error or "")
 
 
 @pytest.mark.anyio

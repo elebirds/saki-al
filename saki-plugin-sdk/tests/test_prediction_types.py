@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from saki_plugin_sdk.prediction_types import normalize_prediction_candidates
+from saki_ir import IRValidationError
+from saki_plugin_sdk import normalize_prediction_candidates
 
 
 def test_normalize_candidates_accepts_v3_prediction_snapshot() -> None:
@@ -35,12 +36,15 @@ def test_normalize_candidates_accepts_v3_prediction_snapshot() -> None:
 
 
 def test_normalize_candidates_requires_sample_id() -> None:
-    with pytest.raises(ValueError, match="sample_id"):
+    with pytest.raises(IRValidationError) as exc_info:
         normalize_prediction_candidates([{"score": 0.1}])
+    first = exc_info.value.issues[0]
+    assert first.code == "IR_PREDICTION_FIELD_MISSING"
+    assert first.path == "candidate[0].sample_id"
 
 
 def test_normalize_candidates_rejects_missing_required_prediction_fields() -> None:
-    with pytest.raises(ValueError, match="confidence"):
+    with pytest.raises(IRValidationError) as exc_info:
         normalize_prediction_candidates(
             [
                 {
@@ -57,10 +61,13 @@ def test_normalize_candidates_rejects_missing_required_prediction_fields() -> No
                 }
             ]
         )
+    first = exc_info.value.issues[0]
+    assert first.code == "IR_PREDICTION_FIELD_MISSING"
+    assert "confidence" in first.path
 
 
 def test_normalize_candidates_rejects_invalid_geometry_by_ir_rules() -> None:
-    with pytest.raises(ValueError, match="geometry is invalid"):
+    with pytest.raises(IRValidationError) as exc_info:
         normalize_prediction_candidates(
             [
                 {
@@ -78,3 +85,6 @@ def test_normalize_candidates_rejects_invalid_geometry_by_ir_rules() -> None:
                 }
             ]
         )
+    first = exc_info.value.issues[0]
+    assert first.code == "IR_GEOMETRY_INVALID"
+    assert "geometry" in first.path

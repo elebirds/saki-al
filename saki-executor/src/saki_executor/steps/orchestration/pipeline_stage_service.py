@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from saki_ir import normalize_prediction_candidates
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepStage, wrap_stage_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
-from saki_plugin_sdk import StepReporter, StepRuntimeRequirements, WorkspaceProtocol, normalize_prediction_candidates
+from saki_plugin_sdk import StepReporter, StepRuntimeRequirements, WorkspaceProtocol
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,9 +7,9 @@ from typing import Iterable, Sequence
 
 @dataclass(frozen=True)
 class DetectionBox:
-    cls_id: int
-    conf: float
-    xyxy: tuple[float, float, float, float]
+    class_index: int
+    confidence: float
+    bounds: tuple[float, float, float, float]
 
 
 def _safe_div(num: float, den: float) -> float:
@@ -27,8 +27,8 @@ def _clamp01(value: float) -> float:
 
 
 def box_iou(a: DetectionBox, b: DetectionBox) -> float:
-    ax1, ay1, ax2, ay2 = a.xyxy
-    bx1, by1, bx2, by2 = b.xyxy
+    ax1, ay1, ax2, ay2 = a.bounds
+    bx1, by1, bx2, by2 = b.bounds
 
     inter_x1 = max(ax1, bx1)
     inter_y1 = max(ay1, by1)
@@ -120,7 +120,7 @@ def _hungarian_maximize(weights: list[list[float]]) -> list[tuple[int, int]]:
 
 
 def _class_hist_gap(anchor: Sequence[DetectionBox], other: Sequence[DetectionBox]) -> float:
-    classes = {item.cls_id for item in anchor} | {item.cls_id for item in other}
+    classes = {item.class_index for item in anchor} | {item.class_index for item in other}
     if not classes:
         return 0.0
     total_a = len(anchor)
@@ -129,22 +129,22 @@ def _class_hist_gap(anchor: Sequence[DetectionBox], other: Sequence[DetectionBox
         return 0.0
 
     gap = 0.0
-    for cls_id in classes:
-        pa = _safe_div(sum(1 for x in anchor if x.cls_id == cls_id), total_a)
-        pb = _safe_div(sum(1 for x in other if x.cls_id == cls_id), total_b)
+    for class_index in classes:
+        pa = _safe_div(sum(1 for x in anchor if x.class_index == class_index), total_a)
+        pb = _safe_div(sum(1 for x in other if x.class_index == class_index), total_b)
         gap += abs(pa - pb)
     return _clamp01(gap * 0.5)
 
 
 def _pair_mean_iou_by_class(anchor: Sequence[DetectionBox], other: Sequence[DetectionBox]) -> float:
-    classes = {item.cls_id for item in anchor} | {item.cls_id for item in other}
+    classes = {item.class_index for item in anchor} | {item.class_index for item in other}
     if not classes:
         return 1.0
 
     matched_ious: list[float] = []
-    for cls_id in classes:
-        a_cls = [x for x in anchor if x.cls_id == cls_id]
-        b_cls = [x for x in other if x.cls_id == cls_id]
+    for class_index in classes:
+        a_cls = [x for x in anchor if x.class_index == class_index]
+        b_cls = [x for x in other if x.class_index == class_index]
         if not a_cls and not b_cls:
             continue
         if not a_cls or not b_cls:
@@ -179,8 +179,8 @@ def score_aug_iou_disagreement(
         }
     if len(predictions_by_aug) == 1:
         only = predictions_by_aug[0]
-        conf_mean = _safe_div(sum(float(x.conf) for x in only), len(only))
-        score = 0.15 * conf_mean
+        confidence_mean = _safe_div(sum(float(x.confidence) for x in only), len(only))
+        score = 0.15 * confidence_mean
         return _clamp01(score), {
             "mean_iou": 1.0,
             "count_gap": 0.0,
@@ -208,7 +208,7 @@ def score_aug_iou_disagreement(
     class_gap = _safe_div(sum(class_gap_items), len(class_gap_items))
 
     conf_means = [
-        _safe_div(sum(float(item.conf) for item in aug_pred), len(aug_pred))
+        _safe_div(sum(float(item.confidence) for item in aug_pred), len(aug_pred))
         for aug_pred in predictions_by_aug
     ]
     mean_conf = _safe_div(sum(conf_means), len(conf_means))
@@ -238,23 +238,25 @@ def build_detection_boxes(rows: Iterable[dict]) -> list[DetectionBox]:
         try:
             geometry = row.get("geometry")
             rect = geometry.get("rect") if isinstance(geometry, dict) else None
-            if isinstance(rect, dict):
-                x1 = float(rect.get("x", 0.0))
-                y1 = float(rect.get("y", 0.0))
-                width = float(rect.get("width", 0.0))
-                height = float(rect.get("height", 0.0))
-                x2 = x1 + max(0.0, width)
-                y2 = y1 + max(0.0, height)
-            else:
-                xyxy_raw = row.get("xyxy")
-                if not isinstance(xyxy_raw, (list, tuple)) or len(xyxy_raw) != 4:
-                    continue
-                x1, y1, x2, y2 = [float(v) for v in xyxy_raw]
-            cls_id = int(row.get("class_index", row.get("cls_id", 0)))
-            conf = float(row.get("confidence", row.get("conf", 0.0)))
+            if not isinstance(rect, dict):
+                continue
+            x1 = float(rect.get("x", 0.0))
+            y1 = float(rect.get("y", 0.0))
+            width = float(rect.get("width", 0.0))
+            height = float(rect.get("height", 0.0))
+            x2 = x1 + max(0.0, width)
+            y2 = y1 + max(0.0, height)
+            class_index = int(row.get("class_index", 0))
+            confidence = float(row.get("confidence", 0.0))
         except Exception:
             continue
         if x2 <= x1 or y2 <= y1:
             continue
-        boxes.append(DetectionBox(cls_id=cls_id, conf=_clamp01(conf), xyxy=(x1, y1, x2, y2)))
+        boxes.append(
+            DetectionBox(
+                class_index=class_index,
+                confidence=_clamp01(confidence),
+                bounds=(x1, y1, x2, y2),
+            )
+        )
     return boxes

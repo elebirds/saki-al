@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
-from google.protobuf.json_format import ParseDict
 from loguru import logger
 from sqlmodel import select
 
 from saki_ir.codec import encode_payload
+from saki_ir import IRValidationError, normalize_prediction_snapshot, parse_geometry
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 from saki_ir.transport import DEFAULT_CHUNK_BYTES, split_encoded_payload
 from saki_api.core.config import settings
@@ -240,13 +240,26 @@ class RuntimeControlIngressService:
             reason_payload = runtime_codec.struct_to_dict(candidate.reason)
             if not isinstance(reason_payload, dict):
                 reason_payload = {}
+            snapshot_payload: dict[str, Any] = {}
+            snapshot_raw = reason_payload.get("prediction_snapshot")
+            if isinstance(snapshot_raw, dict):
+                try:
+                    snapshot_payload = normalize_prediction_snapshot(
+                        snapshot_raw,
+                        path="candidate.reason.prediction_snapshot",
+                    )
+                except IRValidationError as exc:
+                    issue = exc.issues[0]
+                    raise ValueError(
+                        f"[{issue.code}] {issue.message} (path={issue.path}, phase=prediction_resolve)"
+                    ) from exc
             candidates.append(
                 RuntimeStepCandidateDTO(
                     sample_id=sample_id,
                     rank=idx,
                     score=float(candidate.score or 0.0),
                     reason=reason_payload,
-                    prediction_snapshot=self._extract_prediction_snapshot_from_reason(reason_payload),
+                    prediction_snapshot=snapshot_payload,
                 )
             )
 
@@ -551,9 +564,8 @@ class RuntimeControlIngressService:
     def _to_annotation_items(self, annotations: list[Annotation]) -> list[irpb.DataItemIR]:
         items: list[irpb.DataItemIR] = []
         for ann in annotations:
-            geometry = irpb.Geometry()
             try:
-                ParseDict(dict(ann.geometry or {}), geometry, ignore_unknown_fields=False)
+                geometry = parse_geometry(dict(ann.geometry or {}))
             except Exception as exc:
                 raise RuntimeError(f"invalid annotation geometry id={ann.id}") from exc
 
@@ -644,15 +656,6 @@ class RuntimeControlIngressService:
             return max(0, int(cursor))
         except Exception:
             return 0
-
-    @staticmethod
-    def _extract_prediction_snapshot_from_reason(reason: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(reason, dict):
-            return {}
-        snapshot = reason.get("prediction_snapshot")
-        if isinstance(snapshot, dict):
-            return snapshot
-        return {}
 
     @staticmethod
     def _paginate(rows: list[object], *, limit: int, offset: int) -> tuple[list[object], str | None]:

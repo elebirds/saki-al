@@ -11,10 +11,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from google.protobuf.json_format import MessageToDict, ParseDict
-
-from saki_ir import normalize_ir
-from saki_ir.errors import IRError
+from saki_ir import (
+    IRValidationError,
+    geometry_proto_to_payload,
+    infer_shape,
+    normalize_geometry_payload as ir_normalize_geometry_payload,
+    parse_geometry,
+)
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 from saki_api.core.exceptions import BadRequestAppException
@@ -77,51 +80,34 @@ def normalize_attrs(attrs: Any) -> dict[str, Any]:
 
 def parse_geometry_dict(payload: Any) -> irpb.Geometry:
     """Parse Geometry ProtoJSON dict into protobuf message."""
-
-    if not isinstance(payload, Mapping):
-        raise BadRequestAppException("geometry must be an object")
-
-    geometry = irpb.Geometry()
     try:
-        ParseDict(dict(payload), geometry, ignore_unknown_fields=False)
-    except Exception as exc:  # pragma: no cover - protobuf parse details vary by runtime
-        raise BadRequestAppException(f"Invalid geometry payload: {exc}") from exc
-
-    shape = geometry.WhichOneof("shape")
-    if shape not in _SHAPE_TO_TYPE:
-        raise BadRequestAppException("geometry.shape is required and must be rect or obb")
-
-    return geometry
+        mapping = dict(payload) if isinstance(payload, Mapping) else payload
+        return parse_geometry(mapping)
+    except IRValidationError as exc:
+        issue = exc.issues[0]
+        raise BadRequestAppException(f"[{issue.code}] {issue.message} (path={issue.path}, phase=geometry)") from exc
 
 
 def geometry_to_dict(geometry: irpb.Geometry) -> dict[str, Any]:
     """Convert protobuf Geometry message to ProtoJSON dict (snake_case)."""
-
-    return dict(MessageToDict(geometry, preserving_proto_field_name=True))
+    try:
+        return geometry_proto_to_payload(geometry)
+    except IRValidationError as exc:
+        issue = exc.issues[0]
+        raise BadRequestAppException(f"[{issue.code}] {issue.message} (path={issue.path}, phase=geometry)") from exc
 
 
 def infer_annotation_type_from_geometry(geometry: irpb.Geometry) -> AnnotationType:
     """Infer annotation type from Geometry oneof shape."""
-
-    shape = geometry.WhichOneof("shape")
+    try:
+        shape = infer_shape(geometry)
+    except IRValidationError as exc:
+        issue = exc.issues[0]
+        raise BadRequestAppException(f"[{issue.code}] {issue.message} (path={issue.path}, phase=geometry)") from exc
     ann_type = _SHAPE_TO_TYPE.get(str(shape))
     if ann_type is None:
         raise BadRequestAppException("geometry.shape is required and must be rect or obb")
     return ann_type
-
-
-def _annotation_source_to_ir(source: AnnotationSource) -> irpb.AnnotationSource:
-    if source == AnnotationSource.MANUAL:
-        return irpb.ANNOTATION_SOURCE_MANUAL
-    if source == AnnotationSource.MODEL:
-        return irpb.ANNOTATION_SOURCE_MODEL
-    if source == AnnotationSource.CONFIRMED_MODEL:
-        return irpb.ANNOTATION_SOURCE_CONFIRMED_MODEL
-    if source == AnnotationSource.SYSTEM:
-        return irpb.ANNOTATION_SOURCE_SYSTEM
-    if source == AnnotationSource.IMPORTED:
-        return irpb.ANNOTATION_SOURCE_IMPORTED
-    return irpb.ANNOTATION_SOURCE_UNSPECIFIED
 
 
 def normalize_geometry_payload(
@@ -138,37 +124,30 @@ def normalize_geometry_payload(
     """
 
     ann_type = normalize_annotation_type(annotation_type)
-    ann_source = normalize_annotation_source(source)
-    geometry = parse_geometry_dict(geometry_payload)
+    normalize_annotation_source(source)
+
+    try:
+        confidence_value = float(confidence)
+    except Exception as exc:
+        raise BadRequestAppException("confidence must be a valid number") from exc
+    if confidence_value < 0.0 or confidence_value > 1.0:
+        raise BadRequestAppException("confidence must be in range [0, 1]")
+
+    if not isinstance(geometry_payload, Mapping):
+        raise BadRequestAppException("geometry must be an object")
+    try:
+        normalized_geometry = ir_normalize_geometry_payload(dict(geometry_payload))
+    except IRValidationError as exc:
+        issue = exc.issues[0]
+        raise BadRequestAppException(f"[{issue.code}] {issue.message} (path={issue.path}, phase=geometry)") from exc
 
     expected_shape = _TYPE_TO_SHAPE[ann_type]
-    actual_shape = geometry.WhichOneof("shape")
+    actual_shape = str(infer_shape(normalized_geometry))
     if actual_shape != expected_shape:
         raise BadRequestAppException(
             f"type/geometry mismatch: type={ann_type.value} requires geometry.{expected_shape}, got geometry.{actual_shape}"
         )
-
-    batch = irpb.DataBatchIR(
-        items=[
-            irpb.DataItemIR(
-                annotation=irpb.AnnotationRecord(
-                    id="__validation__",
-                    sample_id="__validation__",
-                    label_id="__validation__",
-                    geometry=geometry,
-                    source=_annotation_source_to_ir(ann_source),
-                    confidence=float(confidence),
-                )
-            )
-        ]
-    )
-    try:
-        normalize_ir(batch)
-    except IRError as exc:
-        raise BadRequestAppException(exc.message) from exc
-
-    normalized_geometry = batch.items[0].annotation.geometry
-    return ann_type, geometry_to_dict(normalized_geometry)
+    return ann_type, normalized_geometry
 
 
 def normalize_annotation_payload(

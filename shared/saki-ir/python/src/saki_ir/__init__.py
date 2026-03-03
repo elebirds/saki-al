@@ -31,6 +31,19 @@ from saki_ir.format_profiles import (
     list_format_profiles,
 )
 from saki_ir.normalize import normalize_ir, validate_ir
+from saki_ir.api import (
+    IRValidationError,
+    IRValidationIssue,
+    geometry_proto_to_payload,
+    infer_shape,
+    normalize_geometry_payload,
+    normalize_prediction_candidate,
+    normalize_prediction_candidates,
+    normalize_prediction_entry,
+    normalize_prediction_snapshot,
+    parse_geometry,
+    validate_geometry_payload,
+)
 from saki_ir.transport import (
     ChunkAssembler,
     CompletedPayloadCache,
@@ -60,6 +73,17 @@ from saki_ir.proto.saki.ir.v1.annotation_ir_pb2 import (  # noqa: F401
 )
 
 __all__ = [
+    "IRValidationIssue",
+    "IRValidationError",
+    "parse_geometry",
+    "normalize_geometry_payload",
+    "validate_geometry_payload",
+    "geometry_proto_to_payload",
+    "infer_shape",
+    "normalize_prediction_entry",
+    "normalize_prediction_snapshot",
+    "normalize_prediction_candidate",
+    "normalize_prediction_candidates",
     "normalize_ir",
     "validate_ir",
     "encode_payload",

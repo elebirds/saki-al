@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from google.protobuf.json_format import ParseDict
 from sqlalchemy import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -18,7 +17,6 @@ from saki_ir import (
     ConversionContext,
     ConversionReport,
     DataBatchIR,
-    Geometry,
     LabelRecord,
     SampleRecord,
     get_format_profile,
@@ -26,6 +24,7 @@ from saki_ir import (
     ir_to_voc_xml,
     ir_to_yolo_obb_txt,
     ir_to_yolo_txt,
+    parse_geometry,
 )
 from saki_ir.convert import build_batch, dict_to_struct
 
@@ -564,9 +563,8 @@ class ExportService:
         records: list[AnnotationRecord] = []
         issues: list[str] = []
         for annotation in annotations:
-            geometry = Geometry()
             try:
-                ParseDict(dict(annotation.geometry or {}), geometry, ignore_unknown_fields=False)
+                geometry = parse_geometry(dict(annotation.geometry or {}))
             except Exception as exc:  # noqa: BLE001
                 issues.append(
                     self._format_issue(

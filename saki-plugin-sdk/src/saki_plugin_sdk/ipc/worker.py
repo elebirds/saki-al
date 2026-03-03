@@ -22,11 +22,11 @@ from typing import Any
 
 from loguru import logger
 
+from saki_ir import IRValidationError, normalize_prediction_candidates
 from saki_plugin_sdk.base import ExecutorPlugin
 from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
 from saki_plugin_sdk.ipc import protocol
 from saki_plugin_sdk.logger import reset_log_bridge, set_log_bridge
-from saki_plugin_sdk.prediction_types import normalize_prediction_candidates
 from saki_plugin_sdk.types import StepRuntimeContext
 from saki_plugin_sdk.workspace import Workspace
 
@@ -418,6 +418,27 @@ def _run_loop(plugin: ExecutorPlugin, args: argparse.Namespace) -> int:
                     continue
 
                 raise RuntimeError(f"unsupported worker action: {action or '<empty>'}")
+            except IRValidationError as exc:
+                issue = exc.issues[0] if exc.issues else None
+                error_code = str(issue.code if issue else "IR_VALIDATION_ERROR")
+                error_message = exc.to_message()
+                logger.exception("worker command failed step_id={} error={}", args.step_id, error_message)
+                _publish_event(
+                    pub_socket=pub_socket,
+                    event_type="worker",
+                    step_id=args.step_id,
+                    payload={"level": "ERROR", "message": error_message},
+                    request_id=envelope.request_id,
+                )
+                rep_socket.send_json(
+                    protocol.WorkerReplyEnvelope(
+                        request_id=envelope.request_id,
+                        ok=False,
+                        error_code=error_code,
+                        error_message=error_message,
+                        result_path="",
+                    ).to_dict()
+                )
             except Exception as exc:
                 logger.exception("worker command failed step_id={} error={}", args.step_id, exc)
                 error_message = str(exc)

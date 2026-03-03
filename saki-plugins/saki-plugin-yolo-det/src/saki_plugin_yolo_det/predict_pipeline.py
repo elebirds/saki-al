@@ -13,14 +13,13 @@ def _stable_random_score(*, sample_id: str, random_seed: int, round_index: int) 
 
 def score_unlabeled_samples(
     *,
-    model_path: str,
     unlabeled_samples: list[dict[str, Any]],
     strategy: str,
     conf: float,
     imgsz: int,
     device: Any,
     stop_flag: Event,
-    load_yolo: Callable[[], Any],
+    get_model: Callable[[], Any] | None,
     predict_with_aug: Callable[..., list[list[dict[str, Any]]]],
     extract_predictions: Callable[[Any], list[dict[str, Any]]],
     build_detection_boxes: Callable[[list[dict[str, Any]]], list[Any]],
@@ -30,8 +29,11 @@ def score_unlabeled_samples(
     random_seed: int,
     round_index: int,
 ) -> list[dict[str, Any]]:
-    YOLO = load_yolo()
-    model = YOLO(model_path)
+    strategy_key = normalize_strategy_name(strategy)
+    need_model = strategy_key in {"aug_iou_disagreement", "uncertainty_1_minus_max_conf"}
+    model = get_model() if need_model and callable(get_model) else None
+    if need_model and model is None:
+        raise RuntimeError(f"model is required for strategy={strategy_key}")
     candidates: list[dict[str, Any]] = []
 
     for sample in unlabeled_samples:
@@ -44,7 +46,6 @@ def score_unlabeled_samples(
         image_path = Path(local_path)
         if not image_path.exists():
             continue
-        strategy_key = normalize_strategy_name(strategy)
         if strategy_key == "aug_iou_disagreement":
             preds_by_aug = predict_with_aug(
                 model=model,

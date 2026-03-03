@@ -33,6 +33,9 @@ class YoloPredictService:
         self._stop_flag = stop_flag
         self._config_service = config_service
         self._load_yolo = load_yolo
+        self._model_cache_lock = threading.Lock()
+        self._cached_model_key: tuple[str, str] | None = None
+        self._cached_model: Any | None = None
 
     async def predict_unlabeled(
         self,
@@ -111,14 +114,13 @@ class YoloPredictService:
         round_index: int,
     ) -> list[dict[str, Any]]:
         return score_unlabeled_samples(
-            model_path=model_path,
             unlabeled_samples=unlabeled_samples,
             strategy=strategy,
             conf=conf,
             imgsz=imgsz,
             device=device,
             stop_flag=self._stop_flag,
-            load_yolo=self._load_yolo,
+            get_model=lambda: self._get_or_load_model(model_path=model_path, device=device),
             predict_with_aug=self._predict_with_aug,
             extract_predictions=self._extract_predictions,
             build_detection_boxes=build_detection_boxes,
@@ -128,6 +130,17 @@ class YoloPredictService:
             random_seed=random_seed,
             round_index=round_index,
         )
+
+    def _get_or_load_model(self, *, model_path: str, device: Any) -> Any:
+        model_key = (str(model_path or "").strip(), str(device).strip().lower())
+        with self._model_cache_lock:
+            if self._cached_model_key == model_key and self._cached_model is not None:
+                return self._cached_model
+            yolo_cls = self._load_yolo()
+            model = yolo_cls(model_path)
+            self._cached_model_key = model_key
+            self._cached_model = model
+            return model
 
     def _ensure_image_deps(self) -> None:
         if Image is None or np is None:

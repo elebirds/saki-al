@@ -19,6 +19,7 @@ from saki_plugin_sdk import (
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.runtime_service import YoloRuntimeService
 from saki_plugin_yolo_det.plugin import YoloDetectionPlugin
+from saki_plugin_yolo_det.types import TrainConfig
 from saki_ir.proto.saki.ir.v1 import annotation_ir_pb2 as irpb
 
 
@@ -315,3 +316,102 @@ async def test_runtime_prepare_data_ignores_yolo_task_split_hint(tmp_path: Path,
         context=context,
     )
     assert captured["yolo_task"] == "detect"
+
+
+@pytest.mark.anyio
+async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path: Path, monkeypatch):
+    runtime = YoloRuntimeService()
+    workspace = Workspace(str(tmp_path / "runs"), "step-train-1")
+    workspace.ensure()
+    (workspace.artifacts_dir / "best.pt").write_bytes(b"")
+    emitted_logs: list[str] = []
+
+    async def _fake_resolve_train_config(**kwargs) -> TrainConfig:
+        plugin_config = kwargs["plugin_config"]
+        assert int(getattr(plugin_config, "split_seed", -1)) == 11
+        return TrainConfig(
+            epochs=1,
+            batch=1,
+            imgsz=640,
+            patience=1,
+            device="cpu",
+            requested_device="auto",
+            resolved_backend="cpu",
+            resolved_base_model="yolov8n.pt",
+            train_seed=22,
+            deterministic=False,
+            yolo_task="detect",
+        )
+
+    async def _fake_run_train_with_epoch_stream(**kwargs) -> dict[str, Any]:
+        return {
+            "metrics": {"loss": 1.0},
+            "history": [],
+            "save_dir": str(workspace.artifacts_dir),
+            "best_path": str(workspace.artifacts_dir / "best.pt"),
+            "extra_artifacts": [],
+        }
+
+    monkeypatch.setattr("saki_plugin_yolo_det.runtime_service.resolve_train_config", _fake_resolve_train_config)
+    monkeypatch.setattr("saki_plugin_yolo_det.runtime_service.run_train_with_epoch_stream", _fake_run_train_with_epoch_stream)
+    monkeypatch.setattr("saki_plugin_yolo_det.runtime_service.load_prepare_stats", lambda _workspace: {})
+    monkeypatch.setattr(
+        "saki_plugin_yolo_det.runtime_service.normalize_training_metrics",
+        lambda *, metrics, prepare_stats, to_int, to_bool: dict(metrics),
+    )
+
+    step_context = StepRuntimeContext(
+        step_id="step-train-1",
+        round_id="round-train-1",
+        round_index=1,
+        attempt=1,
+        step_type="train",
+        mode="active_learning",
+        split_seed=11,
+        train_seed=22,
+        sampling_seed=33,
+        resolved_device_backend="cpu",
+    )
+    context = ExecutionBindingContext(
+        step_context=step_context,
+        host_capability=HostCapabilitySnapshot.from_dict(
+            {
+                "cpu_workers": 8,
+                "memory_mb": 8192,
+                "gpus": [],
+                "metal_available": False,
+                "platform": "darwin",
+                "arch": "arm64",
+                "driver_info": {},
+            }
+        ),
+        runtime_capability=RuntimeCapabilitySnapshot(
+            framework="torch",
+            framework_version="2.2.0",
+            backends=["cpu"],
+            backend_details={},
+            errors=[],
+        ),
+        device_binding=DeviceBinding(
+            backend="cpu",
+            device_spec="cpu",
+            precision="fp32",
+            profile_id="cpu",
+            reason="test",
+            fallback_applied=False,
+        ),
+        profile_id="cpu",
+    )
+
+    async def _emit(event_type: str, payload: dict[str, Any]) -> None:
+        if event_type == "log":
+            emitted_logs.append(str(payload.get("message") or ""))
+
+    output = await runtime.train(
+        workspace=workspace,
+        params={"yolo_task": "detect", "model_source": "preset"},
+        emit=_emit,
+        context=context,
+    )
+    assert output.metrics.get("loss") == 1.0
+    assert any("split_seed=11" in msg for msg in emitted_logs)

@@ -142,7 +142,8 @@ class YoloRuntimeService:
                 "level": "INFO",
                 "message": (
                     f"training reproducibility train_seed={config.train_seed} "
-                    f"deterministic={config.deterministic} split_seed={resolved_params.get('split_seed', 0)}"
+                    f"deterministic={config.deterministic} "
+                    f"split_seed={getattr(resolved_params, 'split_seed', 0)}"
                 ),
             },
         )

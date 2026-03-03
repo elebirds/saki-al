@@ -105,8 +105,6 @@ class RuntimeBindingService:
             ) from exc
 
         bound_params = dict(plan.effective_plugin_params)
-        bound_params["_resolved_device_backend"] = binding.backend
-        bound_params["_resolved_device_spec"] = binding.device_spec
 
         execution_context = ExecutionBindingContext(
             step_context=plan.runtime_context,

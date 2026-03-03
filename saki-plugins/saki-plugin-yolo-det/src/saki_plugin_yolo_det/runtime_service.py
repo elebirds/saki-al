@@ -129,7 +129,6 @@ class YoloRuntimeService:
         raw_params.setdefault("train_seed", step_context.train_seed)
         raw_params.setdefault("sampling_seed", step_context.sampling_seed)
         raw_params.setdefault("round_index", step_context.round_index)
-        raw_params.setdefault("_resolved_device_backend", context.device_binding.backend)
 
         resolved_params = self._config_service.resolve_config(raw_params)
         config = await resolve_train_config(

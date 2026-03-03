@@ -136,11 +136,7 @@ class PluginResolutionService:
         return parse_runtime_profiles(rows)
 
     @staticmethod
-    def _build_runtime_context(
-        request: StepExecutionRequest,
-        *,
-        resolved_device_backend: str | None = None,
-    ) -> StepRuntimeContext:
+    def _build_runtime_context(request: StepExecutionRequest) -> StepRuntimeContext:
         def _safe_int(value: Any, default: int) -> int:
             try:
                 return int(value)
@@ -157,9 +153,5 @@ class PluginResolutionService:
             split_seed=max(0, _safe_int(request.resolved_params.get("split_seed"), 0)),
             train_seed=max(0, _safe_int(request.resolved_params.get("train_seed"), 0)),
             sampling_seed=max(0, _safe_int(request.resolved_params.get("sampling_seed"), 0)),
-            resolved_device_backend=str(
-                resolved_device_backend
-                if resolved_device_backend is not None
-                else (request.resolved_params.get("_resolved_device_backend") or "")
-            ).strip().lower(),
+            resolved_device_backend="",
         )

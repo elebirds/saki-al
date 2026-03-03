@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from saki_executor.runtime.profile.profile_selector import ProfileSelectorStrategy
@@ -123,11 +124,15 @@ class PluginResolutionService:
     def _resolve_runtime_profiles(metadata_plugin: Any) -> list[RuntimeProfileSpec]:
         runtime_profiles = getattr(metadata_plugin, "runtime_profiles", None)
         if isinstance(runtime_profiles, list):
-            rows = runtime_profiles
-        else:
-            manifest = getattr(metadata_plugin, "manifest", None)
-            raw = getattr(manifest, "runtime_profiles", []) if manifest is not None else []
-            rows = raw if isinstance(raw, list) else []
+            if all(isinstance(item, RuntimeProfileSpec) for item in runtime_profiles):
+                return list(runtime_profiles)
+            rows = [dict(item) for item in runtime_profiles if isinstance(item, Mapping)]
+            if rows:
+                return parse_runtime_profiles(rows)
+
+        manifest = getattr(metadata_plugin, "manifest", None)
+        raw = getattr(manifest, "runtime_profiles", []) if manifest is not None else []
+        rows = [dict(item) for item in raw if isinstance(item, Mapping)] if isinstance(raw, list) else []
         return parse_runtime_profiles(rows)
 
     @staticmethod

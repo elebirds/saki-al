@@ -17,7 +17,8 @@ def probe_cuda_devices() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     except Exception as exc:
         return [], {"provider": "nvidia-smi", "error": str(exc)}
 
-    if int(result.returncode or 1) != 0:
+    return_code = int(result.returncode if result.returncode is not None else 1)
+    if return_code != 0:
         return [], {
             "provider": "nvidia-smi",
             "error": (result.stderr or result.stdout or "").strip()[:300],

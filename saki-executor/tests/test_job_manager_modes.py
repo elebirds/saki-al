@@ -286,6 +286,30 @@ class _BatchTopKStrictPlugin(_BatchScoringPlugin):
         return candidates[:topk]
 
 
+class _InvalidPredictionSnapshotPlugin(_BatchScoringPlugin):
+    async def predict_unlabeled_batch(
+            self,
+            workspace,
+            unlabeled_samples: list[dict[str, Any]],
+            strategy: str,
+            params: dict[str, Any],
+            *,
+            context: StepRuntimeContext,
+    ) -> list[dict[str, Any]]:
+        candidates = await super().predict_unlabeled_batch(
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            context=context,
+        )
+        if not candidates:
+            return candidates
+        first = dict(candidates[0])
+        first["prediction_snapshot"] = "invalid-snapshot"
+        return [first, *candidates[1:]]
+
+
 class _CaptureModelParamsPlugin(_ModeAwarePlugin):
     def __init__(self) -> None:
         super().__init__()
@@ -1319,6 +1343,56 @@ async def test_predict_step_uses_samples_query_and_keeps_all_candidates(tmp_path
     assert pb.SAMPLES in query_types
     assert pb.UNLABELED_SAMPLES not in query_types
     assert plugin.batch_calls >= 1
+
+
+@pytest.mark.anyio
+async def test_predict_step_rejects_invalid_prediction_snapshot_format(tmp_path: Path):
+    plugin = _InvalidPredictionSnapshotPlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        payload_type = message.WhichOneof("payload")
+        assert payload_type == "data_request"
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+
+    accepted = await manager.assign_step(
+        "assign-predict-invalid-snapshot-1",
+        {
+            "step_id": "task-predict-invalid-snapshot-1",
+            "round_id": "job-predict-invalid-snapshot-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "predict",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    result = result_messages[0].step_result
+    assert result.status == pb.FAILED
+    assert "prediction_snapshot" in str(result.error_message or "")
 
 
 @pytest.mark.anyio

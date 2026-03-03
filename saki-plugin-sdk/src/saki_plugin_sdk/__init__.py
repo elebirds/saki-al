@@ -39,6 +39,7 @@ from saki_plugin_sdk.cond import (
     filter_options,
 )
 from saki_plugin_sdk.data_split import resolve_train_val_split
+from saki_plugin_sdk.prediction_types import normalize_prediction_candidates
 
 __all__ = [
     # Base classes
@@ -84,4 +85,5 @@ __all__ = [
     "filter_options",
     # Shared runtime utilities
     "resolve_train_val_split",
+    "normalize_prediction_candidates",
 ]

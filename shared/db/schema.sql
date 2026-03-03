@@ -2643,5 +2643,145 @@ ALTER TABLE ONLY public.user_system_role
 
 
 --
+-- Name: prediction_set; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prediction_set (
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    loop_id uuid,
+    plugin_id character varying(255) NOT NULL,
+    source_round_id uuid,
+    source_step_id uuid,
+    model_id uuid NOT NULL,
+    base_commit_id uuid,
+    scope_type character varying(64) NOT NULL,
+    scope_payload jsonb,
+    status character varying(32) NOT NULL,
+    total_items integer NOT NULL,
+    params jsonb,
+    last_error character varying(4000),
+    created_by uuid
+);
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_pkey PRIMARY KEY (id);
+CREATE INDEX ix_prediction_set_project_id ON public.prediction_set USING btree (project_id);
+CREATE INDEX ix_prediction_set_status ON public.prediction_set USING btree (status);
+CREATE INDEX ix_prediction_set_model_id ON public.prediction_set USING btree (model_id);
+CREATE INDEX ix_prediction_set_source_step_id ON public.prediction_set USING btree (source_step_id);
+
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_source_round_id_fkey FOREIGN KEY (source_round_id) REFERENCES public.round(id);
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_source_step_id_fkey FOREIGN KEY (source_step_id) REFERENCES public.step(id);
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_base_commit_id_fkey FOREIGN KEY (base_commit_id) REFERENCES public.commit(id);
+ALTER TABLE ONLY public.prediction_set
+    ADD CONSTRAINT prediction_set_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
+
+
+--
+-- Name: prediction_item; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prediction_item (
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    prediction_set_id uuid NOT NULL,
+    sample_id uuid NOT NULL,
+    rank integer NOT NULL,
+    score double precision NOT NULL,
+    label_id uuid,
+    geometry jsonb,
+    attrs jsonb,
+    confidence double precision NOT NULL,
+    meta jsonb
+);
+
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_pkey PRIMARY KEY (prediction_set_id, sample_id);
+CREATE INDEX ix_prediction_item_rank ON public.prediction_item USING btree (rank);
+CREATE INDEX ix_prediction_item_label_id ON public.prediction_item USING btree (label_id);
+
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
+ALTER TABLE ONLY public.prediction_item
+    ADD CONSTRAINT prediction_item_label_id_fkey FOREIGN KEY (label_id) REFERENCES public.label(id);
+
+
+--
+-- Name: model_class_schema; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_class_schema (
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    id uuid NOT NULL,
+    model_id uuid NOT NULL,
+    label_id uuid NOT NULL,
+    class_index integer NOT NULL,
+    class_name character varying(255) NOT NULL,
+    class_name_norm character varying(255) NOT NULL,
+    schema_hash character varying(64) NOT NULL
+);
+
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT model_class_schema_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT uq_model_class_schema_model_index UNIQUE (model_id, class_index);
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT uq_model_class_schema_model_name_norm UNIQUE (model_id, class_name_norm);
+CREATE INDEX ix_model_class_schema_model_id ON public.model_class_schema USING btree (model_id);
+CREATE INDEX ix_model_class_schema_label_id ON public.model_class_schema USING btree (label_id);
+CREATE INDEX ix_model_class_schema_class_index ON public.model_class_schema USING btree (class_index);
+CREATE INDEX ix_model_class_schema_schema_hash ON public.model_class_schema USING btree (schema_hash);
+
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT model_class_schema_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+ALTER TABLE ONLY public.model_class_schema
+    ADD CONSTRAINT model_class_schema_label_id_fkey FOREIGN KEY (label_id) REFERENCES public.label(id);
+
+
+--
+-- Name: prediction_set_binding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prediction_set_binding (
+    created_at timestamp without time zone NOT NULL,
+    updated_at timestamp without time zone NOT NULL,
+    id uuid NOT NULL,
+    prediction_set_id uuid NOT NULL,
+    model_id uuid NOT NULL,
+    schema_hash character varying(64) NOT NULL,
+    by_index_json jsonb,
+    by_name_json jsonb
+);
+
+ALTER TABLE ONLY public.prediction_set_binding
+    ADD CONSTRAINT prediction_set_binding_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.prediction_set_binding
+    ADD CONSTRAINT prediction_set_binding_prediction_set_id_key UNIQUE (prediction_set_id);
+CREATE INDEX ix_prediction_set_binding_prediction_set_id ON public.prediction_set_binding USING btree (prediction_set_id);
+CREATE INDEX ix_prediction_set_binding_model_id ON public.prediction_set_binding USING btree (model_id);
+CREATE INDEX ix_prediction_set_binding_schema_hash ON public.prediction_set_binding USING btree (schema_hash);
+
+ALTER TABLE ONLY public.prediction_set_binding
+    ADD CONSTRAINT prediction_set_binding_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
+ALTER TABLE ONLY public.prediction_set_binding
+    ADD CONSTRAINT prediction_set_binding_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+
+
+--
 -- PostgreSQL database dump complete
 --

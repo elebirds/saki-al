@@ -378,9 +378,8 @@ class RoundMissingSamplesResponse(BaseModel):
 
 
 class PredictionModelSource(BaseModel):
-    kind: Literal["round_artifact", "model"]
-    round_id: Optional[uuid.UUID] = None
-    model_id: Optional[uuid.UUID] = None
+    kind: Literal["model"] = "model"
+    model_id: uuid.UUID
     artifact_name: str = "best.pt"
 
 
@@ -403,7 +402,7 @@ class PredictionSetRead(BaseModel):
     plugin_id: str
     source_round_id: Optional[uuid.UUID] = None
     source_step_id: Optional[uuid.UUID] = None
-    model_id: Optional[uuid.UUID] = None
+    model_id: uuid.UUID
     base_commit_id: Optional[uuid.UUID] = None
     scope_type: str
     scope_payload: Dict[str, Any] = Field(default_factory=dict)

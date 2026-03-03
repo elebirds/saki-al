@@ -19,7 +19,7 @@ class PredictionSet(UUIDMixin, TimestampMixin, SQLModel, table=True):
     plugin_id: str = Field(default="", max_length=255, index=True)
     source_round_id: uuid.UUID | None = Field(default=None, foreign_key="round.id", index=True)
     source_step_id: uuid.UUID | None = Field(default=None, foreign_key="step.id", index=True)
-    model_id: uuid.UUID | None = Field(default=None, foreign_key="model.id", index=True)
+    model_id: uuid.UUID = Field(foreign_key="model.id", index=True)
     base_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
 
     scope_type: str = Field(default="snapshot_scope", max_length=64, index=True)

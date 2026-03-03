@@ -13,6 +13,7 @@ from saki_api.modules.project.api.label import LabelCreate, LabelUpdate
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.repo import ProjectRepository
 from saki_api.modules.project.repo.label import LabelRepository
+from saki_api.modules.runtime.repo.model_class_schema import ModelClassSchemaRepository
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 
 
@@ -25,6 +26,7 @@ class LabelService(CrudServiceBase[Label, LabelRepository, LabelCreate, LabelUpd
         super().__init__(Label, LabelRepository, session)
         self.session = session
         self.project_repo = ProjectRepository(session)
+        self.model_class_schema_repo = ModelClassSchemaRepository(session)
 
     @transactional
     async def create_label(self, schema: LabelCreate) -> Label:
@@ -224,6 +226,10 @@ class LabelService(CrudServiceBase[Label, LabelRepository, LabelCreate, LabelUpd
         label = await self.get_by_id_or_raise(label_id)
         if project_id is not None and label.project_id != project_id:
             raise BadRequestAppException("Label not found in project")
+        if await self.model_class_schema_repo.exists_by_label(label_id):
+            raise BadRequestAppException(
+                "label is referenced by model_class_schema and cannot be deleted"
+            )
 
         deleted = await self.repository.delete(label_id)
         if not deleted:

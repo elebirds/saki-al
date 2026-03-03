@@ -652,9 +652,6 @@ class RuntimeControlIngressService:
         snapshot = reason.get("prediction_snapshot")
         if isinstance(snapshot, dict):
             return snapshot
-        camel_snapshot = reason.get("predictionSnapshot")
-        if isinstance(camel_snapshot, dict):
-            return camel_snapshot
         return {}
 
     @staticmethod

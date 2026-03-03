@@ -744,6 +744,26 @@ def upgrade() -> None:
     op.create_index(op.f('ix_step_metric_point_step'), 'step_metric_point', ['step'], unique=False)
     op.create_index(op.f('ix_step_metric_point_step_id'), 'step_metric_point', ['step_id'], unique=False)
     op.create_index(op.f('ix_step_metric_point_ts'), 'step_metric_point', ['ts'], unique=False)
+    op.create_table('model_class_schema',
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('model_id', sa.Uuid(), nullable=False),
+    sa.Column('label_id', sa.Uuid(), nullable=False),
+    sa.Column('class_index', sa.Integer(), nullable=False),
+    sa.Column('class_name', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=False),
+    sa.Column('class_name_norm', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=False),
+    sa.Column('schema_hash', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
+    sa.ForeignKeyConstraint(['label_id'], ['label.id'], ),
+    sa.ForeignKeyConstraint(['model_id'], ['model.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('model_id', 'class_index', name='uq_model_class_schema_model_index'),
+    sa.UniqueConstraint('model_id', 'class_name_norm', name='uq_model_class_schema_model_name_norm')
+    )
+    op.create_index(op.f('ix_model_class_schema_class_index'), 'model_class_schema', ['class_index'], unique=False)
+    op.create_index(op.f('ix_model_class_schema_label_id'), 'model_class_schema', ['label_id'], unique=False)
+    op.create_index(op.f('ix_model_class_schema_model_id'), 'model_class_schema', ['model_id'], unique=False)
+    op.create_index(op.f('ix_model_class_schema_schema_hash'), 'model_class_schema', ['schema_hash'], unique=False)
     op.create_table('prediction_set',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -753,7 +773,7 @@ def upgrade() -> None:
     sa.Column('plugin_id', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=False),
     sa.Column('source_round_id', sa.Uuid(), nullable=True),
     sa.Column('source_step_id', sa.Uuid(), nullable=True),
-    sa.Column('model_id', sa.Uuid(), nullable=True),
+    sa.Column('model_id', sa.Uuid(), nullable=False),
     sa.Column('base_commit_id', sa.Uuid(), nullable=True),
     sa.Column('scope_type', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
     sa.Column('scope_payload', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
@@ -781,6 +801,23 @@ def upgrade() -> None:
     op.create_index(op.f('ix_prediction_set_source_round_id'), 'prediction_set', ['source_round_id'], unique=False)
     op.create_index(op.f('ix_prediction_set_source_step_id'), 'prediction_set', ['source_step_id'], unique=False)
     op.create_index(op.f('ix_prediction_set_status'), 'prediction_set', ['status'], unique=False)
+    op.create_table('prediction_set_binding',
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('prediction_set_id', sa.Uuid(), nullable=False),
+    sa.Column('model_id', sa.Uuid(), nullable=False),
+    sa.Column('schema_hash', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
+    sa.Column('by_index_json', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
+    sa.Column('by_name_json', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
+    sa.ForeignKeyConstraint(['model_id'], ['model.id'], ),
+    sa.ForeignKeyConstraint(['prediction_set_id'], ['prediction_set.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('prediction_set_id')
+    )
+    op.create_index(op.f('ix_prediction_set_binding_model_id'), 'prediction_set_binding', ['model_id'], unique=False)
+    op.create_index(op.f('ix_prediction_set_binding_prediction_set_id'), 'prediction_set_binding', ['prediction_set_id'], unique=True)
+    op.create_index(op.f('ix_prediction_set_binding_schema_hash'), 'prediction_set_binding', ['schema_hash'], unique=False)
     op.create_table('prediction_item',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -840,6 +877,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_prediction_item_rank'), table_name='prediction_item')
     op.drop_index(op.f('ix_prediction_item_label_id'), table_name='prediction_item')
     op.drop_table('prediction_item')
+    op.drop_index(op.f('ix_prediction_set_binding_schema_hash'), table_name='prediction_set_binding')
+    op.drop_index(op.f('ix_prediction_set_binding_prediction_set_id'), table_name='prediction_set_binding')
+    op.drop_index(op.f('ix_prediction_set_binding_model_id'), table_name='prediction_set_binding')
+    op.drop_table('prediction_set_binding')
     op.drop_index(op.f('ix_prediction_set_status'), table_name='prediction_set')
     op.drop_index(op.f('ix_prediction_set_source_step_id'), table_name='prediction_set')
     op.drop_index(op.f('ix_prediction_set_source_round_id'), table_name='prediction_set')
@@ -873,6 +914,11 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_model_parent_model_id'), table_name='model')
     op.drop_index(op.f('ix_model_name'), table_name='model')
     op.drop_index(op.f('ix_model_model_arch'), table_name='model')
+    op.drop_index(op.f('ix_model_class_schema_schema_hash'), table_name='model_class_schema')
+    op.drop_index(op.f('ix_model_class_schema_model_id'), table_name='model_class_schema')
+    op.drop_index(op.f('ix_model_class_schema_label_id'), table_name='model_class_schema')
+    op.drop_index(op.f('ix_model_class_schema_class_index'), table_name='model_class_schema')
+    op.drop_table('model_class_schema')
     op.drop_table('model')
     op.drop_index(op.f('ix_dispatch_outbox_step_id'), table_name='dispatch_outbox')
     op.drop_index('ix_dispatch_outbox_status_next_attempt_at', table_name='dispatch_outbox')

@@ -5,6 +5,8 @@ Model service for L3 model registry operations.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 import uuid
 from pathlib import PurePosixPath
 from typing import Any
@@ -19,6 +21,7 @@ from saki_api.modules.runtime.api.model import ModelCreateData, ModelPatch
 from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.repo.loop import LoopRepository
 from saki_api.modules.runtime.repo.model import ModelRepository
+from saki_api.modules.runtime.repo.model_class_schema import ModelClassSchemaRepository
 from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.step import StepRepository
 
@@ -41,6 +44,7 @@ class ModelService:
         self.loop_repo = LoopRepository(session)
         self.step_repo = StepRepository(session)
         self.repository = ModelRepository(session)
+        self.model_class_schema_repo = ModelClassSchemaRepository(session)
         self._storage = None
 
     @property
@@ -82,6 +86,14 @@ class ModelService:
             return True
         name = candidate.name.lower()
         return "report" in name or "confusion" in name or name.startswith("eval_")
+
+    @staticmethod
+    def _is_class_schema_artifact(candidate: _ArtifactCandidate) -> bool:
+        kind = str(candidate.kind or "").strip().lower()
+        if kind == "class_schema":
+            return True
+        name = str(candidate.name or "").strip().lower()
+        return name == "class_schema.json" or name.endswith("/class_schema.json")
 
     @staticmethod
     def _build_artifact_payload(candidate: _ArtifactCandidate) -> dict[str, Any]:
@@ -187,9 +199,95 @@ class ModelService:
         for item in all_candidates.values():
             if item.name == primary.name:
                 continue
-            if self._is_eval_artifact(item):
+            if self._is_eval_artifact(item) or self._is_class_schema_artifact(item):
                 payload[item.name] = self._build_artifact_payload(item)
         return payload
+
+    @staticmethod
+    def _normalize_class_name(value: Any) -> str:
+        text = str(value or "").strip().lower()
+        return " ".join(text.split())
+
+    @classmethod
+    def _extract_model_class_rows(
+        cls,
+        *,
+        candidates: dict[str, _ArtifactCandidate],
+    ) -> tuple[list[dict[str, Any]], str]:
+        schema_candidate = next(
+            (item for item in candidates.values() if cls._is_class_schema_artifact(item)),
+            None,
+        )
+        if schema_candidate is None:
+            return [], ""
+
+        rows_raw = schema_candidate.meta.get("class_schema_rows") if isinstance(schema_candidate.meta, dict) else None
+        if not isinstance(rows_raw, list):
+            return [], ""
+
+        rows: list[dict[str, Any]] = []
+        for item in rows_raw:
+            if not isinstance(item, dict):
+                continue
+            label_id = str(item.get("label_id") or "").strip()
+            if not label_id:
+                continue
+            try:
+                class_index = int(item.get("class_index"))
+            except Exception:
+                continue
+            if class_index < 0:
+                continue
+            class_name = str(item.get("class_name") or f"class_{class_index}")
+            class_name_norm = cls._normalize_class_name(item.get("class_name_norm") or class_name)
+            rows.append(
+                {
+                    "class_index": class_index,
+                    "label_id": uuid.UUID(label_id),
+                    "class_name": class_name,
+                    "class_name_norm": class_name_norm,
+                }
+            )
+
+        if not rows:
+            return [], ""
+
+        rows.sort(key=lambda entry: int(entry["class_index"]))
+        canonical = [
+            {
+                "class_index": int(item["class_index"]),
+                "label_id": str(item["label_id"]),
+                "class_name_norm": str(item["class_name_norm"]),
+            }
+            for item in rows
+        ]
+        encoded = json.dumps(canonical, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        schema_hash = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        return rows, schema_hash
+
+    async def _persist_model_class_schema(
+        self,
+        *,
+        model_id: uuid.UUID,
+        candidates: dict[str, _ArtifactCandidate],
+    ) -> None:
+        rows, schema_hash = self._extract_model_class_rows(candidates=candidates)
+        if not rows:
+            await self.model_class_schema_repo.replace_for_model(model_id=model_id, rows=[])
+            return
+        await self.model_class_schema_repo.replace_for_model(
+            model_id=model_id,
+            rows=[
+                {
+                    "class_index": int(item["class_index"]),
+                    "label_id": item["label_id"],
+                    "class_name": str(item["class_name"]),
+                    "class_name_norm": str(item["class_name_norm"]),
+                    "schema_hash": schema_hash,
+                }
+                for item in rows
+            ],
+        )
 
     @transactional
     async def publish_from_round(
@@ -269,6 +367,7 @@ class ModelService:
         created = await self.repository.create(
             create_data.model_dump(exclude_none=True)
         )
+        await self._persist_model_class_schema(model_id=created.id, candidates=all_candidates)
         if normalized_status == "production":
             created = await self.promote(model_id=created.id, target_status="production")
         return created

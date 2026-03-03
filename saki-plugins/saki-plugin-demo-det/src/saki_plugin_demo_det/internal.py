@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from typing import Any
 
@@ -29,6 +30,24 @@ class DemoDetectionInternal:
         }
         (workspace.data_dir / "dataset_manifest.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        class_rows: list[dict[str, Any]] = []
+        for idx, item in enumerate(labels):
+            label_id = str(item.get("id") or "").strip()
+            if not label_id:
+                continue
+            class_name = str(item.get("name") or f"class_{idx}")
+            class_rows.append(
+                {
+                    "class_index": idx,
+                    "label_id": label_id,
+                    "class_name": class_name,
+                    "class_name_norm": " ".join(class_name.strip().lower().split()),
+                }
+            )
+        (workspace.data_dir / "class_schema.json").write_text(
+            json.dumps({"version": 1, "classes": class_rows}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
@@ -74,8 +93,23 @@ class DemoDetectionInternal:
 
         model_path = workspace.artifacts_dir / "best.pt"
         report_path = workspace.artifacts_dir / "report.json"
+        class_schema_path = workspace.data_dir / "class_schema.json"
         model_path.write_text("demo-model-weights", encoding="utf-8")
         report_path.write_text(json.dumps({"metrics": metrics}, ensure_ascii=False, indent=2), encoding="utf-8")
+        if not class_schema_path.is_file():
+            class_schema_path.write_text(json.dumps({"version": 1, "classes": []}, ensure_ascii=False, indent=2), encoding="utf-8")
+        class_rows: list[dict[str, Any]] = []
+        if class_schema_path.is_file():
+            try:
+                schema_payload = json.loads(class_schema_path.read_text(encoding="utf-8"))
+            except Exception:
+                schema_payload = {}
+            classes_raw = schema_payload.get("classes") if isinstance(schema_payload, dict) else []
+            if isinstance(classes_raw, list):
+                class_rows = [dict(item) for item in classes_raw if isinstance(item, dict)]
+        schema_hash = hashlib.sha256(
+            json.dumps(class_rows, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
 
         return TrainOutput(
             metrics=metrics,
@@ -92,6 +126,14 @@ class DemoDetectionInternal:
                     name="report.json",
                     path=report_path,
                     content_type="application/json",
+                    required=True,
+                ),
+                TrainArtifact(
+                    kind="class_schema",
+                    name="class_schema.json",
+                    path=class_schema_path,
+                    content_type="application/json",
+                    meta={"class_schema_rows": class_rows, "schema_hash": schema_hash},
                     required=True,
                 ),
             ],
@@ -152,7 +194,30 @@ class DemoDetectionInternal:
             if not sample_id:
                 continue
             score, reason = score_by_strategy(strategy, sample_id)
-            candidates.append({"sample_id": sample_id, "score": score, "reason": reason})
+            candidates.append(
+                {
+                    "sample_id": sample_id,
+                    "score": score,
+                    "reason": reason,
+                    "prediction_snapshot": {
+                        "base_predictions": [
+                            {
+                                "class_index": 0,
+                                "class_name": "demo",
+                                "confidence": float(score),
+                                "geometry": {
+                                    "rect": {
+                                        "x": 10.0,
+                                        "y": 10.0,
+                                        "width": 90.0,
+                                        "height": 90.0,
+                                    }
+                                },
+                            }
+                        ]
+                    },
+                }
+            )
         candidates.sort(key=lambda item: float(item["score"]), reverse=True)
         topk = int(params.get("topk", 200))
         return candidates[:topk]

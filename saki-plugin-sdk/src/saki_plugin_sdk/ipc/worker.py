@@ -26,6 +26,7 @@ from saki_plugin_sdk.base import ExecutorPlugin
 from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
 from saki_plugin_sdk.ipc import protocol
 from saki_plugin_sdk.logger import reset_log_bridge, set_log_bridge
+from saki_plugin_sdk.prediction_types import normalize_prediction_candidates
 from saki_plugin_sdk.types import StepRuntimeContext
 from saki_plugin_sdk.workspace import Workspace
 
@@ -215,6 +216,7 @@ async def _run_predict(
         params=params,
         context=execution_context,
     )
+    candidates = normalize_prediction_candidates(list(candidates or []))
     result_path = Path(str(payload.get("result_path") or ""))
     protocol.write_json(result_path, {"candidates": candidates})
     return str(result_path)

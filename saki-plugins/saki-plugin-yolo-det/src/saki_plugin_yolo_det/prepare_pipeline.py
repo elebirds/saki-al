@@ -49,7 +49,7 @@ def prepare_yolo_dataset(
     labels_train_dir.mkdir(parents=True, exist_ok=True)
     labels_val_dir.mkdir(parents=True, exist_ok=True)
 
-    _label_id_to_idx, names = _build_label_index(labels)
+    label_index_rows, _label_id_to_idx, names = _build_label_index(labels)
     sample_map = _build_sample_map(
         samples=samples,
         to_int=to_int,
@@ -103,6 +103,10 @@ def prepare_yolo_dataset(
         names=names,
         val_degraded=val_degraded,
         split_seed=split_seed,
+    )
+    _write_class_schema(
+        data_root=data_root,
+        rows=label_index_rows,
     )
     manifest = _build_manifest(
         sample_count=len(sample_map),
@@ -162,16 +166,37 @@ def _resolve_split_from_core(
     return train_ids, val_ids
 
 
-def _build_label_index(labels: list[dict[str, Any]]) -> tuple[dict[str, int], dict[int, str]]:
+def _build_label_index(
+    labels: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int], dict[int, str]]:
+    class_rows: list[dict[str, Any]] = []
     label_id_to_idx: dict[str, int] = {}
     names: dict[int, str] = {}
     for idx, item in enumerate(labels):
         label_id = str(item.get("id") or "")
         if not label_id:
             continue
+        class_name = str(item.get("name") or f"class_{idx}")
+        class_name_norm = " ".join(class_name.strip().lower().split())
+        class_rows.append(
+            {
+                "class_index": idx,
+                "label_id": label_id,
+                "class_name": class_name,
+                "class_name_norm": class_name_norm,
+            }
+        )
         label_id_to_idx[label_id] = idx
-        names[idx] = str(item.get("name") or f"class_{idx}")
-    return label_id_to_idx, names
+        names[idx] = class_name
+    return class_rows, label_id_to_idx, names
+
+
+def _write_class_schema(*, data_root: Path, rows: list[dict[str, Any]]) -> None:
+    payload = {"version": 1, "classes": list(rows)}
+    (data_root / "class_schema.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _build_sample_map(

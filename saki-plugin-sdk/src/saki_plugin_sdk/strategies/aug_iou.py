@@ -235,13 +235,23 @@ def score_aug_iou_disagreement(
 def build_detection_boxes(rows: Iterable[dict]) -> list[DetectionBox]:
     boxes: list[DetectionBox] = []
     for row in rows:
-        xyxy_raw = row.get("xyxy")
-        if not isinstance(xyxy_raw, (list, tuple)) or len(xyxy_raw) != 4:
-            continue
         try:
-            x1, y1, x2, y2 = [float(v) for v in xyxy_raw]
-            cls_id = int(row.get("cls_id", 0))
-            conf = float(row.get("conf", 0.0))
+            geometry = row.get("geometry")
+            rect = geometry.get("rect") if isinstance(geometry, dict) else None
+            if isinstance(rect, dict):
+                x1 = float(rect.get("x", 0.0))
+                y1 = float(rect.get("y", 0.0))
+                width = float(rect.get("width", 0.0))
+                height = float(rect.get("height", 0.0))
+                x2 = x1 + max(0.0, width)
+                y2 = y1 + max(0.0, height)
+            else:
+                xyxy_raw = row.get("xyxy")
+                if not isinstance(xyxy_raw, (list, tuple)) or len(xyxy_raw) != 4:
+                    continue
+                x1, y1, x2, y2 = [float(v) for v in xyxy_raw]
+            cls_id = int(row.get("class_index", row.get("cls_id", 0)))
+            conf = float(row.get("confidence", row.get("conf", 0.0)))
         except Exception:
             continue
         if x2 <= x1 or y2 <= y1:

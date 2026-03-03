@@ -79,7 +79,7 @@ def score_unlabeled_samples(
             )
             first = predicts[0] if predicts else None
             rows = extract_predictions(first)
-            conf_values = [float(item.get("conf") or 0.0) for item in rows]
+            conf_values = [float(item.get("confidence") or 0.0) for item in rows]
             max_conf = max(conf_values) if conf_values else 0.0
             uncertainty = 1.0 - max(0.0, min(1.0, max_conf))
             score = uncertainty

@@ -114,7 +114,9 @@ class SamplingService:
     @staticmethod
     def _normalize_batch(batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
-        for candidate in batch:
+        for idx, candidate in enumerate(batch):
+            if not isinstance(candidate, dict):
+                raise ValueError(f"candidate[{idx}] must be an object")
             sample_id = str(candidate.get("sample_id") or "")
             if not sample_id:
                 continue
@@ -125,7 +127,10 @@ class SamplingService:
             reason_payload = candidate.get("reason") or {}
             if not isinstance(reason_payload, dict):
                 reason_payload = {}
+            prediction_snapshot_exists = "prediction_snapshot" in candidate
             prediction_snapshot = candidate.get("prediction_snapshot")
+            if prediction_snapshot_exists and prediction_snapshot is not None and not isinstance(prediction_snapshot, dict):
+                raise ValueError(f"candidate[{idx}].prediction_snapshot must be an object")
             if isinstance(prediction_snapshot, dict) and prediction_snapshot:
                 reason_payload = {**reason_payload, "prediction_snapshot": prediction_snapshot}
             normalized.append(

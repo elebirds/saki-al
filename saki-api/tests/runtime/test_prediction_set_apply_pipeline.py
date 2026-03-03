@@ -19,6 +19,8 @@ from saki_api.modules.project.domain.commit_sample_state import CommitSampleStat
 from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import Project, ProjectDataset
 from saki_api.modules.runtime.domain.loop import Loop
+from saki_api.modules.runtime.domain.model import Model
+from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
@@ -46,7 +48,8 @@ class _PredictionSetSeedContext:
     loop: Loop
     round_row: Round
     sample: Sample
-    labels_sorted_by_id: list[Label]
+    model: Model
+    labels_sorted_by_sort: list[Label]
 
 
 @pytest.fixture
@@ -134,10 +137,49 @@ async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedC
     labels_sorted = list(
         (
             await session.exec(
-                select(Label).where(Label.project_id == project.id).order_by(Label.id.asc())
+                select(Label).where(Label.project_id == project.id).order_by(Label.sort_order.asc(), Label.id.asc())
             )
         ).all()
     )
+    model = Model(
+        project_id=project.id,
+        source_commit_id=init_commit.id,
+        source_round_id=round_row.id,
+        plugin_id="demo_det_v1",
+        model_arch="demo_det_v1",
+        name="demo-r1",
+        version_tag="r1-a1",
+        primary_artifact_name="best.pt",
+        weights_path="https://example.com/models/best.pt",
+        status="candidate",
+        artifacts={"best.pt": {"kind": "weights", "uri": "https://example.com/models/best.pt"}},
+        publish_manifest={},
+        created_by=actor.id,
+    )
+    session.add(model)
+    await session.flush()
+
+    session.add_all(
+        [
+            ModelClassSchema(
+                model_id=model.id,
+                label_id=labels_sorted[0].id,
+                class_index=0,
+                class_name=labels_sorted[0].name,
+                class_name_norm=labels_sorted[0].name.lower(),
+                schema_hash="schema-demo-r1",
+            ),
+            ModelClassSchema(
+                model_id=model.id,
+                label_id=labels_sorted[1].id,
+                class_index=1,
+                class_name=labels_sorted[1].name,
+                class_name_norm=labels_sorted[1].name.lower(),
+                schema_hash="schema-demo-r1",
+            ),
+        ]
+    )
+    await session.flush()
     await session.commit()
 
     return _PredictionSetSeedContext(
@@ -148,7 +190,8 @@ async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedC
         loop=loop,
         round_row=round_row,
         sample=sample,
-        labels_sorted_by_id=labels_sorted,
+        model=model,
+        labels_sorted_by_sort=labels_sorted,
     )
 
 
@@ -205,8 +248,8 @@ async def _create_prediction_task(
         "plugin_id": "demo_det_v1",
         "target_round_id": str(ctx.round_row.id),
         "model_source": {
-            "kind": "round_artifact",
-            "round_id": str(ctx.round_row.id),
+            "kind": "model",
+            "model_id": str(ctx.model.id),
             "artifact_name": "best.pt",
         },
         "target_branch_id": str(ctx.branch.id),
@@ -330,32 +373,17 @@ async def test_generate_prediction_set_rejects_sampling_topk_for_predict(predict
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_round_artifact_requires_round_final_artifacts(prediction_set_env):
+async def test_generate_prediction_set_requires_model_class_schema(prediction_set_env):
     session_local = prediction_set_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
-        ctx.round_row.final_artifacts = {}
-        session.add(ctx.round_row)
-        session.add(
-            Step(
-                round_id=ctx.round_row.id,
-                step_type=StepType.TRAIN,
-                state=StepStatus.SUCCEEDED,
-                round_index=ctx.round_row.round_index,
-                step_index=1,
-                input_commit_id=ctx.init_commit.id,
-                artifacts={
-                    "best.pt": {
-                        "kind": "weights",
-                        "uri": "https://example.com/models/from-step-best.pt",
-                    }
-                },
-            )
-        )
+        rows = await session.exec(select(ModelClassSchema).where(ModelClassSchema.model_id == ctx.model.id))
+        for row in list(rows.all()):
+            await session.delete(row)
         await session.commit()
 
         service = RuntimeService(session)
-        with pytest.raises(BadRequestAppException, match="round artifact 'best.pt' not found"):
+        with pytest.raises(BadRequestAppException, match="PREDICTION_SCHEMA_MISSING"):
             await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
 
 
@@ -380,9 +408,17 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
                         "prediction_snapshot": {
                             "base_predictions": [
                                 {
-                                    "cls_id": 0,
-                                    "conf": 0.91,
-                                    "xyxy": [10, 20, 110, 120],
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[0].name,
+                                    "confidence": 0.91,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 10,
+                                            "y": 20,
+                                            "width": 100,
+                                            "height": 100,
+                                        }
+                                    },
                                 }
                             ]
                         },
@@ -402,7 +438,7 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
         assert len(items) == 1
         item = items[0]
         assert item.sample_id == ctx.sample.id
-        assert item.label_id == ctx.labels_sorted_by_id[0].id
+        assert item.label_id == ctx.labels_sorted_by_sort[0].id
         assert item.confidence == pytest.approx(0.91)
         rect = (item.geometry or {}).get("rect") or {}
         assert rect.get("x") == pytest.approx(10.0)
@@ -441,13 +477,49 @@ async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_en
                 {
                     "sample_id": ctx.sample.id,
                     "score": 0.66,
-                    "reason": {"prediction_snapshot": {"base_predictions": [{"cls_id": 0, "xyxy": [1, 2, 11, 12]}]}},
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[0].name,
+                                    "confidence": 0.66,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 1,
+                                            "y": 2,
+                                            "width": 10,
+                                            "height": 10,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
                     "prediction_snapshot": {},
                 },
                 {
                     "sample_id": sample_b.id,
                     "score": 0.55,
-                    "reason": {"prediction_snapshot": {"base_predictions": [{"cls_id": 0, "xyxy": [2, 3, 12, 13]}]}},
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[0].name,
+                                    "confidence": 0.55,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 2,
+                                            "y": 3,
+                                            "width": 10,
+                                            "height": 10,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
                     "prediction_snapshot": {},
                 },
             ],
@@ -468,7 +540,7 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
             commit_id=ctx.init_commit.id,
             project_id=ctx.project.id,
             sample_id=ctx.sample.id,
-            label_id=ctx.labels_sorted_by_id[0].id,
+            label_id=ctx.labels_sorted_by_sort[0].id,
             annotator_id=ctx.actor.id,
         )
         await session.commit()
@@ -487,8 +559,32 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
                     "reason": {
                         "prediction_snapshot": {
                             "base_predictions": [
-                                {"cls_id": 1, "conf": 0.88, "xyxy": [5, 6, 15, 26]},
-                                {"cls_id": 0, "conf": 0.77, "xyxy": [30, 40, 70, 90]},
+                                {
+                                    "class_index": 1,
+                                    "class_name": ctx.labels_sorted_by_sort[1].name,
+                                    "confidence": 0.88,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 5,
+                                            "y": 6,
+                                            "width": 10,
+                                            "height": 20,
+                                        }
+                                    },
+                                },
+                                {
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[0].name,
+                                    "confidence": 0.77,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 30,
+                                            "y": 40,
+                                            "width": 40,
+                                            "height": 50,
+                                        }
+                                    },
+                                },
                             ]
                         }
                     },
@@ -535,7 +631,7 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
 
 
 @pytest.mark.anyio
-async def test_apply_prediction_set_skips_unresolvable_label(prediction_set_env):
+async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_env):
     session_local = prediction_set_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
@@ -555,8 +651,15 @@ async def test_apply_prediction_set_skips_unresolvable_label(prediction_set_env)
                         "prediction_snapshot": {
                             "base_predictions": [
                                 {
-                                    "conf": 0.5,
-                                    "xyxy": [1, 2, 3, 4],
+                                    "confidence": 0.5,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 1,
+                                            "y": 2,
+                                            "width": 2,
+                                            "height": 2,
+                                        }
+                                    },
                                 }
                             ]
                         }
@@ -573,6 +676,7 @@ async def test_apply_prediction_set_skips_unresolvable_label(prediction_set_env)
             dry_run=False,
         )
         assert result["applied_count"] == 0
+        assert str(result.get("status") or "").lower() == "failed"
 
         draft_row = await session.exec(
             select(AnnotationDraft).where(
@@ -583,6 +687,9 @@ async def test_apply_prediction_set_skips_unresolvable_label(prediction_set_env)
             )
         )
         assert draft_row.one_or_none() is None
+        settled = await service.get_prediction_task(task_id=prediction_set.id)
+        assert str(settled.status or "").lower() == "failed"
+        assert "PREDICTION_LABEL_UNRESOLVED" in str(settled.last_error or "")
 
 
 @pytest.mark.anyio
@@ -598,8 +705,8 @@ async def test_generate_prediction_set_requires_base_commit_id(prediction_set_en
                     "plugin_id": "demo_det_v1",
                     "target_round_id": str(ctx.round_row.id),
                     "model_source": {
-                        "kind": "round_artifact",
-                        "round_id": str(ctx.round_row.id),
+                        "kind": "model",
+                        "model_id": str(ctx.model.id),
                         "artifact_name": "best.pt",
                     },
                     "target_branch_id": str(ctx.branch.id),
@@ -608,3 +715,48 @@ async def test_generate_prediction_set_requires_base_commit_id(prediction_set_en
                 },
                 actor_user_id=ctx.actor.id,
             )
+
+
+@pytest.mark.anyio
+async def test_settle_prediction_set_fails_on_class_name_and_index_conflict(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        assert prediction_set.source_step_id is not None
+
+        await _finish_predict_step(
+            session=session,
+            step_id=prediction_set.source_step_id,
+            rows=[
+                {
+                    "sample_id": ctx.sample.id,
+                    "score": 0.66,
+                    "reason": {
+                        "prediction_snapshot": {
+                            "base_predictions": [
+                                {
+                                    "class_index": 0,
+                                    "class_name": ctx.labels_sorted_by_sort[1].name,
+                                    "confidence": 0.66,
+                                    "geometry": {
+                                        "rect": {
+                                            "x": 8,
+                                            "y": 9,
+                                            "width": 10,
+                                            "height": 10,
+                                        }
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                    "prediction_snapshot": {},
+                }
+            ],
+        )
+
+        settled = await service.get_prediction_task(task_id=prediction_set.id)
+        assert str(settled.status or "").lower() == "failed"
+        assert "PREDICTION_LABEL_CONFLICT" in str(settled.last_error or "")

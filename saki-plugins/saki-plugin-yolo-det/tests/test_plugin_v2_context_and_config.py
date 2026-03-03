@@ -17,6 +17,8 @@ from saki_plugin_sdk import (
     WorkspaceProtocol,
 )
 from saki_plugin_yolo_det.config_service import YoloConfigService
+from saki_plugin_yolo_det.predict_service import YoloPredictService
+from saki_plugin_yolo_det.prepare_pipeline import _build_label_index
 from saki_plugin_yolo_det.runtime_service import YoloRuntimeService
 from saki_plugin_yolo_det.plugin import YoloDetectionPlugin
 from saki_plugin_yolo_det.types import TrainConfig
@@ -415,3 +417,62 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
     )
     assert output.metrics.get("loss") == 1.0
     assert any("split_seed=11" in msg for msg in emitted_logs)
+
+
+def test_prepare_pipeline_build_label_index_outputs_class_schema_rows():
+    rows, label_id_to_idx, names = _build_label_index(
+        [
+            {"id": "label-b", "name": "bus"},
+            {"id": "label-a", "name": "car"},
+        ]
+    )
+    assert label_id_to_idx == {"label-b": 0, "label-a": 1}
+    assert names == {0: "bus", 1: "car"}
+    assert rows == [
+        {"class_index": 0, "label_id": "label-b", "class_name": "bus", "class_name_norm": "bus"},
+        {"class_index": 1, "label_id": "label-a", "class_name": "car", "class_name_norm": "car"},
+    ]
+
+
+def test_predict_service_extract_predictions_contains_class_index_and_name():
+    service = YoloPredictService(
+        stop_flag=__import__("threading").Event(),
+        config_service=YoloConfigService(),
+        load_yolo=lambda: None,
+    )
+
+    class _Array:
+        def __init__(self, values):
+            self._values = values
+
+        def cpu(self):
+            return self
+
+        def tolist(self):
+            return list(self._values)
+
+    class _Boxes:
+        def __init__(self):
+            self.cls = _Array([1])
+            self.conf = _Array([0.88])
+            self.xyxy = _Array([[10.0, 20.0, 30.0, 40.0]])
+
+        def __len__(self):
+            return 1
+
+    class _Result:
+        def __init__(self):
+            self.boxes = _Boxes()
+            self.names = {1: "car"}
+
+    rows = service._extract_predictions(_Result())
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["class_index"] == 1
+    assert row["class_name"] == "car"
+    assert row["confidence"] == pytest.approx(0.88)
+    rect = (row.get("geometry") or {}).get("rect") or {}
+    assert rect.get("x") == pytest.approx(10.0)
+    assert rect.get("y") == pytest.approx(20.0)
+    assert rect.get("width") == pytest.approx(20.0)
+    assert rect.get("height") == pytest.approx(20.0)

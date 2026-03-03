@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import threading
@@ -168,6 +169,7 @@ class YoloRuntimeService:
             prepare_stats=prepare_stats,
         )
         return self._build_train_output(
+            workspace=workspace,
             metrics=metrics,
             train_result=train_result,
             report_path=report_path,
@@ -341,12 +343,40 @@ class YoloRuntimeService:
     def _build_train_output(
         self,
         *,
+        workspace: WorkspaceProtocol,
         metrics: dict[str, Any],
         train_result: dict[str, Any],
         report_path: Path,
     ) -> TrainOutput:
         best_path = Path(train_result["best_path"])
+        class_schema_path = workspace.data_dir / "class_schema.json"
+        class_schema_meta: dict[str, Any] = {}
+        if class_schema_path.is_file():
+            try:
+                class_schema_payload = json.loads(class_schema_path.read_text(encoding="utf-8"))
+            except Exception:
+                class_schema_payload = {}
+            if isinstance(class_schema_payload, dict):
+                rows_raw = class_schema_payload.get("classes")
+                if isinstance(rows_raw, list):
+                    rows = [dict(item) for item in rows_raw if isinstance(item, dict)]
+                    class_schema_meta["class_schema_rows"] = rows
+                    canonical = json.dumps(rows, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+                    class_schema_meta["schema_hash"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
         extra_artifacts: list[TrainArtifact] = list(train_result.get("extra_artifacts", []))
+        class_schema_artifacts: list[TrainArtifact] = []
+        if class_schema_path.is_file():
+            class_schema_artifacts.append(
+                TrainArtifact(
+                    kind="class_schema",
+                    name="class_schema.json",
+                    path=class_schema_path,
+                    content_type="application/json",
+                    meta=class_schema_meta,
+                    required=True,
+                )
+            )
         return TrainOutput(
             metrics=metrics,
             artifacts=[
@@ -364,6 +394,7 @@ class YoloRuntimeService:
                     content_type="application/json",
                     required=True,
                 ),
+                *class_schema_artifacts,
                 *extra_artifacts,
             ],
         )

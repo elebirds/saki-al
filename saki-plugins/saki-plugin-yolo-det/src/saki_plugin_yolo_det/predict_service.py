@@ -165,6 +165,15 @@ class YoloPredictService:
         if result is None:
             return []
 
+        names_raw = getattr(result, "names", None)
+
+        def _class_name_for(cls_idx: int) -> str:
+            if isinstance(names_raw, dict):
+                return str(names_raw.get(int(cls_idx)) or "")
+            if isinstance(names_raw, list) and 0 <= int(cls_idx) < len(names_raw):
+                return str(names_raw[int(cls_idx)] or "")
+            return ""
+
         rows: list[dict[str, Any]] = []
         obb = getattr(result, "obb", None)
         if obb is not None and len(obb) > 0 and hasattr(obb, "xyxy"):
@@ -172,11 +181,25 @@ class YoloPredictService:
             conf_values = obb.conf.cpu().tolist()
             xyxy_values = obb.xyxy.cpu().tolist()
             for cls_id, conf, xyxy in zip(cls_values, conf_values, xyxy_values):
+                cls_idx = int(cls_id)
+                x1, y1, x2, y2 = [float(v) for v in xyxy[:4]]
+                x = min(x1, x2)
+                y = min(y1, y2)
+                width = abs(x2 - x1)
+                height = abs(y2 - y1)
                 rows.append(
                     {
-                        "cls_id": int(cls_id),
-                        "conf": float(conf),
-                        "xyxy": [float(v) for v in xyxy[:4]],
+                        "class_index": cls_idx,
+                        "class_name": _class_name_for(cls_idx),
+                        "confidence": float(conf),
+                        "geometry": {
+                            "rect": {
+                                "x": x,
+                                "y": y,
+                                "width": width,
+                                "height": height,
+                            }
+                        },
                     }
                 )
             return rows
@@ -187,11 +210,25 @@ class YoloPredictService:
             conf_values = boxes.conf.cpu().tolist()
             xyxy_values = boxes.xyxy.cpu().tolist()
             for cls_id, conf, xyxy in zip(cls_values, conf_values, xyxy_values):
+                cls_idx = int(cls_id)
+                x1, y1, x2, y2 = [float(v) for v in xyxy[:4]]
+                x = min(x1, x2)
+                y = min(y1, y2)
+                width = abs(x2 - x1)
+                height = abs(y2 - y1)
                 rows.append(
                     {
-                        "cls_id": int(cls_id),
-                        "conf": float(conf),
-                        "xyxy": [float(v) for v in xyxy[:4]],
+                        "class_index": cls_idx,
+                        "class_name": _class_name_for(cls_idx),
+                        "confidence": float(conf),
+                        "geometry": {
+                            "rect": {
+                                "x": x,
+                                "y": y,
+                                "width": width,
+                                "height": height,
+                            }
+                        },
                     }
                 )
         return rows
@@ -204,7 +241,16 @@ class YoloPredictService:
         width: int,
         height: int,
     ) -> dict[str, Any]:
-        x1, y1, x2, y2 = [float(v) for v in row.get("xyxy", [0, 0, 0, 0])]
+        geometry = row.get("geometry")
+        rect = geometry.get("rect") if isinstance(geometry, dict) else {}
+        if isinstance(rect, dict):
+            x = to_float(rect.get("x", 0.0), 0.0)
+            y = to_float(rect.get("y", 0.0), 0.0)
+            w = max(0.0, to_float(rect.get("width", 0.0), 0.0))
+            h = max(0.0, to_float(rect.get("height", 0.0), 0.0))
+            x1, y1, x2, y2 = x, y, x + w, y + h
+        else:
+            x1 = y1 = x2 = y2 = 0.0
         if name == "hflip":
             x1, x2 = float(width) - x2, float(width) - x1
         elif name == "vflip":
@@ -219,7 +265,15 @@ class YoloPredictService:
         if y2 < y1:
             y1, y2 = y2, y1
         return {
-            "cls_id": int(row.get("cls_id", 0)),
-            "conf": to_float(row.get("conf", 0.0), 0.0),
-            "xyxy": [x1, y1, x2, y2],
+            "class_index": int(row.get("class_index", 0)),
+            "class_name": str(row.get("class_name") or ""),
+            "confidence": to_float(row.get("confidence", 0.0), 0.0),
+            "geometry": {
+                "rect": {
+                    "x": x1,
+                    "y": y1,
+                    "width": max(0.0, x2 - x1),
+                    "height": max(0.0, y2 - y1),
+                }
+            },
         }

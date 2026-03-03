@@ -29,11 +29,16 @@ from saki_api.modules.project.domain.commit_sample_state import CommitSampleStat
 from saki_api.modules.project.domain.project import ProjectDataset
 from saki_api.modules.runtime.domain.prediction_set import PredictionSet
 from saki_api.modules.runtime.domain.prediction_item import PredictionItem
+from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver import (
+    PredictionLabelResolver,
+    PredictionResolveError,
+)
 from saki_api.modules.shared.modeling.enums import (
     LoopPhase,
     LoopMode,
@@ -1879,8 +1884,6 @@ class SnapshotMixin:
         primary = candidate.prediction_snapshot if isinstance(candidate.prediction_snapshot, dict) else {}
         reason = candidate.reason if isinstance(candidate.reason, dict) else {}
         fallback_raw = reason.get("prediction_snapshot")
-        if not isinstance(fallback_raw, dict):
-            fallback_raw = reason.get("predictionSnapshot")
         fallback = fallback_raw if isinstance(fallback_raw, dict) else {}
 
         if primary and fallback:
@@ -1909,20 +1912,11 @@ class SnapshotMixin:
             return dict(snapshot.get("top_prediction") or {})
         keys = {
             "label_id",
-            "labelId",
-            "category_id",
-            "categoryId",
-            "cls_id",
-            "clsId",
-            "class_id",
-            "classId",
+            "class_index",
+            "class_name",
             "geometry",
-            "xyxy",
-            "bbox_xywh",
-            "obb",
             "attrs",
             "confidence",
-            "conf",
         }
         if any(key in snapshot for key in keys):
             return dict(snapshot)
@@ -1938,87 +1932,6 @@ class SnapshotMixin:
             return [single]
         return []
 
-    @staticmethod
-    def _rect_geometry_from_xyxy(raw: Any) -> dict[str, Any]:
-        if not isinstance(raw, list) or len(raw) < 4:
-            return {}
-        x1 = SnapshotMixin._safe_float(raw[0])
-        y1 = SnapshotMixin._safe_float(raw[1])
-        x2 = SnapshotMixin._safe_float(raw[2])
-        y2 = SnapshotMixin._safe_float(raw[3])
-        x = min(x1, x2)
-        y = min(y1, y2)
-        width = abs(x2 - x1)
-        height = abs(y2 - y1)
-        return {
-            "rect": {
-                "x": x,
-                "y": y,
-                "width": width,
-                "height": height,
-            }
-        }
-
-    @staticmethod
-    def _rect_geometry_from_xywh(raw: Any) -> dict[str, Any]:
-        if not isinstance(raw, list) or len(raw) < 4:
-            return {}
-        return {
-            "rect": {
-                "x": SnapshotMixin._safe_float(raw[0]),
-                "y": SnapshotMixin._safe_float(raw[1]),
-                "width": max(0.0, SnapshotMixin._safe_float(raw[2])),
-                "height": max(0.0, SnapshotMixin._safe_float(raw[3])),
-            }
-        }
-
-    @staticmethod
-    def _parse_cls_index(raw: Any) -> int | None:
-        if raw is None:
-            return None
-        try:
-            return int(raw)
-        except Exception:
-            return None
-
-    @classmethod
-    def _resolve_prediction_label_id(
-        cls,
-        *,
-        snapshot: dict[str, Any],
-        prediction: dict[str, Any],
-        ordered_label_ids: list[uuid.UUID],
-    ) -> uuid.UUID | None:
-        label_id = cls._safe_uuid(
-            cls._first_non_none(
-                prediction.get("label_id"),
-                prediction.get("labelId"),
-                prediction.get("category_id"),
-                prediction.get("categoryId"),
-                snapshot.get("label_id"),
-                snapshot.get("labelId"),
-                snapshot.get("category_id"),
-                snapshot.get("categoryId"),
-            )
-        )
-        if label_id is not None:
-            return label_id
-        cls_idx = cls._parse_cls_index(
-            cls._first_non_none(
-                prediction.get("cls_id"),
-                prediction.get("clsId"),
-                prediction.get("class_id"),
-                prediction.get("classId"),
-                snapshot.get("cls_id"),
-                snapshot.get("clsId"),
-                snapshot.get("class_id"),
-                snapshot.get("classId"),
-            )
-        )
-        if cls_idx is not None and 0 <= cls_idx < len(ordered_label_ids):
-            return ordered_label_ids[cls_idx]
-        return None
-
     @classmethod
     def _resolve_prediction_geometry(
         cls,
@@ -2030,18 +1943,6 @@ class SnapshotMixin:
         geometry = dict(geometry) if isinstance(geometry, dict) else {}
         if not geometry and isinstance(snapshot.get("geometry"), dict):
             geometry = dict(snapshot.get("geometry") or {})
-        if not geometry:
-            geometry = cls._rect_geometry_from_xyxy(prediction.get("xyxy"))
-        if not geometry:
-            geometry = cls._rect_geometry_from_xywh(prediction.get("bbox_xywh"))
-        if not geometry and isinstance(prediction.get("obb"), dict):
-            geometry = {"obb": dict(prediction.get("obb") or {})}
-        if not geometry:
-            geometry = cls._rect_geometry_from_xyxy(snapshot.get("xyxy"))
-        if not geometry:
-            geometry = cls._rect_geometry_from_xywh(snapshot.get("bbox_xywh"))
-        if not geometry and isinstance(snapshot.get("obb"), dict):
-            geometry = {"obb": dict(snapshot.get("obb") or {})}
         return geometry
 
     @staticmethod
@@ -2066,9 +1967,7 @@ class SnapshotMixin:
     ) -> float:
         confidence_raw = cls._first_non_none(
             prediction.get("confidence"),
-            prediction.get("conf"),
             snapshot.get("confidence"),
-            snapshot.get("conf"),
         )
         return cls._safe_float(confidence_raw, default=fallback)
 
@@ -2133,67 +2032,97 @@ class SnapshotMixin:
                 return key, dict(raw_value)
         return None
 
-    async def _resolve_round_artifact_payload(
-        self,
-        *,
-        round_row: Round,
-        artifact_name: str,
-    ) -> dict[str, Any]:
-        from_final = self._match_artifact_payload(
-            artifacts=round_row.final_artifacts if isinstance(round_row.final_artifacts, dict) else {},
-            artifact_name=artifact_name,
-        )
-        if from_final is not None:
-            _, payload = from_final
-            return payload
-
-        raise BadRequestAppException(f"round artifact '{artifact_name}' not found")
-
     async def _resolve_prediction_model_source(
         self,
         *,
         project_id: uuid.UUID,
         plugin_id: str,
         model_source: dict[str, Any],
-    ) -> tuple[uuid.UUID | None, str, str]:
+    ) -> tuple[uuid.UUID, str, str]:
         kind = str(model_source.get("kind") or "").strip().lower()
         artifact_name = str(model_source.get("artifact_name") or "best.pt").strip() or "best.pt"
-        if kind == "round_artifact":
-            source_round_id = self._safe_uuid(model_source.get("round_id"))
-            if source_round_id is None:
-                raise BadRequestAppException("model_source.round_id is required when kind=round_artifact")
-            source_round = await self.repository.get_by_id_or_raise(source_round_id)
-            if source_round.project_id != project_id:
-                raise BadRequestAppException("model_source.round_id does not belong to project")
-            if str(source_round.plugin_id or "").strip() != plugin_id:
-                raise BadRequestAppException("plugin_id mismatch with model_source.round_id.plugin_id")
-            artifact = await self._resolve_round_artifact_payload(
-                round_row=source_round,
-                artifact_name=artifact_name,
-            )
-            uri = str(artifact.get("uri") or "")
-            return None, await self._resolve_artifact_download_url(uri=uri), artifact_name
+        if kind != "model":
+            raise BadRequestAppException("model_source.kind must be model")
+        model_id = self._safe_uuid(model_source.get("model_id"))
+        if model_id is None:
+            raise BadRequestAppException("model_source.model_id is required when kind=model")
+        model = await self.model_repo.get_by_id_or_raise(model_id)
+        if model.project_id != project_id:
+            raise BadRequestAppException("model_source.model_id does not belong to project")
+        if str(model.plugin_id or "").strip() != plugin_id:
+            raise BadRequestAppException("plugin_id mismatch with model.plugin_id")
+        artifact_match = self._match_artifact_payload(
+            artifacts=model.artifacts if isinstance(model.artifacts, dict) else {},
+            artifact_name=artifact_name,
+        )
+        if artifact_match is None:
+            raise BadRequestAppException(f"model artifact '{artifact_name}' not found")
+        _, artifact = artifact_match
+        uri = str(artifact.get("uri") or "")
+        return model.id, await self._resolve_artifact_download_url(uri=uri), artifact_name
 
-        if kind == "model":
-            model_id = self._safe_uuid(model_source.get("model_id"))
-            if model_id is None:
-                raise BadRequestAppException("model_source.model_id is required when kind=model")
-            model = await self.model_repo.get_by_id_or_raise(model_id)
-            if model.project_id != project_id:
-                raise BadRequestAppException("model_source.model_id does not belong to project")
-            if str(model.plugin_id or "").strip() != plugin_id:
-                raise BadRequestAppException("plugin_id mismatch with model.plugin_id")
-            artifact_match = self._match_artifact_payload(
-                artifacts=model.artifacts if isinstance(model.artifacts, dict) else {},
-                artifact_name=artifact_name,
-            )
-            if artifact_match is None:
-                raise BadRequestAppException(f"model artifact '{artifact_name}' not found")
-            _, artifact = artifact_match
-            uri = str(artifact.get("uri") or "")
-            return model.id, await self._resolve_artifact_download_url(uri=uri), artifact_name
+    @staticmethod
+    def _normalize_class_name(raw: Any) -> str:
+        text = str(raw or "").strip().lower()
+        return " ".join(text.split())
 
-        raise BadRequestAppException("model_source.kind must be one of round_artifact/model")
+    @staticmethod
+    def _hash_model_class_schema(rows: list[ModelClassSchema]) -> str:
+        payload = [
+            {
+                "class_index": int(item.class_index),
+                "label_id": str(item.label_id),
+                "class_name_norm": str(item.class_name_norm or ""),
+            }
+            for item in rows
+        ]
+        encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    async def _load_model_class_schema_rows(self, *, model_id: uuid.UUID) -> list[ModelClassSchema]:
+        rows = await self.model_class_schema_repo.list_by_model(model_id)
+        if not rows:
+            raise BadRequestAppException(
+                "[PREDICTION_SCHEMA_MISSING] model class schema is not found (phase=prediction_resolve)"
+            )
+        return rows
+
+    async def _build_prediction_binding_from_model(
+        self,
+        *,
+        model_id: uuid.UUID,
+    ) -> tuple[str, list[str], dict[str, str]]:
+        rows = await self._load_model_class_schema_rows(model_id=model_id)
+        max_index = max(int(item.class_index) for item in rows)
+        by_index: list[str] = ["" for _ in range(max_index + 1)]
+        by_name: dict[str, str] = {}
+        for item in rows:
+            idx = int(item.class_index)
+            if idx < 0:
+                raise BadRequestAppException(
+                    "[PREDICTION_SCHEMA_MISSING] invalid class_index in model class schema (phase=prediction_resolve)"
+                )
+            by_index[idx] = str(item.label_id)
+            name_norm = self._normalize_class_name(item.class_name_norm or item.class_name)
+            if name_norm:
+                by_name[name_norm] = str(item.label_id)
+
+        if any(not item for item in by_index):
+            raise BadRequestAppException(
+                "[PREDICTION_SCHEMA_MISSING] class_index mapping is discontinuous (phase=prediction_resolve)"
+            )
+
+        schema_hash = str(rows[0].schema_hash or "").strip() or self._hash_model_class_schema(rows)
+        return schema_hash, by_index, by_name
+
+    async def _prediction_resolver_for_set(self, *, prediction_set_id: uuid.UUID) -> PredictionLabelResolver:
+        binding = await self.prediction_set_binding_repo.get_by_prediction_set_id(prediction_set_id)
+        if binding is None:
+            raise PredictionResolveError(
+                code="PREDICTION_SCHEMA_MISSING",
+                message="prediction_set binding is not found",
+            )
+        return PredictionLabelResolver.from_binding(binding)
 
     async def _filter_candidates_by_sample_scope(
         self,
@@ -2289,28 +2218,19 @@ class SnapshotMixin:
     async def _build_prediction_rows_from_candidates(
         self,
         *,
-        project_id: uuid.UUID,
+        prediction_set_id: uuid.UUID,
         candidates: list[StepCandidateItem],
     ) -> list[dict[str, Any]]:
-        label_rows = list(
-            (
-                await self.session.exec(
-                    select(Label)
-                    .where(Label.project_id == project_id)
-                    .order_by(Label.id.asc())
-                )
-            ).all()
-        )
-        ordered_label_ids = [row.id for row in label_rows]
+        resolver = await self._prediction_resolver_for_set(prediction_set_id=prediction_set_id)
         prediction_rows: list[dict[str, Any]] = []
         for candidate in candidates:
             snapshot = self._extract_prediction_snapshot(candidate)
             prediction_entries = self._prediction_entries_from_snapshot(snapshot)
             top_prediction = prediction_entries[0] if prediction_entries else {}
-            label_id = self._resolve_prediction_label_id(
+            decision = resolver.resolve(
                 snapshot=snapshot,
                 prediction=top_prediction,
-                ordered_label_ids=ordered_label_ids,
+                sample_id=str(candidate.sample_id),
             )
             geometry = self._resolve_prediction_geometry(snapshot=snapshot, prediction=top_prediction)
             attrs = self._resolve_prediction_attrs(snapshot=snapshot, prediction=top_prediction)
@@ -2331,7 +2251,7 @@ class SnapshotMixin:
                     "sample_id": candidate.sample_id,
                     "rank": int(candidate.rank or 0),
                     "score": float(candidate.score or 0.0),
-                    "label_id": label_id,
+                    "label_id": decision.label_id,
                     "geometry": geometry,
                     "attrs": attrs,
                     "confidence": confidence,
@@ -2408,6 +2328,7 @@ class SnapshotMixin:
             plugin_id=plugin_id,
             model_source=model_source,
         )
+        schema_hash, by_index, by_name = await self._build_prediction_binding_from_model(model_id=model_id)
 
         scope_type = str(payload.get("scope_type") or "sample_status").strip() or "sample_status"
         scope_payload = payload.get("scope_payload") if isinstance(payload.get("scope_payload"), dict) else {}
@@ -2462,6 +2383,8 @@ class SnapshotMixin:
             "target_round_id": str(target_round.id),
             "target_branch_id": str(target_branch_id),
             "base_commit_id": str(base_commit_id),
+            "model_id": str(model_id),
+            "schema_hash": schema_hash,
             "scope_type": scope_type,
             "scope_payload": dict(scope_payload),
             "predict_conf": predict_conf,
@@ -2514,6 +2437,13 @@ class SnapshotMixin:
                 "created_by": actor_user_id,
                 "last_error": None,
             }
+        )
+        await self.prediction_set_binding_repo.upsert(
+            prediction_set_id=prediction_set.id,
+            model_id=model_id,
+            schema_hash=schema_hash,
+            by_index_json=by_index,
+            by_name_json=by_name,
         )
         return self._attach_task_projection(prediction_set, step)
 
@@ -2570,10 +2500,20 @@ class SnapshotMixin:
                 scope_payload=dict(prediction_set.scope_payload or {}),
                 candidates=source_candidates,
             )
-            prediction_rows = await self._build_prediction_rows_from_candidates(
-                project_id=prediction_set.project_id,
-                candidates=filtered_candidates,
-            )
+            try:
+                prediction_rows = await self._build_prediction_rows_from_candidates(
+                    prediction_set_id=prediction_set.id,
+                    candidates=filtered_candidates,
+                )
+            except PredictionResolveError as exc:
+                prediction_set = await self.prediction_set_repo.update(
+                    prediction_set.id,
+                    {
+                        "status": "failed",
+                        "last_error": exc.to_error_message(),
+                    },
+                ) or prediction_set
+                return self._attach_task_projection(prediction_set, step)
             await self.prediction_item_repo.replace_rows(
                 prediction_set_id=prediction_set.id,
                 rows=prediction_rows,
@@ -2674,17 +2614,21 @@ class SnapshotMixin:
 
         resolved_branch_name = str(getattr(branch_row, "name", "") or "").strip() or "master"
         branch_head_commit_id: uuid.UUID | None = getattr(branch_row, "head_commit_id", None)
-
-        label_rows = list(
-            (
-                await self.session.exec(
-                    select(Label)
-                    .where(Label.project_id == project_id)
-                    .order_by(Label.id.asc())
-                )
-            ).all()
-        )
-        ordered_label_ids = [row.id for row in label_rows]
+        try:
+            resolver = await self._prediction_resolver_for_set(prediction_set_id=prediction_set_id)
+        except PredictionResolveError as exc:
+            prediction_set = await self.prediction_set_repo.update(
+                prediction_set.id,
+                {
+                    "status": "failed",
+                    "last_error": exc.to_error_message(),
+                },
+            ) or prediction_set
+            return {
+                "prediction_set_id": prediction_set.id,
+                "applied_count": 0,
+                "status": str(prediction_set.status or "failed"),
+            }
 
         draft_repo = AnnotationDraftRepository(self.session)
         grouped_items: dict[uuid.UUID, list[PredictionItem]] = {}
@@ -2731,15 +2675,27 @@ class SnapshotMixin:
 
                 for entry in prediction_entries:
                     prediction = dict(entry) if isinstance(entry, dict) else {}
-                    label_id = self._resolve_prediction_label_id(
-                        snapshot=snapshot,
-                        prediction=prediction,
-                        ordered_label_ids=ordered_label_ids,
-                    )
-                    if label_id is None and prediction_item.label_id is not None:
-                        label_id = prediction_item.label_id
-                    if label_id is None:
-                        continue
+                    try:
+                        decision = resolver.resolve(
+                            snapshot=snapshot,
+                            prediction=prediction,
+                            fallback_label_id=prediction_item.label_id,
+                            sample_id=str(sample_id),
+                        )
+                    except PredictionResolveError as exc:
+                        prediction_set = await self.prediction_set_repo.update(
+                            prediction_set.id,
+                            {
+                                "status": "failed",
+                                "last_error": exc.to_error_message(),
+                            },
+                        ) or prediction_set
+                        return {
+                            "prediction_set_id": prediction_set.id,
+                            "applied_count": 0,
+                            "status": str(prediction_set.status or "failed"),
+                        }
+                    label_id = decision.label_id
 
                     geometry = self._resolve_prediction_geometry(
                         snapshot=snapshot,

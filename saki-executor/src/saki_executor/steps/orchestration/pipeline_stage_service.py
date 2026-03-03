@@ -9,7 +9,7 @@ from typing import Any
 from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepStage, wrap_stage_error
 from saki_executor.steps.orchestration.models import BoundExecutionPlan
 from saki_executor.steps.orchestration.training_data_service import TrainingDataService
-from saki_plugin_sdk import StepReporter, StepRuntimeRequirements, WorkspaceProtocol
+from saki_plugin_sdk import StepReporter, StepRuntimeRequirements, WorkspaceProtocol, normalize_prediction_candidates
 
 
 @dataclass(frozen=True, slots=True)
@@ -509,6 +509,7 @@ class PipelineStageService:
             profile=profile,
             bound_plan=bound_plan,
         )
+        candidates = normalize_prediction_candidates(candidates)
         metrics = {profile.metric_key: float(len(candidates))}
         return metrics, {}, candidates, []
 

@@ -21,8 +21,10 @@ from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemR
 from saki_api.modules.runtime.repo.step_event import StepEventRepository
 from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
 from saki_api.modules.runtime.repo.prediction_set import PredictionSetRepository
+from saki_api.modules.runtime.repo.prediction_set_binding import PredictionSetBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
 from saki_api.modules.runtime.repo.model import ModelRepository
+from saki_api.modules.runtime.repo.model_class_schema import ModelClassSchemaRepository
 from saki_api.modules.runtime.service.config.loop_config_service import (
     derive_loop_max_rounds,
     derive_query_batch_size,
@@ -70,8 +72,10 @@ class RuntimeService(
         self.step_metric_repo = StepMetricPointRepository(session)
         self.step_candidate_repo = StepCandidateItemRepository(session)
         self.prediction_set_repo = PredictionSetRepository(session)
+        self.prediction_set_binding_repo = PredictionSetBindingRepository(session)
         self.prediction_item_repo = PredictionItemRepository(session)
         self.model_repo = ModelRepository(session)
+        self.model_class_schema_repo = ModelClassSchemaRepository(session)
         self.al_snapshot_version_repo = ALSnapshotVersionRepository(session)
         self.al_snapshot_sample_repo = ALSnapshotSampleRepository(session)
         self.al_loop_visibility_repo = ALLoopVisibilityRepository(session)

@@ -80,22 +80,35 @@ class DemoDetectionInternal:
             await asyncio.sleep(0.1)
             loss = max(0.01, 1.0 / epoch)
             map50 = min(0.99, 0.3 + epoch * 0.08)
+            map50_95 = min(0.99, 0.18 + epoch * 0.07)
+            precision = min(0.99, 0.35 + epoch * 0.06)
             recall = min(0.99, 0.4 + epoch * 0.05)
-            metrics = {"loss": loss, "map50": map50, "recall": recall}
+            metrics = {
+                "map50": map50,
+                "map50_95": map50_95,
+                "precision": precision,
+                "recall": recall,
+                "loss": loss,
+            }
             await emit("progress", {"epoch": epoch, "step": steps_per_epoch, "total_steps": steps_per_epoch, "eta_sec": 0})
             await emit("metric", {"step": epoch, "epoch": epoch, "metrics": metrics})
 
-        metrics["context_step_type"] = step_context.step_type
-        metrics["context_mode"] = step_context.mode
-        metrics["context_split_seed"] = float(step_context.split_seed)
-        metrics["context_train_seed"] = float(step_context.train_seed)
-        metrics["context_sampling_seed"] = float(step_context.sampling_seed)
+        report_meta = {
+            "context_step_type": step_context.step_type,
+            "context_mode": step_context.mode,
+            "context_split_seed": float(step_context.split_seed),
+            "context_train_seed": float(step_context.train_seed),
+            "context_sampling_seed": float(step_context.sampling_seed),
+        }
 
         model_path = workspace.artifacts_dir / "best.pt"
         report_path = workspace.artifacts_dir / "report.json"
         class_schema_path = workspace.data_dir / "class_schema.json"
         model_path.write_text("demo-model-weights", encoding="utf-8")
-        report_path.write_text(json.dumps({"metrics": metrics}, ensure_ascii=False, indent=2), encoding="utf-8")
+        report_path.write_text(
+            json.dumps({"metrics": metrics, "meta": report_meta}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         if not class_schema_path.is_file():
             class_schema_path.write_text(json.dumps({"version": 1, "classes": []}, ensure_ascii=False, indent=2), encoding="utf-8")
         class_rows: list[dict[str, Any]] = []
@@ -158,13 +171,17 @@ class DemoDetectionInternal:
             except Exception:
                 sample_count = 0
         metrics = {
-            "eval_map50": 0.55,
-            "eval_recall": 0.61,
-            "eval_sample_count": float(sample_count),
+            "map50": 0.55,
+            "map50_95": 0.42,
+            "precision": 0.63,
+            "recall": 0.61,
         }
         await emit("metric", {"step": 1, "epoch": 0, "metrics": metrics})
         report_path = workspace.artifacts_dir / "eval_report.json"
-        report_path.write_text(json.dumps({"metrics": metrics}, ensure_ascii=False, indent=2), encoding="utf-8")
+        report_path.write_text(
+            json.dumps({"metrics": metrics, "meta": {"sample_count": sample_count}}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         return TrainOutput(
             metrics=metrics,
             artifacts=[

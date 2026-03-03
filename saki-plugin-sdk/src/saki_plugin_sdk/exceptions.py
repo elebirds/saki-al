@@ -34,3 +34,18 @@ class PluginLifecycleError(PluginError):
     当 on_load, on_start, on_stop, on_unload 钩子抛出异常时包装此异常。
     """
     pass
+
+
+METRIC_CONTRACT_ERROR_PREFIX = "METRIC_CONTRACT_VIOLATION"
+
+
+class PluginMetricContractError(PluginError):
+    """插件指标契约校验失败。"""
+
+    code = METRIC_CONTRACT_ERROR_PREFIX
+
+    def __init__(self, message: str):
+        text = str(message or "metric contract violation")
+        if not text.startswith(f"{METRIC_CONTRACT_ERROR_PREFIX}:"):
+            text = f"{METRIC_CONTRACT_ERROR_PREFIX}: {text}"
+        super().__init__(text)

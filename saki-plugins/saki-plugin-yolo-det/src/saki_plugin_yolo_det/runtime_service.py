@@ -26,6 +26,7 @@ from saki_plugin_yolo_det.metrics_parser import (
 from saki_plugin_yolo_det.predict_service import YoloPredictService
 from saki_plugin_yolo_det.prepare_pipeline import prepare_yolo_dataset
 from saki_plugin_yolo_det.train_async import (
+    build_training_report_meta,
     load_prepare_stats,
     normalize_training_metrics,
     resolve_train_config,
@@ -162,11 +163,17 @@ class YoloRuntimeService:
             to_int=to_int,
             to_bool=to_bool,
         )
+        report_meta = build_training_report_meta(
+            prepare_stats=prepare_stats,
+            to_int=to_int,
+            to_bool=to_bool,
+        )
         report_path = self._write_training_report(
             workspace=workspace,
             metrics=metrics,
             train_result=train_result,
             prepare_stats=prepare_stats,
+            report_meta=report_meta,
         )
         return self._build_train_output(
             workspace=workspace,
@@ -323,6 +330,7 @@ class YoloRuntimeService:
         metrics: dict[str, Any],
         train_result: dict[str, Any],
         prepare_stats: dict[str, Any],
+        report_meta: dict[str, Any],
     ) -> Path:
         report_path = workspace.artifacts_dir / "report.json"
         report_path.write_text(
@@ -332,6 +340,7 @@ class YoloRuntimeService:
                     "history": train_result["history"],
                     "train_dir": str(train_result["save_dir"]),
                     "data_stats": prepare_stats,
+                    "metric_meta": report_meta,
                 },
                 ensure_ascii=False,
                 indent=2,

@@ -1,7 +1,7 @@
 plugin_id: "demo_det_v1"
 version: "3.0.0"
 display_name: "Demo Detection (Mock)"
-sdk_version: ">=3.0.0"
+sdk_version: ">=4.0.0"
 
 supported_step_types:
   - train

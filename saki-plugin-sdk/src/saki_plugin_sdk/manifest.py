@@ -17,7 +17,7 @@ class PluginManifest(BaseModel):
     plugin_id: str
     version: str = "0.0.0"
     display_name: str = ""
-    sdk_version: str = ">=3.0.0"
+    sdk_version: str = ">=4.0.0"
 
     supported_step_types: list[str] = Field(default_factory=list)
     supported_strategies: list[str] = Field(default_factory=list)

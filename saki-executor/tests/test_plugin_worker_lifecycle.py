@@ -164,9 +164,18 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
         assert "metrics" in train_payload
         metrics = train_payload.get("metrics")
         assert isinstance(metrics, dict)
-        assert metrics.get("context_step_type") == "train"
-        assert metrics.get("context_mode") == "simulation"
-        assert float(metrics.get("context_train_seed") or 0) == 2.0
+        assert set(metrics.keys()) == {"map50", "map50_95", "precision", "recall", "loss"}
+
+        artifacts = train_payload.get("artifacts")
+        assert isinstance(artifacts, list)
+        report_artifact = next((item for item in artifacts if item.get("name") == "report.json"), None)
+        assert isinstance(report_artifact, dict)
+        report_path = Path(str(report_artifact.get("path") or ""))
+        assert report_path.exists()
+        report_payload = protocol.read_json(report_path)
+        assert report_payload.get("meta", {}).get("context_step_type") == "train"
+        assert report_payload.get("meta", {}).get("context_mode") == "simulation"
+        assert float(report_payload.get("meta", {}).get("context_train_seed") or 0) == 2.0
 
         predict_reply = await client.request(
             action="predict_unlabeled_batch",

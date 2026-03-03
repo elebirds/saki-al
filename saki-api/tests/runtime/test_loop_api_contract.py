@@ -1046,7 +1046,7 @@ async def test_get_round_prefers_eval_metrics_as_final_metrics(loop_api_env, mon
 
 
 @pytest.mark.anyio
-async def test_get_round_uses_eval_metric_series_when_eval_step_metrics_empty(loop_api_env, monkeypatch):
+async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_api_env, monkeypatch):
     session_local = loop_api_env
 
     async def _allow(*args, **kwargs) -> None:
@@ -1185,7 +1185,7 @@ async def test_get_round_uses_eval_metric_series_when_eval_step_metrics_empty(lo
                 session=session,
                 current_user_id=current_user_id,
             )
-            assert payload.final_metrics == {"map50": 0.86, "precision": 0.9}
+            assert payload.final_metrics == {"loss": 0.61, "invalid_label_count": 7.0}
         finally:
             _session_ctx.reset(token)
 

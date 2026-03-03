@@ -29,10 +29,18 @@ from saki_plugin_sdk.reporter import StepReporter
 from saki_plugin_sdk.manifest import PluginManifest
 from saki_plugin_sdk.logger import PluginLogger
 from saki_plugin_sdk.exceptions import (
+    METRIC_CONTRACT_ERROR_PREFIX,
     PluginError,
     PluginConfigError,
+    PluginMetricContractError,
     PluginValidationError,
     PluginLifecycleError,
+)
+from saki_plugin_sdk.metric_contract import (
+    EVAL_REQUIRED_KEYS,
+    TRAIN_REQUIRED_KEYS,
+    validate_final_metrics,
+    validate_metric_event,
 )
 from saki_plugin_sdk.cond import (
     evaluate_visible,
@@ -78,12 +86,18 @@ __all__ = [
     # Exceptions
     "PluginError",
     "PluginConfigError",
+    "PluginMetricContractError",
     "PluginValidationError",
     "PluginLifecycleError",
+    "METRIC_CONTRACT_ERROR_PREFIX",
     # Expression evaluation
     "evaluate_visible",
     "filter_options",
     # Shared runtime utilities
     "resolve_train_val_split",
     "normalize_prediction_candidates",
+    "TRAIN_REQUIRED_KEYS",
+    "EVAL_REQUIRED_KEYS",
+    "validate_final_metrics",
+    "validate_metric_event",
 ]

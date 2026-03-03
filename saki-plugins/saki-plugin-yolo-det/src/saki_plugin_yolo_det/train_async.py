@@ -212,7 +212,17 @@ def normalize_training_metrics(
     to_int: ToIntFn,
     to_bool: ToBoolFn,
 ) -> dict[str, Any]:
-    merged = dict(metrics)
-    merged.setdefault("invalid_label_count", float(to_int(prepare_stats.get("invalid_label_count"), 0)))
-    merged.setdefault("val_degraded", 1.0 if to_bool(prepare_stats.get("val_degraded"), False) else 0.0)
-    return merged
+    del prepare_stats, to_int, to_bool
+    return dict(metrics)
+
+
+def build_training_report_meta(
+    *,
+    prepare_stats: dict[str, Any],
+    to_int: ToIntFn,
+    to_bool: ToBoolFn,
+) -> dict[str, Any]:
+    return {
+        "invalid_label_count": float(to_int(prepare_stats.get("invalid_label_count"), 0)),
+        "val_degraded": 1.0 if to_bool(prepare_stats.get("val_degraded"), False) else 0.0,
+    }

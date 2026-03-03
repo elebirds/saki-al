@@ -50,6 +50,11 @@ def test_normalize_metrics_falls_back_to_generic_loss_key():
     assert metrics["loss"] == pytest.approx(0.42)
 
 
+def test_normalize_metrics_does_not_fill_missing_metrics_with_zero():
+    metrics = normalize_metrics({"metrics/mAP50(B)": 0.66}, _to_float)
+    assert metrics == {"map50": 0.66}
+
+
 def test_parse_results_csv_includes_loss_column(tmp_path):
     csv_path = tmp_path / "results.csv"
     csv_path.write_text(

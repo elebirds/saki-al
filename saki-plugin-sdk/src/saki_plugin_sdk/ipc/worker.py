@@ -27,6 +27,7 @@ from saki_plugin_sdk.base import ExecutorPlugin
 from saki_plugin_sdk.execution_binding_context import ExecutionBindingContext
 from saki_plugin_sdk.ipc import protocol
 from saki_plugin_sdk.logger import reset_log_bridge, set_log_bridge
+from saki_plugin_sdk.metric_contract import validate_final_metrics, validate_metric_event
 from saki_plugin_sdk.types import StepRuntimeContext
 from saki_plugin_sdk.workspace import Workspace
 
@@ -171,13 +172,21 @@ async def _run_train_like(
     params = protocol.read_json(Path(str(payload.get("params_path") or "")))
     if not isinstance(params, dict):
         params = {}
+    action = str(method_name or "").strip().lower()
 
     async def _emit(event_type: str, event_payload: dict[str, Any]) -> None:
+        payload = dict(event_payload or {})
+        if event_type == "metric" and action in {"train", "eval"}:
+            payload["metrics"] = validate_metric_event(
+                step_type=action,
+                metrics=payload.get("metrics"),
+                is_final=action == "eval",
+            )
         _publish_event(
             pub_socket=pub_socket,
             event_type=event_type,
             step_id=step_id,
-            payload=event_payload,
+            payload=payload,
             request_id=request_id,
         )
 
@@ -190,6 +199,11 @@ async def _run_train_like(
         emit=_emit,
         context=execution_context,
     )
+    if action in {"train", "eval"}:
+        output.metrics = validate_final_metrics(
+            step_type=action,
+            metrics=output.metrics,
+        )
     result_path = Path(str(payload.get("result_path") or ""))
     protocol.write_json(result_path, protocol.train_output_to_dict(output))
     return str(result_path)

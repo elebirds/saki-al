@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from saki_plugin_sdk import TrainArtifact, WorkspaceProtocol
+from saki_plugin_yolo_det.metrics_parser import normalize_metrics
 
 ToFloatFn = Callable[[Any, float], float]
 
@@ -64,17 +65,13 @@ def extract_primary_metrics(
     metrics: dict[str, float] = {}
     if hasattr(train_output, "results_dict"):
         raw_metrics = getattr(train_output, "results_dict", {}) or {}
-        for key, value in raw_metrics.items():
-            try:
-                metrics[str(key)] = float(value)
-            except Exception:
-                continue
+        metrics.update(normalize_metrics(raw_metrics, to_float))
     if history:
         latest = history[-1]
-        metrics.setdefault("map50", to_float(latest.get("map50"), 0.0))
-        metrics.setdefault("map50_95", to_float(latest.get("map50_95"), 0.0))
-        metrics.setdefault("precision", to_float(latest.get("precision"), 0.0))
-        metrics.setdefault("recall", to_float(latest.get("recall"), 0.0))
-        if "loss" in latest and latest.get("loss") is not None:
-            metrics.setdefault("loss", to_float(latest.get("loss"), 0.0))
+        for key in ("map50", "map50_95", "precision", "recall", "loss"):
+            if key in metrics:
+                continue
+            if latest.get(key) is None:
+                continue
+            metrics[key] = to_float(latest.get(key), 0.0)
     return metrics

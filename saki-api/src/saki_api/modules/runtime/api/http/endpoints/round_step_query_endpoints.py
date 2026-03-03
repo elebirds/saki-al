@@ -66,13 +66,16 @@ async def get_round(
         and round_item.confirmed_at is None
     )
     steps = await runtime_service.list_steps(round_id, limit=5000)
-    effective_final_metrics = runtime_service.derive_round_final_metrics(
+    metric_view = runtime_service.derive_round_metric_view(
         round_item=round_item,
         steps=steps,
     )
     payload = RoundRead.model_validate(round_item).model_dump()
     payload["awaiting_confirm"] = bool(awaiting_confirm)
-    payload["final_metrics"] = effective_final_metrics
+    payload["final_metrics"] = metric_view.final_metrics
+    payload["train_final_metrics"] = metric_view.train_final_metrics
+    payload["eval_final_metrics"] = metric_view.eval_final_metrics
+    payload["final_metrics_source"] = metric_view.final_metrics_source
     return RoundRead(**payload)
 
 

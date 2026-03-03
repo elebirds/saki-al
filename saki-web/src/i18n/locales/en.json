@@ -784,7 +784,9 @@
         "rounds": "Rounds",
         "roundsSucceeded": "Rounds Succeeded",
         "steps": "Steps",
-        "stepsSucceeded": "Steps Succeeded"
+        "stepsSucceeded": "Steps Succeeded",
+        "trainFinal": "Train Final",
+        "evalFinal": "Eval(Test)"
       },
       "messages": {
         "loadComparisonFailed": "Failed to load comparison data",
@@ -1000,6 +1002,11 @@
       "emptyRoundMetrics": "No round metrics",
       "modelStatus": "Model Status",
       "latestMap50": "Latest mAP50: {{value}}",
+      "latestMetric": "Latest {{source}}: {{value}}",
+      "metricSource": {
+        "eval": "Eval(Test)",
+        "train": "Train"
+      },
       "roundDetails": "Round Details",
       "stats": {
         "roundsTotal": "Total Rounds",

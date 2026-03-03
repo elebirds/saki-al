@@ -29,6 +29,12 @@ import {api} from '../../../services/api';
 import {useAuthStore} from '../../../store/authStore';
 import RoundConsolePanel from './components/RoundConsolePanel';
 import {
+    getMetricBySource,
+    getSummaryMetricsBySource,
+    normalizeFinalMetricSource,
+    pickPreviewMetric,
+} from './runtimeMetricView';
+import {
     Loop,
     LoopSnapshotRead,
     LoopGateResponse,
@@ -106,6 +112,13 @@ const PRIMARY_VIEW_COLOR: Record<string, string> = {
     pool: '#d89c00',
     val: '#1677ff',
     test: '#13a8a8',
+};
+
+const FINAL_METRIC_SOURCE_LABEL: Record<'eval' | 'train' | 'other' | 'none', string> = {
+    eval: 'Eval(Test)',
+    train: 'Train',
+    other: 'Other Step',
+    none: 'None',
 };
 
 const FALLBACK_POLL_MS = 30000;
@@ -255,6 +268,23 @@ const ProjectLoopDetail: React.FC = () => {
             return Number(right.attemptIndex || 0) - Number(left.attemptIndex || 0);
         })[0] || null;
     }, [rounds]);
+
+    const summaryTrainMetricPreview = useMemo(
+        () => pickPreviewMetric(getSummaryMetricsBySource(summary, 'train')),
+        [summary],
+    );
+    const summaryEvalMetricPreview = useMemo(
+        () => pickPreviewMetric(getSummaryMetricsBySource(summary, 'eval')),
+        [summary],
+    );
+    const summaryFinalMetricPreview = useMemo(
+        () => pickPreviewMetric(getSummaryMetricsBySource(summary, 'final')),
+        [summary],
+    );
+    const summaryFinalMetricSource = useMemo(
+        () => normalizeFinalMetricSource(summary?.metricsLatestSource),
+        [summary?.metricsLatestSource],
+    );
 
     useEffect(() => {
         latestRoundConsoleEventsRef.current = latestRoundConsoleEvents;
@@ -997,7 +1027,16 @@ const ProjectLoopDetail: React.FC = () => {
                     <Descriptions.Item label="Rounds 成功">{summary?.roundsSucceeded ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="Steps 总数">{summary?.stepsTotal ?? 0}</Descriptions.Item>
                     <Descriptions.Item label="Steps 成功">{summary?.stepsSucceeded ?? 0}</Descriptions.Item>
-                    <Descriptions.Item label="最新 map50">{Number(summary?.metricsLatest?.map50 || 0).toFixed(4)}</Descriptions.Item>
+                    <Descriptions.Item label="最新 Train 终态">{summaryTrainMetricPreview}</Descriptions.Item>
+                    <Descriptions.Item label="最新 Eval(Test)">{summaryEvalMetricPreview}</Descriptions.Item>
+                    <Descriptions.Item label="最新 Final(对外)">
+                        <div className="flex items-center gap-2">
+                            <Tag color={summaryFinalMetricSource === 'eval' ? 'blue' : (summaryFinalMetricSource === 'train' ? 'green' : 'default')}>
+                                {`source: ${FINAL_METRIC_SOURCE_LABEL[summaryFinalMetricSource]}`}
+                            </Tag>
+                            <span>{summaryFinalMetricPreview}</span>
+                        </div>
+                    </Descriptions.Item>
                 </Descriptions>
             </Card>
 
@@ -1251,6 +1290,31 @@ const ProjectLoopDetail: React.FC = () => {
                                     <div className="flex w-full flex-col gap-1">
                                         <Progress percent={summaryRow.percent} size="small"/>
                                         <Text type="secondary">{summaryRow.text}</Text>
+                                    </div>
+                                );
+                            },
+                        },
+                        {
+                            title: 'Train 终态',
+                            width: 180,
+                            render: (_v: unknown, row: RuntimeRound) => pickPreviewMetric(getMetricBySource(row, 'train')),
+                        },
+                        {
+                            title: 'Eval(Test)',
+                            width: 180,
+                            render: (_v: unknown, row: RuntimeRound) => pickPreviewMetric(getMetricBySource(row, 'eval')),
+                        },
+                        {
+                            title: 'Final',
+                            width: 220,
+                            render: (_v: unknown, row: RuntimeRound) => {
+                                const source = normalizeFinalMetricSource(row.finalMetricsSource);
+                                return (
+                                    <div className="flex flex-col gap-1">
+                                        <Tag color={source === 'eval' ? 'blue' : (source === 'train' ? 'green' : 'default')}>
+                                            {`source: ${FINAL_METRIC_SOURCE_LABEL[source]}`}
+                                        </Tag>
+                                        <span>{pickPreviewMetric(getMetricBySource(row, 'final'))}</span>
                                     </div>
                                 );
                             },

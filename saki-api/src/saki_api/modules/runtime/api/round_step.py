@@ -168,6 +168,9 @@ class RoundRead(BaseModel):
     confirmed_selected_count: int = 0
     confirmed_effective_min_required: int = 0
     final_metrics: Dict[str, Any]
+    train_final_metrics: Dict[str, Any] = Field(default_factory=dict)
+    eval_final_metrics: Dict[str, Any] = Field(default_factory=dict)
+    final_metrics_source: Literal["eval", "train", "other", "none"] = "none"
     final_artifacts: Dict[str, Any]
     resolved_params: Dict[str, Any]
     resources: Dict[str, Any]
@@ -465,6 +468,9 @@ class LoopSummaryRead(BaseModel):
     steps_total: int
     steps_succeeded: int
     metrics_latest: Dict[str, Any]
+    metrics_latest_train: Dict[str, Any] = Field(default_factory=dict)
+    metrics_latest_eval: Dict[str, Any] = Field(default_factory=dict)
+    metrics_latest_source: Literal["eval", "train", "other", "none"] = "none"
 
 
 class SimulationExperimentCreateRequest(BaseModel):

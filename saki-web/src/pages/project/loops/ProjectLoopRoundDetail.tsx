@@ -38,6 +38,11 @@ import {
     RuntimeStepMetricPoint,
 } from '../../../types';
 import {mergeRuntimeRoundEvents, normalizeRuntimeRoundEvent} from './runtimeEventFormatter';
+import {
+    formatMetricValue,
+    normalizeFinalMetricSource,
+    orderMetricEntries,
+} from './runtimeMetricView';
 
 const {Text, Title} = Typography;
 
@@ -110,6 +115,13 @@ const STAGE_LABEL: Record<RoundStageKey, string> = {
     score: '评分',
     select: '选样',
     custom: '自定义',
+};
+
+const FINAL_METRIC_SOURCE_LABEL: Record<'eval' | 'train' | 'other' | 'none', string> = {
+    eval: 'Eval(Test)',
+    train: 'Train',
+    other: 'Other Step',
+    none: 'None',
 };
 
 const ARTIFACT_CLASS_LABEL: Record<string, string> = {
@@ -591,9 +603,24 @@ const ProjectLoopRoundDetail: React.FC = () => {
         return Math.max(0, Math.min(100, Number(((done / total) * 100).toFixed(2))));
     }, [round?.stepCounts, steps]);
 
+    const trainFinalMetricPairs = useMemo(
+        () => orderMetricEntries(round?.trainFinalMetrics || trainStep?.metrics || {}),
+        [round?.trainFinalMetrics, trainStep?.id, trainStep?.metrics],
+    );
+
+    const evalFinalMetricPairs = useMemo(
+        () => orderMetricEntries(round?.evalFinalMetrics || stageSnapshots.eval.metricSummary || evalStep?.metrics || {}),
+        [round?.evalFinalMetrics, stageSnapshots.eval.metricSummary, evalStep?.id, evalStep?.metrics],
+    );
+
     const finalMetricPairs = useMemo(
-        () => Object.entries(round?.finalMetrics || {}).slice(0, 8),
+        () => orderMetricEntries(round?.finalMetrics || {}),
         [round?.finalMetrics],
+    );
+
+    const finalMetricsSource = useMemo(
+        () => normalizeFinalMetricSource(round?.finalMetricsSource),
+        [round?.finalMetricsSource],
     );
 
     const finalArtifactNames = useMemo(
@@ -651,12 +678,6 @@ const ProjectLoopRoundDetail: React.FC = () => {
             };
         });
     }, [roundArtifacts]);
-
-    const evalMetricSummary = useMemo(() => {
-        const stageMetrics = stageSnapshots.eval.metricSummary || {};
-        if (Object.keys(stageMetrics).length > 0) return stageMetrics;
-        return evalStep?.metrics || {};
-    }, [stageSnapshots.eval.metricSummary, evalStep?.id, evalStep?.metrics]);
 
     const ensureArtifactUrls = useCallback(async (items: RuntimeRoundArtifact[]) => {
         if (!items || items.length === 0) return;
@@ -1301,23 +1322,50 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 </Card>
             ) : null}
 
-            <Card className="!border-github-border !bg-github-panel" title="评估结果">
-                {!evalStep ? (
-                    <Empty description="当前 Round 无评估阶段"/>
-                ) : (
+            <Card className="!border-github-border !bg-github-panel" title="指标总览">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                     <div>
-                        <Text strong>评估指标</Text>
-                        {Object.keys(evalMetricSummary || {}).length === 0 ? (
-                            <Empty description="评估阶段暂无指标"/>
+                        <Text strong>Train 终态</Text>
+                        {trainFinalMetricPairs.length === 0 ? (
+                            <Empty description="暂无指标"/>
                         ) : (
-                            <Descriptions size="small" column={2} className="!mt-2">
-                                {Object.entries(evalMetricSummary || {}).map(([key, value]) => (
-                                    <Descriptions.Item key={key} label={key}>{String(value)}</Descriptions.Item>
+                            <Descriptions size="small" column={1} className="!mt-2">
+                                {trainFinalMetricPairs.map(([key, value]) => (
+                                    <Descriptions.Item key={key} label={key}>{formatMetricValue(value)}</Descriptions.Item>
                                 ))}
                             </Descriptions>
                         )}
                     </div>
-                )}
+                    <div>
+                        <Text strong>Eval(Test) 终态</Text>
+                        {evalFinalMetricPairs.length === 0 ? (
+                            <Empty description="暂无指标"/>
+                        ) : (
+                            <Descriptions size="small" column={1} className="!mt-2">
+                                {evalFinalMetricPairs.map(([key, value]) => (
+                                    <Descriptions.Item key={key} label={key}>{formatMetricValue(value)}</Descriptions.Item>
+                                ))}
+                            </Descriptions>
+                        )}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <Text strong>Round Final(对外口径)</Text>
+                            <Tag color={finalMetricsSource === 'eval' ? 'blue' : (finalMetricsSource === 'train' ? 'green' : 'default')}>
+                                {`source: ${FINAL_METRIC_SOURCE_LABEL[finalMetricsSource]}`}
+                            </Tag>
+                        </div>
+                        {finalMetricPairs.length === 0 ? (
+                            <Empty description="暂无指标"/>
+                        ) : (
+                            <Descriptions size="small" column={1} className="!mt-2">
+                                {finalMetricPairs.map(([key, value]) => (
+                                    <Descriptions.Item key={key} label={key}>{formatMetricValue(value)}</Descriptions.Item>
+                                ))}
+                            </Descriptions>
+                        )}
+                    </div>
+                </div>
             </Card>
 
             <RoundConsolePanel
@@ -1359,11 +1407,28 @@ const ProjectLoopRoundDetail: React.FC = () => {
                     <Descriptions.Item label="Step 数量">{steps.length}</Descriptions.Item>
                     <Descriptions.Item label="Retry From">{round.retryOfRoundId || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Retry Reason">{round.retryReason || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Final Metrics">
-                        {finalMetricPairs.length === 0
+                    <Descriptions.Item label="Train 终态">
+                        {trainFinalMetricPairs.length === 0
                             ? '-'
+                            : trainFinalMetricPairs.map(([key, value]) => (
+                                <Text key={key} className="mr-2 block">{`${key}: ${formatMetricValue(value)}`}</Text>
+                            ))}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Eval(Test) 终态">
+                        {evalFinalMetricPairs.length === 0
+                            ? '-'
+                            : evalFinalMetricPairs.map(([key, value]) => (
+                                <Text key={key} className="mr-2 block">{`${key}: ${formatMetricValue(value)}`}</Text>
+                            ))}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Final Metrics">
+                        <Tag color={finalMetricsSource === 'eval' ? 'blue' : (finalMetricsSource === 'train' ? 'green' : 'default')}>
+                            {`source: ${FINAL_METRIC_SOURCE_LABEL[finalMetricsSource]}`}
+                        </Tag>
+                        {finalMetricPairs.length === 0
+                            ? <Text className="ml-2">-</Text>
                             : finalMetricPairs.map(([key, value]) => (
-                                <Text key={key} className="mr-2 block">{`${key}: ${String(value)}`}</Text>
+                                <Text key={key} className="mr-2 block">{`${key}: ${formatMetricValue(value)}`}</Text>
                             ))}
                     </Descriptions.Item>
                     <Descriptions.Item label="Final Artifacts">

@@ -36,6 +36,17 @@ class LoopSummaryStatsVO:
     steps_total: int
     steps_succeeded: int
     metrics_latest: Dict[str, Any]
+    metrics_latest_train: Dict[str, Any]
+    metrics_latest_eval: Dict[str, Any]
+    metrics_latest_source: str
+
+
+@dataclass(slots=True)
+class RoundMetricViewVO:
+    train_final_metrics: Dict[str, Any]
+    eval_final_metrics: Dict[str, Any]
+    final_metrics: Dict[str, Any]
+    final_metrics_source: str
 
 
 class RuntimeQueryMixin:
@@ -52,6 +63,11 @@ class RuntimeQueryMixin:
         return int(step.step_index or 0), str(step.created_at or "")
 
     @staticmethod
+    def _step_state_text(step: Step) -> str:
+        raw = step.state.value if hasattr(step.state, "value") else step.state
+        return str(raw or "").strip().lower()
+
+    @staticmethod
     def _pick_non_empty_step_metrics(
         *,
         step: Step,
@@ -61,39 +77,61 @@ class RuntimeQueryMixin:
             return dict(metrics)
         return None
 
-    def _pick_final_metrics_from_steps(
+    def _pick_latest_step_type_metrics(
         self,
+        *,
         steps: list[Step],
+        step_type: str,
     ) -> dict[str, Any]:
         if not steps:
             return {}
         ordered_steps = sorted(steps, key=self._step_sort_key)
 
+        for require_succeeded in (True, False):
+            for step in reversed(ordered_steps):
+                if self._step_type_text(step) != step_type:
+                    continue
+                if require_succeeded and self._step_state_text(step) != "succeeded":
+                    continue
+                metrics = self._pick_non_empty_step_metrics(step=step)
+                if metrics is not None:
+                    return metrics
+        return {}
+
+    def _pick_final_metrics_with_source(
+        self,
+        steps: list[Step],
+    ) -> tuple[dict[str, Any], str]:
+        if not steps:
+            return {}, "none"
+        ordered_steps = sorted(steps, key=self._step_sort_key)
+
         for step in reversed(ordered_steps):
             if self._step_type_text(step) != "eval":
                 continue
-            metrics = self._pick_non_empty_step_metrics(
-                step=step,
-            )
+            metrics = self._pick_non_empty_step_metrics(step=step)
             if metrics is not None:
-                return metrics
+                return metrics, "eval"
 
         for step in reversed(ordered_steps):
             if self._step_type_text(step) != "train":
                 continue
-            metrics = self._pick_non_empty_step_metrics(
-                step=step,
-            )
+            metrics = self._pick_non_empty_step_metrics(step=step)
             if metrics is not None:
-                return metrics
+                return metrics, "train"
 
         for step in reversed(ordered_steps):
-            metrics = self._pick_non_empty_step_metrics(
-                step=step,
-            )
+            metrics = self._pick_non_empty_step_metrics(step=step)
             if metrics is not None:
-                return metrics
-        return {}
+                return metrics, "other"
+        return {}, "none"
+
+    def _pick_final_metrics_from_steps(
+        self,
+        steps: list[Step],
+    ) -> dict[str, Any]:
+        metrics, _ = self._pick_final_metrics_with_source(steps)
+        return metrics
 
     def derive_round_final_metrics(
         self,
@@ -103,6 +141,29 @@ class RuntimeQueryMixin:
     ) -> dict[str, Any]:
         del round_item
         return self._pick_final_metrics_from_steps(steps)
+
+    def derive_round_metric_view(
+        self,
+        *,
+        round_item: Round,
+        steps: list[Step],
+    ) -> RoundMetricViewVO:
+        del round_item
+        train_final_metrics = self._pick_latest_step_type_metrics(
+            steps=steps,
+            step_type="train",
+        )
+        eval_final_metrics = self._pick_latest_step_type_metrics(
+            steps=steps,
+            step_type="eval",
+        )
+        final_metrics, final_metrics_source = self._pick_final_metrics_with_source(steps)
+        return RoundMetricViewVO(
+            train_final_metrics=train_final_metrics,
+            eval_final_metrics=eval_final_metrics,
+            final_metrics=final_metrics,
+            final_metrics_source=final_metrics_source,
+        )
 
     @staticmethod
     def _group_steps_by_round(steps: list[Step]) -> dict[uuid.UUID, list[Step]]:
@@ -667,13 +728,16 @@ class RuntimeQueryMixin:
                 steps_total=0,
                 steps_succeeded=0,
                 metrics_latest={},
+                metrics_latest_train={},
+                metrics_latest_eval={},
+                metrics_latest_source="none",
             )
 
         round_ids = [round_item.id for round_item in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
         latest_round = rounds[-1]
         steps_by_round = self._group_steps_by_round(steps)
-        latest_round_metrics = self.derive_round_final_metrics(
+        latest_round_metric_view = self.derive_round_metric_view(
             round_item=latest_round,
             steps=steps_by_round.get(latest_round.id, []),
         )
@@ -689,7 +753,10 @@ class RuntimeQueryMixin:
             rounds_succeeded=len(succeeded_logical_round_ids),
             steps_total=len(steps),
             steps_succeeded=sum(1 for item in steps if item.state == StepStatus.SUCCEEDED),
-            metrics_latest=latest_round_metrics,
+            metrics_latest=latest_round_metric_view.final_metrics,
+            metrics_latest_train=latest_round_metric_view.train_final_metrics,
+            metrics_latest_eval=latest_round_metric_view.eval_final_metrics,
+            metrics_latest_source=latest_round_metric_view.final_metrics_source,
         )
 
     async def get_simulation_experiment_comparison(

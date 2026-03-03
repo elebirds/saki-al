@@ -294,6 +294,15 @@ function normalizeLoop(loop: Loop): Loop {
 }
 
 function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
+    const metricsLatestSourceRaw = String((summary as any).metricsLatestSource || '').trim().toLowerCase();
+    const metricsLatestSource: 'eval' | 'train' | 'other' | 'none' = (
+        metricsLatestSourceRaw === 'eval'
+        || metricsLatestSourceRaw === 'train'
+        || metricsLatestSourceRaw === 'other'
+        || metricsLatestSourceRaw === 'none'
+    )
+        ? metricsLatestSourceRaw as 'eval' | 'train' | 'other' | 'none'
+        : 'none';
     return {
         ...summary,
         lifecycle: (summary as any).lifecycle,
@@ -302,10 +311,23 @@ function normalizeLoopSummary(summary: LoopSummary): LoopSummary {
         roundsSucceeded: (summary as any).roundsSucceeded ?? 0,
         stepsTotal: (summary as any).stepsTotal ?? 0,
         stepsSucceeded: (summary as any).stepsSucceeded ?? 0,
+        metricsLatest: (summary as any).metricsLatest ?? {},
+        metricsLatestTrain: (summary as any).metricsLatestTrain ?? {},
+        metricsLatestEval: (summary as any).metricsLatestEval ?? {},
+        metricsLatestSource,
     };
 }
 
 function normalizeRound(round: RuntimeRound): RuntimeRound {
+    const finalMetricsSourceRaw = String((round as any).finalMetricsSource || '').trim().toLowerCase();
+    const finalMetricsSource: 'eval' | 'train' | 'other' | 'none' = (
+        finalMetricsSourceRaw === 'eval'
+        || finalMetricsSourceRaw === 'train'
+        || finalMetricsSourceRaw === 'other'
+        || finalMetricsSourceRaw === 'none'
+    )
+        ? finalMetricsSourceRaw as 'eval' | 'train' | 'other' | 'none'
+        : 'none';
     return {
         ...round,
         state: (round as any).state ?? 'pending',
@@ -323,6 +345,10 @@ function normalizeRound(round: RuntimeRound): RuntimeRound {
         confirmedSelectedCount: Number((round as any).confirmedSelectedCount ?? 0),
         confirmedEffectiveMinRequired: Number((round as any).confirmedEffectiveMinRequired ?? 0),
         lastError: (round as any).lastError ?? (round as any).terminalReason ?? null,
+        finalMetrics: (round as any).finalMetrics ?? {},
+        trainFinalMetrics: (round as any).trainFinalMetrics ?? {},
+        evalFinalMetrics: (round as any).evalFinalMetrics ?? {},
+        finalMetricsSource,
         resolvedParams: (round as any).resolvedParams ?? {},
     };
 }

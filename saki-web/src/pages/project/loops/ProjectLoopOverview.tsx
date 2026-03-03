@@ -31,6 +31,7 @@ import {
     SimulationComparison,
     SimulationExperimentCreateRequest,
 } from '../../../types';
+import {getSummaryMetricsBySource, pickPreviewMetric} from './runtimeMetricView';
 
 const {Title, Text} = Typography;
 
@@ -425,6 +426,12 @@ const ProjectLoopOverview: React.FC = () => {
                                                 <Text strong>{summary?.stepsSucceeded ?? 0}</Text> {t('project.loopOverview.summary.stepsSucceeded')}
                                             </div>
                                         </div>
+                                        <Text type="secondary">
+                                            {`${t('project.loopOverview.summary.trainFinal')}: ${pickPreviewMetric(getSummaryMetricsBySource(summary || null, 'train'))}`}
+                                        </Text>
+                                        <Text type="secondary">
+                                            {`${t('project.loopOverview.summary.evalFinal')}: ${pickPreviewMetric(getSummaryMetricsBySource(summary || null, 'eval'))}`}
+                                        </Text>
                                     </div>
                                 </Card>
                             </div>

@@ -158,6 +158,9 @@ export interface RuntimeRound {
     confirmedEffectiveMinRequired?: number;
     lastError?: string | null;
     finalMetrics: Record<string, any>;
+    trainFinalMetrics?: Record<string, any>;
+    evalFinalMetrics?: Record<string, any>;
+    finalMetricsSource?: 'eval' | 'train' | 'other' | 'none';
     finalArtifacts: Record<string, any>;
     resolvedParams: Record<string, any>;
     resources: Record<string, any>;
@@ -492,6 +495,9 @@ export interface LoopSummary {
     stepsTotal: number;
     stepsSucceeded: number;
     metricsLatest: Record<string, any>;
+    metricsLatestTrain?: Record<string, any>;
+    metricsLatestEval?: Record<string, any>;
+    metricsLatestSource?: 'eval' | 'train' | 'other' | 'none';
 }
 
 export interface SimulationExperimentCreateRequest {

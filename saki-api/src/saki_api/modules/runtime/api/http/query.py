@@ -250,11 +250,18 @@ async def list_loop_rounds(
         required=Permissions.ROUND_READ,
     )
     rounds = await runtime_service.list_rounds(loop_id, limit=limit)
+    round_ids = [item.id for item in rounds]
+    steps = await runtime_service.step_repo.list_by_round_ids(round_ids) if round_ids else []
+    steps_by_round = runtime_service._group_steps_by_round(steps)
     latest_round = rounds[0] if rounds else None
     loop_phase_text = loop.phase.value
     items: list[RoundRead] = []
     loop_mode_text = loop.mode.value
     for row in rounds:
+        metric_view = runtime_service.derive_round_metric_view(
+            round_item=row,
+            steps=steps_by_round.get(row.id, []),
+        )
         awaiting_confirm = (
             loop_mode_text == "active_learning"
             and loop_phase_text == "al_wait_user"
@@ -265,6 +272,10 @@ async def list_loop_rounds(
         )
         payload = RoundRead.model_validate(row).model_dump()
         payload["awaiting_confirm"] = bool(awaiting_confirm)
+        payload["final_metrics"] = metric_view.final_metrics
+        payload["train_final_metrics"] = metric_view.train_final_metrics
+        payload["eval_final_metrics"] = metric_view.eval_final_metrics
+        payload["final_metrics_source"] = metric_view.final_metrics_source
         items.append(RoundRead(**payload))
     return items
 
@@ -295,6 +306,9 @@ async def get_loop_summary(
         steps_total=summary.steps_total,
         steps_succeeded=summary.steps_succeeded,
         metrics_latest=summary.metrics_latest,
+        metrics_latest_train=summary.metrics_latest_train,
+        metrics_latest_eval=summary.metrics_latest_eval,
+        metrics_latest_source=summary.metrics_latest_source,
     )
 
 

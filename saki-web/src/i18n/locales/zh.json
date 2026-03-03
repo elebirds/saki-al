@@ -771,6 +771,11 @@
       "emptyRoundMetrics": "暂无 Round 指标",
       "modelStatus": "模型状态",
       "latestMap50": "最新 mAP50: {{value}}",
+      "latestMetric": "最新 {{source}}: {{value}}",
+      "metricSource": {
+        "eval": "Eval(Test)",
+        "train": "Train"
+      },
       "roundDetails": "Round 明细",
       "stats": {
         "roundsTotal": "Rounds 总数",
@@ -806,7 +811,9 @@
         "rounds": "Rounds",
         "roundsSucceeded": "Rounds 成功",
         "steps": "Steps",
-        "stepsSucceeded": "Steps 成功"
+        "stepsSucceeded": "Steps 成功",
+        "trainFinal": "Train 终态",
+        "evalFinal": "Eval(Test)"
       },
       "messages": {
         "loadComparisonFailed": "加载对比数据失败",

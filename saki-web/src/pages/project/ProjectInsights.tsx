@@ -14,6 +14,13 @@ import {
 
 import {api} from '../../services/api';
 import {Loop, LoopSummary, ProjectModel, RuntimeRound} from '../../types';
+import {
+    collectMetricKeys,
+    formatMetricValue,
+    getMetricBySource,
+    getSummaryMetricsBySource,
+    pickPreviewMetric,
+} from './loops/runtimeMetricView';
 
 const {Text} = Typography;
 
@@ -43,6 +50,8 @@ const ProjectInsights: React.FC = () => {
     const [rounds, setRounds] = useState<RuntimeRound[]>([]);
     const [summary, setSummary] = useState<LoopSummary | null>(null);
     const [models, setModels] = useState<ProjectModel[]>([]);
+    const [metricSource, setMetricSource] = useState<'eval' | 'train'>('eval');
+    const [selectedMetricKey, setSelectedMetricKey] = useState<string>('map50');
 
     const selectedLoop = useMemo(
         () => loops.find((item) => item.id === selectedLoopId),
@@ -88,17 +97,39 @@ const ProjectInsights: React.FC = () => {
         void loadAll();
     }, [loadAll]);
 
+    const metricKeyOptions = useMemo(
+        () => collectMetricKeys(rounds, metricSource),
+        [rounds, metricSource],
+    );
+
+    useEffect(() => {
+        if (metricKeyOptions.length === 0) {
+            setSelectedMetricKey('map50');
+            return;
+        }
+        if (metricKeyOptions.includes(selectedMetricKey)) return;
+        setSelectedMetricKey(metricKeyOptions[0]);
+    }, [metricKeyOptions, selectedMetricKey]);
+
     const chartData = useMemo(() => {
-        return rounds.map((item) => ({
-            round: item.roundIndex,
-            map50: Number(item.finalMetrics?.map50 || 0),
-            recall: Number(item.finalMetrics?.recall || 0),
-            succeededSteps: Number(item.stepCounts?.succeeded || 0),
-        }));
-    }, [rounds]);
+        return rounds.map((item) => {
+            const sourceMetrics = getMetricBySource(item, metricSource);
+            const metricRaw = sourceMetrics[selectedMetricKey];
+            const metricValue = Number(metricRaw);
+            return {
+                round: item.roundIndex,
+                metricValue: Number.isFinite(metricValue) ? metricValue : null,
+                succeededSteps: Number(item.stepCounts?.succeeded || 0),
+            };
+        });
+    }, [rounds, metricSource, selectedMetricKey]);
 
     const productionModels = useMemo(() => models.filter((item) => item.status === 'production'), [models]);
     const candidateModels = useMemo(() => models.filter((item) => item.status === 'candidate'), [models]);
+    const latestMetricPreview = useMemo(
+        () => pickPreviewMetric(getSummaryMetricsBySource(summary, metricSource)),
+        [summary, metricSource],
+    );
 
     if (loading) {
         return (
@@ -136,6 +167,24 @@ const ProjectInsights: React.FC = () => {
                     {selectedLoop ? (
                         <Tag color={LOOP_LIFECYCLE_COLOR[selectedLoop.lifecycle] || 'default'}>{selectedLoop.lifecycle}</Tag>
                     ) : null}
+                    <Select
+                        className="min-w-[180px]"
+                        value={metricSource}
+                        onChange={(value) => setMetricSource(value as 'eval' | 'train')}
+                        options={[
+                            {label: t('project.insights.metricSource.eval'), value: 'eval'},
+                            {label: t('project.insights.metricSource.train'), value: 'train'},
+                        ]}
+                    />
+                    <Select
+                        className="min-w-[180px]"
+                        value={selectedMetricKey}
+                        onChange={(value) => setSelectedMetricKey(value)}
+                        options={(metricKeyOptions.length > 0 ? metricKeyOptions : [selectedMetricKey]).map((key) => ({
+                            label: key,
+                            value: key,
+                        }))}
+                    />
                 </div>
             </Card>
 
@@ -176,8 +225,16 @@ const ProjectInsights: React.FC = () => {
                                         <YAxis yAxisId="left" domain={[0, 1]}/>
                                         <YAxis yAxisId="right" orientation="right"/>
                                         <Tooltip/>
-                                        <Line yAxisId="left" type="monotone" dataKey="map50" stroke="#1677ff" strokeWidth={2} dot={false}/>
-                                        <Line yAxisId="left" type="monotone" dataKey="recall" stroke="#13c2c2" strokeWidth={2} dot={false}/>
+                                        <Line
+                                            yAxisId="left"
+                                            type="monotone"
+                                            dataKey="metricValue"
+                                            name={selectedMetricKey}
+                                            stroke="#1677ff"
+                                            strokeWidth={2}
+                                            dot={false}
+                                            connectNulls={false}
+                                        />
                                         <Line yAxisId="right" type="monotone" dataKey="succeededSteps" stroke="#52c41a" strokeWidth={2} dot={false}/>
                                     </LineChart>
                                 </ResponsiveContainer>
@@ -192,7 +249,10 @@ const ProjectInsights: React.FC = () => {
                             <Statistic title={t('project.insights.stats.candidateModels')} value={candidateModels.length}/>
                             <Statistic title={t('project.insights.stats.productionModels')} value={productionModels.length}/>
                             <Text type="secondary">
-                                {t('project.insights.latestMap50', {value: Number(summary?.metricsLatest?.map50 || 0).toFixed(4)})}
+                                {t('project.insights.latestMetric', {
+                                    source: metricSource === 'eval' ? t('project.insights.metricSource.eval') : t('project.insights.metricSource.train'),
+                                    value: latestMetricPreview,
+                                })}
                             </Text>
                         </div>
                     </Card>
@@ -214,8 +274,21 @@ const ProjectInsights: React.FC = () => {
                             render: (value: string) => <Tag color={ROUND_STATE_COLOR[value] || 'default'}>{value}</Tag>,
                         },
                         {title: t('project.insights.table.strategy'), dataIndex: 'queryStrategy', width: 180},
-                        {title: 'mAP50', render: (_: unknown, row: RuntimeRound) => Number(row.finalMetrics?.map50 || 0).toFixed(4), width: 100},
-                        {title: 'recall', render: (_: unknown, row: RuntimeRound) => Number(row.finalMetrics?.recall || 0).toFixed(4), width: 100},
+                        {
+                            title: `Train(${selectedMetricKey})`,
+                            width: 140,
+                            render: (_: unknown, row: RuntimeRound) => formatMetricValue(getMetricBySource(row, 'train')[selectedMetricKey]),
+                        },
+                        {
+                            title: `Eval(${selectedMetricKey})`,
+                            width: 140,
+                            render: (_: unknown, row: RuntimeRound) => formatMetricValue(getMetricBySource(row, 'eval')[selectedMetricKey]),
+                        },
+                        {
+                            title: `Final(${selectedMetricKey})`,
+                            width: 140,
+                            render: (_: unknown, row: RuntimeRound) => formatMetricValue(getMetricBySource(row, 'final')[selectedMetricKey]),
+                        },
                         {title: 'stepCounts', render: (_: unknown, row: RuntimeRound) => JSON.stringify(row.stepCounts || {})},
                     ]}
                 />

@@ -19,13 +19,47 @@ func canStepTransition(from db.Stepstatus, to db.Stepstatus) bool {
 	case db.StepstatusPENDING:
 		return to == db.StepstatusREADY || to == db.StepstatusCANCELLED
 	case db.StepstatusREADY:
-		return to == db.StepstatusDISPATCHING || to == db.StepstatusRUNNING || to == db.StepstatusCANCELLED
+		return to == db.StepstatusDISPATCHING ||
+			to == db.StepstatusSYNCINGENV ||
+			to == db.StepstatusPROBINGRUNTIME ||
+			to == db.StepstatusBINDINGDEVICE ||
+			to == db.StepstatusRUNNING ||
+			to == db.StepstatusCANCELLED
 	case db.StepstatusDISPATCHING:
-		return to == db.StepstatusRUNNING || to == db.StepstatusREADY || to == db.StepstatusRETRYING || isTerminalStepStatusDB(to)
+		return to == db.StepstatusSYNCINGENV ||
+			to == db.StepstatusPROBINGRUNTIME ||
+			to == db.StepstatusBINDINGDEVICE ||
+			to == db.StepstatusRUNNING ||
+			to == db.StepstatusREADY ||
+			to == db.StepstatusRETRYING ||
+			isTerminalStepStatusDB(to)
+	case db.StepstatusSYNCINGENV:
+		return to == db.StepstatusPROBINGRUNTIME ||
+			to == db.StepstatusBINDINGDEVICE ||
+			to == db.StepstatusRUNNING ||
+			to == db.StepstatusREADY ||
+			to == db.StepstatusRETRYING ||
+			isTerminalStepStatusDB(to)
+	case db.StepstatusPROBINGRUNTIME:
+		return to == db.StepstatusBINDINGDEVICE ||
+			to == db.StepstatusRUNNING ||
+			to == db.StepstatusREADY ||
+			to == db.StepstatusRETRYING ||
+			isTerminalStepStatusDB(to)
+	case db.StepstatusBINDINGDEVICE:
+		return to == db.StepstatusRUNNING ||
+			to == db.StepstatusREADY ||
+			to == db.StepstatusRETRYING ||
+			isTerminalStepStatusDB(to)
 	case db.StepstatusRUNNING:
 		return to == db.StepstatusRETRYING || to == db.StepstatusREADY || isTerminalStepStatusDB(to)
 	case db.StepstatusRETRYING:
-		return to == db.StepstatusRUNNING || to == db.StepstatusREADY || isTerminalStepStatusDB(to)
+		return to == db.StepstatusSYNCINGENV ||
+			to == db.StepstatusPROBINGRUNTIME ||
+			to == db.StepstatusBINDINGDEVICE ||
+			to == db.StepstatusRUNNING ||
+			to == db.StepstatusREADY ||
+			isTerminalStepStatusDB(to)
 	case db.StepstatusFAILED:
 		return to == db.StepstatusREADY
 	default:
@@ -35,14 +69,49 @@ func canStepTransition(from db.Stepstatus, to db.Stepstatus) bool {
 
 func stepFromCandidatesForTarget(target db.Stepstatus) []db.Stepstatus {
 	switch target {
+	case db.StepstatusSYNCINGENV:
+		return []db.Stepstatus{db.StepstatusDISPATCHING, db.StepstatusREADY}
+	case db.StepstatusPROBINGRUNTIME:
+		return []db.Stepstatus{db.StepstatusSYNCINGENV, db.StepstatusDISPATCHING, db.StepstatusREADY}
+	case db.StepstatusBINDINGDEVICE:
+		return []db.Stepstatus{db.StepstatusPROBINGRUNTIME, db.StepstatusSYNCINGENV, db.StepstatusDISPATCHING, db.StepstatusREADY}
 	case db.StepstatusRUNNING:
-		return []db.Stepstatus{db.StepstatusDISPATCHING, db.StepstatusREADY, db.StepstatusRETRYING}
+		return []db.Stepstatus{
+			db.StepstatusBINDINGDEVICE,
+			db.StepstatusPROBINGRUNTIME,
+			db.StepstatusSYNCINGENV,
+			db.StepstatusDISPATCHING,
+			db.StepstatusREADY,
+			db.StepstatusRETRYING,
+		}
 	case db.StepstatusSUCCEEDED, db.StepstatusFAILED, db.StepstatusCANCELLED, db.StepstatusSKIPPED:
-		return []db.Stepstatus{db.StepstatusRUNNING, db.StepstatusRETRYING, db.StepstatusDISPATCHING, db.StepstatusREADY}
+		return []db.Stepstatus{
+			db.StepstatusRUNNING,
+			db.StepstatusBINDINGDEVICE,
+			db.StepstatusPROBINGRUNTIME,
+			db.StepstatusSYNCINGENV,
+			db.StepstatusRETRYING,
+			db.StepstatusDISPATCHING,
+			db.StepstatusREADY,
+		}
 	case db.StepstatusRETRYING:
-		return []db.Stepstatus{db.StepstatusRUNNING, db.StepstatusDISPATCHING}
+		return []db.Stepstatus{
+			db.StepstatusRUNNING,
+			db.StepstatusBINDINGDEVICE,
+			db.StepstatusPROBINGRUNTIME,
+			db.StepstatusSYNCINGENV,
+			db.StepstatusDISPATCHING,
+		}
 	case db.StepstatusREADY:
-		return []db.Stepstatus{db.StepstatusPENDING, db.StepstatusFAILED, db.StepstatusRETRYING, db.StepstatusDISPATCHING}
+		return []db.Stepstatus{
+			db.StepstatusPENDING,
+			db.StepstatusFAILED,
+			db.StepstatusRETRYING,
+			db.StepstatusBINDINGDEVICE,
+			db.StepstatusPROBINGRUNTIME,
+			db.StepstatusSYNCINGENV,
+			db.StepstatusDISPATCHING,
+		}
 	case db.StepstatusDISPATCHING:
 		return []db.Stepstatus{db.StepstatusREADY}
 	default:

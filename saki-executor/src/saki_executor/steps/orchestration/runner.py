@@ -92,10 +92,12 @@ class StepPipelineRunner:
         self._validate_request()
         metadata_plugin = self._resolve_plugin()
         workspace, reporter, emitter = self._prepare_workspace()
+        await self._emit_dispatching_status(emitter)
+        await self._prepare_profile_environment(metadata_plugin=metadata_plugin, emitter=emitter)
         plugin = self._build_execution_plugin(metadata_plugin=metadata_plugin, emitter=emitter)
         await self._prepare_execution_binding(plugin=plugin, emitter=emitter)
+        await self._emit_running_status(emitter)
         runtime_requirements = plugin.get_step_runtime_requirements(self._request.step_type)
-        await self._emit_start_status(emitter)
         await self._prepare_trained_model_if_needed(
             workspace=workspace,
             emitter=emitter,
@@ -224,10 +226,21 @@ class StepPipelineRunner:
             requested_device=requested_device,
         )
         self._selected_profile = selected_profile
-        self._selected_worker_python = self._resolve_worker_python(plugin, selected_profile)
         self._effective_plugin_params = effective_plugin_params
         self._runtime_context = runtime_context
         return plugin
+
+    async def _prepare_profile_environment(
+        self,
+        *,
+        metadata_plugin: Any,
+        emitter: StepEventEmitter,
+    ) -> None:
+        selected_profile = self._selected_profile
+        if selected_profile is None:
+            raise RuntimeError("runtime profile is not selected")
+        await emitter.emit_status(StepStatus.SYNCING_ENV, "syncing plugin runtime environment")
+        self._selected_worker_python = self._resolve_worker_python(metadata_plugin, selected_profile)
 
     def _resolve_runtime_profiles(self, plugin: Any) -> list[RuntimeProfileSpec]:
         runtime_profiles = getattr(plugin, "runtime_profiles", None)
@@ -326,10 +339,12 @@ class StepPipelineRunner:
         if host_capability is None:
             raise RuntimeError("host capability is not resolved")
 
+        await emitter.emit_status(StepStatus.PROBING_RUNTIME, "probing plugin runtime capability")
         runtime_capability = await plugin.probe_runtime_capability(context=runtime_context)
         if not isinstance(runtime_capability, RuntimeCapabilitySnapshot):
             runtime_capability = RuntimeCapabilitySnapshot.from_dict(dict(runtime_capability or {}))
 
+        await emitter.emit_status(StepStatus.BINDING_DEVICE, "binding execution device")
         binding = DeviceBindingResolver().resolve(
             requested_device=self._effective_plugin_params.get("device", "auto"),
             host_capability=host_capability,
@@ -411,9 +426,11 @@ class StepPipelineRunner:
         )
         return workspace, reporter, emitter
 
-    async def _emit_start_status(self, emitter: StepEventEmitter) -> None:
+    async def _emit_dispatching_status(self, emitter: StepEventEmitter) -> None:
         self._manager.executor_state = ExecutorState.RUNNING
         await emitter.emit_status(StepStatus.DISPATCHING, "step dispatching")
+
+    async def _emit_running_status(self, emitter: StepEventEmitter) -> None:
         await emitter.emit_status(StepStatus.RUNNING, "step running")
 
     async def _run_training_pipeline(

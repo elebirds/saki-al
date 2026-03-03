@@ -644,15 +644,18 @@ func (ns NullStepdispatchkind) Value() (driver.Value, error) {
 type Stepstatus string
 
 const (
-	StepstatusPENDING     Stepstatus = "PENDING"
-	StepstatusREADY       Stepstatus = "READY"
-	StepstatusDISPATCHING Stepstatus = "DISPATCHING"
-	StepstatusRUNNING     Stepstatus = "RUNNING"
-	StepstatusRETRYING    Stepstatus = "RETRYING"
-	StepstatusSUCCEEDED   Stepstatus = "SUCCEEDED"
-	StepstatusFAILED      Stepstatus = "FAILED"
-	StepstatusCANCELLED   Stepstatus = "CANCELLED"
-	StepstatusSKIPPED     Stepstatus = "SKIPPED"
+	StepstatusPENDING        Stepstatus = "PENDING"
+	StepstatusREADY          Stepstatus = "READY"
+	StepstatusDISPATCHING    Stepstatus = "DISPATCHING"
+	StepstatusSYNCINGENV     Stepstatus = "SYNCING_ENV"
+	StepstatusPROBINGRUNTIME Stepstatus = "PROBING_RUNTIME"
+	StepstatusBINDINGDEVICE  Stepstatus = "BINDING_DEVICE"
+	StepstatusRUNNING        Stepstatus = "RUNNING"
+	StepstatusRETRYING       Stepstatus = "RETRYING"
+	StepstatusSUCCEEDED      Stepstatus = "SUCCEEDED"
+	StepstatusFAILED         Stepstatus = "FAILED"
+	StepstatusCANCELLED      Stepstatus = "CANCELLED"
+	StepstatusSKIPPED        Stepstatus = "SKIPPED"
 )
 
 func (e *Stepstatus) Scan(src interface{}) error {
@@ -1026,22 +1029,26 @@ type Loop struct {
 }
 
 type Model struct {
-	CreatedAt      pgtype.Timestamp
-	UpdatedAt      pgtype.Timestamp
-	ID             uuid.UUID
-	ProjectID      uuid.UUID
-	SourceCommitID *uuid.UUID
-	ParentModelID  *uuid.UUID
-	PluginID       string
-	ModelArch      string
-	Name           string
-	VersionTag     string
-	WeightsPath    string
-	Status         string
-	Metrics        []byte
-	Artifacts      []byte
-	PromotedAt     pgtype.Timestamp
-	CreatedBy      *uuid.UUID
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
+	ID                  uuid.UUID
+	ProjectID           uuid.UUID
+	SourceCommitID      *uuid.UUID
+	SourceRoundID       *uuid.UUID
+	SourceStepID        *uuid.UUID
+	ParentModelID       *uuid.UUID
+	PluginID            string
+	ModelArch           string
+	Name                string
+	VersionTag          string
+	PrimaryArtifactName string
+	WeightsPath         string
+	Status              string
+	Metrics             []byte
+	Artifacts           []byte
+	PublishManifest     []byte
+	PromotedAt          pgtype.Timestamp
+	CreatedBy           *uuid.UUID
 }
 
 type Project struct {

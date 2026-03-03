@@ -823,8 +823,135 @@ async def test_startup_status_events_skip_pending(tmp_path: Path):
         if message.WhichOneof("payload") == "step_event"
         and message.step_event.WhichOneof("event_payload") == "status_event"
     ]
-    assert status_codes[:2] == [pb.DISPATCHING, pb.RUNNING]
+    assert status_codes[:5] == [
+        pb.DISPATCHING,
+        pb.SYNCING_ENV,
+        pb.PROBING_RUNTIME,
+        pb.BINDING_DEVICE,
+        pb.RUNNING,
+    ]
     assert pb.PENDING not in status_codes
+
+
+@pytest.mark.anyio
+async def test_syncing_env_failure_stops_before_runtime_probe(tmp_path: Path, monkeypatch):
+    plugin = _ModeAwarePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    def _raise_sync(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("profile sync failed")
+
+    monkeypatch.setattr(
+        "saki_executor.steps.orchestration.runner.StepPipelineRunner._resolve_worker_python",
+        _raise_sync,
+    )
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+    accepted = await manager.assign_step(
+        "assign-sync-failed-1",
+        {
+            "step_id": "task-sync-failed-1",
+            "round_id": "job-sync-failed-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    status_codes = [
+        message.step_event.status_event.status
+        for message in sent_messages
+        if message.WhichOneof("payload") == "step_event"
+        and message.step_event.WhichOneof("event_payload") == "status_event"
+    ]
+    assert status_codes[:2] == [pb.DISPATCHING, pb.SYNCING_ENV]
+    assert pb.PROBING_RUNTIME not in status_codes
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    assert result_messages[0].step_result.status == pb.FAILED
+
+
+@pytest.mark.anyio
+async def test_runtime_probe_failure_stops_before_binding(tmp_path: Path, monkeypatch):
+    plugin = _ModeAwarePlugin()
+    manager = _build_manager(tmp_path, plugin)
+    sent_messages: list[pb.RuntimeMessage] = []
+
+    async def _raise_probe(self, *, context):
+        del self, context
+        raise RuntimeError("probe runtime failed")
+
+    monkeypatch.setattr(_InProcessProxy, "probe_runtime_capability", _raise_probe)
+
+    async def fake_send(message: pb.RuntimeMessage) -> None:
+        sent_messages.append(message)
+
+    async def fake_request(message: pb.RuntimeMessage) -> pb.RuntimeMessage:
+        request = message.data_request
+        return build_data_response_message(
+            request_id=f"resp-{request.request_id}",
+            reply_to=request.request_id,
+            step_id=request.step_id,
+            query_type=request.query_type,
+            items=_mock_data_items(request.query_type),
+        )
+
+    manager.set_transport(fake_send, fake_request)
+    accepted = await manager.assign_step(
+        "assign-probe-failed-1",
+        {
+            "step_id": "task-probe-failed-1",
+            "round_id": "job-probe-failed-1",
+            "project_id": "project-1",
+            "input_commit_id": "commit-1",
+            "plugin_id": plugin.plugin_id,
+            "mode": "active_learning",
+            "step_type": "train",
+            "dispatch_kind": "dispatchable",
+            "round_index": 1,
+            "query_strategy": "uncertainty_1_minus_max_conf",
+            "resolved_params": {},
+        },
+    )
+    assert accepted is True
+    assert manager._task is not None  # noqa: SLF001
+    await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
+
+    status_codes = [
+        message.step_event.status_event.status
+        for message in sent_messages
+        if message.WhichOneof("payload") == "step_event"
+        and message.step_event.WhichOneof("event_payload") == "status_event"
+    ]
+    assert status_codes[:3] == [pb.DISPATCHING, pb.SYNCING_ENV, pb.PROBING_RUNTIME]
+    assert pb.BINDING_DEVICE not in status_codes
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    assert len(result_messages) == 1
+    assert result_messages[0].step_result.status == pb.FAILED
 
 
 @pytest.mark.anyio

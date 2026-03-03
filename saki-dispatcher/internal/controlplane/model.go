@@ -281,6 +281,12 @@ func runtimeStatusToStepStatus(status runtimecontrolv1.RuntimeStepStatus) db.Ste
 		return stepPending
 	case runtimecontrolv1.RuntimeStepStatus_DISPATCHING:
 		return stepDispatching
+	case runtimecontrolv1.RuntimeStepStatus_SYNCING_ENV:
+		return stepSyncingEnv
+	case runtimecontrolv1.RuntimeStepStatus_PROBING_RUNTIME:
+		return stepProbingRt
+	case runtimecontrolv1.RuntimeStepStatus_BINDING_DEVICE:
+		return stepBindingDev
 	case runtimecontrolv1.RuntimeStepStatus_RUNNING:
 		return stepRunning
 	case runtimecontrolv1.RuntimeStepStatus_RETRYING:

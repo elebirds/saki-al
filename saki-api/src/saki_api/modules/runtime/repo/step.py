@@ -40,6 +40,9 @@ class StepRepository(BaseRepository[Step]):
                 [
                     StepStatus.PENDING,
                     StepStatus.DISPATCHING,
+                    StepStatus.SYNCING_ENV,
+                    StepStatus.PROBING_RUNTIME,
+                    StepStatus.BINDING_DEVICE,
                     StepStatus.RUNNING,
                     StepStatus.RETRYING,
                 ]

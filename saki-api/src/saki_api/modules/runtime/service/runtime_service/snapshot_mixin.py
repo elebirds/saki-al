@@ -1254,6 +1254,9 @@ class SnapshotMixin:
                 has_inflight_steps = any(
                     str(step.state.value if hasattr(step.state, "value") else step.state).strip().lower()
                     in {
+                        StepStatus.SYNCING_ENV.value,
+                        StepStatus.PROBING_RUNTIME.value,
+                        StepStatus.BINDING_DEVICE.value,
                         StepStatus.RUNNING.value,
                         StepStatus.DISPATCHING.value,
                         StepStatus.RETRYING.value,
@@ -2339,7 +2342,14 @@ class SnapshotMixin:
 
     @staticmethod
     def _task_status_from_step(step_state: StepStatus | None) -> str:
-        if step_state in {StepStatus.DISPATCHING, StepStatus.RUNNING, StepStatus.RETRYING}:
+        if step_state in {
+            StepStatus.DISPATCHING,
+            StepStatus.SYNCING_ENV,
+            StepStatus.PROBING_RUNTIME,
+            StepStatus.BINDING_DEVICE,
+            StepStatus.RUNNING,
+            StepStatus.RETRYING,
+        }:
             return "running"
         if step_state in {StepStatus.FAILED, StepStatus.CANCELLED, StepStatus.SKIPPED}:
             return "failed"

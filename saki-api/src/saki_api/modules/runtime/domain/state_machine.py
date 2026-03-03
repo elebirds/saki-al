@@ -16,8 +16,11 @@ TERMINAL_STEP_STATES: set[StepStatus] = {
 }
 
 RUNNING_STEP_STATES: set[StepStatus] = {
-    StepStatus.RUNNING,
     StepStatus.DISPATCHING,
+    StepStatus.SYNCING_ENV,
+    StepStatus.PROBING_RUNTIME,
+    StepStatus.BINDING_DEVICE,
+    StepStatus.RUNNING,
     StepStatus.RETRYING,
 }
 

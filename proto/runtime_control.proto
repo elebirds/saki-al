@@ -19,6 +19,9 @@ enum RuntimeStepStatus {
   FAILED = 6;
   CANCELLED = 7;
   SKIPPED = 8;
+  SYNCING_ENV = 9;
+  PROBING_RUNTIME = 10;
+  BINDING_DEVICE = 11;
 }
 
 enum AckStatus {

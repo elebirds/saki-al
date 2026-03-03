@@ -1072,7 +1072,12 @@ func summarizeRoundState(counts map[db.Stepstatus]int, total int) db.Roundstatus
 	}
 	failed := counts[stepFailed]
 	cancelled := counts[stepCancelled]
-	running := counts[stepRunning] + counts[stepDispatching] + counts[stepRetrying]
+	running := counts[stepRunning] +
+		counts[stepBindingDev] +
+		counts[stepProbingRt] +
+		counts[stepSyncingEnv] +
+		counts[stepDispatching] +
+		counts[stepRetrying]
 	pending := counts[stepPending] + counts[stepReady]
 	succeeded := counts[stepSucceeded] + counts[stepSkipped]
 

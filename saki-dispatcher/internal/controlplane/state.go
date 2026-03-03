@@ -40,6 +40,9 @@ const (
 	stepPending     db.Stepstatus = db.StepstatusPENDING
 	stepReady       db.Stepstatus = db.StepstatusREADY
 	stepDispatching db.Stepstatus = db.StepstatusDISPATCHING
+	stepSyncingEnv  db.Stepstatus = db.StepstatusSYNCINGENV
+	stepProbingRt   db.Stepstatus = db.StepstatusPROBINGRUNTIME
+	stepBindingDev  db.Stepstatus = db.StepstatusBINDINGDEVICE
 	stepRunning     db.Stepstatus = db.StepstatusRUNNING
 	stepRetrying    db.Stepstatus = db.StepstatusRETRYING
 	stepSucceeded   db.Stepstatus = db.StepstatusSUCCEEDED

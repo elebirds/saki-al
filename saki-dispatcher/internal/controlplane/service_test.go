@@ -122,6 +122,18 @@ func TestCanStepTransitionAllowsReadyDispatchingAndRunning(t *testing.T) {
 	if !canStepTransition(db.StepstatusREADY, db.StepstatusDISPATCHING) {
 		t.Fatal("READY -> DISPATCHING should be allowed")
 	}
+	if !canStepTransition(db.StepstatusDISPATCHING, db.StepstatusSYNCINGENV) {
+		t.Fatal("DISPATCHING -> SYNCING_ENV should be allowed")
+	}
+	if !canStepTransition(db.StepstatusSYNCINGENV, db.StepstatusPROBINGRUNTIME) {
+		t.Fatal("SYNCING_ENV -> PROBING_RUNTIME should be allowed")
+	}
+	if !canStepTransition(db.StepstatusPROBINGRUNTIME, db.StepstatusBINDINGDEVICE) {
+		t.Fatal("PROBING_RUNTIME -> BINDING_DEVICE should be allowed")
+	}
+	if !canStepTransition(db.StepstatusBINDINGDEVICE, db.StepstatusRUNNING) {
+		t.Fatal("BINDING_DEVICE -> RUNNING should be allowed")
+	}
 	if !canStepTransition(db.StepstatusDISPATCHING, db.StepstatusRUNNING) {
 		t.Fatal("DISPATCHING -> RUNNING should be allowed")
 	}
@@ -177,6 +189,20 @@ func TestStepStatusCountsForAPINormalizesToLowercase(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("step status counts normalization mismatch: got=%v want=%v", got, want)
+	}
+}
+
+func TestSummarizeRoundStateTreatsPreRunStagesAsRunning(t *testing.T) {
+	state := summarizeRoundState(
+		map[db.Stepstatus]int{
+			db.StepstatusSYNCINGENV:     1,
+			db.StepstatusPROBINGRUNTIME: 1,
+			db.StepstatusBINDINGDEVICE:  1,
+		},
+		3,
+	)
+	if state != roundRunning {
+		t.Fatalf("pre-run stages should keep round in RUNNING, got=%s", state)
 	}
 }
 

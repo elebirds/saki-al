@@ -591,7 +591,7 @@ def upgrade() -> None:
     sa.Column('round_id', sa.Uuid(), nullable=False),
     sa.Column('step_type', sa.Enum('TRAIN', 'EVAL', 'SCORE', 'SELECT', 'PREDICT', 'CUSTOM', name='steptype'), nullable=False),
     sa.Column('dispatch_kind', sa.Enum('DISPATCHABLE', 'ORCHESTRATOR', name='stepdispatchkind'), nullable=False),
-    sa.Column('state', sa.Enum('PENDING', 'READY', 'DISPATCHING', 'RUNNING', 'RETRYING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'SKIPPED', name='stepstatus'), nullable=False),
+    sa.Column('state', sa.Enum('PENDING', 'READY', 'DISPATCHING', 'SYNCING_ENV', 'PROBING_RUNTIME', 'BINDING_DEVICE', 'RUNNING', 'RETRYING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'SKIPPED', name='stepstatus'), nullable=False),
     sa.Column('round_index', sa.Integer(), nullable=False),
     sa.Column('step_index', sa.Integer(), nullable=False),
     sa.Column('depends_on_step_ids', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),

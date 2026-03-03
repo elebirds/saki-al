@@ -12,6 +12,9 @@ from saki_executor.steps.state import StepStatus
 _STATUS_TO_ENUM: dict[str, int] = {
     StepStatus.PENDING.value: pb.PENDING,
     StepStatus.DISPATCHING.value: pb.DISPATCHING,
+    StepStatus.SYNCING_ENV.value: pb.SYNCING_ENV,
+    StepStatus.PROBING_RUNTIME.value: pb.PROBING_RUNTIME,
+    StepStatus.BINDING_DEVICE.value: pb.BINDING_DEVICE,
     StepStatus.RUNNING.value: pb.RUNNING,
     StepStatus.RETRYING.value: pb.RETRYING,
     StepStatus.SUCCEEDED.value: pb.SUCCEEDED,
@@ -23,6 +26,9 @@ _STATUS_TO_ENUM: dict[str, int] = {
 _ENUM_TO_STATUS: dict[int, str] = {
     pb.PENDING: StepStatus.PENDING.value,
     pb.DISPATCHING: StepStatus.DISPATCHING.value,
+    pb.SYNCING_ENV: StepStatus.SYNCING_ENV.value,
+    pb.PROBING_RUNTIME: StepStatus.PROBING_RUNTIME.value,
+    pb.BINDING_DEVICE: StepStatus.BINDING_DEVICE.value,
     pb.RUNNING: StepStatus.RUNNING.value,
     pb.RETRYING: StepStatus.RETRYING.value,
     pb.SUCCEEDED: StepStatus.SUCCEEDED.value,

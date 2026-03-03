@@ -14,6 +14,9 @@ class ExecutorState(str, Enum):
 class StepStatus(str, Enum):
     PENDING = "pending"
     DISPATCHING = "dispatching"
+    SYNCING_ENV = "syncing_env"
+    PROBING_RUNTIME = "probing_runtime"
+    BINDING_DEVICE = "binding_device"
     RUNNING = "running"
     RETRYING = "retrying"
     SUCCEEDED = "succeeded"

@@ -155,6 +155,9 @@ const buildRoundProgressSummary = (round: RuntimeRound): { percent: number; text
     const done = ['succeeded', 'failed', 'cancelled', 'skipped']
         .reduce((sum, key) => sum + Number((counts as Record<string, number>)[key] || 0), 0);
     const running = Number((counts as Record<string, number>).running || 0)
+        + Number((counts as Record<string, number>).binding_device || 0)
+        + Number((counts as Record<string, number>).probing_runtime || 0)
+        + Number((counts as Record<string, number>).syncing_env || 0)
         + Number((counts as Record<string, number>).dispatching || 0)
         + Number((counts as Record<string, number>).retrying || 0);
     const percent = Math.max(0, Math.min(100, Number(((done / total) * 100).toFixed(2))));

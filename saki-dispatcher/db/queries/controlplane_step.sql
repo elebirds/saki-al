@@ -122,7 +122,12 @@ SET state = 'READY'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'DISPATCHING'::stepstatus;
+  AND state IN (
+    'DISPATCHING'::stepstatus,
+    'SYNCING_ENV'::stepstatus,
+    'PROBING_RUNTIME'::stepstatus,
+    'BINDING_DEVICE'::stepstatus
+  );
 
 -- name: RecoverStaleDispatchingStepToReady :execrows
 UPDATE step
@@ -133,7 +138,12 @@ SET state = 'READY'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = sqlc.arg(step_id)::uuid
-  AND state = 'DISPATCHING'::stepstatus;
+  AND state IN (
+    'DISPATCHING'::stepstatus,
+    'SYNCING_ENV'::stepstatus,
+    'PROBING_RUNTIME'::stepstatus,
+    'BINDING_DEVICE'::stepstatus
+  );
 
 -- name: MarkOrchestratorStepRunning :execrows
 UPDATE step

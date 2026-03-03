@@ -34,20 +34,26 @@ const (
 	RuntimeStepStatus_FAILED                          RuntimeStepStatus = 6
 	RuntimeStepStatus_CANCELLED                       RuntimeStepStatus = 7
 	RuntimeStepStatus_SKIPPED                         RuntimeStepStatus = 8
+	RuntimeStepStatus_SYNCING_ENV                     RuntimeStepStatus = 9
+	RuntimeStepStatus_PROBING_RUNTIME                 RuntimeStepStatus = 10
+	RuntimeStepStatus_BINDING_DEVICE                  RuntimeStepStatus = 11
 )
 
 // Enum value maps for RuntimeStepStatus.
 var (
 	RuntimeStepStatus_name = map[int32]string{
-		0: "RUNTIME_STEP_STATUS_UNSPECIFIED",
-		1: "PENDING",
-		2: "DISPATCHING",
-		3: "RUNNING",
-		4: "RETRYING",
-		5: "SUCCEEDED",
-		6: "FAILED",
-		7: "CANCELLED",
-		8: "SKIPPED",
+		0:  "RUNTIME_STEP_STATUS_UNSPECIFIED",
+		1:  "PENDING",
+		2:  "DISPATCHING",
+		3:  "RUNNING",
+		4:  "RETRYING",
+		5:  "SUCCEEDED",
+		6:  "FAILED",
+		7:  "CANCELLED",
+		8:  "SKIPPED",
+		9:  "SYNCING_ENV",
+		10: "PROBING_RUNTIME",
+		11: "BINDING_DEVICE",
 	}
 	RuntimeStepStatus_value = map[string]int32{
 		"RUNTIME_STEP_STATUS_UNSPECIFIED": 0,
@@ -59,6 +65,9 @@ var (
 		"FAILED":                          6,
 		"CANCELLED":                       7,
 		"SKIPPED":                         8,
+		"SYNCING_ENV":                     9,
+		"PROBING_RUNTIME":                 10,
+		"BINDING_DEVICE":                  11,
 	}
 )
 
@@ -3310,7 +3319,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	" \x01(\v2%.saki.runtime.v1.UploadTicketResponseH\x00R\x14uploadTicketResponse\x12(\n" +
 	"\x03ack\x18\v \x01(\v2\x14.saki.runtime.v1.AckH\x00R\x03ack\x12.\n" +
 	"\x05error\x18\f \x01(\v2\x16.saki.runtime.v1.ErrorH\x00R\x05errorB\t\n" +
-	"\apayload*\xa8\x01\n" +
+	"\apayload*\xe2\x01\n" +
 	"\x11RuntimeStepStatus\x12#\n" +
 	"\x1fRUNTIME_STEP_STATUS_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aPENDING\x10\x01\x12\x0f\n" +
@@ -3321,7 +3330,11 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\n" +
 	"\x06FAILED\x10\x06\x12\r\n" +
 	"\tCANCELLED\x10\a\x12\v\n" +
-	"\aSKIPPED\x10\b*:\n" +
+	"\aSKIPPED\x10\b\x12\x0f\n" +
+	"\vSYNCING_ENV\x10\t\x12\x13\n" +
+	"\x0fPROBING_RUNTIME\x10\n" +
+	"\x12\x12\n" +
+	"\x0eBINDING_DEVICE\x10\v*:\n" +
 	"\tAckStatus\x12\x1a\n" +
 	"\x16ACK_STATUS_UNSPECIFIED\x10\x00\x12\x06\n" +
 	"\x02OK\x10\x01\x12\t\n" +

@@ -593,7 +593,12 @@ SET state = 'READY'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = $2::uuid
-  AND state = 'DISPATCHING'::stepstatus
+  AND state IN (
+    'DISPATCHING'::stepstatus,
+    'SYNCING_ENV'::stepstatus,
+    'PROBING_RUNTIME'::stepstatus,
+    'BINDING_DEVICE'::stepstatus
+  )
 `
 
 type RecoverStaleDispatchingStepToReadyParams struct {
@@ -618,7 +623,12 @@ SET state = 'READY'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = $1::uuid
-  AND state = 'DISPATCHING'::stepstatus
+  AND state IN (
+    'DISPATCHING'::stepstatus,
+    'SYNCING_ENV'::stepstatus,
+    'PROBING_RUNTIME'::stepstatus,
+    'BINDING_DEVICE'::stepstatus
+  )
 `
 
 func (q *Queries) ResetStepToReadyQueueFull(ctx context.Context, stepID uuid.UUID) (int64, error) {

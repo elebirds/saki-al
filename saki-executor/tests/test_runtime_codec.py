@@ -179,6 +179,12 @@ def test_task_status_codec_mapping():
     )
     assert message.step_result.status == pb.FAILED
     assert codec.status_enum_to_text(pb.FAILED) == "failed"
+    assert codec.step_status_to_enum("syncing_env") == pb.SYNCING_ENV
+    assert codec.step_status_to_enum("probing_runtime") == pb.PROBING_RUNTIME
+    assert codec.step_status_to_enum("binding_device") == pb.BINDING_DEVICE
+    assert codec.status_enum_to_text(pb.SYNCING_ENV) == "syncing_env"
+    assert codec.status_enum_to_text(pb.PROBING_RUNTIME) == "probing_runtime"
+    assert codec.status_enum_to_text(pb.BINDING_DEVICE) == "binding_device"
 
 
 def test_build_step_event_message_log_supports_structured_fields():

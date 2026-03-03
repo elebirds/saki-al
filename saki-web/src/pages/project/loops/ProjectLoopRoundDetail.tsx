@@ -53,6 +53,9 @@ const STEP_STATE_COLOR: Record<string, string> = {
     pending: 'default',
     ready: 'processing',
     dispatching: 'processing',
+    syncing_env: 'processing',
+    probing_runtime: 'processing',
+    binding_device: 'processing',
     running: 'processing',
     retrying: 'warning',
     succeeded: 'success',
@@ -265,7 +268,20 @@ const normalizeIncomingStepState = (raw: unknown): string | null => {
     const state = String(raw || '').trim().toLowerCase();
     if (!state) return null;
     if (
-        ['pending', 'ready', 'dispatching', 'running', 'retrying', 'succeeded', 'failed', 'cancelled', 'skipped']
+        [
+            'pending',
+            'ready',
+            'dispatching',
+            'syncing_env',
+            'probing_runtime',
+            'binding_device',
+            'running',
+            'retrying',
+            'succeeded',
+            'failed',
+            'cancelled',
+            'skipped',
+        ]
             .includes(state)
     ) {
         return state;
@@ -311,7 +327,17 @@ const buildArtifactFromRoundEvent = (event: RuntimeRoundEvent): RuntimeRoundArti
 const getStepFlowStatus = (state: string): 'wait' | 'process' | 'finish' | 'error' => {
     if (state === 'succeeded' || state === 'skipped') return 'finish';
     if (state === 'failed' || state === 'cancelled') return 'error';
-    if (state === 'running' || state === 'dispatching' || state === 'retrying' || state === 'ready') return 'process';
+    if (
+        state === 'running'
+        || state === 'binding_device'
+        || state === 'probing_runtime'
+        || state === 'syncing_env'
+        || state === 'dispatching'
+        || state === 'retrying'
+        || state === 'ready'
+    ) {
+        return 'process';
+    }
     return 'wait';
 };
 
@@ -414,7 +440,14 @@ const buildStageSnapshots = (steps: RuntimeStep[], nowMs: number): Record<RoundS
 const pickTimelineCurrentStep = (steps: RuntimeStep[]): RuntimeStep | null => {
     if (steps.length === 0) return null;
     const sortedDesc = [...steps].sort((left, right) => Number(right.stepIndex || 0) - Number(left.stepIndex || 0));
-    const running = sortedDesc.find((item) => ['running', 'dispatching', 'retrying'].includes(item.state));
+    const running = sortedDesc.find((item) => [
+        'running',
+        'binding_device',
+        'probing_runtime',
+        'syncing_env',
+        'dispatching',
+        'retrying',
+    ].includes(item.state));
     if (running) return running;
     const failed = sortedDesc.find((item) => item.state === 'failed');
     if (failed) return failed;
@@ -881,7 +914,15 @@ const ProjectLoopRoundDetail: React.FC = () => {
                         const normalizedState = normalizeIncomingStepState(payload.status ?? row.status);
                         if (!normalizedState) return;
                         const nextStartedAt = current.startedAt
-                            || (['ready', 'dispatching', 'running', 'retrying'].includes(normalizedState)
+                            || ([
+                                'ready',
+                                'dispatching',
+                                'syncing_env',
+                                'probing_runtime',
+                                'binding_device',
+                                'running',
+                                'retrying',
+                            ].includes(normalizedState)
                                 ? String(payload.startedAt ?? payload.started_at ?? row.ts)
                                 : current.startedAt);
                         const nextEndedAt = isTerminalStepState(normalizedState)

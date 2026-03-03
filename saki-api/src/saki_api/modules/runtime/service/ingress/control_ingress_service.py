@@ -612,6 +612,9 @@ class RuntimeControlIngressService:
         mapping = {
             pb.PENDING: StepStatus.PENDING,
             pb.DISPATCHING: StepStatus.DISPATCHING,
+            pb.SYNCING_ENV: StepStatus.SYNCING_ENV,
+            pb.PROBING_RUNTIME: StepStatus.PROBING_RUNTIME,
+            pb.BINDING_DEVICE: StepStatus.BINDING_DEVICE,
             pb.RUNNING: StepStatus.RUNNING,
             pb.RETRYING: StepStatus.RETRYING,
             pb.SUCCEEDED: StepStatus.SUCCEEDED,

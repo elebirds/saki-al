@@ -26,6 +26,27 @@ func TestDecodeStepEventStatusUsesLowercasePayload(t *testing.T) {
 	}
 }
 
+func TestDecodeStepEventStatusMapsPreRunStages(t *testing.T) {
+	event := &runtimecontrolv1.StepEvent{
+		EventPayload: &runtimecontrolv1.StepEvent_StatusEvent{
+			StatusEvent: &runtimecontrolv1.StatusEvent{
+				Status: runtimecontrolv1.RuntimeStepStatus_PROBING_RUNTIME,
+				Reason: "runtime probe",
+			},
+		},
+	}
+	eventType, payload, statusValue := decodeStepEvent(event)
+	if eventType != "status" {
+		t.Fatalf("unexpected event type: %s", eventType)
+	}
+	if got := payload["status"]; got != "probing_runtime" {
+		t.Fatalf("status payload should be lowercase, got=%v", got)
+	}
+	if statusValue != stepProbingRt {
+		t.Fatalf("status value mapping mismatch: %s", statusValue)
+	}
+}
+
 func TestDecodeStepEventLogPreservesStructuredFields(t *testing.T) {
 	messageArgs, err := structpb.NewStruct(map[string]any{"step": float64(3)})
 	if err != nil {

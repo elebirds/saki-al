@@ -82,7 +82,12 @@ WHERE status = 'SENDING'
 -- name: ListOrphanDispatchingStepIDs :many
 SELECT s.id AS id
 FROM step s
-WHERE s.state = 'DISPATCHING'::stepstatus
+WHERE s.state IN (
+  'DISPATCHING'::stepstatus,
+  'SYNCING_ENV'::stepstatus,
+  'PROBING_RUNTIME'::stepstatus,
+  'BINDING_DEVICE'::stepstatus
+)
   AND s.updated_at < sqlc.arg(cutoff)
   AND NOT EXISTS (
     SELECT 1

@@ -12,6 +12,9 @@ from saki_api.modules.shared.modeling.enums import StepStatus
 def test_task_status_mapping():
     assert RuntimeControlIngressService._status_from_pb(pb.PENDING) == StepStatus.PENDING
     assert RuntimeControlIngressService._status_from_pb(pb.DISPATCHING) == StepStatus.DISPATCHING
+    assert RuntimeControlIngressService._status_from_pb(pb.SYNCING_ENV) == StepStatus.SYNCING_ENV
+    assert RuntimeControlIngressService._status_from_pb(pb.PROBING_RUNTIME) == StepStatus.PROBING_RUNTIME
+    assert RuntimeControlIngressService._status_from_pb(pb.BINDING_DEVICE) == StepStatus.BINDING_DEVICE
     assert RuntimeControlIngressService._status_from_pb(pb.RUNNING) == StepStatus.RUNNING
     assert RuntimeControlIngressService._status_from_pb(pb.RETRYING) == StepStatus.RETRYING
     assert RuntimeControlIngressService._status_from_pb(pb.SUCCEEDED) == StepStatus.SUCCEEDED

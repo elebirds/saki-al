@@ -654,9 +654,6 @@ func (s *Service) OnStepResult(ctx context.Context, result *runtimecontrolv1.Ste
 	if err := s.replaceStepCandidatesTx(ctx, tx, stepID, result.GetCandidates()); err != nil {
 		return err
 	}
-	if err := s.insertMetricPointsTx(ctx, tx, stepID, 0, nil, result.GetMetrics(), time.Now().UTC()); err != nil {
-		return err
-	}
 
 	roundID, err := s.findRoundIDByStep(ctx, tx, stepID)
 	if err != nil {

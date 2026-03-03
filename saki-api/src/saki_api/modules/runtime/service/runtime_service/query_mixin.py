@@ -42,12 +42,121 @@ class RuntimeQueryMixin:
     _ROUND_EVENT_CURSOR_VERSION = 1
     _ROUND_EVENT_STAGE_ALLOWLIST = {"train", "eval", "score", "select", "custom"}
 
+    @staticmethod
+    def _step_type_text(step: Step) -> str:
+        raw = step.step_type.value if hasattr(step.step_type, "value") else step.step_type
+        return str(raw or "").strip().lower()
+
+    @staticmethod
+    def _step_sort_key(step: Step) -> tuple[int, str]:
+        return int(step.step_index or 0), str(step.created_at or "")
+
+    @staticmethod
+    def _pick_non_empty_step_metrics(
+        *,
+        step: Step,
+        metric_series_latest_by_step: dict[uuid.UUID, dict[str, float]] | None = None,
+    ) -> dict[str, Any] | None:
+        metrics = step.metrics if isinstance(step.metrics, dict) else {}
+        if metrics:
+            return dict(metrics)
+        if metric_series_latest_by_step:
+            series_metrics = metric_series_latest_by_step.get(step.id) or {}
+            if series_metrics:
+                return dict(series_metrics)
+        return None
+
+    def _pick_final_metrics_from_steps(
+        self,
+        steps: list[Step],
+        *,
+        metric_series_latest_by_step: dict[uuid.UUID, dict[str, float]] | None = None,
+    ) -> dict[str, Any]:
+        if not steps:
+            return {}
+        ordered_steps = sorted(steps, key=self._step_sort_key)
+
+        for step in reversed(ordered_steps):
+            if self._step_type_text(step) != "eval":
+                continue
+            metrics = self._pick_non_empty_step_metrics(
+                step=step,
+                metric_series_latest_by_step=metric_series_latest_by_step,
+            )
+            if metrics is not None:
+                return metrics
+
+        for step in reversed(ordered_steps):
+            if self._step_type_text(step) != "train":
+                continue
+            metrics = self._pick_non_empty_step_metrics(
+                step=step,
+                metric_series_latest_by_step=metric_series_latest_by_step,
+            )
+            if metrics is not None:
+                return metrics
+
+        for step in reversed(ordered_steps):
+            metrics = self._pick_non_empty_step_metrics(
+                step=step,
+                metric_series_latest_by_step=metric_series_latest_by_step,
+            )
+            if metrics is not None:
+                return metrics
+        return {}
+
+    async def build_metric_series_latest_by_step(
+        self,
+        *,
+        steps: list[Step],
+    ) -> dict[uuid.UUID, dict[str, float]]:
+        step_ids = [step.id for step in steps]
+        if not step_ids:
+            return {}
+        return await self.step_metric_repo.latest_metrics_by_step_ids(step_ids)
+
+    def derive_round_final_metrics(
+        self,
+        *,
+        round_item: Round,
+        steps: list[Step],
+        metric_series_latest_by_step: dict[uuid.UUID, dict[str, float]] | None = None,
+    ) -> dict[str, Any]:
+        derived = self._pick_final_metrics_from_steps(
+            steps,
+            metric_series_latest_by_step=metric_series_latest_by_step,
+        )
+        if derived:
+            return derived
+        existing = round_item.final_metrics if isinstance(round_item.final_metrics, dict) else {}
+        return dict(existing)
+
+    @staticmethod
+    def _group_steps_by_round(steps: list[Step]) -> dict[uuid.UUID, list[Step]]:
+        grouped: dict[uuid.UUID, list[Step]] = {}
+        for step in steps:
+            grouped.setdefault(step.round_id, []).append(step)
+        return grouped
+
     async def list_loops(self, project_id: uuid.UUID) -> List[Loop]:
         return await self.loop_repo.list_by_project(project_id)
 
     async def list_rounds(self, loop_id: uuid.UUID, limit: int = 50) -> List[Round]:
         await self.loop_repo.get_by_id_or_raise(loop_id)
-        return await self.repository.list_by_loop_desc(loop_id, limit=max(1, min(limit, 1000)))
+        rounds = await self.repository.list_by_loop_desc(loop_id, limit=max(1, min(limit, 1000)))
+        if not rounds:
+            return []
+        round_ids = [row.id for row in rounds]
+        steps = await self.step_repo.list_by_round_ids(round_ids)
+        metric_series_latest_by_step = await self.build_metric_series_latest_by_step(steps=steps)
+        steps_by_round = self._group_steps_by_round(steps)
+        for row in rounds:
+            row.final_metrics = self.derive_round_final_metrics(
+                round_item=row,
+                steps=steps_by_round.get(row.id, []),
+                metric_series_latest_by_step=metric_series_latest_by_step,
+            )
+        return rounds
 
     async def list_steps(self, round_id: uuid.UUID, limit: int = 1000) -> List[Step]:
         await self.repository.get_by_id_or_raise(round_id)
@@ -591,7 +700,14 @@ class RuntimeQueryMixin:
 
         round_ids = [round_item.id for round_item in rounds]
         steps = await self.step_repo.list_by_round_ids(round_ids)
+        metric_series_latest_by_step = await self.build_metric_series_latest_by_step(steps=steps)
         latest_round = rounds[-1]
+        steps_by_round = self._group_steps_by_round(steps)
+        latest_round_metrics = self.derive_round_final_metrics(
+            round_item=latest_round,
+            steps=steps_by_round.get(latest_round.id, []),
+            metric_series_latest_by_step=metric_series_latest_by_step,
+        )
 
         logical_round_ids = {int(item.round_index) for item in rounds}
         succeeded_logical_round_ids = {
@@ -604,7 +720,7 @@ class RuntimeQueryMixin:
             rounds_succeeded=len(succeeded_logical_round_ids),
             steps_total=len(steps),
             steps_succeeded=sum(1 for item in steps if item.state == StepStatus.SUCCEEDED),
-            metrics_latest=dict(latest_round.final_metrics or {}),
+            metrics_latest=latest_round_metrics,
         )
 
     async def get_simulation_experiment_comparison(
@@ -628,9 +744,18 @@ class RuntimeQueryMixin:
             strategy_data = by_strategy.setdefault(strategy, {})
 
             rounds = await self.repository.list_by_loop(loop.id)
+            round_ids = [round_item.id for round_item in rounds]
+            steps = await self.step_repo.list_by_round_ids(round_ids)
+            metric_series_latest_by_step = await self.build_metric_series_latest_by_step(steps=steps)
+            steps_by_round = self._group_steps_by_round(steps)
             final_metrics = []
             for round_item in rounds:
-                m = float((round_item.final_metrics or {}).get(metric_name) or 0.0)
+                effective_metrics = self.derive_round_final_metrics(
+                    round_item=round_item,
+                    steps=steps_by_round.get(round_item.id, []),
+                    metric_series_latest_by_step=metric_series_latest_by_step,
+                )
+                m = float((effective_metrics or {}).get(metric_name) or 0.0)
                 final_metrics.append((round_item.round_index, m))
                 strategy_data.setdefault(round_item.round_index, []).append((single_seed, m))
 

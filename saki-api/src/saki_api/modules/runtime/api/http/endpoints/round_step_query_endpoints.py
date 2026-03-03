@@ -65,8 +65,16 @@ async def get_round(
         and round_item.state.value == "completed"
         and round_item.confirmed_at is None
     )
+    steps = await runtime_service.list_steps(round_id, limit=5000)
+    metric_series_latest_by_step = await runtime_service.build_metric_series_latest_by_step(steps=steps)
+    effective_final_metrics = runtime_service.derive_round_final_metrics(
+        round_item=round_item,
+        steps=steps,
+        metric_series_latest_by_step=metric_series_latest_by_step,
+    )
     payload = RoundRead.model_validate(round_item).model_dump()
     payload["awaiting_confirm"] = bool(awaiting_confirm)
+    payload["final_metrics"] = effective_final_metrics
     return RoundRead(**payload)
 
 
@@ -295,6 +303,7 @@ async def get_step_metric_series(
             ts=item.ts,
         )
         for item in points
+        if int(item.metric_step or 0) > 0
     ]
 
 

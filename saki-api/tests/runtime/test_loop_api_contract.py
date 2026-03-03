@@ -937,6 +937,361 @@ async def test_get_round_events_query_contract(loop_api_env, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_get_round_prefers_eval_metrics_as_final_metrics(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(round_step_query_endpoint, "ensure_project_permission", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-round-final-metrics",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.COMPLETED,
+                step_counts={"succeeded": 3},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={"map50": 0.11},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            session.add_all(
+                [
+                    Step(
+                        round_id=round_row.id,
+                        step_type=StepType.TRAIN,
+                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                        state=StepStatus.SUCCEEDED,
+                        round_index=1,
+                        step_index=1,
+                        depends_on_step_ids=[],
+                        resolved_params={},
+                        metrics={"loss": 0.52, "invalid_label_count": 8.0},
+                        artifacts={},
+                        input_commit_id=branch.head_commit_id,
+                        attempt=1,
+                        max_attempts=3,
+                    ),
+                    Step(
+                        round_id=round_row.id,
+                        step_type=StepType.EVAL,
+                        dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                        state=StepStatus.SUCCEEDED,
+                        round_index=1,
+                        step_index=2,
+                        depends_on_step_ids=[],
+                        resolved_params={},
+                        metrics={"map50": 0.83, "precision": 0.91, "recall": 0.78},
+                        artifacts={},
+                        input_commit_id=branch.head_commit_id,
+                        attempt=1,
+                        max_attempts=3,
+                    ),
+                    Step(
+                        round_id=round_row.id,
+                        step_type=StepType.SELECT,
+                        dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+                        state=StepStatus.SUCCEEDED,
+                        round_index=1,
+                        step_index=3,
+                        depends_on_step_ids=[],
+                        resolved_params={},
+                        metrics={},
+                        artifacts={},
+                        input_commit_id=branch.head_commit_id,
+                        attempt=1,
+                        max_attempts=3,
+                    ),
+                ]
+            )
+            await session.commit()
+
+            payload = await round_step_query_endpoint.get_round(
+                round_id=round_row.id,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert payload.final_metrics == {"map50": 0.83, "precision": 0.91, "recall": 0.78}
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_get_round_uses_eval_metric_series_when_eval_step_metrics_empty(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(round_step_query_endpoint, "ensure_project_permission", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-round-final-metrics-from-series",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.COMPLETED,
+                step_counts={"succeeded": 3},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={"map50": 0.09},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            train_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={"loss": 0.61, "invalid_label_count": 7.0},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            eval_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.EVAL,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=2,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            select_step = Step(
+                round_id=round_row.id,
+                step_type=StepType.SELECT,
+                dispatch_kind=StepDispatchKind.ORCHESTRATOR,
+                state=StepStatus.SUCCEEDED,
+                round_index=1,
+                step_index=3,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add_all([train_step, eval_step, select_step])
+            await session.flush()
+
+            now = datetime.now(UTC)
+            session.add_all(
+                [
+                    StepMetricPoint(
+                        step_id=eval_step.id,
+                        metric_step=0,
+                        epoch=0,
+                        metric_name="map50",
+                        metric_value=0.1,
+                        ts=now,
+                    ),
+                    StepMetricPoint(
+                        step_id=eval_step.id,
+                        metric_step=1,
+                        epoch=1,
+                        metric_name="map50",
+                        metric_value=0.82,
+                        ts=now,
+                    ),
+                    StepMetricPoint(
+                        step_id=eval_step.id,
+                        metric_step=1,
+                        epoch=1,
+                        metric_name="precision",
+                        metric_value=0.9,
+                        ts=now,
+                    ),
+                    StepMetricPoint(
+                        step_id=eval_step.id,
+                        metric_step=2,
+                        epoch=2,
+                        metric_name="map50",
+                        metric_value=0.86,
+                        ts=now,
+                    ),
+                ]
+            )
+            await session.commit()
+
+            payload = await round_step_query_endpoint.get_round(
+                round_id=round_row.id,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert payload.final_metrics == {"map50": 0.86, "precision": 0.9}
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_get_step_metric_series_ignores_non_positive_step_points(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(round_step_query_endpoint, "ensure_project_permission", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-metric-series-filter",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            round_row = Round(
+                project_id=project.id,
+                loop_id=loop.id,
+                round_index=1,
+                mode=LoopMode.ACTIVE_LEARNING,
+                state=RoundStatus.RUNNING,
+                step_counts={},
+                round_type="loop_round",
+                plugin_id=loop.model_arch,
+                resolved_params={"sampling": {"strategy": "random_baseline"}},
+                resources={},
+                input_commit_id=branch.head_commit_id,
+                final_metrics={},
+                final_artifacts={},
+                strategy_params={"sampling": {"strategy": "random_baseline"}},
+            )
+            session.add(round_row)
+            await session.flush()
+
+            step = Step(
+                round_id=round_row.id,
+                step_type=StepType.TRAIN,
+                dispatch_kind=StepDispatchKind.DISPATCHABLE,
+                state=StepStatus.RUNNING,
+                round_index=1,
+                step_index=1,
+                depends_on_step_ids=[],
+                resolved_params={},
+                metrics={},
+                artifacts={},
+                input_commit_id=branch.head_commit_id,
+                attempt=1,
+                max_attempts=3,
+            )
+            session.add(step)
+            await session.flush()
+
+            session.add_all(
+                [
+                    StepMetricPoint(
+                        step_id=step.id,
+                        metric_step=0,
+                        epoch=None,
+                        metric_name="map50",
+                        metric_value=0.6,
+                        ts=datetime.now(UTC),
+                    ),
+                    StepMetricPoint(
+                        step_id=step.id,
+                        metric_step=1,
+                        epoch=1,
+                        metric_name="map50",
+                        metric_value=0.7,
+                        ts=datetime.now(UTC),
+                    ),
+                ]
+            )
+            await session.commit()
+
+            series = await round_step_query_endpoint.get_step_metric_series(
+                step_id=step.id,
+                limit=5000,
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert len(series) == 1
+            assert int(series[0].step) == 1
+            assert float(series[0].metric_value) == pytest.approx(0.7)
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_simulation_experiment_create_and_comparison_contract(loop_api_env, monkeypatch):
     session_local = loop_api_env
 

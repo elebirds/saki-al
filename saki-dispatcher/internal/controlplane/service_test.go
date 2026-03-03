@@ -155,6 +155,9 @@ func TestCanLoopLifecycleTransitionMatrix(t *testing.T) {
 	if !canLoopLifecycleTransition(db.LooplifecyclePAUSED, db.LooplifecycleRUNNING) {
 		t.Fatal("PAUSED -> RUNNING should be allowed")
 	}
+	if !canLoopLifecycleTransition(db.LooplifecycleFAILED, db.LooplifecycleRUNNING) {
+		t.Fatal("FAILED -> RUNNING should be allowed for retry_round")
+	}
 	if canLoopLifecycleTransition(db.LooplifecycleCOMPLETED, db.LooplifecycleRUNNING) {
 		t.Fatal("COMPLETED -> RUNNING should not be allowed")
 	}

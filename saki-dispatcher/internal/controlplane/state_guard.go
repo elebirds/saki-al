@@ -139,6 +139,8 @@ func canLoopLifecycleTransition(from db.Looplifecycle, to db.Looplifecycle) bool
 		return to == db.LooplifecyclePAUSED || to == db.LooplifecycleSTOPPING || to == db.LooplifecycleCOMPLETED || to == db.LooplifecycleFAILED
 	case db.LooplifecyclePAUSED:
 		return to == db.LooplifecycleRUNNING || to == db.LooplifecycleSTOPPING
+	case db.LooplifecycleFAILED:
+		return to == db.LooplifecycleRUNNING
 	case db.LooplifecycleSTOPPING:
 		return to == db.LooplifecycleSTOPPED || to == db.LooplifecycleFAILED
 	case db.LooplifecycleSTOPPED:

@@ -509,6 +509,20 @@ func (s *Service) RetryRound(
 			return "rejected", "loop still has active steps", nil
 		}
 
+		// Retry should reactivate the loop, otherwise newly created attempt
+		// remains undispatchable because dispatch queries only scan RUNNING loops.
+		if err := s.updateLoopRuntime(
+			ctx,
+			tx,
+			loop.ID,
+			lifecycleRunning,
+			loop.Phase,
+			"",
+			loop.LastConfirmedCommitID,
+		); err != nil {
+			return "", "", err
+		}
+
 		nextAttempt, err := s.getNextRoundAttemptIndexTx(ctx, tx, loop.ID, int(targetRound.RoundIndex))
 		if err != nil {
 			return "", "", err

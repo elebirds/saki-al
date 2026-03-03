@@ -22,7 +22,7 @@ class SubprocessPluginProxy(ExecutorPlugin):
     def __init__(
         self,
         *,
-        metadata_plugin: ExecutorPlugin,
+        metadata_plugin: Any,
         step_id: str,
         emit: EventCallback,
         python_executable: str | Path | None = None,

@@ -26,12 +26,10 @@ class Workspace:
             self.round_root = self.runs_root / "rounds" / self.round_id / f"attempt_{self.attempt}"
             self.steps_root = self.round_root / "steps"
             self.root = self.steps_root / self.step_id
-            self.legacy_step_path = self.runs_root / self.step_id
         else:
             self.round_root = None
             self.steps_root = None
             self.root = self.runs_root / self.step_id
-            self.legacy_step_path = self.root
 
     @property
     def config_path(self) -> Path:
@@ -81,7 +79,6 @@ class Workspace:
         if not self.events_path.exists():
             self.events_path.touch()
         self._ensure_round_manifest()
-        self._ensure_legacy_step_alias()
 
     def write_config(self, payload: dict[str, Any]) -> None:
         self.config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -199,22 +196,3 @@ class Workspace:
         if self.round_manifest_path.exists():
             return
         self.write_round_manifest(self._default_round_manifest())
-
-    def _ensure_legacy_step_alias(self) -> None:
-        if not self.round_id:
-            return
-        alias = self.legacy_step_path
-        if alias.exists() or alias.is_symlink():
-            return
-        alias.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            target = Path(
-                self.root.relative_to(alias.parent)
-            ) if self.root.is_relative_to(alias.parent) else self.root  # py311+
-        except Exception:
-            target = self.root
-        try:
-            alias.symlink_to(target, target_is_directory=True)
-        except Exception:
-            alias.mkdir(parents=True, exist_ok=True)
-            (alias / ".workspace_target").write_text(str(self.root), encoding="utf-8")

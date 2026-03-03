@@ -30,6 +30,50 @@ class StepEventEmitter:
     async def emit_status(self, status: StepStatus, reason: str) -> None:
         await self.emit("status", {"status": status.value, "reason": reason})
 
+    async def emit_stage_start(self, *, stage: str, message: str) -> None:
+        await self.emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": message,
+                "message_key": "step.stage",
+                "message_args": {"stage": stage, "phase": "start"},
+                "meta": {"stage": stage, "phase": "start"},
+            },
+        )
+
+    async def emit_stage_success(self, *, stage: str, message: str) -> None:
+        await self.emit(
+            "log",
+            {
+                "level": "INFO",
+                "message": message,
+                "message_key": "step.stage",
+                "message_args": {"stage": stage, "phase": "success"},
+                "meta": {"stage": stage, "phase": "success"},
+            },
+        )
+
+    async def emit_stage_fail(self, *, stage: str, error_code: str, message: str) -> None:
+        await self.emit(
+            "log",
+            {
+                "level": "ERROR",
+                "message": f"[{error_code}] {message} (stage={stage})",
+                "message_key": "step.stage",
+                "message_args": {
+                    "stage": stage,
+                    "phase": "fail",
+                    "error_code": error_code,
+                },
+                "meta": {
+                    "stage": stage,
+                    "phase": "fail",
+                    "error_code": error_code,
+                },
+            },
+        )
+
     def _build_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         if event_type == "log":
             return self._reporter.log(

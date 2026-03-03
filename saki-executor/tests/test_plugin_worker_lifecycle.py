@@ -32,7 +32,7 @@ async def test_plugin_worker_lifecycle_demo_plugin(tmp_path: Path):
 
     plugins_root = Path(__file__).resolve().parents[2] / "saki-plugins"
     registry = PluginRegistry()
-    registry.discover_plugins(plugins_root, auto_sync=True)
+    registry.discover_plugins(plugins_root)
     handle = registry.get("demo_det_v1")
     assert handle is not None
     profile = handle.runtime_profiles[0]

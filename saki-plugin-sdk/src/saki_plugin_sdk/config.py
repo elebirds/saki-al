@@ -24,7 +24,6 @@ Typical usage inside a plugin::
 from __future__ import annotations
 
 from typing import Any, TypeVar
-import warnings
 
 from pydantic import BaseModel, Field
 from pydantic import field_validator as pyd_field_validator
@@ -35,19 +34,6 @@ from saki_plugin_sdk.exceptions import PluginValidationError
 # ---------------------------------------------------------------------------
 # Schema field type definitions (Pydantic models)
 # ---------------------------------------------------------------------------
-
-class ConfigFieldUI(BaseModel):
-    """UI rendering hints for a configuration field.
-
-    Note: This is being deprecated in favor of the ``props`` pattern
-    where UI attributes are declared directly in a props object.
-    """
-    placeholder: str | None = None
-    step: float | None = None
-    rows: int | None = None
-    min: float | None = None
-    max: float | None = None
-
 
 class ConfigFieldProps(BaseModel):
     """UI component props (v-bind style).
@@ -69,22 +55,11 @@ class ConfigFieldProps(BaseModel):
     model_config = {"extra": "allow"}
 
 
-class ConfigFieldOptionCond(BaseModel):
-    """Deprecated: Use ``visible`` expression on the option instead.
-
-    This class is kept for type compatibility but should not be used.
-    """
-    annotation_types: dict[str, Any] | None = None
-    when_field: dict[str, str] | None = None
-    visible: str | None = None
-
-
 class ConfigFieldOption(BaseModel):
     """Option definition for select-type fields."""
     label: str
     value: Any
-    cond: ConfigFieldOptionCond | None = None  # Deprecated
-    visible: str | None = None  # Use this instead
+    visible: str | None = None
 
 
 class ConfigField(BaseModel):
@@ -106,9 +81,7 @@ class ConfigField(BaseModel):
     description: str | None = None
     group: str | None = None
     depends_on: list[str] | None = None
-    # UI hints (deprecated - use props instead)
-    ui: ConfigFieldUI | None = None
-    # New simplified pattern
+    # Simplified UI pattern
     props: ConfigFieldProps | None = None
     visible: str | None = None  # Expression string for dynamic visibility
     options: list[ConfigFieldOption] | None = None
@@ -464,75 +437,3 @@ class PluginConfig(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Return a shallow copy of the underlying mapping."""
         return self.model_dump()
-
-    # -------------------------------------------------------------------
-    # Deprecated: backward compatibility with old config.py
-    # -------------------------------------------------------------------
-
-    @classmethod
-    def _resolve_deprecated(
-        cls: type[T],
-        *,
-        default_config: dict[str, Any] | None = None,
-        config_schema: dict[str, Any] | None = None,
-        raw_config: dict[str, Any] | None = None,
-        context: dict[str, Any] | None = None,
-        validate: bool = True,
-    ) -> T:
-        """Deprecated resolve method for backward compatibility.
-
-        .. deprecated::
-            Use :meth:`resolve` with a ``ConfigSchema`` instance instead.
-        """
-        warnings.warn(
-            "PluginConfig._resolve_deprecated is deprecated. "
-            "Use PluginConfig.resolve with a ConfigSchema instance.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        # Build schema from old-style config_schema dict
-        schema_dict = dict(config_schema) if config_schema else {}
-        schema = ConfigSchema.model_validate(schema_dict)
-
-        # Merge in default_config (old style)
-        config = cls.resolve(schema=schema, raw_config=raw_config, context=context, validate=validate)
-
-        # Apply old-style default_config on top (for backward compatibility)
-        if default_config:
-            from saki_plugin_sdk.cond import resolve_default_config
-            resolved_defaults = resolve_default_config(default_config, context or {})
-            for key, value in resolved_defaults.items():
-                if key not in raw_config or raw_config.get(key) is None:
-                    # Set default if not overridden
-                    config_dict = config.model_dump()
-                    config_dict[key] = value
-                    config = cls(**config_dict)
-                    object.__setattr__(config, "_schema", schema)
-
-        return config
-
-    @classmethod
-    def from_dict(
-        cls: type[T],
-        data: dict[str, Any],
-        schema_fields: list[dict[str, Any]] | None = None,
-    ) -> T:
-        """Wrap an already-resolved dict into a ``PluginConfig``.
-
-        No coercion or validation is performed – the data is trusted
-        to be already resolved (e.g. received from IPC serialisation).
-
-        .. deprecated::
-            Use :meth:`model_validate` instead.
-        """
-        warnings.warn(
-            "PluginConfig.from_dict is deprecated. Use PluginConfig.model_validate instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        result = cls.model_validate(data)
-        if schema_fields:
-            schema = ConfigSchema(fields=[ConfigField.model_validate(f) for f in schema_fields])
-            object.__setattr__(result, "_schema", schema)
-        return result

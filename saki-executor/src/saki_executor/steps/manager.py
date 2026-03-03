@@ -11,6 +11,7 @@ from saki_executor.agent import codec as runtime_codec
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
 from saki_executor.steps.contracts import ArtifactUploadTicket, FetchedPage, StepExecutionRequest
+from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage
 from saki_executor.steps.orchestration.runner import StepPipelineRunner
 from saki_executor.steps.services import ArtifactUploader, DataGateway, SamplingService
 from saki_executor.steps.state import ExecutorState, StepStatus
@@ -179,10 +180,17 @@ class StepManager:
         if self._send_message is None:
             raise RuntimeError("step manager send transport is not configured")
         self.executor_state = ExecutorState.FINALIZING
+        if isinstance(exc, StepPipelineError):
+            error_message = exc.to_user_message()
+        else:
+            error_message = (
+                f"[{StepErrorCode.INTERNAL_ERROR.value}] {str(exc)} "
+                f"(stage={StepStage.EXECUTE.value})"
+            )
         reporter = self._ensure_reporter(request)
         await self._push_event(
             request.step_id,
-            reporter.status(StepStatus.FAILED.value, str(exc)),
+            reporter.status(StepStatus.FAILED.value, error_message),
         )
         await self._send_message(
             runtime_codec.build_step_result_message(
@@ -192,10 +200,10 @@ class StepManager:
                 metrics={},
                 artifacts={},
                 candidates=[],
-                error_message=str(exc),
+                error_message=error_message,
             )
         )
-        logger.exception("任务执行失败 step_id={} error={}", request.step_id, exc)
+        logger.exception("任务执行失败 step_id={} error={}", request.step_id, error_message)
         return StepStatus.FAILED
 
     async def _reset_after_task(self, step_id: str, final_status: StepStatus) -> None:

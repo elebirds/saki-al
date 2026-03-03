@@ -69,6 +69,7 @@ class MyPlugin(ExecutorPlugin):
 4. `validate_params(...)`
 
 默认实现基于 `plugin.yml` 的 `config_schema/default_config`，插件可按需覆写。
+配置模型仅保留 `PluginConfig.resolve(...)`、`PluginConfig.from_manifest(...)` 与 `PluginConfig.model_validate(...)` 三条入口。
 
 ## Worker 协议
 

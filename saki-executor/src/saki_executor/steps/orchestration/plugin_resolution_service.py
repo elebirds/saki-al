@@ -1,0 +1,166 @@
+from __future__ import annotations
+
+from typing import Any
+
+from saki_executor.core.config import settings
+from saki_executor.runtime.capability.host_probe_service import HostProbeService
+from saki_executor.runtime.profile.profile_selector import ProfileSelectorStrategy
+from saki_executor.steps.contracts import StepExecutionRequest
+from saki_executor.steps.orchestration.error_codes import StepErrorCode, StepPipelineError, StepStage, wrap_stage_error
+from saki_executor.steps.orchestration.models import StepExecutionPlan
+from saki_plugin_sdk import RuntimeProfileSpec, StepRuntimeContext, parse_runtime_profiles
+
+
+class PluginResolutionService:
+    def __init__(self) -> None:
+        self._host_probe_service = HostProbeService()
+        self._profile_selector = ProfileSelectorStrategy()
+
+    def resolve(self, *, manager: Any, request: StepExecutionRequest) -> StepExecutionPlan:
+        metadata_plugin = manager.plugin_registry.get(request.plugin_id)
+        if metadata_plugin is None:
+            raise StepPipelineError(
+                code=StepErrorCode.PLUGIN_NOT_FOUND,
+                stage=StepStage.PLUGIN_RESOLUTION,
+                message=f"plugin not found: {request.plugin_id}",
+            )
+
+        manager.plugin_registry.ensure_worker_loadable(request.plugin_id)
+        supported_step_types = {
+            str(item).strip().lower()
+            for item in (getattr(metadata_plugin, "supported_step_types", []) or [])
+            if str(item).strip()
+        }
+        if supported_step_types and request.step_type not in supported_step_types:
+            raise StepPipelineError(
+                code=StepErrorCode.PLUGIN_UNSUPPORTED_STEP_TYPE,
+                stage=StepStage.PLUGIN_RESOLUTION,
+                message=(
+                    f"plugin {request.plugin_id} does not support step_type={request.step_type}; "
+                    f"supported={sorted(supported_step_types)}"
+                ),
+            )
+
+        host_capability = self._host_probe_service.probe(
+            cpu_workers=settings.CPU_WORKERS,
+            memory_mb=settings.MEMORY_MB,
+        )
+
+        raw_plugin_config = request.resolved_params.get("plugin")
+        if not isinstance(raw_plugin_config, dict):
+            raw_plugin_config = dict(request.resolved_params)
+
+        runtime_context_candidate = self._build_runtime_context(request)
+        try:
+            resolved_config = metadata_plugin.resolve_config(
+                request.mode,
+                raw_plugin_config,
+                context=runtime_context_candidate.to_dict(),
+            )
+        except Exception as exc:
+            raise wrap_stage_error(
+                stage=StepStage.PLUGIN_RESOLUTION,
+                default_code=StepErrorCode.CONFIG_RESOLVE_FAILED,
+                exc=exc,
+                message=(
+                    f"plugin config resolve failed plugin_id={request.plugin_id} "
+                    f"step_id={request.step_id}: {exc}"
+                ),
+            ) from exc
+
+        effective_plugin_params = self._resolved_config_to_dict(resolved_config)
+        for key in ("split_seed", "train_seed", "sampling_seed", "round_index", "deterministic"):
+            if key in request.resolved_params and key not in effective_plugin_params:
+                effective_plugin_params[key] = request.resolved_params.get(key)
+        effective_plugin_params["step_type"] = request.step_type
+        effective_plugin_params["mode"] = request.mode
+
+        try:
+            metadata_plugin.validate_params(effective_plugin_params, context=runtime_context_candidate)
+        except Exception as exc:
+            raise wrap_stage_error(
+                stage=StepStage.PLUGIN_RESOLUTION,
+                default_code=StepErrorCode.PARAM_VALIDATE_FAILED,
+                exc=exc,
+                message=(
+                    f"plugin params validate failed plugin_id={request.plugin_id} "
+                    f"step_id={request.step_id}: {exc}"
+                ),
+            ) from exc
+
+        requested_device = effective_plugin_params.get("device", "auto")
+        profiles = self._resolve_runtime_profiles(metadata_plugin)
+        try:
+            selected_profile = self._profile_selector.select(
+                profiles=profiles,
+                host_capability=host_capability,
+                requested_device=requested_device,
+            )
+        except Exception as exc:
+            raise wrap_stage_error(
+                stage=StepStage.PLUGIN_RESOLUTION,
+                default_code=StepErrorCode.PROFILE_UNSATISFIED,
+                exc=exc,
+                message=(
+                    f"runtime profile select failed plugin_id={request.plugin_id} "
+                    f"step_id={request.step_id}: {exc}"
+                ),
+            ) from exc
+
+        return StepExecutionPlan(
+            request=request,
+            metadata_plugin=metadata_plugin,
+            host_capability=host_capability,
+            runtime_context=runtime_context_candidate,
+            effective_plugin_params=dict(effective_plugin_params),
+            selected_profile=selected_profile,
+        )
+
+    @staticmethod
+    def _resolved_config_to_dict(resolved_config: Any) -> dict[str, Any]:
+        if hasattr(resolved_config, "to_dict") and callable(resolved_config.to_dict):
+            payload = resolved_config.to_dict()
+            return dict(payload) if isinstance(payload, dict) else {}
+        if isinstance(resolved_config, dict):
+            return dict(resolved_config)
+        return {}
+
+    @staticmethod
+    def _resolve_runtime_profiles(metadata_plugin: Any) -> list[RuntimeProfileSpec]:
+        runtime_profiles = getattr(metadata_plugin, "runtime_profiles", None)
+        if isinstance(runtime_profiles, list):
+            rows = runtime_profiles
+        else:
+            manifest = getattr(metadata_plugin, "manifest", None)
+            raw = getattr(manifest, "runtime_profiles", []) if manifest is not None else []
+            rows = raw if isinstance(raw, list) else []
+        return parse_runtime_profiles(rows)
+
+    @staticmethod
+    def _build_runtime_context(
+        request: StepExecutionRequest,
+        *,
+        resolved_device_backend: str | None = None,
+    ) -> StepRuntimeContext:
+        def _safe_int(value: Any, default: int) -> int:
+            try:
+                return int(value)
+            except Exception:
+                return default
+
+        return StepRuntimeContext(
+            step_id=request.step_id,
+            round_id=request.round_id,
+            round_index=max(0, _safe_int(request.round_index, 0)),
+            attempt=max(1, _safe_int(request.attempt, 1)),
+            step_type=request.step_type,
+            mode=request.mode,
+            split_seed=max(0, _safe_int(request.resolved_params.get("split_seed"), 0)),
+            train_seed=max(0, _safe_int(request.resolved_params.get("train_seed"), 0)),
+            sampling_seed=max(0, _safe_int(request.resolved_params.get("sampling_seed"), 0)),
+            resolved_device_backend=str(
+                resolved_device_backend
+                if resolved_device_backend is not None
+                else (request.resolved_params.get("_resolved_device_backend") or "")
+            ).strip().lower(),
+        )

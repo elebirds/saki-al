@@ -29,8 +29,8 @@ assert cfg2.epochs == 100 and cfg.epochs == 50
 d = cfg.to_dict()
 assert isinstance(d, dict) and d["epochs"] == 50
 
-# Test from_dict
-cfg3 = PluginConfig.from_dict({"a": 1, "b": 2})
+# Test model_validate
+cfg3 = PluginConfig.model_validate({"a": 1, "b": 2})
 assert cfg3.a == 1 and cfg3.b == 2
 
 # Test coerce

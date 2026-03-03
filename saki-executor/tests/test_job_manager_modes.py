@@ -6,7 +6,7 @@ import pytest
 
 from saki_executor.cache.asset_cache import AssetCache
 from saki_executor.grpc_gen import runtime_control_pb2 as pb
-from saki_executor.plugins.external_handle import ExternalPluginHandle
+from saki_executor.plugins.external_handle import ExternalPluginDescriptor
 from saki_executor.steps.manager import StepManager
 from saki_executor.plugins.registry import PluginRegistry
 from runtime_data_test_helper import build_data_response_message
@@ -718,7 +718,7 @@ async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Pat
     )
     plugin_dir = tmp_path / "strict_external_plugin"
     plugin_dir.mkdir(parents=True, exist_ok=True)
-    handle = ExternalPluginHandle(
+    handle = ExternalPluginDescriptor(
         manifest=manifest,
         plugin_dir=plugin_dir,
         python_path=Path(__file__),
@@ -844,7 +844,7 @@ async def test_syncing_env_failure_stops_before_runtime_probe(tmp_path: Path, mo
         raise RuntimeError("profile sync failed")
 
     monkeypatch.setattr(
-        "saki_executor.steps.orchestration.runner.StepPipelineRunner._resolve_worker_python",
+        "saki_executor.steps.orchestration.runtime_binding_service.RuntimeBindingService.ensure_profile_environment",
         _raise_sync,
     )
 

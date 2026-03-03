@@ -1,11 +1,7 @@
-"""Handle representing an externally-discovered plugin.
+"""Manifest-backed descriptor for external plugins.
 
-``ExternalPluginHandle`` implements the same ``ExecutorPlugin`` ABC
-that the old built-in plugins did, but delegates metadata from the
-``plugin.yml`` manifest and does **not** import any heavy plugin code.
-
-The executor uses this handle purely for metadata / validation;
-actual training/prediction runs through the IPC subprocess proxy.
+`ExternalPluginDescriptor` only carries metadata and validation behaviors.
+It does not implement execution methods.
 """
 
 from __future__ import annotations
@@ -13,23 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from saki_plugin_sdk import StepRuntimeRequirements, parse_runtime_profiles
 from saki_plugin_sdk.manifest import PluginManifest
-from saki_plugin_sdk import (
-    ExecutionBindingContext,
-    EventCallback,
-    ExecutorPlugin,
-    RuntimeProfileSpec,
-    StepRuntimeContext,
-    StepRuntimeRequirements,
-    TrainOutput,
-    WorkspaceProtocol,
-    parse_runtime_profiles,
-)
 
 
-class ExternalPluginHandle(ExecutorPlugin):
-    """Thin metadata wrapper around a plugin.yml manifest."""
-
+class ExternalPluginDescriptor:
     def __init__(
         self,
         *,
@@ -41,9 +25,9 @@ class ExternalPluginHandle(ExecutorPlugin):
         self._plugin_dir = plugin_dir
         self._python_path = python_path
 
-    # ------------------------------------------------------------------
-    # Metadata properties (from manifest)
-    # ------------------------------------------------------------------
+    @property
+    def manifest(self) -> PluginManifest:
+        return self._manifest
 
     @property
     def plugin_id(self) -> str:
@@ -81,10 +65,6 @@ class ExternalPluginHandle(ExecutorPlugin):
     def default_request_config(self) -> dict[str, Any]:
         return dict(self._manifest.default_config) if self._manifest.default_config else {}
 
-    # ------------------------------------------------------------------
-    # Plugin directory / env helpers (used by IPC layer)
-    # ------------------------------------------------------------------
-
     @property
     def plugin_dir(self) -> Path:
         return self._plugin_dir
@@ -98,19 +78,38 @@ class ExternalPluginHandle(ExecutorPlugin):
         return self._manifest.entrypoint
 
     @property
-    def runtime_profiles(self) -> list[RuntimeProfileSpec]:
+    def runtime_profiles(self) -> list[Any]:
         return parse_runtime_profiles(self._manifest.runtime_profiles)
 
-    def validate_params(
+    def resolve_config(
         self,
-        params: dict[str, Any],
+        mode: str,
+        raw_config: dict[str, Any] | None,
         *,
-        context: StepRuntimeContext | ExecutionBindingContext | None = None,
-    ) -> None:
-        super().validate_params(params, context=context)
+        context: dict[str, Any] | None = None,
+        validate: bool = True,
+    ):
+        del mode
+        from saki_plugin_sdk.config import ConfigSchema, PluginConfig
+
+        return PluginConfig.resolve(
+            schema=ConfigSchema.model_validate(self.request_config_schema or {}),
+            raw_config=raw_config,
+            context=context,
+            validate=validate,
+        )
+
+    def validate_params(self, params: dict[str, Any], *, context: Any = None) -> None:
+        context_payload = context.to_dict() if hasattr(context, "to_dict") and context else None
+        self.resolve_config(
+            mode=str(params.get("mode") or "manual"),
+            raw_config=params,
+            context=context_payload,
+            validate=True,
+        )
 
     def get_step_runtime_requirements(self, step_type: str) -> StepRuntimeRequirements:
-        default = super().get_step_runtime_requirements(step_type)
+        default = self._default_runtime_requirements(step_type)
         requirements_map = getattr(self._manifest, "step_runtime_requirements", {}) or {}
         if not isinstance(requirements_map, dict):
             return default
@@ -132,81 +131,41 @@ class ExternalPluginHandle(ExecutorPlugin):
             primary_model_artifact_name=artifact_name,
         )
 
-    # ------------------------------------------------------------------
-    # Execution stubs — these should never be called directly.
-    # All execution goes through SubprocessPluginProxy.
-    # ------------------------------------------------------------------
-
-    async def prepare_data(
-        self,
-        workspace: WorkspaceProtocol,
-        labels,
-        samples,
-        annotations,
-        dataset_ir,
-        splits=None,
-        *,
-        context: ExecutionBindingContext,
-    ):
-        del workspace, labels, samples, annotations, dataset_ir, splits, context
-        raise RuntimeError("ExternalPluginHandle.prepare_data must not be called directly; use SubprocessPluginProxy")
-
-    async def train(
-        self,
-        workspace: WorkspaceProtocol,
-        params: dict[str, Any],
-        emit: EventCallback,
-        *,
-        context: ExecutionBindingContext,
-    ) -> TrainOutput:
-        del workspace, params, emit, context
-        raise RuntimeError("ExternalPluginHandle.train must not be called directly; use SubprocessPluginProxy")
-
-    async def predict_unlabeled(
-        self,
-        workspace,
-        unlabeled_samples,
-        strategy,
-        params,
-        *,
-        context: ExecutionBindingContext,
-    ):
-        del workspace, unlabeled_samples, strategy, params, context
-        raise RuntimeError("ExternalPluginHandle.predict_unlabeled must not be called directly")
-
-    async def predict_unlabeled_batch(
-        self,
-        workspace,
-        unlabeled_samples,
-        strategy,
-        params,
-        *,
-        context: ExecutionBindingContext,
-    ):
-        del workspace, unlabeled_samples, strategy, params, context
-        raise RuntimeError("ExternalPluginHandle.predict_unlabeled_batch must not be called directly")
-
-    async def eval(
-        self,
-        workspace: WorkspaceProtocol,
-        params: dict[str, Any],
-        emit: EventCallback,
-        *,
-        context: ExecutionBindingContext,
-    ) -> TrainOutput:
-        del workspace, params, emit, context
-        raise RuntimeError("ExternalPluginHandle.eval must not be called directly; use SubprocessPluginProxy")
-
-    async def predict(
-        self,
-        workspace: WorkspaceProtocol,
-        params: dict[str, Any],
-        emit: EventCallback,
-        *,
-        context: ExecutionBindingContext,
-    ) -> TrainOutput:
-        del workspace, params, emit, context
-        raise RuntimeError("ExternalPluginHandle.predict must not be called directly; use SubprocessPluginProxy")
-
-    async def stop(self, step_id: str) -> None:
-        pass
+    @staticmethod
+    def _default_runtime_requirements(step_type: str) -> StepRuntimeRequirements:
+        normalized = str(step_type or "").strip().lower()
+        if normalized == "train":
+            return StepRuntimeRequirements(
+                requires_prepare_data=True,
+                requires_trained_model=False,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "score":
+            return StepRuntimeRequirements(
+                requires_prepare_data=False,
+                requires_trained_model=True,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "eval":
+            return StepRuntimeRequirements(
+                requires_prepare_data=True,
+                requires_trained_model=True,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "predict":
+            return StepRuntimeRequirements(
+                requires_prepare_data=False,
+                requires_trained_model=True,
+                primary_model_artifact_name="best.pt",
+            )
+        if normalized == "custom":
+            return StepRuntimeRequirements(
+                requires_prepare_data=True,
+                requires_trained_model=False,
+                primary_model_artifact_name="best.pt",
+            )
+        return StepRuntimeRequirements(
+            requires_prepare_data=True,
+            requires_trained_model=False,
+            primary_model_artifact_name="best.pt",
+        )

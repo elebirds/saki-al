@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     RUNTIME_DOMAIN_GRPC_SERVER_ENABLED: bool = True
 
     # External dispatcher control-plane bridge
-    DISPATCHER_ADMIN_TARGET: str = ""
+    DISPATCHER_ADMIN_TARGET: str = "0.0.0.0:50052"
     DISPATCHER_ADMIN_TIMEOUT_SEC: int = 5
 
     # Logging

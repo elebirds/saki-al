@@ -697,21 +697,6 @@ CREATE TABLE public.round (
 );
 
 
---
--- Name: round_sample_metric; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.round_sample_metric (
-    id uuid NOT NULL,
-    round_id uuid NOT NULL,
-    sample_id uuid NOT NULL,
-    score double precision NOT NULL,
-    extra jsonb,
-    prediction_snapshot jsonb
-);
-
-
---
 -- Name: runtime_command_log; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1087,15 +1072,6 @@ ALTER TABLE ONLY public.round
     ADD CONSTRAINT round_pkey PRIMARY KEY (id);
 
 
---
--- Name: round_sample_metric round_sample_metric_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round_sample_metric
-    ADD CONSTRAINT round_sample_metric_pkey PRIMARY KEY (id, round_id, sample_id);
-
-
---
 -- Name: runtime_command_log runtime_command_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1867,14 +1843,6 @@ CREATE INDEX ix_round_retry_of_round_id ON public.round USING btree (retry_of_ro
 CREATE INDEX idx_round_loop_round_attempt ON public.round USING btree (loop_id, round_index DESC, attempt_index DESC, created_at DESC);
 
 
---
--- Name: ix_round_sample_metric_score; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_round_sample_metric_score ON public.round_sample_metric USING btree (score);
-
-
---
 -- Name: ix_round_state; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2522,23 +2490,6 @@ ALTER TABLE ONLY public.role_permission
     ADD CONSTRAINT role_permission_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id);
 
 
---
--- Name: round_sample_metric round_sample_metric_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round_sample_metric
-    ADD CONSTRAINT round_sample_metric_round_id_fkey FOREIGN KEY (round_id) REFERENCES public.round(id);
-
-
---
--- Name: round_sample_metric round_sample_metric_sample_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round_sample_metric
-    ADD CONSTRAINT round_sample_metric_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
-
-
---
 -- Name: sample sample_dataset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 

@@ -554,18 +554,6 @@ def upgrade() -> None:
     op.create_index(op.f('ix_loop_snapshot_sample_cohort_index'), 'loop_snapshot_sample', ['cohort_index'], unique=False)
     op.create_index(op.f('ix_loop_snapshot_sample_locked'), 'loop_snapshot_sample', ['locked'], unique=False)
     op.create_index(op.f('ix_loop_snapshot_sample_partition'), 'loop_snapshot_sample', ['partition'], unique=False)
-    op.create_table('round_sample_metric',
-    sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('round_id', sa.Uuid(), nullable=False),
-    sa.Column('sample_id', sa.Uuid(), nullable=False),
-    sa.Column('score', sa.Float(), nullable=False),
-    sa.Column('extra', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
-    sa.Column('prediction_snapshot', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
-    sa.ForeignKeyConstraint(['round_id'], ['round.id'], ),
-    sa.ForeignKeyConstraint(['sample_id'], ['sample.id'], ),
-    sa.PrimaryKeyConstraint('id', 'round_id', 'sample_id')
-    )
-    op.create_index(op.f('ix_round_sample_metric_score'), 'round_sample_metric', ['score'], unique=False)
     op.create_table('round_selection_override',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -946,8 +934,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_round_selection_override_op'), table_name='round_selection_override')
     op.drop_index(op.f('ix_round_selection_override_created_by'), table_name='round_selection_override')
     op.drop_table('round_selection_override')
-    op.drop_index(op.f('ix_round_sample_metric_score'), table_name='round_sample_metric')
-    op.drop_table('round_sample_metric')
     op.drop_index(op.f('ix_loop_snapshot_sample_partition'), table_name='loop_snapshot_sample')
     op.drop_index(op.f('ix_loop_snapshot_sample_locked'), table_name='loop_snapshot_sample')
     op.drop_index(op.f('ix_loop_snapshot_sample_cohort_index'), table_name='loop_snapshot_sample')

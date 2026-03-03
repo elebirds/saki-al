@@ -36,7 +36,6 @@ from saki_api.modules.annotation.extensions.dataset_processing.base import Uploa
     ProgressInfo
 from saki_api.modules.annotation.extensions.factory import AnnotationSystemFactory
 from saki_api.modules.project.repo.sample import SampleRepository
-from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.shared.modeling.enums import DatasetType
@@ -579,7 +578,6 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         sample_state_count = await self._count_rows_by_sample(CommitSampleState, sample_id)
         draft_count = await self._count_rows_by_sample(AnnotationDraft, sample_id)
         candidate_count = await self._count_rows_by_sample(StepCandidateItem, sample_id)
-        round_metric_count = await self._count_rows_by_sample(RoundSampleMetric, sample_id)
         working_keys = await self._scan_working_snapshot_keys(sample_id)
         project_ids = await self._collect_project_ids_by_sample(sample_id)
 
@@ -592,7 +590,6 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         transient_refs = {
             "annotation_draft": draft_count,
             "step_candidate_item": candidate_count,
-            "round_sample_metric": round_metric_count,
             "working_snapshots": len(working_keys),
         }
         has_committed_refs = (
@@ -634,7 +631,6 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         transient_deleted = {
             "annotation_draft": 0,
             "step_candidate_item": 0,
-            "round_sample_metric": 0,
             "working_snapshots": 0,
         }
 
@@ -657,10 +653,6 @@ class SampleService(CrudServiceBase[Sample, SampleRepository, SampleRead, Sample
         )
         transient_deleted["step_candidate_item"] = await self._delete_rows_for_sample(
             StepCandidateItem,
-            sample_id,
-        )
-        transient_deleted["round_sample_metric"] = await self._delete_rows_for_sample(
-            RoundSampleMetric,
             sample_id,
         )
         transient_deleted["working_snapshots"] = await self._cleanup_working_snapshots(

@@ -6,7 +6,6 @@ from saki_api.modules.runtime.domain.al_round_selection_override import ALRoundS
 from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
 from saki_api.modules.runtime.domain.loop_mode import phase_for_mode
-from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.round import Round
@@ -39,7 +38,6 @@ __all__ = [
     "Round",
     "Step",
     "DispatchOutbox",
-    "RoundSampleMetric",
     "Model",
     "ModelClassSchema",
     "RuntimeCommandLog",

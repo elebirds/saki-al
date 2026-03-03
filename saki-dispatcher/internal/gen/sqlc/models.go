@@ -1140,15 +1140,6 @@ type Round struct {
 	StrategyParams                []byte
 }
 
-type RoundSampleMetric struct {
-	ID                 uuid.UUID
-	RoundID            uuid.UUID
-	SampleID           uuid.UUID
-	Score              float64
-	Extra              []byte
-	PredictionSnapshot []byte
-}
-
 type RuntimeCommandLog struct {
 	CreatedAt   pgtype.Timestamp
 	UpdatedAt   pgtype.Timestamp

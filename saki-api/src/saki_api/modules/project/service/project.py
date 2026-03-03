@@ -57,7 +57,6 @@ from saki_api.modules.project.repo.label import LabelRepository
 from saki_api.modules.project.service.commit_hash import refresh_commit_hash
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 from saki_api.modules.access.domain.rbac import ResourceType, Permissions
@@ -670,15 +669,6 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         )
         round_ids = list(round_id_rows.all())
         if round_ids:
-            metric_rows = await self.session.exec(
-                select(RoundSampleMetric).where(
-                    RoundSampleMetric.round_id.in_(round_ids),
-                    RoundSampleMetric.sample_id.in_(sample_ids),
-                )
-            )
-            for row in metric_rows:
-                await self.session.delete(row)
-
             step_id_rows = await self.session.exec(
                 select(Step.id).where(Step.round_id.in_(round_ids))
             )

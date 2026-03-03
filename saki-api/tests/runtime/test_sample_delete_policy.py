@@ -27,7 +27,6 @@ from saki_api.modules.project.domain.label import Label
 from saki_api.modules.project.domain.project import Project
 from saki_api.modules.project.service.sample import SampleService
 from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.runtime.domain.metric import RoundSampleMetric
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
@@ -216,15 +215,8 @@ async def _create_transient_refs(session: AsyncSession, ctx: SampleDeleteContext
         rank=1,
         score=0.8,
     )
-    round_metric = RoundSampleMetric(
-        round_id=ctx.round_.id,
-        sample_id=ctx.sample.id,
-        score=0.7,
-        extra={"entropy": 0.7},
-    )
     session.add(draft)
     session.add(candidate_item)
-    session.add(round_metric)
     await session.flush()
 
 
@@ -307,7 +299,6 @@ async def test_force_delete_with_owner_cleans_all_refs(sample_delete_env):
         assert await _count_by_sample(session, CommitSampleState, ctx.sample.id) == 0
         assert await _count_by_sample(session, AnnotationDraft, ctx.sample.id) == 0
         assert await _count_by_sample(session, StepCandidateItem, ctx.sample.id) == 0
-        assert await _count_by_sample(session, RoundSampleMetric, ctx.sample.id) == 0
 
 
 @pytest.mark.anyio

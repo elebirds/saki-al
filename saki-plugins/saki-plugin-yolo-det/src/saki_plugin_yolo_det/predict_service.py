@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover - optional dependency
 from saki_plugin_sdk import ExecutionBindingContext, WorkspaceProtocol
 from saki_plugin_sdk.strategies.aug_iou import build_detection_boxes, score_aug_iou_disagreement
 from saki_plugin_sdk.strategies.builtin import normalize_strategy_name, score_by_strategy
-from saki_plugin_yolo_det.common import clamp, to_float, to_int
+from saki_plugin_yolo_det.common import clamp, to_float, to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
 from saki_plugin_yolo_det.predict_pipeline import predict_with_augmentations, score_unlabeled_samples
 
@@ -75,14 +75,10 @@ class YoloPredictService:
             0,
         )
         round_index = max(1, to_int(getattr(cfg, "round_index", step_context.round_index)), 1)
-        backend = str(context.device_binding.backend or "").strip().lower()
-        device_spec = str(context.device_binding.device_spec or "").strip().lower()
-        if backend == "cuda":
-            device = device_spec.split(":", 1)[1] if device_spec.startswith("cuda:") else (device_spec or "0")
-        elif backend == "mps":
-            device = "mps"
-        else:
-            device = "cpu"
+        device = to_yolo_device(
+            str(context.device_binding.backend or ""),
+            str(context.device_binding.device_spec or ""),
+        )
 
         best_path = workspace.artifacts_dir / "best.pt"
         fallback_model = await self._config_service.resolve_model_ref(workspace=workspace, params=cfg)

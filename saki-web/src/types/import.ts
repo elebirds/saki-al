@@ -1,4 +1,4 @@
-export type ImportFormat = 'coco' | 'voc' | 'yolo' | 'yolo_obb';
+export type ImportFormat = 'coco' | 'voc' | 'yolo' | 'yolo_obb' | 'dota';
 
 export type ConflictStrategy = 'replace' | 'merge';
 export type PathFlattenMode = 'basename' | 'preserve_path';

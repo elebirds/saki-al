@@ -116,6 +116,7 @@ function getFormatLabel(id: FormatProfileId): string {
     if (id === 'coco') return 'COCO';
     if (id === 'voc') return 'VOC';
     if (id === 'yolo') return 'YOLO';
+    if (id === 'dota') return 'DOTA';
     return 'YOLO OBB';
 }
 

@@ -1068,6 +1068,7 @@
         "formatCoco": "COCO: JSON-based schema describing image-annotation relations, common for detection datasets.",
         "formatVoc": "VOC: One XML annotation file per image, clear structure and widely used in legacy datasets.",
         "formatYolo": "YOLO: One TXT coordinate file per image, lightweight for detector training pipelines.",
+        "formatDota": "DOTA: per-image labelTxt quadrilateral annotations (poly8 + difficult) for oriented detection datasets.",
         "formatYoloObb": "YOLO OBB: supports rotated boxes (RBox/Poly8) for orientation-aware detection datasets.",
         "branch": "Branch",
         "branchDesc": "Import writes a commit to the selected branch. master is usually default, but choose your feature branch as needed.",
@@ -1196,6 +1197,7 @@
           "coco": "COCO",
           "voc": "VOC",
           "yolo": "YOLO",
+          "dota": "DOTA",
           "yolo_obb": "YOLO OBB"
         }
       },

@@ -86,6 +86,7 @@ function formatProfileLabel(profileId: ImportFormat): string {
     if (profileId === 'coco') return 'COCO';
     if (profileId === 'voc') return 'VOC';
     if (profileId === 'yolo') return 'YOLO';
+    if (profileId === 'dota') return 'DOTA';
     return 'YOLO OBB';
 }
 
@@ -93,6 +94,7 @@ function formatGlossaryKey(profileId: ImportFormat): string {
     if (profileId === 'coco') return 'formatCoco';
     if (profileId === 'voc') return 'formatVoc';
     if (profileId === 'yolo') return 'formatYolo';
+    if (profileId === 'dota') return 'formatDota';
     return 'formatYoloObb';
 }
 

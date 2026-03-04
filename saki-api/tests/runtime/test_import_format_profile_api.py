@@ -19,6 +19,7 @@ from saki_api.modules.importing.schema import (
 
 def test_import_format_enum_contains_yolo_obb() -> None:
     assert ImportFormat.YOLO_OBB.value == "yolo_obb"
+    assert ImportFormat.DOTA.value == "dota"
 
 
 def test_project_import_http_dry_run_signature_uses_format_profile() -> None:

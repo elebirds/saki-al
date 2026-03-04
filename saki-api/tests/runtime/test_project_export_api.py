@@ -207,12 +207,14 @@ async def test_io_capabilities_respect_enabled_annotation_types(export_env):
             "voc": True,
             "yolo": True,
             "yolo_obb": True,
+            "dota": True,
         }
         assert obb_available == {
             "coco": False,
             "voc": False,
             "yolo": False,
             "yolo_obb": True,
+            "dota": True,
         }
 
 
@@ -236,12 +238,14 @@ async def test_io_capabilities_export_profiles_require_full_project_annotation_p
             "voc": False,
             "yolo": False,
             "yolo_obb": True,
+            "dota": True,
         }
         assert import_available == {
             "coco": True,
             "voc": True,
             "yolo": True,
             "yolo_obb": True,
+            "dota": True,
         }
 
 
@@ -366,6 +370,52 @@ async def test_export_chunk_pagination_and_asset_url_toggle(export_env, monkeypa
             (file.download_url or "").startswith("https://example.test/assets/")
             for file in assets_page.files
             if file.source_type == "url"
+        )
+
+
+@pytest.mark.anyio
+async def test_dota_export_chunk_uses_mmrotate_paths(export_env, monkeypatch):
+    session_local = export_env
+    async with session_local() as session:
+        seeded = await _seed_project(
+            session,
+            enabled_annotation_types=[AnnotationType.RECT],
+            include_obb_annotation=False,
+        )
+
+        project_id = seeded["project_id"]
+        dataset_id = seeded["dataset_id"]
+        commit_id = seeded["commit_id"]
+
+        service = ExportService(session)
+
+        async def _fake_download_url(asset_id: uuid.UUID, expires_in_hours: int = 1) -> str:
+            return f"https://example.test/assets/{asset_id}?exp={expires_in_hours}"
+
+        monkeypatch.setattr(service.asset_service, "get_presigned_download_url", _fake_download_url)
+
+        page = await service.get_export_chunk(
+            project_id=project_id,
+            payload=ProjectExportChunkRequest(
+                resolved_commit_id=commit_id,
+                dataset_ids=[dataset_id],
+                sample_scope="all",
+                format_profile="dota",
+                bundle_layout="merged_zip",
+                include_assets=True,
+                cursor=0,
+                limit=1,
+            ),
+        )
+
+        assert page.sample_count == 1
+        assert any(
+            file.source_type == "text" and "/train/labelTxt/" in file.path
+            for file in page.files
+        )
+        assert any(
+            file.source_type == "url" and "/train/images/" in file.path
+            for file in page.files
         )
 
 

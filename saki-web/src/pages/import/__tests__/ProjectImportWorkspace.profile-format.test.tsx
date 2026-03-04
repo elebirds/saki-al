@@ -16,7 +16,7 @@ export type HasFormatInAssociated = 'format' extends keyof ProjectAssociatedImpo
 export type AssertFormatProfileInAssociated = Assert<HasFormatProfileInAssociated>;
 export type AssertNoLegacyFormatInAssociated = Assert<HasFormatInAssociated extends false ? true : false>;
 
-const importFormats: ImportFormat[] = ['coco', 'voc', 'yolo', 'yolo_obb'];
+const importFormats: ImportFormat[] = ['coco', 'voc', 'yolo', 'yolo_obb', 'dota'];
 void importFormats;
 
 export const projectImportWorkspaceManualChecklist = [

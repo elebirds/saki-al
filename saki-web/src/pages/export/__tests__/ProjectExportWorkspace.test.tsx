@@ -39,7 +39,7 @@ export type AssertNoChunkLabels = Assert<HasChunkLabels extends false ? true : f
 export type HasFilePath = 'path' extends keyof ProjectExportChunkFile ? true : false;
 export type AssertFilePath = Assert<HasFilePath>;
 
-const formatProfiles: FormatProfileId[] = ['coco', 'voc', 'yolo', 'yolo_obb'];
+const formatProfiles: FormatProfileId[] = ['coco', 'voc', 'yolo', 'yolo_obb', 'dota'];
 const sampleScopes: SampleScope[] = ['all', 'labeled', 'unlabeled'];
 const layouts: ExportBundleLayout[] = ['merged_zip', 'per_dataset_zip'];
 

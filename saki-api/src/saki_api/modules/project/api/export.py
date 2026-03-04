@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class FormatProfileRead(BaseModel):
-    id: Literal["coco", "voc", "yolo", "yolo_obb"]
+    id: Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
     family: str
     supports_import: bool
     supports_export: bool
@@ -40,7 +40,7 @@ class ProjectExportResolveRequest(BaseModel):
     dataset_ids: list[uuid.UUID] = Field(default_factory=list)
     snapshot: ExportSnapshot = Field(discriminator="type")
     sample_scope: Literal["all", "labeled", "unlabeled"] = "all"
-    format_profile: Literal["coco", "voc", "yolo", "yolo_obb"]
+    format_profile: Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
     include_assets: bool = True
     bundle_layout: Literal["merged_zip", "per_dataset_zip"] = "merged_zip"
 
@@ -75,7 +75,7 @@ class ProjectExportChunkRequest(BaseModel):
     resolved_commit_id: uuid.UUID
     dataset_ids: list[uuid.UUID] = Field(default_factory=list)
     sample_scope: Literal["all", "labeled", "unlabeled"] = "all"
-    format_profile: Literal["coco", "voc", "yolo", "yolo_obb"]
+    format_profile: Literal["coco", "voc", "yolo", "yolo_obb", "dota"]
     bundle_layout: Literal["merged_zip", "per_dataset_zip"] = "merged_zip"
     include_assets: bool = True
     cursor: int | None = None

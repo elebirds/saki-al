@@ -21,6 +21,7 @@ from saki_ir import (
     SampleRecord,
     get_format_profile,
     ir_to_coco,
+    ir_to_dota_txt,
     ir_to_voc_xml,
     ir_to_yolo_obb_txt,
     ir_to_yolo_txt,
@@ -308,6 +309,7 @@ class ExportService:
                 root_prefix=root_prefix,
                 assets=sample_assets_for_write,
                 primary_asset=primary_assets_by_sample.get(sample.id),
+                format_profile=payload.format_profile,
             )
             if payload.format_profile != "coco":
                 files.extend(
@@ -475,6 +477,7 @@ class ExportService:
         root_prefix: str,
         assets: list[ProjectExportAssetRead],
         primary_asset: Asset | None,
+        format_profile: str = "coco",
     ) -> _SampleExportContext:
         primary_asset_read = next(
             (item for item in assets if item.asset_id == sample.primary_asset_id),
@@ -505,11 +508,15 @@ class ExportService:
             primary_asset_read=primary_asset_read,
             primary_asset=primary_asset,
         )
+        if format_profile == "dota":
+            image_export_path = f"{root_prefix}train/images/{image_relative_path}"
+        else:
+            image_export_path = f"{root_prefix}images/train/{image_relative_path}"
         return _SampleExportContext(
             root_prefix=root_prefix,
             image_relative_path=image_relative_path,
             image_stem=self._strip_ext(image_relative_path),
-            image_export_path=f"{root_prefix}images/train/{image_relative_path}",
+            image_export_path=image_export_path,
             width=width,
             height=height,
         )
@@ -528,7 +535,10 @@ class ExportService:
         external["source"] = "saki_export"
         external["sample_key"] = str(sample.id)
         external["file_name"] = Path(sample_ctx.image_relative_path).name
-        external["relpath"] = f"images/train/{sample_ctx.image_relative_path}"
+        relpath = sample_ctx.image_export_path
+        if sample_ctx.root_prefix and relpath.startswith(sample_ctx.root_prefix):
+            relpath = relpath[len(sample_ctx.root_prefix) :]
+        external["relpath"] = relpath
         sample_meta["external"] = external
 
         record = SampleRecord(
@@ -715,6 +725,25 @@ class ExportService:
                     dataset_id=sample.dataset_id,
                     sample_id=sample.id,
                     path=f"{sample_ctx.root_prefix}labels/train/{sample_ctx.image_stem}.txt",
+                    source_type="text",
+                    text_content=f"{content}\n" if content else "",
+                )
+            ]
+
+        if format_profile == "dota":
+            content = ir_to_dota_txt(batch, ctx=context, report=report)
+            issues.extend(
+                self._collect_conversion_report_issues(
+                    report=report,
+                    dataset_name=dataset_name,
+                    sample_id=sample.id,
+                )
+            )
+            return [
+                ProjectExportChunkFileRead(
+                    dataset_id=sample.dataset_id,
+                    sample_id=sample.id,
+                    path=f"{sample_ctx.root_prefix}train/labelTxt/{sample_ctx.image_stem}.txt",
                     source_type="text",
                     text_content=f"{content}\n" if content else "",
                 )

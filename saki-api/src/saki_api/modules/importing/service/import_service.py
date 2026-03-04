@@ -55,7 +55,7 @@ from saki_api.modules.importing.schema import (
     PathFlattenMode,
 )
 from saki_api.modules.importing.service.task_service import TaskService
-from saki_ir import ConversionContext, ConversionReport, load_coco_dataset, load_voc_dataset, load_yolo_dataset
+from saki_ir import ConversionContext, ConversionReport, load_coco_dataset, load_dota_dataset, load_voc_dataset, load_yolo_dataset
 from saki_ir.convert import split_batch, struct_to_dict
 
 
@@ -1850,6 +1850,22 @@ class ImportService:
                 ),
                 report=report,
             )
+        elif fmt == ImportFormat.DOTA:
+            dota_root = self._find_dota_root(root)
+            if dota_root is None:
+                raise BadRequestAppException("DOTA dataset structure not found in ZIP")
+            split = self._pick_dota_split(dota_root)
+            batch = load_dota_dataset(
+                dota_root,
+                split=split,
+                ctx=ConversionContext(
+                    strict=False,
+                    include_external_ref=True,
+                    emit_labels=True,
+                    read_images=True,
+                ),
+                report=report,
+            )
         else:
             raise BadRequestAppException(f"Unsupported annotation format_profile: {fmt.value}")
 
@@ -2116,6 +2132,55 @@ class ImportService:
             return shared[0]
 
         raise BadRequestAppException("YOLO split folders not found (expected images/<split> and labels/<split>)")
+
+    @staticmethod
+    def _find_dota_root(root: Path) -> Path | None:
+        candidates = [root] + [item for item in root.iterdir() if item.is_dir()]
+        for candidate in candidates:
+            if ImportService._is_dota_dataset_root(candidate):
+                return candidate
+        return None
+
+    @staticmethod
+    def _is_dota_dataset_root(candidate: Path) -> bool:
+        if (candidate / "images").is_dir() and (candidate / "labelTxt").is_dir():
+            return True
+        for split_dir in candidate.iterdir():
+            if not split_dir.is_dir():
+                continue
+            if (split_dir / "images").is_dir() and (split_dir / "labelTxt").is_dir():
+                return True
+        return False
+
+    @staticmethod
+    def _pick_dota_split(dota_root: Path) -> str:
+        nested_splits = {
+            item.name
+            for item in dota_root.iterdir()
+            if item.is_dir() and (item / "images").is_dir() and (item / "labelTxt").is_dir()
+        }
+        for split in ("train", "val", "test"):
+            if split in nested_splits:
+                return split
+        if nested_splits:
+            return sorted(nested_splits)[0]
+
+        images_root = dota_root / "images"
+        labels_root = dota_root / "labelTxt"
+        if images_root.is_dir() and labels_root.is_dir():
+            image_splits = {item.name for item in images_root.iterdir() if item.is_dir()}
+            label_splits = {item.name for item in labels_root.iterdir() if item.is_dir()}
+            shared = image_splits & label_splits
+            for split in ("train", "val", "test"):
+                if split in shared:
+                    return split
+            if shared:
+                return sorted(shared)[0]
+            return "train"
+
+        raise BadRequestAppException(
+            "DOTA split folders not found (expected <split>/images+labelTxt or images/<split>+labelTxt/<split>)"
+        )
 
     @classmethod
     def _load_yolo_declared_labels(cls, yolo_root: Path) -> list[str]:

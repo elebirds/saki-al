@@ -1068,6 +1068,7 @@
         "formatCoco": "COCO：使用 JSON 描述图片与标注关系，适合通用检测数据。",
         "formatVoc": "VOC：每张图片对应 XML 标注文件，结构清晰，常见于传统数据集。",
         "formatYolo": "YOLO：每张图片对应 TXT 坐标文件，适合轻量检测训练流程。",
+        "formatDota": "DOTA：每图 labelTxt 四点框标注（poly8+difficult），适用于旋转目标检测数据。",
         "formatYoloObb": "YOLO OBB：支持旋转框（RBox/Poly8）标签，适用于带角度信息的目标检测。",
         "branch": "分支（Branch）",
         "branchDesc": "导入会在所选分支上生成提交。master 通常是默认主分支，但建议按团队流程选择业务分支。",
@@ -1196,6 +1197,7 @@
           "coco": "COCO",
           "voc": "VOC",
           "yolo": "YOLO",
+          "dota": "DOTA",
           "yolo_obb": "YOLO OBB"
         }
       },

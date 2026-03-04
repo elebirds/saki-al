@@ -13,6 +13,7 @@ class ImportFormat(str, Enum):
     VOC = "voc"
     YOLO = "yolo"
     YOLO_OBB = "yolo_obb"
+    DOTA = "dota"
 
 
 class ConflictStrategy(str, Enum):

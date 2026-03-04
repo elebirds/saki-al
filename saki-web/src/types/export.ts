@@ -1,4 +1,4 @@
-export type FormatProfileId = 'coco' | 'voc' | 'yolo' | 'yolo_obb';
+export type FormatProfileId = 'coco' | 'voc' | 'yolo' | 'yolo_obb' | 'dota';
 export type SampleScope = 'all' | 'labeled' | 'unlabeled';
 export type ExportBundleLayout = 'merged_zip' | 'per_dataset_zip';
 

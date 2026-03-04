@@ -273,3 +273,117 @@ def test_cuda_profile_auto_install_failure_reports_context(
     assert "nvcc_detected=13.1" in message
     assert "cuda_home_candidates=" in message
     assert "auto_install_attempted=True" in message
+
+
+def test_cuda_profile_accepts_nonzero_nvcc_version_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    venv_dir = plugin_dir / ".venv-cuda"
+    venv_python = _write_fake_venv_python(venv_dir)
+    search_root = tmp_path / "search"
+    matched_home = _create_fake_cuda_home(search_root, "cuda-12.8")
+
+    def _fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if cmd[:2] == ["uv", "sync"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if _is_python_script(cmd, venv_python, "__SAKI_TORCH_CUDA__"):
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                '__SAKI_TORCH_CUDA__={"torch_cuda": "12.8", "torch_version": "2.10.0+cu128"}\n',
+                "",
+            )
+        if cmd == ["nvcc", "--version"]:
+            return subprocess.CompletedProcess(cmd, 0, "Cuda compilation tools, release 13.1, V13.1.0", "")
+        if cmd == [str(matched_home / "bin" / "nvcc"), "--version"]:
+            return subprocess.CompletedProcess(
+                cmd,
+                1,
+                "",
+                "Cuda compilation tools, release 12.8, V12.8.0",
+            )
+        if _is_python_script(cmd, venv_python, "__SAKI_MM_EXT_PROBE__"):
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                '__SAKI_MM_EXT_PROBE__={"has_mmcv": false, "has_mmcv_ext": false}\n',
+                "",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    installer.sync_profile_env(
+        plugin_dir=plugin_dir,
+        venv_dir=venv_dir,
+        dependency_groups=["profile-cuda"],
+        is_cuda_profile=True,
+        cuda_toolchain_search_paths=[search_root],
+    )
+
+
+def test_cuda_profile_fallback_to_installed_venv_nvcc_home_when_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    venv_dir = plugin_dir / ".venv-cuda"
+    venv_python = _write_fake_venv_python(venv_dir)
+    search_root = tmp_path / "search"
+
+    installed_home = venv_dir / "lib" / "python3.12" / "site-packages" / "nvidia" / "cuda_nvcc"
+    install_nvcc = _create_fake_cuda_home(installed_home.parent, "cuda_nvcc")
+    assert install_nvcc == installed_home
+    rebuild_env: dict[str, str] = {}
+    probe_payloads = [
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": false}\n",
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": true}\n",
+    ]
+
+    def _fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        env = kwargs.get("env", {})
+        if cmd[:2] == ["uv", "sync"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if _is_python_script(cmd, venv_python, "__SAKI_TORCH_CUDA__"):
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                '__SAKI_TORCH_CUDA__={"torch_cuda": "12.8", "torch_version": "2.10.0+cu128"}\n',
+                "",
+            )
+        if cmd == ["nvcc", "--version"]:
+            return subprocess.CompletedProcess(cmd, 0, "Cuda compilation tools, release 13.1, V13.1.0", "")
+        if cmd[:3] == ["uv", "pip", "install"] and "nvidia-cuda-nvcc-cu12" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if cmd == [str(installed_home / "bin" / "nvcc"), "--version"]:
+            return subprocess.CompletedProcess(cmd, 1, "", "nvcc probe failed without version")
+        if _is_python_script(cmd, venv_python, "__SAKI_MM_EXT_PROBE__"):
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                probe_payloads.pop(0),
+                "",
+            )
+        if _is_python_script(cmd, venv_python, "__SAKI_MM_VERSION__"):
+            return subprocess.CompletedProcess(cmd, 0, "__SAKI_MM_VERSION__=2.3.2.post2\n", "")
+        if cmd[:3] == ["uv", "pip", "install"]:
+            if any("onedl-mmcv==" in item for item in cmd):
+                rebuild_env.update(env)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    installer.sync_profile_env(
+        plugin_dir=plugin_dir,
+        venv_dir=venv_dir,
+        dependency_groups=["profile-cuda"],
+        is_cuda_profile=True,
+        cuda_toolchain_search_paths=[search_root],
+        cuda_toolchain_auto_install_nvcc=True,
+    )
+
+    assert rebuild_env.get("CUDA_HOME") == str(installed_home)
+    assert rebuild_env.get("PATH", "").startswith(f"{installed_home / 'bin'}:")

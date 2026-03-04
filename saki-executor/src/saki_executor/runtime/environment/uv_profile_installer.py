@@ -227,8 +227,6 @@ def _probe_nvcc_version(
         result = _run_command(command=command, cwd=cwd, timeout_sec=timeout_sec, env=env)
     except Exception:
         return ""
-    if int(result.returncode or 0) != 0:
-        return ""
 
     text = f"{result.stdout}\n{result.stderr}"
     release_match = re.search(r"release\s+(\d+\.\d+)", text)
@@ -238,6 +236,19 @@ def _probe_nvcc_version(
     if version_match:
         return _normalize_cuda_version(version_match.group(1))
     return ""
+
+
+def _try_select_venv_nvcc_home(candidates: list[Path], venv_python: Path) -> Path | None:
+    venv_root = str(venv_python.parent.parent.resolve())
+    for home in candidates:
+        resolved = str(home.resolve())
+        if not resolved.startswith(venv_root):
+            continue
+        if "site-packages/nvidia/cuda_nvcc" not in resolved:
+            continue
+        if (home / "bin" / "nvcc").exists():
+            return home
+    return None
 
 
 def _discover_venv_cuda_homes(venv_python: Path) -> list[Path]:
@@ -482,11 +493,19 @@ def _ensure_cuda_toolchain(
     )
     context["cuda_home_candidates"] = attempted
     if selected_home is None:
-        context["auto_install_result"] = "installed_but_not_matched"
-        raise RuntimeError(
-            "PROFILE_UNSATISFIED: auto installed nvcc package but still no matched cuda home "
-            f"package={pkg} {_format_cuda_alignment_context(context)}"
-        )
+        # 关键设计：nvidia-cuda-nvcc wheel 在部分主机上 `nvcc --version` 可能非零但仍可用于编译，
+        # 这里对“venv 内 nvidia/cuda_nvcc”做谨慎回退，避免过早失败。
+        fallback_home = _try_select_venv_nvcc_home(candidates, venv_python)
+        if fallback_home is None:
+            context["auto_install_result"] = "installed_but_not_matched"
+            raise RuntimeError(
+                "PROFILE_UNSATISFIED: auto installed nvcc package but still no matched cuda home "
+                f"package={pkg} {_format_cuda_alignment_context(context)}"
+            )
+        aligned_env = _apply_cuda_home_env(aligned_env, fallback_home)
+        context["selected_cuda_home"] = str(fallback_home)
+        context["auto_install_result"] = "installed_selected_fallback_unverified"
+        return aligned_env, context
 
     aligned_env = _apply_cuda_home_env(aligned_env, selected_home)
     context["selected_cuda_home"] = str(selected_home)

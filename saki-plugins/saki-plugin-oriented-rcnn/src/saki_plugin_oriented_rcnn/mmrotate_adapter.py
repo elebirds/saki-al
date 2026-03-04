@@ -24,8 +24,8 @@ def _build_mm_import_error(exc: Exception) -> RuntimeError:
     ):
         return RuntimeError(
             "mmrotate runtime dependencies are not ready: missing mmcv._ext; "
-            "this is usually caused by an incomplete onedl-mmcv build in profile env. "
-            "please trigger profile auto-repair/rebuild with --no-build-isolation "
+            "this is usually caused by an incomplete onedl-mmcv installation in profile env. "
+            "please lock and reinstall a prebuilt onedl-mmcv wheel that already contains mmcv._ext "
             f"(root={exc.__class__.__name__}: {message})"
         )
 

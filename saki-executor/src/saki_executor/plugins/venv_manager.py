@@ -14,16 +14,6 @@ from saki_executor.runtime.environment.environment_factory import EnvironmentFac
 from saki_plugin_sdk.profile_spec import RuntimeProfileSpec
 
 
-def _parse_cuda_toolchain_search_paths(raw: str) -> list[Path]:
-    paths: list[Path] = []
-    for item in str(raw or "").split(","):
-        value = str(item or "").strip()
-        if not value:
-            continue
-        paths.append(Path(value))
-    return paths
-
-
 def ensure_plugin_venv(plugin_dir: Path, *, auto_sync: bool = True) -> Path:
     return ensure_plugin_venv_for_profile(
         plugin_dir=plugin_dir,
@@ -53,12 +43,6 @@ def ensure_plugin_venv_for_profile(
         auto_sync=auto_sync,
         mm_ext_auto_repair=bool(settings.PLUGIN_MM_EXT_AUTO_REPAIR),
         mm_ext_auto_repair_timeout_sec=int(settings.PLUGIN_MM_EXT_AUTO_REPAIR_TIMEOUT_SEC),
-        cuda_toolchain_auto_align=bool(settings.PLUGIN_CUDA_TOOLCHAIN_AUTO_ALIGN),
-        cuda_toolchain_auto_install_nvcc=bool(settings.PLUGIN_CUDA_TOOLCHAIN_AUTO_INSTALL_NVCC),
-        cuda_toolchain_align_timeout_sec=int(settings.PLUGIN_CUDA_TOOLCHAIN_ALIGN_TIMEOUT_SEC),
-        cuda_toolchain_search_paths=_parse_cuda_toolchain_search_paths(
-            str(settings.PLUGIN_CUDA_TOOLCHAIN_SEARCH_PATHS)
-        ),
     )
     return factory.ensure_profile_python(
         plugin_id=plugin_id,

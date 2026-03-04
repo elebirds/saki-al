@@ -17,18 +17,10 @@ class EnvironmentFactory:
         auto_sync: bool = True,
         mm_ext_auto_repair: bool = True,
         mm_ext_auto_repair_timeout_sec: int = 1200,
-        cuda_toolchain_auto_align: bool = True,
-        cuda_toolchain_auto_install_nvcc: bool = True,
-        cuda_toolchain_align_timeout_sec: int = 300,
-        cuda_toolchain_search_paths: list[Path] | None = None,
     ) -> None:
         self._auto_sync = bool(auto_sync)
         self._mm_ext_auto_repair = bool(mm_ext_auto_repair)
         self._mm_ext_auto_repair_timeout_sec = max(60, int(mm_ext_auto_repair_timeout_sec))
-        self._cuda_toolchain_auto_align = bool(cuda_toolchain_auto_align)
-        self._cuda_toolchain_auto_install_nvcc = bool(cuda_toolchain_auto_install_nvcc)
-        self._cuda_toolchain_align_timeout_sec = max(30, int(cuda_toolchain_align_timeout_sec))
-        self._cuda_toolchain_search_paths = list(cuda_toolchain_search_paths or [Path("/usr/local"), Path("/opt")])
 
     def ensure_profile_python(
         self,
@@ -62,18 +54,12 @@ class EnvironmentFactory:
         if should_sync:
             # 关键设计：profile 的 env 需要在 uv sync 阶段生效，否则会与 worker 运行时环境产生偏差。
             profile_env = {str(k): str(v) for k, v in dict(profile.env).items() if str(k).strip()}
-            allowed_backends = {str(item or "").strip().lower() for item in list(profile.allowed_backends)}
             venv_dir.mkdir(parents=True, exist_ok=True)
             sync_profile_env(
                 plugin_dir=plugin_dir,
                 venv_dir=venv_dir,
                 dependency_groups=list(profile.dependency_groups),
                 profile_env=profile_env,
-                is_cuda_profile="cuda" in allowed_backends,
-                cuda_toolchain_auto_align=self._cuda_toolchain_auto_align,
-                cuda_toolchain_auto_install_nvcc=self._cuda_toolchain_auto_install_nvcc,
-                cuda_toolchain_align_timeout_sec=self._cuda_toolchain_align_timeout_sec,
-                cuda_toolchain_search_paths=self._cuda_toolchain_search_paths,
                 mm_ext_auto_repair=self._mm_ext_auto_repair,
                 mm_ext_auto_repair_timeout_sec=self._mm_ext_auto_repair_timeout_sec,
             )

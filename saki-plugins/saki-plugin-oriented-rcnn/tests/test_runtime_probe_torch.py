@@ -40,7 +40,7 @@ def test_probe_runtime_capability_raises_when_mmcv_ext_missing(monkeypatch: pyte
         runtime_probe.probe_torch_runtime_capability()
 
 
-def test_mmcv_ext_missing_error_contains_toolchain_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mmcv_ext_missing_error_contains_prebuilt_wheel_hint(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_torch = SimpleNamespace(
         __version__="2.10.0+cu128",
         cuda=SimpleNamespace(is_available=lambda: True, device_count=lambda: 1),
@@ -69,4 +69,4 @@ def test_mmcv_ext_missing_error_contains_toolchain_hint(monkeypatch: pytest.Monk
         runtime_probe.probe_torch_runtime_capability()
     message = str(exc_info.value)
     assert "mmcv._ext" in message
-    assert "executor toolchain auto-align" in message
+    assert "prebuilt onedl-mmcv wheel" in message

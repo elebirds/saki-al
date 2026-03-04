@@ -71,6 +71,13 @@ class _RevealProbe:
 
 
 @dataclass(slots=True)
+class _SnapshotTrainStats:
+    pool_hidden: int
+    train_visible: int
+    total_train_universe: int
+
+
+@dataclass(slots=True)
 class _RoundSelectionContext:
     loop: Any
     round_row: Round
@@ -348,6 +355,71 @@ class SnapshotMixin:
         )
         return list((await self.session.exec(stmt)).all())
 
+    async def _resolve_simulation_oracle_commit_id(self, *, loop: Any) -> uuid.UUID:
+        if loop.mode != LoopMode.SIMULATION:
+            raise BadRequestAppException("oracle commit is only available for simulation loop")
+
+        config = loop.config if isinstance(loop.config, dict) else {}
+        simulation = self._extract_simulation_config(config)
+        raw_oracle_commit_id = str(simulation.oracle_commit_id or "").strip()
+        if not raw_oracle_commit_id:
+            raise BadRequestAppException("simulation mode requires config.mode.oracle_commit_id")
+        try:
+            oracle_commit_id = uuid.UUID(raw_oracle_commit_id)
+        except Exception as exc:
+            raise BadRequestAppException("config.mode.oracle_commit_id must be a valid UUID") from exc
+
+        oracle_commit = await self.project_gateway.get_commit(oracle_commit_id)
+        if oracle_commit is None:
+            raise BadRequestAppException("config.mode.oracle_commit_id does not exist")
+        if oracle_commit.project_id != loop.project_id:
+            raise BadRequestAppException("config.mode.oracle_commit_id must belong to the same project")
+        return oracle_commit_id
+
+    async def _list_labeled_sample_ids_at_commit(self, *, commit_id: uuid.UUID) -> list[uuid.UUID]:
+        stmt = (
+            select(distinct(CommitSampleState.sample_id))
+            .where(
+                CommitSampleState.commit_id == commit_id,
+                CommitSampleState.state.in_(
+                    (
+                        CommitSampleReviewState.LABELED,
+                        CommitSampleReviewState.EMPTY_CONFIRMED,
+                    )
+                ),
+            )
+            .order_by(CommitSampleState.sample_id.asc())
+        )
+        return list((await self.session.exec(stmt)).all())
+
+    async def _resolve_reveal_source_commit_id(self, *, loop: Any) -> uuid.UUID | None:
+        if loop.mode == LoopMode.SIMULATION:
+            return await self._resolve_simulation_oracle_commit_id(loop=loop)
+        return await self._get_branch_head_commit_id(loop.branch_id)
+
+    @staticmethod
+    def _compute_snapshot_train_stats(
+        *,
+        rows: list[ALSnapshotSample],
+        visible_sample_ids: set[uuid.UUID],
+    ) -> _SnapshotTrainStats:
+        train_pool_sample_ids: set[uuid.UUID] = set()
+        total_train_sample_ids: set[uuid.UUID] = set()
+        for row in rows:
+            if row.partition == SnapshotPartition.TRAIN_POOL:
+                train_pool_sample_ids.add(row.sample_id)
+                total_train_sample_ids.add(row.sample_id)
+                continue
+            if row.partition == SnapshotPartition.TRAIN_SEED:
+                total_train_sample_ids.add(row.sample_id)
+        train_visible = int(len(total_train_sample_ids & visible_sample_ids))
+        pool_hidden = int(len(train_pool_sample_ids - visible_sample_ids))
+        return _SnapshotTrainStats(
+            pool_hidden=pool_hidden,
+            train_visible=train_visible,
+            total_train_universe=int(len(total_train_sample_ids)),
+        )
+
     @staticmethod
     def _allocate_counts(
         *,
@@ -561,7 +633,7 @@ class SnapshotMixin:
         round_id: uuid.UUID,
     ) -> _RevealProbe:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)
-        latest_commit_id = await self._get_branch_head_commit_id(loop.branch_id)
+        latest_commit_id = await self._resolve_reveal_source_commit_id(loop=loop)
         selected_sample_ids = await self._load_selected_sample_ids(round_id=round_id)
         if not selected_sample_ids:
             return _RevealProbe(
@@ -823,12 +895,19 @@ class SnapshotMixin:
         force: bool = False,
         min_required: int = 1,
     ) -> dict[str, Any]:
-        loop, _snapshot = await self._get_active_snapshot_or_raise(loop_id)
+        loop, snapshot = await self._get_active_snapshot_or_raise(loop_id)
         if branch_id and branch_id != loop.branch_id:
             raise BadRequestAppException("branch_id does not match loop")
         round_row = await self.repository.get_by_id_or_raise(round_id)
         if round_row.loop_id != loop_id:
             raise BadRequestAppException("round_id does not belong to loop")
+
+        snapshot_rows = await self.al_snapshot_sample_repo.list_by_snapshot(snapshot.id)
+        visible_sample_ids_before = set(await self.al_loop_visibility_repo.list_visible_sample_ids(loop_id))
+        train_stats_before = self._compute_snapshot_train_stats(
+            rows=snapshot_rows,
+            visible_sample_ids=visible_sample_ids_before,
+        )
 
         probe = await self._probe_round_reveal(loop_id=loop_id, round_id=round_row.id)
         threshold = self._effective_round_min_required(
@@ -841,6 +920,7 @@ class SnapshotMixin:
             )
 
         revealed_ids = probe.revealable_sample_ids
+        visible_sample_ids_after = set(visible_sample_ids_before)
         if revealed_ids:
             source = VisibilitySource.FORCE_REVEAL if force else VisibilitySource.ROUND_REVEAL
             rows = [
@@ -855,6 +935,12 @@ class SnapshotMixin:
                 for sample_id in revealed_ids
             ]
             await self.al_loop_visibility_repo.upsert_rows(rows)
+            visible_sample_ids_after.update(revealed_ids)
+
+        train_stats_after = self._compute_snapshot_train_stats(
+            rows=snapshot_rows,
+            visible_sample_ids=visible_sample_ids_after,
+        )
 
         return {
             "loop_id": loop_id,
@@ -866,6 +952,10 @@ class SnapshotMixin:
             "effective_min_required": int(threshold),
             "latest_commit_id": probe.latest_commit_id,
             "revealable_sample_ids_hash": self._hash_sample_ids(revealed_ids),
+            "pool_hidden_before": int(train_stats_before.pool_hidden),
+            "pool_hidden_after": int(train_stats_after.pool_hidden),
+            "train_visible_after": int(train_stats_after.train_visible),
+            "total_train_universe": int(train_stats_after.total_train_universe),
         }
 
     @staticmethod
@@ -1133,105 +1223,6 @@ class SnapshotMixin:
         payload.pop("_effective_selected_ids", None)
         return payload
 
-    async def _compute_label_readiness_internal(self, loop_id: uuid.UUID) -> dict[str, Any]:
-        loop, snapshot = await self._get_active_snapshot_or_raise(loop_id)
-        commit_id = await self._get_branch_head_commit_id(loop.branch_id)
-        rows = await self.al_snapshot_sample_repo.list_by_snapshot(snapshot.id)
-        partition_map: dict[SnapshotPartition, list[uuid.UUID]] = {}
-        for row in rows:
-            partition_map.setdefault(row.partition, []).append(row.sample_id)
-
-        seed_ids = partition_map.get(SnapshotPartition.TRAIN_SEED, [])
-        val_anchor_ids = list(partition_map.get(SnapshotPartition.VAL_ANCHOR, []))
-        test_anchor_ids = list(partition_map.get(SnapshotPartition.TEST_ANCHOR, []))
-
-        labeled_ids: set[uuid.UUID] = set()
-        if commit_id:
-            check_ids = list({*seed_ids, *val_anchor_ids, *test_anchor_ids})
-            labeled_ids = await self._count_labeled_samples(commit_id=commit_id, sample_ids=check_ids)
-
-        def _checkpoint(
-            *,
-            checkpoint_id: str,
-            scope: str,
-            round_index: int,
-            key: str,
-            sample_ids: list[uuid.UUID],
-            selected_count: int | None = None,
-            revealed_count: int | None = None,
-        ) -> dict[str, Any]:
-            missing = [sample_id for sample_id in sample_ids if sample_id not in labeled_ids]
-            preview = list(missing[:50])
-            return {
-                "checkpoint_id": checkpoint_id,
-                "scope": scope,
-                "round_index": int(round_index),
-                "key": key,
-                "blocking": bool(len(missing) > 0),
-                "total": len(sample_ids),
-                "missing_count": len(missing),
-                "selected_count": selected_count,
-                "revealed_count": revealed_count,
-                "missing_sample_ids_preview": preview,
-                "preview_truncated": len(missing) > len(preview),
-            }
-
-        checkpoints: list[dict[str, Any]] = [
-            _checkpoint(
-                checkpoint_id="r0:seed",
-                scope="setup",
-                round_index=0,
-                key="seed",
-                sample_ids=seed_ids,
-            ),
-            _checkpoint(
-                checkpoint_id="r0:val_anchor",
-                scope="setup",
-                round_index=0,
-                key="val_anchor",
-                sample_ids=val_anchor_ids,
-            ),
-            _checkpoint(
-                checkpoint_id="r0:test_anchor",
-                scope="setup",
-                round_index=0,
-                key="test_anchor",
-                sample_ids=test_anchor_ids,
-            ),
-        ]
-
-        latest_round = await self.repository.get_latest_by_loop(loop_id)
-        if latest_round and int(latest_round.round_index) > 0:
-            probe = await self._probe_round_reveal(loop_id=loop_id, round_id=latest_round.id)
-            configured_min_required = max(1, int(loop.min_new_labels_per_round or 1))
-            effective_min_required = self._effective_round_min_required(
-                selected_count=probe.selected_count,
-                configured_min_required=configured_min_required,
-            )
-            query_blocking = latest_round.confirmed_at is None and probe.revealable_count < effective_min_required
-            preview = list(probe.missing_sample_ids[:50])
-            checkpoints.append(
-                {
-                    "checkpoint_id": f"r{int(latest_round.round_index)}:query",
-                    "scope": "round",
-                    "round_index": int(latest_round.round_index),
-                    "key": "query",
-                    "blocking": bool(query_blocking),
-                    "total": int(probe.selected_count),
-                    "missing_count": int(probe.missing_count),
-                    "selected_count": int(probe.selected_count),
-                    "revealed_count": int(probe.revealable_count),
-                    "missing_sample_ids_preview": preview,
-                    "preview_truncated": int(probe.missing_count) > len(preview),
-                }
-            )
-
-        return {
-            "loop_id": loop_id,
-            "commit_id": commit_id,
-            "checkpoints": checkpoints,
-        }
-
     async def _compute_loop_gate(
         self,
         loop_id: uuid.UUID,
@@ -1428,9 +1419,21 @@ class SnapshotMixin:
             raise BadRequestAppException("active snapshot already exists; use snapshot:update")
 
         sample_ids_payload = payload.get("sample_ids") or []
-        if sample_ids_payload:
-            sample_ids = list({uuid.UUID(str(item)) for item in sample_ids_payload})
-        else:
+        sample_ids = self._dedupe_uuid_list([uuid.UUID(str(item)) for item in sample_ids_payload])
+        if loop.mode == LoopMode.SIMULATION:
+            oracle_commit_id = await self._resolve_simulation_oracle_commit_id(loop=loop)
+            oracle_labeled_sample_ids = await self._list_labeled_sample_ids_at_commit(commit_id=oracle_commit_id)
+            oracle_labeled_set = set(oracle_labeled_sample_ids)
+            if sample_ids:
+                out_of_oracle_scope_ids = [sample_id for sample_id in sample_ids if sample_id not in oracle_labeled_set]
+                if out_of_oracle_scope_ids:
+                    preview = ",".join(str(sample_id) for sample_id in out_of_oracle_scope_ids[:5])
+                    raise BadRequestAppException(
+                        f"snapshot sample_ids must be subset of oracle labeled samples: {preview}"
+                    )
+            else:
+                sample_ids = oracle_labeled_sample_ids
+        elif not sample_ids:
             sample_ids = await self._list_project_sample_ids(loop.project_id)
         if not sample_ids:
             raise BadRequestAppException("no samples found for snapshot init")
@@ -1482,7 +1485,7 @@ class SnapshotMixin:
             rows=assignment_rows,
         )
 
-        reveal_commit_id = await self._get_branch_head_commit_id(loop.branch_id)
+        reveal_commit_id = await self._resolve_reveal_source_commit_id(loop=loop)
         visibility_rows: list[dict] = []
         for row in assignment_rows:
             partition = row["partition"]
@@ -1539,10 +1542,27 @@ class SnapshotMixin:
 
         sample_ids_payload = payload.get("sample_ids") or []
         if sample_ids_payload:
-            candidate_ids = list({uuid.UUID(str(item)) for item in sample_ids_payload})
+            candidate_ids = self._dedupe_uuid_list([uuid.UUID(str(item)) for item in sample_ids_payload])
+            if loop.mode == LoopMode.SIMULATION:
+                oracle_commit_id = await self._resolve_simulation_oracle_commit_id(loop=loop)
+                oracle_labeled_sample_ids = await self._list_labeled_sample_ids_at_commit(commit_id=oracle_commit_id)
+                oracle_labeled_set = set(oracle_labeled_sample_ids)
+                out_of_oracle_scope_ids = [sample_id for sample_id in candidate_ids if sample_id not in oracle_labeled_set]
+                if out_of_oracle_scope_ids:
+                    preview = ",".join(str(sample_id) for sample_id in out_of_oracle_scope_ids[:5])
+                    raise BadRequestAppException(
+                        f"snapshot sample_ids must be subset of oracle labeled samples: {preview}"
+                    )
         else:
-            all_sample_ids = await self._list_project_sample_ids(loop.project_id)
-            candidate_ids = [sample_id for sample_id in all_sample_ids if sample_id not in existing_sample_ids]
+            if loop.mode == LoopMode.SIMULATION:
+                oracle_commit_id = await self._resolve_simulation_oracle_commit_id(loop=loop)
+                oracle_labeled_sample_ids = await self._list_labeled_sample_ids_at_commit(commit_id=oracle_commit_id)
+                candidate_ids = [
+                    sample_id for sample_id in oracle_labeled_sample_ids if sample_id not in existing_sample_ids
+                ]
+            else:
+                all_sample_ids = await self._list_project_sample_ids(loop.project_id)
+                candidate_ids = [sample_id for sample_id in all_sample_ids if sample_id not in existing_sample_ids]
         new_sample_ids = [sample_id for sample_id in candidate_ids if sample_id not in existing_sample_ids]
         if not new_sample_ids:
             gate, _gate_meta, _primary_action, _actions = await self._compute_loop_gate(loop.id)
@@ -1802,32 +1822,6 @@ class SnapshotMixin:
         if not bool(matched.get("runnable", True)):
             raise BadRequestAppException(f"action is not runnable in current gate: {action_key}")
         return decision, action_key, matched
-
-    async def get_loop_label_readiness(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
-        payload = await self._compute_label_readiness_internal(loop_id)
-        gate_payload = await self.get_loop_gate(loop_id=loop_id)
-        checkpoints = list(payload.get("checkpoints") or [])
-        active_checkpoint_id: str | None = None
-        gate = gate_payload.get("gate")
-
-        if gate == LoopGate.NEED_LABELS:
-            for item in checkpoints:
-                if item.get("scope") == "setup" and bool(item.get("blocking")):
-                    active_checkpoint_id = str(item.get("checkpoint_id") or "")
-                    break
-        elif gate in {LoopGate.NEED_ROUND_LABELS, LoopGate.CAN_CONFIRM, LoopGate.CAN_NEXT_ROUND}:
-            for item in checkpoints:
-                if item.get("key") == "query":
-                    active_checkpoint_id = str(item.get("checkpoint_id") or "")
-                    break
-        if not active_checkpoint_id:
-            for item in checkpoints:
-                if bool(item.get("blocking")):
-                    active_checkpoint_id = str(item.get("checkpoint_id") or "")
-                    break
-
-        payload["active_checkpoint_id"] = active_checkpoint_id
-        return payload
 
     async def _resolve_prediction_source_step(
         self,

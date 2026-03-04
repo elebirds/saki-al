@@ -43,6 +43,10 @@ message ResolveRoundRevealResponse {
   string latest_commit_id = 4;
   string revealable_sample_ids_hash = 5;
   int32 effective_min_required = 6;
+  int32 pool_hidden_before = 7;
+  int32 pool_hidden_after = 8;
+  int32 train_visible_after = 9;
+  int32 total_train_universe = 10;
 }
 
 message ActivateSamplesRequest {

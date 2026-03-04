@@ -373,7 +373,15 @@ func extractOracleCommitID(rawConfig []byte) string {
 	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(fmt.Sprintf("%v", modeMap["oracle_commit_id"]))
+	oracleRaw, exists := modeMap["oracle_commit_id"]
+	if !exists || oracleRaw == nil {
+		return ""
+	}
+	value := strings.TrimSpace(fmt.Sprintf("%v", oracleRaw))
+	if value == "" || strings.EqualFold(value, "<nil>") {
+		return ""
+	}
+	return value
 }
 
 func extractRoundResources(rawConfig []byte) map[string]any {

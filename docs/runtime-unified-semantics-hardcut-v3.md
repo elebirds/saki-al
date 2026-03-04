@@ -25,7 +25,7 @@
 ## 3. 三模式执行模型
 
 1. active_learning：`train -> eval -> score -> select`；允许手动调整 select；需 confirm；下一轮手动触发 `start_next_round`。  
-2. simulation：`train -> eval -> score -> select`；不手动调整；默认自动下一轮，直到满足结束条件。  
+2. simulation：`train -> eval -> score -> select`；不手动调整；`snapshot` 全集固定为 `oracle_commit` 的已标注样本子集（`CommitSampleState=LABELED/EMPTY_CONFIRMED`）；每轮自动 reveal 并自动下一轮，直到 `pool_hidden==0`。  
 3. manual：`train -> eval`；无 select；支持手动 `start_next_round`。  
 
 ## 4. Snapshot 与 PredictionSet 关系
@@ -56,9 +56,11 @@
 1. AL 步骤顺序：`TRAIN -> EVAL -> SCORE -> SELECT`。  
 2. Sim 步骤顺序：`TRAIN -> EVAL -> SCORE -> SELECT`。  
 3. Manual 步骤顺序：`TRAIN -> EVAL`。  
-4. 删除 orchestrator 对 `ACTIVATE_SAMPLES/ADVANCE_BRANCH` 执行分支。  
-5. `StartNextRound` 支持 Manual。  
-6. `ConfirmLoop`：Sim 恒拒绝，Manual 恒拒绝。  
+4. Sim 每轮 `round.input_commit_id` 与 `step.input_commit_id` 固定为 `config.mode.oracle_commit_id`，不跟随 branch head。  
+5. Sim 终止规则：`pool_hidden_after==0` 视为成功完成；`revealed_count==0 && pool_hidden_after>0` 视为失败；`max_rounds` 仅作为保险丝。  
+6. 删除 orchestrator 对 `ACTIVATE_SAMPLES/ADVANCE_BRANCH` 执行分支。  
+7. `StartNextRound` 支持 Manual。  
+8. `ConfirmLoop`：Sim 恒拒绝，Manual 恒拒绝。  
 
 ## 8. API 契约要求
 
@@ -86,7 +88,7 @@
 
 1. 不做兼容层。  
 2. `step_id` 保留，不改为 `round_id + action` 复合键。  
-3. Sim 默认 `auto_next_round=true`。  
+3. Sim 默认 `auto_next_round=true`，且 reveal 数据源固定 `oracle_commit_id`。  
 4. Manual 默认 `max_rounds=20`。  
 5. PredictionSet apply 默认写入 working/draft，不直接落 commit。  
 6. Snapshot 在 AL 与 Sim 均为必选启动条件。  

@@ -681,11 +681,11 @@ func (s *Service) handleNonTerminalRoundByModeTx(
 	loop loopRow,
 	roundStatus db.Roundstatus,
 ) error {
-	_ = ctx
-	_ = tx
-	_ = loop
-	_ = roundStatus
-	return nil
+	policy, err := s.modeRoundPolicyFor(loop.Mode)
+	if err != nil {
+		return err
+	}
+	return policy.handleNonTerminalRoundTx(ctx, tx, s, loop, roundStatus)
 }
 
 func (s *Service) markLoopFailedByRoundTx(ctx context.Context, tx pgx.Tx, loop loopRow) error {
@@ -706,36 +706,11 @@ func (s *Service) handleTerminalRoundByModeTx(
 	loop loopRow,
 	latestRound roundRow,
 ) error {
-	switch loop.Mode {
-	case modeAL:
-		if latestRound.SummaryStatus == roundCompleted {
-			if loop.Lifecycle == lifecycleRunning && loop.Phase == phaseALWaitAnnotation {
-				return nil
-			}
-			return s.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseALWaitAnnotation, "", loop.LastConfirmedCommitID)
-		}
-		return nil
-	case modeSIM:
-		return s.handleSimulationTerminalRoundTx(ctx, tx, loop, latestRound)
-	case modeManual:
-		if latestRound.RoundIndex >= loop.MaxRounds {
-			return s.updateLoopRuntime(
-				ctx,
-				tx,
-				loop.ID,
-				lifecycleCompleted,
-				phaseManualFinalize,
-				terminalReasonSuccess,
-				loop.LastConfirmedCommitID,
-			)
-		}
-		if loop.Lifecycle == lifecycleRunning && loop.Phase == phaseManualEval {
-			return nil
-		}
-		return s.updateLoopRuntime(ctx, tx, loop.ID, lifecycleRunning, phaseManualEval, "", loop.LastConfirmedCommitID)
-	default:
-		return fmt.Errorf("unsupported loop mode: %s", loop.Mode)
+	policy, err := s.modeRoundPolicyFor(loop.Mode)
+	if err != nil {
+		return err
 	}
+	return policy.handleTerminalRoundTx(ctx, tx, s, loop, latestRound)
 }
 
 func (s *Service) handleSimulationTerminalRoundTx(
@@ -744,7 +719,67 @@ func (s *Service) handleSimulationTerminalRoundTx(
 	loop loopRow,
 	latestRound roundRow,
 ) error {
-	if latestRound.RoundIndex >= loop.MaxRounds {
+	if s.shouldDelaySimulationRound(latestRound.EndedAt) {
+		return nil
+	}
+
+	if s.domainClient == nil || !s.domainClient.Enabled() {
+		return s.updateLoopRuntime(
+			ctx,
+			tx,
+			loop.ID,
+			lifecycleFailed,
+			loop.Phase,
+			terminalReasonSystemError,
+			loop.LastConfirmedCommitID,
+		)
+	}
+
+	response, err := s.domainClient.ResolveRoundReveal(
+		ctx,
+		loop.ID.String(),
+		latestRound.ID.String(),
+		loop.BranchID.String(),
+		true,
+		1,
+	)
+	if err != nil {
+		if st, ok := grpcstatus.FromError(err); ok && st.Code() == codes.InvalidArgument {
+			s.logger.Warn().
+				Str("loop_id", loop.ID.String()).
+				Str("round_id", latestRound.ID.String()).
+				Str("detail", st.Message()).
+				Msg("simulation reveal rejected by runtime-domain")
+			return s.updateLoopRuntime(
+				ctx,
+				tx,
+				loop.ID,
+				lifecycleFailed,
+				loop.Phase,
+				terminalReasonSystemError,
+				loop.LastConfirmedCommitID,
+			)
+		}
+		return err
+	}
+
+	poolHiddenAfter := int(response.GetPoolHiddenAfter())
+	if poolHiddenAfter < 0 {
+		poolHiddenAfter = 0
+	}
+	revealedCount := int(response.GetRevealedCount())
+
+	latestCommitID := loop.LastConfirmedCommitID
+	latestCommitRaw := strings.TrimSpace(response.GetLatestCommitId())
+	if latestCommitRaw != "" {
+		parsedCommitID, parseErr := parseUUID(latestCommitRaw)
+		if parseErr != nil {
+			return parseErr
+		}
+		latestCommitID = &parsedCommitID
+	}
+
+	if poolHiddenAfter == 0 {
 		return s.updateLoopRuntime(
 			ctx,
 			tx,
@@ -752,13 +787,32 @@ func (s *Service) handleSimulationTerminalRoundTx(
 			lifecycleCompleted,
 			phaseSimFinalize,
 			terminalReasonSuccess,
-			loop.LastConfirmedCommitID,
+			latestCommitID,
 		)
 	}
-	if s.shouldDelaySimulationRound(latestRound.EndedAt) {
-		return nil
+	if latestRound.RoundIndex >= loop.MaxRounds {
+		return s.updateLoopRuntime(
+			ctx,
+			tx,
+			loop.ID,
+			lifecycleFailed,
+			phaseSimFinalize,
+			terminalReasonSystemError,
+			latestCommitID,
+		)
 	}
-	_, err := s.createNextRoundTx(ctx, tx, loop, uuid.NewString())
+	if revealedCount == 0 {
+		return s.updateLoopRuntime(
+			ctx,
+			tx,
+			loop.ID,
+			lifecycleFailed,
+			phaseSimFinalize,
+			terminalReasonSystemError,
+			latestCommitID,
+		)
+	}
+	_, err = s.createNextRoundTx(ctx, tx, loop, uuid.NewString())
 	return err
 }
 
@@ -865,14 +919,11 @@ func (s *Service) Tick(ctx context.Context) error {
 }
 
 func (s *Service) ensureLoopHasRound(ctx context.Context, tx pgx.Tx, loop loopRow, commandID string) (bool, error) {
-	latestRound, hasRound, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
+	_, hasRound, err := s.getLatestRoundByLoopTx(ctx, tx, loop.ID)
 	if err != nil {
 		return false, err
 	}
 	if !hasRound {
-		return s.createNextRoundTx(ctx, tx, loop, commandID)
-	}
-	if _, ok := terminalRoundStatuses[latestRound.SummaryStatus]; ok && loop.Mode == modeSIM {
 		return s.createNextRoundTx(ctx, tx, loop, commandID)
 	}
 	return false, nil
@@ -948,6 +999,17 @@ func (s *Service) createRoundAttemptTx(
 	projectID := loop.ProjectID
 	if projectIDFromBranch != nil {
 		projectID = *projectIDFromBranch
+	}
+	if loop.Mode == modeSIM {
+		oracleCommitRaw := strings.TrimSpace(extractOracleCommitID(loop.Config))
+		if oracleCommitRaw == "" {
+			return nil, fmt.Errorf("simulation loop missing config.mode.oracle_commit_id")
+		}
+		oracleCommitID, parseErr := parseUUID(oracleCommitRaw)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid simulation oracle_commit_id: %w", parseErr)
+		}
+		sourceCommitID = &oracleCommitID
 	}
 
 	roundID := uuid.New()

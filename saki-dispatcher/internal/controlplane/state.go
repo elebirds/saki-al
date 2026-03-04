@@ -21,7 +21,6 @@ const (
 	phaseSimEval          db.Loopphase = db.LoopphaseSIMEVAL
 	phaseSimScore         db.Loopphase = db.LoopphaseSIMSCORE
 	phaseSimSelect        db.Loopphase = db.LoopphaseSIMSELECT
-	phaseSimWaitUser      db.Loopphase = db.LoopphaseSIMWAITUSER
 	phaseSimFinalize      db.Loopphase = db.LoopphaseSIMFINALIZE
 	phaseManualTrain      db.Loopphase = db.LoopphaseMANUALTRAIN
 	phaseManualEval       db.Loopphase = db.LoopphaseMANUALEVAL

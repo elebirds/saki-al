@@ -17,6 +17,7 @@ from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.session import _session_ctx
 from saki_api.modules.shared.modeling.enums import (
     AuthorType,
+    CommitSampleReviewState,
     LoopActionKey,
     LoopMode,
     LoopPhase,
@@ -30,7 +31,9 @@ from saki_api.modules.shared.modeling.enums import (
 )
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
+from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.project.domain.project import Project, ProjectDataset
+from saki_api.modules.runtime.domain.al_snapshot_sample import ALSnapshotSample
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_event import StepEvent
@@ -125,6 +128,59 @@ async def _seed_project_samples(session: AsyncSession, *, project: Project, coun
         sample_ids.append(sample.id)
     await session.commit()
     return sample_ids
+
+
+async def _create_project_commit(
+    session: AsyncSession,
+    *,
+    project: Project,
+    parent_id: uuid.UUID | None,
+    message: str = "next",
+) -> Commit:
+    commit = Commit(
+        project_id=project.id,
+        parent_id=parent_id,
+        message=message,
+        author_type=AuthorType.SYSTEM,
+        author_id=None,
+        stats={},
+    )
+    session.add(commit)
+    await session.commit()
+    await session.refresh(commit)
+    return commit
+
+
+async def _set_commit_sample_states(
+    session: AsyncSession,
+    *,
+    project: Project,
+    commit_id: uuid.UUID,
+    labeled_ids: list[uuid.UUID],
+    empty_confirmed_ids: list[uuid.UUID] | None = None,
+) -> None:
+    rows = [
+        CommitSampleState(
+            commit_id=commit_id,
+            sample_id=sample_id,
+            project_id=project.id,
+            state=CommitSampleReviewState.LABELED,
+        )
+        for sample_id in labeled_ids
+    ]
+    rows.extend(
+        [
+            CommitSampleState(
+                commit_id=commit_id,
+                sample_id=sample_id,
+                project_id=project.id,
+                state=CommitSampleReviewState.EMPTY_CONFIRMED,
+            )
+            for sample_id in (empty_confirmed_ids or [])
+        ]
+    )
+    session.add_all(rows)
+    await session.commit()
 
 
 def _loop_config(config: dict) -> dict:
@@ -301,6 +357,69 @@ async def test_create_loop_requires_global_seed(loop_api_env):
 
 
 @pytest.mark.anyio
+async def test_create_simulation_loop_rejects_oracle_commit_from_other_project(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project_a, branch_a = await _seed_project_branch(session)
+        project_b, branch_b = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException, match="same project"):
+                await service.create_loop(
+                    project_a.id,
+                    LoopCreateRequest(
+                        name="loop-sim-invalid-oracle",
+                        branch_id=branch_a.id,
+                        mode=LoopMode.SIMULATION,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "mode": {"oracle_commit_id": str(branch_b.head_commit_id)},
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_simulation_loop_requires_valid_oracle_commit_uuid(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException, match="valid UUID"):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-sim-invalid-oracle-uuid",
+                        branch_id=branch.id,
+                        mode=LoopMode.SIMULATION,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "mode": {"oracle_commit_id": "not-a-uuid"},
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_update_loop_rejects_global_seed_change_after_non_draft(loop_api_env):
     session_local = loop_api_env
 
@@ -329,6 +448,90 @@ async def test_update_loop_rejects_global_seed_change_after_non_draft(loop_api_e
                             "sampling": {"strategy": "random_baseline", "topk": 200},
                             "reproducibility": {"global_seed": "changed-seed"},
                         }
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_oracle_commit_change_requires_draft_and_no_snapshot(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=2)
+        next_commit = await _create_project_commit(
+            session,
+            project=project,
+            parent_id=branch.head_commit_id,
+            message="oracle-v2",
+        )
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=branch.head_commit_id,
+            labeled_ids=[sample_ids[0]],
+        )
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=next_commit.id,
+            labeled_ids=[sample_ids[0]],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-oracle-change",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+
+            updated = await service.update_loop(
+                loop.id,
+                LoopUpdateRequest(
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(next_commit.id)},
+                        }
+                    )
+                ),
+            )
+            assert updated.config.get("mode", {}).get("oracle_commit_id") == str(next_commit.id)
+
+            await service.init_loop_snapshot(
+                loop_id=loop.id,
+                payload={"sample_ids": [str(sample_ids[0])]},
+                actor_user_id=None,
+            )
+
+            with pytest.raises(
+                BadRequestAppException,
+                match="oracle_commit_id can only change while loop is draft and snapshot is not initialized",
+            ):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                            }
+                        )
                     ),
                 )
         finally:
@@ -445,6 +648,260 @@ async def test_snapshot_update_uses_loop_global_seed_when_seed_missing(loop_api_
             assert len(rows) == 2
             assert rows[0].seed == "seed-loop-main-2"
             assert rows[1].seed == "seed-loop-main-2"
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_snapshot_init_defaults_to_oracle_labeled_subset(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=5)
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=branch.head_commit_id,
+            labeled_ids=[sample_ids[0], sample_ids[3]],
+            empty_confirmed_ids=[sample_ids[1]],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-snapshot-oracle-default",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            await service.init_loop_snapshot(loop_id=loop.id, payload={}, actor_user_id=None)
+            snapshot = (
+                await session.exec(
+                    select(ALSnapshotVersion)
+                    .where(ALSnapshotVersion.loop_id == loop.id)
+                    .order_by(ALSnapshotVersion.version_index.desc())
+                )
+            ).first()
+            assert snapshot is not None
+            rows = list(
+                (
+                    await session.exec(
+                        select(ALSnapshotSample).where(ALSnapshotSample.snapshot_version_id == snapshot.id)
+                    )
+                ).all()
+            )
+            assert {row.sample_id for row in rows} == {sample_ids[0], sample_ids[1], sample_ids[3]}
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_snapshot_init_rejects_non_oracle_sample_subset(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=3)
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=branch.head_commit_id,
+            labeled_ids=[sample_ids[0]],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-snapshot-oracle-subset-reject",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            with pytest.raises(BadRequestAppException, match="subset of oracle labeled samples"):
+                await service.init_loop_snapshot(
+                    loop_id=loop.id,
+                    payload={"sample_ids": [str(sample_ids[0]), str(sample_ids[1])]},
+                    actor_user_id=None,
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_snapshot_update_defaults_to_oracle_labeled_delta(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=4)
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=branch.head_commit_id,
+            labeled_ids=[sample_ids[0], sample_ids[1], sample_ids[2]],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-snapshot-update-oracle-delta",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            await service.init_loop_snapshot(
+                loop_id=loop.id,
+                payload={"sample_ids": [str(sample_ids[0])]},
+                actor_user_id=None,
+            )
+            await service.update_loop_snapshot(
+                loop_id=loop.id,
+                payload={"mode": "append_all_to_pool"},
+                actor_user_id=None,
+            )
+
+            snapshot = (
+                await session.exec(
+                    select(ALSnapshotVersion)
+                    .where(ALSnapshotVersion.loop_id == loop.id)
+                    .order_by(ALSnapshotVersion.version_index.desc())
+                )
+            ).first()
+            assert snapshot is not None
+            rows = list(
+                (
+                    await session.exec(
+                        select(ALSnapshotSample).where(ALSnapshotSample.snapshot_version_id == snapshot.id)
+                    )
+                ).all()
+            )
+            assert {row.sample_id for row in rows} == {sample_ids[0], sample_ids[1], sample_ids[2]}
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_snapshot_update_rejects_non_oracle_sample_subset(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=3)
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=branch.head_commit_id,
+            labeled_ids=[sample_ids[0]],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-snapshot-update-oracle-subset-reject",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            await service.init_loop_snapshot(
+                loop_id=loop.id,
+                payload={"sample_ids": [str(sample_ids[0])]},
+                actor_user_id=None,
+            )
+            with pytest.raises(BadRequestAppException, match="subset of oracle labeled samples"):
+                await service.update_loop_snapshot(
+                    loop_id=loop.id,
+                    payload={"mode": "append_all_to_pool", "sample_ids": [str(sample_ids[1])]},
+                    actor_user_id=None,
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_reveal_source_commit_fixed_to_oracle(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        oracle_commit_id = branch.head_commit_id
+        next_commit = await _create_project_commit(
+            session,
+            project=project,
+            parent_id=oracle_commit_id,
+            message="head-moved",
+        )
+        branch.head_commit_id = next_commit.id
+        session.add(branch)
+        await session.commit()
+        await session.refresh(branch)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-reveal-source-oracle",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(oracle_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            reveal_commit_id = await service._resolve_reveal_source_commit_id(loop=loop)
+            assert reveal_commit_id == oracle_commit_id
+            assert reveal_commit_id != branch.head_commit_id
         finally:
             _session_ctx.reset(token)
 

@@ -102,3 +102,20 @@ func TestDecodeStepEventLogPreservesStructuredFields(t *testing.T) {
 		t.Fatalf("message args mismatch: %v", messageArgsPayload["step"])
 	}
 }
+
+func TestExtractOracleCommitID(t *testing.T) {
+	rawConfig := []byte(`{"mode":{"oracle_commit_id":"4af4e930-4bc0-45fb-b6e8-6f5ec7f9c35a"}}`)
+	got := extractOracleCommitID(rawConfig)
+	if got != "4af4e930-4bc0-45fb-b6e8-6f5ec7f9c35a" {
+		t.Fatalf("oracle commit extraction mismatch: %s", got)
+	}
+}
+
+func TestExtractOracleCommitIDMissingReturnsEmpty(t *testing.T) {
+	if got := extractOracleCommitID([]byte(`{"mode":{}}`)); got != "" {
+		t.Fatalf("expected empty oracle commit id, got=%s", got)
+	}
+	if got := extractOracleCommitID([]byte(`{}`)); got != "" {
+		t.Fatalf("expected empty oracle commit id, got=%s", got)
+	}
+}

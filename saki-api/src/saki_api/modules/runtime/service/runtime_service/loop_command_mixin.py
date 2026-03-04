@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import List
+from typing import Any, List
 
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
@@ -17,7 +17,7 @@ from saki_api.modules.runtime.api.round_step import (
 )
 from saki_api.modules.runtime.domain import phase_for_mode
 from saki_api.modules.runtime.domain.loop import Loop
-from saki_api.modules.shared.modeling.enums import LoopMode
+from saki_api.modules.shared.modeling.enums import LoopLifecycle, LoopMode
 
 
 class LoopCommandMixin:
@@ -29,6 +29,35 @@ class LoopCommandMixin:
         reproducibility_map["global_seed"] = str(seed or "").strip()
         updated["reproducibility"] = reproducibility_map
         return updated
+
+    def _extract_config_oracle_commit_id(self, config: dict[str, Any] | None) -> uuid.UUID | None:
+        simulation = self._extract_simulation_config(dict(config or {}))
+        raw = str(simulation.oracle_commit_id or "").strip()
+        if not raw:
+            return None
+        try:
+            return uuid.UUID(raw)
+        except Exception as exc:
+            raise BadRequestAppException("config.mode.oracle_commit_id must be a valid UUID") from exc
+
+    async def _validate_simulation_oracle_commit(
+        self,
+        *,
+        project_id: uuid.UUID,
+        mode: LoopMode,
+        config: dict[str, Any] | None,
+    ) -> uuid.UUID | None:
+        if mode != LoopMode.SIMULATION:
+            return None
+        oracle_commit_id = self._extract_config_oracle_commit_id(config)
+        if oracle_commit_id is None:
+            raise BadRequestAppException("simulation mode requires config.mode.oracle_commit_id")
+        oracle_commit = await self.project_gateway.get_commit(oracle_commit_id)
+        if oracle_commit is None:
+            raise BadRequestAppException("config.mode.oracle_commit_id does not exist")
+        if oracle_commit.project_id != project_id:
+            raise BadRequestAppException("config.mode.oracle_commit_id must belong to the same project")
+        return oracle_commit_id
 
     @transactional
     async def create_loop(self, project_id: uuid.UUID, payload: LoopCreateRequest) -> Loop:
@@ -45,6 +74,11 @@ class LoopCommandMixin:
 
         mode_text = str(payload.mode.value if hasattr(payload.mode, "value") else payload.mode)
         normalized_config = self._normalize_loop_config(payload.config, mode=mode_text)
+        await self._validate_simulation_oracle_commit(
+            project_id=project_id,
+            mode=payload.mode,
+            config=normalized_config,
+        )
 
         # Inject project's enabled_annotation_types into the plugin config
         # section so it flows through dispatcher → executor → plugin for
@@ -119,6 +153,25 @@ class LoopCommandMixin:
                 and current_seed != next_seed
             ):
                 raise BadRequestAppException("config.reproducibility.global_seed is immutable once lifecycle is not draft")
+
+            current_oracle_commit_id = await self._validate_simulation_oracle_commit(
+                project_id=loop.project_id,
+                mode=loop.mode,
+                config=loop.config or {},
+            )
+            next_oracle_commit_id = await self._validate_simulation_oracle_commit(
+                project_id=loop.project_id,
+                mode=next_mode,
+                config=normalized_config,
+            )
+            if current_oracle_commit_id != next_oracle_commit_id:
+                can_update_oracle = (
+                    loop.lifecycle == LoopLifecycle.DRAFT and loop.active_snapshot_version_id is None
+                )
+                if not can_update_oracle:
+                    raise BadRequestAppException(
+                        "config.mode.oracle_commit_id can only change while loop is draft and snapshot is not initialized"
+                    )
             patch.config = normalized_config
             patch.max_rounds = self._derive_loop_max_rounds(mode=mode_text, config=normalized_config)
             patch.query_batch_size = self._derive_query_batch_size(mode=mode_text, config=normalized_config)

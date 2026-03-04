@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from saki_api.core.exceptions import BadRequestAppException
@@ -141,6 +142,12 @@ def validate_loop_config(config: dict[str, Any], *, mode: str) -> None:
         oracle_commit_id = str(mode_map.get("oracle_commit_id") or "").strip()
         if not oracle_commit_id:
             raise BadRequestAppException("simulation mode requires config.mode.oracle_commit_id")
+        try:
+            uuid.UUID(oracle_commit_id)
+        except Exception as exc:
+            raise BadRequestAppException(
+                "simulation mode requires valid UUID config.mode.oracle_commit_id"
+            ) from exc
 
 
 def derive_loop_max_rounds(*, mode: str, config: dict[str, Any]) -> int:

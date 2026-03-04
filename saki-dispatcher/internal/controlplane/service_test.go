@@ -100,6 +100,27 @@ func TestPhaseForStep(t *testing.T) {
 	}
 }
 
+func TestModeRoundPolicyForSupportsAllLoopModes(t *testing.T) {
+	service := &Service{}
+	cases := []db.Loopmode{modeAL, modeSIM, modeManual}
+	for _, mode := range cases {
+		policy, err := service.modeRoundPolicyFor(mode)
+		if err != nil {
+			t.Fatalf("mode %s should resolve policy: %v", mode, err)
+		}
+		if policy == nil {
+			t.Fatalf("mode %s resolved nil policy", mode)
+		}
+	}
+}
+
+func TestModeRoundPolicyForRejectsUnsupportedMode(t *testing.T) {
+	service := &Service{}
+	if _, err := service.modeRoundPolicyFor(db.Loopmode("legacy")); err == nil {
+		t.Fatal("unsupported mode should return error")
+	}
+}
+
 func TestIsOrchestratorDispatchKind(t *testing.T) {
 	if !isOrchestratorDispatchKind(db.StepdispatchkindORCHESTRATOR) {
 		t.Fatal("ORCHESTRATOR should be recognized as orchestrator dispatch kind")

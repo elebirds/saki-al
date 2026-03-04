@@ -142,6 +142,10 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 latest_commit_id="",
                 revealable_sample_ids_hash="",
                 effective_min_required=0,
+                pool_hidden_before=0,
+                pool_hidden_after=0,
+                train_visible_after=0,
+                total_train_universe=0,
             )
 
         async with SessionLocal() as session:
@@ -166,6 +170,10 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     latest_commit_id="",
                     revealable_sample_ids_hash="",
                     effective_min_required=0,
+                    pool_hidden_before=0,
+                    pool_hidden_after=0,
+                    train_visible_after=0,
+                    total_train_universe=0,
                 )
             except Exception as exc:
                 await session.rollback()
@@ -179,6 +187,10 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                     latest_commit_id="",
                     revealable_sample_ids_hash="",
                     effective_min_required=0,
+                    pool_hidden_before=0,
+                    pool_hidden_after=0,
+                    train_visible_after=0,
+                    total_train_universe=0,
                 )
 
             latest_commit_id = result.get("latest_commit_id")
@@ -189,6 +201,10 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 latest_commit_id=str(latest_commit_id or ""),
                 revealable_sample_ids_hash=str(result.get("revealable_sample_ids_hash") or ""),
                 effective_min_required=int(result.get("effective_min_required", 0)),
+                pool_hidden_before=int(result.get("pool_hidden_before", 0)),
+                pool_hidden_after=int(result.get("pool_hidden_after", 0)),
+                train_visible_after=int(result.get("train_visible_after", 0)),
+                total_train_universe=int(result.get("total_train_universe", 0)),
             )
 
     async def _create_simulation_commit_tx(

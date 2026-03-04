@@ -393,6 +393,10 @@ type ResolveRoundRevealResponse struct {
 	LatestCommitId          string                 `protobuf:"bytes,4,opt,name=latest_commit_id,json=latestCommitId,proto3" json:"latest_commit_id,omitempty"`
 	RevealableSampleIdsHash string                 `protobuf:"bytes,5,opt,name=revealable_sample_ids_hash,json=revealableSampleIdsHash,proto3" json:"revealable_sample_ids_hash,omitempty"`
 	EffectiveMinRequired    int32                  `protobuf:"varint,6,opt,name=effective_min_required,json=effectiveMinRequired,proto3" json:"effective_min_required,omitempty"`
+	PoolHiddenBefore        int32                  `protobuf:"varint,7,opt,name=pool_hidden_before,json=poolHiddenBefore,proto3" json:"pool_hidden_before,omitempty"`
+	PoolHiddenAfter         int32                  `protobuf:"varint,8,opt,name=pool_hidden_after,json=poolHiddenAfter,proto3" json:"pool_hidden_after,omitempty"`
+	TrainVisibleAfter       int32                  `protobuf:"varint,9,opt,name=train_visible_after,json=trainVisibleAfter,proto3" json:"train_visible_after,omitempty"`
+	TotalTrainUniverse      int32                  `protobuf:"varint,10,opt,name=total_train_universe,json=totalTrainUniverse,proto3" json:"total_train_universe,omitempty"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -465,6 +469,34 @@ func (x *ResolveRoundRevealResponse) GetRevealableSampleIdsHash() string {
 func (x *ResolveRoundRevealResponse) GetEffectiveMinRequired() int32 {
 	if x != nil {
 		return x.EffectiveMinRequired
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealResponse) GetPoolHiddenBefore() int32 {
+	if x != nil {
+		return x.PoolHiddenBefore
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealResponse) GetPoolHiddenAfter() int32 {
+	if x != nil {
+		return x.PoolHiddenAfter
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealResponse) GetTrainVisibleAfter() int32 {
+	if x != nil {
+		return x.TrainVisibleAfter
+	}
+	return 0
+}
+
+func (x *ResolveRoundRevealResponse) GetTotalTrainUniverse() int32 {
+	if x != nil {
+		return x.TotalTrainUniverse
 	}
 	return 0
 }
@@ -1679,14 +1711,19 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x1b\n" +
 	"\tbranch_id\x18\x03 \x01(\tR\bbranchId\x12\x14\n" +
 	"\x05force\x18\x04 \x01(\bR\x05force\x12!\n" +
-	"\fmin_required\x18\x05 \x01(\x05R\vminRequired\"\xac\x02\n" +
+	"\fmin_required\x18\x05 \x01(\x05R\vminRequired\"\xe8\x03\n" +
 	"\x1aResolveRoundRevealResponse\x12%\n" +
 	"\x0erevealed_count\x18\x01 \x01(\x05R\rrevealedCount\x12%\n" +
 	"\x0eselected_count\x18\x02 \x01(\x05R\rselectedCount\x12#\n" +
 	"\rmissing_count\x18\x03 \x01(\x05R\fmissingCount\x12(\n" +
 	"\x10latest_commit_id\x18\x04 \x01(\tR\x0elatestCommitId\x12;\n" +
 	"\x1arevealable_sample_ids_hash\x18\x05 \x01(\tR\x17revealableSampleIdsHash\x124\n" +
-	"\x16effective_min_required\x18\x06 \x01(\x05R\x14effectiveMinRequired\"\xbc\x02\n" +
+	"\x16effective_min_required\x18\x06 \x01(\x05R\x14effectiveMinRequired\x12,\n" +
+	"\x12pool_hidden_before\x18\a \x01(\x05R\x10poolHiddenBefore\x12*\n" +
+	"\x11pool_hidden_after\x18\b \x01(\x05R\x0fpoolHiddenAfter\x12.\n" +
+	"\x13train_visible_after\x18\t \x01(\x05R\x11trainVisibleAfter\x120\n" +
+	"\x14total_train_universe\x18\n" +
+	" \x01(\x05R\x12totalTrainUniverse\"\xbc\x02\n" +
 	"\x16ActivateSamplesRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +

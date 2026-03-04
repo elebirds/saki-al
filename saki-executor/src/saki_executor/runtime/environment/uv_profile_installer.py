@@ -167,6 +167,8 @@ def _repair_mmcv_ext(
             "install",
             "--python",
             str(venv_python),
+            "--reinstall-package",
+            "onedl-mmcv",
             "--no-build-isolation",
             "--no-cache",
             "--no-deps",

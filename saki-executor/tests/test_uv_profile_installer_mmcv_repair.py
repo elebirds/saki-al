@@ -86,6 +86,8 @@ def test_sync_profile_env_repair_mmcv_ext_when_missing(tmp_path: Path, monkeypat
         cmd for cmd in commands if cmd[:3] == ["uv", "pip", "install"] and any("onedl-mmcv==" in item for item in cmd)
     )
     # 关键验证：重建命令必须使用 no-build-isolation/no-cache/no-deps 组合。
+    assert "--reinstall-package" in rebuild_cmd
+    assert "onedl-mmcv" in rebuild_cmd
     assert "--no-build-isolation" in rebuild_cmd
     assert "--no-cache" in rebuild_cmd
     assert "--no-deps" in rebuild_cmd

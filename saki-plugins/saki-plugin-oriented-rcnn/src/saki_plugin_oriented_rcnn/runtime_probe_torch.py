@@ -37,7 +37,8 @@ def _ensure_mm_runtime_dependencies() -> None:
     if mmcv_ext_spec is None:
         raise RuntimeError(
             "runtime dependency check failed: missing mmcv._ext; "
-            "please rebuild profile environment (auto-repair in executor can fix this)"
+            "please rebuild profile environment (auto-repair in executor can fix this). "
+            "if you see CUDA mismatch, check whether executor toolchain auto-align is enabled"
         )
 
     try:

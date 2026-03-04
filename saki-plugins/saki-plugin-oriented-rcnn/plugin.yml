@@ -1,0 +1,188 @@
+plugin_id: "oriented_rcnn_v1"
+version: "1.0.0"
+display_name: "Oriented R-CNN"
+sdk_version: ">=4.0.0"
+
+supported_step_types:
+  - train
+  - score
+  - predict
+  - eval
+  - custom
+
+supported_strategies:
+  - aug_iou_disagreement
+  - uncertainty_1_minus_max_conf
+  - random_baseline
+
+supported_accelerators:
+  - cuda
+  - cpu
+
+supports_auto_fallback: true
+
+step_runtime_requirements:
+  train:
+    requires_prepare_data: true
+    requires_trained_model: false
+    primary_model_artifact_name: "best.pth"
+  score:
+    requires_prepare_data: false
+    requires_trained_model: true
+    primary_model_artifact_name: "best.pth"
+  predict:
+    requires_prepare_data: false
+    requires_trained_model: true
+    primary_model_artifact_name: "best.pth"
+  eval:
+    requires_prepare_data: true
+    requires_trained_model: true
+    primary_model_artifact_name: "best.pth"
+  custom:
+    requires_prepare_data: true
+    requires_trained_model: false
+    primary_model_artifact_name: "best.pth"
+
+runtime_profiles:
+  - id: "cuda"
+    priority: 10
+    when: "host.backends.includes('cuda')"
+    dependency_groups:
+      - "profile-cuda"
+    allowed_backends:
+      - "cuda"
+
+  - id: "cpu"
+    priority: 100
+    when: "host.backends.includes('cpu')"
+    dependency_groups:
+      - "profile-cpu"
+    allowed_backends:
+      - "cpu"
+
+config_schema:
+  title: "Oriented R-CNN Request Config"
+  description: "Oriented R-CNN 插件配置，支持 DOTA 标注格式与主动学习闭环"
+  fields:
+    - key: epochs
+      label: 训练轮数
+      type: integer
+      default: 12
+      props:
+        min: 1
+        max: 5000
+        step: 1
+
+    - key: batch
+      label: 批量大小
+      type: integer
+      default: 2
+      props:
+        min: 1
+        max: 512
+        step: 1
+
+    - key: imgsz
+      label: 图像尺寸
+      type: integer
+      default: 1024
+      props:
+        min: 256
+        max: 4096
+        step: 32
+
+    - key: workers
+      label: DataLoader 线程数
+      type: integer
+      default: 2
+      props:
+        min: 0
+        max: 32
+        step: 1
+
+    - key: predict_conf
+      label: 预测置信度
+      type: number
+      default: 0.05
+      props:
+        min: 0.0
+        max: 1.0
+        step: 0.01
+
+    - key: val_split_ratio
+      label: 验证集比例
+      type: number
+      default: 0.2
+      props:
+        min: 0.05
+        max: 0.5
+        step: 0.05
+
+    - key: model_source
+      label: 模型来源
+      type: select
+      required: true
+      default: "preset"
+      options:
+        - label: 预设模型
+          value: "preset"
+        - label: 本地自定义
+          value: "custom_local"
+        - label: URL 自定义
+          value: "custom_url"
+
+    - key: model_preset
+      label: 预设模型
+      type: select
+      default: "oriented-rcnn-le90_r50_fpn_1x_dota"
+      options:
+        - label: Oriented R-CNN (R50-FPN, DOTA)
+          value: "oriented-rcnn-le90_r50_fpn_1x_dota"
+      visible: "form.model_source === 'preset'"
+
+    - key: model_custom_ref
+      label: 自定义模型路径
+      type: string
+      default: ""
+      props:
+        placeholder: "/path/to/model.pth 或 https://..."
+      visible: "form.model_source !== 'preset'"
+
+    - key: nms_iou_thr
+      label: NMS IoU 阈值
+      type: number
+      default: 0.1
+      props:
+        min: 0.01
+        max: 0.95
+        step: 0.01
+
+    - key: max_per_img
+      label: 单图最大候选框
+      type: integer
+      default: 2000
+      props:
+        min: 10
+        max: 5000
+        step: 10
+
+    - key: predict_geometry_mode
+      label: 预测几何输出模式
+      type: select
+      default: "auto"
+      options:
+        - label: 自动（按项目标注策略）
+          value: "auto"
+        - label: OBB
+          value: "obb"
+        - label: RECT
+          value: "rect"
+
+    - key: device
+      label: 设备
+      type: string
+      default: "auto"
+      props:
+        placeholder: "auto, cpu, cuda:0"
+
+entrypoint: "saki_plugin_oriented_rcnn.worker:main"

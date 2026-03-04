@@ -16,6 +16,25 @@ from typing import Any
 import numpy as np
 
 
+def _build_mm_import_error(exc: Exception) -> RuntimeError:
+    """将底层导入异常转成可诊断的运行时错误。"""
+    message = str(exc or "").strip()
+    if isinstance(exc, ModuleNotFoundError) and (
+        getattr(exc, "name", "") == "mmcv._ext" or "mmcv._ext" in message
+    ):
+        return RuntimeError(
+            "mmrotate runtime dependencies are not ready: missing mmcv._ext; "
+            "this is usually caused by an incomplete onedl-mmcv build in profile env. "
+            "please trigger profile auto-repair/rebuild with --no-build-isolation "
+            f"(root={exc.__class__.__name__}: {message})"
+        )
+
+    return RuntimeError(
+        "mmrotate runtime dependencies are required: onedl-mmrotate/onedl-mmdetection/onedl-mmengine "
+        f"(root={exc.__class__.__name__}: {message})"
+    )
+
+
 def _lazy_import_mm() -> dict[str, Any]:
     try:
         from mmengine.config import Config  # type: ignore
@@ -24,9 +43,7 @@ def _lazy_import_mm() -> dict[str, Any]:
         from mmrotate.evaluation.functional import eval_rbbox_map  # type: ignore
         from mmrotate.structures.bbox import rbox2qbox  # type: ignore
     except Exception as exc:  # pragma: no cover - 运行时依赖
-        raise RuntimeError(
-            "mmrotate runtime dependencies are required: onedl-mmrotate/onedl-mmdetection/onedl-mmengine"
-        ) from exc
+        raise _build_mm_import_error(exc) from exc
 
     return {
         "Config": Config,

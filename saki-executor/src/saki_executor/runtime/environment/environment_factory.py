@@ -11,8 +11,16 @@ from saki_plugin_sdk import RuntimeProfileSpec
 
 
 class EnvironmentFactory:
-    def __init__(self, *, auto_sync: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        auto_sync: bool = True,
+        mm_ext_auto_repair: bool = True,
+        mm_ext_auto_repair_timeout_sec: int = 1200,
+    ) -> None:
         self._auto_sync = bool(auto_sync)
+        self._mm_ext_auto_repair = bool(mm_ext_auto_repair)
+        self._mm_ext_auto_repair_timeout_sec = max(60, int(mm_ext_auto_repair_timeout_sec))
 
     def ensure_profile_python(
         self,
@@ -49,6 +57,8 @@ class EnvironmentFactory:
                 plugin_dir=plugin_dir,
                 venv_dir=venv_dir,
                 dependency_groups=list(profile.dependency_groups),
+                mm_ext_auto_repair=self._mm_ext_auto_repair,
+                mm_ext_auto_repair_timeout_sec=self._mm_ext_auto_repair_timeout_sec,
             )
             marker.write_text(key.cache_id(), encoding="utf-8")
 

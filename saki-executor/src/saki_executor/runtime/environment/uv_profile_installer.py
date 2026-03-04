@@ -19,6 +19,35 @@ def _tail(text: str, limit: int = 500) -> str:
     return data[-limit:]
 
 
+def _extract_locked_mmcv_wheel_urls(lock_path: Path) -> list[str]:
+    if not lock_path.exists():
+        return []
+
+    urls: list[str] = []
+    in_mmcv_block = False
+    block_seen_name = False
+    for raw in lock_path.read_text(encoding="utf-8").splitlines():
+        line = str(raw or "").strip()
+        if line == "[[package]]":
+            if in_mmcv_block:
+                break
+            in_mmcv_block = False
+            block_seen_name = False
+            continue
+        if line.startswith("name = "):
+            block_seen_name = True
+            in_mmcv_block = line == 'name = "onedl-mmcv"'
+            continue
+        if not in_mmcv_block or not block_seen_name:
+            continue
+        if '.whl"' not in line or 'url = "' not in line:
+            continue
+        match = re.search(r'url\s*=\s*"([^"]+\.whl)"', line)
+        if match:
+            urls.append(match.group(1))
+    return urls
+
+
 def _run_command(
     *,
     command: list[str],
@@ -35,6 +64,57 @@ def _run_command(
         env=env,
         check=False,
     )
+
+
+def _try_install_locked_mmcv_wheel(
+    *,
+    plugin_dir: Path,
+    venv_python: Path,
+    timeout_sec: int,
+    env: dict[str, str],
+) -> str:
+    # 关键设计：优先复用 lock 中已经解析好的 wheel URL，先走“二进制直装”再决定是否编译。
+    lock_path = plugin_dir / "uv.lock"
+    wheel_urls = _extract_locked_mmcv_wheel_urls(lock_path)
+    if not wheel_urls:
+        return "skipped(no_locked_wheel)"
+
+    last_error = ""
+    for url in wheel_urls:
+        install = _run_command(
+            command=[
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                str(venv_python),
+                "--reinstall-package",
+                "onedl-mmcv",
+                "--no-deps",
+                "--no-cache",
+                url,
+            ],
+            cwd=plugin_dir,
+            timeout_sec=timeout_sec,
+            env=env,
+        )
+        if int(install.returncode or 0) != 0:
+            last_error = f"url={url} stderr={_tail(install.stderr)}"
+            continue
+
+        _, has_ext = _probe_mmcv_ext(
+            venv_python=venv_python,
+            cwd=plugin_dir,
+            timeout_sec=timeout_sec,
+            env=env,
+        )
+        if has_ext:
+            return f"installed(url={url})"
+        last_error = f"url={url} installed_but_ext_missing"
+
+    if last_error:
+        return f"failed({last_error})"
+    return "failed(no_candidate_succeeded)"
 
 
 def _merge_env(base: dict[str, str], overlay: dict[str, str] | None = None) -> dict[str, str]:
@@ -633,6 +713,17 @@ def sync_profile_env(
     if (not has_mmcv) or has_mmcv_ext:
         return
 
+    locked_wheel_attempt = ""
+    if bool(mm_ext_auto_repair):
+        locked_wheel_attempt = _try_install_locked_mmcv_wheel(
+            plugin_dir=plugin_dir,
+            venv_python=venv_python,
+            timeout_sec=max(60, int(mm_ext_auto_repair_timeout_sec)),
+            env=env,
+        )
+        if locked_wheel_attempt.startswith("installed("):
+            return
+
     aligned_env = dict(env)
     cuda_context: dict[str, Any] = {
         "torch_cuda": "",
@@ -657,6 +748,7 @@ def sync_profile_env(
         except Exception as exc:
             raise RuntimeError(
                 "PROFILE_UNSATISFIED: failed to align CUDA toolchain before extension rebuild "
+                f"locked_wheel_attempt={locked_wheel_attempt or '-'} "
                 f"reason={exc}"
             ) from exc
 
@@ -664,6 +756,7 @@ def sync_profile_env(
         raise RuntimeError(
             "PROFILE_UNSATISFIED: missing mmcv._ext after uv sync; "
             "auto repair is disabled, set PLUGIN_MM_EXT_AUTO_REPAIR=true or rebuild onedl-mmcv manually. "
+            f"locked_wheel_attempt={locked_wheel_attempt or '-'} "
             f"{_format_cuda_alignment_context(cuda_context)}"
         )
 
@@ -680,6 +773,7 @@ def sync_profile_env(
         raise RuntimeError(
             "PROFILE_UNSATISFIED: missing mmcv._ext and auto repair failed "
             "(attempted rebuild with --no-build-isolation). "
+            f"locked_wheel_attempt={locked_wheel_attempt or '-'} "
             f"{_format_cuda_alignment_context(cuda_context)} "
             f"reason={exc}"
         ) from exc
@@ -693,6 +787,7 @@ def sync_profile_env(
     if not repaired_has_ext:
         raise RuntimeError(
             "PROFILE_UNSATISFIED: missing mmcv._ext after auto repair attempt; "
+            f"locked_wheel_attempt={locked_wheel_attempt or '-'} "
             f"{_format_cuda_alignment_context(cuda_context)} "
             f"bootstrap_stderr={bootstrap_stderr!r} rebuild_stderr={rebuild_stderr!r}"
         )

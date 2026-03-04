@@ -65,6 +65,58 @@ def test_non_cuda_profile_does_not_trigger_toolchain_align(
     assert not any((cmd and cmd[0] == "nvcc") for cmd in commands)
 
 
+def test_cuda_profile_prefers_locked_mmcv_wheel_before_toolchain_align(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    venv_dir = plugin_dir / ".venv-cuda"
+    venv_python = _write_fake_venv_python(venv_dir)
+
+    wheel_url = "https://mmwheels-bucket.onedl.ai/cu129-torch290/onedl-mmcv/onedl_mmcv-2.3.2.post2-cp312-cp312-manylinux_2_34_x86_64.whl"
+    (plugin_dir / "uv.lock").write_text(
+        "\n".join(
+            [
+                "[[package]]",
+                'name = "onedl-mmcv"',
+                "wheels = [",
+                f'  {{ url = "{wheel_url}" }},',
+                "]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    probe_payloads = [
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": false}\n",
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": true}\n",
+    ]
+    commands: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(list(cmd))
+        if cmd[:2] == ["uv", "sync"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if _is_python_script(cmd, venv_python, "__SAKI_MM_EXT_PROBE__"):
+            return subprocess.CompletedProcess(cmd, 0, probe_payloads.pop(0), "")
+        if cmd[:3] == ["uv", "pip", "install"] and wheel_url in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    installer.sync_profile_env(
+        plugin_dir=plugin_dir,
+        venv_dir=venv_dir,
+        dependency_groups=["profile-cuda"],
+        is_cuda_profile=True,
+    )
+
+    assert any(cmd[:3] == ["uv", "pip", "install"] and wheel_url in cmd for cmd in commands)
+    assert not any("__SAKI_TORCH_CUDA__" in (cmd[2] if len(cmd) > 2 else "") for cmd in commands)
+    assert not any((cmd and cmd[0] == "nvcc") for cmd in commands)
+
+
 def test_cuda_profile_skips_align_when_mmcv_ext_is_ready(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

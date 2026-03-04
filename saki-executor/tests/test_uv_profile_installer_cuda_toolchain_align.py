@@ -65,7 +65,7 @@ def test_non_cuda_profile_does_not_trigger_toolchain_align(
     assert not any((cmd and cmd[0] == "nvcc") for cmd in commands)
 
 
-def test_cuda_profile_skips_align_when_torch_cuda_is_empty(
+def test_cuda_profile_skips_align_when_mmcv_ext_is_ready(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     plugin_dir = tmp_path / "plugin"
@@ -79,18 +79,11 @@ def test_cuda_profile_skips_align_when_torch_cuda_is_empty(
         commands.append(list(cmd))
         if cmd[:2] == ["uv", "sync"]:
             return subprocess.CompletedProcess(cmd, 0, "", "")
-        if _is_python_script(cmd, venv_python, "__SAKI_TORCH_CUDA__"):
-            return subprocess.CompletedProcess(
-                cmd,
-                0,
-                '__SAKI_TORCH_CUDA__={"torch_cuda": "", "torch_version": "2.10.0"}\n',
-                "",
-            )
         if _is_python_script(cmd, venv_python, "__SAKI_MM_EXT_PROBE__"):
             return subprocess.CompletedProcess(
                 cmd,
                 0,
-                '__SAKI_MM_EXT_PROBE__={"has_mmcv": false, "has_mmcv_ext": false}\n',
+                '__SAKI_MM_EXT_PROBE__={"has_mmcv": true, "has_mmcv_ext": true}\n',
                 "",
             )
         raise AssertionError(f"unexpected command: {cmd}")
@@ -104,6 +97,7 @@ def test_cuda_profile_skips_align_when_torch_cuda_is_empty(
         is_cuda_profile=True,
     )
 
+    assert not any("__SAKI_TORCH_CUDA__" in (cmd[2] if len(cmd) > 2 else "") for cmd in commands)
     assert not any((cmd and cmd[0] == "nvcc") for cmd in commands)
     assert not any("nvidia-cuda-nvcc-cu" in " ".join(cmd) for cmd in commands)
 
@@ -182,6 +176,10 @@ def test_cuda_profile_auto_installs_nvcc_when_no_matching_home(
 
     installed_home = venv_dir / "lib" / "python3.12" / "site-packages" / "nvidia" / "cuda_nvcc"
     commands: list[list[str]] = []
+    probe_payloads = [
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": false}\n",
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": true}\n",
+    ]
 
     def _fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         commands.append(list(cmd))
@@ -205,9 +203,13 @@ def test_cuda_profile_auto_installs_nvcc_when_no_matching_home(
             return subprocess.CompletedProcess(
                 cmd,
                 0,
-                '__SAKI_MM_EXT_PROBE__={"has_mmcv": false, "has_mmcv_ext": false}\n',
+                probe_payloads.pop(0),
                 "",
             )
+        if _is_python_script(cmd, venv_python, "__SAKI_MM_VERSION__"):
+            return subprocess.CompletedProcess(cmd, 0, "__SAKI_MM_VERSION__=2.3.2.post2\n", "")
+        if cmd[:3] == ["uv", "pip", "install"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
         raise AssertionError(f"unexpected command: {cmd}")
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
@@ -250,7 +252,7 @@ def test_cuda_profile_auto_install_failure_reports_context(
             return subprocess.CompletedProcess(
                 cmd,
                 0,
-                '__SAKI_MM_EXT_PROBE__={"has_mmcv": false, "has_mmcv_ext": false}\n',
+                '__SAKI_MM_EXT_PROBE__={"has_mmcv": true, "has_mmcv_ext": false}\n',
                 "",
             )
         raise AssertionError(f"unexpected command: {cmd}")
@@ -284,6 +286,10 @@ def test_cuda_profile_accepts_nonzero_nvcc_version_output(
     venv_python = _write_fake_venv_python(venv_dir)
     search_root = tmp_path / "search"
     matched_home = _create_fake_cuda_home(search_root, "cuda-12.8")
+    probe_payloads = [
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": false}\n",
+        "__SAKI_MM_EXT_PROBE__={\"has_mmcv\": true, \"has_mmcv_ext\": true}\n",
+    ]
 
     def _fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         if cmd[:2] == ["uv", "sync"]:
@@ -308,9 +314,13 @@ def test_cuda_profile_accepts_nonzero_nvcc_version_output(
             return subprocess.CompletedProcess(
                 cmd,
                 0,
-                '__SAKI_MM_EXT_PROBE__={"has_mmcv": false, "has_mmcv_ext": false}\n',
+                probe_payloads.pop(0),
                 "",
             )
+        if _is_python_script(cmd, venv_python, "__SAKI_MM_VERSION__"):
+            return subprocess.CompletedProcess(cmd, 0, "__SAKI_MM_VERSION__=2.3.2.post2\n", "")
+        if cmd[:3] == ["uv", "pip", "install"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
         raise AssertionError(f"unexpected command: {cmd}")
 
     monkeypatch.setattr(subprocess, "run", _fake_run)

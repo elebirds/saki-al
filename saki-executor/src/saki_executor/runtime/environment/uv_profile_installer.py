@@ -622,6 +622,17 @@ def sync_profile_env(
         # 解释：解释器路径缺失属于上游环境问题，这里保持原有语义，交给调用方统一报错。
         return
 
+    # 关键设计：先探测 mmcv._ext，只有缺失且需要重建时才执行 CUDA toolchain 对齐。
+    # 这样在“预编译 wheel 已完整”的场景下可直接通过，不会被无关 nvcc 差异阻断。
+    has_mmcv, has_mmcv_ext = _probe_mmcv_ext(
+        venv_python=venv_python,
+        cwd=plugin_dir,
+        timeout_sec=timeout_sec,
+        env=env,
+    )
+    if (not has_mmcv) or has_mmcv_ext:
+        return
+
     aligned_env = dict(env)
     cuda_context: dict[str, Any] = {
         "torch_cuda": "",
@@ -648,15 +659,6 @@ def sync_profile_env(
                 "PROFILE_UNSATISFIED: failed to align CUDA toolchain before extension rebuild "
                 f"reason={exc}"
             ) from exc
-
-    has_mmcv, has_mmcv_ext = _probe_mmcv_ext(
-        venv_python=venv_python,
-        cwd=plugin_dir,
-        timeout_sec=timeout_sec,
-        env=aligned_env,
-    )
-    if (not has_mmcv) or has_mmcv_ext:
-        return
 
     if not bool(mm_ext_auto_repair):
         raise RuntimeError(

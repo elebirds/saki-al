@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Awaitable, Callable
 
+from loguru import logger
+
 from saki_executor.steps.state import StepStatus
 from saki_plugin_sdk import StepReporter
 
@@ -109,10 +111,22 @@ class StepEventEmitter:
             )
         if event_type == "metric":
             metrics = payload.get("metrics") or {}
+            normalized_metrics = {str(k): float(v) for k, v in metrics.items()}
+            step_value = int(payload.get("step", 0))
+            epoch_raw = payload.get("epoch")
+            epoch_text = f" epoch={int(epoch_raw)}" if epoch_raw is not None else ""
+            if normalized_metrics:
+                preview = ", ".join(
+                    f"{name}={value:.6f}".rstrip("0").rstrip(".")
+                    for name, value in sorted(normalized_metrics.items(), key=lambda item: item[0])
+                )
+            else:
+                preview = "empty"
+            logger.info("metric step={}{} {}", step_value, epoch_text, preview)
             return self._reporter.metric(
-                step=int(payload.get("step", 0)),
+                step=step_value,
                 epoch=payload.get("epoch"),
-                metrics={str(k): float(v) for k, v in metrics.items()},
+                metrics=normalized_metrics,
             )
         if event_type == "artifact":
             return self._reporter.log(

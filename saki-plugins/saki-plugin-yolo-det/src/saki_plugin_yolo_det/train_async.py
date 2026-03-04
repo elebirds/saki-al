@@ -110,6 +110,7 @@ async def run_train_with_epoch_stream(
     train_done = asyncio.Event()
     train_result: dict[str, Any] | None = None
     train_error: BaseException | None = None
+    latest_epoch_metrics: dict[str, Any] = {}
 
     def _run_train() -> None:
         nonlocal train_result, train_error
@@ -153,6 +154,8 @@ async def run_train_with_epoch_stream(
         eta_sec = max(0, to_int(epoch_payload.get("eta_sec"), 0))
         metrics_payload = epoch_payload.get("metrics")
         metrics_row = metrics_payload if isinstance(metrics_payload, dict) else {}
+        if metrics_row:
+            latest_epoch_metrics = dict(metrics_row)
         await emit(
             "progress",
             {
@@ -162,24 +165,23 @@ async def run_train_with_epoch_stream(
                 "eta_sec": eta_sec,
             },
         )
-        await emit(
-            "log",
-            {
-                "level": "INFO",
-                "message": _format_epoch_metric_summary(metrics_row),
-                "meta": {
-                    "source": "worker_metric_summary",
-                    "epoch": epoch,
-                    "step": step,
-                },
-            },
-        )
         await emit("metric", {"step": step, "epoch": epoch, "metrics": metrics_row})
 
     if train_error is not None:
         raise train_error
     if train_result is None:
         raise RuntimeError("training thread finished without result")
+    final_metrics = (
+        dict(train_result.get("metrics"))
+        if isinstance(train_result.get("metrics"), dict)
+        else {}
+    )
+    if latest_epoch_metrics:
+        merged_metrics = dict(final_metrics)
+        merged_metrics.update(latest_epoch_metrics)
+        train_result["metrics"] = merged_metrics
+    else:
+        train_result["metrics"] = final_metrics
 
     return train_result
 

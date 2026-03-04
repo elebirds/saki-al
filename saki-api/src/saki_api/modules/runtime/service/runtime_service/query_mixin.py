@@ -306,9 +306,17 @@ class RuntimeQueryMixin:
             metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
             keys = sorted(str(key) for key in metrics.keys() if str(key).strip())
             if keys:
-                preview = ", ".join(keys[:4])
-                suffix = "..." if len(keys) > 4 else ""
-                return f"metrics updated ({preview}{suffix})"
+                preview_chunks: list[str] = []
+                for key in keys[:5]:
+                    raw_value = metrics.get(key)
+                    try:
+                        value = float(raw_value)
+                        text = f"{value:.6f}".rstrip("0").rstrip(".")
+                    except Exception:
+                        text = str(raw_value)
+                    preview_chunks.append(f"{key}={text}")
+                suffix = ", ..." if len(keys) > 5 else ""
+                return "metrics updated: " + ", ".join(preview_chunks) + suffix
             return "metrics updated"
         if event_type == "artifact":
             name = str(payload.get("name") or "").strip()

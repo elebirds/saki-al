@@ -707,7 +707,8 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
             assert any(item.raw_message == "disk full" for item in all_events.items)
             metric_event = next(item for item in all_events.items if item.event_type == "metric")
             assert metric_event.message_key == "runtime.metric.update"
-            assert metric_event.message_text != "metric keys=map50,precision"
+            assert "map50=0.7" in metric_event.message_text
+            assert "precision=0.8" in metric_event.message_text
 
             error_only = await round_step_query_endpoint.get_step_events(
                 step_id=step.id,

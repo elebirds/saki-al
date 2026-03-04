@@ -86,6 +86,7 @@ class OrientedRCNNPredictService:
             work_dir=work_dir,
             load_from=checkpoint_ref,
             train_seed=int(cfg.train_seed or context.step_context.train_seed),
+            train_sample_count=int(manifest.get("train_sample_count") or 0),
         )
 
         topk = max(1, to_int(params.get("sampling_topk", params.get("topk", 200)), 200))

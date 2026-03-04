@@ -9,6 +9,7 @@ from __future__ import annotations
 """
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Sequence
 
@@ -29,6 +30,35 @@ PRESET_SPECS: dict[str, PresetSpec] = {
         ),
     )
 }
+
+# 关键设计：
+# 1. 评估阶段优先保证召回，避免在模型侧过早阈值裁剪导致 dets=0。
+# 2. 主动学习侧需要后续策略基于置信度再筛选，因此这里采用极低阈值。
+_MODEL_TEST_SCORE_THR = 0.001
+
+
+def _resolve_warmup_iters(*, train_sample_count: int | None, batch: int, epochs: int) -> int:
+    """根据训练规模自适应 warmup 迭代数。
+
+    背景：
+    - 直接写死 500 iter 在小样本任务中会导致“整轮都在 warmup”，
+      学习率长期过低，模型几乎不学习。
+    - 这里用总迭代数近似约束 warmup，让小数据集也能尽快进入正常学习阶段。
+    """
+    safe_batch = max(1, int(batch))
+    safe_epochs = max(1, int(epochs))
+    sample_count = max(0, int(train_sample_count or 0))
+    if sample_count <= 0:
+        # 无法感知真实样本规模时，使用保守小 warmup，避免再次出现“500 过长”问题。
+        return 20
+
+    iter_per_epoch = max(1, math.ceil(sample_count / safe_batch))
+    total_iters = max(1, iter_per_epoch * safe_epochs)
+
+    # 规则：warmup 约占总迭代 10%，并限制在 [5, 100] 区间内。
+    # 这样在大数据集不至于过短，在小数据集也不会吞掉全部训练进度。
+    warmup_iters = max(5, min(100, total_iters // 10))
+    return int(min(warmup_iters, max(1, total_iters - 1)))
 
 
 def resolve_preset_checkpoint(preset_id: str) -> str:
@@ -53,6 +83,7 @@ def build_mmrotate_runtime_cfg(
     work_dir: Path,
     load_from: str,
     train_seed: int,
+    train_sample_count: int | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -63,6 +94,11 @@ def build_mmrotate_runtime_cfg(
     iou_thrs = [round(0.5 + i * 0.05, 2) for i in range(10)]
     milestones = sorted({max(1, int(epochs * 0.66)), max(1, int(epochs * 0.9))})
     classes_text = repr(tuple(str(v) for v in classes))
+    warmup_iters = _resolve_warmup_iters(
+        train_sample_count=train_sample_count,
+        batch=batch,
+        epochs=epochs,
+    )
 
     val_ann = "train/labelTxt" if val_degraded else "val/labelTxt"
     val_img = "train/images" if val_degraded else "val/images"
@@ -220,14 +256,14 @@ model = dict(
     ),
     test_cfg=dict(
         rpn=dict(nms_pre=2000, max_per_img=2000, nms=dict(type="nms", iou_threshold=0.8), min_bbox_size=0),
-        rcnn=dict(nms_pre=2000, min_bbox_size=0, score_thr=0.05, nms=dict(type="nms_rotated", iou_threshold={float(nms_iou_thr)}), max_per_img={int(max_per_img)}),
+        rcnn=dict(nms_pre=2000, min_bbox_size=0, score_thr={float(_MODEL_TEST_SCORE_THR)}, nms=dict(type="nms_rotated", iou_threshold={float(nms_iou_thr)}), max_per_img={int(max_per_img)}),
     ),
 )
 
 optim_wrapper = dict(type="OptimWrapper", optimizer=dict(type="SGD", lr=0.005, momentum=0.9, weight_decay=0.0001))
 
 param_scheduler = [
-    dict(type="LinearLR", begin=0, end=500, by_epoch=False, start_factor=0.001),
+    dict(type="LinearLR", begin=0, end={int(warmup_iters)}, by_epoch=False, start_factor=0.001),
     dict(type="MultiStepLR", begin=0, end={int(epochs)}, by_epoch=True, milestones={repr(milestones)}, gamma=0.1),
 ]
 

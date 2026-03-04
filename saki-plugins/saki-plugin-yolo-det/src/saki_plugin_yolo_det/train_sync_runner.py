@@ -79,6 +79,9 @@ def run_train_sync(
             epoch_callback=epoch_callback,
         ),
     )
+    # Use an absolute project directory under workspace artifacts to avoid
+    # Ultralytics falling back to its default "runs/detect" tree.
+    train_project_dir = workspace.artifacts_dir.resolve()
     train_output = model.train(
         data=str(dataset_yaml),
         epochs=epochs,
@@ -88,7 +91,7 @@ def run_train_sync(
         device=device,
         seed=int(train_seed),
         deterministic=bool(deterministic),
-        project=str(workspace.root),
+        project=str(train_project_dir),
         name="yolo_train",
         exist_ok=True,
         verbose=False,

@@ -1,30 +1,55 @@
 from __future__ import annotations
 
-import pytest
+import os
+from pathlib import Path
 
-from saki_plugin_yolo_det.artifact_collector import extract_primary_metrics
-
-
-def _to_float(value, default: float) -> float:
-    try:
-        return float(value)
-    except Exception:
-        return default
+from saki_plugin_sdk.workspace import Workspace
+from saki_plugin_yolo_det.artifact_collector import collect_optional_artifacts, resolve_save_dir
 
 
 class _DummyTrainOutput:
-    pass
+    def __init__(self, save_dir: str) -> None:
+        self.save_dir = save_dir
 
 
-def test_extract_primary_metrics_backfills_loss_from_history():
-    metrics = extract_primary_metrics(
-        train_output=_DummyTrainOutput(),
-        history=[{"map50": 0.71, "map50_95": 0.41, "precision": 0.8, "recall": 0.67, "loss": 0.33}],
-        to_float=_to_float,
-    )
+class _DummyModel:
+    trainer = None
 
-    assert metrics["map50"] == pytest.approx(0.71)
-    assert metrics["map50_95"] == pytest.approx(0.41)
-    assert metrics["precision"] == pytest.approx(0.8)
-    assert metrics["recall"] == pytest.approx(0.67)
-    assert metrics["loss"] == pytest.approx(0.33)
+
+def test_resolve_save_dir_returns_absolute_path(tmp_path: Path):
+    rel_save_dir = tmp_path / "runs" / "rounds" / "step-1" / "yolo_train"
+    rel_save_dir.mkdir(parents=True, exist_ok=True)
+    output = _DummyTrainOutput(str(rel_save_dir.relative_to(tmp_path)))
+
+    current = Path.cwd()
+    try:
+        # Keep this test deterministic for relative-path resolution.
+        os.chdir(tmp_path)
+        resolved = resolve_save_dir(output, _DummyModel())
+    finally:
+        os.chdir(current)
+
+    assert resolved.is_absolute()
+    assert resolved == rel_save_dir.resolve()
+
+
+def test_collect_optional_artifacts_copies_common_train_outputs(tmp_path: Path):
+    save_dir = tmp_path / "yolo_train"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    (save_dir / "results.csv").write_text("epoch,loss\n1,1.0\n", encoding="utf-8")
+    (save_dir / "args.yaml").write_text("epochs: 1\n", encoding="utf-8")
+    (save_dir / "results.png").write_bytes(b"png")
+    (save_dir / "BoxPR_curve.png").write_bytes(b"png")
+
+    workspace = Workspace(str(tmp_path / "runs"), "step-1")
+    workspace.ensure()
+
+    artifacts = collect_optional_artifacts(save_dir=save_dir, workspace=workspace)
+    names = {item.name for item in artifacts}
+
+    assert "results.csv" in names
+    assert "args.yaml" in names
+    assert "results.png" in names
+    assert "BoxPR_curve.png" in names
+    assert (workspace.artifacts_dir / "results.csv").exists()
+    assert (workspace.artifacts_dir / "args.yaml").exists()

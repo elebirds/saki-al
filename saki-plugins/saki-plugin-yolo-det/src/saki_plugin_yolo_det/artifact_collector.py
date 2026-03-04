@@ -9,6 +9,18 @@ from saki_plugin_yolo_det.metrics_parser import normalize_metrics
 
 ToFloatFn = Callable[[Any, float], float]
 
+_TRAIN_OPTIONAL_ARTIFACT_SPECS: tuple[tuple[str, str, str], ...] = (
+    ("confusion_matrix.png", "confusion_matrix", "image/png"),
+    ("confusion_matrix_normalized.png", "confusion_matrix_normalized", "image/png"),
+    ("results.csv", "train_results_csv", "text/csv"),
+    ("results.png", "train_results_plot", "image/png"),
+    ("args.yaml", "train_args", "application/yaml"),
+    ("BoxF1_curve.png", "train_curve_f1", "image/png"),
+    ("BoxPR_curve.png", "train_curve_pr", "image/png"),
+    ("BoxP_curve.png", "train_curve_p", "image/png"),
+    ("BoxR_curve.png", "train_curve_r", "image/png"),
+)
+
 
 def resolve_save_dir(train_output: Any, model: Any) -> Path:
     save_dir_raw = getattr(train_output, "save_dir", None)
@@ -16,7 +28,11 @@ def resolve_save_dir(train_output: Any, model: Any) -> Path:
         save_dir_raw = getattr(model.trainer, "save_dir", None)
     if not save_dir_raw:
         raise RuntimeError("failed to locate YOLO save directory")
-    return Path(str(save_dir_raw))
+    save_dir = Path(str(save_dir_raw))
+    try:
+        return save_dir.resolve()
+    except Exception:
+        return save_dir
 
 
 def copy_best_weights(*, save_dir: Path, workspace: WorkspaceProtocol) -> Path:
@@ -34,11 +50,7 @@ def copy_best_weights(*, save_dir: Path, workspace: WorkspaceProtocol) -> Path:
 
 def collect_optional_artifacts(*, save_dir: Path, workspace: WorkspaceProtocol) -> list[TrainArtifact]:
     extra_artifacts: list[TrainArtifact] = []
-    confusion_candidates = [
-        ("confusion_matrix.png", "confusion_matrix"),
-        ("confusion_matrix_normalized.png", "confusion_matrix_normalized"),
-    ]
-    for filename, kind in confusion_candidates:
+    for filename, kind, content_type in _TRAIN_OPTIONAL_ARTIFACT_SPECS:
         source = save_dir / filename
         if not source.exists():
             continue
@@ -49,7 +61,7 @@ def collect_optional_artifacts(*, save_dir: Path, workspace: WorkspaceProtocol) 
                 kind=kind,
                 name=filename,
                 path=target,
-                content_type="image/png",
+                content_type=content_type,
                 meta={"size": target.stat().st_size},
             )
         )

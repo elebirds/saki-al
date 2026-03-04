@@ -29,7 +29,6 @@ class LoopSimulationConfig(BaseModel):
     step_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
     random_baseline_enabled: bool = True
     seeds: List[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
-    single_seed: Optional[int] = None
 
 
 class LoopCreateRequest(BaseModel):
@@ -497,7 +496,7 @@ class SimulationCurvePointRead(BaseModel):
 
 class SimulationStrategySummaryRead(BaseModel):
     strategy: str
-    seeds: List[int]
+    seeds: List[str]
     final_mean: float
     final_std: float
     aulc_mean: float

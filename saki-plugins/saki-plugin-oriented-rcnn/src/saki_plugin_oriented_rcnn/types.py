@@ -33,6 +33,7 @@ class OrientedRCNNConfig:
     train_seed: int
     sampling_seed: int
     round_index: int
+    deterministic: bool
 
 
 @dataclass(frozen=True)

@@ -86,6 +86,7 @@ class OrientedRCNNConfigService:
             train_seed=max(0, to_int(getattr(config, "train_seed", 0), 0)),
             sampling_seed=max(0, to_int(getattr(config, "sampling_seed", 0), 0)),
             round_index=max(1, to_int(getattr(config, "round_index", 1), 1)),
+            deterministic=bool(getattr(config, "deterministic", True)),
         )
 
     def validate_params(self, params: dict[str, Any]) -> None:

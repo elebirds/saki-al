@@ -62,6 +62,7 @@ const LOOP_GATE_COLOR: Record<string, string> = {
 };
 
 type CreateLoopFormValues = LoopCreateRequest & {
+    globalSeed: string;
     samplingStrategy?: string;
     queryBatchSize?: number;
     simulationExperimentName?: string;
@@ -205,6 +206,7 @@ const ProjectLoopOverview: React.FC = () => {
             branchId: firstBranchId,
             mode: 'active_learning',
             modelArch: firstPlugin?.pluginId,
+            globalSeed: '',
             samplingStrategy: firstPlugin?.supportedStrategies?.[0] || RANDOM_BASELINE_STRATEGY,
             simulationExperimentName: '',
             simulationStrategies: defaultSimulationStrategies,
@@ -239,6 +241,7 @@ const ProjectLoopOverview: React.FC = () => {
             setCreating(true);
             const plugin = plugins.find((item) => item.pluginId === values.modelArch);
             const isSimulation = values.mode === 'simulation';
+            const globalSeed = String(values.globalSeed || '').trim();
 
             if (isSimulation) {
                 const strategies = (values.simulationStrategies || []).filter((item) => !!String(item || '').trim());
@@ -258,6 +261,9 @@ const ProjectLoopOverview: React.FC = () => {
                     strategies,
                     config: {
                         plugin: plugin?.defaultRequestConfig || {},
+                        reproducibility: {
+                            globalSeed,
+                        },
                         sampling: {
                             strategy: values.samplingStrategy || RANDOM_BASELINE_STRATEGY,
                             topk: Number(values.queryBatchSize ?? 200),
@@ -287,6 +293,9 @@ const ProjectLoopOverview: React.FC = () => {
             void simulationStrategies;
             const config: any = {
                 plugin: plugin?.defaultRequestConfig || {},
+                reproducibility: {
+                    globalSeed,
+                },
             };
             if (values.mode !== 'manual') {
                 config.sampling = {
@@ -472,6 +481,14 @@ const ProjectLoopOverview: React.FC = () => {
                                 createForm.setFieldValue('simulationStrategies', buildDefaultSimulationStrategies(plugin));
                             }}
                         />
+                    </Form.Item>
+
+                    <Form.Item
+                        name="globalSeed"
+                        label={t('project.loopOverview.form.globalSeed')}
+                        rules={[{required: true, message: t('project.loopOverview.form.globalSeedRequired')}]}
+                    >
+                        <Input placeholder={t('project.loopOverview.form.globalSeedPlaceholder')}/>
                     </Form.Item>
 
                     {selectedMode === 'active_learning' ? (

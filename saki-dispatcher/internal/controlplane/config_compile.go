@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/spf13/cast"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -23,15 +22,15 @@ func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 
 	globalSeed := strings.TrimSpace(toString(reproConfig["global_seed"]))
 	if globalSeed == "" {
-		globalSeed = loop.ID.String()
+		panic(fmt.Sprintf("loop %s missing config.reproducibility.global_seed", loop.ID.String()))
 	}
-	splitSeed := deriveScopedSeed(globalSeed, loop.ID, roundIndex, "split")
-	trainSeed := deriveScopedSeed(globalSeed, loop.ID, roundIndex, "train")
-	samplingSeed := deriveScopedSeed(globalSeed, loop.ID, roundIndex, "sampling")
+	splitSeed := deriveScopedSeed(globalSeed, "split")
+	trainSeed := deriveScopedSeed(globalSeed, "train")
+	samplingSeed := deriveScopedSeed(globalSeed, "sampling")
 
 	deterministicLevel := strings.TrimSpace(toString(reproConfig["deterministic_level"]))
 	if deterministicLevel == "" {
-		deterministicLevel = "standard"
+		deterministicLevel = "strict"
 	}
 	reproConfig["global_seed"] = globalSeed
 	reproConfig["deterministic_level"] = deterministicLevel
@@ -134,8 +133,8 @@ func compileSamplingConfig(loop loopRow, loopConfig map[string]any) map[string]a
 	}
 }
 
-func deriveScopedSeed(globalSeed string, loopID uuid.UUID, roundIndex int, scope string) uint32 {
-	raw := fmt.Sprintf("%s:%s:%d:%s", strings.TrimSpace(globalSeed), loopID.String(), roundIndex, scope)
+func deriveScopedSeed(globalSeed string, scope string) uint32 {
+	raw := fmt.Sprintf("%s:%s", strings.TrimSpace(globalSeed), scope)
 	sum := sha256.Sum256([]byte(raw))
 	return binary.BigEndian.Uint32(sum[:4])
 }

@@ -92,9 +92,16 @@ class TrainingDataService:
             val_ratio = 0.2
         val_ratio = min(0.5, max(0.05, val_ratio))
 
+        mode = str(runtime_context.mode or "").strip().lower()
+        snapshot_mode = mode in {"active_learning", "simulation"}
         split_source = "random"
-        snapshot_split = self._split_samples_from_snapshot(samples=supervised_samples)
-        if snapshot_split is not None:
+        if snapshot_mode:
+            snapshot_split = self._split_samples_from_snapshot(samples=supervised_samples)
+            if snapshot_split is None:
+                raise RuntimeError(
+                    "snapshot split hints are required for active_learning/simulation training data, "
+                    "but received incomplete _snapshot_split metadata"
+                )
             train_ids, val_ids, val_degraded = snapshot_split
             split_source = "snapshot"
         else:

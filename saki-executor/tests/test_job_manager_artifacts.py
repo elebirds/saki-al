@@ -228,7 +228,9 @@ def _build_manager(tmp_path: Path) -> StepManager:
 
 def _mock_data_items(query_type: int) -> list[pb.DataItem]:
     if query_type == pb.SAMPLES:
-        return [pb.DataItem(sample_item=pb.SampleItem(id="s1"))]
+        sample = pb.SampleItem(id="s1")
+        sample.meta.update({"_snapshot_split": "train"})
+        return [pb.DataItem(sample_item=sample)]
     if query_type == pb.ANNOTATIONS:
         return [pb.DataItem(annotation_item=pb.AnnotationItem(id="a1", sample_id="s1", category_id="c1"))]
     return []

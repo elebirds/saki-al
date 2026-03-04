@@ -75,6 +75,7 @@ type LoopConfigForm = {
     name: string;
     mode: 'active_learning' | 'simulation' | 'manual';
     modelArch: string;
+    globalSeed: string;
     samplingStrategy?: string;
     queryBatchSize?: number;
     pluginConfig: Record<string, any>;
@@ -127,10 +128,12 @@ const ProjectLoopConfig: React.FC = () => {
         const loopConfig = loopRow.config || ({} as any);
         const loopSampling: any = loopConfig.sampling || {};
         const loopModeConfig = loopConfig.mode || {};
+        const loopReproducibility = loopConfig.reproducibility || {};
         configForm.setFieldsValue({
             name: loopRow.name,
             mode: loopRow.mode || 'active_learning',
             modelArch: loopRow.modelArch,
+            globalSeed: String(loopReproducibility.globalSeed || ''),
             samplingStrategy: loopSampling.strategy || plugin?.supportedStrategies?.[0],
             queryBatchSize: Number(loopSampling.topk ?? 200),
             pluginConfig: {
@@ -171,6 +174,9 @@ const ProjectLoopConfig: React.FC = () => {
             setSaving(true);
             const config: any = {
                 plugin: values.pluginConfig || {},
+                reproducibility: {
+                    globalSeed: String(values.globalSeed || '').trim(),
+                },
             };
             if (values.mode !== 'manual') {
                 config.sampling = {
@@ -328,6 +334,16 @@ const ProjectLoopConfig: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+                        <div>
+                            <Form.Item
+                                name="globalSeed"
+                                label={t('project.loopConfig.form.globalSeed')}
+                                rules={[{required: true, message: t('project.loopConfig.form.globalSeedRequired')}]}
+                                extra={loop.lifecycle === 'draft' ? undefined : t('project.loopConfig.form.globalSeedImmutable')}
+                            >
+                                <Input disabled={loop.lifecycle !== 'draft'} />
+                            </Form.Item>
+                        </div>
                         {selectedMode !== 'manual' ? (
                             <div>
                                 <Form.Item name="queryBatchSize" label={t('project.loopConfig.form.queryBatchSize')}>

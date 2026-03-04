@@ -11,6 +11,7 @@ from saki_plugin_oriented_rcnn.predict_service import (
     OrientedRCNNPredictService,
     _hungarian_maximize,
     _polygon_iou,
+    _stable_random_score,
 )
 
 
@@ -90,3 +91,11 @@ def test_aug_iou_disagreement_boundary_inputs() -> None:
     score_same, reason_same = service._score_aug_iou_disagreement([same_left, same_right])
     assert math.isclose(score_same, 0.0, rel_tol=1e-6, abs_tol=1e-6)
     assert math.isclose(reason_same["mean_iou"], 1.0, rel_tol=1e-6, abs_tol=1e-6)
+
+
+def test_random_baseline_score_is_stable_for_same_seed_and_pool() -> None:
+    first = _stable_random_score(sample_id="sample-a", random_seed=101)
+    second = _stable_random_score(sample_id="sample-a", random_seed=101)
+    third = _stable_random_score(sample_id="sample-b", random_seed=101)
+    assert first == second
+    assert first != third

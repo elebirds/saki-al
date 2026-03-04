@@ -80,6 +80,7 @@ class OrientedRCNNTrainService:
             work_dir=work_dir,
             load_from=load_from,
             train_seed=int(cfg.train_seed or context.step_context.train_seed),
+            deterministic=bool(cfg.deterministic),
             train_sample_count=int(manifest.get("train_sample_count") or 0),
         )
 

@@ -70,17 +70,13 @@ export interface LoopModeConfig {
     seedRatio?: number;
     stepRatio?: number;
     seeds?: number[];
-    singleSeed?: number;
     randomBaselineEnabled?: boolean;
     roundCooldownSec?: number;
     singleRound?: boolean;
 }
 
 export interface LoopReproducibilityConfig {
-    globalSeed?: string;
-    splitSeedPolicy?: string;
-    trainSeedPolicy?: string;
-    samplingSeedPolicy?: string;
+    globalSeed: string;
     deterministicLevel?: string;
 }
 
@@ -95,7 +91,7 @@ export interface LoopRuntimeConfig {
     plugin: Record<string, any>;
     sampling?: LoopSamplingConfig;
     mode?: LoopModeConfig;
-    reproducibility?: LoopReproducibilityConfig;
+    reproducibility: LoopReproducibilityConfig;
     execution?: LoopExecutionConfig;
 }
 
@@ -519,7 +515,7 @@ export interface SimulationCurvePoint {
 
 export interface SimulationStrategySummary {
     strategy: string;
-    seeds: number[];
+    seeds: string[];
     finalMean: number;
     finalStd: number;
     aulcMean: number;

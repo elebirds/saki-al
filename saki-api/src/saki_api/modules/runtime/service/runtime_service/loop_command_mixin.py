@@ -21,6 +21,15 @@ from saki_api.modules.shared.modeling.enums import LoopMode
 
 
 class LoopCommandMixin:
+    @staticmethod
+    def _inject_global_seed(config: dict, *, seed: str) -> dict:
+        updated = dict(config or {})
+        reproducibility = updated.get("reproducibility")
+        reproducibility_map = dict(reproducibility) if isinstance(reproducibility, dict) else {}
+        reproducibility_map["global_seed"] = str(seed or "").strip()
+        updated["reproducibility"] = reproducibility_map
+        return updated
+
     @transactional
     async def create_loop(self, project_id: uuid.UUID, payload: LoopCreateRequest) -> Loop:
         branch = await self.project_gateway.get_branch(payload.branch_id)
@@ -102,6 +111,14 @@ class LoopCommandMixin:
             mode_text = str(next_mode.value if hasattr(next_mode, "value") else next_mode)
             raw_config = payload.config if payload.config is not None else (loop.config or {})
             normalized_config = self._normalize_loop_config(raw_config, mode=mode_text)
+            next_seed = self._get_loop_global_seed(normalized_config)
+            current_seed = self._get_loop_global_seed(loop.config or {})
+            if (
+                str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+                != "draft"
+                and current_seed != next_seed
+            ):
+                raise BadRequestAppException("config.reproducibility.global_seed is immutable once lifecycle is not draft")
             patch.config = normalized_config
             patch.max_rounds = self._derive_loop_max_rounds(mode=mode_text, config=normalized_config)
             patch.query_batch_size = self._derive_query_batch_size(mode=mode_text, config=normalized_config)
@@ -136,9 +153,9 @@ class LoopCommandMixin:
         if not strategies:
             raise BadRequestAppException("strategies must contain at least one item")
 
-        base_config = self._normalize_loop_config(payload.config, mode=LoopMode.SIMULATION.value)
-        mode_config = base_config.get("mode") if isinstance(base_config.get("mode"), dict) else {}
-        seeds_raw = mode_config.get("seeds") if isinstance(mode_config, dict) else None
+        raw_base_config = dict(payload.config or {})
+        mode_config_raw = raw_base_config.get("mode") if isinstance(raw_base_config.get("mode"), dict) else {}
+        seeds_raw = mode_config_raw.get("seeds") if isinstance(mode_config_raw, dict) else None
         seeds: list[int] = []
         for item in seeds_raw or [0, 1, 2, 3, 4]:
             try:
@@ -147,6 +164,11 @@ class LoopCommandMixin:
                 continue
         if not seeds:
             seeds = [0, 1, 2, 3, 4]
+        first_seed = str(int(seeds[0]))
+        base_config = self._normalize_loop_config(
+            self._inject_global_seed(raw_base_config, seed=first_seed),
+            mode=LoopMode.SIMULATION.value,
+        )
 
         group_id = uuid.uuid4()
         experiment_name = str(payload.experiment_name or f"sim-{str(group_id)[:8]}").strip()
@@ -177,9 +199,7 @@ class LoopCommandMixin:
                 sampling_cfg = dict(config.get("sampling") or {})
                 sampling_cfg["strategy"] = strategy
                 config["sampling"] = sampling_cfg
-                mode_cfg = dict(config.get("mode") or {})
-                mode_cfg["single_seed"] = seed
-                config["mode"] = mode_cfg
+                config = self._inject_global_seed(config, seed=str(int(seed)))
 
                 loop_payload = LoopCreateRequest(
                     name=self._truncate(f"{experiment_name}-{strategy}-seed-{seed}", max_len=100),

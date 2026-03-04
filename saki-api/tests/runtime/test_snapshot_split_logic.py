@@ -57,16 +57,12 @@ def test_append_split_expand_with_batch_val_produces_val_batch() -> None:
     assert any(row["partition"] == SnapshotPartition.VAL_BATCH for row in rows)
 
 
-def test_compute_seed_is_reproducible_without_requested_seed() -> None:
+def test_compute_seed_requires_requested_seed() -> None:
     mixin = SnapshotMixin()
-    loop_id = uuid.uuid4()
-    seed_v1_a = mixin._compute_seed(loop_id=loop_id, version_index=1, requested_seed=None)
-    seed_v1_b = mixin._compute_seed(loop_id=loop_id, version_index=1, requested_seed=None)
-    seed_v2 = mixin._compute_seed(loop_id=loop_id, version_index=2, requested_seed=None)
-    explicit = mixin._compute_seed(loop_id=loop_id, version_index=2, requested_seed="user-seed")
-    assert seed_v1_a == seed_v1_b
-    assert seed_v1_a != seed_v2
+    explicit = mixin._compute_seed(requested_seed="user-seed")
     assert explicit == "user-seed"
+    with pytest.raises(BadRequestAppException, match="snapshot seed is required"):
+        mixin._compute_seed(requested_seed=None)
 
 
 def test_parse_enum_accepts_enum_value_name_and_qualified_name() -> None:

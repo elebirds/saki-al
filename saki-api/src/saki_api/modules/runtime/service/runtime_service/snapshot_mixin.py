@@ -91,12 +91,12 @@ class SnapshotMixin:
             return 0
         return selected
 
-    def _compute_seed(self, *, loop_id: uuid.UUID, version_index: int, requested_seed: str | None) -> str:
+    @staticmethod
+    def _compute_seed(*, requested_seed: str | None) -> str:
         raw = str(requested_seed or "").strip()
         if raw:
             return raw
-        payload = f"{loop_id}:{version_index}"
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+        raise BadRequestAppException("snapshot seed is required")
 
     @staticmethod
     def _manifest_hash(rows: list[dict[str, Any]]) -> str:
@@ -1436,7 +1436,10 @@ class SnapshotMixin:
             raise BadRequestAppException("no samples found for snapshot init")
 
         version_index = await self.al_snapshot_version_repo.next_version_index(loop.id)
-        seed = self._compute_seed(loop_id=loop.id, version_index=version_index, requested_seed=payload.get("seed"))
+        inherited_seed = self._get_loop_global_seed(loop.config or {})
+        requested_seed = payload.get("seed")
+        effective_seed = requested_seed if str(requested_seed or "").strip() else inherited_seed
+        seed = self._compute_seed(requested_seed=effective_seed)
         train_seed_ratio = float(payload.get("train_seed_ratio", 0.05))
         val_ratio = float(payload.get("val_ratio", 0.1))
         test_ratio = float(payload.get("test_ratio", 0.1))
@@ -1553,7 +1556,10 @@ class SnapshotMixin:
             }
 
         version_index = await self.al_snapshot_version_repo.next_version_index(loop.id)
-        seed = self._compute_seed(loop_id=loop.id, version_index=version_index, requested_seed=payload.get("seed"))
+        inherited_seed = self._get_loop_global_seed(loop.config or {})
+        requested_seed = payload.get("seed")
+        effective_seed = requested_seed if str(requested_seed or "").strip() else inherited_seed
+        seed = self._compute_seed(requested_seed=effective_seed)
         val_policy = parent.val_policy
         if payload.get("val_policy"):
             val_policy = self._parse_enum(

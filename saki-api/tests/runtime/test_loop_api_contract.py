@@ -30,11 +30,15 @@ from saki_api.modules.shared.modeling.enums import (
 )
 from saki_api.modules.project.domain.branch import Branch
 from saki_api.modules.project.domain.commit import Commit
-from saki_api.modules.project.domain.project import Project
+from saki_api.modules.project.domain.project import Project, ProjectDataset
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_event import StepEvent
 from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
+from saki_api.modules.runtime.domain.al_snapshot_version import ALSnapshotVersion
+from saki_api.modules.storage.domain.dataset import Dataset
+from saki_api.modules.storage.domain.sample import Sample
+from saki_api.modules.access.domain.access.user import User
 from saki_api.modules.runtime.api.round_step import (
     LoopActionRequest,
     LoopCreateRequest,
@@ -90,6 +94,48 @@ async def _seed_project_branch(session: AsyncSession) -> tuple[Project, Branch]:
     return project, branch
 
 
+async def _seed_project_samples(session: AsyncSession, *, project: Project, count: int = 3) -> list[uuid.UUID]:
+    user = User(
+        email=f"seed-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="seed-user",
+        hashed_password="hashed",
+    )
+    session.add(user)
+    await session.flush()
+
+    dataset = Dataset(
+        owner_id=user.id,
+        name=f"dataset-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(dataset)
+    await session.flush()
+
+    session.add(ProjectDataset(project_id=project.id, dataset_id=dataset.id))
+    await session.flush()
+
+    sample_ids: list[uuid.UUID] = []
+    for idx in range(max(1, int(count))):
+        sample = Sample(
+            dataset_id=dataset.id,
+            name=f"sample-{idx}",
+            asset_group={},
+        )
+        session.add(sample)
+        await session.flush()
+        sample_ids.append(sample.id)
+    await session.commit()
+    return sample_ids
+
+
+def _loop_config(config: dict) -> dict:
+    merged = dict(config)
+    reproducibility_raw = merged.get("reproducibility")
+    reproducibility = dict(reproducibility_raw) if isinstance(reproducibility_raw, dict) else {}
+    reproducibility.setdefault("global_seed", "test-global-seed")
+    merged["reproducibility"] = reproducibility
+    return merged
+
+
 @pytest.mark.anyio
 async def test_loop_read_builder_injects_realtime_stage(loop_api_env):
     session_local = loop_api_env
@@ -106,10 +152,10 @@ async def test_loop_read_builder_injects_realtime_stage(loop_api_env):
                     name="loop-a",
                     branch_id=branch.id,
                     model_arch="yolo_det_v1",
-                    config={
+                    config=_loop_config({
                         "plugin": {"epochs": 12, "batch": 8},
                         "sampling": {"strategy": "random_baseline", "topk": 200},
-                    },
+                    }),
                 ),
             )
         finally:
@@ -144,10 +190,10 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
                     name="loop-b",
                     branch_id=branch.id,
                     model_arch="yolo_det_v1",
-                    config={
+                    config=_loop_config({
                         "plugin": {"epochs": 24, "batch": 16},
                         "sampling": {"strategy": "random_baseline", "topk": 200},
-                    },
+                    }),
                 ),
                 runtime_service=service,
                 session=session,
@@ -180,10 +226,10 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
                 loop_id=created.id,
                 payload=LoopUpdateRequest(
                     model_arch="demo_det_v1",
-                    config={
+                    config=_loop_config({
                         "plugin": {"epochs": 30, "lr": 0.001},
                         "sampling": {"strategy": "uncertainty_1_minus_max_conf", "topk": 256},
-                    },
+                    }),
                 ),
                 runtime_service=service,
                 session=session,
@@ -213,7 +259,7 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
                     name="loop-first",
                     branch_id=branch.id,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
                 ),
             )
             with pytest.raises(BadRequestAppException):
@@ -223,7 +269,66 @@ async def test_create_loop_rejects_duplicate_branch_binding(loop_api_env):
                         name="loop-second",
                         branch_id=branch.id,
                         model_arch="yolo_det_v1",
+                        config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_requires_global_seed(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException, match="global_seed"):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-no-seed",
+                        branch_id=branch.id,
+                        model_arch="yolo_det_v1",
                         config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_rejects_global_seed_change_after_non_draft(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-seed-locked",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            with pytest.raises(BadRequestAppException, match="global_seed is immutable"):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config={
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {"global_seed": "changed-seed"},
+                        }
                     ),
                 )
         finally:
@@ -246,6 +351,105 @@ def test_effective_round_min_required_requires_full_selected():
 
 
 @pytest.mark.anyio
+async def test_snapshot_init_uses_loop_global_seed_when_seed_missing(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=3)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-snapshot-init-seed",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "reproducibility": {"global_seed": "seed-loop-main"},
+                    },
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            await service.init_loop_snapshot(
+                loop_id=loop.id,
+                payload={"sample_ids": [str(item) for item in sample_ids]},
+                actor_user_id=None,
+            )
+            rows = list(
+                (
+                    await session.exec(
+                        select(ALSnapshotVersion)
+                        .where(ALSnapshotVersion.loop_id == loop.id)
+                        .order_by(ALSnapshotVersion.version_index.asc())
+                    )
+                ).all()
+            )
+            assert len(rows) == 1
+            assert rows[0].seed == "seed-loop-main"
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_snapshot_update_uses_loop_global_seed_when_seed_missing(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=4)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-snapshot-update-seed",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config={
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "reproducibility": {"global_seed": "seed-loop-main-2"},
+                    },
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            await service.init_loop_snapshot(
+                loop_id=loop.id,
+                payload={"sample_ids": [str(item) for item in sample_ids[:2]]},
+                actor_user_id=None,
+            )
+            await service.update_loop_snapshot(
+                loop_id=loop.id,
+                payload={
+                    "mode": "append_all_to_pool",
+                    "sample_ids": [str(item) for item in sample_ids[2:]],
+                },
+                actor_user_id=None,
+            )
+            rows = list(
+                (
+                    await session.exec(
+                        select(ALSnapshotVersion)
+                        .where(ALSnapshotVersion.loop_id == loop.id)
+                        .order_by(ALSnapshotVersion.version_index.asc())
+                    )
+                ).all()
+            )
+            assert len(rows) == 2
+            assert rows[0].seed == "seed-loop-main-2"
+            assert rows[1].seed == "seed-loop-main-2"
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_loop_stage_snapshot_required_does_not_offer_start_action(loop_api_env):
     session_local = loop_api_env
 
@@ -262,7 +466,7 @@ async def test_loop_stage_snapshot_required_does_not_offer_start_action(loop_api
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
                     lifecycle=LoopLifecycle.DRAFT,
                 ),
             )
@@ -309,7 +513,7 @@ async def test_loop_control_act_confirm_rejects_manual_mode(loop_api_env, monkey
                     branch_id=branch.id,
                     mode=LoopMode.MANUAL,
                     model_arch="yolo_det_v1",
-                    config={"plugin": {"epochs": 1}},
+                    config=_loop_config({"plugin": {"epochs": 1}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -372,7 +576,7 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -440,7 +644,7 @@ async def test_loop_control_act_rejects_selection_adjust(loop_api_env, monkeypat
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -492,7 +696,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 200}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 200}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -605,7 +809,7 @@ async def test_get_step_events_query_contract(loop_api_env, monkeypatch):
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -809,7 +1013,7 @@ async def test_get_round_events_query_contract(loop_api_env, monkeypatch):
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -961,7 +1165,7 @@ async def test_get_round_prefers_eval_metrics_as_final_metrics(loop_api_env, mon
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -1073,7 +1277,7 @@ async def test_get_round_falls_back_to_train_when_eval_step_metrics_empty(loop_a
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -1221,7 +1425,7 @@ async def test_get_round_metric_view_empty_when_all_steps_missing_metrics(loop_a
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -1333,7 +1537,7 @@ async def test_get_loop_summary_returns_split_metric_views(loop_api_env, monkeyp
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -1445,7 +1649,7 @@ async def test_list_loop_rounds_returns_split_metric_views(loop_api_env, monkeyp
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -1560,7 +1764,7 @@ async def test_get_step_metric_series_ignores_non_positive_step_points(loop_api_
                     branch_id=branch.id,
                     mode=LoopMode.ACTIVE_LEARNING,
                     model_arch="yolo_det_v1",
-                    config={"sampling": {"strategy": "random_baseline", "topk": 20}},
+                    config=_loop_config({"sampling": {"strategy": "random_baseline", "topk": 20}}),
                     lifecycle=LoopLifecycle.RUNNING,
                 ),
             )
@@ -1680,6 +1884,17 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
             # random_baseline + one strategy, each with 2 seeds
             assert len(created.loops) == 4
             assert all(loop.mode == LoopMode.SIMULATION for loop in created.loops)
+            for loop in created.loops:
+                cfg = loop.config if isinstance(loop.config, dict) else {}
+                mode_cfg = cfg.get("mode") if isinstance(cfg.get("mode"), dict) else {}
+                reproducibility_cfg = (
+                    cfg.get("reproducibility")
+                    if isinstance(cfg.get("reproducibility"), dict)
+                    else {}
+                )
+                expected_seed = str(reproducibility_cfg.get("global_seed") or "")
+                assert expected_seed in {"0", "1"}
+                assert "single_seed" not in mode_cfg
 
             for loop in created.loops:
                 loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}
@@ -1719,5 +1934,7 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
             assert "random_baseline" in strategy_names
             assert "uncertainty_1_minus_max_conf" in strategy_names
             assert "uncertainty_1_minus_max_conf" in comparison.delta_vs_baseline
+            for strategy_summary in comparison.strategies:
+                assert set(strategy_summary.seeds) == {"0", "1"}
         finally:
             _session_ctx.reset(token)

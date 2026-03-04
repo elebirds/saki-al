@@ -142,6 +142,34 @@ func TestCanStepTransitionAllowsReadyDispatchingAndRunning(t *testing.T) {
 	}
 }
 
+func TestCompileRoundConfigSeedsStableAcrossRoundIndex(t *testing.T) {
+	loop := loopRow{
+		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790aca"),
+		Mode:           modeAL,
+		QueryBatchSize: 128,
+		ModelArch:      "yolo_det_v1",
+		Config: []byte(`{
+			"sampling": {"strategy": "random_baseline", "topk": 32},
+			"reproducibility": {"global_seed": "seed-fixed", "deterministic_level": "strict"}
+		}`),
+	}
+	first := compileRoundConfig(loop, 1)
+	second := compileRoundConfig(loop, 99)
+
+	if first["split_seed"] != second["split_seed"] {
+		t.Fatalf("split_seed should be stable across rounds: %v != %v", first["split_seed"], second["split_seed"])
+	}
+	if first["train_seed"] != second["train_seed"] {
+		t.Fatalf("train_seed should be stable across rounds: %v != %v", first["train_seed"], second["train_seed"])
+	}
+	if first["sampling_seed"] != second["sampling_seed"] {
+		t.Fatalf("sampling_seed should be stable across rounds: %v != %v", first["sampling_seed"], second["sampling_seed"])
+	}
+	if first["deterministic"] != true {
+		t.Fatalf("deterministic should be true when deterministic_level=strict: %v", first["deterministic"])
+	}
+}
+
 func TestResolveModelArtifactCandidatesKeepsPrimaryThenFallbacks(t *testing.T) {
 	requirements := stepRuntimeRequirements{
 		requiresTrainedModel:    true,

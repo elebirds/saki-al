@@ -43,7 +43,11 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     normalized_plugin = dict(plugin) if isinstance(plugin, dict) else {}
     normalized_sampling = dict(sampling) if isinstance(sampling, dict) else {}
     normalized_mode = dict(mode_config) if isinstance(mode_config, dict) else {}
-    normalized_repro = dict(reproducibility) if isinstance(reproducibility, dict) else {}
+    reproducibility_map = dict(reproducibility) if isinstance(reproducibility, dict) else {}
+    normalized_repro = {
+        "global_seed": str(reproducibility_map.get("global_seed") or "").strip(),
+        "deterministic_level": str(reproducibility_map.get("deterministic_level") or "strict").strip(),
+    }
     normalized_execution = dict(execution) if isinstance(execution, dict) else {}
 
     normalized_sampling["strategy"] = str(normalized_sampling.get("strategy") or "").strip()
@@ -60,14 +64,6 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
         1,
         to_int(normalized_sampling.get("review_pool_multiplier"), 3),
     )
-
-    normalized_repro["global_seed"] = str(normalized_repro.get("global_seed") or "").strip()
-    normalized_repro["split_seed_policy"] = str(normalized_repro.get("split_seed_policy") or "derived").strip()
-    normalized_repro["train_seed_policy"] = str(normalized_repro.get("train_seed_policy") or "derived").strip()
-    normalized_repro["sampling_seed_policy"] = str(normalized_repro.get("sampling_seed_policy") or "derived").strip()
-    normalized_repro["deterministic_level"] = str(
-        normalized_repro.get("deterministic_level") or "standard"
-    ).strip()
 
     normalized_execution["preferred_accelerator"] = str(
         normalized_execution.get("preferred_accelerator") or "auto"
@@ -102,8 +98,7 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
             except Exception:
                 continue
         normalized_mode["seeds"] = seeds or [0, 1, 2, 3, 4]
-        if normalized_mode.get("single_seed") is not None:
-            normalized_mode["single_seed"] = to_int(normalized_mode.get("single_seed"), 0)
+        normalized_mode.pop("single_seed", None)
     else:
         raise BadRequestAppException(f"unsupported mode: {mode}")
 
@@ -122,8 +117,13 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
 def validate_loop_config(config: dict[str, Any], *, mode: str) -> None:
     sampling = config.get("sampling")
     mode_config = config.get("mode")
+    reproducibility = config.get("reproducibility")
     sampling_map = sampling if isinstance(sampling, dict) else {}
     mode_map = mode_config if isinstance(mode_config, dict) else {}
+    reproducibility_map = reproducibility if isinstance(reproducibility, dict) else {}
+    global_seed = str(reproducibility_map.get("global_seed") or "").strip()
+    if not global_seed:
+        raise BadRequestAppException("all loop modes require config.reproducibility.global_seed")
 
     if mode == "manual":
         if sampling_map:
@@ -175,3 +175,10 @@ def extract_simulation_config(raw_config: dict[str, Any] | None) -> dict[str, An
     config = dict(raw_config or {})
     mode = config.get("mode")
     return dict(mode) if isinstance(mode, dict) else {}
+
+
+def get_loop_global_seed(raw_config: dict[str, Any] | None) -> str:
+    config = dict(raw_config or {})
+    reproducibility = config.get("reproducibility")
+    reproducibility_map = reproducibility if isinstance(reproducibility, dict) else {}
+    return str(reproducibility_map.get("global_seed") or "").strip()

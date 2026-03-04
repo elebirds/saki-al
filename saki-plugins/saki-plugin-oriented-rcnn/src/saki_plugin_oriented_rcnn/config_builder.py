@@ -83,6 +83,7 @@ def build_mmrotate_runtime_cfg(
     work_dir: Path,
     load_from: str,
     train_seed: int,
+    deterministic: bool = True,
     train_sample_count: int | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -293,7 +294,7 @@ resume = False
 work_dir = r"{work_dir.as_posix()}"
 load_from = r"{load_from}"
 
-randomness = dict(seed={int(train_seed)}, deterministic=False)
+randomness = dict(seed={int(train_seed)}, deterministic={str(bool(deterministic)).lower()})
 '''
     output_path.write_text(cfg_text, encoding="utf-8")
     return output_path

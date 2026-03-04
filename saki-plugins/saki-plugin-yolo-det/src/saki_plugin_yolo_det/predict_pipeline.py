@@ -6,8 +6,8 @@ from threading import Event
 from typing import Any, Callable
 
 
-def _stable_random_score(*, sample_id: str, random_seed: int, round_index: int) -> float:
-    digest = hashlib.sha256(f"{random_seed}:{round_index}:{sample_id}".encode("utf-8")).hexdigest()
+def _stable_random_score(*, sample_id: str, random_seed: int) -> float:
+    digest = hashlib.sha256(f"{random_seed}:{sample_id}".encode("utf-8")).hexdigest()
     return int(digest[:8], 16) / float(0xFFFFFFFF)
 
 
@@ -104,7 +104,7 @@ def score_unlabeled_samples(
             continue
 
         if strategy_key == "random_baseline":
-            score = _stable_random_score(sample_id=sample_id, random_seed=random_seed, round_index=round_index)
+            score = _stable_random_score(sample_id=sample_id, random_seed=random_seed)
             candidates.append(
                 {
                     "sample_id": sample_id,
@@ -112,7 +112,6 @@ def score_unlabeled_samples(
                     "reason": {
                         "strategy": "random_baseline",
                         "random_seed": int(random_seed),
-                        "round_index": int(round_index),
                         "rand": score,
                     },
                 }

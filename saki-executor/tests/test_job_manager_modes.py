@@ -515,12 +515,17 @@ def _build_manager(tmp_path: Path, plugin: ExecutorPlugin) -> StepManager:
 
 
 def _mock_data_items(query_type: int) -> list[pb.DataItem]:
+    def _sample(sample_id: str, split: str) -> pb.DataItem:
+        sample = pb.SampleItem(id=sample_id)
+        sample.meta.update({"_snapshot_split": split})
+        return pb.DataItem(sample_item=sample)
+
     if query_type == pb.SAMPLES:
         return [
-            pb.DataItem(sample_item=pb.SampleItem(id="s1")),
-            pb.DataItem(sample_item=pb.SampleItem(id="s2")),
-            pb.DataItem(sample_item=pb.SampleItem(id="s3")),
-            pb.DataItem(sample_item=pb.SampleItem(id="s4")),
+            _sample("s1", "train"),
+            _sample("s2", "train"),
+            _sample("s3", "val"),
+            _sample("s4", "val"),
         ]
     if query_type == pb.ANNOTATIONS:
         return [

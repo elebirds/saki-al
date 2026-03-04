@@ -189,9 +189,20 @@ class PipelineStageService:
                 if not str(key).startswith("_")
             }
             params_snapshot = {
+                "global_seed": str(
+                    (
+                        (
+                            self._request.resolved_params.get("reproducibility")
+                            if isinstance(self._request.resolved_params.get("reproducibility"), dict)
+                            else {}
+                        ).get("global_seed")
+                        or ""
+                    )
+                ).strip(),
                 "split_seed": runtime_context.split_seed,
                 "train_seed": runtime_context.train_seed,
                 "sampling_seed": runtime_context.sampling_seed,
+                "deterministic": bool(self._request.resolved_params.get("deterministic", False)),
                 "mode": runtime_context.mode,
                 "step_type": runtime_context.step_type,
                 "round_index": runtime_context.round_index,

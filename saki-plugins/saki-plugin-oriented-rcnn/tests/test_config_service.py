@@ -23,6 +23,7 @@ def test_resolve_config_defaults_and_ranges() -> None:
     assert cfg.imgsz >= 256
     assert cfg.model_source == "preset"
     assert cfg.model_preset == "oriented-rcnn-le90_r50_fpn_1x_dota"
+    assert cfg.deterministic is True
 
 
 def test_resolve_config_rejects_missing_custom_ref() -> None:

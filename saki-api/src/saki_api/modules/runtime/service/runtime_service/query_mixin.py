@@ -777,12 +777,14 @@ class RuntimeQueryMixin:
         if not loops:
             raise NotFoundAppException(f"Simulation experiment {experiment_group_id} not found")
 
-        by_strategy: dict[str, dict[int, list[tuple[int, float]]]] = {}
-        summary_rows: dict[str, list[tuple[int, float]]] = {}
+        by_strategy: dict[str, dict[int, list[tuple[str, float]]]] = {}
+        summary_rows: dict[str, list[tuple[str, float]]] = {}
 
         for loop in loops:
             simulation_config = self._extract_simulation_config(loop.config or {})
-            single_seed = int(simulation_config.single_seed or 0)
+            global_seed = str(self._get_loop_global_seed(loop.config or {})).strip()
+            if not global_seed:
+                raise BadRequestAppException(f"loop {loop.id} missing config.reproducibility.global_seed")
             loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}
             strategy = str((loop_sampling or {}).get("strategy") or self.RANDOM_BASELINE_STRATEGY)
             strategy_data = by_strategy.setdefault(strategy, {})
@@ -799,11 +801,11 @@ class RuntimeQueryMixin:
                 )
                 m = float((effective_metrics or {}).get(metric_name) or 0.0)
                 final_metrics.append((round_item.round_index, m))
-                strategy_data.setdefault(round_item.round_index, []).append((single_seed, m))
+                strategy_data.setdefault(round_item.round_index, []).append((global_seed, m))
 
             if final_metrics:
                 aulc = mean([row[1] for row in final_metrics])
-                summary_rows.setdefault(strategy, []).append((single_seed, aulc))
+                summary_rows.setdefault(strategy, []).append((global_seed, aulc))
 
         curves: list[SimulationCurvePointRead] = []
         summaries: list[SimulationStrategySummaryRead] = []

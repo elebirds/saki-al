@@ -19,11 +19,16 @@ func canStepTransition(from db.Stepstatus, to db.Stepstatus) bool {
 	case db.StepstatusPENDING:
 		return to == db.StepstatusREADY || to == db.StepstatusCANCELLED
 	case db.StepstatusREADY:
+		// 关键语义：
+		// READY 阶段尚未真正下发到 executor，但已经完成依赖检查。
+		// 若在 dispatcher 侧预派发（如模型交接票据创建）失败，步骤应可直接失败，
+		// 否则会出现“预派发失败后状态更新冲突”，并长期卡在 READY。
 		return to == db.StepstatusDISPATCHING ||
 			to == db.StepstatusSYNCINGENV ||
 			to == db.StepstatusPROBINGRUNTIME ||
 			to == db.StepstatusBINDINGDEVICE ||
 			to == db.StepstatusRUNNING ||
+			to == db.StepstatusFAILED ||
 			to == db.StepstatusCANCELLED
 	case db.StepstatusDISPATCHING:
 		return to == db.StepstatusSYNCINGENV ||

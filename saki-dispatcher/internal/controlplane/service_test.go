@@ -122,6 +122,9 @@ func TestCanStepTransitionAllowsReadyDispatchingAndRunning(t *testing.T) {
 	if !canStepTransition(db.StepstatusREADY, db.StepstatusDISPATCHING) {
 		t.Fatal("READY -> DISPATCHING should be allowed")
 	}
+	if !canStepTransition(db.StepstatusREADY, db.StepstatusFAILED) {
+		t.Fatal("READY -> FAILED should be allowed for pre-dispatch failure")
+	}
 	if !canStepTransition(db.StepstatusDISPATCHING, db.StepstatusSYNCINGENV) {
 		t.Fatal("DISPATCHING -> SYNCING_ENV should be allowed")
 	}
@@ -136,6 +139,32 @@ func TestCanStepTransitionAllowsReadyDispatchingAndRunning(t *testing.T) {
 	}
 	if !canStepTransition(db.StepstatusDISPATCHING, db.StepstatusRUNNING) {
 		t.Fatal("DISPATCHING -> RUNNING should be allowed")
+	}
+}
+
+func TestResolveModelArtifactCandidatesKeepsPrimaryThenFallbacks(t *testing.T) {
+	requirements := stepRuntimeRequirements{
+		requiresTrainedModel:    true,
+		primaryModelArtifactKey: "best.pt",
+		fallbackArtifactKeys:    []string{"best.pth"},
+	}
+	got := resolveModelArtifactCandidates(requirements)
+	want := []string{"best.pt", "best.pth"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("artifact candidates mismatch: got=%v want=%v", got, want)
+	}
+}
+
+func TestResolveModelArtifactCandidatesDeduplicatesAndAppliesDefault(t *testing.T) {
+	requirements := stepRuntimeRequirements{
+		requiresTrainedModel:    true,
+		primaryModelArtifactKey: " ",
+		fallbackArtifactKeys:    []string{"best.pth", "best.pth", "best.pt"},
+	}
+	got := resolveModelArtifactCandidates(requirements)
+	want := []string{"best.pth", "best.pt"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("artifact candidates dedupe mismatch: got=%v want=%v", got, want)
 	}
 }
 

@@ -770,17 +770,54 @@ func (s *Service) dependenciesSatisfiedTx(ctx context.Context, tx pgx.Tx, depend
 type stepRuntimeRequirements struct {
 	requiresTrainedModel    bool
 	primaryModelArtifactKey string
+	fallbackArtifactKeys    []string
 }
 
 func defaultStepRuntimeRequirements(stepType db.Steptype) stepRuntimeRequirements {
 	switch stepType {
 	case db.SteptypeSCORE:
-		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
+		return stepRuntimeRequirements{
+			requiresTrainedModel:    true,
+			primaryModelArtifactKey: "best.pt",
+			// 兼容不同训练插件产物命名（YOLO 常见 best.pt，MM 系常见 best.pth）。
+			fallbackArtifactKeys: []string{"best.pth"},
+		}
 	case db.SteptypeEVAL:
-		return stepRuntimeRequirements{requiresTrainedModel: true, primaryModelArtifactKey: "best.pt"}
+		return stepRuntimeRequirements{
+			requiresTrainedModel:    true,
+			primaryModelArtifactKey: "best.pt",
+			fallbackArtifactKeys:    []string{"best.pth"},
+		}
 	default:
 		return stepRuntimeRequirements{requiresTrainedModel: false, primaryModelArtifactKey: ""}
 	}
+}
+
+func resolveModelArtifactCandidates(requirements stepRuntimeRequirements) []string {
+	seen := make(map[string]struct{})
+	ordered := make([]string, 0, 4)
+	appendKey := func(key string) {
+		normalized := strings.TrimSpace(key)
+		if normalized == "" {
+			return
+		}
+		if _, exists := seen[normalized]; exists {
+			return
+		}
+		seen[normalized] = struct{}{}
+		ordered = append(ordered, normalized)
+	}
+
+	appendKey(requirements.primaryModelArtifactKey)
+	for _, key := range requirements.fallbackArtifactKeys {
+		appendKey(key)
+	}
+	// 保底值，避免调用方遗漏 primary 时候选为空。
+	if len(ordered) == 0 {
+		appendKey("best.pt")
+		appendKey("best.pth")
+	}
+	return ordered
 }
 
 func (s *Service) resolvePreferredExecutorIDByDependenciesTx(
@@ -846,10 +883,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	if !requirements.requiresTrainedModel {
 		return stepPayload.Params, nil
 	}
-	artifactName := strings.TrimSpace(requirements.primaryModelArtifactKey)
-	if artifactName == "" {
-		artifactName = "best.pt"
-	}
+	artifactCandidates := resolveModelArtifactCandidates(requirements)
 
 	if s.domainClient == nil {
 		return nil, fmt.Errorf("runtime_domain 客户端未初始化")
@@ -873,20 +907,28 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		return nil, err
 	}
 
-	downloadResp, err := s.domainClient.CreateDownloadTicket(ctx, &runtimedomainv1.DownloadTicketRequest{
-		RequestId:    uuid.NewString(),
-		StepId:       trainStepID.String(),
-		ArtifactName: artifactName,
-	})
-	if err != nil {
-		if runtime_domain_client.IsNotFoundError(err) {
-			return nil, fmt.Errorf(
-				"训练模型制品不存在: train_step_id=%s artifact=%s",
-				trainStepID,
-				artifactName,
-			)
+	var (
+		downloadResp     *runtimedomainv1.DownloadTicketResponse
+		selectedArtifact string
+		lastNotFoundErr  error
+	)
+	// 关键设计：按候选制品名顺序尝试下载票据，兼容 best.pt / best.pth 双命名。
+	for _, artifactName := range artifactCandidates {
+		resp, ticketErr := s.domainClient.CreateDownloadTicket(ctx, &runtimedomainv1.DownloadTicketRequest{
+			RequestId:    uuid.NewString(),
+			StepId:       trainStepID.String(),
+			ArtifactName: artifactName,
+		})
+		if ticketErr == nil {
+			downloadResp = resp
+			selectedArtifact = artifactName
+			break
 		}
-		if runtime_domain_client.IsInvalidRequestError(err) {
+		if runtime_domain_client.IsNotFoundError(ticketErr) {
+			lastNotFoundErr = ticketErr
+			continue
+		}
+		if runtime_domain_client.IsInvalidRequestError(ticketErr) {
 			return nil, fmt.Errorf(
 				"训练模型下载票据请求无效: train_step_id=%s artifact=%s",
 				trainStepID,
@@ -897,7 +939,21 @@ func (s *Service) buildDispatchResolvedParamsTx(
 			"训练模型下载票据请求失败: train_step_id=%s artifact=%s err=%w",
 			trainStepID,
 			artifactName,
-			err,
+			ticketErr,
+		)
+	}
+	if downloadResp == nil {
+		if lastNotFoundErr != nil {
+			return nil, fmt.Errorf(
+				"训练模型制品不存在: train_step_id=%s tried=%s",
+				trainStepID,
+				strings.Join(artifactCandidates, ","),
+			)
+		}
+		return nil, fmt.Errorf(
+			"训练模型下载票据请求失败: train_step_id=%s tried=%s",
+			trainStepID,
+			strings.Join(artifactCandidates, ","),
 		)
 	}
 	downloadURL := strings.TrimSpace(downloadResp.GetDownloadUrl())
@@ -905,7 +961,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		return nil, fmt.Errorf(
 			"训练模型下载地址为空: train_step_id=%s artifact=%s",
 			trainStepID,
-			artifactName,
+			selectedArtifact,
 		)
 	}
 
@@ -916,7 +972,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	paramsMap["plugin"] = pluginParams
 	paramsMap["_runtime_model_handoff"] = map[string]any{
 		"from_step_id":  trainStepID.String(),
-		"artifact_name": artifactName,
+		"artifact_name": selectedArtifact,
 		"download_url":  downloadURL,
 		"injected_at":   time.Now().UTC().Format(time.RFC3339),
 	}

@@ -46,7 +46,6 @@ from saki_api.modules.runtime.api.round_step import (
     LoopActionRequest,
     LoopCreateRequest,
     LoopUpdateRequest,
-    SimulationExperimentCreateRequest,
 )
 from saki_api.modules.runtime.service.runtime_service.snapshot_mixin import SnapshotMixin
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
@@ -2299,7 +2298,10 @@ async def test_get_step_metric_series_ignores_non_positive_step_points(loop_api_
 
 
 @pytest.mark.anyio
-async def test_simulation_experiment_create_and_comparison_contract(loop_api_env, monkeypatch):
+async def test_create_simulation_loop_normalizes_mode_without_seeds_or_random_baseline(
+    loop_api_env,
+    monkeypatch,
+):
     session_local = loop_api_env
 
     async def _allow(*args, **kwargs) -> None:
@@ -2315,21 +2317,23 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
 
         token = _session_ctx.set(session)
         try:
-            created = await loop_query_endpoint.create_simulation_experiment(
+            created = await loop_query_endpoint.create_project_loop(
                 project_id=project.id,
-                payload=SimulationExperimentCreateRequest(
+                payload=LoopCreateRequest(
+                    name="sim-single-loop",
                     branch_id=branch.id,
-                    experiment_name="sim-exp",
+                    mode=LoopMode.SIMULATION,
                     model_arch="yolo_det_v1",
-                    strategies=["uncertainty_1_minus_max_conf"],
                     config={
                         "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "reproducibility": {"global_seed": "seed-1"},
                         "mode": {
                             "oracle_commit_id": str(branch.head_commit_id),
                             "seed_ratio": 0.1,
-                            "step_ratio": 0.1,
-                            "max_rounds": 3,
-                            "seeds": [0, 1],
+                            "step_ratio": 0.2,
+                            "max_rounds": 7,
+                            "seeds": [0, 1, 2],
+                            "random_baseline_enabled": True,
                         },
                     },
                 ),
@@ -2337,61 +2341,79 @@ async def test_simulation_experiment_create_and_comparison_contract(loop_api_env
                 session=session,
                 current_user_id=current_user_id,
             )
+            assert created.mode == LoopMode.SIMULATION
+            mode_cfg = created.config.get("mode") if isinstance(created.config.get("mode"), dict) else {}
+            assert mode_cfg.get("oracle_commit_id") == str(branch.head_commit_id)
+            assert float(mode_cfg.get("seed_ratio")) == pytest.approx(0.1)
+            assert float(mode_cfg.get("step_ratio")) == pytest.approx(0.2)
+            assert int(mode_cfg.get("max_rounds")) == 7
+            assert "seeds" not in mode_cfg
+            assert "random_baseline_enabled" not in mode_cfg
+        finally:
+            _session_ctx.reset(token)
 
-            # random_baseline + one strategy, each with 2 seeds
-            assert len(created.loops) == 4
-            assert all(loop.mode == LoopMode.SIMULATION for loop in created.loops)
-            for loop in created.loops:
-                cfg = loop.config if isinstance(loop.config, dict) else {}
-                mode_cfg = cfg.get("mode") if isinstance(cfg.get("mode"), dict) else {}
-                reproducibility_cfg = (
-                    cfg.get("reproducibility")
-                    if isinstance(cfg.get("reproducibility"), dict)
-                    else {}
-                )
-                expected_seed = str(reproducibility_cfg.get("global_seed") or "")
-                assert expected_seed in {"0", "1"}
-                assert "single_seed" not in mode_cfg
 
-            for loop in created.loops:
-                loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}
-                loop_strategy = str((loop_sampling or {}).get("strategy") or "random_baseline")
-                for ridx in [1, 2, 3]:
-                    base = 0.5 if loop_strategy == "random_baseline" else 0.6
-                    session.add(
-                        Round(
-                            project_id=project.id,
-                            loop_id=loop.id,
-                            round_index=ridx,
-                            mode=LoopMode.SIMULATION,
-                            state=RoundStatus.COMPLETED,
-                            step_counts={"succeeded": 4},
-                            round_type="loop_round",
-                            plugin_id=loop.model_arch,
-                            resolved_params={"sampling": {"strategy": loop_strategy}},
-                            resources={},
-                            input_commit_id=branch.head_commit_id,
-                            final_metrics={"map50": base + ridx * 0.01},
-                            final_artifacts={},
-                            strategy_params={"sampling": {"strategy": loop_strategy}},
-                        )
-                    )
-            await session.commit()
+@pytest.mark.anyio
+async def test_update_simulation_loop_applies_mode_max_rounds(loop_api_env, monkeypatch):
+    session_local = loop_api_env
 
-            comparison = await loop_query_endpoint.get_simulation_experiment_comparison(
-                group_id=created.experiment_group_id,
-                metric_name="map50",
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_query_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            created = await loop_query_endpoint.create_project_loop(
+                project_id=project.id,
+                payload=LoopCreateRequest(
+                    name="sim-update-max-rounds",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config={
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "reproducibility": {"global_seed": "seed-1"},
+                        "mode": {
+                            "oracle_commit_id": str(branch.head_commit_id),
+                            "seed_ratio": 0.1,
+                            "step_ratio": 0.2,
+                            "max_rounds": 7,
+                        },
+                    },
+                ),
                 runtime_service=service,
                 session=session,
                 current_user_id=current_user_id,
             )
-            assert comparison.experiment_group_id == created.experiment_group_id
-            assert comparison.baseline_strategy == "random_baseline"
-            strategy_names = {item.strategy for item in comparison.strategies}
-            assert "random_baseline" in strategy_names
-            assert "uncertainty_1_minus_max_conf" in strategy_names
-            assert "uncertainty_1_minus_max_conf" in comparison.delta_vs_baseline
-            for strategy_summary in comparison.strategies:
-                assert set(strategy_summary.seeds) == {"0", "1"}
+            assert int(created.max_rounds) == 7
+
+            updated = await loop_query_endpoint.update_loop(
+                loop_id=created.id,
+                payload=LoopUpdateRequest(
+                    config={
+                        "sampling": {"strategy": "random_baseline", "topk": 200},
+                        "reproducibility": {"global_seed": "seed-1"},
+                        "mode": {
+                            "oracle_commit_id": str(branch.head_commit_id),
+                            "seed_ratio": 0.15,
+                            "step_ratio": 0.25,
+                            "max_rounds": 11,
+                        },
+                    },
+                ),
+                runtime_service=service,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert int(updated.max_rounds) == 11
+            mode_cfg = updated.config.get("mode") if isinstance(updated.config.get("mode"), dict) else {}
+            assert int(mode_cfg.get("max_rounds")) == 11
         finally:
             _session_ctx.reset(token)

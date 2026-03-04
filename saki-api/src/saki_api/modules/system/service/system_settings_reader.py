@@ -37,10 +37,6 @@ class SystemSettingsReader:
             "seed_ratio": float(values.get(SystemSettingKeys.SIMULATION_SEED_RATIO, 0.05)),
             "step_ratio": float(values.get(SystemSettingKeys.SIMULATION_STEP_RATIO, 0.05)),
             "max_rounds": int(values.get(SystemSettingKeys.SIMULATION_MAX_ROUNDS, 20)),
-            "seeds": list(values.get(SystemSettingKeys.SIMULATION_SEEDS, [0, 1, 2, 3, 4])),
-            "random_baseline_enabled": bool(
-                values.get(SystemSettingKeys.SIMULATION_RANDOM_BASELINE_ENABLED, True)
-            ),
         }
 
 

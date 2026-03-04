@@ -56,9 +56,6 @@ import {
     PredictionSetGenerateRequest,
     PredictionSetRead,
     PredictionTaskRead,
-    SimulationComparison,
-    SimulationExperimentCreateRequest,
-    SimulationExperimentCreateResponse,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
@@ -271,13 +268,6 @@ export interface ApiService {
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;
-
-    createSimulationExperiment(
-        projectId: string,
-        payload: SimulationExperimentCreateRequest
-    ): Promise<SimulationExperimentCreateResponse>;
-
-    getSimulationExperimentComparison(groupId: string, metricName?: string): Promise<SimulationComparison>;
 
     getRuntimePlugins(): Promise<RuntimePluginCatalogResponse>;
 

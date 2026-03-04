@@ -28,7 +28,6 @@ class Loop(UUIDMixin, TimestampMixin, SQLModel, table=True):
     phase_meta: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 
     model_arch: str
-    experiment_group_id: uuid.UUID | None = Field(default=None, index=True)
 
     config: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
 

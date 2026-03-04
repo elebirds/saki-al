@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, List
+from typing import Any
 
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
-from saki_api.modules.project.api.branch import BranchCreate
 from saki_api.modules.runtime.api.round_step import (
     LoopCreateData,
     LoopCreateRequest,
     LoopPatch,
     LoopUpdateRequest,
-    SimulationExperimentCreateRequest,
 )
 from saki_api.modules.runtime.domain import phase_for_mode
 from saki_api.modules.runtime.domain.loop import Loop
@@ -21,15 +19,6 @@ from saki_api.modules.shared.modeling.enums import LoopLifecycle, LoopMode
 
 
 class LoopCommandMixin:
-    @staticmethod
-    def _inject_global_seed(config: dict, *, seed: str) -> dict:
-        updated = dict(config or {})
-        reproducibility = updated.get("reproducibility")
-        reproducibility_map = dict(reproducibility) if isinstance(reproducibility, dict) else {}
-        reproducibility_map["global_seed"] = str(seed or "").strip()
-        updated["reproducibility"] = reproducibility_map
-        return updated
-
     def _extract_config_oracle_commit_id(self, config: dict[str, Any] | None) -> uuid.UUID | None:
         simulation = self._extract_simulation_config(dict(config or {}))
         raw = str(simulation.oracle_commit_id or "").strip()
@@ -104,7 +93,6 @@ class LoopCommandMixin:
             phase=phase_for_mode(payload.mode),
             phase_meta={},
             model_arch=payload.model_arch,
-            experiment_group_id=payload.experiment_group_id,
             config=normalized_config,
             current_iteration=0,
             lifecycle=payload.lifecycle,
@@ -131,8 +119,6 @@ class LoopCommandMixin:
         if payload.model_arch is not None:
             await self._validate_plugin_id(payload.model_arch)
             patch.model_arch = payload.model_arch
-        if payload.experiment_group_id is not None:
-            patch.experiment_group_id = payload.experiment_group_id
         if payload.lifecycle is not None:
             patch.lifecycle = payload.lifecycle
 
@@ -180,90 +166,3 @@ class LoopCommandMixin:
         if not patch_payload:
             return loop
         return await self.loop_repo.update_or_raise(loop_id, patch_payload)
-
-    @transactional
-    async def create_simulation_experiment(
-        self,
-        *,
-        project_id: uuid.UUID,
-        payload: SimulationExperimentCreateRequest,
-    ) -> tuple[uuid.UUID, List[Loop]]:
-        branch = await self.project_gateway.get_branch(payload.branch_id)
-        if not branch:
-            raise NotFoundAppException(f"Branch {payload.branch_id} not found")
-        if branch.project_id != project_id:
-            raise BadRequestAppException("Branch does not belong to this project")
-        await self._validate_plugin_id(payload.model_arch)
-
-        strategies: list[str] = []
-        for raw in payload.strategies:
-            key = str(raw or "").strip()
-            if not key or key in strategies:
-                continue
-            strategies.append(key)
-        if self.RANDOM_BASELINE_STRATEGY not in strategies:
-            strategies.insert(0, self.RANDOM_BASELINE_STRATEGY)
-        if not strategies:
-            raise BadRequestAppException("strategies must contain at least one item")
-
-        raw_base_config = dict(payload.config or {})
-        mode_config_raw = raw_base_config.get("mode") if isinstance(raw_base_config.get("mode"), dict) else {}
-        seeds_raw = mode_config_raw.get("seeds") if isinstance(mode_config_raw, dict) else None
-        seeds: list[int] = []
-        for item in seeds_raw or [0, 1, 2, 3, 4]:
-            try:
-                seeds.append(int(item))
-            except Exception:
-                continue
-        if not seeds:
-            seeds = [0, 1, 2, 3, 4]
-        first_seed = str(int(seeds[0]))
-        base_config = self._normalize_loop_config(
-            self._inject_global_seed(raw_base_config, seed=first_seed),
-            mode=LoopMode.SIMULATION.value,
-        )
-
-        group_id = uuid.uuid4()
-        experiment_name = str(payload.experiment_name or f"sim-{str(group_id)[:8]}").strip()
-        group_token = str(group_id).split("-")[0]
-
-        loops: list[Loop] = []
-        for strategy in strategies:
-            for seed in seeds:
-                strategy_segment = self._normalize_branch_segment(strategy, fallback="strategy")
-                branch_name = await self._next_available_branch_name(
-                    project_id=project_id,
-                    base_name=f"simulation/{group_token}/{strategy_segment}/seed-{seed}",
-                )
-                fork_branch = await self.project_gateway.create_branch(
-                    BranchCreate(
-                        project_id=project_id,
-                        name=branch_name,
-                        head_commit_id=branch.head_commit_id,
-                        description=self._truncate(
-                            f"[simulation] {experiment_name} · {strategy} · seed={seed}",
-                            max_len=500,
-                        ),
-                        is_protected=False,
-                    )
-                )
-
-                config = dict(base_config)
-                sampling_cfg = dict(config.get("sampling") or {})
-                sampling_cfg["strategy"] = strategy
-                config["sampling"] = sampling_cfg
-                config = self._inject_global_seed(config, seed=str(int(seed)))
-
-                loop_payload = LoopCreateRequest(
-                    name=self._truncate(f"{experiment_name}-{strategy}-seed-{seed}", max_len=100),
-                    branch_id=fork_branch.id,
-                    mode=LoopMode.SIMULATION,
-                    model_arch=payload.model_arch,
-                    config=config,
-                    experiment_group_id=group_id,
-                    lifecycle=payload.lifecycle,
-                )
-                loop = await self.create_loop(project_id=project_id, payload=loop_payload)
-                loops.append(loop)
-
-        return group_id, loops

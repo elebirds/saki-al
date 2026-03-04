@@ -768,12 +768,12 @@
       "title": "Loop Overview",
       "subtitle": "Unified semantic overview for Loop/Round/Step.",
       "viewExecutors": "View Executor Status",
-      "compareExperimentGroup": "Compare Experiment Groups",
       "refresh": "Refresh",
       "createLoop": "Create Loop",
       "noPermission": "No permission to access Loop page",
       "noPluginCatalog": "No available plugin catalog",
       "noPluginCatalogDesc": "Please start at least one executor and complete registration first.",
+      "branchNoAvailable": "No branch is available for new loops (all branches are already bound).",
       "empty": "No loops in this project yet",
       "enterDetail": "View Details",
       "branch": "Branch",
@@ -789,36 +789,46 @@
         "evalFinal": "Eval(Test)"
       },
       "messages": {
-        "loadComparisonFailed": "Failed to load comparison data",
-        "loadOverviewFailed": "Failed to load loop overview",
-        "selectAtLeastOneSimulationStrategy": "Please select at least one simulation strategy",
-        "simulationExperimentCreateSuccess": "Simulation experiment created, {{count}} loops generated",
-        "loopCreateSuccess": "Loop created successfully",
-        "loopCreateFailed": "Failed to create loop",
-        "noSimulationExperimentGroup": "No simulation experiment group to display"
+        "loadOverviewFailed": "Failed to load loop overview"
+      }
+    },
+    "loopCreate": {
+      "title": "Create Loop",
+      "subtitle": "Configure a full AL/SIM/MANUAL loop creation request.",
+      "backToOverview": "Back to Overview",
+      "reload": "Reload",
+      "cancel": "Cancel",
+      "submit": "Create Loop",
+      "noPermission": "No permission to access loop creation page",
+      "noPluginCatalog": "No available plugin catalog",
+      "noPluginCatalogDesc": "Please start at least one executor and complete registration first.",
+      "section": {
+        "basic": "Basic Info",
+        "mode": "Mode Params"
       },
-      "modal": {
-        "createSimulationExperiment": "Create Simulation Experiment",
-        "createLoop": "Create Loop"
+      "messages": {
+        "loadFailed": "Failed to load loop creation data",
+        "pluginMissing": "Selected plugin is missing, please reload and retry",
+        "noStrategyForPlugin": "This plugin has no supported sampling strategy for current mode",
+        "createSuccess": "Loop created successfully",
+        "createFailed": "Failed to create loop"
       },
       "form": {
         "name": "Name",
         "nameRequired": "Please enter a name",
         "namePlaceholder": "e.g. fedo-yolo-loop-1",
-        "simulationExperimentName": "Experiment Name (Optional)",
-        "simulationExperimentNamePlaceholder": "e.g. Vehicle detection comparison (auto-generated when empty)",
         "branchId": "Bound Branch",
         "branchIdRequired": "Please select a branch",
+        "branchNoAvailable": "No branch is available for new loops (all branches are already bound).",
         "modelArch": "Plugin",
         "modelArchRequired": "Please select a plugin",
         "globalSeed": "Global Seed",
         "globalSeedRequired": "Please enter global seed",
         "globalSeedPlaceholder": "Stable seed for reproducible loop execution",
-        "samplingStrategy": "Default Sampling Strategy",
+        "samplingStrategy": "Sampling Strategy",
         "samplingStrategyRequired": "Please select a sampling strategy",
-        "simulationStrategies": "Comparison Strategies",
-        "simulationStrategiesRequired": "Please select at least one strategy",
-        "simulationStrategiesPlaceholder": "Select at least one strategy; random_baseline will be included automatically",
+        "queryBatchSize": "TopK Per Round",
+        "queryBatchSizeRequired": "Please enter TopK per round",
         "mode": "Run Mode",
         "modeRequired": "Please select a run mode",
         "modeOptions": {
@@ -826,23 +836,29 @@
           "simulation": "Simulation",
           "manual": "Manual"
         },
-        "simulationInfo": "Simulation runs strategy comparison on independent branches and always includes random_baseline.",
-        "oracleCommitId": "Oracle Commit ID",
-        "oracleCommitIdRequired": "Oracle commit is required in simulation mode",
-        "oracleCommitIdPlaceholder": "Fully labeled commit id",
+        "payloadModeHint": {
+          "active_learning": "AL: each round requires human confirm and manual next-round trigger.",
+          "simulation": "SIM: auto reveal and auto next-round on oracle-labeled universe.",
+          "manual": "MANUAL: run TRAIN->EVAL only, next round is manual."
+        },
+        "oracleCommitUnknownMessage": "Untitled commit",
+        "oracleCommitInputMode": "Oracle Input Mode",
+        "oracleCommitInputModeRequired": "Please choose oracle input mode",
+        "oracleCommitSelect": "Select from commits",
+        "oracleCommitManual": "Manual commit ID",
+        "oracleCommitId": "Oracle Commit",
+        "oracleCommitIdManual": "Oracle Commit ID",
+        "oracleCommitIdRequired": "Oracle commit is required for simulation",
+        "oracleCommitIdInvalid": "Oracle commit ID must be a valid UUID",
+        "oracleCommitIdPlaceholder": "Enter full commit UUID",
+        "oracleCommitIdSelectPlaceholder": "Select oracle commit",
         "seedRatio": "Initial Seed Ratio",
         "stepRatio": "Step Ratio Per Round",
-        "seeds": "Random Seeds",
-        "seedsPlaceholder": "e.g. 0,1,2,3,4",
-        "queryBatchSize": "TopK Per Round"
-      },
-      "compareModal": {
-        "title": "Simulation Strategy Comparison",
-        "selectGroupPlaceholder": "Select experiment group",
-        "empty": "No comparison data to plot",
-        "table": {
-          "strategy": "Strategy"
-        }
+        "maxRounds": "Max Rounds (Fuse)",
+        "maxRoundsRequired": "Please enter max rounds",
+        "modelRequestParams": "Model Request Parameters",
+        "pluginSchemaHint": "Final payload merges plugin defaults with your edits.",
+        "noDynamicSchema": "Current plugin does not define a dynamic schema"
       }
     },
     "loopConfig": {
@@ -854,6 +870,8 @@
       "basicConfig": "Basic Config",
       "messages": {
         "loadFailed": "Failed to load loop config",
+        "pluginMissing": "Selected plugin is missing, please reload and retry",
+        "noStrategyForPlugin": "This plugin has no supported sampling strategy for current mode",
         "saveSuccess": "Loop config saved",
         "saveFailed": "Failed to save loop config"
       },
@@ -876,12 +894,21 @@
         "samplingStrategyRequired": "Please select sampling strategy",
         "queryBatchSize": "TopK Per Round",
         "simulationConfigTitle": "Simulation Config",
-        "oracleCommitId": "Oracle Commit ID",
+        "oracleCommitUnknownMessage": "Untitled commit",
+        "oracleCommitInputMode": "Oracle Input Mode",
+        "oracleCommitInputModeRequired": "Please choose oracle input mode",
+        "oracleCommitSelect": "Select from commits",
+        "oracleCommitManual": "Manual commit ID",
+        "oracleCommitId": "Oracle Commit",
+        "oracleCommitIdManual": "Oracle Commit ID",
         "oracleCommitIdRequired": "Oracle commit is required for simulation",
+        "oracleCommitIdInvalid": "Oracle commit ID must be a valid UUID",
+        "oracleCommitIdPlaceholder": "Enter full commit UUID",
+        "oracleCommitIdSelectPlaceholder": "Select oracle commit",
         "seedRatio": "Initial Seed Ratio",
         "stepRatio": "Step Ratio Per Round",
-        "seeds": "Random Seeds",
-        "seedsPlaceholder": "e.g. 0,1,2,3,4",
+        "maxRounds": "Max Rounds (Fuse)",
+        "maxRoundsRequired": "Please enter max rounds",
         "modelRequestParams": "Model Request Parameters",
         "noDynamicSchema": "Current plugin does not define a dynamic schema"
       }

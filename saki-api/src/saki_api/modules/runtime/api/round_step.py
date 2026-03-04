@@ -27,8 +27,7 @@ class LoopSimulationConfig(BaseModel):
     oracle_commit_id: Optional[uuid.UUID] = None
     seed_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
     step_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
-    random_baseline_enabled: bool = True
-    seeds: List[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
+    max_rounds: int = Field(default=20, ge=1)
 
 
 class LoopCreateRequest(BaseModel):
@@ -37,7 +36,6 @@ class LoopCreateRequest(BaseModel):
     mode: LoopMode = LoopMode.ACTIVE_LEARNING
     model_arch: str
     config: Dict[str, Any] = Field(default_factory=dict)
-    experiment_group_id: Optional[uuid.UUID] = None
     lifecycle: LoopLifecycle = LoopLifecycle.DRAFT
 
 
@@ -46,7 +44,6 @@ class LoopUpdateRequest(BaseModel):
     mode: Optional[LoopMode] = None
     model_arch: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
-    experiment_group_id: Optional[uuid.UUID] = None
     lifecycle: Optional[LoopLifecycle] = None
 
 
@@ -58,7 +55,6 @@ class LoopCreateData(BaseModel):
     phase: LoopPhase = LoopPhase.AL_BOOTSTRAP
     phase_meta: Dict[str, Any] = Field(default_factory=dict)
     model_arch: str
-    experiment_group_id: Optional[uuid.UUID] = None
     config: Dict[str, Any] = Field(default_factory=dict)
     current_iteration: int = Field(default=0, ge=0)
     lifecycle: LoopLifecycle = LoopLifecycle.DRAFT
@@ -79,7 +75,6 @@ class LoopPatch(BaseModel):
     phase: Optional[LoopPhase] = None
     phase_meta: Optional[Dict[str, Any]] = None
     model_arch: Optional[str] = None
-    experiment_group_id: Optional[uuid.UUID] = None
     config: Optional[Dict[str, Any]] = None
     current_iteration: Optional[int] = Field(default=None, ge=0)
     lifecycle: Optional[LoopLifecycle] = None
@@ -109,7 +104,6 @@ class LoopRead(BaseModel):
     model_arch: str
     config: Dict[str, Any]
     active_snapshot_version_id: Optional[uuid.UUID] = None
-    experiment_group_id: Optional[uuid.UUID] = None
     current_iteration: int
     lifecycle: LoopLifecycle
     max_rounds: int
@@ -470,45 +464,6 @@ class LoopSummaryRead(BaseModel):
     metrics_latest_train: Dict[str, Any] = Field(default_factory=dict)
     metrics_latest_eval: Dict[str, Any] = Field(default_factory=dict)
     metrics_latest_source: Literal["eval", "train", "other", "none"] = "none"
-
-
-class SimulationExperimentCreateRequest(BaseModel):
-    branch_id: uuid.UUID
-    experiment_name: Optional[str] = None
-    model_arch: str
-    strategies: List[str]
-    config: Dict[str, Any] = Field(default_factory=dict)
-    lifecycle: LoopLifecycle = LoopLifecycle.DRAFT
-
-
-class SimulationExperimentCreateResponse(BaseModel):
-    experiment_group_id: uuid.UUID
-    loops: List[LoopRead]
-
-
-class SimulationCurvePointRead(BaseModel):
-    strategy: str
-    round_index: int
-    target_ratio: float
-    mean_metric: float
-    std_metric: float
-
-
-class SimulationStrategySummaryRead(BaseModel):
-    strategy: str
-    seeds: List[str]
-    final_mean: float
-    final_std: float
-    aulc_mean: float
-
-
-class SimulationComparisonRead(BaseModel):
-    experiment_group_id: uuid.UUID
-    metric_name: str
-    curves: List[SimulationCurvePointRead]
-    strategies: List[SimulationStrategySummaryRead]
-    baseline_strategy: str
-    delta_vs_baseline: Dict[str, float]
 
 
 class LoopActionSpec(BaseModel):

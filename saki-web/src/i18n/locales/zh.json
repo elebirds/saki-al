@@ -795,12 +795,12 @@
       "title": "Loop 概览",
       "subtitle": "Loop/Round/Step 统一语义概览页。",
       "viewExecutors": "查看执行器状态",
-      "compareExperimentGroup": "实验组对比",
       "refresh": "刷新",
       "createLoop": "新建 Loop",
       "noPermission": "暂无权限访问 Loop 页面",
       "noPluginCatalog": "当前没有可用插件目录",
       "noPluginCatalogDesc": "请先启动至少一个 executor 并完成注册。",
+      "branchNoAvailable": "当前没有可用于创建 Loop 的分支（所有分支均已绑定）。",
       "empty": "当前项目还没有 Loop",
       "enterDetail": "进入详情",
       "branch": "分支",
@@ -816,36 +816,46 @@
         "evalFinal": "Eval(Test)"
       },
       "messages": {
-        "loadComparisonFailed": "加载对比数据失败",
-        "loadOverviewFailed": "加载 Loop 概览失败",
-        "selectAtLeastOneSimulationStrategy": "请至少选择一个 simulation 策略",
-        "simulationExperimentCreateSuccess": "Simulation 实验创建成功，共 {{count}} 条 Loop",
-        "loopCreateSuccess": "Loop 创建成功",
-        "loopCreateFailed": "Loop 创建失败",
-        "noSimulationExperimentGroup": "当前没有可展示的 simulation 实验组"
+        "loadOverviewFailed": "加载 Loop 概览失败"
+      }
+    },
+    "loopCreate": {
+      "title": "新建 Loop",
+      "subtitle": "按 AL/SIM/MANUAL 模式配置一次完整的创建参数。",
+      "backToOverview": "返回概览",
+      "reload": "重新加载",
+      "cancel": "取消",
+      "submit": "创建 Loop",
+      "noPermission": "暂无权限访问 Loop 创建页面",
+      "noPluginCatalog": "当前没有可用插件目录",
+      "noPluginCatalogDesc": "请先启动至少一个 executor 并完成注册。",
+      "section": {
+        "basic": "基础信息",
+        "mode": "模式参数"
       },
-      "modal": {
-        "createSimulationExperiment": "新建 Simulation Experiment",
-        "createLoop": "新建 Loop"
+      "messages": {
+        "loadFailed": "加载 Loop 创建页数据失败",
+        "pluginMissing": "当前选择的插件不存在，请刷新后重试",
+        "noStrategyForPlugin": "该插件没有可用采样策略，当前模式无法创建",
+        "createSuccess": "Loop 创建成功",
+        "createFailed": "Loop 创建失败"
       },
       "form": {
         "name": "名称",
         "nameRequired": "请输入名称",
         "namePlaceholder": "例如：fedo-yolo-loop-1",
-        "simulationExperimentName": "实验名称（可选）",
-        "simulationExperimentNamePlaceholder": "例如：车辆检测对比实验（留空自动命名）",
         "branchId": "绑定分支",
         "branchIdRequired": "请选择分支",
+        "branchNoAvailable": "当前没有可用于创建 Loop 的分支（所有分支均已绑定）。",
         "modelArch": "插件",
         "modelArchRequired": "请选择插件",
         "globalSeed": "主种子",
         "globalSeedRequired": "请输入主种子",
         "globalSeedPlaceholder": "用于保证 loop 可复现的稳定种子",
-        "samplingStrategy": "默认采样策略",
+        "samplingStrategy": "采样策略",
         "samplingStrategyRequired": "请选择采样策略",
-        "simulationStrategies": "对比策略",
-        "simulationStrategiesRequired": "请至少选择一个策略",
-        "simulationStrategiesPlaceholder": "至少选择一个策略，系统会自动补齐 random_baseline",
+        "queryBatchSize": "每轮 TopK",
+        "queryBatchSizeRequired": "请填写每轮 TopK",
         "mode": "运行模式",
         "modeRequired": "请选择运行模式",
         "modeOptions": {
@@ -853,23 +863,29 @@
           "simulation": "模拟实验 (Simulation)",
           "manual": "手动模式 (Manual)"
         },
-        "simulationInfo": "Simulation 会在独立分支上运行策略对比，并强制包含 random_baseline。",
-        "oracleCommitId": "Oracle Commit ID",
+        "payloadModeHint": {
+          "active_learning": "AL：每轮需要人工确认与推进下一轮。",
+          "simulation": "SIM：按 oracle 标注全集自动 reveal 并自动推进轮次。",
+          "manual": "MANUAL：仅执行 TRAIN->EVAL，按需手动推进下一轮。"
+        },
+        "oracleCommitUnknownMessage": "未命名提交",
+        "oracleCommitInputMode": "Oracle 输入方式",
+        "oracleCommitInputModeRequired": "请选择 Oracle 输入方式",
+        "oracleCommitSelect": "从 Commit 列表选择",
+        "oracleCommitManual": "手动输入 Commit ID",
+        "oracleCommitId": "Oracle Commit",
+        "oracleCommitIdManual": "Oracle Commit ID",
         "oracleCommitIdRequired": "simulation 模式必须提供 oracle commit",
-        "oracleCommitIdPlaceholder": "全量标注 commit id",
+        "oracleCommitIdInvalid": "Oracle Commit ID 格式不合法（需为 UUID）",
+        "oracleCommitIdPlaceholder": "请输入完整 commit UUID",
+        "oracleCommitIdSelectPlaceholder": "请选择作为 oracle 的 commit",
         "seedRatio": "初始种子比例",
         "stepRatio": "每轮提升比例",
-        "seeds": "随机种子列表",
-        "seedsPlaceholder": "例如：0,1,2,3,4",
-        "queryBatchSize": "每轮 TopK"
-      },
-      "compareModal": {
-        "title": "Simulation 策略对比",
-        "selectGroupPlaceholder": "选择实验组",
-        "empty": "暂无可绘制对比数据",
-        "table": {
-          "strategy": "策略"
-        }
+        "maxRounds": "最大轮次（保险丝）",
+        "maxRoundsRequired": "请填写最大轮次",
+        "modelRequestParams": "模型请求参数",
+        "pluginSchemaHint": "参数会和插件默认配置合并后提交。",
+        "noDynamicSchema": "当前插件未定义动态参数 schema"
       }
     },
     "loopConfig": {
@@ -881,6 +897,8 @@
       "basicConfig": "基本配置",
       "messages": {
         "loadFailed": "加载 Loop 配置失败",
+        "pluginMissing": "当前选择的插件不存在，请刷新后重试",
+        "noStrategyForPlugin": "该插件没有可用采样策略，当前模式无法保存",
         "saveSuccess": "Loop 配置已保存",
         "saveFailed": "保存 Loop 配置失败"
       },
@@ -903,12 +921,21 @@
         "samplingStrategyRequired": "请选择采样策略",
         "queryBatchSize": "每轮 TopK",
         "simulationConfigTitle": "模拟实验配置",
-        "oracleCommitId": "Oracle Commit ID",
+        "oracleCommitUnknownMessage": "未命名提交",
+        "oracleCommitInputMode": "Oracle 输入方式",
+        "oracleCommitInputModeRequired": "请选择 Oracle 输入方式",
+        "oracleCommitSelect": "从 Commit 列表选择",
+        "oracleCommitManual": "手动输入 Commit ID",
+        "oracleCommitId": "Oracle Commit",
+        "oracleCommitIdManual": "Oracle Commit ID",
         "oracleCommitIdRequired": "simulation 需要 oracle commit",
+        "oracleCommitIdInvalid": "Oracle Commit ID 格式不合法（需为 UUID）",
+        "oracleCommitIdPlaceholder": "请输入完整 commit UUID",
+        "oracleCommitIdSelectPlaceholder": "请选择作为 oracle 的 commit",
         "seedRatio": "初始种子比例",
         "stepRatio": "每轮提升比例",
-        "seeds": "随机种子列表",
-        "seedsPlaceholder": "例如：0,1,2,3,4",
+        "maxRounds": "最大轮次（保险丝）",
+        "maxRoundsRequired": "请填写最大轮次",
         "modelRequestParams": "模型请求参数",
         "noDynamicSchema": "当前插件未定义动态参数 schema"
       }

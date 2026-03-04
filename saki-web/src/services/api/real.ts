@@ -59,9 +59,6 @@ import {
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
     LoopSummary,
-    SimulationComparison,
-    SimulationExperimentCreateRequest,
-    SimulationExperimentCreateResponse,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
     RuntimeExecutorRead,
@@ -1060,28 +1057,6 @@ export class RealApiService implements ApiService {
     async getLoopSummary(loopId: string): Promise<LoopSummary> {
         const response = await this.client.get<LoopSummary>(`/loops/${loopId}/summary`);
         return normalizeLoopSummary(response.data);
-    }
-
-    async createSimulationExperiment(
-        projectId: string,
-        payload: SimulationExperimentCreateRequest
-    ): Promise<SimulationExperimentCreateResponse> {
-        const response = await this.client.post<SimulationExperimentCreateResponse>(
-            `/projects/${projectId}/simulation-experiments`,
-            payload,
-        );
-        return response.data;
-    }
-
-    async getSimulationExperimentComparison(
-        groupId: string,
-        metricName: string = 'map50',
-    ): Promise<SimulationComparison> {
-        const response = await this.client.get<SimulationComparison>(
-            `/simulation-experiments/${groupId}/comparison`,
-            {params: {metric_name: metricName}},
-        );
-        return response.data;
     }
 
     async getRuntimePlugins(): Promise<RuntimePluginCatalogResponse> {

@@ -65,12 +65,13 @@
 ## 8. API 契约要求
 
 1. 删除：`GET /loops/{loop_id}/label-readiness`。  
-2. 保留：`GET /loops/{loop_id}/snapshot`、`POST /loops/{loop_id}:act`。  
-3. 新增：`POST /loops/{loop_id}/prediction-sets:generate`、`GET /loops/{loop_id}/prediction-sets`、`GET /prediction-sets/{prediction_set_id}`、`POST /prediction-sets/{prediction_set_id}:apply`。  
-4. `GET /rounds/{round_id}/artifacts` 改为扁平聚合返回，字段固定：  
+2. 删除：`POST /projects/{project_id}/simulation-experiments`、`GET /simulation-experiments/{group_id}/comparison`。  
+3. 保留：`GET /loops/{loop_id}/snapshot`、`POST /loops/{loop_id}:act`。  
+4. 新增：`POST /loops/{loop_id}/prediction-sets:generate`、`GET /loops/{loop_id}/prediction-sets`、`GET /prediction-sets/{prediction_set_id}`、`POST /prediction-sets/{prediction_set_id}:apply`。  
+5. `GET /rounds/{round_id}/artifacts` 改为扁平聚合返回，字段固定：  
    `step_id`、`step_index`、`stage`、`artifact_class`、`name`、`kind`、`uri`、`size`、`created_at`。  
-5. `GET /rounds/{round_id}/selection` 支持历史 round 只读查询。  
-6. `POST /rounds/{round_id}/selection:apply/reset` 仅 AL 最新轮且未 confirm 可写。  
+6. `GET /rounds/{round_id}/selection` 支持历史 round 只读查询。  
+7. `POST /rounds/{round_id}/selection:apply/reset` 仅 AL 最新轮且未 confirm 可写。  
 
 ## 9. 前端要求（Round/Loop）
 

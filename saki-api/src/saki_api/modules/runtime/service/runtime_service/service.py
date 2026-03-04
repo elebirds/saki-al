@@ -54,7 +54,6 @@ class RuntimeService(
     RuntimeQueryMixin,
     CrudServiceBase[Round, RoundRepository, RoundUpdate, RoundUpdate],
 ):
-    RANDOM_BASELINE_STRATEGY = "random_baseline"
     _normalize_loop_config = staticmethod(normalize_loop_config)
     _derive_loop_max_rounds = staticmethod(derive_loop_max_rounds)
     _derive_query_batch_size = staticmethod(derive_query_batch_size)

@@ -1013,7 +1013,6 @@ type Loop struct {
 	Phase                 Loopphase
 	PhaseMeta             []byte
 	ModelArch             string
-	ExperimentGroupID     *uuid.UUID
 	Config                []byte
 	CurrentIteration      int32
 	Lifecycle             Looplifecycle
@@ -1049,6 +1048,63 @@ type Model struct {
 	PublishManifest     []byte
 	PromotedAt          pgtype.Timestamp
 	CreatedBy           *uuid.UUID
+}
+
+type ModelClassSchema struct {
+	CreatedAt     pgtype.Timestamp
+	UpdatedAt     pgtype.Timestamp
+	ID            uuid.UUID
+	ModelID       uuid.UUID
+	LabelID       uuid.UUID
+	ClassIndex    int32
+	ClassName     string
+	ClassNameNorm string
+	SchemaHash    string
+}
+
+type PredictionItem struct {
+	CreatedAt       pgtype.Timestamp
+	UpdatedAt       pgtype.Timestamp
+	PredictionSetID uuid.UUID
+	SampleID        uuid.UUID
+	Rank            int32
+	Score           float64
+	LabelID         *uuid.UUID
+	Geometry        []byte
+	Attrs           []byte
+	Confidence      float64
+	Meta            []byte
+}
+
+type PredictionSet struct {
+	CreatedAt     pgtype.Timestamp
+	UpdatedAt     pgtype.Timestamp
+	ID            uuid.UUID
+	ProjectID     uuid.UUID
+	LoopID        *uuid.UUID
+	PluginID      string
+	SourceRoundID *uuid.UUID
+	SourceStepID  *uuid.UUID
+	ModelID       uuid.UUID
+	BaseCommitID  *uuid.UUID
+	ScopeType     string
+	ScopePayload  []byte
+	Status        string
+	TotalItems    int32
+	Params        []byte
+	LastError     pgtype.Text
+	CreatedBy     *uuid.UUID
+}
+
+type PredictionSetBinding struct {
+	CreatedAt       pgtype.Timestamp
+	UpdatedAt       pgtype.Timestamp
+	ID              uuid.UUID
+	PredictionSetID uuid.UUID
+	ModelID         uuid.UUID
+	SchemaHash      string
+	ByIndexJson     []byte
+	ByNameJson      []byte
 }
 
 type Project struct {

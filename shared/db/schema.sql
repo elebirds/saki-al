@@ -534,7 +534,6 @@ CREATE TABLE public.loop (
     phase public.loopphase NOT NULL,
     phase_meta jsonb,
     model_arch character varying NOT NULL,
-    experiment_group_id uuid,
     config jsonb,
     current_iteration integer NOT NULL,
     lifecycle public.looplifecycle NOT NULL,
@@ -1603,13 +1602,6 @@ CREATE INDEX ix_label_project_id ON public.label USING btree (project_id);
 --
 
 CREATE INDEX ix_loop_branch_id ON public.loop USING btree (branch_id);
-
-
---
--- Name: ix_loop_experiment_group_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_loop_experiment_group_id ON public.loop USING btree (experiment_group_id);
 
 
 --

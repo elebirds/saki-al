@@ -9,16 +9,12 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from datetime import timedelta
-from statistics import mean, pstdev
 from typing import Any, Dict, List
 
 from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.core.config import settings
 from saki_api.modules.runtime.api.round_step import (
     RoundArtifactRead,
-    SimulationComparisonRead,
-    SimulationCurvePointRead,
-    SimulationStrategySummaryRead,
     StepArtifactRead,
 )
 from saki_api.modules.runtime.domain.round import Round
@@ -765,113 +761,4 @@ class RuntimeQueryMixin:
             metrics_latest_train=latest_round_metric_view.train_final_metrics,
             metrics_latest_eval=latest_round_metric_view.eval_final_metrics,
             metrics_latest_source=latest_round_metric_view.final_metrics_source,
-        )
-
-    async def get_simulation_experiment_comparison(
-        self,
-        *,
-        experiment_group_id: uuid.UUID,
-        metric_name: str = "map50",
-    ) -> SimulationComparisonRead:
-        loops = await self.loop_repo.list_by_experiment_group(experiment_group_id)
-        if not loops:
-            raise NotFoundAppException(f"Simulation experiment {experiment_group_id} not found")
-
-        by_strategy: dict[str, dict[int, list[tuple[str, float]]]] = {}
-        summary_rows: dict[str, list[tuple[str, float]]] = {}
-
-        for loop in loops:
-            simulation_config = self._extract_simulation_config(loop.config or {})
-            global_seed = str(self._get_loop_global_seed(loop.config or {})).strip()
-            if not global_seed:
-                raise BadRequestAppException(f"loop {loop.id} missing config.reproducibility.global_seed")
-            loop_sampling = loop.config.get("sampling") if isinstance(loop.config, dict) else {}
-            strategy = str((loop_sampling or {}).get("strategy") or self.RANDOM_BASELINE_STRATEGY)
-            strategy_data = by_strategy.setdefault(strategy, {})
-
-            rounds = await self.repository.list_by_loop(loop.id)
-            round_ids = [round_item.id for round_item in rounds]
-            steps = await self.step_repo.list_by_round_ids(round_ids)
-            steps_by_round = self._group_steps_by_round(steps)
-            final_metrics = []
-            for round_item in rounds:
-                effective_metrics = self.derive_round_final_metrics(
-                    round_item=round_item,
-                    steps=steps_by_round.get(round_item.id, []),
-                )
-                m = float((effective_metrics or {}).get(metric_name) or 0.0)
-                final_metrics.append((round_item.round_index, m))
-                strategy_data.setdefault(round_item.round_index, []).append((global_seed, m))
-
-            if final_metrics:
-                aulc = mean([row[1] for row in final_metrics])
-                summary_rows.setdefault(strategy, []).append((global_seed, aulc))
-
-        curves: list[SimulationCurvePointRead] = []
-        summaries: list[SimulationStrategySummaryRead] = []
-
-        if not by_strategy:
-            return SimulationComparisonRead(
-                experiment_group_id=experiment_group_id,
-                metric_name=metric_name,
-                curves=[],
-                strategies=[],
-                baseline_strategy=self.RANDOM_BASELINE_STRATEGY,
-                delta_vs_baseline={},
-            )
-
-        baseline = self.RANDOM_BASELINE_STRATEGY if self.RANDOM_BASELINE_STRATEGY in by_strategy else list(by_strategy)[0]
-
-        baseline_final_mean = 0.0
-        if baseline in by_strategy:
-            baseline_rounds = sorted(by_strategy[baseline].items(), key=lambda item: item[0])
-            if baseline_rounds:
-                baseline_last_values = [row[1] for _, rows in baseline_rounds for row in rows]
-                baseline_final_mean = mean(baseline_last_values) if baseline_last_values else 0.0
-
-        delta_vs_baseline: dict[str, float] = {}
-        reference_simulation_config = self._extract_simulation_config(loops[0].config or {})
-
-        for strategy, round_map in sorted(by_strategy.items(), key=lambda item: item[0]):
-            rounds_sorted = sorted(round_map.items(), key=lambda item: item[0])
-            for round_index, items in rounds_sorted:
-                values = [row[1] for row in items]
-                target_ratio = round(
-                    min(
-                        1.0,
-                        reference_simulation_config.seed_ratio + round_index * reference_simulation_config.step_ratio,
-                    ),
-                    6,
-                )
-                curves.append(
-                    SimulationCurvePointRead(
-                        strategy=strategy,
-                        round_index=int(round_index),
-                        target_ratio=target_ratio,
-                        mean_metric=float(mean(values) if values else 0.0),
-                        std_metric=float(pstdev(values) if len(values) > 1 else 0.0),
-                    )
-                )
-
-            final_values = [items[-1][1] for _, items in rounds_sorted if items]
-            aulc_values = [row[1] for row in summary_rows.get(strategy, [])]
-            final_mean = float(mean(final_values) if final_values else 0.0)
-            summaries.append(
-                SimulationStrategySummaryRead(
-                    strategy=strategy,
-                    seeds=[seed for seed, _ in summary_rows.get(strategy, [])],
-                    final_mean=final_mean,
-                    final_std=float(pstdev(final_values) if len(final_values) > 1 else 0.0),
-                    aulc_mean=float(mean(aulc_values) if aulc_values else 0.0),
-                )
-            )
-            delta_vs_baseline[strategy] = final_mean - baseline_final_mean
-
-        return SimulationComparisonRead(
-            experiment_group_id=experiment_group_id,
-            metric_name=metric_name,
-            curves=curves,
-            strategies=summaries,
-            baseline_strategy=baseline,
-            delta_vs_baseline=delta_vs_baseline,
         )

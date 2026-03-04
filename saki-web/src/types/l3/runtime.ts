@@ -69,10 +69,8 @@ export interface LoopModeConfig {
     oracleCommitId?: string | null;
     seedRatio?: number;
     stepRatio?: number;
-    seeds?: number[];
-    randomBaselineEnabled?: boolean;
+    maxRounds?: number;
     roundCooldownSec?: number;
-    singleRound?: boolean;
 }
 
 export interface LoopReproducibilityConfig {
@@ -108,7 +106,6 @@ export interface Loop {
     modelArch: string;
     config: LoopRuntimeConfig;
     activeSnapshotVersionId?: string | null;
-    experimentGroupId?: string | null;
     currentIteration: number;
     lifecycle: LoopLifecycle;
     maxRounds: number;
@@ -220,8 +217,6 @@ export interface LoopCreateRequest {
     mode?: LoopMode;
     modelArch: string;
     config?: LoopRuntimeConfig;
-    experimentGroupId?: string;
-    lifecycle?: LoopLifecycle;
 }
 
 export interface LoopUpdateRequest {
@@ -229,8 +224,6 @@ export interface LoopUpdateRequest {
     mode?: LoopMode;
     modelArch?: string;
     config?: LoopRuntimeConfig;
-    experimentGroupId?: string;
-    lifecycle?: LoopLifecycle;
 }
 
 export interface RuntimeRoundCommandResponse {
@@ -494,45 +487,6 @@ export interface LoopSummary {
     metricsLatestTrain?: Record<string, any>;
     metricsLatestEval?: Record<string, any>;
     metricsLatestSource?: 'eval' | 'train' | 'other' | 'none';
-}
-
-export interface SimulationExperimentCreateRequest {
-    branchId: string;
-    experimentName?: string;
-    modelArch: string;
-    strategies: string[];
-    config?: LoopRuntimeConfig;
-    lifecycle?: LoopLifecycle;
-}
-
-export interface SimulationCurvePoint {
-    strategy: string;
-    roundIndex: number;
-    targetRatio: number;
-    meanMetric: number;
-    stdMetric: number;
-}
-
-export interface SimulationStrategySummary {
-    strategy: string;
-    seeds: string[];
-    finalMean: number;
-    finalStd: number;
-    aulcMean: number;
-}
-
-export interface SimulationComparison {
-    experimentGroupId: string;
-    metricName: string;
-    curves: SimulationCurvePoint[];
-    strategies: SimulationStrategySummary[];
-    baselineStrategy: string;
-    deltaVsBaseline: Record<string, number>;
-}
-
-export interface SimulationExperimentCreateResponse {
-    experimentGroupId: string;
-    loops: Loop[];
 }
 
 export interface LoopActionSpec {

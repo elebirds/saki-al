@@ -6,6 +6,7 @@ import {
     Form,
     Input,
     InputNumber,
+    Radio,
     Select,
     Slider,
     Spin,
@@ -14,79 +15,19 @@ import {
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router-dom';
 
+import {DynamicConfigForm} from '../../../components/common';
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
+import {CommitHistoryItem, Loop, Project, RuntimePluginCatalogItem} from '../../../types';
+import {toPluginConfigSchema} from './loopFormSchemaAdapter';
 import {
-    Loop,
-    LoopUpdateRequest,
-    Project,
-    RuntimePluginCatalogItem,
-    RuntimeRequestConfigField,
-    PluginConfigSchema,
-    PluginConfigField,
-} from '../../../types';
-import {DynamicConfigForm} from '../../../components/common';
+    buildLoopUpdatePayload,
+    LoopEditorFormValues,
+    mergePluginConfigWithDefaults,
+    pickDefaultSamplingStrategy,
+} from './loopPayloadBuilder';
 
-// ---------------------------------------------------------------------------
-// Helper: Convert RuntimeRequestConfigField to PluginConfigField
-// ---------------------------------------------------------------------------
-
-function toPluginConfigField(field: RuntimeRequestConfigField): PluginConfigField {
-    // 直接保留 visible 表达式（不做任何转换）
-    const options = field.options?.map((opt) => ({
-        label: opt.label,
-        value: opt.value,
-        visible: (opt as any).visible, // 保留 visible 属性
-    }));
-
-    return {
-        key: field.key,
-        label: field.label,
-        type: field.type as any,
-        required: field.required,
-        min: field.min,
-        max: field.max,
-        default: field.default,
-        description: field.description,
-        group: field.group,
-        depends_on: field.depends_on,
-        visible: (field as any).visible, // 保留字段级 visible
-        // 优先使用 props，回退到 ui
-        props: (field as any).props ?? (field.ui ? {
-            placeholder: field.ui.placeholder,
-            step: field.ui.step,
-            rows: field.ui.rows,
-            min: field.ui.min ?? field.min,
-            max: field.ui.max ?? field.max,
-        } : undefined),
-        options: options && options.length > 0 ? options : undefined,
-    };
-}
-
-function toPluginConfigSchema(schema: {title?: string; description?: string; fields?: RuntimeRequestConfigField[]} | undefined): PluginConfigSchema {
-    return {
-        title: schema?.title,
-        description: schema?.description,
-        fields: (schema?.fields || []).map(toPluginConfigField),
-    };
-}
-
-type LoopConfigForm = {
-    name: string;
-    mode: 'active_learning' | 'simulation' | 'manual';
-    modelArch: string;
-    globalSeed: string;
-    samplingStrategy?: string;
-    queryBatchSize?: number;
-    pluginConfig: Record<string, any>;
-    simulationConfig: {
-        oracleCommitId?: string | null;
-        seedRatio?: number;
-        stepRatio?: number;
-        randomBaselineEnabled?: boolean;
-        seeds: Array<number | string>;
-    };
-};
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const ProjectLoopConfig: React.FC = () => {
     const {t} = useTranslation();
@@ -94,58 +35,79 @@ const ProjectLoopConfig: React.FC = () => {
     const navigate = useNavigate();
     const {can: canProject} = useResourcePermission('project', projectId);
     const canManageLoops = canProject('loop:manage:assigned');
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [loop, setLoop] = useState<Loop | null>(null);
     const [project, setProject] = useState<Project | null>(null);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
-    const [configForm] = Form.useForm<LoopConfigForm>();
+    const [commits, setCommits] = useState<CommitHistoryItem[]>([]);
+    const [configForm] = Form.useForm<LoopEditorFormValues>();
 
     const selectedPluginId = Form.useWatch('modelArch', configForm);
     const selectedMode = Form.useWatch('mode', configForm) || 'active_learning';
+    const selectedOracleInputMode = Form.useWatch(['simulationConfig', 'oracleInputMode'], configForm) || 'select';
     const pluginConfigValues: Record<string, any> = Form.useWatch('pluginConfig', configForm) || {};
-    const projectAnnotationTypes = useMemo(
-        () => project?.enabledAnnotationTypes ?? [],
-        [project],
-    );
+
     const selectedPlugin = useMemo(
         () => plugins.find((item) => item.pluginId === selectedPluginId),
         [plugins, selectedPluginId],
     );
+    const projectAnnotationTypes = useMemo(
+        () => project?.enabledAnnotationTypes ?? [],
+        [project],
+    );
+    const pluginConfigSchema = useMemo(
+        () => toPluginConfigSchema(selectedPlugin?.requestConfigSchema),
+        [selectedPlugin],
+    );
+    const commitOptions = useMemo(
+        () => commits.map((item) => ({
+            label: `${item.message || t('project.loopConfig.form.oracleCommitUnknownMessage')} (${item.id.slice(0, 8)})`,
+            value: item.id,
+            searchText: `${item.id} ${item.message || ''}`.toLowerCase(),
+        })),
+        [commits, t],
+    );
 
     const refreshLoopData = useCallback(async () => {
         if (!loopId || !projectId) return;
-        const [loopRow, pluginCatalog, projectRow] = await Promise.all([
+        const [loopRow, pluginCatalog, projectRow, commitRows] = await Promise.all([
             api.getLoopById(loopId),
             api.getRuntimePlugins(),
             api.getProject(projectId),
+            api.getProjectCommits(projectId),
         ]);
-        setLoop(loopRow);
-        setPlugins(pluginCatalog.items || []);
-        setProject(projectRow);
 
-        const plugin = pluginCatalog.items.find((item) => item.pluginId === loopRow.modelArch);
+        const nextPlugins = pluginCatalog.items || [];
+        setLoop(loopRow);
+        setPlugins(nextPlugins);
+        setProject(projectRow);
+        setCommits(commitRows);
+
+        const plugin = nextPlugins.find((item) => item.pluginId === loopRow.modelArch);
         const loopConfig = loopRow.config || ({} as any);
         const loopSampling: any = loopConfig.sampling || {};
         const loopModeConfig = loopConfig.mode || {};
         const loopReproducibility = loopConfig.reproducibility || {};
+        const oracleCommitId = String(loopModeConfig.oracleCommitId || '').trim();
+        const commitExists = commitRows.some((item) => item.id === oracleCommitId);
+        const oracleInputMode = oracleCommitId && !commitExists ? 'manual' : 'select';
         configForm.setFieldsValue({
             name: loopRow.name,
             mode: loopRow.mode || 'active_learning',
             modelArch: loopRow.modelArch,
             globalSeed: String(loopReproducibility.globalSeed || ''),
-            samplingStrategy: loopSampling.strategy || plugin?.supportedStrategies?.[0],
+            samplingStrategy: loopSampling.strategy || pickDefaultSamplingStrategy(plugin),
             queryBatchSize: Number(loopSampling.topk ?? 200),
-            pluginConfig: {
-                ...(plugin?.defaultRequestConfig || {}),
-                ...(loopConfig.plugin || {}),
-            },
+            pluginConfig: mergePluginConfigWithDefaults(plugin, loopConfig.plugin || {}),
             simulationConfig: {
-                oracleCommitId: loopModeConfig.oracleCommitId,
+                oracleInputMode,
+                oracleCommitId: oracleInputMode === 'select' ? (oracleCommitId || commitRows[0]?.id) : undefined,
+                oracleCommitIdManual: oracleInputMode === 'manual' ? oracleCommitId : '',
                 seedRatio: loopModeConfig.seedRatio ?? 0.05,
                 stepRatio: loopModeConfig.stepRatio ?? 0.05,
-                randomBaselineEnabled: loopModeConfig.randomBaselineEnabled ?? true,
-                seeds: loopModeConfig.seeds ?? [0, 1, 2, 3, 4],
+                maxRounds: Number(loopModeConfig.maxRounds ?? loopRow.maxRounds ?? 20),
             },
         });
     }, [loopId, projectId, configForm]);
@@ -160,7 +122,7 @@ const ProjectLoopConfig: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [refreshLoopData, canManageLoops]);
+    }, [refreshLoopData, canManageLoops, t]);
 
     useEffect(() => {
         if (!canManageLoops) return;
@@ -171,40 +133,17 @@ const ProjectLoopConfig: React.FC = () => {
         if (!loopId) return;
         try {
             const values = await configForm.validateFields();
+            const plugin = plugins.find((item) => item.pluginId === values.modelArch);
+            if (!plugin) {
+                message.error(t('project.loopConfig.messages.pluginMissing'));
+                return;
+            }
+            if (values.mode !== 'manual' && plugin.supportedStrategies.length === 0) {
+                message.error(t('project.loopConfig.messages.noStrategyForPlugin'));
+                return;
+            }
             setSaving(true);
-            const config: any = {
-                plugin: values.pluginConfig || {},
-                reproducibility: {
-                    globalSeed: String(values.globalSeed || '').trim(),
-                },
-            };
-            if (values.mode !== 'manual') {
-                config.sampling = {
-                    strategy: values.samplingStrategy || selectedPlugin?.supportedStrategies?.[0] || 'random_baseline',
-                    topk: Number(values.queryBatchSize ?? 200),
-                };
-            } else {
-                config.mode = {singleRound: true};
-            }
-            if (values.mode === 'simulation') {
-                config.mode = {
-                    ...(config.mode || {}),
-                    oracleCommitId: values.simulationConfig?.oracleCommitId,
-                    seedRatio: Number(values.simulationConfig?.seedRatio ?? 0.05),
-                    stepRatio: Number(values.simulationConfig?.stepRatio ?? 0.05),
-                    randomBaselineEnabled: Boolean(values.simulationConfig?.randomBaselineEnabled ?? true),
-                    seeds: (values.simulationConfig?.seeds || [0, 1, 2, 3, 4])
-                        .map((item) => Number(item))
-                        .filter((item) => Number.isFinite(item))
-                        .map((item) => Math.trunc(item)),
-                };
-            }
-            const payload: LoopUpdateRequest = {
-                name: values.name,
-                mode: values.mode,
-                modelArch: values.modelArch,
-                config,
-            };
+            const payload = buildLoopUpdatePayload(values, plugin);
             await api.updateLoop(loopId, payload);
             message.success(t('project.loopConfig.messages.saveSuccess'));
             await refreshLoopData();
@@ -216,15 +155,9 @@ const ProjectLoopConfig: React.FC = () => {
         }
     };
 
-    // Handle plugin config changes
     const handlePluginConfigChange = useCallback((newValues: Record<string, any>) => {
-        configForm.setFieldsValue({ pluginConfig: newValues });
+        configForm.setFieldsValue({pluginConfig: newValues});
     }, [configForm]);
-
-    // Plugin config schema for DynamicConfigForm
-    const pluginConfigSchema = useMemo((): PluginConfigSchema => {
-        return toPluginConfigSchema(selectedPlugin?.requestConfigSchema);
-    }, [selectedPlugin]);
 
     if (loading) {
         return (
@@ -260,96 +193,92 @@ const ProjectLoopConfig: React.FC = () => {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <Button onClick={() => navigate(`/projects/${projectId}/loops/${loopId}`)}>{t('project.loopConfig.backToDetail')}</Button>
-                        <Button
-                            type="primary"
-                            loading={saving}
-                            onClick={handleSave}
-                        >
+                        <Button type="primary" loading={saving} onClick={handleSave}>
                             {t('project.loopConfig.saveConfig')}
                         </Button>
                     </div>
                 </div>
             </Card>
 
-            <Card
-                className="!border-github-border !bg-github-panel"
-                title={t('project.loopConfig.basicConfig')}
-            >
+            <Card className="!border-github-border !bg-github-panel" title={t('project.loopConfig.basicConfig')}>
                 <Form form={configForm} layout="vertical">
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
-                        <div>
-                            <Form.Item name="name" label={t('project.loopConfig.form.name')} rules={[{required: true, message: t('project.loopConfig.form.nameRequired')}]}>
-                                <Input/>
-                            </Form.Item>
-                        </div>
-                        <div>
-                            <Form.Item name="mode" label={t('project.loopConfig.form.mode')} rules={[{required: true, message: t('project.loopConfig.form.modeRequired')}]}>
-                                <Select
-                                    options={[
-                                        {label: t('project.loopConfig.form.modeOptions.activeLearning'), value: 'active_learning'},
-                                        {label: t('project.loopConfig.form.modeOptions.simulation'), value: 'simulation'},
-                                        {label: t('project.loopConfig.form.modeOptions.manual'), value: 'manual'},
-                                    ]}
-                                />
-                            </Form.Item>
-                        </div>
+                        <Form.Item
+                            name="name"
+                            label={t('project.loopConfig.form.name')}
+                            rules={[{required: true, message: t('project.loopConfig.form.nameRequired')}]}
+                        >
+                            <Input/>
+                        </Form.Item>
+                        <Form.Item
+                            name="mode"
+                            label={t('project.loopConfig.form.mode')}
+                            rules={[{required: true, message: t('project.loopConfig.form.modeRequired')}]}
+                        >
+                            <Select
+                                options={[
+                                    {label: t('project.loopConfig.form.modeOptions.activeLearning'), value: 'active_learning'},
+                                    {label: t('project.loopConfig.form.modeOptions.simulation'), value: 'simulation'},
+                                    {label: t('project.loopConfig.form.modeOptions.manual'), value: 'manual'},
+                                ]}
+                            />
+                        </Form.Item>
                     </div>
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
-                        <div>
-                            <Form.Item name="modelArch" label={t('project.loopConfig.form.modelArch')} rules={[{required: true, message: t('project.loopConfig.form.modelArchRequired')}]}>
-                                <Select
-                                    options={plugins.map((item) => ({
-                                        label: `${item.displayName} (${item.pluginId})`,
-                                        value: item.pluginId,
-                                    }))}
-                                    onChange={(value) => {
-                                        const plugin = plugins.find((item) => item.pluginId === value);
-                                        if (!plugin) return;
-                                        const currentValues = configForm.getFieldValue('pluginConfig') || {};
-                                        configForm.setFieldsValue({
-                                            samplingStrategy:
-                                                plugin.supportedStrategies.includes(configForm.getFieldValue('samplingStrategy'))
-                                                    ? configForm.getFieldValue('samplingStrategy')
-                                                    : (plugin.supportedStrategies[0] || ''),
-                                            pluginConfig: {
-                                                ...plugin.defaultRequestConfig,
-                                                ...currentValues,
-                                            },
-                                        });
-                                    }}
-                                />
-                            </Form.Item>
-                        </div>
+                        <Form.Item
+                            name="modelArch"
+                            label={t('project.loopConfig.form.modelArch')}
+                            rules={[{required: true, message: t('project.loopConfig.form.modelArchRequired')}]}
+                        >
+                            <Select
+                                options={plugins.map((item) => ({
+                                    label: `${item.displayName} (${item.pluginId})`,
+                                    value: item.pluginId,
+                                }))}
+                                onChange={(value) => {
+                                    const plugin = plugins.find((item) => item.pluginId === value);
+                                    if (!plugin) return;
+                                    const currentStrategy = configForm.getFieldValue('samplingStrategy');
+                                    const currentPluginConfig = configForm.getFieldValue('pluginConfig') || {};
+                                    configForm.setFieldsValue({
+                                        samplingStrategy:
+                                            plugin.supportedStrategies.includes(currentStrategy)
+                                                ? currentStrategy
+                                                : pickDefaultSamplingStrategy(plugin),
+                                        pluginConfig: mergePluginConfigWithDefaults(plugin, currentPluginConfig),
+                                    });
+                                }}
+                            />
+                        </Form.Item>
                     </div>
+
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
                         {selectedMode !== 'manual' ? (
-                            <div>
-                                <Form.Item name="samplingStrategy" label={t('project.loopConfig.form.samplingStrategy')} rules={[{required: true, message: t('project.loopConfig.form.samplingStrategyRequired')}]}>
-                                    <Select
-                                        options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}
-                                    />
-                                </Form.Item>
-                            </div>
+                            <Form.Item
+                                name="samplingStrategy"
+                                label={t('project.loopConfig.form.samplingStrategy')}
+                                rules={[{required: true, message: t('project.loopConfig.form.samplingStrategyRequired')}]}
+                            >
+                                <Select
+                                    options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}
+                                />
+                            </Form.Item>
                         ) : null}
                     </div>
 
                     <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
-                        <div>
-                            <Form.Item
-                                name="globalSeed"
-                                label={t('project.loopConfig.form.globalSeed')}
-                                rules={[{required: true, message: t('project.loopConfig.form.globalSeedRequired')}]}
-                                extra={loop.lifecycle === 'draft' ? undefined : t('project.loopConfig.form.globalSeedImmutable')}
-                            >
-                                <Input disabled={loop.lifecycle !== 'draft'} />
-                            </Form.Item>
-                        </div>
+                        <Form.Item
+                            name="globalSeed"
+                            label={t('project.loopConfig.form.globalSeed')}
+                            rules={[{required: true, message: t('project.loopConfig.form.globalSeedRequired')}]}
+                            extra={loop.lifecycle === 'draft' ? undefined : t('project.loopConfig.form.globalSeedImmutable')}
+                        >
+                            <Input disabled={loop.lifecycle !== 'draft'} />
+                        </Form.Item>
                         {selectedMode !== 'manual' ? (
-                            <div>
-                                <Form.Item name="queryBatchSize" label={t('project.loopConfig.form.queryBatchSize')}>
-                                    <InputNumber min={1} max={5000} className="w-full"/>
-                                </Form.Item>
-                            </div>
+                            <Form.Item name="queryBatchSize" label={t('project.loopConfig.form.queryBatchSize')}>
+                                <InputNumber min={1} max={5000} className="w-full"/>
+                            </Form.Item>
                         ) : null}
                     </div>
 
@@ -357,47 +286,93 @@ const ProjectLoopConfig: React.FC = () => {
                         <div>
                             <div className="mb-2 font-semibold">{t('project.loopConfig.form.simulationConfigTitle')}</div>
                             <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
-                                <div>
+                                <Form.Item
+                                    name={['simulationConfig', 'oracleInputMode']}
+                                    label={t('project.loopConfig.form.oracleCommitInputMode')}
+                                    rules={[{required: true, message: t('project.loopConfig.form.oracleCommitInputModeRequired')}]}
+                                >
+                                    <Radio.Group
+                                        options={[
+                                            {label: t('project.loopConfig.form.oracleCommitSelect'), value: 'select'},
+                                            {label: t('project.loopConfig.form.oracleCommitManual'), value: 'manual'},
+                                        ]}
+                                    />
+                                </Form.Item>
+                                <Form.Item
+                                    name={['simulationConfig', 'maxRounds']}
+                                    label={t('project.loopConfig.form.maxRounds')}
+                                    rules={[{required: true, message: t('project.loopConfig.form.maxRoundsRequired')}]}
+                                >
+                                    <InputNumber min={1} max={10000} className="w-full"/>
+                                </Form.Item>
+                            </div>
+                            <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
+                                {selectedOracleInputMode === 'manual' ? (
+                                    <Form.Item
+                                        name={['simulationConfig', 'oracleCommitIdManual']}
+                                        label={t('project.loopConfig.form.oracleCommitIdManual')}
+                                        rules={[
+                                            {required: true, message: t('project.loopConfig.form.oracleCommitIdRequired')},
+                                            {
+                                                validator: (_, value) => {
+                                                    const text = String(value || '').trim();
+                                                    if (!text) {
+                                                        return Promise.reject(new Error(t('project.loopConfig.form.oracleCommitIdRequired')));
+                                                    }
+                                                    if (!UUID_RE.test(text)) {
+                                                        return Promise.reject(new Error(t('project.loopConfig.form.oracleCommitIdInvalid')));
+                                                    }
+                                                    return Promise.resolve();
+                                                },
+                                            },
+                                        ]}
+                                    >
+                                        <Input placeholder={t('project.loopConfig.form.oracleCommitIdPlaceholder')}/>
+                                    </Form.Item>
+                                ) : (
                                     <Form.Item
                                         name={['simulationConfig', 'oracleCommitId']}
                                         label={t('project.loopConfig.form.oracleCommitId')}
                                         rules={[{required: true, message: t('project.loopConfig.form.oracleCommitIdRequired')}]}
                                     >
-                                        <Input/>
-                                    </Form.Item>
-                                </div>
-                                <div>
-                                    <Form.Item name={['simulationConfig', 'seedRatio']} label={t('project.loopConfig.form.seedRatio')}>
-                                        <Slider
-                                            min={0.001}
-                                            max={1}
-                                            step={0.001}
-                                            marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
-                                            tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                        <Select
+                                            showSearch
+                                            options={commitOptions}
+                                            placeholder={t('project.loopConfig.form.oracleCommitIdSelectPlaceholder')}
+                                            filterOption={(input, option) => {
+                                                const haystack = String((option as any)?.searchText || '').toLowerCase();
+                                                return haystack.includes(input.toLowerCase());
+                                            }}
                                         />
                                     </Form.Item>
-                                </div>
-                                <div>
-                                    <Form.Item name={['simulationConfig', 'stepRatio']} label={t('project.loopConfig.form.stepRatio')}>
-                                        <Slider
-                                            min={0.001}
-                                            max={1}
-                                            step={0.001}
-                                            marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
-                                            tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
-                                        />
-                                    </Form.Item>
-                                </div>
-                                <div>
-                                    <Form.Item name={['simulationConfig', 'seeds']} label={t('project.loopConfig.form.seeds')}>
-                                        <Select mode="tags" tokenSeparators={[',']} placeholder={t('project.loopConfig.form.seedsPlaceholder')}/>
-                                    </Form.Item>
-                                </div>
+                                )}
+                                <Form.Item name={['simulationConfig', 'seedRatio']} label={t('project.loopConfig.form.seedRatio')}>
+                                    <Slider
+                                        min={0}
+                                        max={1}
+                                        step={0.001}
+                                        marks={{0: '0', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                        tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                    />
+                                </Form.Item>
+                                <Form.Item name={['simulationConfig', 'stepRatio']} label={t('project.loopConfig.form.stepRatio')}>
+                                    <Slider
+                                        min={0}
+                                        max={1}
+                                        step={0.001}
+                                        marks={{0: '0', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                        tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                    />
+                                </Form.Item>
                             </div>
                         </div>
                     ) : null}
 
-                    <Card size="small" className="!border-github-border !bg-github-panel" title={selectedPlugin?.requestConfigSchema?.title || t('project.loopConfig.form.modelRequestParams')}>
+                    <Card
+                        size="small"
+                        className="!border-github-border !bg-github-panel"
+                        title={selectedPlugin?.requestConfigSchema?.title || t('project.loopConfig.form.modelRequestParams')}
+                    >
                         {pluginConfigSchema.fields.length === 0 ? (
                             <Alert type="info" showIcon message={t('project.loopConfig.form.noDynamicSchema')}/>
                         ) : (

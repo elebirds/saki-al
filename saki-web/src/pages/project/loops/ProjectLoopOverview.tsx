@@ -1,36 +1,11 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {
-    Alert,
-    Button,
-    Card,
-    Empty,
-    Form,
-    Input,
-    InputNumber,
-    Modal,
-    Select,
-    Slider,
-    Spin,
-    Table,
-    Tag,
-    Typography,
-    message,
-} from 'antd';
+import {Alert, Button, Card, Empty, Spin, Tag, Typography, message} from 'antd';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router-dom';
-import {Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
 
 import {useResourcePermission} from '../../../hooks';
 import {api} from '../../../services/api';
-import {
-    Loop,
-    LoopCreateRequest,
-    LoopSummary,
-    ProjectBranch,
-    RuntimePluginCatalogItem,
-    SimulationComparison,
-    SimulationExperimentCreateRequest,
-} from '../../../types';
+import {Loop, LoopSummary, ProjectBranch, RuntimePluginCatalogItem} from '../../../types';
 import {getSummaryMetricsBySource, pickPreviewMetric} from './runtimeMetricView';
 
 const {Title, Text} = Typography;
@@ -61,105 +36,23 @@ const LOOP_GATE_COLOR: Record<string, string> = {
     failed: 'error',
 };
 
-type CreateLoopFormValues = LoopCreateRequest & {
-    globalSeed: string;
-    samplingStrategy?: string;
-    queryBatchSize?: number;
-    simulationExperimentName?: string;
-    simulationStrategies?: string[];
-    simulationConfig?: {
-        oracleCommitId?: string;
-        seedRatio?: number;
-        stepRatio?: number;
-        randomBaselineEnabled?: boolean;
-        seeds?: Array<number | string>;
-    };
-};
-
-const RANDOM_BASELINE_STRATEGY = 'random_baseline';
-
-const buildDefaultSimulationStrategies = (plugin?: RuntimePluginCatalogItem): string[] => {
-    const merged = listSimulationStrategies(plugin);
-    if (merged.length <= 3) return merged;
-    return merged.slice(0, 3);
-};
-
-const listSimulationStrategies = (plugin?: RuntimePluginCatalogItem): string[] => {
-    return Array.from(new Set([RANDOM_BASELINE_STRATEGY, ...(plugin?.supportedStrategies || [])]));
-};
-
 const ProjectLoopOverview: React.FC = () => {
     const {t} = useTranslation();
     const {projectId} = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const {can: canProject} = useResourcePermission('project', projectId);
     const canManageLoops = canProject('loop:manage:assigned');
+
     const [loading, setLoading] = useState(true);
-    const [creating, setCreating] = useState(false);
-    const [createOpen, setCreateOpen] = useState(false);
     const [loops, setLoops] = useState<Loop[]>([]);
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [summaryMap, setSummaryMap] = useState<Record<string, LoopSummary>>({});
-    const [curveModalOpen, setCurveModalOpen] = useState(false);
-    const [curveLoading, setCurveLoading] = useState(false);
-    const [selectedGroupId, setSelectedGroupId] = useState<string>();
-    const [comparison, setComparison] = useState<SimulationComparison | null>(null);
-    const [createForm] = Form.useForm<CreateLoopFormValues>();
-    const selectedMode = Form.useWatch('mode', createForm) || 'active_learning';
 
-    const pluginOptions = useMemo(
-        () => plugins.map((item) => ({label: `${item.displayName} (${item.pluginId})`, value: item.pluginId})),
-        [plugins],
-    );
-
-    const selectedPluginId = Form.useWatch('modelArch', createForm);
-    const selectedPlugin = useMemo(
-        () => plugins.find((item) => item.pluginId === selectedPluginId),
-        [plugins, selectedPluginId],
-    );
-
-    const simulationStrategyOptions = useMemo(
-        () => listSimulationStrategies(selectedPlugin).map((item) => ({label: item, value: item})),
-        [selectedPlugin],
-    );
-
-    const experimentGroupOptions = useMemo(() => {
-        const groupSet = new Set<string>();
-        loops.forEach((item) => {
-            if (item.experimentGroupId) groupSet.add(item.experimentGroupId);
-        });
-        return Array.from(groupSet).map((id) => ({label: id, value: id}));
-    }, [loops]);
-
-    const curveChartRows = useMemo(() => {
-        if (!comparison) return [];
-        const map = new Map<number, Record<string, number>>();
-        comparison.curves.forEach((point) => {
-            const row = map.get(point.roundIndex) || {roundIndex: point.roundIndex};
-            row[`${point.strategy}:mean`] = Number(point.meanMetric || 0);
-            map.set(point.roundIndex, row);
-        });
-        return Array.from(map.values()).sort((a, b) => Number(a.roundIndex) - Number(b.roundIndex));
-    }, [comparison]);
-
-    const curveLineKeys = useMemo(
-        () => (comparison?.strategies || []).map((item) => `${item.strategy}:mean`),
-        [comparison],
-    );
-
-    const loadComparison = useCallback(async (groupId: string) => {
-        if (!groupId) return;
-        setCurveLoading(true);
-        try {
-            const payload = await api.getSimulationExperimentComparison(groupId, 'map50');
-            setComparison(payload);
-        } catch (error: any) {
-            message.error(error?.message || t('project.loopOverview.messages.loadComparisonFailed'));
-        } finally {
-            setCurveLoading(false);
-        }
-    }, []);
+    const availableBranchCount = useMemo(() => {
+        const bound = new Set(loops.map((item) => item.branchId));
+        return branches.filter((branch) => !bound.has(branch.id)).length;
+    }, [loops, branches]);
 
     const loadData = useCallback(async () => {
         if (!projectId || !canManageLoops) return;
@@ -189,142 +82,12 @@ const ProjectLoopOverview: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [projectId, canManageLoops]);
+    }, [projectId, canManageLoops, t]);
 
     useEffect(() => {
         if (!canManageLoops) return;
         void loadData();
     }, [canManageLoops, loadData]);
-
-    useEffect(() => {
-        if (!createOpen) return;
-        const firstBranchId = branches[0]?.id;
-        const firstPlugin = plugins[0];
-        const defaultSimulationStrategies = buildDefaultSimulationStrategies(firstPlugin);
-        createForm.setFieldsValue({
-            name: '',
-            branchId: firstBranchId,
-            mode: 'active_learning',
-            modelArch: firstPlugin?.pluginId,
-            globalSeed: '',
-            samplingStrategy: firstPlugin?.supportedStrategies?.[0] || RANDOM_BASELINE_STRATEGY,
-            simulationExperimentName: '',
-            simulationStrategies: defaultSimulationStrategies,
-            queryBatchSize: 200,
-            lifecycle: 'draft',
-            simulationConfig: {
-                oracleCommitId: undefined,
-                seedRatio: 0.05,
-                stepRatio: 0.05,
-                randomBaselineEnabled: true,
-                seeds: [0, 1, 2, 3, 4],
-            },
-        });
-    }, [createOpen, branches, plugins, createForm]);
-
-    useEffect(() => {
-        if (experimentGroupOptions.length === 0) {
-            setSelectedGroupId(undefined);
-            setComparison(null);
-            return;
-        }
-        if (selectedGroupId && experimentGroupOptions.some((item) => item.value === selectedGroupId)) {
-            return;
-        }
-        setSelectedGroupId(experimentGroupOptions[0].value);
-    }, [experimentGroupOptions, selectedGroupId]);
-
-    const handleCreateLoop = async () => {
-        if (!projectId) return;
-        try {
-            const values = await createForm.validateFields();
-            setCreating(true);
-            const plugin = plugins.find((item) => item.pluginId === values.modelArch);
-            const isSimulation = values.mode === 'simulation';
-            const globalSeed = String(values.globalSeed || '').trim();
-
-            if (isSimulation) {
-                const strategies = (values.simulationStrategies || []).filter((item) => !!String(item || '').trim());
-                if (strategies.length === 0) {
-                    message.error(t('project.loopOverview.messages.selectAtLeastOneSimulationStrategy'));
-                    return;
-                }
-                const seeds = (values.simulationConfig?.seeds || [0, 1, 2, 3, 4])
-                    .map((item) => Number(item))
-                    .filter((item) => Number.isFinite(item))
-                    .map((item) => Math.trunc(item));
-
-                const simulationPayload: SimulationExperimentCreateRequest = {
-                    branchId: values.branchId,
-                    experimentName: values.simulationExperimentName?.trim() || undefined,
-                    modelArch: values.modelArch,
-                    strategies,
-                    config: {
-                        plugin: plugin?.defaultRequestConfig || {},
-                        reproducibility: {
-                            globalSeed,
-                        },
-                        sampling: {
-                            strategy: values.samplingStrategy || RANDOM_BASELINE_STRATEGY,
-                            topk: Number(values.queryBatchSize ?? 200),
-                        },
-                        mode: {
-                            oracleCommitId: values.simulationConfig?.oracleCommitId,
-                            seedRatio: Number(values.simulationConfig?.seedRatio ?? 0.05),
-                            stepRatio: Number(values.simulationConfig?.stepRatio ?? 0.05),
-                            randomBaselineEnabled: Boolean(values.simulationConfig?.randomBaselineEnabled ?? true),
-                            seeds: seeds.length > 0 ? seeds : [0, 1, 2, 3, 4],
-                        },
-                    },
-                    lifecycle: values.lifecycle || 'draft',
-                };
-                const created = await api.createSimulationExperiment(projectId, simulationPayload);
-                message.success(t('project.loopOverview.messages.simulationExperimentCreateSuccess', {count: created.loops.length}));
-                setCreateOpen(false);
-                await loadData();
-                if (created.loops[0]) {
-                    navigate(`/projects/${projectId}/loops/${created.loops[0].id}`);
-                }
-                return;
-            }
-
-            const {simulationExperimentName, simulationStrategies, ...loopValues} = values;
-            void simulationExperimentName;
-            void simulationStrategies;
-            const config: any = {
-                plugin: plugin?.defaultRequestConfig || {},
-                reproducibility: {
-                    globalSeed,
-                },
-            };
-            if (values.mode !== 'manual') {
-                config.sampling = {
-                    strategy: values.samplingStrategy || RANDOM_BASELINE_STRATEGY,
-                    topk: Number(values.queryBatchSize ?? 200),
-                };
-            } else {
-                config.mode = {singleRound: true};
-            }
-            const payload: LoopCreateRequest = {
-                name: loopValues.name,
-                branchId: loopValues.branchId,
-                mode: loopValues.mode,
-                modelArch: loopValues.modelArch,
-                lifecycle: loopValues.lifecycle,
-                config,
-            };
-            const created = await api.createProjectLoop(projectId, payload);
-            message.success(t('project.loopOverview.messages.loopCreateSuccess'));
-            setCreateOpen(false);
-            await loadData();
-            navigate(`/projects/${projectId}/loops/${created.id}`);
-        } catch (error: any) {
-            if (error?.errorFields) return;
-            message.error(error?.message || t('project.loopOverview.messages.loopCreateFailed'));
-        } finally {
-            setCreating(false);
-        }
-    };
 
     if (loading) {
         return (
@@ -352,25 +115,11 @@ const ProjectLoopOverview: React.FC = () => {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <Button onClick={() => navigate('/runtime/executors')}>{t('project.loopOverview.viewExecutors')}</Button>
-                        <Button
-                            onClick={async () => {
-                                const groupId = selectedGroupId || experimentGroupOptions[0]?.value;
-                                if (!groupId) {
-                                    message.info(t('project.loopOverview.messages.noSimulationExperimentGroup'));
-                                    return;
-                                }
-                                setCurveModalOpen(true);
-                                await loadComparison(groupId);
-                            }}
-                            disabled={experimentGroupOptions.length === 0}
-                        >
-                            {t('project.loopOverview.compareExperimentGroup')}
-                        </Button>
                         <Button onClick={loadData}>{t('project.loopOverview.refresh')}</Button>
                         <Button
                             type="primary"
-                            onClick={() => setCreateOpen(true)}
-                            disabled={plugins.length === 0 || branches.length === 0}
+                            onClick={() => navigate(`/projects/${projectId}/loops/create`)}
+                            disabled={plugins.length === 0 || availableBranchCount === 0}
                         >
                             {t('project.loopOverview.createLoop')}
                         </Button>
@@ -383,6 +132,14 @@ const ProjectLoopOverview: React.FC = () => {
                         showIcon
                         message={t('project.loopOverview.noPluginCatalog')}
                         description={t('project.loopOverview.noPluginCatalogDesc')}
+                    />
+                ) : null}
+                {availableBranchCount === 0 ? (
+                    <Alert
+                        className="!mt-4"
+                        type="warning"
+                        showIcon
+                        message={t('project.loopOverview.branchNoAvailable')}
                     />
                 ) : null}
             </Card>
@@ -448,183 +205,6 @@ const ProjectLoopOverview: React.FC = () => {
                     })}
                 </div>
             )}
-
-            <Modal
-                title={selectedMode === 'simulation' ? t('project.loopOverview.modal.createSimulationExperiment') : t('project.loopOverview.modal.createLoop')}
-                open={createOpen}
-                onCancel={() => setCreateOpen(false)}
-                onOk={handleCreateLoop}
-                okButtonProps={{loading: creating, disabled: plugins.length === 0 || branches.length === 0}}
-                cancelButtonProps={{disabled: creating}}
-            >
-                <Form form={createForm} layout="vertical">
-                    {selectedMode !== 'simulation' ? (
-                        <Form.Item name="name" label={t('project.loopOverview.form.name')} rules={[{required: true, message: t('project.loopOverview.form.nameRequired')}]}>
-                            <Input placeholder={t('project.loopOverview.form.namePlaceholder')}/>
-                        </Form.Item>
-                    ) : (
-                        <Form.Item name="simulationExperimentName" label={t('project.loopOverview.form.simulationExperimentName')}>
-                            <Input placeholder={t('project.loopOverview.form.simulationExperimentNamePlaceholder')}/>
-                        </Form.Item>
-                    )}
-                    <Form.Item name="branchId" label={t('project.loopOverview.form.branchId')} rules={[{required: true, message: t('project.loopOverview.form.branchIdRequired')}]}>
-                        <Select options={branches.map((item) => ({label: item.name, value: item.id}))}/>
-                    </Form.Item>
-                    <Form.Item name="modelArch" label={t('project.loopOverview.form.modelArch')} rules={[{required: true, message: t('project.loopOverview.form.modelArchRequired')}]}>
-                        <Select
-                            options={pluginOptions}
-                            onChange={(value) => {
-                                const plugin = plugins.find((item) => item.pluginId === value);
-                                if (plugin?.supportedStrategies?.length) {
-                                    createForm.setFieldValue('samplingStrategy', plugin.supportedStrategies[0]);
-                                }
-                                createForm.setFieldValue('simulationStrategies', buildDefaultSimulationStrategies(plugin));
-                            }}
-                        />
-                    </Form.Item>
-
-                    <Form.Item
-                        name="globalSeed"
-                        label={t('project.loopOverview.form.globalSeed')}
-                        rules={[{required: true, message: t('project.loopOverview.form.globalSeedRequired')}]}
-                    >
-                        <Input placeholder={t('project.loopOverview.form.globalSeedPlaceholder')}/>
-                    </Form.Item>
-
-                    {selectedMode === 'active_learning' ? (
-                        <Form.Item name="samplingStrategy" label={t('project.loopOverview.form.samplingStrategy')} rules={[{required: true, message: t('project.loopOverview.form.samplingStrategyRequired')}]}>
-                            <Select options={(selectedPlugin?.supportedStrategies || []).map((item) => ({label: item, value: item}))}/>
-                        </Form.Item>
-                    ) : (
-                        <Form.Item name="simulationStrategies" label={t('project.loopOverview.form.simulationStrategies')} rules={[{required: true, message: t('project.loopOverview.form.simulationStrategiesRequired')}]}>
-                            <Select
-                                mode="multiple"
-                                options={simulationStrategyOptions}
-                                placeholder={t('project.loopOverview.form.simulationStrategiesPlaceholder')}
-                            />
-                        </Form.Item>
-                    )}
-
-                    <Form.Item name="mode" label={t('project.loopOverview.form.mode')} rules={[{required: true, message: t('project.loopOverview.form.modeRequired')}]}>
-                        <Select
-                            options={[
-                                {label: t('project.loopOverview.form.modeOptions.activeLearning'), value: 'active_learning'},
-                                {label: t('project.loopOverview.form.modeOptions.simulation'), value: 'simulation'},
-                                {label: t('project.loopOverview.form.modeOptions.manual'), value: 'manual'},
-                            ]}
-                        />
-                    </Form.Item>
-
-                    {selectedMode === 'simulation' ? (
-                        <>
-                            <Alert
-                                type="info"
-                                showIcon
-                                message={t('project.loopOverview.form.simulationInfo')}
-                            />
-                            <Form.Item
-                                name={['simulationConfig', 'oracleCommitId']}
-                                label={t('project.loopOverview.form.oracleCommitId')}
-                                rules={[{required: true, message: t('project.loopOverview.form.oracleCommitIdRequired')}]}
-                            >
-                                <Input placeholder={t('project.loopOverview.form.oracleCommitIdPlaceholder')}/>
-                            </Form.Item>
-                            <Form.Item name={['simulationConfig', 'seedRatio']} label={t('project.loopOverview.form.seedRatio')}>
-                                <Slider
-                                    min={0.001}
-                                    max={1}
-                                    step={0.001}
-                                    marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
-                                    tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
-                                />
-                            </Form.Item>
-                            <Form.Item name={['simulationConfig', 'stepRatio']} label={t('project.loopOverview.form.stepRatio')}>
-                                <Slider
-                                    min={0.001}
-                                    max={1}
-                                    step={0.001}
-                                    marks={{0.001: '0.001', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
-                                    tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
-                                />
-                            </Form.Item>
-                            <Form.Item name={['simulationConfig', 'seeds']} label={t('project.loopOverview.form.seeds')}>
-                                <Select mode="tags" tokenSeparators={[',']} placeholder={t('project.loopOverview.form.seedsPlaceholder')}/>
-                            </Form.Item>
-                        </>
-                    ) : null}
-
-                    <Form.Item name="queryBatchSize" label={t('project.loopOverview.form.queryBatchSize')}>
-                        <InputNumber min={1} max={5000} className="w-full"/>
-                    </Form.Item>
-                </Form>
-            </Modal>
-
-            <Modal
-                title={t('project.loopOverview.compareModal.title')}
-                open={curveModalOpen}
-                onCancel={() => setCurveModalOpen(false)}
-                footer={null}
-                width={960}
-            >
-                <div className="flex flex-col gap-3">
-                    <Select
-                        value={selectedGroupId}
-                        options={experimentGroupOptions}
-                        onChange={async (value) => {
-                            setSelectedGroupId(value);
-                            await loadComparison(value);
-                        }}
-                        placeholder={t('project.loopOverview.compareModal.selectGroupPlaceholder')}
-                    />
-                    {curveLoading ? (
-                        <div className="flex h-[320px] items-center justify-center">
-                            <Spin/>
-                        </div>
-                    ) : curveChartRows.length === 0 ? (
-                        <Empty description={t('project.loopOverview.compareModal.empty')}/>
-                    ) : (
-                        <>
-                            <div className="h-[320px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={curveChartRows}>
-                                        <XAxis dataKey="roundIndex"/>
-                                        <YAxis domain={[0, 1]}/>
-                                        <Tooltip/>
-                                        {curveLineKeys.map((key, idx) => (
-                                            <Line
-                                                key={key}
-                                                type="monotone"
-                                                dataKey={key}
-                                                name={key}
-                                                stroke={['#1677ff', '#13c2c2', '#fa8c16', '#f5222d', '#722ed1'][idx % 5]}
-                                                strokeWidth={2}
-                                                dot={false}
-                                            />
-                                        ))}
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <Table
-                                size="small"
-                                rowKey={(row) => row.strategy}
-                                pagination={false}
-                                dataSource={comparison?.strategies || []}
-                                columns={[
-                                    {title: t('project.loopOverview.compareModal.table.strategy'), dataIndex: 'strategy'},
-                                    {title: 'Seeds', render: (_: unknown, row: any) => (row.seeds || []).join(', ')},
-                                    {title: 'Final Mean', render: (_: unknown, row: any) => Number(row.finalMean || 0).toFixed(4)},
-                                    {title: 'Final Std', render: (_: unknown, row: any) => Number(row.finalStd || 0).toFixed(4)},
-                                    {title: 'AULC', render: (_: unknown, row: any) => Number(row.aulcMean || 0).toFixed(4)},
-                                    {
-                                        title: 'Delta vs Baseline',
-                                        render: (_: unknown, row: any) => Number(comparison?.deltaVsBaseline?.[row.strategy] || 0).toFixed(4),
-                                    },
-                                ]}
-                            />
-                        </>
-                    )}
-                </div>
-            </Modal>
         </div>
     );
 };

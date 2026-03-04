@@ -15,8 +15,6 @@ class SystemSettingKeys:
     SIMULATION_SEED_RATIO = "simulation.seed_ratio"
     SIMULATION_STEP_RATIO = "simulation.step_ratio"
     SIMULATION_MAX_ROUNDS = "simulation.max_rounds"
-    SIMULATION_SEEDS = "simulation.seeds"
-    SIMULATION_RANDOM_BASELINE_ENABLED = "simulation.random_baseline_enabled"
 
     MAINTENANCE_ASSET_GC_ENABLED = "maintenance.asset_gc_enabled"
     MAINTENANCE_ASSET_GC_INTERVAL_HOURS = "maintenance.asset_gc_interval_hours"

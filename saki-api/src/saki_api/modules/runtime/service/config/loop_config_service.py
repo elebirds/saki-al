@@ -80,26 +80,17 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     )
 
     if mode == "manual":
-        normalized_mode["confirm_required"] = False
+        normalized_mode = {"confirm_required": False}
         normalized_sampling = {}
     elif mode == "active_learning":
         normalized_mode["confirm_required"] = to_bool(normalized_mode.get("confirm_required"), True)
     elif mode == "simulation":
-        normalized_mode["seed_ratio"] = min(1.0, max(0.0, to_float(normalized_mode.get("seed_ratio"), 0.05)))
-        normalized_mode["step_ratio"] = min(1.0, max(0.0, to_float(normalized_mode.get("step_ratio"), 0.05)))
-        normalized_mode["random_baseline_enabled"] = to_bool(
-            normalized_mode.get("random_baseline_enabled"),
-            True,
-        )
-        seeds_raw = normalized_mode.get("seeds") or [0, 1, 2, 3, 4]
-        seeds: list[int] = []
-        for item in seeds_raw:
-            try:
-                seeds.append(int(item))
-            except Exception:
-                continue
-        normalized_mode["seeds"] = seeds or [0, 1, 2, 3, 4]
-        normalized_mode.pop("single_seed", None)
+        normalized_mode = {
+            "oracle_commit_id": str(normalized_mode.get("oracle_commit_id") or "").strip(),
+            "seed_ratio": min(1.0, max(0.0, to_float(normalized_mode.get("seed_ratio"), 0.05))),
+            "step_ratio": min(1.0, max(0.0, to_float(normalized_mode.get("step_ratio"), 0.05))),
+            "max_rounds": max(1, to_int(normalized_mode.get("max_rounds"), 20)),
+        }
     else:
         raise BadRequestAppException(f"unsupported mode: {mode}")
 

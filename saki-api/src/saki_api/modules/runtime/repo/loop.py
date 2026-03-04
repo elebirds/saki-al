@@ -3,7 +3,6 @@
 import uuid
 from typing import List, Optional
 
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
@@ -33,12 +32,3 @@ class LoopRepository(BaseRepository[Loop]):
             select(Loop.id).where(Loop.lifecycle == LoopLifecycle.RUNNING)
         )
         return [item for item in rows.all()]
-
-    async def list_by_experiment_group(self, experiment_group_id: uuid.UUID) -> List[Loop]:
-        stmt = (
-            select(Loop)
-            .where(Loop.experiment_group_id == experiment_group_id)
-            .order_by(Loop.created_at.asc())
-        )
-        rows = await self.session.exec(stmt)
-        return list(rows.all())

@@ -8,12 +8,11 @@ from typing import List
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from loguru import logger
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.websockets import WebSocketState
 
 from saki_api.app.deps import RuntimeServiceDep
-from saki_api.core.exceptions import BadRequestAppException, ForbiddenAppException
+from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.session import get_session
 from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.runtime.api.http.support.loop_read_builder import build_loop_read
@@ -33,11 +32,7 @@ from saki_api.modules.runtime.api.round_step import (
     LoopSummaryRead,
     LoopUpdateRequest,
     RoundRead,
-    SimulationComparisonRead,
-    SimulationExperimentCreateRequest,
-    SimulationExperimentCreateResponse,
 )
-from saki_api.modules.runtime.domain.loop import Loop
 from saki_api.modules.access.domain.rbac import Permissions
 
 router = APIRouter()
@@ -152,28 +147,6 @@ async def list_project_loops(
     )
     loops = await runtime_service.list_loops(project_id)
     return [await _build_loop_read(runtime_service, item) for item in loops]
-
-
-@router.post("/projects/{project_id}/simulation-experiments", response_model=SimulationExperimentCreateResponse)
-async def create_simulation_experiment(
-    *,
-    project_id: uuid.UUID,
-    payload: SimulationExperimentCreateRequest,
-    runtime_service: RuntimeServiceDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=project_id,
-        required=Permissions.LOOP_MANAGE,
-    )
-    group_id, loops = await runtime_service.create_simulation_experiment(project_id=project_id, payload=payload)
-    return SimulationExperimentCreateResponse(
-        experiment_group_id=group_id,
-        loops=[await _build_loop_read(runtime_service, item) for item in loops],
-    )
 
 
 @router.post("/projects/{project_id}/loops", response_model=LoopRead)
@@ -310,35 +283,6 @@ async def get_loop_summary(
         metrics_latest_eval=summary.metrics_latest_eval,
         metrics_latest_source=summary.metrics_latest_source,
     )
-
-
-@router.get("/simulation-experiments/{group_id}/comparison", response_model=SimulationComparisonRead)
-async def get_simulation_experiment_comparison(
-    *,
-    group_id: uuid.UUID,
-    metric_name: str = Query(default="map50"),
-    runtime_service: RuntimeServiceDep,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    payload = await runtime_service.get_simulation_experiment_comparison(
-        experiment_group_id=group_id,
-        metric_name=metric_name,
-    )
-    loop_row = (
-        await session.exec(
-            select(Loop).where(Loop.experiment_group_id == group_id).limit(1)
-        )
-    ).first()
-    if not loop_row:
-        raise ForbiddenAppException("Simulation experiment not found")
-    await _ensure_project_perm(
-        session=session,
-        current_user_id=current_user_id,
-        project_id=loop_row.project_id,
-        required=Permissions.LOOP_READ,
-    )
-    return payload
 
 
 @router.websocket("/steps/{step_id}/events/ws")

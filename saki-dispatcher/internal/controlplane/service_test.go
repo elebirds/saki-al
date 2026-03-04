@@ -163,6 +163,33 @@ func TestCanStepTransitionAllowsReadyDispatchingAndRunning(t *testing.T) {
 	}
 }
 
+func TestStepFromCandidatesForResultTargetIncludesTargetState(t *testing.T) {
+	result := stepFromCandidatesForResultTarget(db.StepstatusSUCCEEDED)
+	found := false
+	for _, item := range result {
+		if item == db.StepstatusSUCCEEDED {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("result candidates should include target state, got=%v", result)
+	}
+}
+
+func TestStepFromCandidatesForResultTargetDeduplicatesTargetState(t *testing.T) {
+	result := stepFromCandidatesForResultTarget(db.StepstatusRUNNING)
+	count := 0
+	for _, item := range result {
+		if item == db.StepstatusRUNNING {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("target state should appear exactly once, got=%v", result)
+	}
+}
+
 func TestCompileRoundConfigSeedsStableAcrossRoundIndex(t *testing.T) {
 	loop := loopRow{
 		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790aca"),

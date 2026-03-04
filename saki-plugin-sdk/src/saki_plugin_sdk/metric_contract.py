@@ -39,18 +39,18 @@ def _normalize_metrics(metrics: Mapping[str, object]) -> dict[str, float]:
     return normalized
 
 
-def _ensure_mapping(metrics: object) -> Mapping[str, object]:
+def _ensure_mapping(metrics: object, *, allow_empty: bool = False) -> Mapping[str, object]:
     if not isinstance(metrics, Mapping):
         raise PluginMetricContractError(f"{METRIC_CONTRACT_ERROR_PREFIX}: metrics must be an object")
-    if not metrics:
+    if not allow_empty and not metrics:
         raise PluginMetricContractError(f"{METRIC_CONTRACT_ERROR_PREFIX}: metrics must not be empty")
     return metrics
 
 
-def _validate_required_and_allowed(
+def _validate_allowed_and_ordered(
     *,
     metrics: dict[str, float],
-    required_keys: tuple[str, ...],
+    ordered_keys: tuple[str, ...],
     allowed_keys: frozenset[str],
     step_type: str,
 ) -> dict[str, float]:
@@ -59,14 +59,7 @@ def _validate_required_and_allowed(
         raise PluginMetricContractError(
             f"{METRIC_CONTRACT_ERROR_PREFIX}: step_type={step_type} has non-canonical metrics: {extra}"
         )
-
-    missing = [key for key in required_keys if key not in metrics]
-    if missing:
-        raise PluginMetricContractError(
-            f"{METRIC_CONTRACT_ERROR_PREFIX}: step_type={step_type} missing required metrics: {missing}"
-        )
-
-    return {key: metrics[key] for key in required_keys}
+    return {key: metrics[key] for key in ordered_keys if key in metrics}
 
 
 def validate_final_metrics(*, step_type: str, metrics: object) -> dict[str, float]:
@@ -74,19 +67,25 @@ def validate_final_metrics(*, step_type: str, metrics: object) -> dict[str, floa
     if normalized_step_type not in {"train", "eval"}:
         if metrics is None:
             return {}
-        return _normalize_metrics(_ensure_mapping(metrics))
+        source = _ensure_mapping(metrics, allow_empty=True)
+        if not source:
+            return {}
+        return _normalize_metrics(source)
 
-    normalized = _normalize_metrics(_ensure_mapping(metrics))
+    source = _ensure_mapping(metrics, allow_empty=True)
+    if not source:
+        return {}
+    normalized = _normalize_metrics(source)
     if normalized_step_type == "train":
-        return _validate_required_and_allowed(
+        return _validate_allowed_and_ordered(
             metrics=normalized,
-            required_keys=TRAIN_REQUIRED_KEYS,
+            ordered_keys=TRAIN_REQUIRED_KEYS,
             allowed_keys=_TRAIN_ALLOWED,
             step_type=normalized_step_type,
         )
-    return _validate_required_and_allowed(
+    return _validate_allowed_and_ordered(
         metrics=normalized,
-        required_keys=EVAL_REQUIRED_KEYS,
+        ordered_keys=EVAL_REQUIRED_KEYS,
         allowed_keys=_EVAL_ALLOWED,
         step_type=normalized_step_type,
     )
@@ -104,26 +103,21 @@ def validate_metric_event(
             return {}
         return {str(key): value for key, value in metrics.items()}
 
-    normalized = _normalize_metrics(_ensure_mapping(metrics))
-    if normalized_step_type == "train":
-        extra = sorted(key for key in normalized.keys() if key not in _TRAIN_ALLOWED)
-        if extra:
-            raise PluginMetricContractError(
-                f"{METRIC_CONTRACT_ERROR_PREFIX}: step_type=train metric event has non-canonical metrics: {extra}"
-            )
-        if is_final:
-            missing = [key for key in TRAIN_REQUIRED_KEYS if key not in normalized]
-            if missing:
-                raise PluginMetricContractError(
-                    f"{METRIC_CONTRACT_ERROR_PREFIX}: step_type=train final metric event missing required metrics: {missing}"
-                )
-        return dict(normalized)
-
-    # eval metric event must be full final canonical set.
     _ = is_final
-    return _validate_required_and_allowed(
+    source = _ensure_mapping(metrics, allow_empty=True)
+    if not source:
+        return {}
+    normalized = _normalize_metrics(source)
+    if normalized_step_type == "train":
+        return _validate_allowed_and_ordered(
+            metrics=normalized,
+            ordered_keys=TRAIN_REQUIRED_KEYS,
+            allowed_keys=_TRAIN_ALLOWED,
+            step_type="train",
+        )
+    return _validate_allowed_and_ordered(
         metrics=normalized,
-        required_keys=EVAL_REQUIRED_KEYS,
+        ordered_keys=EVAL_REQUIRED_KEYS,
         allowed_keys=_EVAL_ALLOWED,
         step_type="eval",
     )

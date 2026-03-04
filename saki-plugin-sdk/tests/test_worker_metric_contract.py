@@ -71,11 +71,11 @@ def _execution_context(step_type: str) -> ExecutionBindingContext:
     )
 
 
-def test_run_train_like_fails_when_final_metrics_violate_contract(tmp_path: Path):
+def test_run_train_like_fails_when_final_metrics_have_non_canonical_key(tmp_path: Path):
     class _Plugin(ExecutorPlugin):
         async def train(self, workspace, params, emit, *, context):  # type: ignore[override]
             del workspace, params, emit, context
-            return TrainOutput(metrics={"map50": 0.5}, artifacts=[])
+            return TrainOutput(metrics={"map50": 0.5, "metrics/mAP50(B)": 0.6}, artifacts=[])
 
         async def predict_unlabeled(
             self,
@@ -117,7 +117,10 @@ def test_run_train_like_fails_when_metric_event_violate_contract(tmp_path: Path)
     class _Plugin(ExecutorPlugin):
         async def eval(self, workspace, params, emit, *, context):  # type: ignore[override]
             del workspace, params, context
-            await emit("metric", {"step": 1, "epoch": 0, "metrics": {"map50": 0.7}})
+            await emit(
+                "metric",
+                {"step": 1, "epoch": 0, "metrics": {"map50": 0.7, "metrics/mAP50(B)": 0.71}},
+            )
             return TrainOutput(
                 metrics={"map50": 0.7, "map50_95": 0.5, "precision": 0.8, "recall": 0.6},
                 artifacts=[],
@@ -161,3 +164,46 @@ def test_run_train_like_fails_when_metric_event_violate_contract(tmp_path: Path)
                 execution_context=_execution_context("eval"),
             )
         )
+
+
+def test_run_train_like_allows_empty_final_metrics(tmp_path: Path):
+    class _Plugin(ExecutorPlugin):
+        async def train(self, workspace, params, emit, *, context):  # type: ignore[override]
+            del workspace, params, emit, context
+            return TrainOutput(metrics={}, artifacts=[])
+
+        async def predict_unlabeled(
+            self,
+            workspace,
+            unlabeled_samples,
+            strategy,
+            params,
+            *,
+            context,
+        ):  # type: ignore[override]
+            del workspace, unlabeled_samples, strategy, params, context
+            return []
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    params_path = tmp_path / "params.json"
+    result_path = tmp_path / "result.json"
+    protocol.write_json(params_path, {})
+
+    output_path = asyncio.run(
+        _run_train_like(
+            plugin=_Plugin(),
+            payload={
+                "workspace_root": str(workspace_root),
+                "params_path": str(params_path),
+                "result_path": str(result_path),
+            },
+            step_id="step-contract",
+            request_id="req-contract",
+            pub_socket=_FakePubSocket(),
+            method_name="train",
+            execution_context=_execution_context("train"),
+        )
+    )
+    payload = protocol.read_json(Path(output_path))
+    assert payload["metrics"] == {}

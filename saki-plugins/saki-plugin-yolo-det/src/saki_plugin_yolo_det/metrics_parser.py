@@ -1,16 +1,31 @@
 from __future__ import annotations
 
 import csv
+import math
 from pathlib import Path
 from typing import Any, Callable
 
 ToFloatFn = Callable[[Any, float], float]
 
 
+def _parse_metric_value(raw_value: Any, to_float: ToFloatFn) -> float | None:
+    if raw_value in ("", None):
+        return None
+    try:
+        value = float(raw_value)
+    except Exception:
+        value = to_float(raw_value, float("nan"))
+    if not math.isfinite(value):
+        return None
+    return float(value)
+
+
 def pick_optional_metric(row: dict[str, Any], keys: tuple[str, ...], to_float: ToFloatFn) -> float | None:
     for key in keys:
-        if key in row and row[key] not in ("", None):
-            return to_float(row[key], 0.0)
+        if key in row:
+            parsed = _parse_metric_value(row[key], to_float)
+            if parsed is not None:
+                return parsed
     return None
 
 
@@ -26,7 +41,7 @@ def pick_loss_metric(row: dict[str, Any], to_float: ToFloatFn) -> float | None:
 
 def normalize_metrics(raw: dict[str, Any] | Any, to_float: ToFloatFn) -> dict[str, float]:
     source = raw if isinstance(raw, dict) else {}
-    row = {str(k): to_float(v, 0.0) for k, v in source.items()}
+    row = {str(k): v for k, v in source.items()}
     payload: dict[str, float] = {}
 
     map50_keys = ("map50", "metrics/mAP50(B)", "metrics/mAP50(M)", "metrics/mAP50")

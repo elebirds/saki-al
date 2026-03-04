@@ -124,6 +124,28 @@ func stepFromCandidatesForTarget(target db.Stepstatus) []db.Stepstatus {
 	}
 }
 
+func stepFromCandidatesForResultTarget(target db.Stepstatus) []db.Stepstatus {
+	base := stepFromCandidatesForTarget(target)
+	seen := make(map[db.Stepstatus]struct{}, len(base)+1)
+	result := make([]db.Stepstatus, 0, len(base)+1)
+	for _, item := range base {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	if target != "" {
+		if _, ok := seen[target]; !ok {
+			result = append(result, target)
+		}
+	}
+	return result
+}
+
 func shouldApplyRuntimeStatus(target db.Stepstatus) bool {
 	switch target {
 	case "", db.StepstatusPENDING:

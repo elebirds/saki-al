@@ -177,11 +177,11 @@ async def run_train_with_epoch_stream(
         else {}
     )
     if latest_epoch_metrics:
-        merged_metrics = dict(final_metrics)
-        merged_metrics.update(latest_epoch_metrics)
-        train_result["metrics"] = merged_metrics
+        train_result["metrics"] = dict(latest_epoch_metrics)
+        train_result["metrics_source"] = "last_metric_event"
     else:
         train_result["metrics"] = final_metrics
+        train_result["metrics_source"] = "train_output"
 
     return train_result
 

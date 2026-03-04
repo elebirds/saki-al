@@ -131,6 +131,7 @@ async def test_run_train_with_epoch_stream_prefers_last_metric_callback_as_final
     assert output["metrics"]["map50_95"] == pytest.approx(0.25)
     assert output["metrics"]["precision"] == pytest.approx(0.55)
     assert output["metrics"]["recall"] == pytest.approx(0.65)
+    assert output["metrics_source"] == "last_metric_event"
 
 
 def test_format_epoch_metric_summary_prioritizes_common_keys():

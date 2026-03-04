@@ -9,6 +9,8 @@ from saki_plugin_sdk import EventCallback, ExecutionBindingContext, TrainArtifac
 from saki_plugin_yolo_det.common import to_int, to_yolo_device
 from saki_plugin_yolo_det.config_service import YoloConfigService
 
+_EVAL_CANONICAL_KEYS: tuple[str, ...] = ("map50", "map50_95", "precision", "recall")
+
 
 class YoloEvalService:
     def __init__(
@@ -63,8 +65,37 @@ class YoloEvalService:
             batch=batch,
             device=device,
         )
-        metrics = self._normalize_metrics(eval_result.get("metrics", {}))
-        await emit("metric", {"step": 1, "epoch": 0, "metrics": metrics})
+        normalized_metrics = self._normalize_metrics(eval_result.get("metrics", {}))
+        metric_events: list[dict[str, float]] = []
+        if normalized_metrics:
+            first_event_metrics = dict(normalized_metrics)
+            metric_events.append(first_event_metrics)
+            await emit("metric", {"step": 1, "epoch": 0, "metrics": first_event_metrics})
+
+        metrics: dict[str, float] = {}
+        metrics_source = "none"
+        for row in metric_events:
+            if row:
+                metrics = dict(row)
+                metrics_source = "first_metric_event"
+                break
+        if not metrics and normalized_metrics:
+            metrics = dict(normalized_metrics)
+            metrics_source = "eval_result"
+
+        missing_canonical = [key for key in _EVAL_CANONICAL_KEYS if key not in metrics]
+        if (not metrics) or missing_canonical:
+            await emit(
+                "log",
+                {
+                    "level": "WARN",
+                    "message": (
+                        "eval final metrics incomplete "
+                        f"source={metrics_source} available={sorted(metrics.keys())} "
+                        f"missing={missing_canonical}"
+                    ),
+                },
+            )
 
         report_path = workspace.artifacts_dir / "eval_report.json"
         report_path.write_text(
@@ -74,6 +105,12 @@ class YoloEvalService:
                     "raw_metrics": eval_result.get("metrics", {}),
                     "save_dir": eval_result.get("save_dir", ""),
                     "model_path": model_path,
+                    "metric_validation": {
+                        "source": metrics_source,
+                        "missing_canonical_keys": missing_canonical,
+                        "available_keys": sorted(metrics.keys()),
+                        "is_empty": not bool(metrics),
+                    },
                 },
                 ensure_ascii=False,
                 indent=2,

@@ -35,6 +35,8 @@ from saki_plugin_yolo_det.train_async import (
 from saki_plugin_yolo_det.train_sync_runner import run_train_sync
 from saki_plugin_yolo_det.runtime_probe_torch import probe_torch_runtime_capability
 
+_TRAIN_CANONICAL_KEYS: tuple[str, ...] = ("map50", "map50_95", "precision", "recall", "loss")
+
 
 class YoloRuntimeService:
     _CJK_FONT_CANDIDATES = (
@@ -167,6 +169,26 @@ class YoloRuntimeService:
             to_int=to_int,
             to_bool=to_bool,
         )
+        metrics_source = str(train_result.get("metrics_source") or "unknown")
+        missing_canonical = [key for key in _TRAIN_CANONICAL_KEYS if key not in metrics]
+        report_meta["metric_validation"] = {
+            "source": metrics_source,
+            "missing_canonical_keys": missing_canonical,
+            "available_keys": sorted(metrics.keys()),
+            "is_empty": not bool(metrics),
+        }
+        if (not metrics) or missing_canonical:
+            await emit(
+                "log",
+                {
+                    "level": "WARN",
+                    "message": (
+                        "train final metrics incomplete "
+                        f"source={metrics_source} available={sorted(metrics.keys())} "
+                        f"missing={missing_canonical}"
+                    ),
+                },
+            )
         report_path = self._write_training_report(
             workspace=workspace,
             metrics=metrics,

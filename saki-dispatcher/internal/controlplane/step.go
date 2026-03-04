@@ -710,7 +710,7 @@ func (s *Service) updateStepResultGuardedTx(
 	artifacts []byte,
 	errorMessage string,
 ) (int64, error) {
-	for _, fromState := range stepFromCandidatesForTarget(target) {
+	for _, fromState := range stepFromCandidatesForResultTarget(target) {
 		if !canStepTransition(fromState, target) {
 			continue
 		}

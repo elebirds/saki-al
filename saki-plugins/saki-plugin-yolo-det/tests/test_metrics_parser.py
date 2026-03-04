@@ -55,6 +55,11 @@ def test_normalize_metrics_does_not_fill_missing_metrics_with_zero():
     assert metrics == {"map50": 0.66}
 
 
+def test_normalize_metrics_skips_invalid_values_instead_of_default_zero():
+    metrics = normalize_metrics({"metrics/mAP50(B)": "N/A", "train/loss": "bad"}, _to_float)
+    assert metrics == {}
+
+
 def test_parse_results_csv_includes_loss_column(tmp_path):
     csv_path = tmp_path / "results.csv"
     csv_path.write_text(

@@ -31,7 +31,15 @@ from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver 
     PredictionLabelResolver,
     PredictionResolveError,
 )
-from saki_api.modules.shared.modeling.enums import CommitSampleReviewState, StepDispatchKind, StepStatus, StepType
+from saki_api.modules.shared.modeling.enums import (
+    CommitSampleReviewState,
+    StepDispatchKind,
+    StepStatus,
+    StepType,
+    RuntimeTaskKind,
+    RuntimeTaskStatus,
+    RuntimeTaskType,
+)
 
 
 class PredictionTaskMixin:
@@ -453,18 +461,16 @@ class PredictionTaskMixin:
         if actor_user_id is None:
             raise BadRequestAppException("actor user is required when generating prediction_set")
 
+        explicit_model_id = self._safe_uuid(payload.get("model_id"))
+        explicit_artifact_name = str(payload.get("artifact_name") or "best.pt").strip() or "best.pt"
         plugin_id = str(payload.get("plugin_id") or "").strip()
-        if not plugin_id:
-            raise BadRequestAppException("plugin_id is required")
 
         target_round_id = self._safe_uuid(payload.get("target_round_id"))
-        if target_round_id is None:
-            raise BadRequestAppException("target_round_id is required")
-        target_round = await self.repository.get_by_id_or_raise(target_round_id)
-        if target_round.project_id != project_id:
-            raise BadRequestAppException("target_round_id does not belong to project")
-        if str(target_round.plugin_id or "").strip() != plugin_id:
-            raise BadRequestAppException("plugin_id must match target_round.plugin_id")
+        target_round = None
+        if target_round_id is not None:
+            target_round = await self.repository.get_by_id_or_raise(target_round_id)
+            if target_round.project_id != project_id:
+                raise BadRequestAppException("target_round_id does not belong to project")
 
         target_branch_id = self._safe_uuid(payload.get("target_branch_id"))
         if target_branch_id is None:
@@ -485,12 +491,39 @@ class PredictionTaskMixin:
 
         model_source = payload.get("model_source")
         if not isinstance(model_source, dict):
-            raise BadRequestAppException("model_source is required")
+            if explicit_model_id is None:
+                raise BadRequestAppException("model_id is required")
+            model_source = {
+                "kind": "model",
+                "model_id": str(explicit_model_id),
+                "artifact_name": explicit_artifact_name,
+            }
+        if not plugin_id:
+            model_id_probe = self._safe_uuid(model_source.get("model_id"))
+            if model_id_probe is None:
+                raise BadRequestAppException("plugin_id is required when model_id is missing")
+            model_probe = await self.model_repo.get_by_id_or_raise(model_id_probe)
+            plugin_id = str(model_probe.plugin_id or "").strip()
+            if not plugin_id:
+                raise BadRequestAppException("model.plugin_id is required")
         model_id, model_download_url, artifact_name = await self._resolve_prediction_model_source(
             project_id=project_id,
             plugin_id=plugin_id,
             model_source=model_source,
         )
+        if target_round is None:
+            latest_round_stmt = (
+                select(Round)
+                .where(
+                    Round.project_id == project_id,
+                    Round.plugin_id == plugin_id,
+                )
+                .order_by(Round.round_index.desc(), Round.attempt_index.desc(), Round.created_at.desc())
+                .limit(1)
+            )
+            target_round = (await self.session.exec(latest_round_stmt)).first()
+            if target_round is None:
+                raise BadRequestAppException("project has no round for model.plugin_id; cannot create prediction task")
         schema_hash, by_index, by_name = await self._build_prediction_binding_from_model(model_id=model_id)
 
         scope_type = str(payload.get("scope_type") or "sample_status").strip() or "sample_status"
@@ -561,6 +594,21 @@ class PredictionTaskMixin:
         persisted_params["_prediction_task"] = task_meta
         step_params["_prediction_task"] = task_meta
 
+        task = await self.task_repo.create(
+            {
+                "project_id": project_id,
+                "kind": RuntimeTaskKind.PREDICTION,
+                "task_type": RuntimeTaskType.PREDICT,
+                "status": RuntimeTaskStatus.READY,
+                "plugin_id": plugin_id,
+                "input_commit_id": base_commit_id,
+                "resolved_params": dict(step_params),
+                "assigned_executor_id": None,
+                "attempt": 1,
+                "max_attempts": 1,
+                "last_error": None,
+            }
+        )
         next_step_index = int(await self.step_repo.get_max_step_index(target_round.id)) + 1
 
         step = await self.step_repo.create(
@@ -578,8 +626,13 @@ class PredictionTaskMixin:
                 "input_commit_id": base_commit_id,
                 "attempt": 1,
                 "max_attempts": 1,
+                "task_id": task.id,
             }
         )
+        task.resolved_params = dict(task.resolved_params or {})
+        task.resolved_params["_source_step_id"] = str(step.id)
+        self.session.add(task)
+        await self.session.flush()
 
         prediction_set = await self.prediction_set_repo.create(
             {
@@ -597,6 +650,7 @@ class PredictionTaskMixin:
                 "params": persisted_params,
                 "created_by": actor_user_id,
                 "last_error": None,
+                "task_id": task.id,
             }
         )
         await self.prediction_set_binding_repo.upsert(
@@ -611,7 +665,10 @@ class PredictionTaskMixin:
     @transactional
     async def settle_prediction_task(self, *, prediction_set_id: uuid.UUID) -> PredictionSet:
         prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
+        task = await self.task_repo.get_by_id(prediction_set.task_id)
         source_step_id = self._safe_uuid(prediction_set.source_step_id)
+        if source_step_id is None and task is not None and isinstance(task.resolved_params, dict):
+            source_step_id = self._safe_uuid(task.resolved_params.get("_source_step_id"))
         step = await self.step_repo.get_by_id(source_step_id) if source_step_id else None
         if step is None:
             failed = await self.prediction_set_repo.update(
@@ -621,6 +678,14 @@ class PredictionTaskMixin:
                     "last_error": "source step not found",
                 },
             )
+            if task is not None:
+                await self.task_repo.update(
+                    task.id,
+                    {
+                        "status": RuntimeTaskStatus.FAILED,
+                        "last_error": "source step not found",
+                    },
+                )
             return self._attach_task_projection(failed or prediction_set, None)
 
         step_state = step.state if isinstance(step.state, StepStatus) else self._parse_enum(
@@ -687,6 +752,14 @@ class PredictionTaskMixin:
                     "last_error": None,
                 },
             ) or prediction_set
+            if task is not None:
+                await self.task_repo.update(
+                    task.id,
+                    {
+                        "status": RuntimeTaskStatus.SUCCEEDED,
+                        "last_error": None,
+                    },
+                )
             return self._attach_task_projection(prediction_set, step)
 
         desired_status = self._task_status_from_step(step_state)
@@ -705,6 +778,21 @@ class PredictionTaskMixin:
                     "last_error": desired_last_error,
                 },
             ) or prediction_set
+        if task is not None:
+            task_status_text = str(desired_status or "").strip().lower()
+            mapped_task_status = (
+                RuntimeTaskStatus(task_status_text)
+                if task_status_text in {item.value for item in RuntimeTaskStatus}
+                else None
+            )
+            if mapped_task_status is not None:
+                await self.task_repo.update(
+                    task.id,
+                    {
+                        "status": mapped_task_status,
+                        "last_error": desired_last_error,
+                    },
+                )
         return self._attach_task_projection(prediction_set, step)
 
     async def list_prediction_sets(self, *, project_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:

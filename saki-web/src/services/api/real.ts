@@ -52,6 +52,9 @@ import {
     RoundMissingSamplesResponse,
     PredictionSetApplyRequest,
     PredictionSetApplyResponse,
+    PredictionCreateRequest,
+    PredictionDetailRead,
+    PredictionRead,
     PredictionSetDetailRead,
     PredictionSetGenerateRequest,
     PredictionSetRead,
@@ -999,16 +1002,16 @@ export class RealApiService implements ApiService {
         };
     }
 
-    async generatePredictionSet(projectId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead> {
-        const response = await this.client.post<PredictionSetRead>(
-            `/projects/${projectId}/prediction-sets:generate`,
+    async createPrediction(projectId: string, payload: PredictionCreateRequest): Promise<PredictionRead> {
+        const response = await this.client.post<PredictionRead>(
+            `/projects/${projectId}/predictions`,
             payload ?? {},
         );
         return response.data;
     }
 
-    async listPredictionSets(projectId: string, limit: number = 100): Promise<PredictionSetRead[]> {
-        const response = await this.client.get<PredictionSetRead[]>(`/projects/${projectId}/prediction-sets`, {
+    async listPredictions(projectId: string, limit: number = 100): Promise<PredictionRead[]> {
+        const response = await this.client.get<PredictionRead[]>(`/projects/${projectId}/predictions`, {
             params: {limit},
         });
         return response.data;
@@ -1026,22 +1029,42 @@ export class RealApiService implements ApiService {
         return response.data;
     }
 
-    async getPredictionSetDetail(predictionSetId: string, itemLimit: number = 1000): Promise<PredictionSetDetailRead> {
-        const response = await this.client.get<PredictionSetDetailRead>(`/prediction-sets/${predictionSetId}`, {
+    async getPredictionDetail(predictionId: string, itemLimit: number = 1000): Promise<PredictionDetailRead> {
+        const response = await this.client.get<PredictionDetailRead>(`/predictions/${predictionId}`, {
             params: {item_limit: itemLimit},
         });
         return response.data;
+    }
+
+    async applyPrediction(
+        predictionId: string,
+        payload: PredictionSetApplyRequest,
+    ): Promise<PredictionSetApplyResponse> {
+        const response = await this.client.post<PredictionSetApplyResponse>(
+            `/predictions/${predictionId}:apply`,
+            payload ?? {},
+        );
+        return response.data;
+    }
+
+    // Compatibility wrappers during hard-cut migration.
+    async generatePredictionSet(projectId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead> {
+        return await this.createPrediction(projectId, payload);
+    }
+
+    async listPredictionSets(projectId: string, limit: number = 100): Promise<PredictionSetRead[]> {
+        return await this.listPredictions(projectId, limit);
+    }
+
+    async getPredictionSetDetail(predictionSetId: string, itemLimit: number = 1000): Promise<PredictionSetDetailRead> {
+        return await this.getPredictionDetail(predictionSetId, itemLimit);
     }
 
     async applyPredictionSet(
         predictionSetId: string,
         payload: PredictionSetApplyRequest,
     ): Promise<PredictionSetApplyResponse> {
-        const response = await this.client.post<PredictionSetApplyResponse>(
-            `/prediction-sets/${predictionSetId}:apply`,
-            payload ?? {},
-        );
-        return response.data;
+        return await this.applyPrediction(predictionSetId, payload);
     }
 
     async cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse> {

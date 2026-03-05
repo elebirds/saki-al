@@ -9,12 +9,13 @@ from saki_api.modules.runtime.domain.loop_mode import phase_for_mode
 from saki_api.modules.runtime.domain.model import Model
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.round import Round
+from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.domain.dispatch_outbox import DispatchOutbox
 from saki_api.modules.runtime.domain.runtime_command_log import RuntimeCommandLog
 from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 from saki_api.modules.runtime.domain.runtime_executor_stats import RuntimeExecutorStats
-from saki_api.modules.runtime.domain.prediction_set import PredictionSet
-from saki_api.modules.runtime.domain.prediction_set_binding import PredictionSetBinding
+from saki_api.modules.runtime.domain.prediction_set import Prediction, PredictionSet
+from saki_api.modules.runtime.domain.prediction_set_binding import PredictionBinding, PredictionSetBinding
 from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
@@ -37,12 +38,15 @@ __all__ = [
     "ALRoundSelectionOverride",
     "Round",
     "Step",
+    "Task",
     "DispatchOutbox",
     "Model",
     "ModelClassSchema",
     "RuntimeCommandLog",
     "RuntimeExecutor",
     "RuntimeExecutorStats",
+    "Prediction",
+    "PredictionBinding",
     "PredictionSet",
     "PredictionSetBinding",
     "PredictionItem",

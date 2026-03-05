@@ -615,6 +615,12 @@ const ProjectLoopDetail: React.FC = () => {
             messageApi.warning('当前 round 缺少 plugin 信息，无法创建任务');
             return;
         }
+        const models = await api.getProjectModels(projectId, 100).catch(() => []);
+        const targetModel = models.find((item) => String(item.pluginId || '').trim() === pluginId);
+        if (!targetModel?.id) {
+            messageApi.warning('当前项目缺少可用模型，请先发布模型再创建 Prediction');
+            return;
+        }
         const branches = await api.getProjectBranches(projectId).catch(() => []);
         const targetBranch = branches.find((item) => item.id === loop.branchId);
         if (!targetBranch?.headCommitId) {
@@ -623,14 +629,9 @@ const ProjectLoopDetail: React.FC = () => {
         }
         setPredictionSubmitting(true);
         try {
-            const row = await api.generatePredictionSet(projectId, {
-                pluginId,
-                targetRoundId,
-                modelSource: {
-                    kind: 'round_artifact',
-                    roundId: targetRoundId,
-                    artifactName: 'best.pt',
-                },
+            const row = await api.createPrediction(projectId, {
+                modelId: targetModel.id,
+                artifactName: 'best.pt',
                 targetBranchId: loop.branchId,
                 baseCommitId: targetBranch.headCommitId,
                 scopeType: 'sample_status',
@@ -650,7 +651,7 @@ const ProjectLoopDetail: React.FC = () => {
         if (!predictionSetId) return;
         setApplyingPredictionSetId(predictionSetId);
         try {
-            const result = await api.applyPredictionSet(predictionSetId, {});
+            const result = await api.applyPrediction(predictionSetId, {});
             messageApi.success(`已应用到 Draft：${result.appliedCount} 条`);
             await refreshPredictionSets();
         } catch (error: any) {

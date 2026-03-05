@@ -1,4 +1,4 @@
-"""Prediction item rows generated under a prediction set."""
+"""Prediction item rows generated under a prediction."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin
 class PredictionItem(TimestampMixin, SQLModel, table=True):
     __tablename__ = "prediction_item"
 
-    prediction_set_id: uuid.UUID = Field(primary_key=True, foreign_key="prediction_set.id")
+    prediction_set_id: uuid.UUID = Field(primary_key=True, foreign_key="prediction.id")
     sample_id: uuid.UUID = Field(primary_key=True, foreign_key="sample.id")
 
     rank: int = Field(default=0, ge=0, index=True)

@@ -1,4 +1,4 @@
-"""Repository for prediction_set binding snapshots."""
+"""Repository for prediction binding snapshots."""
 
 from __future__ import annotations
 
@@ -8,17 +8,17 @@ from typing import Any
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.modules.runtime.domain.prediction_set_binding import PredictionSetBinding
+from saki_api.modules.runtime.domain.prediction_set_binding import PredictionBinding
 
 
-class PredictionSetBindingRepository:
+class PredictionBindingRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_prediction_set_id(self, prediction_set_id: uuid.UUID) -> PredictionSetBinding | None:
+    async def get_by_prediction_id(self, prediction_id: uuid.UUID) -> PredictionBinding | None:
         stmt = (
-            select(PredictionSetBinding)
-            .where(PredictionSetBinding.prediction_set_id == prediction_set_id)
+            select(PredictionBinding)
+            .where(PredictionBinding.prediction_set_id == prediction_id)
             .limit(1)
         )
         return (await self.session.exec(stmt)).first()
@@ -26,16 +26,20 @@ class PredictionSetBindingRepository:
     async def upsert(
         self,
         *,
-        prediction_set_id: uuid.UUID,
+        prediction_id: uuid.UUID | None = None,
+        prediction_set_id: uuid.UUID | None = None,
         model_id: uuid.UUID,
         schema_hash: str,
         by_index_json: list[str],
         by_name_json: dict[str, Any],
-    ) -> PredictionSetBinding:
-        existing = await self.get_by_prediction_set_id(prediction_set_id)
+    ) -> PredictionBinding:
+        target_prediction_id = prediction_id or prediction_set_id
+        if target_prediction_id is None:
+            raise ValueError("prediction_id is required")
+        existing = await self.get_by_prediction_id(target_prediction_id)
         if existing is None:
-            row = PredictionSetBinding(
-                prediction_set_id=prediction_set_id,
+            row = PredictionBinding(
+                prediction_set_id=target_prediction_id,
                 model_id=model_id,
                 schema_hash=schema_hash,
                 by_index_json=list(by_index_json),
@@ -54,3 +58,10 @@ class PredictionSetBindingRepository:
         await self.session.flush()
         await self.session.refresh(existing)
         return existing
+
+    async def get_by_prediction_set_id(self, prediction_set_id: uuid.UUID) -> PredictionBinding | None:
+        return await self.get_by_prediction_id(prediction_set_id)
+
+
+# Temporary alias for residual imports during hard cut.
+PredictionSetBindingRepository = PredictionBindingRepository

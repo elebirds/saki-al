@@ -392,17 +392,11 @@ export interface RuntimeRoundArtifactsResponse {
     items: RuntimeRoundArtifact[];
 }
 
-export interface PredictionModelSource {
-    kind: 'round_artifact' | 'model';
-    roundId?: string;
-    modelId?: string;
-    artifactName?: string;
-}
+export type RuntimeTaskStatus = RuntimeStepState;
 
-export interface PredictionSetGenerateRequest {
-    pluginId: string;
-    targetRoundId: string;
-    modelSource: PredictionModelSource;
+export interface PredictionCreateRequest {
+    modelId: string;
+    artifactName?: string;
     targetBranchId: string;
     baseCommitId: string;
     predictConf?: number;
@@ -413,7 +407,7 @@ export interface PredictionSetGenerateRequest {
     params?: Record<string, any>;
 }
 
-export interface PredictionSetRead {
+export interface PredictionRead {
     id: string;
     projectId: string;
     loopId?: string | null;
@@ -422,20 +416,20 @@ export interface PredictionSetRead {
     sourceStepId?: string | null;
     modelId?: string | null;
     baseCommitId?: string | null;
+    taskId: string;
+    taskStatus?: RuntimeTaskStatus | null;
     scopeType: string;
     scopePayload: Record<string, any>;
     status: string;
     totalItems: number;
     params: Record<string, any>;
     lastError?: string | null;
-    taskStepId?: string | null;
-    taskStepState?: RuntimeStepState | null;
     createdBy?: string | null;
     createdAt: string;
     updatedAt: string;
 }
 
-export type PredictionTaskRead = PredictionSetRead;
+export type PredictionTaskRead = PredictionRead;
 
 export interface PredictionItemRead {
     sampleId: string;
@@ -448,21 +442,28 @@ export interface PredictionItemRead {
     meta: Record<string, any>;
 }
 
-export interface PredictionSetDetailRead {
-    predictionSet: PredictionSetRead;
+export interface PredictionDetailRead {
+    prediction: PredictionRead;
     items: PredictionItemRead[];
 }
 
-export interface PredictionSetApplyRequest {
+export interface PredictionApplyRequest {
     branchName?: string;
     dryRun?: boolean;
 }
 
-export interface PredictionSetApplyResponse {
-    predictionSetId: string;
+export interface PredictionApplyResponse {
+    predictionId: string;
     appliedCount: number;
     status: string;
 }
+
+// Hard-cut aliases for gradual callsite migration.
+export type PredictionSetGenerateRequest = PredictionCreateRequest;
+export type PredictionSetRead = PredictionRead;
+export type PredictionSetDetailRead = PredictionDetailRead;
+export type PredictionSetApplyRequest = PredictionApplyRequest;
+export type PredictionSetApplyResponse = PredictionApplyResponse;
 
 export interface StepArtifactDownload {
     stepId: string;

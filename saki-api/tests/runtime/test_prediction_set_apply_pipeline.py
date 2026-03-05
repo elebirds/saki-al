@@ -310,6 +310,33 @@ async def test_generate_prediction_set_creates_predict_step_and_queued_task(pred
         assert created_step is not None
         assert created_step.step_type == StepType.PREDICT
         assert created_step.state == StepStatus.READY
+        assert prediction_set.task_id is not None
+        assert created_step.task_id == prediction_set.task_id
+
+
+@pytest.mark.anyio
+async def test_generate_prediction_set_supports_model_id_payload(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+
+        prediction_set = await service.generate_prediction_set(
+            project_id=ctx.project.id,
+            payload={
+                "model_id": str(ctx.model.id),
+                "artifact_name": "best.pt",
+                "target_branch_id": str(ctx.branch.id),
+                "base_commit_id": str(ctx.init_commit.id),
+                "scope_type": "sample_status",
+                "scope_payload": {"status": "all"},
+            },
+            actor_user_id=ctx.actor.id,
+        )
+
+        assert prediction_set.id is not None
+        assert prediction_set.model_id == ctx.model.id
+        assert prediction_set.task_id is not None
 
 
 @pytest.mark.anyio

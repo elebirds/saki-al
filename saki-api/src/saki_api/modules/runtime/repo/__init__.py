@@ -2,6 +2,7 @@
 
 from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.step import StepRepository
+from saki_api.modules.runtime.repo.task import TaskRepository
 from saki_api.modules.runtime.repo.loop import LoopRepository
 from saki_api.modules.runtime.repo.al_snapshot_version import ALSnapshotVersionRepository
 from saki_api.modules.runtime.repo.al_snapshot_sample import ALSnapshotSampleRepository
@@ -14,8 +15,8 @@ from saki_api.modules.runtime.repo.runtime_executor_stats import RuntimeExecutor
 from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemRepository
 from saki_api.modules.runtime.repo.step_event import StepEventRepository
 from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
-from saki_api.modules.runtime.repo.prediction_set import PredictionSetRepository
-from saki_api.modules.runtime.repo.prediction_set_binding import PredictionSetBindingRepository
+from saki_api.modules.runtime.repo.prediction_set import PredictionRepository, PredictionSetRepository
+from saki_api.modules.runtime.repo.prediction_set_binding import PredictionBindingRepository, PredictionSetBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
 from saki_api.modules.runtime.repo.snapshot_query import SnapshotQueryRepository
 from saki_api.modules.runtime.repo.prediction_query import PredictionQueryRepository
@@ -28,6 +29,7 @@ __all__ = [
     "ALRoundSelectionOverrideRepository",
     "RoundRepository",
     "StepRepository",
+    "TaskRepository",
     "StepEventRepository",
     "StepMetricPointRepository",
     "StepCandidateItemRepository",
@@ -35,6 +37,8 @@ __all__ = [
     "RuntimeExecutorStatsRepository",
     "ModelRepository",
     "ModelClassSchemaRepository",
+    "PredictionRepository",
+    "PredictionBindingRepository",
     "PredictionSetRepository",
     "PredictionSetBindingRepository",
     "PredictionItemRepository",

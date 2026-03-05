@@ -26,13 +26,12 @@ const statusColor: Record<string, string> = {
 };
 
 type ScopeStatus = 'all' | 'unlabeled' | 'labeled' | 'draft';
-type ModelSourceKind = 'round_artifact' | 'model';
+type ModelSourceKind = 'model';
 
 interface TaskFormValues {
     pluginId: string;
     targetRoundId: string;
     modelSourceKind: ModelSourceKind;
-    sourceRoundId?: string;
     modelId?: string;
     artifactName?: string;
     targetBranchId: string;
@@ -62,7 +61,6 @@ const ProjectPredictionTasks: React.FC = () => {
     const quickAppliedRef = useRef(false);
     const pluginId = Form.useWatch('pluginId', form);
     const modelSourceKind = Form.useWatch('modelSourceKind', form);
-    const sourceRoundId = Form.useWatch('sourceRoundId', form);
     const modelId = Form.useWatch('modelId', form);
 
     const predictPluginIds = useMemo(
@@ -113,12 +111,8 @@ const ProjectPredictionTasks: React.FC = () => {
             }
             return unique.sort((a, b) => a.localeCompare(b)).map((name) => ({value: name, label: name}));
         }
-        const names = sourceRoundId ? (roundArtifactNames[sourceRoundId] || []) : [];
-        if (names.length === 0) {
-            return [{value: 'best.pt', label: 'best.pt'}];
-        }
-        return names.map((name) => ({value: name, label: name}));
-    }, [modelSourceKind, modelId, scopedModelOptions, sourceRoundId, roundArtifactNames]);
+        return [{value: 'best.pt', label: 'best.pt'}];
+    }, [modelSourceKind, modelId, scopedModelOptions]);
 
     const commitOptions = useMemo(() => {
         return branchCommits.map((item) => {
@@ -230,15 +224,14 @@ const ProjectPredictionTasks: React.FC = () => {
         form.setFieldsValue({
             pluginId: String(round?.pluginId || ''),
             targetRoundId: round?.id,
-            modelSourceKind: 'round_artifact',
-            sourceRoundId: round?.id,
+            modelSourceKind: 'model',
             artifactName: searchParams.get('artifactName') || 'best.pt',
+            modelId: scopedModelOptions[0]?.id,
             targetBranchId: branch?.id,
             baseCommitId: branch?.headCommitId,
             predictConf: 0.1,
             scopeStatus: (searchParams.get('scopeStatus') as ScopeStatus) || 'all',
         });
-        void ensureRoundArtifacts(round?.id);
         void loadBranchCommits(branch?.id);
         quickAppliedRef.current = true;
         setCreateOpen(true);
@@ -250,18 +243,17 @@ const ProjectPredictionTasks: React.FC = () => {
         form.setFieldsValue({
             pluginId: String(defaultRound?.pluginId || ''),
             targetRoundId: defaultRound?.id,
-            modelSourceKind: 'round_artifact',
-            sourceRoundId: defaultRound?.id,
+            modelSourceKind: 'model',
+            modelId: scopedModelOptions[0]?.id,
             artifactName: 'best.pt',
             targetBranchId: defaultBranch?.id,
             baseCommitId: defaultBranch?.headCommitId,
             predictConf: 0.1,
             scopeStatus: 'all',
         });
-        void ensureRoundArtifacts(defaultRound?.id);
         void loadBranchCommits(defaultBranch?.id);
         setCreateOpen(true);
-    }, [branches, ensureRoundArtifacts, form, loadBranchCommits, roundOptions]);
+    }, [branches, form, loadBranchCommits, roundOptions, scopedModelOptions]);
 
     const onRoundChanged = useCallback((roundId?: string) => {
         if (!roundId) return;
@@ -269,11 +261,7 @@ const ProjectPredictionTasks: React.FC = () => {
         if (row?.pluginId) {
             form.setFieldValue('pluginId', row.pluginId);
         }
-        const kind = form.getFieldValue('modelSourceKind');
-        if (kind === 'round_artifact') {
-            form.setFieldValue('sourceRoundId', roundId);
-            void ensureRoundArtifacts(roundId);
-        }
+        void ensureRoundArtifacts(roundId);
     }, [ensureRoundArtifacts, form, roundOptions, scopedRoundOptions]);
 
     const onPluginChanged = useCallback((nextPluginId?: string) => {
@@ -284,10 +272,7 @@ const ProjectPredictionTasks: React.FC = () => {
         if (!candidateRounds.some((item) => item.id === currentTargetRound)) {
             const nextRoundId = candidateRounds[0]?.id;
             form.setFieldValue('targetRoundId', nextRoundId);
-            if (form.getFieldValue('modelSourceKind') === 'round_artifact') {
-                form.setFieldValue('sourceRoundId', nextRoundId);
-                void ensureRoundArtifacts(nextRoundId);
-            }
+            void ensureRoundArtifacts(nextRoundId);
         }
         if (form.getFieldValue('modelSourceKind') === 'model') {
             const candidateModels = models.filter((item) => String(item.pluginId || '') === normalized);
@@ -303,11 +288,9 @@ const ProjectPredictionTasks: React.FC = () => {
     }, [loadBranchCommits]);
 
     useEffect(() => {
-        if (modelSourceKind === 'round_artifact') {
-            const fallbackRoundId = String(sourceRoundId || form.getFieldValue('targetRoundId') || '').trim();
-            void ensureRoundArtifacts(fallbackRoundId);
-        }
-    }, [ensureRoundArtifacts, form, modelSourceKind, sourceRoundId]);
+        const fallbackRoundId = String(form.getFieldValue('targetRoundId') || '').trim();
+        void ensureRoundArtifacts(fallbackRoundId);
+    }, [ensureRoundArtifacts, form]);
 
     useEffect(() => {
         const current = String(form.getFieldValue('artifactName') || '').trim();
@@ -334,19 +317,8 @@ const ProjectPredictionTasks: React.FC = () => {
         try {
             const values = await form.validateFields();
             const payload: PredictionSetGenerateRequest = {
-                pluginId: values.pluginId,
-                targetRoundId: values.targetRoundId,
-                modelSource: values.modelSourceKind === 'model'
-                    ? {
-                        kind: 'model',
-                        modelId: values.modelId,
-                        artifactName: values.artifactName || 'best.pt',
-                    }
-                    : {
-                        kind: 'round_artifact',
-                        roundId: values.sourceRoundId || values.targetRoundId,
-                        artifactName: values.artifactName || 'best.pt',
-                    },
+                modelId: String(values.modelId || ''),
+                artifactName: values.artifactName || 'best.pt',
                 targetBranchId: values.targetBranchId,
                 baseCommitId: values.baseCommitId,
                 predictConf: values.predictConf,
@@ -479,44 +451,19 @@ const ProjectPredictionTasks: React.FC = () => {
                     <Form.Item label={t('project.predictionTasks.form.modelSource')} name="modelSourceKind" rules={[{required: true}]}>
                         <Select
                             options={[
-                                {value: 'round_artifact', label: 'Round Artifact'},
                                 {value: 'model', label: 'Registered Model'},
                             ]}
                         />
                     </Form.Item>
-                    <Form.Item noStyle shouldUpdate>
-                        {({getFieldValue}) => {
-                            const kind = getFieldValue('modelSourceKind') as ModelSourceKind;
-                            if (kind === 'model') {
-                                return (
-                                    <Form.Item label={t('project.predictionTasks.form.model')} name="modelId" rules={[{required: true}]}>
-                                        <Select
-                                            showSearch
-                                            optionFilterProp="label"
-                                            options={scopedModelOptions.map((item) => ({
-                                                value: item.id,
-                                                label: `${item.name} (${item.versionTag})`,
-                                            }))}
-                                        />
-                                    </Form.Item>
-                                );
-                            }
-                            return (
-                                <Form.Item label={t('project.predictionTasks.form.sourceRound')} name="sourceRoundId" rules={[{required: true}]} extra={t('project.predictionTasks.form.sourceRoundExtra')}>
-                                    <Select
-                                        showSearch
-                                        optionFilterProp="label"
-                                        onChange={(value) => {
-                                            void ensureRoundArtifacts(value);
-                                        }}
-                                        options={scopedRoundOptions.map((item) => ({
-                                            value: item.id,
-                                            label: `${item.pluginId || '-'} / R${item.roundIndex}A${item.attemptIndex}`,
-                                        }))}
-                                    />
-                                </Form.Item>
-                            );
-                        }}
+                    <Form.Item label={t('project.predictionTasks.form.model')} name="modelId" rules={[{required: true}]}>
+                        <Select
+                            showSearch
+                            optionFilterProp="label"
+                            options={scopedModelOptions.map((item) => ({
+                                value: item.id,
+                                label: `${item.name} (${item.versionTag})`,
+                            }))}
+                        />
                     </Form.Item>
                     <Form.Item label={t('project.predictionTasks.form.artifactName')} name="artifactName" initialValue="best.pt" rules={[{required: true}]}>
                         <Select

@@ -18,6 +18,7 @@ from saki_api.modules.shared.modeling.enums import (
     StepDispatchKind,
     StepStatus,
     StepType,
+    RuntimeTaskStatus,
     LoopPhase,
 )
 from saki_api.modules.storage.api.sample import ProjectSampleRead
@@ -369,16 +370,9 @@ class RoundMissingSamplesResponse(BaseModel):
     has_more: bool = False
 
 
-class PredictionModelSource(BaseModel):
-    kind: Literal["model"] = "model"
+class PredictionCreateRequest(BaseModel):
     model_id: uuid.UUID
     artifact_name: str = "best.pt"
-
-
-class PredictionSetGenerateRequest(BaseModel):
-    plugin_id: str
-    target_round_id: uuid.UUID
-    model_source: PredictionModelSource
     target_branch_id: uuid.UUID
     base_commit_id: uuid.UUID
     predict_conf: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -387,7 +381,7 @@ class PredictionSetGenerateRequest(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
-class PredictionSetRead(BaseModel):
+class PredictionRead(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
     loop_id: Optional[uuid.UUID] = None
@@ -396,20 +390,20 @@ class PredictionSetRead(BaseModel):
     source_step_id: Optional[uuid.UUID] = None
     model_id: uuid.UUID
     base_commit_id: Optional[uuid.UUID] = None
+    task_id: uuid.UUID
+    task_status: Optional[RuntimeTaskStatus] = None
     scope_type: str
     scope_payload: Dict[str, Any] = Field(default_factory=dict)
     status: str
     total_items: int = 0
     params: Dict[str, Any] = Field(default_factory=dict)
     last_error: Optional[str] = None
-    task_step_id: Optional[uuid.UUID] = None
-    task_step_state: Optional[StepStatus] = None
     created_by: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 
 
-class PredictionTaskRead(PredictionSetRead):
+class PredictionTaskRead(PredictionRead):
     pass
 
 
@@ -424,20 +418,28 @@ class PredictionItemRead(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
-class PredictionSetDetailRead(BaseModel):
-    prediction_set: PredictionSetRead
+class PredictionDetailRead(BaseModel):
+    prediction: PredictionRead
     items: List[PredictionItemRead] = Field(default_factory=list)
 
 
-class PredictionSetApplyRequest(BaseModel):
+class PredictionApplyRequest(BaseModel):
     branch_name: Optional[str] = None
     dry_run: bool = False
 
 
-class PredictionSetApplyResponse(BaseModel):
-    prediction_set_id: uuid.UUID
+class PredictionApplyResponse(BaseModel):
+    prediction_id: uuid.UUID
     applied_count: int = 0
     status: str
+
+
+# Hard-cut aliases for residual imports.
+PredictionSetGenerateRequest = PredictionCreateRequest
+PredictionSetRead = PredictionRead
+PredictionSetDetailRead = PredictionDetailRead
+PredictionSetApplyRequest = PredictionApplyRequest
+PredictionSetApplyResponse = PredictionApplyResponse
 
 
 class StepArtifactDownloadResponse(BaseModel):

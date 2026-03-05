@@ -52,9 +52,9 @@ import {
     RoundMissingSamplesResponse,
     PredictionSetApplyRequest,
     PredictionSetApplyResponse,
-    PredictionSetDetailRead,
-    PredictionSetGenerateRequest,
-    PredictionSetRead,
+    PredictionDetailRead,
+    PredictionCreateRequest,
+    PredictionRead,
     PredictionTaskRead,
     RuntimePluginCatalogResponse,
     RuntimeExecutorListResponse,
@@ -256,15 +256,20 @@ export interface ApiService {
     actLoop(loopId: string, payload: LoopActionRequest): Promise<LoopActionResponse>;
     getLoopSnapshot(loopId: string): Promise<LoopSnapshotRead>;
     getLoopGate(loopId: string): Promise<LoopGateResponse>;
-    generatePredictionSet(projectId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead>;
-    listPredictionSets(projectId: string, limit?: number): Promise<PredictionSetRead[]>;
+    createPrediction(projectId: string, payload: PredictionCreateRequest): Promise<PredictionRead>;
+    listPredictions(projectId: string, limit?: number): Promise<PredictionRead[]>;
     listPredictionTasks(projectId: string, limit?: number): Promise<PredictionTaskRead[]>;
     getPredictionTask(taskId: string): Promise<PredictionTaskRead>;
-    getPredictionSetDetail(predictionSetId: string, itemLimit?: number): Promise<PredictionSetDetailRead>;
-    applyPredictionSet(
-        predictionSetId: string,
+    getPredictionDetail(predictionId: string, itemLimit?: number): Promise<PredictionDetailRead>;
+    applyPrediction(
+        predictionId: string,
         payload: PredictionSetApplyRequest,
     ): Promise<PredictionSetApplyResponse>;
+    // Compatibility methods for legacy callsites during hard cut.
+    generatePredictionSet(projectId: string, payload: PredictionCreateRequest): Promise<PredictionRead>;
+    listPredictionSets(projectId: string, limit?: number): Promise<PredictionRead[]>;
+    getPredictionSetDetail(predictionId: string, itemLimit?: number): Promise<PredictionDetailRead>;
+    applyPredictionSet(predictionId: string, payload: PredictionSetApplyRequest): Promise<PredictionSetApplyResponse>;
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;

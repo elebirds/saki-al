@@ -297,6 +297,47 @@ class StepStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class RuntimeTaskKind(str, Enum):
+    """
+    Enum for runtime execution task domain.
+    """
+
+    STEP = "step"
+    PREDICTION = "prediction"
+
+
+class RuntimeTaskType(str, Enum):
+    """
+    Enum for runtime execution task type.
+    """
+
+    TRAIN = "train"
+    EVAL = "eval"
+    SCORE = "score"
+    SELECT = "select"
+    PREDICT = "predict"
+    CUSTOM = "custom"
+
+
+class RuntimeTaskStatus(str, Enum):
+    """
+    Enum for runtime task execution status.
+    """
+
+    PENDING = "pending"
+    READY = "ready"
+    DISPATCHING = "dispatching"
+    SYNCING_ENV = "syncing_env"
+    PROBING_RUNTIME = "probing_runtime"
+    BINDING_DEVICE = "binding_device"
+    RUNNING = "running"
+    RETRYING = "retrying"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+
+
 class LoopRoundStatus(str, Enum):
     """
     Enum for per-round state in an active-learning loop.

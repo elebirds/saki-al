@@ -17,11 +17,12 @@ from saki_api.modules.runtime.repo.loop import LoopRepository
 from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.runtime_executor import RuntimeExecutorRepository
 from saki_api.modules.runtime.repo.step import StepRepository
+from saki_api.modules.runtime.repo.task import TaskRepository
 from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemRepository
 from saki_api.modules.runtime.repo.step_event import StepEventRepository
 from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
-from saki_api.modules.runtime.repo.prediction_set import PredictionSetRepository
-from saki_api.modules.runtime.repo.prediction_set_binding import PredictionSetBindingRepository
+from saki_api.modules.runtime.repo.prediction_set import PredictionRepository
+from saki_api.modules.runtime.repo.prediction_set_binding import PredictionBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
 from saki_api.modules.runtime.repo.model import ModelRepository
 from saki_api.modules.runtime.repo.model_class_schema import ModelClassSchemaRepository
@@ -81,11 +82,15 @@ class RuntimeService(
         self.loop_repo = LoopRepository(session)
         self.runtime_executor_repo = RuntimeExecutorRepository(session)
         self.step_repo = StepRepository(session)
+        self.task_repo = TaskRepository(session)
         self.step_event_repo = StepEventRepository(session)
         self.step_metric_repo = StepMetricPointRepository(session)
         self.step_candidate_repo = StepCandidateItemRepository(session)
-        self.prediction_set_repo = PredictionSetRepository(session)
-        self.prediction_set_binding_repo = PredictionSetBindingRepository(session)
+        self.prediction_repo = PredictionRepository(session)
+        self.prediction_binding_repo = PredictionBindingRepository(session)
+        # Temporary aliases during hard cut migration.
+        self.prediction_set_repo = self.prediction_repo
+        self.prediction_set_binding_repo = self.prediction_binding_repo
         self.prediction_item_repo = PredictionItemRepository(session)
         self.model_repo = ModelRepository(session)
         self.model_class_schema_repo = ModelClassSchemaRepository(session)

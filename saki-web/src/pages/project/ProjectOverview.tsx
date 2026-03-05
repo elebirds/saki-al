@@ -7,7 +7,7 @@ import {RepoActionBar} from '../../layouts/github/RepoActionBar'
 import {RepoHeader} from '../../layouts/github/RepoHeader'
 import {FileTable} from '../../layouts/github/FileTable'
 import {api} from '../../services/api'
-import {CommitHistoryItem, Dataset, Project, ProjectBranch, ResourceMember} from '../../types'
+import {CommitHistoryItem, Dataset, Project, ProjectBranch, ProjectModel, ResourceMember} from '../../types'
 import {usePermission, useResourcePermission} from '../../hooks'
 import ProjectSidebar from './ProjectSidebar'
 
@@ -20,6 +20,7 @@ const ProjectOverview: React.FC = () => {
     const [datasets, setDatasets] = useState<Dataset[]>([])
     const [branches, setBranches] = useState<ProjectBranch[]>([])
     const [commits, setCommits] = useState<CommitHistoryItem[]>([])
+    const [models, setModels] = useState<ProjectModel[]>([])
     const [members, setMembers] = useState<ResourceMember[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
@@ -33,6 +34,7 @@ const ProjectOverview: React.FC = () => {
     const canFork = can('project:create')
     const canImport = canProject('annotation:create:assigned') && canProject('commit:create:assigned')
     const canExport = canProject('project:export:assigned')
+    const canViewModels = canProject('model:read:assigned')
 
     const formatRelativeTime = useCallback((value?: string) => {
         if (!value) return t('common.placeholder')
@@ -55,16 +57,20 @@ const ProjectOverview: React.FC = () => {
         if (!projectId) return
         setLoading(true)
         try {
-            const [projectData, projectDatasets, branchData, commitData] = await Promise.all([
+            const [projectData, projectDatasets, branchData, commitData, modelRows] = await Promise.all([
                 api.getProject(projectId),
                 api.getProjectDatasetDetails(projectId),
                 api.getProjectBranches(projectId),
                 api.getProjectCommits(projectId),
+                canViewModels
+                    ? api.getProjectModels(projectId, {limit: 5}).catch(() => [] as ProjectModel[])
+                    : Promise.resolve([] as ProjectModel[]),
             ])
 
             setProject(projectData)
             setBranches(branchData)
             setCommits(commitData)
+            setModels(modelRows)
 
             setDatasets(projectDatasets || [])
 
@@ -80,10 +86,11 @@ const ProjectOverview: React.FC = () => {
             }
         } catch (error) {
             console.error('Failed to load project overview', error)
+            setModels([])
         } finally {
             setLoading(false)
         }
-    }, [projectId])
+    }, [canViewModels, projectId])
 
     useEffect(() => {
         loadProject()
@@ -346,6 +353,8 @@ const ProjectOverview: React.FC = () => {
                     }}
                     members={members}
                     sampleStatus={sampleStats}
+                    models={models}
+                    canViewModels={canViewModels}
                 />
             </div>
 

@@ -2,7 +2,7 @@ import React from 'react'
 import {Avatar, Button, Tag, Tooltip} from 'antd'
 import {DatabaseOutlined, ForkOutlined, NodeIndexOutlined} from '@ant-design/icons'
 import {useNavigate} from 'react-router-dom'
-import {ResourceMember} from '../../types'
+import {ProjectModel, ResourceMember} from '../../types'
 import {useTranslation} from 'react-i18next'
 
 export interface ProjectSidebarProps {
@@ -19,6 +19,8 @@ export interface ProjectSidebarProps {
         members?: number
     }
     members?: ResourceMember[]
+    models?: ProjectModel[]
+    canViewModels?: boolean
     sampleStatus?: {
         labeled: number
         unlabeled: number
@@ -32,6 +34,12 @@ const statusColors: Record<string, string> = {
     archived: 'default',
 }
 
+const modelStatusColors: Record<string, string> = {
+    candidate: 'processing',
+    production: 'success',
+    archived: 'default',
+}
+
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                                                            projectId,
                                                            description,
@@ -40,6 +48,8 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                                                            statusValue,
                                                            stats,
                                                            members,
+                                                           models,
+                                                           canViewModels = true,
                                                            sampleStatus,
                                                        }) => {
     const {t} = useTranslation()
@@ -56,6 +66,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             {label: t('project.sidebar.sampleStatus.skipped'), value: sampleStatus?.skipped || 0, color: '#8b949e'},
         ]
         : []
+    const recentModels = (models || []).slice(0, 3)
 
     return (
         <aside className="w-[296px] shrink-0 hidden lg:block">
@@ -134,7 +145,35 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
 
             <div className="border-t border-github-border pt-4 mb-4">
                 <h3 className="font-semibold text-github-text mb-2">{t('project.sidebar.models.title')}</h3>
-                <p className="text-sm text-github-muted mb-1">{t('project.sidebar.models.empty')}</p>
+                {!canViewModels ? (
+                    <p className="text-sm text-github-muted mb-1">{t('common.noPermission')}</p>
+                ) : recentModels.length === 0 ? (
+                    <p className="text-sm text-github-muted mb-1">{t('project.sidebar.models.empty')}</p>
+                ) : (
+                    <div className="mb-2 space-y-2">
+                        {recentModels.map((model) => (
+                            <button
+                                key={model.id}
+                                type="button"
+                                className="w-full rounded border border-github-border px-2 py-1.5 text-left hover:bg-github-base"
+                                onClick={() => {
+                                    if (!projectId) return
+                                    navigate(`/projects/${projectId}/models?modelId=${model.id}`)
+                                }}
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="truncate text-sm text-github-text">{model.name}</span>
+                                    <Tag className="m-0" color={modelStatusColors[model.status] || 'default'}>
+                                        {model.status}
+                                    </Tag>
+                                </div>
+                                <div className="truncate text-xs text-github-muted">
+                                    {model.primaryArtifactName || '-'}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
                 <Button
                     type="link"
                     className="!text-github-link !p-0"
@@ -142,6 +181,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                         if (!projectId) return
                         navigate(`/projects/${projectId}/models`)
                     }}
+                    disabled={!canViewModels}
                 >
                     {t('project.sidebar.models.title')}
                 </Button>

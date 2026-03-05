@@ -146,6 +146,14 @@ const ProjectModels: React.FC = () => {
         setPublishOpen(true);
     }, [publishForm, searchParams]);
 
+    useEffect(() => {
+        const modelId = String(searchParams.get('modelId') || '').trim();
+        if (!modelId) return;
+        setDetailOpen(true);
+        setDetailModelId(modelId);
+        void loadModelDetail(modelId);
+    }, [loadModelDetail, searchParams]);
+
     const onPublish = useCallback(async () => {
         if (!projectId) return;
         try {

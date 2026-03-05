@@ -311,6 +311,42 @@ async def test_generate_prediction_creates_queued_prediction_task_without_step(p
 
 
 @pytest.mark.anyio
+async def test_generate_prediction_not_require_loop_round_context(prediction_env):
+    session_local = prediction_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+
+        model_row = await session.get(Model, ctx.model.id)
+        assert model_row is not None
+        model_row.source_round_id = None
+        session.add(model_row)
+        await session.flush()
+
+        round_row = await session.get(Round, ctx.round_row.id)
+        assert round_row is not None
+        await session.delete(round_row)
+        loop_row = await session.get(Loop, ctx.loop.id)
+        assert loop_row is not None
+        await session.delete(loop_row)
+        await session.commit()
+
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        assert prediction.task_id is not None
+        task_row = await session.get(Task, prediction.task_id)
+        assert task_row is not None
+        task_meta = (
+            task_row.resolved_params.get("_prediction_task")
+            if isinstance(task_row.resolved_params, dict)
+            else {}
+        )
+        assert isinstance(task_meta, dict)
+        assert task_meta.get("target_branch_id") == str(ctx.branch.id)
+        assert "target_round_id" not in task_meta
+        assert "loop_id" not in task_meta
+
+
+@pytest.mark.anyio
 async def test_generate_prediction_supports_model_id_payload(prediction_env):
     session_local = prediction_env
     async with session_local() as session:

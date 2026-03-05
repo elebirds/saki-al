@@ -24,7 +24,6 @@ from saki_api.modules.project.domain.commit_sample_state import CommitSampleStat
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.prediction import Prediction
-from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
 from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver import (
@@ -501,24 +500,7 @@ class PredictionTaskMixin:
             model_id=model_probe.id,
             artifact_name=explicit_artifact_name,
         )
-        latest_round_stmt = (
-            select(Round)
-            .where(
-                Round.project_id == project_id,
-                Round.plugin_id == plugin_id,
-            )
-            .order_by(Round.round_index.desc(), Round.attempt_index.desc(), Round.created_at.desc())
-            .limit(1)
-        )
-        target_round = (await self.session.exec(latest_round_stmt)).first()
-        if target_round is None:
-            raise BadRequestAppException("project has no round for model.plugin_id; cannot create prediction task")
         schema_hash, by_index, by_name = await self._build_prediction_binding_from_model(model_id=model_id)
-        target_loop = await self.loop_repo.get_by_id(target_round.loop_id) if target_round.loop_id else None
-        loop_mode_raw = getattr(target_loop, "mode", None)
-        loop_mode_text = str(getattr(loop_mode_raw, "value", loop_mode_raw) or "").strip().lower()
-        if not loop_mode_text:
-            loop_mode_text = "manual"
 
         scope_type = str(payload.get("scope_type") or "sample_status").strip() or "sample_status"
         scope_payload = payload.get("scope_payload") if isinstance(payload.get("scope_payload"), dict) else {}
@@ -547,8 +529,6 @@ class PredictionTaskMixin:
             plugin_params["predict_conf"] = float(predict_conf)
         step_params["plugin"] = plugin_params
 
-        round_sampling_raw = target_round.resolved_params.get("sampling") if isinstance(target_round.resolved_params, dict) else {}
-        round_sampling = round_sampling_raw if isinstance(round_sampling_raw, dict) else {}
         sampling = step_params.get("sampling")
         sampling = dict(sampling) if isinstance(sampling, dict) else {}
         disallowed_sampling_keys = {"topk", "review_pool_size", "review_pool_multiplier"}
@@ -560,7 +540,6 @@ class PredictionTaskMixin:
             )
         strategy = str(
             sampling.get("strategy")
-            or round_sampling.get("strategy")
             or "uncertainty_1_minus_max_conf"
         ).strip() or "uncertainty_1_minus_max_conf"
         sampling["strategy"] = strategy
@@ -570,10 +549,6 @@ class PredictionTaskMixin:
 
         task_meta = {
             "plugin_id": plugin_id,
-            "target_round_id": str(target_round.id),
-            "loop_id": str(target_round.loop_id) if target_round.loop_id else None,
-            "round_index": int(target_round.round_index or 0),
-            "mode": loop_mode_text,
             "target_branch_id": str(target_branch_id),
             "base_commit_id": str(base_commit_id),
             "model_id": str(model_id),
@@ -786,11 +761,6 @@ class PredictionTaskMixin:
             target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
             if target_branch_id is not None:
                 branch_row = await self.project_gateway.get_branch(target_branch_id)
-            loop_id = self._safe_uuid(task_meta.get("loop_id")) if isinstance(task_meta, dict) else None
-            if branch_row is None and loop_id is not None:
-                loop = await self.loop_repo.get_by_id(loop_id)
-                if loop is not None:
-                    branch_row = await self.project_gateway.get_branch(loop.branch_id)
         if branch_row is None:
             raise BadRequestAppException("target branch not found when applying prediction")
 

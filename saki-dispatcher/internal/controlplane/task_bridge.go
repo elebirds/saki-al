@@ -117,7 +117,7 @@ func (s *Service) ensureTaskBindingForStepTx(
 	inputCommitID *uuid.UUID,
 	resolvedParams []byte,
 	maxAttempts int,
-) (uuid.UUID, bool, error) {
+) (uuid.UUID, error) {
 	taskID := uuid.New()
 	if maxAttempts <= 0 {
 		maxAttempts = 1
@@ -143,15 +143,15 @@ func (s *Service) ensureTaskBindingForStepTx(
 		maxAttempts,
 	)
 	if err != nil {
-		return uuid.Nil, false, err
+		return uuid.Nil, err
 	}
 
 	_, err = tx.Exec(ctx, "UPDATE step SET task_id = $1 WHERE id = $2", taskID, stepID)
 	if err != nil {
 		_, _ = tx.Exec(ctx, "DELETE FROM task WHERE id = $1", taskID)
-		return uuid.Nil, false, err
+		return uuid.Nil, err
 	}
-	return taskID, true, nil
+	return taskID, nil
 }
 
 func normalizeTaskEnumText(raw string) string {

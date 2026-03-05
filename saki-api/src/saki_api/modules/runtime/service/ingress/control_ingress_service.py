@@ -105,7 +105,7 @@ class RuntimeControlIngressService:
         try:
             batch, next_cursor = await self._query_data_batch(
                 query_type=request.query_type,
-                step_id=request.step_id,
+                task_id=request.task_id,
                 project_id=request.project_id,
                 commit_id=request.commit_id,
                 limit=request.limit,
@@ -113,9 +113,9 @@ class RuntimeControlIngressService:
             )
         except Exception as exc:
             logger.exception(
-                "data request failed request_id={} step_id={} error={}",
+                "data request failed request_id={} task_id={} error={}",
                 request.request_id,
-                request.step_id,
+                request.task_id,
                 exc,
             )
             return [
@@ -123,7 +123,7 @@ class RuntimeControlIngressService:
                     code="data_query_failed",
                     message="data query failed",
                     reply_to=request.request_id,
-                    task_id=request.step_id,
+                    task_id=request.task_id,
                     query_type=request.query_type,
                     reason=str(exc),
                 )
@@ -141,7 +141,7 @@ class RuntimeControlIngressService:
                     data_response=pb.DataResponse(
                         request_id=str(uuid.uuid4()),
                         reply_to=request.request_id,
-                        task_id=request.step_id,
+                        task_id=request.task_id,
                         query_type=request.query_type,
                         payload_id=chunk["payload_id"],
                         chunk_index=chunk["chunk_index"],
@@ -170,19 +170,19 @@ class RuntimeControlIngressService:
                 reason=exc.reason,
             )
 
-        object_name = f"runtime/steps/{request.step_id}/{request.artifact_name}"
+        object_name = f"runtime/steps/{request.task_id}/{request.artifact_name}"
         try:
             upload_url = self.storage.get_presigned_put_url(
                 object_name=object_name,
                 expires_delta=timedelta(hours=settings.RUNTIME_UPLOAD_URL_EXPIRE_HOURS),
             )
         except Exception as exc:
-            logger.exception("failed to issue upload ticket step_id={} error={}", request.step_id, exc)
+            logger.exception("failed to issue upload ticket task_id={} error={}", request.task_id, exc)
             return runtime_codec.build_error_message(
                 code="upload_ticket_failed",
                 message="failed to issue upload ticket",
                 reply_to=request.request_id,
-                task_id=request.step_id,
+                task_id=request.task_id,
                 reason=str(exc),
             )
 
@@ -191,7 +191,7 @@ class RuntimeControlIngressService:
             upload_ticket_response=pb.UploadTicketResponse(
                 request_id=str(uuid.uuid4()),
                 reply_to=request.request_id,
-                task_id=request.step_id,
+                task_id=request.task_id,
                 upload_url=upload_url,
                 storage_uri=storage_uri,
                 headers={"Content-Type": request.content_type},
@@ -414,7 +414,7 @@ class RuntimeControlIngressService:
 
         return RuntimeDataRequestDTO(
             request_id=request_id,
-            step_id=task_id,
+            task_id=task_id,
             query_type=int(message.query_type),
             project_id=project_id,
             commit_id=commit_id,
@@ -426,9 +426,9 @@ class RuntimeControlIngressService:
 
     def _decode_upload_ticket_request(self, message: pb.UploadTicketRequest) -> RuntimeUploadTicketRequestDTO:
         request_id = str(message.request_id or "")
-        step_id = str(message.task_id or "")
+        task_id = str(message.task_id or "")
         artifact_name = str(message.artifact_name or "").strip()
-        if not request_id or not step_id or not artifact_name:
+        if not request_id or not task_id or not artifact_name:
             raise _InvalidRuntimeRequest(
                 "request_id/task_id/artifact_name are required",
                 "missing_required_field",
@@ -436,7 +436,7 @@ class RuntimeControlIngressService:
 
         return RuntimeUploadTicketRequestDTO(
             request_id=request_id,
-            step_id=step_id,
+            task_id=task_id,
             artifact_name=artifact_name,
             content_type=str(message.content_type or "application/octet-stream"),
         )
@@ -445,7 +445,7 @@ class RuntimeControlIngressService:
             self,
             *,
             query_type: int,
-            step_id: str,
+            task_id: str,
             project_id: uuid.UUID,
             commit_id: uuid.UUID,
             limit: int,
@@ -480,9 +480,9 @@ class RuntimeControlIngressService:
             snapshot_scope_sample_ids: set[uuid.UUID] | None = None
             snapshot_split_hints: dict[str, str] | None = None
             if query_type in {pb.SAMPLES, pb.UNLABELED_SAMPLES, pb.ANNOTATIONS}:
-                loop_id, mode, snapshot = await self._resolve_step_snapshot_scope(
+                loop_id, mode, snapshot = await self._resolve_task_snapshot_scope(
                     session=session,
-                    step_id=step_id,
+                    task_id=task_id,
                     project_id=project_id,
                 )
                 if (
@@ -603,15 +603,15 @@ class RuntimeControlIngressService:
 
             raise RuntimeError(f"unsupported query_type={query_type}")
 
-    async def _resolve_step_snapshot_scope(
+    async def _resolve_task_snapshot_scope(
             self,
             *,
             session,
-            step_id: str,
+            task_id: str,
             project_id: uuid.UUID,
     ) -> tuple[uuid.UUID | None, LoopMode | None, ALSnapshotVersion | None]:
         try:
-            step_uuid = uuid.UUID(str(step_id or "").strip())
+            task_uuid = uuid.UUID(str(task_id or "").strip())
         except Exception:
             return None, None, None
         row = (
@@ -625,7 +625,7 @@ class RuntimeControlIngressService:
                 .join(Round, Round.id == Step.round_id)
                 .join(Loop, Loop.id == Round.loop_id)
                 .where(
-                    (Step.id == step_uuid) | (Step.task_id == step_uuid),
+                    Step.task_id == task_uuid,
                     Round.project_id == project_id,
                 )
                 .limit(1)
@@ -642,22 +642,13 @@ class RuntimeControlIngressService:
         return loop_id, mode, snapshot
 
     async def _resolve_step_id_by_task(self, *, session, task_id: uuid.UUID) -> uuid.UUID | None:
-        rows = list(
-            (
-                await session.exec(
-                    select(Step.id, Step.task_id)
-                    .where((Step.id == task_id) | (Step.task_id == task_id))
-                    .limit(2)
-                )
-            ).all()
-        )
-        if not rows:
-            return None
-        for step_row_id, mapped_task_id in rows:
-            if mapped_task_id == task_id:
-                return step_row_id
-        first_step_id, _ = rows[0]
-        return first_step_id
+        return (
+            await session.exec(
+                select(Step.id)
+                .where(Step.task_id == task_id)
+                .limit(1)
+            )
+        ).first()
 
     async def _to_sample_items(
         self,

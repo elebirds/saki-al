@@ -480,6 +480,6 @@ def parse_heartbeat(message: pb.Heartbeat) -> RuntimeHeartbeatDTO:
         request_id=str(message.request_id),
         executor_id=str(message.executor_id),
         busy=bool(message.busy),
-        current_step_id=str(message.current_task_id or ""),
+        current_task_id=str(message.current_task_id or ""),
         resources=resource_summary_to_dict(message.resources),
     )

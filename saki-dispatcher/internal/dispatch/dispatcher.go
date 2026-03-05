@@ -18,7 +18,7 @@ type ExecutorSession struct {
 	PluginIDs  []string
 
 	Busy          bool
-	CurrentStepID string
+	CurrentTaskID string
 	Status        string
 	IsOnline      bool
 	LastSeen      time.Time
@@ -29,7 +29,7 @@ type ExecutorSession struct {
 
 type PendingAssign struct {
 	RequestID  string
-	StepID     string
+	TaskID     string
 	ExecutorID string
 	CreatedAt  time.Time
 }
@@ -50,7 +50,7 @@ type SummarySnapshot struct {
 	BusyExecutors     int64
 	PendingAssign     int64
 	PendingStop       int64
-	QueuedStepCount   int64
+	QueuedTaskCount   int64
 	LatestHeartbeatAt time.Time
 }
 
@@ -60,7 +60,7 @@ type ExecutorSnapshot struct {
 	Status     string
 	IsOnline   bool
 
-	CurrentStepID string
+	CurrentTaskID string
 	LastSeen      time.Time
 	LastError     string
 
@@ -109,7 +109,7 @@ func (d *Dispatcher) RegisterExecutor(register *runtimecontrolv1.Register) (*Exe
 	existing.Version = register.GetVersion()
 	existing.PluginIDs = pluginIDs
 	existing.Busy = false
-	existing.CurrentStepID = ""
+	existing.CurrentTaskID = ""
 	existing.Status = "idle"
 	existing.IsOnline = true
 	existing.LastSeen = now
@@ -129,7 +129,7 @@ func (d *Dispatcher) UnregisterExecutor(executorID string) {
 		session.IsOnline = false
 		session.Status = "offline"
 		session.Busy = false
-		session.CurrentStepID = ""
+		session.CurrentTaskID = ""
 		session.LastSeen = time.Now().UTC()
 	}
 	for requestID, pending := range d.pendingAssign {
@@ -153,8 +153,8 @@ func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) erro
 		return fmt.Errorf("executor 尚未注册: %s", executorID)
 	}
 	session.Busy = heartbeat.GetBusy()
-	currentStepID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
-	session.CurrentStepID = currentStepID
+	currentTaskID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
+	session.CurrentTaskID = currentTaskID
 	session.Status = "idle"
 	if session.Busy {
 		session.Status = "busy"
@@ -174,9 +174,9 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 		if ok {
 			delete(d.pendingAssign, ack.GetAckFor())
 			if ack.GetStatus() != runtimecontrolv1.AckStatus_OK {
-				if session := d.sessions[pending.ExecutorID]; session != nil && session.CurrentStepID == pending.StepID {
+				if session := d.sessions[pending.ExecutorID]; session != nil && session.CurrentTaskID == pending.TaskID {
 					session.Busy = false
-					session.CurrentStepID = ""
+					session.CurrentTaskID = ""
 					session.Status = "idle"
 				}
 			}
@@ -258,14 +258,14 @@ func supportsPlugin(session *ExecutorSession, pluginID string) bool {
 	return false
 }
 
-func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *runtimecontrolv1.TaskPayload) bool {
+func (d *Dispatcher) DispatchTask(executorID string, requestID string, task *runtimecontrolv1.TaskPayload) bool {
 	executorID = strings.TrimSpace(executorID)
 	requestID = strings.TrimSpace(requestID)
-	if executorID == "" || requestID == "" || step == nil {
+	if executorID == "" || requestID == "" || task == nil {
 		return false
 	}
-	stepID := strings.TrimSpace(step.GetTaskId())
-	if stepID == "" {
+	taskID := strings.TrimSpace(task.GetTaskId())
+	if taskID == "" {
 		return false
 	}
 
@@ -281,7 +281,7 @@ func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *run
 		Payload: &runtimecontrolv1.RuntimeMessage_AssignTask{
 			AssignTask: &runtimecontrolv1.AssignTask{
 				RequestId: requestID,
-				Task:      step,
+				Task:      task,
 			},
 		},
 	}
@@ -289,12 +289,12 @@ func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *run
 	case session.Queue <- message:
 		d.pendingAssign[requestID] = PendingAssign{
 			RequestID:  requestID,
-			StepID:     stepID,
+			TaskID:     taskID,
 			ExecutorID: executorID,
 			CreatedAt:  time.Now().UTC(),
 		}
 		session.Busy = true
-		session.CurrentStepID = stepID
+		session.CurrentTaskID = taskID
 		session.Status = "busy"
 		return true
 	default:
@@ -302,9 +302,9 @@ func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *run
 	}
 }
 
-func (d *Dispatcher) StopStep(stepID string, reason string) (string, bool) {
-	stepID = strings.TrimSpace(stepID)
-	if stepID == "" {
+func (d *Dispatcher) StopTask(taskID string, reason string) (string, bool) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
 		return "", false
 	}
 	requestID := uuid.NewString()
@@ -321,7 +321,7 @@ func (d *Dispatcher) StopStep(stepID string, reason string) (string, bool) {
 		if !session.IsOnline {
 			continue
 		}
-		if session.CurrentStepID == stepID {
+		if session.CurrentTaskID == taskID {
 			target = session
 			break
 		}
@@ -334,14 +334,14 @@ func (d *Dispatcher) StopStep(stepID string, reason string) (string, bool) {
 		Payload: &runtimecontrolv1.RuntimeMessage_StopTask{
 			StopTask: &runtimecontrolv1.StopTask{
 				RequestId: requestID,
-				TaskId:    stepID,
+				TaskId:    taskID,
 				Reason:    reason,
 			},
 		},
 	}
 	select {
 	case target.Queue <- message:
-		d.pendingStop[requestID] = stepID
+		d.pendingStop[requestID] = taskID
 		return requestID, true
 	default:
 		return requestID, false
@@ -401,7 +401,7 @@ func (d *Dispatcher) Summary() SummarySnapshot {
 	snapshot := SummarySnapshot{
 		PendingAssign:   int64(len(d.pendingAssign)),
 		PendingStop:     int64(len(d.pendingStop)),
-		QueuedStepCount: int64(len(d.queuedSteps) + len(d.queuedTasks)),
+		QueuedTaskCount: int64(len(d.queuedSteps) + len(d.queuedTasks)),
 	}
 	for _, session := range d.sessions {
 		if !session.IsOnline {
@@ -429,11 +429,11 @@ func (d *Dispatcher) ListExecutors() []ExecutorSnapshot {
 			Version:       session.Version,
 			Status:        session.Status,
 			IsOnline:      session.IsOnline,
-			CurrentStepID: session.CurrentStepID,
+			CurrentTaskID: session.CurrentTaskID,
 			LastSeen:      session.LastSeen,
 			LastError:     session.LastError,
 			PendingAssign: d.countPendingAssign(executorID),
-			PendingStop:   d.countPendingStopByStep(session.CurrentStepID),
+			PendingStop:   d.countPendingStopByTask(session.CurrentTaskID),
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -459,11 +459,11 @@ func (d *Dispatcher) GetExecutor(executorID string) (ExecutorSnapshot, bool) {
 		Version:       session.Version,
 		Status:        session.Status,
 		IsOnline:      session.IsOnline,
-		CurrentStepID: session.CurrentStepID,
+		CurrentTaskID: session.CurrentTaskID,
 		LastSeen:      session.LastSeen,
 		LastError:     session.LastError,
 		PendingAssign: d.countPendingAssign(executorID),
-		PendingStop:   d.countPendingStopByStep(session.CurrentStepID),
+		PendingStop:   d.countPendingStopByTask(session.CurrentTaskID),
 	}, true
 }
 
@@ -477,13 +477,13 @@ func (d *Dispatcher) countPendingAssign(executorID string) int64 {
 	return total
 }
 
-func (d *Dispatcher) countPendingStopByStep(stepID string) int64 {
-	if strings.TrimSpace(stepID) == "" {
+func (d *Dispatcher) countPendingStopByTask(taskID string) int64 {
+	if strings.TrimSpace(taskID) == "" {
 		return 0
 	}
 	var total int64
-	for _, pendingStepID := range d.pendingStop {
-		if pendingStepID == stepID {
+	for _, pendingTaskID := range d.pendingStop {
+		if pendingTaskID == taskID {
 			total++
 		}
 	}

@@ -125,12 +125,12 @@ func printStatus(domainClient *runtime_domain_client.Client, dispatcher *dispatc
 	)
 	fmt.Fprintf(
 		os.Stdout,
-		"dispatcher: online=%d busy=%d pending_assign=%d pending_stop=%d queued_step=%d latest_heartbeat_at=%s\n",
+		"dispatcher: online=%d busy=%d pending_assign=%d pending_stop=%d queued_task=%d latest_heartbeat_at=%s\n",
 		summary.OnlineExecutors,
 		summary.BusyExecutors,
 		summary.PendingAssign,
 		summary.PendingStop,
-		summary.QueuedStepCount,
+		summary.QueuedTaskCount,
 		formatTime(summary.LatestHeartbeatAt),
 	)
 }

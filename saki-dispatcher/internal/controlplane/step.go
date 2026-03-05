@@ -472,7 +472,7 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		Attempt:          int32(attempt),
 		DependsOnTaskIds: []string{},
 	}
-	if !s.dispatcher.DispatchStep(executorID, requestID, payload) {
+	if !s.dispatcher.DispatchTask(executorID, requestID, payload) {
 		_, _ = tx.Exec(
 			ctx,
 			`UPDATE task
@@ -1543,7 +1543,7 @@ func (s *Service) issueCancelAttemptTx(
 		return false, nil
 	}
 
-	stopRequestID, accepted := s.dispatcher.StopStep(stepID.String(), reason)
+	stopRequestID, accepted := s.dispatcher.StopTask(stepID.String(), reason)
 	detail := fmt.Sprintf("已发起取消尝试 accepted=%t stop_request_id=%s", accepted, strings.TrimSpace(stopRequestID))
 	if err := s.qtx(tx).UpdateCommandLogStatusDetail(ctx, db.UpdateCommandLogStatusDetailParams{
 		CommandID: commandID,
@@ -1731,7 +1731,7 @@ func (s *Service) dispatchOutboxBatch(ctx context.Context, limit int) (int, erro
 			continue
 		}
 
-		if s.dispatcher.DispatchStep(row.ExecutorID, row.RequestID, payload) {
+		if s.dispatcher.DispatchTask(row.ExecutorID, row.RequestID, payload) {
 			affected, err := s.queries.MarkDispatchOutboxSent(ctx, row.ID)
 			if err != nil {
 				return sent, err

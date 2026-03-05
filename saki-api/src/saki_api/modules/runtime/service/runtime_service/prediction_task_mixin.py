@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from saki_ir import IRValidationError, normalize_prediction_candidate, normalize_prediction_snapshot
-from saki_api.core.exceptions import BadRequestAppException
+from saki_api.core.exceptions import BadRequestAppException, NotFoundAppException
 from saki_api.infra.db.transaction import transactional
 from saki_api.modules.annotation.domain.annotation import Annotation
 from saki_api.modules.annotation.domain.camap import CommitAnnotationMap
@@ -747,8 +747,7 @@ class PredictionTaskMixin:
     async def get_prediction_task(self, *, task_id: uuid.UUID) -> PredictionSet:
         prediction = await self.prediction_set_repo.get_by_task_id(task_id)
         if prediction is None:
-            # Compatibility fallback: some legacy call sites still pass prediction_id.
-            return await self.settle_prediction_task(prediction_set_id=task_id)
+            raise NotFoundAppException("prediction task not found")
         return await self.settle_prediction_task(prediction_set_id=prediction.id)
 
     async def get_prediction_set_detail(

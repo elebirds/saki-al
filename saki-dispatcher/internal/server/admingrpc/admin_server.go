@@ -161,7 +161,7 @@ func (s *Server) GetRuntimeSummary(_ context.Context, _ *dispatcheradminv1.Runti
 		BusyExecutors:      snapshot.BusyExecutors,
 		PendingAssignCount: snapshot.PendingAssign,
 		PendingStopCount:   snapshot.PendingStop,
-		QueuedTaskCount:    snapshot.QueuedStepCount,
+		QueuedTaskCount:    snapshot.QueuedTaskCount,
 	}
 	if !snapshot.LatestHeartbeatAt.IsZero() {
 		response.LatestHeartbeatAt = snapshot.LatestHeartbeatAt.Format(time.RFC3339)
@@ -267,7 +267,7 @@ func convertExecutor(item dispatch.ExecutorSnapshot) *dispatcheradminv1.Executor
 		Version:            item.Version,
 		Status:             item.Status,
 		IsOnline:           item.IsOnline,
-		CurrentTaskId:      item.CurrentStepID,
+		CurrentTaskId:      item.CurrentTaskID,
 		LastError:          item.LastError,
 		PendingAssignCount: item.PendingAssign,
 		PendingStopCount:   item.PendingStop,

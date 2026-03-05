@@ -432,15 +432,6 @@ class PredictionApplyResponse(BaseModel):
     applied_count: int = 0
     status: str
 
-
-# Hard-cut aliases for residual imports.
-PredictionSetGenerateRequest = PredictionCreateRequest
-PredictionSetRead = PredictionRead
-PredictionSetDetailRead = PredictionDetailRead
-PredictionSetApplyRequest = PredictionApplyRequest
-PredictionSetApplyResponse = PredictionApplyResponse
-
-
 class StepArtifactDownloadResponse(BaseModel):
     step_id: uuid.UUID
     artifact_name: str

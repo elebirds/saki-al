@@ -443,7 +443,7 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 			return "", "", err
 		}
 		for _, stepID := range stepIDs {
-			s.dispatcher.StopStep(stepID.String(), reason)
+			s.dispatcher.StopTask(stepID.String(), reason)
 		}
 		return "applied", "stop_round applied", nil
 	})
@@ -573,7 +573,7 @@ func (s *Service) StopStep(ctx context.Context, commandID string, stepID string,
 		}); err != nil {
 			return "", "", err
 		}
-		s.dispatcher.StopStep(stepPGID.String(), reason)
+		s.dispatcher.StopTask(stepPGID.String(), reason)
 		return "applied", "stop_step applied", nil
 	})
 }
@@ -638,7 +638,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 			if updateErr != nil {
 				return "", "", updateErr
 			}
-			s.dispatcher.StopStep(taskPGID.String(), reason)
+			s.dispatcher.StopTask(taskPGID.String(), reason)
 			return "applied", "stop_task applied", nil
 		}
 		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
@@ -657,7 +657,7 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 		}); err != nil {
 			return "", "", err
 		}
-		s.dispatcher.StopStep(stepPGID.String(), reason)
+		s.dispatcher.StopTask(stepPGID.String(), reason)
 		return "applied", "stop_task applied", nil
 	})
 }

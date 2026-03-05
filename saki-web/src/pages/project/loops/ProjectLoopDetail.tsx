@@ -400,7 +400,7 @@ const ProjectLoopDetail: React.FC = () => {
             });
             if (cancelled) return;
             wsCursorRef.current = response.nextAfterCursor ?? wsCursorRef.current;
-            const incoming = (response.items || []).filter((item) => Boolean(item.stepId));
+            const incoming = (response.items || []).filter((item) => Boolean(item.taskId));
             if (incoming.length > 0) {
                 const merged = mergeRuntimeRoundEvents(
                     latestRoundConsoleEventsRef.current,

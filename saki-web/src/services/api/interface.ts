@@ -293,7 +293,7 @@ export interface ApiService {
 
     stopStep(stepId: string, reason?: string): Promise<RuntimeStepCommandResponse>;
 
-    getStepEvents(stepId: string, query?: StepEventQuery): Promise<StepEventQueryResponse>;
+    getTaskEvents(taskId: string, query?: StepEventQuery): Promise<StepEventQueryResponse>;
 
     getStepMetricSeries(stepId: string, limit?: number): Promise<RuntimeStepMetricPoint[]>;
 

@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, Card, Form, Modal, Select, Slider, Space, Table, Tag, Typography, message} from 'antd';
 import {PlusOutlined, ReloadOutlined} from '@ant-design/icons';
 import {useTranslation} from 'react-i18next';
@@ -7,11 +7,14 @@ import {api} from '../../../services/api';
 import {
     CommitHistoryItem,
     PredictionCreateRequest,
+    RuntimeRoundEvent,
     PredictionTaskRead,
     ProjectBranch,
     ProjectModel,
     RuntimePluginCatalogItem,
 } from '../../../types';
+import RoundConsolePanel from './components/RoundConsolePanel';
+import {mergeRuntimeRoundEvents} from './runtimeEventFormatter';
 
 const statusColor: Record<string, string> = {
     queued: 'default',
@@ -46,6 +49,10 @@ const ProjectPredictionTasks: React.FC = () => {
     const [models, setModels] = useState<ProjectModel[]>([]);
     const [plugins, setPlugins] = useState<RuntimePluginCatalogItem[]>([]);
     const [branchCommits, setBranchCommits] = useState<CommitHistoryItem[]>([]);
+    const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+    const [taskConsoleEvents, setTaskConsoleEvents] = useState<RuntimeRoundEvent[]>([]);
+    const [taskConsoleLoading, setTaskConsoleLoading] = useState(false);
+    const taskAfterSeqRef = useRef<number>(0);
     const [form] = Form.useForm<TaskFormValues>();
     const pluginId = Form.useWatch('pluginId', form);
     const modelId = Form.useWatch('modelId', form);
@@ -199,6 +206,80 @@ const ProjectPredictionTasks: React.FC = () => {
         void loadBranchCommits(branchId);
     }, [branches, form, loadBranchCommits]);
 
+    const selectedTask = useMemo(
+        () => tasks.find((item) => item.id === selectedTaskId) || null,
+        [tasks, selectedTaskId],
+    );
+
+    const toTaskConsoleEvent = useCallback((task: PredictionTaskRead, event: any): RuntimeRoundEvent => ({
+        ...event,
+        taskId: String(task.taskId || task.id),
+        taskIndex: 1,
+        taskType: 'predict',
+        stepId: String(task.taskId || task.id),
+        stepIndex: 1,
+        stepType: 'predict',
+        stage: 'custom',
+    }), []);
+
+    const loadTaskConsoleEvents = useCallback(async (task: PredictionTaskRead, reset: boolean) => {
+        const taskId = String(task.taskId || '').trim();
+        if (!taskId) return;
+        const afterSeq = reset ? 0 : Number(taskAfterSeqRef.current || 0);
+        if (reset) setTaskConsoleLoading(true);
+        try {
+            const response = await api.getTaskEvents(taskId, {
+                afterSeq,
+                limit: 5000,
+                includeFacets: false,
+            });
+            const incoming = (response.items || []).map((item) => toTaskConsoleEvent(task, item));
+            if (reset) {
+                setTaskConsoleEvents(incoming);
+            } else if (incoming.length > 0) {
+                setTaskConsoleEvents((prev) => mergeRuntimeRoundEvents(prev, incoming, 20000));
+            }
+            const next = Number(response.nextAfterSeq ?? afterSeq ?? 0);
+            taskAfterSeqRef.current = Number.isFinite(next) && next >= 0 ? next : afterSeq;
+        } catch (error: any) {
+            if (reset) {
+                messageApi.error(error?.message || '加载任务日志失败');
+            }
+        } finally {
+            if (reset) setTaskConsoleLoading(false);
+        }
+    }, [messageApi, toTaskConsoleEvent]);
+
+    useEffect(() => {
+        if (!selectedTask) {
+            setTaskConsoleEvents([]);
+            taskAfterSeqRef.current = 0;
+            return;
+        }
+        taskAfterSeqRef.current = 0;
+        void loadTaskConsoleEvents(selectedTask, true);
+    }, [selectedTask, loadTaskConsoleEvents]);
+
+    useEffect(() => {
+        if (!selectedTask) return;
+        const activeStatuses = new Set([
+            'pending',
+            'ready',
+            'dispatching',
+            'syncing_env',
+            'probing_runtime',
+            'binding_device',
+            'running',
+            'retrying',
+        ]);
+        const status = String(selectedTask.taskStatus || selectedTask.status || '').toLowerCase();
+        if (!activeStatuses.has(status)) return;
+        const timer = window.setInterval(() => {
+            void loadTaskConsoleEvents(selectedTask, false);
+        }, 3000);
+        return () => window.clearInterval(timer);
+    }, [selectedTask, loadTaskConsoleEvents]);
+
     const onCreateTask = useCallback(async () => {
         if (!projectId) return;
         try {
@@ -251,11 +332,25 @@ const ProjectPredictionTasks: React.FC = () => {
                     rowKey="id"
                     loading={loading}
                     dataSource={tasks}
+                    rowSelection={{
+                        type: 'radio',
+                        selectedRowKeys: selectedTaskId ? [selectedTaskId] : [],
+                        onChange: (keys) => setSelectedTaskId(String(keys[0] || '')),
+                    }}
+                    onRow={(row) => ({
+                        onClick: () => setSelectedTaskId(row.id),
+                    })}
                     pagination={{pageSize: 20}}
                     columns={[
                         {
                             title: t('project.predictionTasks.table.taskId'),
                             dataIndex: 'id',
+                            width: 260,
+                            render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+                        },
+                        {
+                            title: 'Task ID',
+                            dataIndex: 'taskId',
                             width: 260,
                             render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
                         },
@@ -300,6 +395,19 @@ const ProjectPredictionTasks: React.FC = () => {
                     ]}
                 />
             </Card>
+
+            <RoundConsolePanel
+                title={selectedTask ? `Task 日志：${selectedTask.taskId}` : 'Task 日志'}
+                wsConnected={!taskConsoleLoading}
+                events={taskConsoleEvents}
+                onClearBuffer={() => {
+                    taskAfterSeqRef.current = 0;
+                    setTaskConsoleEvents([]);
+                }}
+                emptyDescription={selectedTask ? '暂无任务日志' : '请选择一个 Prediction Task 查看日志'}
+                exportFilePrefix={selectedTask ? `prediction-task-${selectedTask.taskId}` : 'prediction-task'}
+                maxHeight={420}
+            />
 
             <Modal
                 title={t('project.predictionTasks.modal.title')}

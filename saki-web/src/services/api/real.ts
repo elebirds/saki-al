@@ -1154,7 +1154,7 @@ export class RealApiService implements ApiService {
         return normalizeStepCommandResponse(response.data);
     }
 
-    async getStepEvents(stepId: string, query: StepEventQuery = {}): Promise<StepEventQueryResponse> {
+    async getTaskEvents(taskId: string, query: StepEventQuery = {}): Promise<StepEventQueryResponse> {
         const params: Record<string, any> = {
             after_seq: Number(query.afterSeq ?? 0),
             limit: Number(query.limit ?? 5000),
@@ -1179,7 +1179,7 @@ export class RealApiService implements ApiService {
             params.to_ts = String(query.toTs);
         }
         const response = await this.client.get(
-            `/steps/${stepId}/events`,
+            `/tasks/${taskId}/events`,
             {params},
         );
         return normalizeStepEventQueryResponse(response.data);

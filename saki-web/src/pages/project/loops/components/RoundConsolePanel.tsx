@@ -79,9 +79,9 @@ const buildEventFacetsFromItems = (items: RuntimeRoundEvent[]) => {
 
 type ConsoleEventBlock = {
     key: string;
-    stepId: string;
-    stepIndex: number;
-    stepType: string;
+    taskId: string;
+    taskIndex: number;
+    taskType: string;
     epoch: number | null;
     totalEpochs: number | null;
     events: RuntimeRoundEvent[];
@@ -172,12 +172,12 @@ const inferEventEpoch = (
         ?? (params as any).total_steps
         ?? (params as any).totalSteps,
     );
-    if (directTotal != null) lastTotalByStep.set(event.stepId, directTotal);
+    if (directTotal != null) lastTotalByStep.set(event.taskId, directTotal);
     if (direct != null) {
-        lastEpochByStep.set(event.stepId, direct);
+        lastEpochByStep.set(event.taskId, direct);
         return {
             epoch: direct,
-            total: directTotal ?? lastTotalByStep.get(event.stepId) ?? null,
+            total: directTotal ?? lastTotalByStep.get(event.taskId) ?? null,
         };
     }
     if (event.eventType === 'log') {
@@ -185,25 +185,25 @@ const inferEventEpoch = (
         const candidates = buildLogMessageCandidates(event, payload);
         for (const message of candidates) {
             const parsedHint = parseEpochFromLogMessage(message);
-            if (parsedHint.total != null) lastTotalByStep.set(event.stepId, parsedHint.total);
+            if (parsedHint.total != null) lastTotalByStep.set(event.taskId, parsedHint.total);
             if (parsedHint.epoch == null) continue;
-            lastEpochByStep.set(event.stepId, parsedHint.epoch);
+            lastEpochByStep.set(event.taskId, parsedHint.epoch);
             return {
                 epoch: parsedHint.epoch,
-                total: parsedHint.total ?? lastTotalByStep.get(event.stepId) ?? null,
+                total: parsedHint.total ?? lastTotalByStep.get(event.taskId) ?? null,
             };
         }
         if (source !== 'worker_stdio') {
-            const remembered = lastEpochByStep.get(event.stepId);
+            const remembered = lastEpochByStep.get(event.taskId);
             if (remembered != null) {
                 return {
                     epoch: remembered,
-                    total: lastTotalByStep.get(event.stepId) ?? null,
+                    total: lastTotalByStep.get(event.taskId) ?? null,
                 };
             }
         }
     }
-    return {epoch: null, total: lastTotalByStep.get(event.stepId) ?? null};
+    return {epoch: null, total: lastTotalByStep.get(event.taskId) ?? null};
 };
 
 const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] => {
@@ -222,16 +222,16 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
         const seedEvent = seed.event;
         const seedEpoch = seed.hint.epoch;
         let seedTotalEpochs = seed.hint.total;
-        const seedStepId = String(seedEvent.stepId || '');
-        const seedStepIndex = Number(seedEvent.stepIndex || 0);
-        const seedStepType = String(seedEvent.stepType || 'custom');
+        const seedStepId = String(seedEvent.taskId || '');
+        const seedStepIndex = Number(seedEvent.taskIndex || 0);
+        const seedStepType = String(seedEvent.taskType || 'custom');
 
         if (seedEpoch == null) {
             blocks.push({
                 key: `${seedStepId}:${seedEvent.seq}:single`,
-                stepId: seedStepId,
-                stepIndex: seedStepIndex,
-                stepType: seedStepType,
+                taskId: seedStepId,
+                taskIndex: seedStepIndex,
+                taskType: seedStepType,
                 epoch: null,
                 totalEpochs: null,
                 events: [seedEvent],
@@ -246,7 +246,7 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
         while (cursor < annotated.length) {
             const item = annotated[cursor];
             const event = item.event;
-            if (String(event.stepId || '') !== seedStepId) break;
+            if (String(event.taskId || '') !== seedStepId) break;
             if (!['progress', 'metric', 'log'].includes(String(event.eventType || '').toLowerCase())) break;
             if (item.hint.epoch !== seedEpoch) break;
             if (seedTotalEpochs == null && item.hint.total != null) seedTotalEpochs = item.hint.total;
@@ -259,9 +259,9 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
         if (groupedEvents.length >= 2 && hasSemantic && hasLog) {
             blocks.push({
                 key: `${seedStepId}:epoch:${seedEpoch}:${groupedEvents[0].seq}`,
-                stepId: seedStepId,
-                stepIndex: seedStepIndex,
-                stepType: seedStepType,
+                taskId: seedStepId,
+                taskIndex: seedStepIndex,
+                taskType: seedStepType,
                 epoch: seedEpoch,
                 totalEpochs: seedTotalEpochs,
                 events: groupedEvents,
@@ -273,9 +273,9 @@ const buildConsoleBlocks = (events: RuntimeRoundEvent[]): ConsoleEventBlock[] =>
 
         blocks.push({
             key: `${seedStepId}:${seedEvent.seq}:single`,
-            stepId: seedStepId,
-            stepIndex: seedStepIndex,
-            stepType: seedStepType,
+            taskId: seedStepId,
+            taskIndex: seedStepIndex,
+            taskType: seedStepType,
             epoch: seedEpoch,
             totalEpochs: seedTotalEpochs,
             events: [seedEvent],
@@ -377,8 +377,8 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
         const lines = visibleEvents.map((item) => {
             const level = String(item.level || item.status || item.eventType || '').trim();
             const message = getDisplayMessage(item);
-            const stepTag = `step#${Number(item.stepIndex || 0)} ${String(item.stepType || 'custom')}`;
-            return `[${item.ts}] #${item.seq} [${level}] [${stepTag}] ${message}`;
+            const taskTag = `task#${Number(item.taskIndex || 0)} ${String(item.taskType || 'custom')}`;
+            return `[${item.ts}] #${item.seq} [${level}] [${taskTag}] ${message}`;
         });
         const content = lines.join('\n');
         const blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
@@ -560,14 +560,14 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
                                                     <span className="text-slate-400">{formatDateTime(item.ts)}</span>
                                                     <span className="text-slate-500">#{item.seq}</span>
                                                     <Tag color={EVENT_TYPE_COLOR[item.eventType] || 'default'} className="!m-0">{item.eventType}</Tag>
-                                                    <Tag color="geekblue" className="!m-0">{`step#${Number(item.stepIndex || 0)} ${String(item.stepType || 'custom')}`}</Tag>
+                                                    <Tag color="geekblue" className="!m-0">{`task#${Number(item.taskIndex || 0)} ${String(item.taskType || 'custom')}`}</Tag>
                                                     {item.level ? (
                                                         <Tag color={LEVEL_TAG_COLOR[levelKey] || 'blue'} className="!m-0">{item.level}</Tag>
                                                     ) : null}
                                                     {item.source ? <Tag className="!m-0">{item.source}</Tag> : null}
                                                     {lineCount > 1 ? <Tag className="!m-0">{`${lineCount} lines`}</Tag> : null}
                                                     {(item.tags || []).slice(0, 4).map((tag, tagIdx) => (
-                                                        <Tag key={`${item.stepId}-${item.ts}-${item.seq}-${tag}-${tagIdx}`} className="!m-0">{tag}</Tag>
+                                                        <Tag key={`${item.taskId}-${item.ts}-${item.seq}-${tag}-${tagIdx}`} className="!m-0">{tag}</Tag>
                                                     ))}
                                                     <Button
                                                         size="small"
@@ -589,7 +589,7 @@ const RoundConsolePanel: React.FC<RoundConsolePanelProps> = ({
                                             className="rounded border border-slate-700/70 bg-slate-900/40 px-2 py-2"
                                         >
                                             <div className="mb-1 flex flex-wrap items-center gap-2 text-slate-300">
-                                                <Tag color="geekblue" className="!m-0">{`step#${block.stepIndex} ${block.stepType}`}</Tag>
+                                                <Tag color="geekblue" className="!m-0">{`task#${block.taskIndex} ${block.taskType}`}</Tag>
                                                 {block.epoch != null ? (
                                                     <Tag color="processing" className="!m-0">
                                                         {block.totalEpochs != null

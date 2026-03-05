@@ -202,28 +202,36 @@ export function normalizeRuntimeStepEvent(raw: unknown): RuntimeStepEvent {
 
 export function normalizeRuntimeRoundEvent(raw: unknown): RuntimeRoundEvent | null {
     const row = asRecord(raw);
-    const stepId = String(row.stepId ?? row.step_id ?? '').trim();
-    if (!stepId) return null;
+    const taskId = String(row.taskId ?? row.task_id ?? row.stepId ?? row.step_id ?? '').trim();
+    if (!taskId) return null;
 
+    const taskIndexRaw = Number(row.taskIndex ?? row.task_index ?? row.stepIndex ?? row.step_index ?? 0);
+    const taskIndex = Number.isFinite(taskIndexRaw) && taskIndexRaw > 0 ? Math.floor(taskIndexRaw) : 0;
+    if (taskIndex <= 0) return null;
+
+    const taskTypeText = String(row.taskType ?? row.task_type ?? row.stepType ?? row.step_type ?? 'custom').trim().toLowerCase();
+    const taskType = STEP_TYPES.has(taskTypeText) ? taskTypeText : 'custom';
+    const stepId = String(row.stepId ?? row.step_id ?? '').trim() || undefined;
     const stepIndexRaw = Number(row.stepIndex ?? row.step_index ?? 0);
-    const stepIndex = Number.isFinite(stepIndexRaw) && stepIndexRaw > 0 ? Math.floor(stepIndexRaw) : 0;
-    if (stepIndex <= 0) return null;
-
-    const stepTypeText = String(row.stepType ?? row.step_type ?? 'custom').trim().toLowerCase();
-    const stepType = STEP_TYPES.has(stepTypeText) ? stepTypeText : 'custom';
+    const stepIndex = Number.isFinite(stepIndexRaw) && stepIndexRaw > 0 ? Math.floor(stepIndexRaw) : undefined;
+    const stepTypeText = String(row.stepType ?? row.step_type ?? '').trim().toLowerCase();
+    const stepType = STEP_TYPES.has(stepTypeText) ? (stepTypeText as RuntimeRoundEvent['taskType']) : undefined;
 
     const stageText = String(row.stage ?? '').trim().toLowerCase();
     const stage = ROUND_STAGES.has(stageText)
         ? (stageText as RuntimeRoundEvent['stage'])
-        : deriveStageFromStepType(stepType);
+        : deriveStageFromStepType(taskType);
 
     const base = normalizeRuntimeStepEvent(raw);
 
     return {
         ...base,
+        taskId,
+        taskIndex,
+        taskType: taskType as RuntimeRoundEvent['taskType'],
         stepId,
         stepIndex,
-        stepType: stepType as RuntimeRoundEvent['stepType'],
+        stepType,
         stage,
     };
 }
@@ -236,18 +244,18 @@ export function mergeRuntimeRoundEvents(
     const merged = [...previous, ...incoming];
     const dedup = new Map<string, RuntimeRoundEvent>();
     merged.forEach((item) => {
-        const key = `${item.stepId}:${Number(item.seq ?? 0)}`;
+        const key = `${item.taskId}:${Number(item.seq ?? 0)}`;
         dedup.set(key, item);
     });
     const rows = Array.from(dedup.values()).sort((left, right) => {
         const leftTs = Date.parse(String(left.ts ?? ''));
         const rightTs = Date.parse(String(right.ts ?? ''));
         if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && leftTs !== rightTs) return leftTs - rightTs;
-        if (Number(left.stepIndex ?? 0) !== Number(right.stepIndex ?? 0)) {
-            return Number(left.stepIndex ?? 0) - Number(right.stepIndex ?? 0);
+        if (Number(left.taskIndex ?? 0) !== Number(right.taskIndex ?? 0)) {
+            return Number(left.taskIndex ?? 0) - Number(right.taskIndex ?? 0);
         }
         if (Number(left.seq ?? 0) !== Number(right.seq ?? 0)) return Number(left.seq ?? 0) - Number(right.seq ?? 0);
-        return String(left.stepId ?? '').localeCompare(String(right.stepId ?? ''));
+        return String(left.taskId ?? '').localeCompare(String(right.taskId ?? ''));
     });
     if (rows.length <= maxBuffer) return rows;
     return rows.slice(rows.length - maxBuffer);
@@ -272,10 +280,10 @@ export function formatRuntimeEventMessage(
     const withStepPrefix = Boolean(options?.withStepPrefix);
     if (!withStepPrefix) return content;
     const maybeRound = event as Partial<RuntimeRoundEvent>;
-    const stepIndex = Number(maybeRound.stepIndex ?? 0);
-    const stepType = String(maybeRound.stepType ?? '').trim().toLowerCase();
-    if (stepIndex > 0 && stepType) {
-        return `[step#${stepIndex} ${stepType}] ${content}`;
+    const taskIndex = Number(maybeRound.taskIndex ?? 0);
+    const taskType = String(maybeRound.taskType ?? '').trim().toLowerCase();
+    if (taskIndex > 0 && taskType) {
+        return `[task#${taskIndex} ${taskType}] ${content}`;
     }
     return content;
 }

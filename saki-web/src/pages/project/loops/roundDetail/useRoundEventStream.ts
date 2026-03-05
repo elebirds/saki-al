@@ -136,7 +136,9 @@ export const useRoundEventStream = ({
                     const next = [...prev];
                     let changed = false;
                     statusRows.forEach((row) => {
-                        const idx = indexMap.get(row.stepId);
+                        const stepId = String(row.stepId || '').trim();
+                        if (!stepId) return;
+                        const idx = indexMap.get(stepId);
                         if (idx == null) return;
                         const current = next[idx];
                         if (!current) return;
@@ -207,7 +209,7 @@ export const useRoundEventStream = ({
                     limit: ROUND_EVENT_SYNC_LIMIT,
                     stages: activeConsoleStages.length > 0 ? activeConsoleStages : undefined,
                 });
-                const items = (response.items || []).filter((item) => Boolean(item.stepId));
+                const items = (response.items || []).filter((item) => Boolean(item.taskId));
                 if (items.length > 0) {
                     incoming.push(...items);
                 }

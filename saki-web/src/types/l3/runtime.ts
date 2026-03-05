@@ -252,9 +252,12 @@ export interface RuntimeStepEvent {
 }
 
 export interface RuntimeRoundEvent {
-    stepId: string;
-    stepIndex: number;
-    stepType: RuntimeStepType;
+    taskId: string;
+    taskIndex: number;
+    taskType: RuntimeStepType;
+    stepId?: string;
+    stepIndex?: number;
+    stepType?: RuntimeStepType;
     stage: 'train' | 'eval' | 'score' | 'select' | 'custom';
     seq: number;
     ts: string;

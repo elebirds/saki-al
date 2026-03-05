@@ -641,6 +641,146 @@ func (ns NullRoundstatus) Value() (driver.Value, error) {
 	return string(ns.Roundstatus), nil
 }
 
+type Runtimetaskkind string
+
+const (
+	RuntimetaskkindSTEP       Runtimetaskkind = "STEP"
+	RuntimetaskkindPREDICTION Runtimetaskkind = "PREDICTION"
+)
+
+func (e *Runtimetaskkind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Runtimetaskkind(s)
+	case string:
+		*e = Runtimetaskkind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Runtimetaskkind: %T", src)
+	}
+	return nil
+}
+
+type NullRuntimetaskkind struct {
+	Runtimetaskkind Runtimetaskkind
+	Valid           bool // Valid is true if Runtimetaskkind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRuntimetaskkind) Scan(value interface{}) error {
+	if value == nil {
+		ns.Runtimetaskkind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Runtimetaskkind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRuntimetaskkind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Runtimetaskkind), nil
+}
+
+type Runtimetaskstatus string
+
+const (
+	RuntimetaskstatusPENDING        Runtimetaskstatus = "PENDING"
+	RuntimetaskstatusREADY          Runtimetaskstatus = "READY"
+	RuntimetaskstatusDISPATCHING    Runtimetaskstatus = "DISPATCHING"
+	RuntimetaskstatusSYNCINGENV     Runtimetaskstatus = "SYNCING_ENV"
+	RuntimetaskstatusPROBINGRUNTIME Runtimetaskstatus = "PROBING_RUNTIME"
+	RuntimetaskstatusBINDINGDEVICE  Runtimetaskstatus = "BINDING_DEVICE"
+	RuntimetaskstatusRUNNING        Runtimetaskstatus = "RUNNING"
+	RuntimetaskstatusRETRYING       Runtimetaskstatus = "RETRYING"
+	RuntimetaskstatusSUCCEEDED      Runtimetaskstatus = "SUCCEEDED"
+	RuntimetaskstatusFAILED         Runtimetaskstatus = "FAILED"
+	RuntimetaskstatusCANCELLED      Runtimetaskstatus = "CANCELLED"
+	RuntimetaskstatusSKIPPED        Runtimetaskstatus = "SKIPPED"
+)
+
+func (e *Runtimetaskstatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Runtimetaskstatus(s)
+	case string:
+		*e = Runtimetaskstatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Runtimetaskstatus: %T", src)
+	}
+	return nil
+}
+
+type NullRuntimetaskstatus struct {
+	Runtimetaskstatus Runtimetaskstatus
+	Valid             bool // Valid is true if Runtimetaskstatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRuntimetaskstatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.Runtimetaskstatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Runtimetaskstatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRuntimetaskstatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Runtimetaskstatus), nil
+}
+
+type Runtimetasktype string
+
+const (
+	RuntimetasktypeTRAIN   Runtimetasktype = "TRAIN"
+	RuntimetasktypeEVAL    Runtimetasktype = "EVAL"
+	RuntimetasktypeSCORE   Runtimetasktype = "SCORE"
+	RuntimetasktypeSELECT  Runtimetasktype = "SELECT"
+	RuntimetasktypePREDICT Runtimetasktype = "PREDICT"
+	RuntimetasktypeCUSTOM  Runtimetasktype = "CUSTOM"
+)
+
+func (e *Runtimetasktype) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Runtimetasktype(s)
+	case string:
+		*e = Runtimetasktype(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Runtimetasktype: %T", src)
+	}
+	return nil
+}
+
+type NullRuntimetasktype struct {
+	Runtimetasktype Runtimetasktype
+	Valid           bool // Valid is true if Runtimetasktype is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRuntimetasktype) Scan(value interface{}) error {
+	if value == nil {
+		ns.Runtimetasktype, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Runtimetasktype.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRuntimetasktype) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Runtimetasktype), nil
+}
+
 type Snapshotpartition string
 
 const (
@@ -1310,49 +1450,47 @@ type ModelClassSchema struct {
 	SchemaHash    string
 }
 
+type Prediction struct {
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	ID           uuid.UUID
+	ProjectID    uuid.UUID
+	PluginID     string
+	ModelID      uuid.UUID
+	BaseCommitID *uuid.UUID
+	TaskID       uuid.UUID
+	ScopeType    string
+	ScopePayload []byte
+	Status       string
+	TotalItems   int32
+	Params       []byte
+	LastError    pgtype.Text
+	CreatedBy    *uuid.UUID
+}
+
+type PredictionBinding struct {
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	ID           uuid.UUID
+	PredictionID uuid.UUID
+	ModelID      uuid.UUID
+	SchemaHash   string
+	ByIndexJson  []byte
+	ByNameJson   []byte
+}
+
 type PredictionItem struct {
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	PredictionSetID uuid.UUID
-	SampleID        uuid.UUID
-	Rank            int32
-	Score           float64
-	LabelID         *uuid.UUID
-	Geometry        []byte
-	Attrs           []byte
-	Confidence      float64
-	Meta            []byte
-}
-
-type PredictionSet struct {
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
-	ID            uuid.UUID
-	ProjectID     uuid.UUID
-	LoopID        *uuid.UUID
-	PluginID      string
-	SourceRoundID *uuid.UUID
-	SourceStepID  *uuid.UUID
-	ModelID       uuid.UUID
-	BaseCommitID  *uuid.UUID
-	ScopeType     string
-	ScopePayload  []byte
-	Status        string
-	TotalItems    int32
-	Params        []byte
-	LastError     pgtype.Text
-	CreatedBy     *uuid.UUID
-}
-
-type PredictionSetBinding struct {
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	ID              uuid.UUID
-	PredictionSetID uuid.UUID
-	ModelID         uuid.UUID
-	SchemaHash      string
-	ByIndexJson     []byte
-	ByNameJson      []byte
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	PredictionID uuid.UUID
+	SampleID     uuid.UUID
+	Rank         int32
+	Score        float64
+	LabelID      *uuid.UUID
+	Geometry     []byte
+	Attrs        []byte
+	Confidence   float64
+	Meta         []byte
 }
 
 type Project struct {
@@ -1515,6 +1653,7 @@ type Step struct {
 	Metrics            []byte
 	Artifacts          []byte
 	InputCommitID      *uuid.UUID
+	TaskID             *uuid.UUID
 	AssignedExecutorID pgtype.Text
 	StateVersion       int32
 	Attempt            int32
@@ -1565,6 +1704,25 @@ type SystemSetting struct {
 	Key       string
 	ValueJson []byte
 	UpdatedBy *uuid.UUID
+}
+
+type Task struct {
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	ID                 uuid.UUID
+	ProjectID          uuid.UUID
+	Kind               Runtimetaskkind
+	TaskType           Runtimetasktype
+	Status             Runtimetaskstatus
+	PluginID           string
+	InputCommitID      *uuid.UUID
+	ResolvedParams     []byte
+	AssignedExecutorID pgtype.Text
+	Attempt            int32
+	MaxAttempts        int32
+	StartedAt          pgtype.Timestamptz
+	EndedAt            pgtype.Timestamptz
+	LastError          pgtype.Text
 }
 
 type User struct {

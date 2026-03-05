@@ -117,7 +117,7 @@ if [[ "$MODE_DOCKER" == true ]]; then
   else
     DOCKER_EXEC=(docker compose -f "$ROOT_DIR/docker-compose.yml" exec -T postgres)
   fi
-  if ! "${DOCKER_EXEC[@]}" true >/dev/null 2>&1; then
+  if ! "${DOCKER_EXEC[@]}" true </dev/null >/dev/null 2>&1; then
     DOCKER_EXEC=(docker exec -i saki-postgres)
   fi
 fi

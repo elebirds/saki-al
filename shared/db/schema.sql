@@ -18,6 +18,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
+
+-- *not* creating schema, since initdb creates it
+
+
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA public IS '';
+
+
+--
 -- Name: annotationsource; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -195,6 +209,50 @@ CREATE TYPE public.roundstatus AS ENUM (
     'COMPLETED',
     'CANCELLED',
     'FAILED'
+);
+
+
+--
+-- Name: runtimetaskkind; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.runtimetaskkind AS ENUM (
+    'STEP',
+    'PREDICTION'
+);
+
+
+--
+-- Name: runtimetaskstatus; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.runtimetaskstatus AS ENUM (
+    'PENDING',
+    'READY',
+    'DISPATCHING',
+    'SYNCING_ENV',
+    'PROBING_RUNTIME',
+    'BINDING_DEVICE',
+    'RUNNING',
+    'RETRYING',
+    'SUCCEEDED',
+    'FAILED',
+    'CANCELLED',
+    'SKIPPED'
+);
+
+
+--
+-- Name: runtimetasktype; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.runtimetasktype AS ENUM (
+    'TRAIN',
+    'EVAL',
+    'SCORE',
+    'SELECT',
+    'PREDICT',
+    'CUSTOM'
 );
 
 
@@ -685,39 +743,18 @@ CREATE TABLE public.model_class_schema (
 
 
 --
--- Name: prediction_item; Type: TABLE; Schema: public; Owner: -
+-- Name: prediction; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.prediction_item (
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    prediction_set_id uuid NOT NULL,
-    sample_id uuid NOT NULL,
-    rank integer NOT NULL,
-    score double precision NOT NULL,
-    label_id uuid,
-    geometry jsonb,
-    attrs jsonb,
-    confidence double precision NOT NULL,
-    meta jsonb
-);
-
-
---
--- Name: prediction_set; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.prediction_set (
+CREATE TABLE public.prediction (
     created_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
     project_id uuid NOT NULL,
-    loop_id uuid,
     plugin_id character varying(255) NOT NULL,
-    source_round_id uuid,
-    source_step_id uuid,
     model_id uuid NOT NULL,
     base_commit_id uuid,
+    task_id uuid NOT NULL,
     scope_type character varying(64) NOT NULL,
     scope_payload jsonb,
     status character varying(32) NOT NULL,
@@ -729,18 +766,37 @@ CREATE TABLE public.prediction_set (
 
 
 --
--- Name: prediction_set_binding; Type: TABLE; Schema: public; Owner: -
+-- Name: prediction_binding; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.prediction_set_binding (
+CREATE TABLE public.prediction_binding (
     created_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
-    prediction_set_id uuid NOT NULL,
+    prediction_id uuid NOT NULL,
     model_id uuid NOT NULL,
     schema_hash character varying(64) NOT NULL,
     by_index_json jsonb,
     by_name_json jsonb
+);
+
+
+--
+-- Name: prediction_item; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prediction_item (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    prediction_id uuid NOT NULL,
+    sample_id uuid NOT NULL,
+    rank integer NOT NULL,
+    score double precision NOT NULL,
+    label_id uuid,
+    geometry jsonb,
+    attrs jsonb,
+    confidence double precision NOT NULL,
+    meta jsonb
 );
 
 
@@ -963,6 +1019,7 @@ CREATE TABLE public.step (
     metrics jsonb,
     artifacts jsonb,
     input_commit_id uuid,
+    task_id uuid,
     assigned_executor_id character varying,
     state_version integer NOT NULL,
     attempt integer NOT NULL,
@@ -1033,6 +1090,30 @@ CREATE TABLE public.system_setting (
     key character varying(128) NOT NULL,
     value_json json,
     updated_by uuid
+);
+
+
+--
+-- Name: task; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.task (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    kind public.runtimetaskkind NOT NULL,
+    task_type public.runtimetasktype NOT NULL,
+    status public.runtimetaskstatus NOT NULL,
+    plugin_id character varying(255) NOT NULL,
+    input_commit_id uuid,
+    resolved_params jsonb,
+    assigned_executor_id character varying,
+    attempt integer NOT NULL,
+    max_attempts integer NOT NULL,
+    started_at timestamp with time zone,
+    ended_at timestamp with time zone,
+    last_error character varying(4000)
 );
 
 
@@ -1230,27 +1311,27 @@ ALTER TABLE ONLY public.model
 
 
 --
+-- Name: prediction_binding prediction_binding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prediction_binding
+    ADD CONSTRAINT prediction_binding_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: prediction_item prediction_item_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.prediction_item
-    ADD CONSTRAINT prediction_item_pkey PRIMARY KEY (prediction_set_id, sample_id);
+    ADD CONSTRAINT prediction_item_pkey PRIMARY KEY (prediction_id, sample_id);
 
 
 --
--- Name: prediction_set_binding prediction_set_binding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction prediction_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prediction_set_binding
-    ADD CONSTRAINT prediction_set_binding_pkey PRIMARY KEY (id);
-
-
---
--- Name: prediction_set prediction_set_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.prediction
+    ADD CONSTRAINT prediction_pkey PRIMARY KEY (id);
 
 
 --
@@ -1379,6 +1460,14 @@ ALTER TABLE ONLY public.step
 
 ALTER TABLE ONLY public.system_setting
     ADD CONSTRAINT system_setting_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: task task_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task
+    ADD CONSTRAINT task_pkey PRIMARY KEY (id);
 
 
 --
@@ -2092,6 +2181,41 @@ CREATE INDEX ix_model_source_step_id ON public.model USING btree (source_step_id
 
 
 --
+-- Name: ix_prediction_base_commit_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_base_commit_id ON public.prediction USING btree (base_commit_id);
+
+
+--
+-- Name: ix_prediction_binding_model_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_binding_model_id ON public.prediction_binding USING btree (model_id);
+
+
+--
+-- Name: ix_prediction_binding_prediction_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_prediction_binding_prediction_id ON public.prediction_binding USING btree (prediction_id);
+
+
+--
+-- Name: ix_prediction_binding_schema_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_binding_schema_hash ON public.prediction_binding USING btree (schema_hash);
+
+
+--
+-- Name: ix_prediction_created_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_prediction_created_by ON public.prediction USING btree (created_by);
+
+
+--
 -- Name: ix_prediction_item_label_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2106,94 +2230,45 @@ CREATE INDEX ix_prediction_item_rank ON public.prediction_item USING btree (rank
 
 
 --
--- Name: ix_prediction_set_base_commit_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_prediction_model_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_prediction_set_base_commit_id ON public.prediction_set USING btree (base_commit_id);
-
-
---
--- Name: ix_prediction_set_binding_model_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_prediction_set_binding_model_id ON public.prediction_set_binding USING btree (model_id);
+CREATE INDEX ix_prediction_model_id ON public.prediction USING btree (model_id);
 
 
 --
--- Name: ix_prediction_set_binding_prediction_set_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_prediction_plugin_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX ix_prediction_set_binding_prediction_set_id ON public.prediction_set_binding USING btree (prediction_set_id);
-
-
---
--- Name: ix_prediction_set_binding_schema_hash; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_prediction_set_binding_schema_hash ON public.prediction_set_binding USING btree (schema_hash);
+CREATE INDEX ix_prediction_plugin_id ON public.prediction USING btree (plugin_id);
 
 
 --
--- Name: ix_prediction_set_created_by; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_prediction_project_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_prediction_set_created_by ON public.prediction_set USING btree (created_by);
-
-
---
--- Name: ix_prediction_set_loop_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_prediction_set_loop_id ON public.prediction_set USING btree (loop_id);
+CREATE INDEX ix_prediction_project_id ON public.prediction USING btree (project_id);
 
 
 --
--- Name: ix_prediction_set_model_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_prediction_scope_type; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_prediction_set_model_id ON public.prediction_set USING btree (model_id);
-
-
---
--- Name: ix_prediction_set_plugin_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_prediction_set_plugin_id ON public.prediction_set USING btree (plugin_id);
+CREATE INDEX ix_prediction_scope_type ON public.prediction USING btree (scope_type);
 
 
 --
--- Name: ix_prediction_set_project_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_prediction_status; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_prediction_set_project_id ON public.prediction_set USING btree (project_id);
-
-
---
--- Name: ix_prediction_set_scope_type; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_prediction_set_scope_type ON public.prediction_set USING btree (scope_type);
+CREATE INDEX ix_prediction_status ON public.prediction USING btree (status);
 
 
 --
--- Name: ix_prediction_set_source_round_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_prediction_task_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_prediction_set_source_round_id ON public.prediction_set USING btree (source_round_id);
-
-
---
--- Name: ix_prediction_set_source_step_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_prediction_set_source_step_id ON public.prediction_set USING btree (source_step_id);
-
-
---
--- Name: ix_prediction_set_status; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_prediction_set_status ON public.prediction_set USING btree (status);
+CREATE UNIQUE INDEX ix_prediction_task_id ON public.prediction USING btree (task_id);
 
 
 --
@@ -2540,10 +2615,66 @@ CREATE INDEX ix_step_step_type ON public.step USING btree (step_type);
 
 
 --
+-- Name: ix_step_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_step_task_id ON public.step USING btree (task_id);
+
+
+--
 -- Name: ix_system_setting_updated_by; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_system_setting_updated_by ON public.system_setting USING btree (updated_by);
+
+
+--
+-- Name: ix_task_assigned_executor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_assigned_executor_id ON public.task USING btree (assigned_executor_id);
+
+
+--
+-- Name: ix_task_input_commit_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_input_commit_id ON public.task USING btree (input_commit_id);
+
+
+--
+-- Name: ix_task_kind; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_kind ON public.task USING btree (kind);
+
+
+--
+-- Name: ix_task_plugin_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_plugin_id ON public.task USING btree (plugin_id);
+
+
+--
+-- Name: ix_task_project_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_project_id ON public.task USING btree (project_id);
+
+
+--
+-- Name: ix_task_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_status ON public.task USING btree (status);
+
+
+--
+-- Name: ix_task_task_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_task_type ON public.task USING btree (task_type);
 
 
 --
@@ -2758,6 +2889,142 @@ ALTER TABLE ONLY public.dispatch_outbox
 
 
 --
+-- Name: loop fk_loop_active_snapshot_version_id_loop_snapshot_version; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT fk_loop_active_snapshot_version_id_loop_snapshot_version FOREIGN KEY (active_snapshot_version_id) REFERENCES public.loop_snapshot_version(id);
+
+
+--
+-- Name: loop fk_loop_branch_id_branch; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT fk_loop_branch_id_branch FOREIGN KEY (branch_id) REFERENCES public.branch(id);
+
+
+--
+-- Name: loop fk_loop_last_confirmed_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT fk_loop_last_confirmed_commit_id_commit FOREIGN KEY (last_confirmed_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: loop fk_loop_project_id_project; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop
+    ADD CONSTRAINT fk_loop_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: loop_snapshot_version fk_loop_snapshot_version_24991dae; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT fk_loop_snapshot_version_24991dae FOREIGN KEY (parent_version_id) REFERENCES public.loop_snapshot_version(id);
+
+
+--
+-- Name: loop_snapshot_version fk_loop_snapshot_version_created_by_user; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT fk_loop_snapshot_version_created_by_user FOREIGN KEY (created_by) REFERENCES public."user"(id);
+
+
+--
+-- Name: loop_snapshot_version fk_loop_snapshot_version_loop_id_loop; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loop_snapshot_version
+    ADD CONSTRAINT fk_loop_snapshot_version_loop_id_loop FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: model fk_model_created_by_user; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_created_by_user FOREIGN KEY (created_by) REFERENCES public."user"(id);
+
+
+--
+-- Name: model fk_model_parent_model_id_model; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_parent_model_id_model FOREIGN KEY (parent_model_id) REFERENCES public.model(id);
+
+
+--
+-- Name: model fk_model_project_id_project; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: model fk_model_source_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_source_commit_id_commit FOREIGN KEY (source_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: model fk_model_source_round_id_round; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_source_round_id_round FOREIGN KEY (source_round_id) REFERENCES public.round(id);
+
+
+--
+-- Name: model fk_model_source_step_id_step; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model
+    ADD CONSTRAINT fk_model_source_step_id_step FOREIGN KEY (source_step_id) REFERENCES public.step(id);
+
+
+--
+-- Name: round fk_round_input_commit_id_commit; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT fk_round_input_commit_id_commit FOREIGN KEY (input_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: round fk_round_loop_id_loop; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT fk_round_loop_id_loop FOREIGN KEY (loop_id) REFERENCES public.loop(id);
+
+
+--
+-- Name: round fk_round_project_id_project; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT fk_round_project_id_project FOREIGN KEY (project_id) REFERENCES public.project(id);
+
+
+--
+-- Name: round fk_round_retry_of_round_id_round; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.round
+    ADD CONSTRAINT fk_round_retry_of_round_id_round FOREIGN KEY (retry_of_round_id) REFERENCES public.round(id);
+
+
+--
 -- Name: import_task_event import_task_event_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2771,38 +3038,6 @@ ALTER TABLE ONLY public.import_task_event
 
 ALTER TABLE ONLY public.label
     ADD CONSTRAINT label_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
-
-
---
--- Name: loop loop_active_snapshot_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop
-    ADD CONSTRAINT loop_active_snapshot_version_id_fkey FOREIGN KEY (active_snapshot_version_id) REFERENCES public.loop_snapshot_version(id);
-
-
---
--- Name: loop loop_branch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop
-    ADD CONSTRAINT loop_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES public.branch(id);
-
-
---
--- Name: loop loop_last_confirmed_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop
-    ADD CONSTRAINT loop_last_confirmed_commit_id_fkey FOREIGN KEY (last_confirmed_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: loop loop_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop
-    ADD CONSTRAINT loop_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
 
 
 --
@@ -2846,30 +3081,6 @@ ALTER TABLE ONLY public.loop_snapshot_sample
 
 
 --
--- Name: loop_snapshot_version loop_snapshot_version_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop_snapshot_version
-    ADD CONSTRAINT loop_snapshot_version_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
-
-
---
--- Name: loop_snapshot_version loop_snapshot_version_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop_snapshot_version
-    ADD CONSTRAINT loop_snapshot_version_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
-
-
---
--- Name: loop_snapshot_version loop_snapshot_version_parent_version_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loop_snapshot_version
-    ADD CONSTRAINT loop_snapshot_version_parent_version_id_fkey FOREIGN KEY (parent_version_id) REFERENCES public.loop_snapshot_version(id);
-
-
---
 -- Name: model_class_schema model_class_schema_label_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2886,51 +3097,35 @@ ALTER TABLE ONLY public.model_class_schema
 
 
 --
--- Name: model model_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction prediction_base_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT model_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
-
-
---
--- Name: model model_parent_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT model_parent_model_id_fkey FOREIGN KEY (parent_model_id) REFERENCES public.model(id);
+ALTER TABLE ONLY public.prediction
+    ADD CONSTRAINT prediction_base_commit_id_fkey FOREIGN KEY (base_commit_id) REFERENCES public.commit(id);
 
 
 --
--- Name: model model_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction_binding prediction_binding_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT model_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
-
-
---
--- Name: model model_source_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT model_source_commit_id_fkey FOREIGN KEY (source_commit_id) REFERENCES public.commit(id);
+ALTER TABLE ONLY public.prediction_binding
+    ADD CONSTRAINT prediction_binding_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
 
 
 --
--- Name: model model_source_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction_binding prediction_binding_prediction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT model_source_round_id_fkey FOREIGN KEY (source_round_id) REFERENCES public.round(id);
+ALTER TABLE ONLY public.prediction_binding
+    ADD CONSTRAINT prediction_binding_prediction_id_fkey FOREIGN KEY (prediction_id) REFERENCES public.prediction(id);
 
 
 --
--- Name: model model_source_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction prediction_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.model
-    ADD CONSTRAINT model_source_step_id_fkey FOREIGN KEY (source_step_id) REFERENCES public.step(id);
+ALTER TABLE ONLY public.prediction
+    ADD CONSTRAINT prediction_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
 
 
 --
@@ -2942,11 +3137,11 @@ ALTER TABLE ONLY public.prediction_item
 
 
 --
--- Name: prediction_item prediction_item_prediction_set_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction_item prediction_item_prediction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.prediction_item
-    ADD CONSTRAINT prediction_item_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
+    ADD CONSTRAINT prediction_item_prediction_id_fkey FOREIGN KEY (prediction_id) REFERENCES public.prediction(id);
 
 
 --
@@ -2958,75 +3153,27 @@ ALTER TABLE ONLY public.prediction_item
 
 
 --
--- Name: prediction_set prediction_set_base_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction prediction_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_base_commit_id_fkey FOREIGN KEY (base_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: prediction_set_binding prediction_set_binding_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prediction_set_binding
-    ADD CONSTRAINT prediction_set_binding_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
+ALTER TABLE ONLY public.prediction
+    ADD CONSTRAINT prediction_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
 
 
 --
--- Name: prediction_set_binding prediction_set_binding_prediction_set_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction prediction_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prediction_set_binding
-    ADD CONSTRAINT prediction_set_binding_prediction_set_id_fkey FOREIGN KEY (prediction_set_id) REFERENCES public.prediction_set(id);
-
-
---
--- Name: prediction_set prediction_set_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_created_by_fkey FOREIGN KEY (created_by) REFERENCES public."user"(id);
+ALTER TABLE ONLY public.prediction
+    ADD CONSTRAINT prediction_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
 
 
 --
--- Name: prediction_set prediction_set_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: prediction prediction_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
-
-
---
--- Name: prediction_set prediction_set_model_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.model(id);
-
-
---
--- Name: prediction_set prediction_set_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
-
-
---
--- Name: prediction_set prediction_set_source_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_source_round_id_fkey FOREIGN KEY (source_round_id) REFERENCES public.round(id);
-
-
---
--- Name: prediction_set prediction_set_source_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prediction_set
-    ADD CONSTRAINT prediction_set_source_step_id_fkey FOREIGN KEY (source_step_id) REFERENCES public.step(id);
+ALTER TABLE ONLY public.prediction
+    ADD CONSTRAINT prediction_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
 
 
 --
@@ -3083,38 +3230,6 @@ ALTER TABLE ONLY public.resource_member
 
 ALTER TABLE ONLY public.role_permission
     ADD CONSTRAINT role_permission_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id);
-
-
---
--- Name: round round_input_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT round_input_commit_id_fkey FOREIGN KEY (input_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: round round_loop_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT round_loop_id_fkey FOREIGN KEY (loop_id) REFERENCES public.loop(id);
-
-
---
--- Name: round round_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT round_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
-
-
---
--- Name: round round_retry_of_round_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.round
-    ADD CONSTRAINT round_retry_of_round_id_fkey FOREIGN KEY (retry_of_round_id) REFERENCES public.round(id);
 
 
 --
@@ -3190,11 +3305,35 @@ ALTER TABLE ONLY public.step
 
 
 --
+-- Name: step step_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.step
+    ADD CONSTRAINT step_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
+
+
+--
 -- Name: system_setting system_setting_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.system_setting
     ADD CONSTRAINT system_setting_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public."user"(id);
+
+
+--
+-- Name: task task_input_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task
+    ADD CONSTRAINT task_input_commit_id_fkey FOREIGN KEY (input_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: task task_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task
+    ADD CONSTRAINT task_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id);
 
 
 --

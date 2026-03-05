@@ -31,7 +31,7 @@ config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 target_metadata = SQLModel.metadata
 
 
-_CYCLE_TABLES = {"loop", "round", "model"}
+_CYCLE_TABLES = {"loop", "loop_snapshot_version", "round", "model"}
 
 
 def _fk_name(table_name: str, constraint: ForeignKeyConstraint) -> str:

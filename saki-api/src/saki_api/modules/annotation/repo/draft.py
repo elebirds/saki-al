@@ -74,3 +74,44 @@ class AnnotationDraftRepository(BaseRepository[AnnotationDraft]):
             await self.session.delete(draft)
         await self.session.flush()
         return count
+
+    async def list_sample_ids_by_scope(
+            self,
+            *,
+            project_id: uuid.UUID,
+            user_id: uuid.UUID,
+            branch_name: str,
+            sample_ids: List[uuid.UUID] | None = None,
+    ) -> List[uuid.UUID]:
+        statement = select(AnnotationDraft.sample_id).where(
+            AnnotationDraft.project_id == project_id,
+            AnnotationDraft.user_id == user_id,
+            AnnotationDraft.branch_name == branch_name,
+        )
+        if sample_ids is not None:
+            unique_sample_ids = list(set(sample_ids))
+            if not unique_sample_ids:
+                return []
+            statement = statement.where(AnnotationDraft.sample_id.in_(unique_sample_ids))
+        rows = await self.session.exec(statement)
+        return list(rows.all())
+
+    async def list_by_scope_and_samples(
+            self,
+            *,
+            project_id: uuid.UUID,
+            user_id: uuid.UUID,
+            branch_name: str,
+            sample_ids: List[uuid.UUID],
+    ) -> List[AnnotationDraft]:
+        unique_sample_ids = list(set(sample_ids))
+        if not unique_sample_ids:
+            return []
+        statement = select(AnnotationDraft).where(
+            AnnotationDraft.project_id == project_id,
+            AnnotationDraft.user_id == user_id,
+            AnnotationDraft.branch_name == branch_name,
+            AnnotationDraft.sample_id.in_(unique_sample_ids),
+        )
+        rows = await self.session.exec(statement)
+        return list(rows.all())

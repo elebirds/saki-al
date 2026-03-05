@@ -6,11 +6,13 @@ import uuid
 from typing import List, Any
 
 from sqlalchemy.sql.elements import ColumnElement
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.pagination import PaginationResponse
 from saki_api.infra.db.query import Pagination
 from saki_api.infra.db.repository import BaseRepository
+from saki_api.modules.project.domain.project import ProjectDataset
 from saki_api.modules.storage.domain.sample import Sample
 
 
@@ -60,3 +62,13 @@ class SampleRepository(BaseRepository[Sample]):
             filters=filters,
             order_by=order_by,
         )
+
+    async def list_ids_by_project(self, project_id: uuid.UUID) -> List[uuid.UUID]:
+        stmt = (
+            select(Sample.id)
+            .join(ProjectDataset, ProjectDataset.dataset_id == Sample.dataset_id)
+            .where(ProjectDataset.project_id == project_id)
+            .order_by(Sample.id.asc())
+        )
+        rows = await self.session.exec(stmt)
+        return list(rows.all())

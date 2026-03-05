@@ -213,3 +213,26 @@ class CAMapRepository:
             "sample_count": row[0],
             "annotation_count": row[1],
         }
+
+    async def count_annotations_by_sample_ids(
+            self,
+            *,
+            commit_id: uuid.UUID,
+            sample_ids: List[uuid.UUID],
+    ) -> Dict[uuid.UUID, int]:
+        unique_sample_ids = list(set(sample_ids))
+        if not unique_sample_ids:
+            return {}
+        statement = (
+            select(
+                CommitAnnotationMap.sample_id,
+                func.count(CommitAnnotationMap.annotation_id),
+            )
+            .where(
+                CommitAnnotationMap.commit_id == commit_id,
+                CommitAnnotationMap.sample_id.in_(unique_sample_ids),
+            )
+            .group_by(CommitAnnotationMap.sample_id)
+        )
+        rows = await self.session.exec(statement)
+        return {sample_id: int(count or 0) for sample_id, count in rows.all()}

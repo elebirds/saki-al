@@ -5,6 +5,7 @@ CommitSampleState repository.
 import uuid
 
 from sqlalchemy import delete, insert
+from sqlalchemy import distinct
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -100,3 +101,43 @@ class CommitSampleStateRepository:
         ]
         await self.session.execute(insert(CommitSampleState), rows)
         await self.session.flush()
+
+    async def list_labeled_sample_ids(
+        self,
+        *,
+        commit_id: uuid.UUID,
+        sample_ids: list[uuid.UUID] | None = None,
+    ) -> list[uuid.UUID]:
+        stmt = select(distinct(CommitSampleState.sample_id)).where(
+            CommitSampleState.commit_id == commit_id,
+            CommitSampleState.state.in_(
+                (
+                    CommitSampleReviewState.LABELED,
+                    CommitSampleReviewState.EMPTY_CONFIRMED,
+                )
+            ),
+        )
+        if sample_ids is not None:
+            unique_ids = list(set(sample_ids))
+            if not unique_ids:
+                return []
+            stmt = stmt.where(CommitSampleState.sample_id.in_(unique_ids))
+        stmt = stmt.order_by(CommitSampleState.sample_id.asc())
+        rows = await self.session.exec(stmt)
+        return list(rows.all())
+
+    async def list_review_states_by_sample_ids(
+        self,
+        *,
+        commit_id: uuid.UUID,
+        sample_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, CommitSampleReviewState]:
+        unique_ids = list(set(sample_ids))
+        if not unique_ids:
+            return {}
+        stmt = select(CommitSampleState.sample_id, CommitSampleState.state).where(
+            CommitSampleState.commit_id == commit_id,
+            CommitSampleState.sample_id.in_(unique_ids),
+        )
+        rows = await self.session.exec(stmt)
+        return {sample_id: state for sample_id, state in rows.all()}

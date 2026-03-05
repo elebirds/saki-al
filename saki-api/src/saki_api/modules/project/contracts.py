@@ -58,6 +58,15 @@ class ProjectReadGateway(ProjectReadContract):
     async def get_branch(self, branch_id: uuid.UUID) -> Branch | None:
         return await self.branch_repo.get_by_id(branch_id)
 
+    async def get_branch_head_commit_id(self, branch_id: uuid.UUID) -> uuid.UUID | None:
+        return await self.branch_repo.get_head_commit_id(branch_id)
+
+    async def get_branch_name(self, branch_id: uuid.UUID) -> str | None:
+        return await self.branch_repo.get_name_by_id(branch_id)
+
+    async def get_branch_in_project(self, *, branch_id: uuid.UUID, project_id: uuid.UUID) -> Branch | None:
+        return await self.branch_repo.get_in_project(branch_id=branch_id, project_id=project_id)
+
     async def get_branch_by_name(self, project_id: uuid.UUID, name: str) -> Branch | None:
         return await self.branch_repo.get_by_name(project_id=project_id, name=name)
 
@@ -78,6 +87,9 @@ class ProjectReadGateway(ProjectReadContract):
 
     async def get_linked_dataset_ids(self, project_id: uuid.UUID) -> list[uuid.UUID]:
         return await self.project_repo.get_linked_dataset_ids(project_id)
+
+    async def list_project_sample_ids(self, project_id: uuid.UUID) -> list[uuid.UUID]:
+        return await self.sample_repo.list_ids_by_project(project_id)
 
     async def is_dataset_owner(self, dataset_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         return await self.dataset_repo.is_owner(dataset_id, user_id)

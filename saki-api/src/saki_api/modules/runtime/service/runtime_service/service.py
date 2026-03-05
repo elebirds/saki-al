@@ -25,6 +25,8 @@ from saki_api.modules.runtime.repo.prediction_set_binding import PredictionSetBi
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
 from saki_api.modules.runtime.repo.model import ModelRepository
 from saki_api.modules.runtime.repo.model_class_schema import ModelClassSchemaRepository
+from saki_api.modules.runtime.repo.snapshot_query import SnapshotQueryRepository
+from saki_api.modules.runtime.repo.prediction_query import PredictionQueryRepository
 from saki_api.modules.runtime.service.config.loop_config_service import (
     derive_loop_max_rounds,
     derive_query_batch_size,
@@ -34,14 +36,19 @@ from saki_api.modules.runtime.service.config.loop_config_service import (
     normalize_loop_config,
 )
 from saki_api.modules.runtime.service.runtime_service.common_mixin import RuntimeServiceCommonMixin
+from saki_api.modules.runtime.service.runtime_service.loop_gate_mixin import LoopGateMixin
 from saki_api.modules.runtime.service.runtime_service.loop_command_mixin import LoopCommandMixin
+from saki_api.modules.runtime.service.runtime_service.prediction_task_mixin import PredictionTaskMixin
 from saki_api.modules.runtime.service.runtime_service.query_mixin import (
     LoopSummaryStatsVO,
     RuntimeQueryMixin,
 )
+from saki_api.modules.runtime.service.runtime_service.round_reveal_mixin import RoundRevealMixin
+from saki_api.modules.runtime.service.runtime_service.round_selection_mixin import RoundSelectionMixin
 from saki_api.modules.runtime.service.runtime_service.round_command_mixin import RoundCommandMixin
 from saki_api.modules.runtime.service.runtime_service.simulation_config_mixin import SimulationConfigMixin
-from saki_api.modules.runtime.service.runtime_service.snapshot_mixin import SnapshotMixin
+from saki_api.modules.runtime.service.runtime_service.snapshot_lifecycle_mixin import SnapshotLifecycleMixin
+from saki_api.modules.runtime.service.runtime_service.snapshot_policy_mixin import SnapshotPolicyMixin
 from saki_api.modules.shared.application.crud_service import CrudServiceBase
 
 
@@ -49,7 +56,12 @@ class RuntimeService(
     RuntimeServiceCommonMixin,
     SimulationConfigMixin,
     LoopCommandMixin,
-    SnapshotMixin,
+    SnapshotPolicyMixin,
+    SnapshotLifecycleMixin,
+    RoundRevealMixin,
+    RoundSelectionMixin,
+    PredictionTaskMixin,
+    LoopGateMixin,
     RoundCommandMixin,
     RuntimeQueryMixin,
     CrudServiceBase[Round, RoundRepository, RoundUpdate, RoundUpdate],
@@ -81,6 +93,8 @@ class RuntimeService(
         self.al_snapshot_sample_repo = ALSnapshotSampleRepository(session)
         self.al_loop_visibility_repo = ALLoopVisibilityRepository(session)
         self.al_round_selection_override_repo = ALRoundSelectionOverrideRepository(session)
+        self.snapshot_query_repo = SnapshotQueryRepository(session)
+        self.prediction_query_repo = PredictionQueryRepository(session)
         self._storage = None
 
     @property

@@ -17,6 +17,8 @@ from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepos
 from saki_api.modules.runtime.repo.prediction_set import PredictionSetRepository
 from saki_api.modules.runtime.repo.prediction_set_binding import PredictionSetBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
+from saki_api.modules.runtime.repo.snapshot_query import SnapshotQueryRepository
+from saki_api.modules.runtime.repo.prediction_query import PredictionQueryRepository
 
 __all__ = [
     "LoopRepository",
@@ -36,4 +38,6 @@ __all__ = [
     "PredictionSetRepository",
     "PredictionSetBindingRepository",
     "PredictionItemRepository",
+    "SnapshotQueryRepository",
+    "PredictionQueryRepository",
 ]

@@ -3,6 +3,7 @@
 import uuid
 from typing import List, Optional
 
+from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -64,3 +65,8 @@ class StepRepository(BaseRepository[Step]):
         stmt = select(Step).where(Step.id.in_(step_ids))
         rows = await self.session.exec(stmt)
         return list(rows.all())
+
+    async def get_max_step_index(self, round_id: uuid.UUID) -> int:
+        stmt = select(func.max(Step.step_index)).where(Step.round_id == round_id)
+        value = (await self.session.exec(stmt)).one_or_none()
+        return int(value or 0)

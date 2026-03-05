@@ -10,8 +10,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 import saki_api.modules.shared.modeling  # noqa: F401
 from saki_api.modules.access.domain.rbac.audit_log import AuditLog
-from saki_api.modules.runtime.api.http import loop_control as loop_control_endpoint
 from saki_api.modules.runtime.api.http import query as loop_query_endpoint
+from saki_api.modules.runtime.api.http.endpoints import (
+    loop_action_endpoints,
+    prediction_set_endpoints,
+    snapshot_endpoints,
+)
 from saki_api.modules.runtime.api.http.endpoints import round_step_query_endpoints as round_step_query_endpoint
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.infra.db.session import _session_ctx
@@ -47,7 +51,7 @@ from saki_api.modules.runtime.api.round_step import (
     LoopCreateRequest,
     LoopUpdateRequest,
 )
-from saki_api.modules.runtime.service.runtime_service.snapshot_mixin import SnapshotMixin
+from saki_api.modules.runtime.service.runtime_service.snapshot_policy_mixin import SnapshotPolicyMixin
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 
 
@@ -721,19 +725,10 @@ async def test_update_loop_oracle_commit_change_requires_draft_and_no_snapshot(l
             _session_ctx.reset(token)
 
 
-def test_loop_control_legacy_entrypoints_removed():
-    assert not hasattr(loop_control_endpoint, "confirm_loop")
-    assert not hasattr(loop_control_endpoint, "continue_loop")
-    assert not hasattr(loop_control_endpoint, "start_loop")
-    assert not hasattr(loop_control_endpoint, "pause_loop")
-    assert not hasattr(loop_control_endpoint, "resume_loop")
-    assert not hasattr(loop_control_endpoint, "stop_loop")
-
-
 def test_effective_round_min_required_requires_full_selected():
-    assert SnapshotMixin._effective_round_min_required(selected_count=0, configured_min_required=1) == 0
-    assert SnapshotMixin._effective_round_min_required(selected_count=2, configured_min_required=1) == 2
-    assert SnapshotMixin._effective_round_min_required(selected_count=5, configured_min_required=2) == 5
+    assert SnapshotPolicyMixin._effective_round_min_required(selected_count=0, configured_min_required=1) == 0
+    assert SnapshotPolicyMixin._effective_round_min_required(selected_count=2, configured_min_required=1) == 2
+    assert SnapshotPolicyMixin._effective_round_min_required(selected_count=5, configured_min_required=2) == 5
 
 
 @pytest.mark.anyio
@@ -1169,7 +1164,9 @@ async def test_loop_control_act_start_bootstraps_simulation_snapshot(loop_api_en
         del args, kwargs
         return None
 
-    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+    monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
@@ -1237,7 +1234,7 @@ async def test_loop_control_act_start_bootstraps_simulation_snapshot(loop_api_en
 
             dispatcher_admin_stub = _DispatcherAdminStub()
 
-            await loop_control_endpoint.act_loop(
+            await loop_action_endpoints.act_loop(
                 loop_id=loop.id,
                 payload=LoopActionRequest(action=LoopActionKey.START),
                 runtime_service=service,
@@ -1274,7 +1271,9 @@ async def test_loop_control_act_confirm_rejects_manual_mode(loop_api_env, monkey
         del args, kwargs
         return None
 
-    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+    monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     class _DispatcherAdminStub:
         def __init__(self) -> None:
@@ -1310,7 +1309,7 @@ async def test_loop_control_act_confirm_rejects_manual_mode(loop_api_env, monkey
             await session.refresh(loop)
 
             with pytest.raises(BadRequestAppException):
-                await loop_control_endpoint.act_loop(
+                await loop_action_endpoints.act_loop(
                     loop_id=loop.id,
                     payload=LoopActionRequest(action=LoopActionKey.CONFIRM),
                     runtime_service=service,
@@ -1331,7 +1330,9 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
         del args, kwargs
         return None
 
-    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+    monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     class _DispatcherAdminStub:
         def __init__(self) -> None:
@@ -1391,7 +1392,7 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
             monkeypatch.setattr(service, "resolve_loop_action_request", _resolve_loop_action_request)
             monkeypatch.setattr(service, "get_loop_gate", _get_loop_gate)
 
-            await loop_control_endpoint.act_loop(
+            await loop_action_endpoints.act_loop(
                 loop_id=loop.id,
                 payload=LoopActionRequest(action=LoopActionKey.CONFIRM, force=True),
                 runtime_service=service,
@@ -1412,7 +1413,9 @@ async def test_loop_control_act_rejects_selection_adjust(loop_api_env, monkeypat
         del args, kwargs
         return None
 
-    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+    monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     class _DispatcherAdminStub:
         enabled = True
@@ -1447,7 +1450,7 @@ async def test_loop_control_act_rejects_selection_adjust(loop_api_env, monkeypat
             monkeypatch.setattr(service, "resolve_loop_action_request", _resolve_loop_action_request)
 
             with pytest.raises(BadRequestAppException, match="unsupported action"):
-                await loop_control_endpoint.act_loop(
+                await loop_action_endpoints.act_loop(
                     loop_id=loop.id,
                     payload=LoopActionRequest(action=LoopActionKey.SELECTION_ADJUST),
                     runtime_service=service,
@@ -1467,7 +1470,9 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
         del args, kwargs
         return None
 
-    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+    monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     async with session_local() as session:
         project, branch = await _seed_project_branch(session)
@@ -1546,7 +1551,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
             )
             await session.commit()
 
-            response = await loop_control_endpoint.cleanup_round_predictions(
+            response = await prediction_set_endpoints.cleanup_round_predictions(
                 loop_id=loop.id,
                 round_index=1,
                 runtime_service=service,

@@ -5,6 +5,7 @@ Branch Repository - Data access layer for Branch operations.
 import uuid
 from typing import List, Optional
 
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
@@ -143,3 +144,17 @@ class BranchRepository(BaseRepository[Branch]):
         return await self.list(
             filters=[Branch.head_commit_id == commit_id]
         )
+
+    async def get_head_commit_id(self, branch_id: uuid.UUID) -> uuid.UUID | None:
+        row = await self.session.exec(select(Branch.head_commit_id).where(Branch.id == branch_id))
+        return row.one_or_none()
+
+    async def get_name_by_id(self, branch_id: uuid.UUID) -> str | None:
+        row = await self.session.exec(select(Branch.name).where(Branch.id == branch_id))
+        name = row.one_or_none()
+        if name is None:
+            return None
+        return str(name)
+
+    async def get_in_project(self, *, branch_id: uuid.UUID, project_id: uuid.UUID) -> Branch | None:
+        return await self.get_one(filters=[Branch.id == branch_id, Branch.project_id == project_id])

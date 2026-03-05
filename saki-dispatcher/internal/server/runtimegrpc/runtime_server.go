@@ -184,12 +184,12 @@ func (s *Server) handleIncoming(
 		s.dispatcher.HandleAck(payload.Ack)
 		return nil, currentExecutorID, nil
 
-	case *runtimecontrolv1.RuntimeMessage_StepEvent:
-		event := payload.StepEvent
-		stepID := resolveStepID(event.GetStepId())
+	case *runtimecontrolv1.RuntimeMessage_TaskEvent:
+		event := payload.TaskEvent
+		taskID := resolveTaskID(event.GetTaskId())
 		if s.controlPlane != nil {
-			if err := s.controlPlane.OnStepEvent(context.Background(), event); err != nil {
-				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("持久化 step_event 失败")
+			if err := s.controlPlane.OnTaskEvent(context.Background(), event); err != nil {
+				s.logger.Warn().Err(err).Str("task_id", taskID).Msg("持久化 task_event 失败")
 			}
 		}
 		return singleMessage(buildAck(
@@ -197,15 +197,15 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"step_event 已接收",
+			"task_event 已接收",
 		)), currentExecutorID, nil
 
-	case *runtimecontrolv1.RuntimeMessage_StepResult:
-		result := payload.StepResult
-		stepID := resolveStepID(result.GetStepId())
+	case *runtimecontrolv1.RuntimeMessage_TaskResult:
+		result := payload.TaskResult
+		taskID := resolveTaskID(result.GetTaskId())
 		if s.controlPlane != nil {
-			if err := s.controlPlane.OnStepResult(context.Background(), result); err != nil {
-				s.logger.Warn().Err(err).Str("step_id", stepID).Msg("持久化 step_result 失败")
+			if err := s.controlPlane.OnTaskResult(context.Background(), result); err != nil {
+				s.logger.Warn().Err(err).Str("task_id", taskID).Msg("持久化 task_result 失败")
 			}
 		}
 		return singleMessage(buildAck(
@@ -213,24 +213,24 @@ func (s *Server) handleIncoming(
 			runtimecontrolv1.AckStatus_OK,
 			runtimecontrolv1.AckType_ACK_TYPE_REQUEST,
 			runtimecontrolv1.AckReason_ACK_REASON_ACCEPTED,
-			"step_result 已接收",
+			"task_result 已接收",
 		)), currentExecutorID, nil
 
 	case *runtimecontrolv1.RuntimeMessage_DataRequest:
 		request := payload.DataRequest
-		stepID := resolveStepID(request.GetStepId())
+		taskID := resolveTaskID(request.GetTaskId())
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return singleMessage(buildError(
 				"not_implemented",
 				"runtime_domain QueryData 未配置",
 				request.GetRequestId(),
-				stepID,
+				taskID,
 				request.GetQueryType(),
 			)), currentExecutorID, nil
 		}
 		responses, err := s.domainClient.QueryData(context.Background(), &runtimedomainv1.DataRequest{
 			RequestId:            request.GetRequestId(),
-			StepId:               stepID,
+			TaskId:               taskID,
 			QueryType:            toDomainQueryType(request.GetQueryType()),
 			ProjectId:            request.GetProjectId(),
 			CommitId:             request.GetCommitId(),
@@ -242,14 +242,14 @@ func (s *Server) handleIncoming(
 		if err != nil {
 			s.logger.Warn().
 				Err(err).
-				Str("step_id", stepID).
+				Str("task_id", taskID).
 				Str("request_id", request.GetRequestId()).
 				Msg("调用 runtime_domain QueryData 失败")
 			return singleMessage(buildError(
 				"data_query_failed",
 				"数据查询失败",
 				request.GetRequestId(),
-				stepID,
+				taskID,
 				request.GetQueryType(),
 			)), currentExecutorID, nil
 		}
@@ -265,43 +265,43 @@ func (s *Server) handleIncoming(
 
 	case *runtimecontrolv1.RuntimeMessage_UploadTicketRequest:
 		request := payload.UploadTicketRequest
-		stepID := resolveStepID(request.GetStepId())
+		taskID := resolveTaskID(request.GetTaskId())
 		if s.domainClient == nil || !s.domainClient.Enabled() {
 			return singleMessage(buildError(
 				"not_implemented",
 				"runtime_domain CreateUploadTicket 未配置",
 				request.GetRequestId(),
-				stepID,
+				taskID,
 				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
 			)), currentExecutorID, nil
 		}
 		response, err := s.domainClient.CreateUploadTicket(context.Background(), &runtimedomainv1.UploadTicketRequest{
 			RequestId:    request.GetRequestId(),
-			StepId:       stepID,
+			TaskId:       taskID,
 			ArtifactName: request.GetArtifactName(),
 			ContentType:  request.GetContentType(),
 		})
 		if err != nil {
 			s.logger.Warn().
 				Err(err).
-				Str("step_id", stepID).
+				Str("task_id", taskID).
 				Str("request_id", request.GetRequestId()).
 				Msg("调用 runtime_domain CreateUploadTicket 失败")
 			return singleMessage(buildError(
 				"upload_ticket_failed",
 				"上传凭证创建失败",
 				request.GetRequestId(),
-				stepID,
+				taskID,
 				runtimecontrolv1.RuntimeQueryType_RUNTIME_QUERY_TYPE_UNSPECIFIED,
 			)), currentExecutorID, nil
 		}
-		respStepID := resolveStepID(response.GetStepId())
+		respTaskID := resolveTaskID(response.GetTaskId())
 		return singleMessage(&runtimecontrolv1.RuntimeMessage{
 			Payload: &runtimecontrolv1.RuntimeMessage_UploadTicketResponse{
 				UploadTicketResponse: &runtimecontrolv1.UploadTicketResponse{
 					RequestId:  response.GetRequestId(),
 					ReplyTo:    response.GetReplyTo(),
-					StepId:     respStepID,
+					TaskId:     respTaskID,
 					UploadUrl:  response.GetUploadUrl(),
 					StorageUri: response.GetStorageUri(),
 					Headers:    response.GetHeaders(),
@@ -354,7 +354,7 @@ func buildError(
 	code string,
 	message string,
 	replyTo string,
-	stepID string,
+	taskID string,
 	queryType runtimecontrolv1.RuntimeQueryType,
 ) *runtimecontrolv1.RuntimeMessage {
 	return &runtimecontrolv1.RuntimeMessage{
@@ -364,7 +364,7 @@ func buildError(
 				Code:      code,
 				Message:   message,
 				ReplyTo:   replyTo,
-				StepId:    stepID,
+				TaskId:    taskID,
 				QueryType: queryType,
 			},
 		},
@@ -408,7 +408,7 @@ func toRuntimeDataResponse(response *runtimedomainv1.DataResponse) *runtimecontr
 	return &runtimecontrolv1.DataResponse{
 		RequestId:             response.GetRequestId(),
 		ReplyTo:               response.GetReplyTo(),
-		StepId:                resolveStepID(response.GetStepId()),
+		TaskId:                resolveTaskID(response.GetTaskId()),
 		QueryType:             toRuntimeQueryType(response.GetQueryType()),
 		PayloadId:             response.GetPayloadId(),
 		ChunkIndex:            response.GetChunkIndex(),
@@ -423,8 +423,8 @@ func toRuntimeDataResponse(response *runtimedomainv1.DataResponse) *runtimecontr
 	}
 }
 
-func resolveStepID(stepID string) string {
-	return strings.TrimSpace(stepID)
+func resolveTaskID(taskID string) string {
+	return strings.TrimSpace(taskID)
 }
 
 func singleMessage(message *runtimecontrolv1.RuntimeMessage) []*runtimecontrolv1.RuntimeMessage {

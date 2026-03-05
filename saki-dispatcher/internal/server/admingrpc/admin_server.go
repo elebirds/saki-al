@@ -132,22 +132,22 @@ func (s *Server) RetryRound(ctx context.Context, req *dispatcheradminv1.RetryRou
 	return convertCommandResult(result), nil
 }
 
-func (s *Server) StopStep(ctx context.Context, req *dispatcheradminv1.StepCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
-	if err := validateUUIDField(req.GetStepId(), "step_id"); err != nil {
+func (s *Server) StopTask(ctx context.Context, req *dispatcheradminv1.TaskCommandRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetTaskId(), "task_id"); err != nil {
 		return nil, err
 	}
-	result, err := s.commands.StopStep(ctx, req.GetCommandId(), req.GetStepId(), req.GetReason())
+	result, err := s.commands.StopTask(ctx, req.GetCommandId(), req.GetTaskId(), req.GetReason())
 	if err != nil {
 		return nil, err
 	}
 	return convertCommandResult(result), nil
 }
 
-func (s *Server) DispatchStep(ctx context.Context, req *dispatcheradminv1.DispatchStepRequest) (*dispatcheradminv1.CommandResponse, error) {
-	if err := validateUUIDField(req.GetStepId(), "step_id"); err != nil {
+func (s *Server) DispatchTask(ctx context.Context, req *dispatcheradminv1.DispatchTaskRequest) (*dispatcheradminv1.CommandResponse, error) {
+	if err := validateUUIDField(req.GetTaskId(), "task_id"); err != nil {
 		return nil, err
 	}
-	result, err := s.commands.DispatchStep(ctx, req.GetCommandId(), req.GetStepId())
+	result, err := s.commands.DispatchTask(ctx, req.GetCommandId(), req.GetTaskId())
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func (s *Server) GetRuntimeSummary(_ context.Context, _ *dispatcheradminv1.Runti
 		BusyExecutors:      snapshot.BusyExecutors,
 		PendingAssignCount: snapshot.PendingAssign,
 		PendingStopCount:   snapshot.PendingStop,
-		QueuedStepCount:    snapshot.QueuedStepCount,
+		QueuedTaskCount:    snapshot.QueuedStepCount,
 	}
 	if !snapshot.LatestHeartbeatAt.IsZero() {
 		response.LatestHeartbeatAt = snapshot.LatestHeartbeatAt.Format(time.RFC3339)
@@ -267,7 +267,7 @@ func convertExecutor(item dispatch.ExecutorSnapshot) *dispatcheradminv1.Executor
 		Version:            item.Version,
 		Status:             item.Status,
 		IsOnline:           item.IsOnline,
-		CurrentStepId:      item.CurrentStepID,
+		CurrentTaskId:      item.CurrentStepID,
 		LastError:          item.LastError,
 		PendingAssignCount: item.PendingAssign,
 		PendingStopCount:   item.PendingStop,

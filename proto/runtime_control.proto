@@ -33,8 +33,8 @@ enum AckStatus {
 enum AckType {
   ACK_TYPE_UNSPECIFIED = 0;
   ACK_TYPE_REGISTER = 1;
-  ACK_TYPE_ASSIGN_STEP = 2;
-  ACK_TYPE_STOP_STEP = 3;
+  ACK_TYPE_ASSIGN_TASK = 2;
+  ACK_TYPE_STOP_TASK = 3;
   ACK_TYPE_REQUEST = 4;
 }
 
@@ -44,7 +44,7 @@ enum AckReason {
   ACK_REASON_ACCEPTED = 2;
   ACK_REASON_EXECUTOR_BUSY = 3;
   ACK_REASON_STOPPING = 4;
-  ACK_REASON_STEP_NOT_RUNNING = 5;
+  ACK_REASON_TASK_NOT_RUNNING = 5;
   ACK_REASON_REJECTED = 6;
 }
 
@@ -125,12 +125,12 @@ message Heartbeat {
   string request_id = 1;
   string executor_id = 2;
   bool busy = 3;
-  string current_step_id = 4;
+  string current_task_id = 4;
   ResourceSummary resources = 5;
 }
 
-message StepPayload {
-  string step_id = 1;
+message TaskPayload {
+  string task_id = 1;
   string round_id = 2;
   string loop_id = 3;
   string project_id = 4;
@@ -143,18 +143,18 @@ message StepPayload {
   ResourceSummary resources = 11;
   int32 round_index = 12;
   int32 attempt = 13;
-  repeated string depends_on_step_ids = 14;
+  repeated string depends_on_task_ids = 14;
   RuntimeStepDispatchKind dispatch_kind = 15;
 }
 
-message AssignStep {
+message AssignTask {
   string request_id = 1;
-  StepPayload step = 2;
+  TaskPayload task = 2;
 }
 
-message StopStep {
+message StopTask {
   string request_id = 1;
-  string step_id = 2;
+  string task_id = 2;
   string reason = 3;
 }
 
@@ -196,9 +196,9 @@ message ArtifactEvent {
   ArtifactItem artifact = 1;
 }
 
-message StepEvent {
+message TaskEvent {
   string request_id = 1;
-  string step_id = 2;
+  string task_id = 2;
   int64 seq = 3;
   int64 ts = 4;
   oneof event_payload {
@@ -216,9 +216,9 @@ message QueryCandidate {
   google.protobuf.Struct reason = 3;
 }
 
-message StepResult {
+message TaskResult {
   string request_id = 1;
-  string step_id = 2;
+  string task_id = 2;
   RuntimeStepStatus status = 3;
   map<string, double> metrics = 4;
   repeated ArtifactItem artifacts = 5;
@@ -228,7 +228,7 @@ message StepResult {
 
 message DataRequest {
   string request_id = 1;
-  string step_id = 2;
+  string task_id = 2;
   RuntimeQueryType query_type = 3;
   string project_id = 4;
   string commit_id = 5;
@@ -274,7 +274,7 @@ message DataItem {
 message DataResponse {
   string request_id = 1;
   string reply_to = 2;
-  string step_id = 3;
+  string task_id = 3;
   RuntimeQueryType query_type = 4;
   string payload_id = 5;
   uint32 chunk_index = 6;
@@ -290,7 +290,7 @@ message DataResponse {
 
 message UploadTicketRequest {
   string request_id = 1;
-  string step_id = 2;
+  string task_id = 2;
   string artifact_name = 3;
   string content_type = 4;
 }
@@ -298,7 +298,7 @@ message UploadTicketRequest {
 message UploadTicketResponse {
   string request_id = 1;
   string reply_to = 2;
-  string step_id = 3;
+  string task_id = 3;
   string upload_url = 4;
   string storage_uri = 5;
   map<string, string> headers = 6;
@@ -319,7 +319,7 @@ message Error {
   string message = 3;
   string reply_to = 4;
   string ack_for = 5;
-  string step_id = 6;
+  string task_id = 6;
   RuntimeQueryType query_type = 7;
   string reason = 8;
 }
@@ -328,10 +328,10 @@ message RuntimeMessage {
   oneof payload {
     Register register = 1;
     Heartbeat heartbeat = 2;
-    AssignStep assign_step = 3;
-    StopStep stop_step = 4;
-    StepEvent step_event = 5;
-    StepResult step_result = 6;
+    AssignTask assign_task = 3;
+    StopTask stop_task = 4;
+    TaskEvent task_event = 5;
+    TaskResult task_result = 6;
     DataRequest data_request = 7;
     DataResponse data_response = 8;
     UploadTicketRequest upload_ticket_request = 9;

@@ -160,19 +160,19 @@ func extractPredictionSnapshotFromReason(reason map[string]any) map[string]any {
 	return map[string]any{}
 }
 
-func decodeStepEvent(event *runtimecontrolv1.StepEvent) (string, map[string]any, db.Stepstatus) {
+func decodeTaskEvent(event *runtimecontrolv1.TaskEvent) (string, map[string]any, db.Stepstatus) {
 	if event == nil {
 		return "", map[string]any{}, ""
 	}
 	switch payload := event.GetEventPayload().(type) {
-	case *runtimecontrolv1.StepEvent_StatusEvent:
+	case *runtimecontrolv1.TaskEvent_StatusEvent:
 		statusValue := runtimeStatusToStepStatus(payload.StatusEvent.GetStatus())
 		statusText := strings.ToLower(strings.TrimSpace(string(statusValue)))
 		return "status", map[string]any{
 			"status": statusText,
 			"reason": strings.TrimSpace(payload.StatusEvent.GetReason()),
 		}, statusValue
-	case *runtimecontrolv1.StepEvent_LogEvent:
+	case *runtimecontrolv1.TaskEvent_LogEvent:
 		message := payload.LogEvent.GetMessage()
 		rawMessage := payload.LogEvent.GetRawMessage()
 		if strings.TrimSpace(rawMessage) == "" {
@@ -186,14 +186,14 @@ func decodeStepEvent(event *runtimecontrolv1.StepEvent) (string, map[string]any,
 			"message_args": structToMap(payload.LogEvent.GetMessageArgs()),
 			"meta":         structToMap(payload.LogEvent.GetMeta()),
 		}, ""
-	case *runtimecontrolv1.StepEvent_ProgressEvent:
+	case *runtimecontrolv1.TaskEvent_ProgressEvent:
 		return "progress", map[string]any{
 			"epoch":       int(payload.ProgressEvent.GetEpoch()),
 			"step":        int(payload.ProgressEvent.GetStep()),
 			"total_steps": int(payload.ProgressEvent.GetTotalSteps()),
 			"eta_sec":     int(payload.ProgressEvent.GetEtaSec()),
 		}, ""
-	case *runtimecontrolv1.StepEvent_MetricEvent:
+	case *runtimecontrolv1.TaskEvent_MetricEvent:
 		metrics := map[string]float64{}
 		for metricName, metricValue := range payload.MetricEvent.GetMetrics() {
 			metrics[metricName] = metricValue
@@ -203,7 +203,7 @@ func decodeStepEvent(event *runtimecontrolv1.StepEvent) (string, map[string]any,
 			"epoch":   int(payload.MetricEvent.GetEpoch()),
 			"metrics": metrics,
 		}, ""
-	case *runtimecontrolv1.StepEvent_ArtifactEvent:
+	case *runtimecontrolv1.TaskEvent_ArtifactEvent:
 		artifact := payload.ArtifactEvent.GetArtifact()
 		if artifact == nil {
 			return "artifact", map[string]any{}, ""

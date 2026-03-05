@@ -152,8 +152,8 @@ type AckType int32
 const (
 	AckType_ACK_TYPE_UNSPECIFIED AckType = 0
 	AckType_ACK_TYPE_REGISTER    AckType = 1
-	AckType_ACK_TYPE_ASSIGN_STEP AckType = 2
-	AckType_ACK_TYPE_STOP_STEP   AckType = 3
+	AckType_ACK_TYPE_ASSIGN_TASK AckType = 2
+	AckType_ACK_TYPE_STOP_TASK   AckType = 3
 	AckType_ACK_TYPE_REQUEST     AckType = 4
 )
 
@@ -162,15 +162,15 @@ var (
 	AckType_name = map[int32]string{
 		0: "ACK_TYPE_UNSPECIFIED",
 		1: "ACK_TYPE_REGISTER",
-		2: "ACK_TYPE_ASSIGN_STEP",
-		3: "ACK_TYPE_STOP_STEP",
+		2: "ACK_TYPE_ASSIGN_TASK",
+		3: "ACK_TYPE_STOP_TASK",
 		4: "ACK_TYPE_REQUEST",
 	}
 	AckType_value = map[string]int32{
 		"ACK_TYPE_UNSPECIFIED": 0,
 		"ACK_TYPE_REGISTER":    1,
-		"ACK_TYPE_ASSIGN_STEP": 2,
-		"ACK_TYPE_STOP_STEP":   3,
+		"ACK_TYPE_ASSIGN_TASK": 2,
+		"ACK_TYPE_STOP_TASK":   3,
 		"ACK_TYPE_REQUEST":     4,
 	}
 )
@@ -210,7 +210,7 @@ const (
 	AckReason_ACK_REASON_ACCEPTED         AckReason = 2
 	AckReason_ACK_REASON_EXECUTOR_BUSY    AckReason = 3
 	AckReason_ACK_REASON_STOPPING         AckReason = 4
-	AckReason_ACK_REASON_STEP_NOT_RUNNING AckReason = 5
+	AckReason_ACK_REASON_TASK_NOT_RUNNING AckReason = 5
 	AckReason_ACK_REASON_REJECTED         AckReason = 6
 )
 
@@ -222,7 +222,7 @@ var (
 		2: "ACK_REASON_ACCEPTED",
 		3: "ACK_REASON_EXECUTOR_BUSY",
 		4: "ACK_REASON_STOPPING",
-		5: "ACK_REASON_STEP_NOT_RUNNING",
+		5: "ACK_REASON_TASK_NOT_RUNNING",
 		6: "ACK_REASON_REJECTED",
 	}
 	AckReason_value = map[string]int32{
@@ -231,7 +231,7 @@ var (
 		"ACK_REASON_ACCEPTED":         2,
 		"ACK_REASON_EXECUTOR_BUSY":    3,
 		"ACK_REASON_STOPPING":         4,
-		"ACK_REASON_STEP_NOT_RUNNING": 5,
+		"ACK_REASON_TASK_NOT_RUNNING": 5,
 		"ACK_REASON_REJECTED":         6,
 	}
 )
@@ -865,7 +865,7 @@ type Heartbeat struct {
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	ExecutorId    string                 `protobuf:"bytes,2,opt,name=executor_id,json=executorId,proto3" json:"executor_id,omitempty"`
 	Busy          bool                   `protobuf:"varint,3,opt,name=busy,proto3" json:"busy,omitempty"`
-	CurrentStepId string                 `protobuf:"bytes,4,opt,name=current_step_id,json=currentStepId,proto3" json:"current_step_id,omitempty"`
+	CurrentTaskId string                 `protobuf:"bytes,4,opt,name=current_task_id,json=currentTaskId,proto3" json:"current_task_id,omitempty"`
 	Resources     *ResourceSummary       `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -922,9 +922,9 @@ func (x *Heartbeat) GetBusy() bool {
 	return false
 }
 
-func (x *Heartbeat) GetCurrentStepId() string {
+func (x *Heartbeat) GetCurrentTaskId() string {
 	if x != nil {
-		return x.CurrentStepId
+		return x.CurrentTaskId
 	}
 	return ""
 }
@@ -936,9 +936,9 @@ func (x *Heartbeat) GetResources() *ResourceSummary {
 	return nil
 }
 
-type StepPayload struct {
+type TaskPayload struct {
 	state            protoimpl.MessageState  `protogen:"open.v1"`
-	StepId           string                  `protobuf:"bytes,1,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId           string                  `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	RoundId          string                  `protobuf:"bytes,2,opt,name=round_id,json=roundId,proto3" json:"round_id,omitempty"`
 	LoopId           string                  `protobuf:"bytes,3,opt,name=loop_id,json=loopId,proto3" json:"loop_id,omitempty"`
 	ProjectId        string                  `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
@@ -951,26 +951,26 @@ type StepPayload struct {
 	Resources        *ResourceSummary        `protobuf:"bytes,11,opt,name=resources,proto3" json:"resources,omitempty"`
 	RoundIndex       int32                   `protobuf:"varint,12,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
 	Attempt          int32                   `protobuf:"varint,13,opt,name=attempt,proto3" json:"attempt,omitempty"`
-	DependsOnStepIds []string                `protobuf:"bytes,14,rep,name=depends_on_step_ids,json=dependsOnStepIds,proto3" json:"depends_on_step_ids,omitempty"`
+	DependsOnTaskIds []string                `protobuf:"bytes,14,rep,name=depends_on_task_ids,json=dependsOnTaskIds,proto3" json:"depends_on_task_ids,omitempty"`
 	DispatchKind     RuntimeStepDispatchKind `protobuf:"varint,15,opt,name=dispatch_kind,json=dispatchKind,proto3,enum=saki.runtime.v1.RuntimeStepDispatchKind" json:"dispatch_kind,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
-func (x *StepPayload) Reset() {
-	*x = StepPayload{}
+func (x *TaskPayload) Reset() {
+	*x = TaskPayload{}
 	mi := &file_runtime_control_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StepPayload) String() string {
+func (x *TaskPayload) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StepPayload) ProtoMessage() {}
+func (*TaskPayload) ProtoMessage() {}
 
-func (x *StepPayload) ProtoReflect() protoreflect.Message {
+func (x *TaskPayload) ProtoReflect() protoreflect.Message {
 	mi := &file_runtime_control_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -982,138 +982,138 @@ func (x *StepPayload) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StepPayload.ProtoReflect.Descriptor instead.
-func (*StepPayload) Descriptor() ([]byte, []int) {
+// Deprecated: Use TaskPayload.ProtoReflect.Descriptor instead.
+func (*TaskPayload) Descriptor() ([]byte, []int) {
 	return file_runtime_control_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *StepPayload) GetStepId() string {
+func (x *TaskPayload) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
 
-func (x *StepPayload) GetRoundId() string {
+func (x *TaskPayload) GetRoundId() string {
 	if x != nil {
 		return x.RoundId
 	}
 	return ""
 }
 
-func (x *StepPayload) GetLoopId() string {
+func (x *TaskPayload) GetLoopId() string {
 	if x != nil {
 		return x.LoopId
 	}
 	return ""
 }
 
-func (x *StepPayload) GetProjectId() string {
+func (x *TaskPayload) GetProjectId() string {
 	if x != nil {
 		return x.ProjectId
 	}
 	return ""
 }
 
-func (x *StepPayload) GetInputCommitId() string {
+func (x *TaskPayload) GetInputCommitId() string {
 	if x != nil {
 		return x.InputCommitId
 	}
 	return ""
 }
 
-func (x *StepPayload) GetStepType() RuntimeStepType {
+func (x *TaskPayload) GetStepType() RuntimeStepType {
 	if x != nil {
 		return x.StepType
 	}
 	return RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED
 }
 
-func (x *StepPayload) GetPluginId() string {
+func (x *TaskPayload) GetPluginId() string {
 	if x != nil {
 		return x.PluginId
 	}
 	return ""
 }
 
-func (x *StepPayload) GetMode() RuntimeLoopMode {
+func (x *TaskPayload) GetMode() RuntimeLoopMode {
 	if x != nil {
 		return x.Mode
 	}
 	return RuntimeLoopMode_RUNTIME_LOOP_MODE_UNSPECIFIED
 }
 
-func (x *StepPayload) GetQueryStrategy() string {
+func (x *TaskPayload) GetQueryStrategy() string {
 	if x != nil {
 		return x.QueryStrategy
 	}
 	return ""
 }
 
-func (x *StepPayload) GetResolvedParams() *structpb.Struct {
+func (x *TaskPayload) GetResolvedParams() *structpb.Struct {
 	if x != nil {
 		return x.ResolvedParams
 	}
 	return nil
 }
 
-func (x *StepPayload) GetResources() *ResourceSummary {
+func (x *TaskPayload) GetResources() *ResourceSummary {
 	if x != nil {
 		return x.Resources
 	}
 	return nil
 }
 
-func (x *StepPayload) GetRoundIndex() int32 {
+func (x *TaskPayload) GetRoundIndex() int32 {
 	if x != nil {
 		return x.RoundIndex
 	}
 	return 0
 }
 
-func (x *StepPayload) GetAttempt() int32 {
+func (x *TaskPayload) GetAttempt() int32 {
 	if x != nil {
 		return x.Attempt
 	}
 	return 0
 }
 
-func (x *StepPayload) GetDependsOnStepIds() []string {
+func (x *TaskPayload) GetDependsOnTaskIds() []string {
 	if x != nil {
-		return x.DependsOnStepIds
+		return x.DependsOnTaskIds
 	}
 	return nil
 }
 
-func (x *StepPayload) GetDispatchKind() RuntimeStepDispatchKind {
+func (x *TaskPayload) GetDispatchKind() RuntimeStepDispatchKind {
 	if x != nil {
 		return x.DispatchKind
 	}
 	return RuntimeStepDispatchKind_RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED
 }
 
-type AssignStep struct {
+type AssignTask struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	Step          *StepPayload           `protobuf:"bytes,2,opt,name=step,proto3" json:"step,omitempty"`
+	Task          *TaskPayload           `protobuf:"bytes,2,opt,name=task,proto3" json:"task,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AssignStep) Reset() {
-	*x = AssignStep{}
+func (x *AssignTask) Reset() {
+	*x = AssignTask{}
 	mi := &file_runtime_control_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AssignStep) String() string {
+func (x *AssignTask) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AssignStep) ProtoMessage() {}
+func (*AssignTask) ProtoMessage() {}
 
-func (x *AssignStep) ProtoReflect() protoreflect.Message {
+func (x *AssignTask) ProtoReflect() protoreflect.Message {
 	mi := &file_runtime_control_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1125,48 +1125,48 @@ func (x *AssignStep) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AssignStep.ProtoReflect.Descriptor instead.
-func (*AssignStep) Descriptor() ([]byte, []int) {
+// Deprecated: Use AssignTask.ProtoReflect.Descriptor instead.
+func (*AssignTask) Descriptor() ([]byte, []int) {
 	return file_runtime_control_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *AssignStep) GetRequestId() string {
+func (x *AssignTask) GetRequestId() string {
 	if x != nil {
 		return x.RequestId
 	}
 	return ""
 }
 
-func (x *AssignStep) GetStep() *StepPayload {
+func (x *AssignTask) GetTask() *TaskPayload {
 	if x != nil {
-		return x.Step
+		return x.Task
 	}
 	return nil
 }
 
-type StopStep struct {
+type StopTask struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StopStep) Reset() {
-	*x = StopStep{}
+func (x *StopTask) Reset() {
+	*x = StopTask{}
 	mi := &file_runtime_control_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StopStep) String() string {
+func (x *StopTask) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StopStep) ProtoMessage() {}
+func (*StopTask) ProtoMessage() {}
 
-func (x *StopStep) ProtoReflect() protoreflect.Message {
+func (x *StopTask) ProtoReflect() protoreflect.Message {
 	mi := &file_runtime_control_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1178,26 +1178,26 @@ func (x *StopStep) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StopStep.ProtoReflect.Descriptor instead.
-func (*StopStep) Descriptor() ([]byte, []int) {
+// Deprecated: Use StopTask.ProtoReflect.Descriptor instead.
+func (*StopTask) Descriptor() ([]byte, []int) {
 	return file_runtime_control_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *StopStep) GetRequestId() string {
+func (x *StopTask) GetRequestId() string {
 	if x != nil {
 		return x.RequestId
 	}
 	return ""
 }
 
-func (x *StopStep) GetStepId() string {
+func (x *StopTask) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
 
-func (x *StopStep) GetReason() string {
+func (x *StopTask) GetReason() string {
 	if x != nil {
 		return x.Reason
 	}
@@ -1580,38 +1580,38 @@ func (x *ArtifactEvent) GetArtifact() *ArtifactItem {
 	return nil
 }
 
-type StepEvent struct {
+type TaskEvent struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId    string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId    string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Seq       int64                  `protobuf:"varint,3,opt,name=seq,proto3" json:"seq,omitempty"`
 	Ts        int64                  `protobuf:"varint,4,opt,name=ts,proto3" json:"ts,omitempty"`
 	// Types that are valid to be assigned to EventPayload:
 	//
-	//	*StepEvent_StatusEvent
-	//	*StepEvent_LogEvent
-	//	*StepEvent_ProgressEvent
-	//	*StepEvent_MetricEvent
-	//	*StepEvent_ArtifactEvent
-	EventPayload  isStepEvent_EventPayload `protobuf_oneof:"event_payload"`
+	//	*TaskEvent_StatusEvent
+	//	*TaskEvent_LogEvent
+	//	*TaskEvent_ProgressEvent
+	//	*TaskEvent_MetricEvent
+	//	*TaskEvent_ArtifactEvent
+	EventPayload  isTaskEvent_EventPayload `protobuf_oneof:"event_payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StepEvent) Reset() {
-	*x = StepEvent{}
+func (x *TaskEvent) Reset() {
+	*x = TaskEvent{}
 	mi := &file_runtime_control_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StepEvent) String() string {
+func (x *TaskEvent) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StepEvent) ProtoMessage() {}
+func (*TaskEvent) ProtoMessage() {}
 
-func (x *StepEvent) ProtoReflect() protoreflect.Message {
+func (x *TaskEvent) ProtoReflect() protoreflect.Message {
 	mi := &file_runtime_control_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1623,124 +1623,124 @@ func (x *StepEvent) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StepEvent.ProtoReflect.Descriptor instead.
-func (*StepEvent) Descriptor() ([]byte, []int) {
+// Deprecated: Use TaskEvent.ProtoReflect.Descriptor instead.
+func (*TaskEvent) Descriptor() ([]byte, []int) {
 	return file_runtime_control_proto_rawDescGZIP(), []int{14}
 }
 
-func (x *StepEvent) GetRequestId() string {
+func (x *TaskEvent) GetRequestId() string {
 	if x != nil {
 		return x.RequestId
 	}
 	return ""
 }
 
-func (x *StepEvent) GetStepId() string {
+func (x *TaskEvent) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
 
-func (x *StepEvent) GetSeq() int64 {
+func (x *TaskEvent) GetSeq() int64 {
 	if x != nil {
 		return x.Seq
 	}
 	return 0
 }
 
-func (x *StepEvent) GetTs() int64 {
+func (x *TaskEvent) GetTs() int64 {
 	if x != nil {
 		return x.Ts
 	}
 	return 0
 }
 
-func (x *StepEvent) GetEventPayload() isStepEvent_EventPayload {
+func (x *TaskEvent) GetEventPayload() isTaskEvent_EventPayload {
 	if x != nil {
 		return x.EventPayload
 	}
 	return nil
 }
 
-func (x *StepEvent) GetStatusEvent() *StatusEvent {
+func (x *TaskEvent) GetStatusEvent() *StatusEvent {
 	if x != nil {
-		if x, ok := x.EventPayload.(*StepEvent_StatusEvent); ok {
+		if x, ok := x.EventPayload.(*TaskEvent_StatusEvent); ok {
 			return x.StatusEvent
 		}
 	}
 	return nil
 }
 
-func (x *StepEvent) GetLogEvent() *LogEvent {
+func (x *TaskEvent) GetLogEvent() *LogEvent {
 	if x != nil {
-		if x, ok := x.EventPayload.(*StepEvent_LogEvent); ok {
+		if x, ok := x.EventPayload.(*TaskEvent_LogEvent); ok {
 			return x.LogEvent
 		}
 	}
 	return nil
 }
 
-func (x *StepEvent) GetProgressEvent() *ProgressEvent {
+func (x *TaskEvent) GetProgressEvent() *ProgressEvent {
 	if x != nil {
-		if x, ok := x.EventPayload.(*StepEvent_ProgressEvent); ok {
+		if x, ok := x.EventPayload.(*TaskEvent_ProgressEvent); ok {
 			return x.ProgressEvent
 		}
 	}
 	return nil
 }
 
-func (x *StepEvent) GetMetricEvent() *MetricEvent {
+func (x *TaskEvent) GetMetricEvent() *MetricEvent {
 	if x != nil {
-		if x, ok := x.EventPayload.(*StepEvent_MetricEvent); ok {
+		if x, ok := x.EventPayload.(*TaskEvent_MetricEvent); ok {
 			return x.MetricEvent
 		}
 	}
 	return nil
 }
 
-func (x *StepEvent) GetArtifactEvent() *ArtifactEvent {
+func (x *TaskEvent) GetArtifactEvent() *ArtifactEvent {
 	if x != nil {
-		if x, ok := x.EventPayload.(*StepEvent_ArtifactEvent); ok {
+		if x, ok := x.EventPayload.(*TaskEvent_ArtifactEvent); ok {
 			return x.ArtifactEvent
 		}
 	}
 	return nil
 }
 
-type isStepEvent_EventPayload interface {
-	isStepEvent_EventPayload()
+type isTaskEvent_EventPayload interface {
+	isTaskEvent_EventPayload()
 }
 
-type StepEvent_StatusEvent struct {
+type TaskEvent_StatusEvent struct {
 	StatusEvent *StatusEvent `protobuf:"bytes,5,opt,name=status_event,json=statusEvent,proto3,oneof"`
 }
 
-type StepEvent_LogEvent struct {
+type TaskEvent_LogEvent struct {
 	LogEvent *LogEvent `protobuf:"bytes,6,opt,name=log_event,json=logEvent,proto3,oneof"`
 }
 
-type StepEvent_ProgressEvent struct {
+type TaskEvent_ProgressEvent struct {
 	ProgressEvent *ProgressEvent `protobuf:"bytes,7,opt,name=progress_event,json=progressEvent,proto3,oneof"`
 }
 
-type StepEvent_MetricEvent struct {
+type TaskEvent_MetricEvent struct {
 	MetricEvent *MetricEvent `protobuf:"bytes,8,opt,name=metric_event,json=metricEvent,proto3,oneof"`
 }
 
-type StepEvent_ArtifactEvent struct {
+type TaskEvent_ArtifactEvent struct {
 	ArtifactEvent *ArtifactEvent `protobuf:"bytes,9,opt,name=artifact_event,json=artifactEvent,proto3,oneof"`
 }
 
-func (*StepEvent_StatusEvent) isStepEvent_EventPayload() {}
+func (*TaskEvent_StatusEvent) isTaskEvent_EventPayload() {}
 
-func (*StepEvent_LogEvent) isStepEvent_EventPayload() {}
+func (*TaskEvent_LogEvent) isTaskEvent_EventPayload() {}
 
-func (*StepEvent_ProgressEvent) isStepEvent_EventPayload() {}
+func (*TaskEvent_ProgressEvent) isTaskEvent_EventPayload() {}
 
-func (*StepEvent_MetricEvent) isStepEvent_EventPayload() {}
+func (*TaskEvent_MetricEvent) isTaskEvent_EventPayload() {}
 
-func (*StepEvent_ArtifactEvent) isStepEvent_EventPayload() {}
+func (*TaskEvent_ArtifactEvent) isTaskEvent_EventPayload() {}
 
 type QueryCandidate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1802,10 +1802,10 @@ func (x *QueryCandidate) GetReason() *structpb.Struct {
 	return nil
 }
 
-type StepResult struct {
+type TaskResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Status        RuntimeStepStatus      `protobuf:"varint,3,opt,name=status,proto3,enum=saki.runtime.v1.RuntimeStepStatus" json:"status,omitempty"`
 	Metrics       map[string]float64     `protobuf:"bytes,4,rep,name=metrics,proto3" json:"metrics,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
 	Artifacts     []*ArtifactItem        `protobuf:"bytes,5,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
@@ -1815,20 +1815,20 @@ type StepResult struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StepResult) Reset() {
-	*x = StepResult{}
+func (x *TaskResult) Reset() {
+	*x = TaskResult{}
 	mi := &file_runtime_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StepResult) String() string {
+func (x *TaskResult) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StepResult) ProtoMessage() {}
+func (*TaskResult) ProtoMessage() {}
 
-func (x *StepResult) ProtoReflect() protoreflect.Message {
+func (x *TaskResult) ProtoReflect() protoreflect.Message {
 	mi := &file_runtime_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1840,54 +1840,54 @@ func (x *StepResult) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StepResult.ProtoReflect.Descriptor instead.
-func (*StepResult) Descriptor() ([]byte, []int) {
+// Deprecated: Use TaskResult.ProtoReflect.Descriptor instead.
+func (*TaskResult) Descriptor() ([]byte, []int) {
 	return file_runtime_control_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *StepResult) GetRequestId() string {
+func (x *TaskResult) GetRequestId() string {
 	if x != nil {
 		return x.RequestId
 	}
 	return ""
 }
 
-func (x *StepResult) GetStepId() string {
+func (x *TaskResult) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
 
-func (x *StepResult) GetStatus() RuntimeStepStatus {
+func (x *TaskResult) GetStatus() RuntimeStepStatus {
 	if x != nil {
 		return x.Status
 	}
 	return RuntimeStepStatus_RUNTIME_STEP_STATUS_UNSPECIFIED
 }
 
-func (x *StepResult) GetMetrics() map[string]float64 {
+func (x *TaskResult) GetMetrics() map[string]float64 {
 	if x != nil {
 		return x.Metrics
 	}
 	return nil
 }
 
-func (x *StepResult) GetArtifacts() []*ArtifactItem {
+func (x *TaskResult) GetArtifacts() []*ArtifactItem {
 	if x != nil {
 		return x.Artifacts
 	}
 	return nil
 }
 
-func (x *StepResult) GetCandidates() []*QueryCandidate {
+func (x *TaskResult) GetCandidates() []*QueryCandidate {
 	if x != nil {
 		return x.Candidates
 	}
 	return nil
 }
 
-func (x *StepResult) GetErrorMessage() string {
+func (x *TaskResult) GetErrorMessage() string {
 	if x != nil {
 		return x.ErrorMessage
 	}
@@ -1897,7 +1897,7 @@ func (x *StepResult) GetErrorMessage() string {
 type DataRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	RequestId            string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId               string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId               string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	QueryType            RuntimeQueryType       `protobuf:"varint,3,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
 	ProjectId            string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	CommitId             string                 `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
@@ -1946,9 +1946,9 @@ func (x *DataRequest) GetRequestId() string {
 	return ""
 }
 
-func (x *DataRequest) GetStepId() string {
+func (x *DataRequest) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -2340,7 +2340,7 @@ type DataResponse struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	RequestId             string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	ReplyTo               string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId                string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId                string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	QueryType             RuntimeQueryType       `protobuf:"varint,4,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
 	PayloadId             string                 `protobuf:"bytes,5,opt,name=payload_id,json=payloadId,proto3" json:"payload_id,omitempty"`
 	ChunkIndex            uint32                 `protobuf:"varint,6,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
@@ -2400,9 +2400,9 @@ func (x *DataResponse) GetReplyTo() string {
 	return ""
 }
 
-func (x *DataResponse) GetStepId() string {
+func (x *DataResponse) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -2487,7 +2487,7 @@ func (x *DataResponse) GetIsLastChunk() bool {
 type UploadTicketRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	ArtifactName  string                 `protobuf:"bytes,3,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
 	ContentType   string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2531,9 +2531,9 @@ func (x *UploadTicketRequest) GetRequestId() string {
 	return ""
 }
 
-func (x *UploadTicketRequest) GetStepId() string {
+func (x *UploadTicketRequest) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -2556,7 +2556,7 @@ type UploadTicketResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	ReplyTo       string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	UploadUrl     string                 `protobuf:"bytes,4,opt,name=upload_url,json=uploadUrl,proto3" json:"upload_url,omitempty"`
 	StorageUri    string                 `protobuf:"bytes,5,opt,name=storage_uri,json=storageUri,proto3" json:"storage_uri,omitempty"`
 	Headers       map[string]string      `protobuf:"bytes,6,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -2608,9 +2608,9 @@ func (x *UploadTicketResponse) GetReplyTo() string {
 	return ""
 }
 
-func (x *UploadTicketResponse) GetStepId() string {
+func (x *UploadTicketResponse) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -2727,7 +2727,7 @@ type Error struct {
 	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
 	ReplyTo       string                 `protobuf:"bytes,4,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
 	AckFor        string                 `protobuf:"bytes,5,opt,name=ack_for,json=ackFor,proto3" json:"ack_for,omitempty"`
-	StepId        string                 `protobuf:"bytes,6,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,6,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	QueryType     RuntimeQueryType       `protobuf:"varint,7,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.v1.RuntimeQueryType" json:"query_type,omitempty"`
 	Reason        string                 `protobuf:"bytes,8,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2799,9 +2799,9 @@ func (x *Error) GetAckFor() string {
 	return ""
 }
 
-func (x *Error) GetStepId() string {
+func (x *Error) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -2826,10 +2826,10 @@ type RuntimeMessage struct {
 	//
 	//	*RuntimeMessage_Register
 	//	*RuntimeMessage_Heartbeat
-	//	*RuntimeMessage_AssignStep
-	//	*RuntimeMessage_StopStep
-	//	*RuntimeMessage_StepEvent
-	//	*RuntimeMessage_StepResult
+	//	*RuntimeMessage_AssignTask
+	//	*RuntimeMessage_StopTask
+	//	*RuntimeMessage_TaskEvent
+	//	*RuntimeMessage_TaskResult
 	//	*RuntimeMessage_DataRequest
 	//	*RuntimeMessage_DataResponse
 	//	*RuntimeMessage_UploadTicketRequest
@@ -2896,37 +2896,37 @@ func (x *RuntimeMessage) GetHeartbeat() *Heartbeat {
 	return nil
 }
 
-func (x *RuntimeMessage) GetAssignStep() *AssignStep {
+func (x *RuntimeMessage) GetAssignTask() *AssignTask {
 	if x != nil {
-		if x, ok := x.Payload.(*RuntimeMessage_AssignStep); ok {
-			return x.AssignStep
+		if x, ok := x.Payload.(*RuntimeMessage_AssignTask); ok {
+			return x.AssignTask
 		}
 	}
 	return nil
 }
 
-func (x *RuntimeMessage) GetStopStep() *StopStep {
+func (x *RuntimeMessage) GetStopTask() *StopTask {
 	if x != nil {
-		if x, ok := x.Payload.(*RuntimeMessage_StopStep); ok {
-			return x.StopStep
+		if x, ok := x.Payload.(*RuntimeMessage_StopTask); ok {
+			return x.StopTask
 		}
 	}
 	return nil
 }
 
-func (x *RuntimeMessage) GetStepEvent() *StepEvent {
+func (x *RuntimeMessage) GetTaskEvent() *TaskEvent {
 	if x != nil {
-		if x, ok := x.Payload.(*RuntimeMessage_StepEvent); ok {
-			return x.StepEvent
+		if x, ok := x.Payload.(*RuntimeMessage_TaskEvent); ok {
+			return x.TaskEvent
 		}
 	}
 	return nil
 }
 
-func (x *RuntimeMessage) GetStepResult() *StepResult {
+func (x *RuntimeMessage) GetTaskResult() *TaskResult {
 	if x != nil {
-		if x, ok := x.Payload.(*RuntimeMessage_StepResult); ok {
-			return x.StepResult
+		if x, ok := x.Payload.(*RuntimeMessage_TaskResult); ok {
+			return x.TaskResult
 		}
 	}
 	return nil
@@ -2998,20 +2998,20 @@ type RuntimeMessage_Heartbeat struct {
 	Heartbeat *Heartbeat `protobuf:"bytes,2,opt,name=heartbeat,proto3,oneof"`
 }
 
-type RuntimeMessage_AssignStep struct {
-	AssignStep *AssignStep `protobuf:"bytes,3,opt,name=assign_step,json=assignStep,proto3,oneof"`
+type RuntimeMessage_AssignTask struct {
+	AssignTask *AssignTask `protobuf:"bytes,3,opt,name=assign_task,json=assignTask,proto3,oneof"`
 }
 
-type RuntimeMessage_StopStep struct {
-	StopStep *StopStep `protobuf:"bytes,4,opt,name=stop_step,json=stopStep,proto3,oneof"`
+type RuntimeMessage_StopTask struct {
+	StopTask *StopTask `protobuf:"bytes,4,opt,name=stop_task,json=stopTask,proto3,oneof"`
 }
 
-type RuntimeMessage_StepEvent struct {
-	StepEvent *StepEvent `protobuf:"bytes,5,opt,name=step_event,json=stepEvent,proto3,oneof"`
+type RuntimeMessage_TaskEvent struct {
+	TaskEvent *TaskEvent `protobuf:"bytes,5,opt,name=task_event,json=taskEvent,proto3,oneof"`
 }
 
-type RuntimeMessage_StepResult struct {
-	StepResult *StepResult `protobuf:"bytes,6,opt,name=step_result,json=stepResult,proto3,oneof"`
+type RuntimeMessage_TaskResult struct {
+	TaskResult *TaskResult `protobuf:"bytes,6,opt,name=task_result,json=taskResult,proto3,oneof"`
 }
 
 type RuntimeMessage_DataRequest struct {
@@ -3042,13 +3042,13 @@ func (*RuntimeMessage_Register) isRuntimeMessage_Payload() {}
 
 func (*RuntimeMessage_Heartbeat) isRuntimeMessage_Payload() {}
 
-func (*RuntimeMessage_AssignStep) isRuntimeMessage_Payload() {}
+func (*RuntimeMessage_AssignTask) isRuntimeMessage_Payload() {}
 
-func (*RuntimeMessage_StopStep) isRuntimeMessage_Payload() {}
+func (*RuntimeMessage_StopTask) isRuntimeMessage_Payload() {}
 
-func (*RuntimeMessage_StepEvent) isRuntimeMessage_Payload() {}
+func (*RuntimeMessage_TaskEvent) isRuntimeMessage_Payload() {}
 
-func (*RuntimeMessage_StepResult) isRuntimeMessage_Payload() {}
+func (*RuntimeMessage_TaskResult) isRuntimeMessage_Payload() {}
 
 func (*RuntimeMessage_DataRequest) isRuntimeMessage_Payload() {}
 
@@ -3104,10 +3104,10 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\vexecutor_id\x18\x02 \x01(\tR\n" +
 	"executorId\x12\x12\n" +
 	"\x04busy\x18\x03 \x01(\bR\x04busy\x12&\n" +
-	"\x0fcurrent_step_id\x18\x04 \x01(\tR\rcurrentStepId\x12>\n" +
+	"\x0fcurrent_task_id\x18\x04 \x01(\tR\rcurrentTaskId\x12>\n" +
 	"\tresources\x18\x05 \x01(\v2 .saki.runtime.v1.ResourceSummaryR\tresources\"\x95\x05\n" +
-	"\vStepPayload\x12\x17\n" +
-	"\astep_id\x18\x01 \x01(\tR\x06stepId\x12\x19\n" +
+	"\vTaskPayload\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x17\n" +
 	"\aloop_id\x18\x03 \x01(\tR\x06loopId\x12\x1d\n" +
 	"\n" +
@@ -3123,17 +3123,17 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\vround_index\x18\f \x01(\x05R\n" +
 	"roundIndex\x12\x18\n" +
 	"\aattempt\x18\r \x01(\x05R\aattempt\x12-\n" +
-	"\x13depends_on_step_ids\x18\x0e \x03(\tR\x10dependsOnStepIds\x12M\n" +
+	"\x13depends_on_task_ids\x18\x0e \x03(\tR\x10dependsOnTaskIds\x12M\n" +
 	"\rdispatch_kind\x18\x0f \x01(\x0e2(.saki.runtime.v1.RuntimeStepDispatchKindR\fdispatchKind\"]\n" +
 	"\n" +
-	"AssignStep\x12\x1d\n" +
+	"AssignTask\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x120\n" +
-	"\x04step\x18\x02 \x01(\v2\x1c.saki.runtime.v1.StepPayloadR\x04step\"Z\n" +
-	"\bStopStep\x12\x1d\n" +
+	"\x04task\x18\x02 \x01(\v2\x1c.saki.runtime.v1.TaskPayloadR\x04task\"Z\n" +
+	"\bStopTask\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12\x16\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\"a\n" +
 	"\vStatusEvent\x12:\n" +
 	"\x06status\x18\x01 \x01(\x0e2\".saki.runtime.v1.RuntimeStepStatusR\x06status\x12\x16\n" +
@@ -3167,10 +3167,10 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x04meta\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04meta\"J\n" +
 	"\rArtifactEvent\x129\n" +
 	"\bartifact\x18\x01 \x01(\v2\x1d.saki.runtime.v1.ArtifactItemR\bartifact\"\xc8\x03\n" +
-	"\tStepEvent\x12\x1d\n" +
+	"\tTaskEvent\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12\x10\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x10\n" +
 	"\x03seq\x18\x03 \x01(\x03R\x03seq\x12\x0e\n" +
 	"\x02ts\x18\x04 \x01(\x03R\x02ts\x12A\n" +
 	"\fstatus_event\x18\x05 \x01(\v2\x1c.saki.runtime.v1.StatusEventH\x00R\vstatusEvent\x128\n" +
@@ -3184,12 +3184,12 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x05score\x18\x02 \x01(\x01R\x05score\x12/\n" +
 	"\x06reason\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06reason\"\xa3\x03\n" +
 	"\n" +
-	"StepResult\x12\x1d\n" +
+	"TaskResult\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12:\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12:\n" +
 	"\x06status\x18\x03 \x01(\x0e2\".saki.runtime.v1.RuntimeStepStatusR\x06status\x12B\n" +
-	"\ametrics\x18\x04 \x03(\v2(.saki.runtime.v1.StepResult.MetricsEntryR\ametrics\x12;\n" +
+	"\ametrics\x18\x04 \x03(\v2(.saki.runtime.v1.TaskResult.MetricsEntryR\ametrics\x12;\n" +
 	"\tartifacts\x18\x05 \x03(\v2\x1d.saki.runtime.v1.ArtifactItemR\tartifacts\x12?\n" +
 	"\n" +
 	"candidates\x18\x06 \x03(\v2\x1f.saki.runtime.v1.QueryCandidateR\n" +
@@ -3201,7 +3201,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\vDataRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12@\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12@\n" +
 	"\n" +
 	"query_type\x18\x03 \x01(\x0e2!.saki.runtime.v1.RuntimeQueryTypeR\tqueryType\x12\x1d\n" +
 	"\n" +
@@ -3246,7 +3246,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
 	"\breply_to\x18\x02 \x01(\tR\areplyTo\x12\x17\n" +
-	"\astep_id\x18\x03 \x01(\tR\x06stepId\x12@\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12@\n" +
 	"\n" +
 	"query_type\x18\x04 \x01(\x0e2!.saki.runtime.v1.RuntimeQueryTypeR\tqueryType\x12\x1d\n" +
 	"\n" +
@@ -3267,14 +3267,14 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x13UploadTicketRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12#\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12#\n" +
 	"\rartifact_name\x18\x03 \x01(\tR\fartifactName\x12!\n" +
 	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\"\xb3\x02\n" +
 	"\x14UploadTicketResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
 	"\breply_to\x18\x02 \x01(\tR\areplyTo\x12\x17\n" +
-	"\astep_id\x18\x03 \x01(\tR\x06stepId\x12\x1d\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
 	"upload_url\x18\x04 \x01(\tR\tuploadUrl\x12\x1f\n" +
 	"\vstorage_uri\x18\x05 \x01(\tR\n" +
@@ -3298,20 +3298,20 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12\x19\n" +
 	"\breply_to\x18\x04 \x01(\tR\areplyTo\x12\x17\n" +
 	"\aack_for\x18\x05 \x01(\tR\x06ackFor\x12\x17\n" +
-	"\astep_id\x18\x06 \x01(\tR\x06stepId\x12@\n" +
+	"\atask_id\x18\x06 \x01(\tR\x06taskId\x12@\n" +
 	"\n" +
 	"query_type\x18\a \x01(\x0e2!.saki.runtime.v1.RuntimeQueryTypeR\tqueryType\x12\x16\n" +
 	"\x06reason\x18\b \x01(\tR\x06reason\"\xa5\x06\n" +
 	"\x0eRuntimeMessage\x127\n" +
 	"\bregister\x18\x01 \x01(\v2\x19.saki.runtime.v1.RegisterH\x00R\bregister\x12:\n" +
 	"\theartbeat\x18\x02 \x01(\v2\x1a.saki.runtime.v1.HeartbeatH\x00R\theartbeat\x12>\n" +
-	"\vassign_step\x18\x03 \x01(\v2\x1b.saki.runtime.v1.AssignStepH\x00R\n" +
-	"assignStep\x128\n" +
-	"\tstop_step\x18\x04 \x01(\v2\x19.saki.runtime.v1.StopStepH\x00R\bstopStep\x12;\n" +
+	"\vassign_task\x18\x03 \x01(\v2\x1b.saki.runtime.v1.AssignTaskH\x00R\n" +
+	"assignTask\x128\n" +
+	"\tstop_task\x18\x04 \x01(\v2\x19.saki.runtime.v1.StopTaskH\x00R\bstopTask\x12;\n" +
 	"\n" +
-	"step_event\x18\x05 \x01(\v2\x1a.saki.runtime.v1.StepEventH\x00R\tstepEvent\x12>\n" +
-	"\vstep_result\x18\x06 \x01(\v2\x1b.saki.runtime.v1.StepResultH\x00R\n" +
-	"stepResult\x12A\n" +
+	"task_event\x18\x05 \x01(\v2\x1a.saki.runtime.v1.TaskEventH\x00R\ttaskEvent\x12>\n" +
+	"\vtask_result\x18\x06 \x01(\v2\x1b.saki.runtime.v1.TaskResultH\x00R\n" +
+	"taskResult\x12A\n" +
 	"\fdata_request\x18\a \x01(\v2\x1c.saki.runtime.v1.DataRequestH\x00R\vdataRequest\x12D\n" +
 	"\rdata_response\x18\b \x01(\v2\x1d.saki.runtime.v1.DataResponseH\x00R\fdataResponse\x12Z\n" +
 	"\x15upload_ticket_request\x18\t \x01(\v2$.saki.runtime.v1.UploadTicketRequestH\x00R\x13uploadTicketRequest\x12]\n" +
@@ -3342,8 +3342,8 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\aAckType\x12\x18\n" +
 	"\x14ACK_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11ACK_TYPE_REGISTER\x10\x01\x12\x18\n" +
-	"\x14ACK_TYPE_ASSIGN_STEP\x10\x02\x12\x16\n" +
-	"\x12ACK_TYPE_STOP_STEP\x10\x03\x12\x14\n" +
+	"\x14ACK_TYPE_ASSIGN_TASK\x10\x02\x12\x16\n" +
+	"\x12ACK_TYPE_STOP_TASK\x10\x03\x12\x14\n" +
 	"\x10ACK_TYPE_REQUEST\x10\x04*\xcc\x01\n" +
 	"\tAckReason\x12\x1a\n" +
 	"\x16ACK_REASON_UNSPECIFIED\x10\x00\x12\x19\n" +
@@ -3351,7 +3351,7 @@ const file_runtime_control_proto_rawDesc = "" +
 	"\x13ACK_REASON_ACCEPTED\x10\x02\x12\x1c\n" +
 	"\x18ACK_REASON_EXECUTOR_BUSY\x10\x03\x12\x17\n" +
 	"\x13ACK_REASON_STOPPING\x10\x04\x12\x1f\n" +
-	"\x1bACK_REASON_STEP_NOT_RUNNING\x10\x05\x12\x17\n" +
+	"\x1bACK_REASON_TASK_NOT_RUNNING\x10\x05\x12\x17\n" +
 	"\x13ACK_REASON_REJECTED\x10\x06*y\n" +
 	"\x0fRuntimeStepType\x12!\n" +
 	"\x1dRUNTIME_STEP_TYPE_UNSPECIFIED\x10\x00\x12\t\n" +
@@ -3418,18 +3418,18 @@ var file_runtime_control_proto_goTypes = []any{
 	(*ResourceSummary)(nil),       // 11: saki.runtime.v1.ResourceSummary
 	(*Register)(nil),              // 12: saki.runtime.v1.Register
 	(*Heartbeat)(nil),             // 13: saki.runtime.v1.Heartbeat
-	(*StepPayload)(nil),           // 14: saki.runtime.v1.StepPayload
-	(*AssignStep)(nil),            // 15: saki.runtime.v1.AssignStep
-	(*StopStep)(nil),              // 16: saki.runtime.v1.StopStep
+	(*TaskPayload)(nil),           // 14: saki.runtime.v1.TaskPayload
+	(*AssignTask)(nil),            // 15: saki.runtime.v1.AssignTask
+	(*StopTask)(nil),              // 16: saki.runtime.v1.StopTask
 	(*StatusEvent)(nil),           // 17: saki.runtime.v1.StatusEvent
 	(*LogEvent)(nil),              // 18: saki.runtime.v1.LogEvent
 	(*ProgressEvent)(nil),         // 19: saki.runtime.v1.ProgressEvent
 	(*MetricEvent)(nil),           // 20: saki.runtime.v1.MetricEvent
 	(*ArtifactItem)(nil),          // 21: saki.runtime.v1.ArtifactItem
 	(*ArtifactEvent)(nil),         // 22: saki.runtime.v1.ArtifactEvent
-	(*StepEvent)(nil),             // 23: saki.runtime.v1.StepEvent
+	(*TaskEvent)(nil),             // 23: saki.runtime.v1.TaskEvent
 	(*QueryCandidate)(nil),        // 24: saki.runtime.v1.QueryCandidate
-	(*StepResult)(nil),            // 25: saki.runtime.v1.StepResult
+	(*TaskResult)(nil),            // 25: saki.runtime.v1.TaskResult
 	(*DataRequest)(nil),           // 26: saki.runtime.v1.DataRequest
 	(*LabelItem)(nil),             // 27: saki.runtime.v1.LabelItem
 	(*SampleItem)(nil),            // 28: saki.runtime.v1.SampleItem
@@ -3442,7 +3442,7 @@ var file_runtime_control_proto_goTypes = []any{
 	(*Error)(nil),                 // 35: saki.runtime.v1.Error
 	(*RuntimeMessage)(nil),        // 36: saki.runtime.v1.RuntimeMessage
 	nil,                           // 37: saki.runtime.v1.MetricEvent.MetricsEntry
-	nil,                           // 38: saki.runtime.v1.StepResult.MetricsEntry
+	nil,                           // 38: saki.runtime.v1.TaskResult.MetricsEntry
 	nil,                           // 39: saki.runtime.v1.UploadTicketResponse.HeadersEntry
 	(*structpb.Struct)(nil),       // 40: google.protobuf.Struct
 }
@@ -3455,28 +3455,28 @@ var file_runtime_control_proto_depIdxs = []int32{
 	10, // 5: saki.runtime.v1.Register.plugins:type_name -> saki.runtime.v1.PluginCapability
 	11, // 6: saki.runtime.v1.Register.resources:type_name -> saki.runtime.v1.ResourceSummary
 	11, // 7: saki.runtime.v1.Heartbeat.resources:type_name -> saki.runtime.v1.ResourceSummary
-	4,  // 8: saki.runtime.v1.StepPayload.step_type:type_name -> saki.runtime.v1.RuntimeStepType
-	6,  // 9: saki.runtime.v1.StepPayload.mode:type_name -> saki.runtime.v1.RuntimeLoopMode
-	40, // 10: saki.runtime.v1.StepPayload.resolved_params:type_name -> google.protobuf.Struct
-	11, // 11: saki.runtime.v1.StepPayload.resources:type_name -> saki.runtime.v1.ResourceSummary
-	5,  // 12: saki.runtime.v1.StepPayload.dispatch_kind:type_name -> saki.runtime.v1.RuntimeStepDispatchKind
-	14, // 13: saki.runtime.v1.AssignStep.step:type_name -> saki.runtime.v1.StepPayload
+	4,  // 8: saki.runtime.v1.TaskPayload.step_type:type_name -> saki.runtime.v1.RuntimeStepType
+	6,  // 9: saki.runtime.v1.TaskPayload.mode:type_name -> saki.runtime.v1.RuntimeLoopMode
+	40, // 10: saki.runtime.v1.TaskPayload.resolved_params:type_name -> google.protobuf.Struct
+	11, // 11: saki.runtime.v1.TaskPayload.resources:type_name -> saki.runtime.v1.ResourceSummary
+	5,  // 12: saki.runtime.v1.TaskPayload.dispatch_kind:type_name -> saki.runtime.v1.RuntimeStepDispatchKind
+	14, // 13: saki.runtime.v1.AssignTask.task:type_name -> saki.runtime.v1.TaskPayload
 	0,  // 14: saki.runtime.v1.StatusEvent.status:type_name -> saki.runtime.v1.RuntimeStepStatus
 	40, // 15: saki.runtime.v1.LogEvent.message_args:type_name -> google.protobuf.Struct
 	40, // 16: saki.runtime.v1.LogEvent.meta:type_name -> google.protobuf.Struct
 	37, // 17: saki.runtime.v1.MetricEvent.metrics:type_name -> saki.runtime.v1.MetricEvent.MetricsEntry
 	40, // 18: saki.runtime.v1.ArtifactItem.meta:type_name -> google.protobuf.Struct
 	21, // 19: saki.runtime.v1.ArtifactEvent.artifact:type_name -> saki.runtime.v1.ArtifactItem
-	17, // 20: saki.runtime.v1.StepEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
-	18, // 21: saki.runtime.v1.StepEvent.log_event:type_name -> saki.runtime.v1.LogEvent
-	19, // 22: saki.runtime.v1.StepEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
-	20, // 23: saki.runtime.v1.StepEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
-	22, // 24: saki.runtime.v1.StepEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
+	17, // 20: saki.runtime.v1.TaskEvent.status_event:type_name -> saki.runtime.v1.StatusEvent
+	18, // 21: saki.runtime.v1.TaskEvent.log_event:type_name -> saki.runtime.v1.LogEvent
+	19, // 22: saki.runtime.v1.TaskEvent.progress_event:type_name -> saki.runtime.v1.ProgressEvent
+	20, // 23: saki.runtime.v1.TaskEvent.metric_event:type_name -> saki.runtime.v1.MetricEvent
+	22, // 24: saki.runtime.v1.TaskEvent.artifact_event:type_name -> saki.runtime.v1.ArtifactEvent
 	40, // 25: saki.runtime.v1.QueryCandidate.reason:type_name -> google.protobuf.Struct
-	0,  // 26: saki.runtime.v1.StepResult.status:type_name -> saki.runtime.v1.RuntimeStepStatus
-	38, // 27: saki.runtime.v1.StepResult.metrics:type_name -> saki.runtime.v1.StepResult.MetricsEntry
-	21, // 28: saki.runtime.v1.StepResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
-	24, // 29: saki.runtime.v1.StepResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
+	0,  // 26: saki.runtime.v1.TaskResult.status:type_name -> saki.runtime.v1.RuntimeStepStatus
+	38, // 27: saki.runtime.v1.TaskResult.metrics:type_name -> saki.runtime.v1.TaskResult.MetricsEntry
+	21, // 28: saki.runtime.v1.TaskResult.artifacts:type_name -> saki.runtime.v1.ArtifactItem
+	24, // 29: saki.runtime.v1.TaskResult.candidates:type_name -> saki.runtime.v1.QueryCandidate
 	7,  // 30: saki.runtime.v1.DataRequest.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
 	40, // 31: saki.runtime.v1.SampleItem.meta:type_name -> google.protobuf.Struct
 	40, // 32: saki.runtime.v1.AnnotationItem.obb:type_name -> google.protobuf.Struct
@@ -3491,10 +3491,10 @@ var file_runtime_control_proto_depIdxs = []int32{
 	7,  // 41: saki.runtime.v1.Error.query_type:type_name -> saki.runtime.v1.RuntimeQueryType
 	12, // 42: saki.runtime.v1.RuntimeMessage.register:type_name -> saki.runtime.v1.Register
 	13, // 43: saki.runtime.v1.RuntimeMessage.heartbeat:type_name -> saki.runtime.v1.Heartbeat
-	15, // 44: saki.runtime.v1.RuntimeMessage.assign_step:type_name -> saki.runtime.v1.AssignStep
-	16, // 45: saki.runtime.v1.RuntimeMessage.stop_step:type_name -> saki.runtime.v1.StopStep
-	23, // 46: saki.runtime.v1.RuntimeMessage.step_event:type_name -> saki.runtime.v1.StepEvent
-	25, // 47: saki.runtime.v1.RuntimeMessage.step_result:type_name -> saki.runtime.v1.StepResult
+	15, // 44: saki.runtime.v1.RuntimeMessage.assign_task:type_name -> saki.runtime.v1.AssignTask
+	16, // 45: saki.runtime.v1.RuntimeMessage.stop_task:type_name -> saki.runtime.v1.StopTask
+	23, // 46: saki.runtime.v1.RuntimeMessage.task_event:type_name -> saki.runtime.v1.TaskEvent
+	25, // 47: saki.runtime.v1.RuntimeMessage.task_result:type_name -> saki.runtime.v1.TaskResult
 	26, // 48: saki.runtime.v1.RuntimeMessage.data_request:type_name -> saki.runtime.v1.DataRequest
 	31, // 49: saki.runtime.v1.RuntimeMessage.data_response:type_name -> saki.runtime.v1.DataResponse
 	32, // 50: saki.runtime.v1.RuntimeMessage.upload_ticket_request:type_name -> saki.runtime.v1.UploadTicketRequest
@@ -3516,11 +3516,11 @@ func file_runtime_control_proto_init() {
 		return
 	}
 	file_runtime_control_proto_msgTypes[14].OneofWrappers = []any{
-		(*StepEvent_StatusEvent)(nil),
-		(*StepEvent_LogEvent)(nil),
-		(*StepEvent_ProgressEvent)(nil),
-		(*StepEvent_MetricEvent)(nil),
-		(*StepEvent_ArtifactEvent)(nil),
+		(*TaskEvent_StatusEvent)(nil),
+		(*TaskEvent_LogEvent)(nil),
+		(*TaskEvent_ProgressEvent)(nil),
+		(*TaskEvent_MetricEvent)(nil),
+		(*TaskEvent_ArtifactEvent)(nil),
 	}
 	file_runtime_control_proto_msgTypes[21].OneofWrappers = []any{
 		(*DataItem_LabelItem)(nil),
@@ -3530,10 +3530,10 @@ func file_runtime_control_proto_init() {
 	file_runtime_control_proto_msgTypes[27].OneofWrappers = []any{
 		(*RuntimeMessage_Register)(nil),
 		(*RuntimeMessage_Heartbeat)(nil),
-		(*RuntimeMessage_AssignStep)(nil),
-		(*RuntimeMessage_StopStep)(nil),
-		(*RuntimeMessage_StepEvent)(nil),
-		(*RuntimeMessage_StepResult)(nil),
+		(*RuntimeMessage_AssignTask)(nil),
+		(*RuntimeMessage_StopTask)(nil),
+		(*RuntimeMessage_TaskEvent)(nil),
+		(*RuntimeMessage_TaskResult)(nil),
 		(*RuntimeMessage_DataRequest)(nil),
 		(*RuntimeMessage_DataResponse)(nil),
 		(*RuntimeMessage_UploadTicketRequest)(nil),

@@ -8,13 +8,13 @@ import (
 	runtimecontrolv1 "github.com/elebirds/saki/saki-dispatcher/internal/gen/runtimecontrolv1"
 )
 
-func TestDecodeStepEventStatusUsesLowercasePayload(t *testing.T) {
-	event := &runtimecontrolv1.StepEvent{
-		EventPayload: &runtimecontrolv1.StepEvent_StatusEvent{
+func TestDecodeTaskEventStatusUsesLowercasePayload(t *testing.T) {
+	event := &runtimecontrolv1.TaskEvent{
+		EventPayload: &runtimecontrolv1.TaskEvent_StatusEvent{
 			StatusEvent: &runtimecontrolv1.StatusEvent{Status: runtimecontrolv1.RuntimeStepStatus_RUNNING, Reason: "step running"},
 		},
 	}
-	eventType, payload, statusValue := decodeStepEvent(event)
+	eventType, payload, statusValue := decodeTaskEvent(event)
 	if eventType != "status" {
 		t.Fatalf("unexpected event type: %s", eventType)
 	}
@@ -26,16 +26,16 @@ func TestDecodeStepEventStatusUsesLowercasePayload(t *testing.T) {
 	}
 }
 
-func TestDecodeStepEventStatusMapsPreRunStages(t *testing.T) {
-	event := &runtimecontrolv1.StepEvent{
-		EventPayload: &runtimecontrolv1.StepEvent_StatusEvent{
+func TestDecodeTaskEventStatusMapsPreRunStages(t *testing.T) {
+	event := &runtimecontrolv1.TaskEvent{
+		EventPayload: &runtimecontrolv1.TaskEvent_StatusEvent{
 			StatusEvent: &runtimecontrolv1.StatusEvent{
 				Status: runtimecontrolv1.RuntimeStepStatus_PROBING_RUNTIME,
 				Reason: "runtime probe",
 			},
 		},
 	}
-	eventType, payload, statusValue := decodeStepEvent(event)
+	eventType, payload, statusValue := decodeTaskEvent(event)
 	if eventType != "status" {
 		t.Fatalf("unexpected event type: %s", eventType)
 	}
@@ -47,7 +47,7 @@ func TestDecodeStepEventStatusMapsPreRunStages(t *testing.T) {
 	}
 }
 
-func TestDecodeStepEventLogPreservesStructuredFields(t *testing.T) {
+func TestDecodeTaskEventLogPreservesStructuredFields(t *testing.T) {
 	messageArgs, err := structpb.NewStruct(map[string]any{"step": float64(3)})
 	if err != nil {
 		t.Fatalf("build message args struct failed: %v", err)
@@ -61,8 +61,8 @@ func TestDecodeStepEventLogPreservesStructuredFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build meta struct failed: %v", err)
 	}
-	event := &runtimecontrolv1.StepEvent{
-		EventPayload: &runtimecontrolv1.StepEvent_LogEvent{
+	event := &runtimecontrolv1.TaskEvent{
+		EventPayload: &runtimecontrolv1.TaskEvent_LogEvent{
 			LogEvent: &runtimecontrolv1.LogEvent{
 				Level:       "DEBUG",
 				Message:     "display",
@@ -74,7 +74,7 @@ func TestDecodeStepEventLogPreservesStructuredFields(t *testing.T) {
 		},
 	}
 
-	eventType, payload, statusValue := decodeStepEvent(event)
+	eventType, payload, statusValue := decodeTaskEvent(event)
 	if eventType != "log" {
 		t.Fatalf("unexpected event type: %s", eventType)
 	}

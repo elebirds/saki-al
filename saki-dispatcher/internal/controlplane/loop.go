@@ -599,6 +599,14 @@ func (s *Service) DispatchStep(ctx context.Context, commandID string, stepID str
 	})
 }
 
+func (s *Service) StopTask(ctx context.Context, commandID string, taskID string, reason string) (CommandResult, error) {
+	return s.StopStep(ctx, commandID, taskID, reason)
+}
+
+func (s *Service) DispatchTask(ctx context.Context, commandID string, taskID string) (CommandResult, error) {
+	return s.DispatchStep(ctx, commandID, taskID)
+}
+
 func (s *Service) listTickLoopIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return s.queries.ListTickLoopIDs(ctx, int32(max(1, limit)))
 }

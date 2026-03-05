@@ -792,7 +792,7 @@ func (x *AdvanceBranchHeadResponse) GetHeadCommitId() string {
 type DataRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	RequestId            string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId               string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId               string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	QueryType            RuntimeQueryType       `protobuf:"varint,3,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.domain.v1.RuntimeQueryType" json:"query_type,omitempty"`
 	ProjectId            string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	CommitId             string                 `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
@@ -841,9 +841,9 @@ func (x *DataRequest) GetRequestId() string {
 	return ""
 }
 
-func (x *DataRequest) GetStepId() string {
+func (x *DataRequest) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -1235,7 +1235,7 @@ type DataResponse struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	RequestId             string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	ReplyTo               string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId                string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId                string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	QueryType             RuntimeQueryType       `protobuf:"varint,4,opt,name=query_type,json=queryType,proto3,enum=saki.runtime.domain.v1.RuntimeQueryType" json:"query_type,omitempty"`
 	PayloadId             string                 `protobuf:"bytes,5,opt,name=payload_id,json=payloadId,proto3" json:"payload_id,omitempty"`
 	ChunkIndex            uint32                 `protobuf:"varint,6,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
@@ -1295,9 +1295,9 @@ func (x *DataResponse) GetReplyTo() string {
 	return ""
 }
 
-func (x *DataResponse) GetStepId() string {
+func (x *DataResponse) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -1382,7 +1382,7 @@ func (x *DataResponse) GetIsLastChunk() bool {
 type UploadTicketRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	ArtifactName  string                 `protobuf:"bytes,3,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
 	ContentType   string                 `protobuf:"bytes,4,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1426,9 +1426,9 @@ func (x *UploadTicketRequest) GetRequestId() string {
 	return ""
 }
 
-func (x *UploadTicketRequest) GetStepId() string {
+func (x *UploadTicketRequest) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -1451,7 +1451,7 @@ type UploadTicketResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	ReplyTo       string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	UploadUrl     string                 `protobuf:"bytes,4,opt,name=upload_url,json=uploadUrl,proto3" json:"upload_url,omitempty"`
 	StorageUri    string                 `protobuf:"bytes,5,opt,name=storage_uri,json=storageUri,proto3" json:"storage_uri,omitempty"`
 	Headers       map[string]string      `protobuf:"bytes,6,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -1503,9 +1503,9 @@ func (x *UploadTicketResponse) GetReplyTo() string {
 	return ""
 }
 
-func (x *UploadTicketResponse) GetStepId() string {
+func (x *UploadTicketResponse) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -1534,7 +1534,7 @@ func (x *UploadTicketResponse) GetHeaders() map[string]string {
 type DownloadTicketRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	ArtifactName  string                 `protobuf:"bytes,3,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1577,9 +1577,9 @@ func (x *DownloadTicketRequest) GetRequestId() string {
 	return ""
 }
 
-func (x *DownloadTicketRequest) GetStepId() string {
+func (x *DownloadTicketRequest) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -1595,7 +1595,7 @@ type DownloadTicketResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	ReplyTo       string                 `protobuf:"bytes,2,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`
-	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	ArtifactName  string                 `protobuf:"bytes,4,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
 	DownloadUrl   string                 `protobuf:"bytes,5,opt,name=download_url,json=downloadUrl,proto3" json:"download_url,omitempty"`
 	StorageUri    string                 `protobuf:"bytes,6,opt,name=storage_uri,json=storageUri,proto3" json:"storage_uri,omitempty"`
@@ -1648,9 +1648,9 @@ func (x *DownloadTicketResponse) GetReplyTo() string {
 	return ""
 }
 
-func (x *DownloadTicketResponse) GetStepId() string {
+func (x *DownloadTicketResponse) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -1754,7 +1754,7 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\vDataRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12G\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12G\n" +
 	"\n" +
 	"query_type\x18\x03 \x01(\x0e2(.saki.runtime.domain.v1.RuntimeQueryTypeR\tqueryType\x12\x1d\n" +
 	"\n" +
@@ -1799,7 +1799,7 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
 	"\breply_to\x18\x02 \x01(\tR\areplyTo\x12\x17\n" +
-	"\astep_id\x18\x03 \x01(\tR\x06stepId\x12G\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12G\n" +
 	"\n" +
 	"query_type\x18\x04 \x01(\x0e2(.saki.runtime.domain.v1.RuntimeQueryTypeR\tqueryType\x12\x1d\n" +
 	"\n" +
@@ -1820,14 +1820,14 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x13UploadTicketRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12#\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12#\n" +
 	"\rartifact_name\x18\x03 \x01(\tR\fartifactName\x12!\n" +
 	"\fcontent_type\x18\x04 \x01(\tR\vcontentType\"\xba\x02\n" +
 	"\x14UploadTicketResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
 	"\breply_to\x18\x02 \x01(\tR\areplyTo\x12\x17\n" +
-	"\astep_id\x18\x03 \x01(\tR\x06stepId\x12\x1d\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
 	"upload_url\x18\x04 \x01(\tR\tuploadUrl\x12\x1f\n" +
 	"\vstorage_uri\x18\x05 \x01(\tR\n" +
@@ -1839,13 +1839,13 @@ const file_runtime_domain_proto_rawDesc = "" +
 	"\x15DownloadTicketRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12#\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12#\n" +
 	"\rartifact_name\x18\x03 \x01(\tR\fartifactName\"\xe7\x02\n" +
 	"\x16DownloadTicketResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
 	"\breply_to\x18\x02 \x01(\tR\areplyTo\x12\x17\n" +
-	"\astep_id\x18\x03 \x01(\tR\x06stepId\x12#\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12#\n" +
 	"\rartifact_name\x18\x04 \x01(\tR\fartifactName\x12!\n" +
 	"\fdownload_url\x18\x05 \x01(\tR\vdownloadUrl\x12\x1f\n" +
 	"\vstorage_uri\x18\x06 \x01(\tR\n" +

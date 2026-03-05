@@ -26,15 +26,15 @@ message RetryRoundRequest {
   string reason = 3;
 }
 
-message StepCommandRequest {
+message TaskCommandRequest {
   string command_id = 1;
-  string step_id = 2;
+  string task_id = 2;
   string reason = 3;
 }
 
-message DispatchStepRequest {
+message DispatchTaskRequest {
   string command_id = 1;
-  string step_id = 2;
+  string task_id = 2;
 }
 
 message CommandResponse {
@@ -51,7 +51,7 @@ message RuntimeSummaryResponse {
   int64 busy_executors = 2;
   int64 pending_assign_count = 3;
   int64 pending_stop_count = 4;
-  int64 queued_step_count = 5;
+  int64 queued_task_count = 5;
   string latest_heartbeat_at = 6;
 }
 
@@ -66,7 +66,7 @@ message ExecutorRead {
   string version = 2;
   string status = 3;
   bool is_online = 4;
-  string current_step_id = 5;
+  string current_task_id = 5;
   string last_seen_at = 6;
   string last_error = 7;
   int64 pending_assign_count = 8;
@@ -112,8 +112,8 @@ service DispatcherAdmin {
   rpc ConfirmLoop(ConfirmLoopRequest) returns (CommandResponse);
   rpc StopRound(RoundCommandRequest) returns (CommandResponse);
   rpc RetryRound(RetryRoundRequest) returns (CommandResponse);
-  rpc StopStep(StepCommandRequest) returns (CommandResponse);
-  rpc DispatchStep(DispatchStepRequest) returns (CommandResponse);
+  rpc StopTask(TaskCommandRequest) returns (CommandResponse);
+  rpc DispatchTask(DispatchTaskRequest) returns (CommandResponse);
   rpc GetRuntimeSummary(RuntimeSummaryRequest) returns (RuntimeSummaryResponse);
   rpc GetExecutor(ExecutorReadRequest) returns (ExecutorReadResponse);
   rpc ListExecutors(ExecutorListRequest) returns (ExecutorListResponse);

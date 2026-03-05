@@ -151,7 +151,7 @@ func (d *Dispatcher) HandleHeartbeat(heartbeat *runtimecontrolv1.Heartbeat) erro
 		return fmt.Errorf("executor 尚未注册: %s", executorID)
 	}
 	session.Busy = heartbeat.GetBusy()
-	currentStepID := strings.TrimSpace(heartbeat.GetCurrentStepId())
+	currentStepID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
 	session.CurrentStepID = currentStepID
 	session.Status = "idle"
 	if session.Busy {
@@ -167,7 +167,7 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 	defer d.mu.Unlock()
 
 	switch ack.GetType() {
-	case runtimecontrolv1.AckType_ACK_TYPE_ASSIGN_STEP:
+	case runtimecontrolv1.AckType_ACK_TYPE_ASSIGN_TASK:
 		pending, ok := d.pendingAssign[ack.GetAckFor()]
 		if ok {
 			delete(d.pendingAssign, ack.GetAckFor())
@@ -179,7 +179,7 @@ func (d *Dispatcher) HandleAck(ack *runtimecontrolv1.Ack) {
 				}
 			}
 		}
-	case runtimecontrolv1.AckType_ACK_TYPE_STOP_STEP:
+	case runtimecontrolv1.AckType_ACK_TYPE_STOP_TASK:
 		delete(d.pendingStop, ack.GetAckFor())
 	}
 }
@@ -256,13 +256,13 @@ func supportsPlugin(session *ExecutorSession, pluginID string) bool {
 	return false
 }
 
-func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *runtimecontrolv1.StepPayload) bool {
+func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *runtimecontrolv1.TaskPayload) bool {
 	executorID = strings.TrimSpace(executorID)
 	requestID = strings.TrimSpace(requestID)
 	if executorID == "" || requestID == "" || step == nil {
 		return false
 	}
-	stepID := strings.TrimSpace(step.GetStepId())
+	stepID := strings.TrimSpace(step.GetTaskId())
 	if stepID == "" {
 		return false
 	}
@@ -276,10 +276,10 @@ func (d *Dispatcher) DispatchStep(executorID string, requestID string, step *run
 	}
 
 	message := &runtimecontrolv1.RuntimeMessage{
-		Payload: &runtimecontrolv1.RuntimeMessage_AssignStep{
-			AssignStep: &runtimecontrolv1.AssignStep{
+		Payload: &runtimecontrolv1.RuntimeMessage_AssignTask{
+			AssignTask: &runtimecontrolv1.AssignTask{
 				RequestId: requestID,
-				Step:      step,
+				Task:      step,
 			},
 		},
 	}
@@ -329,10 +329,10 @@ func (d *Dispatcher) StopStep(stepID string, reason string) (string, bool) {
 	}
 
 	message := &runtimecontrolv1.RuntimeMessage{
-		Payload: &runtimecontrolv1.RuntimeMessage_StopStep{
-			StopStep: &runtimecontrolv1.StopStep{
+		Payload: &runtimecontrolv1.RuntimeMessage_StopTask{
+			StopTask: &runtimecontrolv1.StopTask{
 				RequestId: requestID,
-				StepId:    stepID,
+				TaskId:    stepID,
 				Reason:    reason,
 			},
 		},

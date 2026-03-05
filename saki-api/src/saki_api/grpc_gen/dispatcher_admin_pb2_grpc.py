@@ -74,14 +74,14 @@ class DispatcherAdminStub(object):
                 request_serializer=dispatcher__admin__pb2.RetryRoundRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
                 _registered_method=True)
-        self.StopStep = channel.unary_unary(
-                '/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep',
-                request_serializer=dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
+        self.StopTask = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/StopTask',
+                request_serializer=dispatcher__admin__pb2.TaskCommandRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
                 _registered_method=True)
-        self.DispatchStep = channel.unary_unary(
-                '/saki.dispatcher.admin.v1.DispatcherAdmin/DispatchStep',
-                request_serializer=dispatcher__admin__pb2.DispatchStepRequest.SerializeToString,
+        self.DispatchTask = channel.unary_unary(
+                '/saki.dispatcher.admin.v1.DispatcherAdmin/DispatchTask',
+                request_serializer=dispatcher__admin__pb2.DispatchTaskRequest.SerializeToString,
                 response_deserializer=dispatcher__admin__pb2.CommandResponse.FromString,
                 _registered_method=True)
         self.GetRuntimeSummary = channel.unary_unary(
@@ -167,13 +167,13 @@ class DispatcherAdminServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def StopStep(self, request, context):
+    def StopTask(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def DispatchStep(self, request, context):
+    def DispatchTask(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -258,14 +258,14 @@ def add_DispatcherAdminServicer_to_server(servicer, server):
                     request_deserializer=dispatcher__admin__pb2.RetryRoundRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
-            'StopStep': grpc.unary_unary_rpc_method_handler(
-                    servicer.StopStep,
-                    request_deserializer=dispatcher__admin__pb2.StepCommandRequest.FromString,
+            'StopTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopTask,
+                    request_deserializer=dispatcher__admin__pb2.TaskCommandRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
-            'DispatchStep': grpc.unary_unary_rpc_method_handler(
-                    servicer.DispatchStep,
-                    request_deserializer=dispatcher__admin__pb2.DispatchStepRequest.FromString,
+            'DispatchTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.DispatchTask,
+                    request_deserializer=dispatcher__admin__pb2.DispatchTaskRequest.FromString,
                     response_serializer=dispatcher__admin__pb2.CommandResponse.SerializeToString,
             ),
             'GetRuntimeSummary': grpc.unary_unary_rpc_method_handler(
@@ -526,7 +526,7 @@ class DispatcherAdmin(object):
             _registered_method=True)
 
     @staticmethod
-    def StopStep(request,
+    def StopTask(request,
             target,
             options=(),
             channel_credentials=None,
@@ -539,8 +539,8 @@ class DispatcherAdmin(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/saki.dispatcher.admin.v1.DispatcherAdmin/StopStep',
-            dispatcher__admin__pb2.StepCommandRequest.SerializeToString,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/StopTask',
+            dispatcher__admin__pb2.TaskCommandRequest.SerializeToString,
             dispatcher__admin__pb2.CommandResponse.FromString,
             options,
             channel_credentials,
@@ -553,7 +553,7 @@ class DispatcherAdmin(object):
             _registered_method=True)
 
     @staticmethod
-    def DispatchStep(request,
+    def DispatchTask(request,
             target,
             options=(),
             channel_credentials=None,
@@ -566,8 +566,8 @@ class DispatcherAdmin(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/saki.dispatcher.admin.v1.DispatcherAdmin/DispatchStep',
-            dispatcher__admin__pb2.DispatchStepRequest.SerializeToString,
+            '/saki.dispatcher.admin.v1.DispatcherAdmin/DispatchTask',
+            dispatcher__admin__pb2.DispatchTaskRequest.SerializeToString,
             dispatcher__admin__pb2.CommandResponse.FromString,
             options,
             channel_credentials,

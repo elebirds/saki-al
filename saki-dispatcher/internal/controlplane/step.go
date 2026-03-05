@@ -300,8 +300,8 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		inputCommitID = stepPayload.InputCommitID.String()
 	}
 	dependsOnStepIDs := uuidSliceToStringSlice(stepPayload.DependsOnStepIDs)
-	message := &runtimecontrolv1.StepPayload{
-		StepId:           stepPayload.StepID.String(),
+	message := &runtimecontrolv1.TaskPayload{
+		TaskId:           stepPayload.StepID.String(),
 		RoundId:          stepPayload.RoundID.String(),
 		LoopId:           stepPayload.LoopID.String(),
 		ProjectId:        stepPayload.ProjectID.String(),
@@ -315,7 +315,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		Resources:        stepPayload.Resources,
 		RoundIndex:       int32(stepPayload.RoundIndex),
 		Attempt:          int32(stepPayload.Attempt),
-		DependsOnStepIds: dependsOnStepIDs,
+		DependsOnTaskIds: dependsOnStepIDs,
 	}
 	payloadRaw, err := protojson.Marshal(message)
 	if err != nil {
@@ -504,16 +504,16 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 	return nil
 }
 
-func (s *Service) OnStepEvent(ctx context.Context, event *runtimecontrolv1.StepEvent) error {
+func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskEvent) error {
 	if !s.dbEnabled() || event == nil {
 		return nil
 	}
-	stepID, err := parseUUID(event.GetStepId())
+	stepID, err := parseUUID(event.GetTaskId())
 	if err != nil {
 		return nil
 	}
 
-	eventType, eventPayload, statusValue := decodeStepEvent(event)
+	eventType, eventPayload, statusValue := decodeTaskEvent(event)
 	if eventType == "" {
 		return nil
 	}
@@ -602,11 +602,11 @@ func (s *Service) OnStepEvent(ctx context.Context, event *runtimecontrolv1.StepE
 	return tx.Commit(ctx)
 }
 
-func (s *Service) OnStepResult(ctx context.Context, result *runtimecontrolv1.StepResult) error {
+func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.TaskResult) error {
 	if !s.dbEnabled() || result == nil {
 		return nil
 	}
-	stepID, err := parseUUID(result.GetStepId())
+	stepID, err := parseUUID(result.GetTaskId())
 	if err != nil {
 		return nil
 	}
@@ -903,7 +903,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	for _, artifactName := range artifactCandidates {
 		resp, ticketErr := s.domainClient.CreateDownloadTicket(ctx, &runtimedomainv1.DownloadTicketRequest{
 			RequestId:    uuid.NewString(),
-			StepId:       trainStepID.String(),
+			TaskId:       trainStepID.String(),
 			ArtifactName: artifactName,
 		})
 		if ticketErr == nil {
@@ -1271,7 +1271,7 @@ func (s *Service) dispatchOutboxBatch(ctx context.Context, limit int) (int, erro
 	}
 	sent := 0
 	for _, row := range rows {
-		payload := &runtimecontrolv1.StepPayload{}
+		payload := &runtimecontrolv1.TaskPayload{}
 		if err := protojson.Unmarshal(row.Payload, payload); err != nil {
 			nextAt := toPGTimestamp(time.Now().UTC().Add(dispatchOutboxRetryBackoff(row.AttemptCount)))
 			_, retryErr := s.queries.MarkDispatchOutboxRetry(ctx, db.MarkDispatchOutboxRetryParams{
@@ -1404,7 +1404,7 @@ func (s *Service) OnExecutorHeartbeat(ctx context.Context, heartbeat *runtimecon
 	if heartbeat.GetBusy() {
 		status = "busy"
 	}
-	currentStepID := strings.TrimSpace(heartbeat.GetCurrentStepId())
+	currentStepID := strings.TrimSpace(heartbeat.GetCurrentTaskId())
 	currentStepUUID, err := parseNullableUUID(currentStepID)
 	if err != nil {
 		return err

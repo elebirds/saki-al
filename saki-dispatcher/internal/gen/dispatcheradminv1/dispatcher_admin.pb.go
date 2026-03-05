@@ -253,29 +253,29 @@ func (x *RetryRoundRequest) GetReason() string {
 	return ""
 }
 
-type StepCommandRequest struct {
+type TaskCommandRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StepCommandRequest) Reset() {
-	*x = StepCommandRequest{}
+func (x *TaskCommandRequest) Reset() {
+	*x = TaskCommandRequest{}
 	mi := &file_dispatcher_admin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StepCommandRequest) String() string {
+func (x *TaskCommandRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StepCommandRequest) ProtoMessage() {}
+func (*TaskCommandRequest) ProtoMessage() {}
 
-func (x *StepCommandRequest) ProtoReflect() protoreflect.Message {
+func (x *TaskCommandRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_dispatcher_admin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -287,54 +287,54 @@ func (x *StepCommandRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StepCommandRequest.ProtoReflect.Descriptor instead.
-func (*StepCommandRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use TaskCommandRequest.ProtoReflect.Descriptor instead.
+func (*TaskCommandRequest) Descriptor() ([]byte, []int) {
 	return file_dispatcher_admin_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *StepCommandRequest) GetCommandId() string {
+func (x *TaskCommandRequest) GetCommandId() string {
 	if x != nil {
 		return x.CommandId
 	}
 	return ""
 }
 
-func (x *StepCommandRequest) GetStepId() string {
+func (x *TaskCommandRequest) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
 
-func (x *StepCommandRequest) GetReason() string {
+func (x *TaskCommandRequest) GetReason() string {
 	if x != nil {
 		return x.Reason
 	}
 	return ""
 }
 
-type DispatchStepRequest struct {
+type DispatchTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,2,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DispatchStepRequest) Reset() {
-	*x = DispatchStepRequest{}
+func (x *DispatchTaskRequest) Reset() {
+	*x = DispatchTaskRequest{}
 	mi := &file_dispatcher_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DispatchStepRequest) String() string {
+func (x *DispatchTaskRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DispatchStepRequest) ProtoMessage() {}
+func (*DispatchTaskRequest) ProtoMessage() {}
 
-func (x *DispatchStepRequest) ProtoReflect() protoreflect.Message {
+func (x *DispatchTaskRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_dispatcher_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -346,21 +346,21 @@ func (x *DispatchStepRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DispatchStepRequest.ProtoReflect.Descriptor instead.
-func (*DispatchStepRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use DispatchTaskRequest.ProtoReflect.Descriptor instead.
+func (*DispatchTaskRequest) Descriptor() ([]byte, []int) {
 	return file_dispatcher_admin_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *DispatchStepRequest) GetCommandId() string {
+func (x *DispatchTaskRequest) GetCommandId() string {
 	if x != nil {
 		return x.CommandId
 	}
 	return ""
 }
 
-func (x *DispatchStepRequest) GetStepId() string {
+func (x *DispatchTaskRequest) GetTaskId() string {
 	if x != nil {
-		return x.StepId
+		return x.TaskId
 	}
 	return ""
 }
@@ -475,7 +475,7 @@ type RuntimeSummaryResponse struct {
 	BusyExecutors      int64                  `protobuf:"varint,2,opt,name=busy_executors,json=busyExecutors,proto3" json:"busy_executors,omitempty"`
 	PendingAssignCount int64                  `protobuf:"varint,3,opt,name=pending_assign_count,json=pendingAssignCount,proto3" json:"pending_assign_count,omitempty"`
 	PendingStopCount   int64                  `protobuf:"varint,4,opt,name=pending_stop_count,json=pendingStopCount,proto3" json:"pending_stop_count,omitempty"`
-	QueuedStepCount    int64                  `protobuf:"varint,5,opt,name=queued_step_count,json=queuedStepCount,proto3" json:"queued_step_count,omitempty"`
+	QueuedTaskCount    int64                  `protobuf:"varint,5,opt,name=queued_task_count,json=queuedTaskCount,proto3" json:"queued_task_count,omitempty"`
 	LatestHeartbeatAt  string                 `protobuf:"bytes,6,opt,name=latest_heartbeat_at,json=latestHeartbeatAt,proto3" json:"latest_heartbeat_at,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -539,9 +539,9 @@ func (x *RuntimeSummaryResponse) GetPendingStopCount() int64 {
 	return 0
 }
 
-func (x *RuntimeSummaryResponse) GetQueuedStepCount() int64 {
+func (x *RuntimeSummaryResponse) GetQueuedTaskCount() int64 {
 	if x != nil {
-		return x.QueuedStepCount
+		return x.QueuedTaskCount
 	}
 	return 0
 }
@@ -639,7 +639,7 @@ type ExecutorRead struct {
 	Version            string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	Status             string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
 	IsOnline           bool                   `protobuf:"varint,4,opt,name=is_online,json=isOnline,proto3" json:"is_online,omitempty"`
-	CurrentStepId      string                 `protobuf:"bytes,5,opt,name=current_step_id,json=currentStepId,proto3" json:"current_step_id,omitempty"`
+	CurrentTaskId      string                 `protobuf:"bytes,5,opt,name=current_task_id,json=currentTaskId,proto3" json:"current_task_id,omitempty"`
 	LastSeenAt         string                 `protobuf:"bytes,6,opt,name=last_seen_at,json=lastSeenAt,proto3" json:"last_seen_at,omitempty"`
 	LastError          string                 `protobuf:"bytes,7,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
 	PendingAssignCount int64                  `protobuf:"varint,8,opt,name=pending_assign_count,json=pendingAssignCount,proto3" json:"pending_assign_count,omitempty"`
@@ -706,9 +706,9 @@ func (x *ExecutorRead) GetIsOnline() bool {
 	return false
 }
 
-func (x *ExecutorRead) GetCurrentStepId() string {
+func (x *ExecutorRead) GetCurrentTaskId() string {
 	if x != nil {
-		return x.CurrentStepId
+		return x.CurrentTaskId
 	}
 	return ""
 }
@@ -1085,15 +1085,15 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x19\n" +
 	"\bround_id\x18\x02 \x01(\tR\aroundId\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\"d\n" +
-	"\x12StepCommandRequest\x12\x1d\n" +
+	"\x12TaskCommandRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\x12\x16\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\"M\n" +
-	"\x13DispatchStepRequest\x12\x1d\n" +
+	"\x13DispatchTaskRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x17\n" +
-	"\astep_id\x18\x02 \x01(\tR\x06stepId\"\x81\x01\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\"\x81\x01\n" +
 	"\x0fCommandResponse\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x16\n" +
@@ -1107,7 +1107,7 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\x0ebusy_executors\x18\x02 \x01(\x03R\rbusyExecutors\x120\n" +
 	"\x14pending_assign_count\x18\x03 \x01(\x03R\x12pendingAssignCount\x12,\n" +
 	"\x12pending_stop_count\x18\x04 \x01(\x03R\x10pendingStopCount\x12*\n" +
-	"\x11queued_step_count\x18\x05 \x01(\x03R\x0fqueuedStepCount\x12.\n" +
+	"\x11queued_task_count\x18\x05 \x01(\x03R\x0fqueuedTaskCount\x12.\n" +
 	"\x13latest_heartbeat_at\x18\x06 \x01(\tR\x11latestHeartbeatAt\"6\n" +
 	"\x13ExecutorReadRequest\x12\x1f\n" +
 	"\vexecutor_id\x18\x01 \x01(\tR\n" +
@@ -1119,7 +1119,7 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1b\n" +
 	"\tis_online\x18\x04 \x01(\bR\bisOnline\x12&\n" +
-	"\x0fcurrent_step_id\x18\x05 \x01(\tR\rcurrentStepId\x12 \n" +
+	"\x0fcurrent_task_id\x18\x05 \x01(\tR\rcurrentTaskId\x12 \n" +
 	"\flast_seen_at\x18\x06 \x01(\tR\n" +
 	"lastSeenAt\x12\x1d\n" +
 	"\n" +
@@ -1161,8 +1161,8 @@ const file_dispatcher_admin_proto_rawDesc = "" +
 	"\tStopRound\x12-.saki.dispatcher.admin.v1.RoundCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12d\n" +
 	"\n" +
 	"RetryRound\x12+.saki.dispatcher.admin.v1.RetryRoundRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12c\n" +
-	"\bStopStep\x12,.saki.dispatcher.admin.v1.StepCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12h\n" +
-	"\fDispatchStep\x12-.saki.dispatcher.admin.v1.DispatchStepRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12v\n" +
+	"\bStopTask\x12,.saki.dispatcher.admin.v1.TaskCommandRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12h\n" +
+	"\fDispatchTask\x12-.saki.dispatcher.admin.v1.DispatchTaskRequest\x1a).saki.dispatcher.admin.v1.CommandResponse\x12v\n" +
 	"\x11GetRuntimeSummary\x12/.saki.dispatcher.admin.v1.RuntimeSummaryRequest\x1a0.saki.dispatcher.admin.v1.RuntimeSummaryResponse\x12l\n" +
 	"\vGetExecutor\x12-.saki.dispatcher.admin.v1.ExecutorReadRequest\x1a..saki.dispatcher.admin.v1.ExecutorReadResponse\x12n\n" +
 	"\rListExecutors\x12-.saki.dispatcher.admin.v1.ExecutorListRequest\x1a..saki.dispatcher.admin.v1.ExecutorListResponse\x12\x85\x01\n" +
@@ -1188,8 +1188,8 @@ var file_dispatcher_admin_proto_goTypes = []any{
 	(*ConfirmLoopRequest)(nil),             // 1: saki.dispatcher.admin.v1.ConfirmLoopRequest
 	(*RoundCommandRequest)(nil),            // 2: saki.dispatcher.admin.v1.RoundCommandRequest
 	(*RetryRoundRequest)(nil),              // 3: saki.dispatcher.admin.v1.RetryRoundRequest
-	(*StepCommandRequest)(nil),             // 4: saki.dispatcher.admin.v1.StepCommandRequest
-	(*DispatchStepRequest)(nil),            // 5: saki.dispatcher.admin.v1.DispatchStepRequest
+	(*TaskCommandRequest)(nil),             // 4: saki.dispatcher.admin.v1.TaskCommandRequest
+	(*DispatchTaskRequest)(nil),            // 5: saki.dispatcher.admin.v1.DispatchTaskRequest
 	(*CommandResponse)(nil),                // 6: saki.dispatcher.admin.v1.CommandResponse
 	(*RuntimeSummaryRequest)(nil),          // 7: saki.dispatcher.admin.v1.RuntimeSummaryRequest
 	(*RuntimeSummaryResponse)(nil),         // 8: saki.dispatcher.admin.v1.RuntimeSummaryResponse
@@ -1214,8 +1214,8 @@ var file_dispatcher_admin_proto_depIdxs = []int32{
 	1,  // 7: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:input_type -> saki.dispatcher.admin.v1.ConfirmLoopRequest
 	2,  // 8: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:input_type -> saki.dispatcher.admin.v1.RoundCommandRequest
 	3,  // 9: saki.dispatcher.admin.v1.DispatcherAdmin.RetryRound:input_type -> saki.dispatcher.admin.v1.RetryRoundRequest
-	4,  // 10: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:input_type -> saki.dispatcher.admin.v1.StepCommandRequest
-	5,  // 11: saki.dispatcher.admin.v1.DispatcherAdmin.DispatchStep:input_type -> saki.dispatcher.admin.v1.DispatchStepRequest
+	4,  // 10: saki.dispatcher.admin.v1.DispatcherAdmin.StopTask:input_type -> saki.dispatcher.admin.v1.TaskCommandRequest
+	5,  // 11: saki.dispatcher.admin.v1.DispatcherAdmin.DispatchTask:input_type -> saki.dispatcher.admin.v1.DispatchTaskRequest
 	7,  // 12: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:input_type -> saki.dispatcher.admin.v1.RuntimeSummaryRequest
 	9,  // 13: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:input_type -> saki.dispatcher.admin.v1.ExecutorReadRequest
 	10, // 14: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:input_type -> saki.dispatcher.admin.v1.ExecutorListRequest
@@ -1230,8 +1230,8 @@ var file_dispatcher_admin_proto_depIdxs = []int32{
 	6,  // 23: saki.dispatcher.admin.v1.DispatcherAdmin.ConfirmLoop:output_type -> saki.dispatcher.admin.v1.CommandResponse
 	6,  // 24: saki.dispatcher.admin.v1.DispatcherAdmin.StopRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
 	6,  // 25: saki.dispatcher.admin.v1.DispatcherAdmin.RetryRound:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	6,  // 26: saki.dispatcher.admin.v1.DispatcherAdmin.StopStep:output_type -> saki.dispatcher.admin.v1.CommandResponse
-	6,  // 27: saki.dispatcher.admin.v1.DispatcherAdmin.DispatchStep:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	6,  // 26: saki.dispatcher.admin.v1.DispatcherAdmin.StopTask:output_type -> saki.dispatcher.admin.v1.CommandResponse
+	6,  // 27: saki.dispatcher.admin.v1.DispatcherAdmin.DispatchTask:output_type -> saki.dispatcher.admin.v1.CommandResponse
 	8,  // 28: saki.dispatcher.admin.v1.DispatcherAdmin.GetRuntimeSummary:output_type -> saki.dispatcher.admin.v1.RuntimeSummaryResponse
 	12, // 29: saki.dispatcher.admin.v1.DispatcherAdmin.GetExecutor:output_type -> saki.dispatcher.admin.v1.ExecutorReadResponse
 	13, // 30: saki.dispatcher.admin.v1.DispatcherAdmin.ListExecutors:output_type -> saki.dispatcher.admin.v1.ExecutorListResponse

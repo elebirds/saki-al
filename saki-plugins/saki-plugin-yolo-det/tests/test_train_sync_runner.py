@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
 from threading import Event
 
 import pytest
 
 from saki_plugin_yolo_det.metrics_parser import normalize_metrics
-from saki_plugin_yolo_det.train_sync_runner import _build_epoch_update_callback, _collect_epoch_raw_metrics
+from saki_plugin_yolo_det.train_sync_runner import (
+    _build_epoch_update_callback,
+    _build_train_kwargs,
+    _collect_epoch_raw_metrics,
+)
 
 
 def _to_float(value, default: float) -> float:
@@ -67,3 +72,39 @@ def test_epoch_callback_emits_loss_after_metric_merge():
     assert payload["metrics"]["map50"] == pytest.approx(0.73)
     assert payload["metrics"]["precision"] == pytest.approx(0.8)
     assert payload["metrics"]["loss"] == pytest.approx(0.6)
+
+
+def test_build_train_kwargs_for_deterministic_mode():
+    kwargs = _build_train_kwargs(
+        dataset_yaml=Path("/tmp/dataset.yaml"),
+        epochs=10,
+        batch=8,
+        imgsz=640,
+        patience=20,
+        device="cuda:0",
+        train_seed=123,
+        deterministic=True,
+        train_project_dir=Path("/tmp/project"),
+    )
+    assert kwargs["seed"] == 123
+    assert kwargs["deterministic"] is True
+    assert kwargs["workers"] == 0
+    assert kwargs["amp"] is False
+
+
+def test_build_train_kwargs_for_non_deterministic_mode():
+    kwargs = _build_train_kwargs(
+        dataset_yaml=Path("/tmp/dataset.yaml"),
+        epochs=10,
+        batch=8,
+        imgsz=640,
+        patience=20,
+        device="cuda:0",
+        train_seed=123,
+        deterministic=False,
+        train_project_dir=Path("/tmp/project"),
+    )
+    assert kwargs["seed"] == 123
+    assert kwargs["deterministic"] is False
+    assert "workers" not in kwargs
+    assert "amp" not in kwargs

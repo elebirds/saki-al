@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import random
 from pathlib import Path
 from threading import Event
 from typing import Any, Callable
@@ -40,6 +42,72 @@ def _collect_epoch_raw_metrics(*, trainer: Any, to_float: ToFloatFn) -> dict[str
     return merged
 
 
+def _seed_reproducibility(train_seed: int, *, deterministic: bool) -> None:
+    seed = max(0, int(train_seed))
+    random.seed(seed)
+
+    try:
+        import numpy as np  # type: ignore
+
+        np.random.seed(seed)
+    except Exception:
+        pass
+
+    try:
+        import torch  # type: ignore
+
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+        if deterministic:
+            # 官方推荐的确定性配置，避免同 seed 训练产生漂移。
+            os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+            try:
+                torch.use_deterministic_algorithms(True, warn_only=True)
+            except Exception:
+                pass
+            try:
+                torch.backends.cudnn.deterministic = True
+                torch.backends.cudnn.benchmark = False
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _build_train_kwargs(
+    *,
+    dataset_yaml: Path,
+    epochs: int,
+    batch: int,
+    imgsz: int,
+    patience: int,
+    device: Any,
+    train_seed: int,
+    deterministic: bool,
+    train_project_dir: Path,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "data": str(dataset_yaml),
+        "epochs": int(epochs),
+        "batch": int(batch),
+        "imgsz": int(imgsz),
+        "patience": int(patience),
+        "device": device,
+        "seed": int(train_seed),
+        "deterministic": bool(deterministic),
+        "project": str(train_project_dir),
+        "name": "yolo_train",
+        "exist_ok": True,
+        "verbose": False,
+    }
+    if deterministic:
+        # 严格确定性：关闭多 worker 与 AMP，减少跨轮漂移。
+        kwargs["workers"] = 0
+        kwargs["amp"] = False
+    return kwargs
+
+
 def run_train_sync(
     *,
     workspace: WorkspaceProtocol,
@@ -64,6 +132,7 @@ def run_train_sync(
     if stop_flag.is_set():
         raise RuntimeError("training stopped before start")
 
+    _seed_reproducibility(train_seed, deterministic=deterministic)
     YOLO = load_yolo()
     ensure_cjk_plot_font()
     # Pass task= so YOLO knows whether to train detect or obb.
@@ -83,18 +152,17 @@ def run_train_sync(
     # Ultralytics falling back to its default "runs/detect" tree.
     train_project_dir = workspace.artifacts_dir.resolve()
     train_output = model.train(
-        data=str(dataset_yaml),
-        epochs=epochs,
-        batch=batch,
-        imgsz=imgsz,
-        patience=patience,
-        device=device,
-        seed=int(train_seed),
-        deterministic=bool(deterministic),
-        project=str(train_project_dir),
-        name="yolo_train",
-        exist_ok=True,
-        verbose=False,
+        **_build_train_kwargs(
+            dataset_yaml=dataset_yaml,
+            epochs=epochs,
+            batch=batch,
+            imgsz=imgsz,
+            patience=patience,
+            device=device,
+            train_seed=train_seed,
+            deterministic=deterministic,
+            train_project_dir=train_project_dir,
+        )
     )
     if stop_flag.is_set():
         raise RuntimeError("training stopped")

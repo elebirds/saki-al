@@ -3,15 +3,21 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 )
 
 const (
 	pgErrCodeUndefinedColumn = "42703"
 	pgErrCodeUndefinedTable  = "42P01"
+	pgErrCodeUndefinedObject = "42704"
+	pgErrCodeTypeMismatch    = "42804"
+	pgErrCodeInvalidTextRep  = "22P02"
 )
 
 func isTaskBridgeSchemaErr(err error) bool {
@@ -20,6 +26,22 @@ func isTaskBridgeSchemaErr(err error) bool {
 		return false
 	}
 	return pgErr.Code == pgErrCodeUndefinedColumn || pgErr.Code == pgErrCodeUndefinedTable
+}
+
+func isTaskBridgeCompatErr(err error) bool {
+	if isTaskBridgeSchemaErr(err) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch pgErr.Code {
+	case pgErrCodeUndefinedObject, pgErrCodeTypeMismatch, pgErrCodeInvalidTextRep:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) resolveStepIDForTaskTx(
@@ -115,4 +137,57 @@ func (s *Service) resolveTaskIDsForStepDependenciesTx(
 		dependencyTaskIDs = append(dependencyTaskIDs, stepID.String())
 	}
 	return dependencyTaskIDs, nil
+}
+
+func (s *Service) ensureTaskBindingForStepTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	stepID uuid.UUID,
+	projectID uuid.UUID,
+	stepType db.Steptype,
+	pluginID string,
+	inputCommitID *uuid.UUID,
+	resolvedParams []byte,
+	maxAttempts int,
+) (uuid.UUID, bool, error) {
+	taskID := uuid.New()
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	pluginID = strings.TrimSpace(pluginID)
+
+	_, err := tx.Exec(
+		ctx,
+		`INSERT INTO task(
+		  created_at, updated_at, id, project_id, kind, task_type, status,
+		  plugin_id, input_commit_id, resolved_params, assigned_executor_id,
+		  attempt, max_attempts, started_at, ended_at, last_error
+		) VALUES (
+		  now(), now(), $1, $2, 'STEP'::taskkind, $3::tasktype, 'PENDING'::taskstatus,
+		  $4, $5, $6::jsonb, NULL, 1, $7, NULL, NULL, NULL
+		)`,
+		taskID,
+		projectID,
+		string(stepType),
+		pluginID,
+		inputCommitID,
+		resolvedParams,
+		maxAttempts,
+	)
+	if err != nil {
+		if isTaskBridgeCompatErr(err) {
+			return uuid.Nil, false, nil
+		}
+		return uuid.Nil, false, err
+	}
+
+	_, err = tx.Exec(ctx, "UPDATE step SET task_id = $1 WHERE id = $2", taskID, stepID)
+	if err != nil {
+		if isTaskBridgeCompatErr(err) {
+			_, _ = tx.Exec(ctx, "DELETE FROM task WHERE id = $1", taskID)
+			return uuid.Nil, false, nil
+		}
+		return uuid.Nil, false, err
+	}
+	return taskID, true, nil
 }

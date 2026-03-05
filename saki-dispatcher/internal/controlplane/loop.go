@@ -1142,6 +1142,24 @@ func (s *Service) createRoundAttemptTx(
 		}); err != nil {
 			return nil, err
 		}
+		if _, bound, bindErr := s.ensureTaskBindingForStepTx(
+			ctx,
+			tx,
+			stepID,
+			projectID,
+			stepSpec.StepType,
+			loop.ModelArch,
+			sourceCommitID,
+			[]byte(stepParamsJSON),
+			3,
+		); bindErr != nil {
+			return nil, bindErr
+		} else if !bound {
+			s.logger.Debug().
+				Str("step_id", stepID.String()).
+				Str("step_type", strings.ToLower(string(stepSpec.StepType))).
+				Msg("step-task 绑定跳过，回退兼容 step_id 执行语义")
+		}
 		previousStepID = &stepID
 		if idx == 0 {
 			s.dispatcher.QueueStep(stepID.String())

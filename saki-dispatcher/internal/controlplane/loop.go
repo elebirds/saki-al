@@ -600,11 +600,69 @@ func (s *Service) DispatchStep(ctx context.Context, commandID string, stepID str
 }
 
 func (s *Service) StopTask(ctx context.Context, commandID string, taskID string, reason string) (CommandResult, error) {
-	return s.StopStep(ctx, commandID, taskID, reason)
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "user requested stop"
+	}
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
+		taskPGID, err := parseUUID(taskID)
+		if err != nil {
+			return "rejected", "task not found", nil
+		}
+		stepPGID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskPGID)
+		if err != nil {
+			return "", "", err
+		}
+		if !found {
+			return "rejected", "task not found", nil
+		}
+		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return "rejected", "task not found", nil
+			}
+			return "", "", err
+		}
+		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
+			return "applied", "task already in terminal state", nil
+		}
+		if err := s.qtx(tx).CancelStepByID(ctx, db.CancelStepByIDParams{
+			LastError: toPGText(reason),
+			StepID:    stepPGID,
+		}); err != nil {
+			return "", "", err
+		}
+		s.dispatcher.StopStep(stepPGID.String(), reason)
+		return "applied", "stop_task applied", nil
+	})
 }
 
 func (s *Service) DispatchTask(ctx context.Context, commandID string, taskID string) (CommandResult, error) {
-	return s.DispatchStep(ctx, commandID, taskID)
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
+		taskPGID, err := parseUUID(taskID)
+		if err != nil {
+			return "rejected", "task not found", nil
+		}
+		stepPGID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskPGID)
+		if err != nil {
+			return "", "", err
+		}
+		if !found {
+			return "rejected", "task not found", nil
+		}
+		currentState, err := s.qtx(tx).GetStepState(ctx, stepPGID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return "rejected", "task not found", nil
+			}
+			return "", "", err
+		}
+		if currentState == stepSucceeded || currentState == stepFailed || currentState == stepCancelled || currentState == stepSkipped {
+			return "rejected", "task is in terminal state", nil
+		}
+		s.dispatcher.QueueStep(stepPGID.String())
+		return "applied", "dispatch_task queued", nil
+	})
 }
 
 func (s *Service) listTickLoopIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {

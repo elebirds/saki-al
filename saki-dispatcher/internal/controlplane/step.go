@@ -299,9 +299,18 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	if stepPayload.InputCommitID != nil {
 		inputCommitID = stepPayload.InputCommitID.String()
 	}
-	dependsOnStepIDs := uuidSliceToStringSlice(stepPayload.DependsOnStepIDs)
+	dispatchTaskID := stepPayload.StepID
+	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
+		return false, mapErr
+	} else if ok {
+		dispatchTaskID = mappedTaskID
+	}
+	dependsOnTaskIDs, err := s.resolveTaskIDsForStepDependenciesTx(ctx, tx, stepPayload.DependsOnStepIDs)
+	if err != nil {
+		return false, err
+	}
 	message := &runtimecontrolv1.TaskPayload{
-		TaskId:           stepPayload.StepID.String(),
+		TaskId:           dispatchTaskID.String(),
 		RoundId:          stepPayload.RoundID.String(),
 		LoopId:           stepPayload.LoopID.String(),
 		ProjectId:        stepPayload.ProjectID.String(),
@@ -315,7 +324,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		Resources:        stepPayload.Resources,
 		RoundIndex:       int32(stepPayload.RoundIndex),
 		Attempt:          int32(stepPayload.Attempt),
-		DependsOnTaskIds: dependsOnStepIDs,
+		DependsOnTaskIds: dependsOnTaskIDs,
 	}
 	payloadRaw, err := protojson.Marshal(message)
 	if err != nil {
@@ -508,7 +517,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	if !s.dbEnabled() || event == nil {
 		return nil
 	}
-	stepID, err := parseUUID(event.GetTaskId())
+	taskID, err := parseUUID(event.GetTaskId())
 	if err != nil {
 		return nil
 	}
@@ -528,6 +537,14 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	stepID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return tx.Commit(ctx)
+	}
 
 	if inserted, err := s.insertStepEventTx(
 		ctx,
@@ -606,7 +623,7 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	if !s.dbEnabled() || result == nil {
 		return nil
 	}
-	stepID, err := parseUUID(result.GetTaskId())
+	taskID, err := parseUUID(result.GetTaskId())
 	if err != nil {
 		return nil
 	}
@@ -629,6 +646,14 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	stepID, found, err := s.resolveStepIDForTaskTx(ctx, tx, taskID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return tx.Commit(ctx)
+	}
 
 	affected, err := s.updateStepResultGuardedTx(ctx, tx, stepID, targetState, []byte(metricsJSON), []byte(artifactsJSON), strings.TrimSpace(result.GetErrorMessage()))
 	if err != nil {
@@ -893,6 +918,12 @@ func (s *Service) buildDispatchResolvedParamsTx(
 		}
 		return nil, err
 	}
+	trainTaskID := trainStepID
+	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, trainStepID); mapErr != nil {
+		return nil, mapErr
+	} else if ok {
+		trainTaskID = mappedTaskID
+	}
 
 	var (
 		downloadResp     *runtimedomainv1.DownloadTicketResponse
@@ -903,7 +934,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	for _, artifactName := range artifactCandidates {
 		resp, ticketErr := s.domainClient.CreateDownloadTicket(ctx, &runtimedomainv1.DownloadTicketRequest{
 			RequestId:    uuid.NewString(),
-			TaskId:       trainStepID.String(),
+			TaskId:       trainTaskID.String(),
 			ArtifactName: artifactName,
 		})
 		if ticketErr == nil {
@@ -959,6 +990,7 @@ func (s *Service) buildDispatchResolvedParamsTx(
 	paramsMap["plugin"] = pluginParams
 	paramsMap["_runtime_model_handoff"] = map[string]any{
 		"from_step_id":  trainStepID.String(),
+		"from_task_id":  trainTaskID.String(),
 		"artifact_name": selectedArtifact,
 		"download_url":  downloadURL,
 		"injected_at":   time.Now().UTC().Format(time.RFC3339),

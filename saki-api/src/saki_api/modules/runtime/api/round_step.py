@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from saki_api.modules.shared.modeling.enums import (
     LoopActionKey,
@@ -184,6 +184,20 @@ class StepRead(BaseModel):
     last_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("depends_on_step_ids", mode="before")
+    @classmethod
+    def _normalize_depends_on_step_ids(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        return value
+
+    @field_validator("resolved_params", "metrics", "artifacts", mode="before")
+    @classmethod
+    def _normalize_json_dicts(cls, value: Any) -> Dict[str, Any]:
+        if value is None:
+            return {}
+        return value
 
 
 class StepCommandResponse(BaseModel):

@@ -303,6 +303,7 @@ class SnapshotPolicyMixin:
             f"invalid {field_name}: {raw}. allowed values=[{allowed_values}], names=[{allowed_names}]"
         )
 
+    @staticmethod
     def _compute_snapshot_train_stats(
         *,
         rows: list[ALSnapshotSample],

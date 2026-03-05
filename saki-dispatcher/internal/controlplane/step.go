@@ -1089,7 +1089,7 @@ func (s *Service) issueCancelAttemptTx(
 ) (bool, error) {
 	requestID := uuid.New()
 	commandID := cancelAttemptCommandID(stepID, attempt)
-	inserted, err := s.insertCommandLogTx(ctx, tx, requestID, commandID, "cancel_attempt", stepID.String())
+	inserted, err := s.insertCommandLogTx(ctx, tx, requestID, commandID)
 	if err != nil {
 		return false, err
 	}

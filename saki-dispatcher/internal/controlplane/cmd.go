@@ -13,15 +13,12 @@ import (
 func (s *Service) withCommand(
 	ctx context.Context,
 	commandID string,
-	commandType string,
-	resourceID string,
 	action func(tx pgx.Tx, normalizedCommandID string) (status string, detail string, err error),
 ) (CommandResult, error) {
 	commandID = strings.TrimSpace(commandID)
 	if commandID == "" {
 		commandID = uuid.NewString()
 	}
-	resourceID = strings.TrimSpace(resourceID)
 	if !s.dbEnabled() {
 		return CommandResult{
 			CommandID: commandID,
@@ -51,7 +48,7 @@ func (s *Service) withCommand(
 	}
 
 	requestID := uuid.New()
-	inserted, err := s.insertCommandLogTx(ctx, tx, requestID, commandID, commandType, resourceID)
+	inserted, err := s.insertCommandLogTx(ctx, tx, requestID, commandID)
 	if err != nil {
 		return CommandResult{}, err
 	}
@@ -72,7 +69,7 @@ func (s *Service) withCommand(
 
 	status, detail, err := action(tx, commandID)
 	if err != nil {
-		s.persistCommandFailure(ctx, commandID, commandType, resourceID, err)
+		s.persistCommandFailure(ctx, commandID, err)
 		return CommandResult{}, err
 	}
 	if status == "" {
@@ -104,8 +101,6 @@ func (s *Service) withCommand(
 func (s *Service) persistCommandFailure(
 	ctx context.Context,
 	commandID string,
-	commandType string,
-	resourceID string,
 	actionErr error,
 ) {
 	if !s.dbEnabled() {
@@ -118,7 +113,7 @@ func (s *Service) persistCommandFailure(
 	defer tx.Rollback(ctx)
 
 	requestID := uuid.New()
-	if _, err := s.insertCommandLogTx(ctx, tx, requestID, commandID, commandType, resourceID); err != nil {
+	if _, err := s.insertCommandLogTx(ctx, tx, requestID, commandID); err != nil {
 		return
 	}
 	detail := strings.TrimSpace(actionErr.Error())
@@ -156,11 +151,7 @@ func (s *Service) insertCommandLogTx(
 	tx pgx.Tx,
 	requestID uuid.UUID,
 	commandID string,
-	commandType string,
-	resourceID string,
 ) (bool, error) {
-	_ = commandType
-	_ = resourceID
 	affected, err := s.qtx(tx).InsertCommandLog(ctx, db.InsertCommandLogParams{
 		RequestID: requestID,
 		CommandID: commandID,

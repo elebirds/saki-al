@@ -26,7 +26,7 @@ type alConfirmRevealProbe struct {
 }
 
 func (s *Service) StartLoop(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, "start_loop", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, commandID string) (string, string, error) {
 		loopUUID, err := parseUUID(loopID)
 		if err != nil {
 			return "rejected", "loop not found", nil
@@ -52,7 +52,7 @@ func (s *Service) StartLoop(ctx context.Context, commandID string, loopID string
 }
 
 func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, "start_next_round", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, commandID string) (string, string, error) {
 		loopUUID, err := parseUUID(loopID)
 		if err != nil {
 			return "rejected", "loop not found", nil
@@ -142,7 +142,7 @@ func (s *Service) StartNextRound(ctx context.Context, commandID string, loopID s
 }
 
 func (s *Service) PauseLoop(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, "pause_loop", loopID, func(tx pgx.Tx, _ string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
 		loopUUID, err := parseUUID(loopID)
 		if err != nil {
 			return "rejected", "loop not found", nil
@@ -165,7 +165,7 @@ func (s *Service) PauseLoop(ctx context.Context, commandID string, loopID string
 }
 
 func (s *Service) ResumeLoop(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, "resume_loop", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, commandID string) (string, string, error) {
 		loopUUID, err := parseUUID(loopID)
 		if err != nil {
 			return "rejected", "loop not found", nil
@@ -191,7 +191,7 @@ func (s *Service) ResumeLoop(ctx context.Context, commandID string, loopID strin
 }
 
 func (s *Service) StopLoop(ctx context.Context, commandID string, loopID string) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, "stop_loop", loopID, func(tx pgx.Tx, _ string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
 		loopUUID, err := parseUUID(loopID)
 		if err != nil {
 			return "rejected", "loop not found", nil
@@ -239,7 +239,7 @@ func (s *Service) ConfirmLoop(
 		}
 	}
 
-	return s.withCommand(ctx, commandID, "confirm_loop", loopID, func(tx pgx.Tx, commandID string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, commandID string) (string, string, error) {
 		if parseErr != nil {
 			return "rejected", "loop not found", nil
 		}
@@ -403,7 +403,7 @@ func (s *Service) StopRound(ctx context.Context, commandID string, roundID strin
 	if reason == "" {
 		reason = "user requested stop"
 	}
-	return s.withCommand(ctx, commandID, "stop_round", roundID, func(tx pgx.Tx, _ string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
 		roundPGID, err := parseUUID(roundID)
 		if err != nil {
 			return "rejected", "round not found", nil
@@ -459,7 +459,7 @@ func (s *Service) RetryRound(
 	if reason == "" {
 		reason = "user requested retry"
 	}
-	return s.withCommand(ctx, commandID, "retry_round", roundID, func(tx pgx.Tx, _ string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
 		roundPGID, err := parseUUID(roundID)
 		if err != nil {
 			return "rejected", "round not found", nil
@@ -550,7 +550,7 @@ func (s *Service) StopStep(ctx context.Context, commandID string, stepID string,
 	if reason == "" {
 		reason = "user requested stop"
 	}
-	return s.withCommand(ctx, commandID, "stop_step", stepID, func(tx pgx.Tx, _ string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
 		stepPGID, err := parseUUID(stepID)
 		if err != nil {
 			return "rejected", "step not found", nil
@@ -579,7 +579,7 @@ func (s *Service) StopStep(ctx context.Context, commandID string, stepID string,
 }
 
 func (s *Service) DispatchStep(ctx context.Context, commandID string, stepID string) (CommandResult, error) {
-	return s.withCommand(ctx, commandID, "dispatch_step", stepID, func(tx pgx.Tx, _ string) (string, string, error) {
+	return s.withCommand(ctx, commandID, func(tx pgx.Tx, _ string) (string, string, error) {
 		stepPGID, err := parseUUID(stepID)
 		if err != nil {
 			return "rejected", "step not found", nil

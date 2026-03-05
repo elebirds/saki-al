@@ -8,11 +8,11 @@ import uuid
 from typing import List, Dict, Any
 
 from loguru import logger
-from sqlmodel import select
+from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.modules.access.domain.rbac import (
-    Role, RoleType, RolePermission,
+    Role, RoleType, RolePermission, UserSystemRole, ResourceMember,
     Permissions,
 )
 
@@ -432,6 +432,63 @@ PRESET_ROLES: List[Dict[str, Any]] = [
 ]
 
 
+async def _reconcile_deprecated_preset_roles(
+    session: AsyncSession,
+    *,
+    preset_role_names: set[str],
+) -> None:
+    """
+    Handle legacy system preset roles that no longer exist in PRESET_ROLES.
+
+    Strategy:
+    1. If role has no user/resource assignments -> delete it directly.
+    2. If role is still assigned -> demote to custom role (is_system=False)
+       and remove super-admin/admin/default flags, so it is manageable.
+    """
+    rows = await session.exec(
+        select(Role).where(Role.is_system == True)  # noqa: E712
+    )
+    system_roles = list(rows.all())
+
+    for role in system_roles:
+        if role.name in preset_role_names:
+            continue
+
+        user_assignment_count = (
+            await session.scalar(
+                select(func.count()).select_from(UserSystemRole).where(UserSystemRole.role_id == role.id)
+            )
+        ) or 0
+        resource_assignment_count = (
+            await session.scalar(
+                select(func.count()).select_from(ResourceMember).where(ResourceMember.role_id == role.id)
+            )
+        ) or 0
+        assignment_count = int(user_assignment_count) + int(resource_assignment_count)
+
+        if assignment_count == 0:
+            perm_rows = await session.exec(
+                select(RolePermission).where(RolePermission.role_id == role.id)
+            )
+            for perm in perm_rows.all():
+                await session.delete(perm)
+            await session.delete(role)
+            logger.info("已清理废弃预置角色 role_name={} role_id={}", role.name, role.id)
+            continue
+
+        role.is_system = False
+        role.is_default = False
+        role.is_super_admin = False
+        role.is_admin = False
+        role.is_supremo = False
+        session.add(role)
+        logger.warning(
+            "检测到废弃预置角色仍被使用，已转为自定义角色 role_name={} role_id={} assignment_count={}",
+            role.name,
+            role.id,
+            assignment_count,
+        )
+
 
 async def init_preset_roles(session: AsyncSession) -> None:
     """
@@ -445,6 +502,8 @@ async def init_preset_roles(session: AsyncSession) -> None:
     Returns:
         Dictionary mapping role names to Role objects
     """
+    preset_role_names = {preset["name"] for preset in PRESET_ROLES}
+
     for preset in PRESET_ROLES:
         # Check if role already exists
         result = await session.exec(
@@ -503,3 +562,8 @@ async def init_preset_roles(session: AsyncSession) -> None:
                     permission=permission,
                 )
             )
+
+    await _reconcile_deprecated_preset_roles(
+        session,
+        preset_role_names=preset_role_names,
+    )

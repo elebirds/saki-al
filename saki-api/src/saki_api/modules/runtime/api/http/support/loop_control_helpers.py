@@ -67,7 +67,7 @@ async def dispatch_loop_command(
         raise InternalServerErrorAppException("dispatcher loop command failed") from exc
 
 
-def to_prediction_set_read(row, *, task=None) -> PredictionRead:
+def to_prediction_read(row, *, task=None) -> PredictionRead:
     task_status = getattr(task, "status", None)
     return PredictionRead(
         id=row.id,
@@ -90,4 +90,4 @@ def to_prediction_set_read(row, *, task=None) -> PredictionRead:
 
 
 def to_prediction_task_read(row, *, task=None) -> PredictionTaskRead:
-    return PredictionTaskRead(**to_prediction_set_read(row, task=task).model_dump())
+    return PredictionTaskRead(**to_prediction_read(row, task=task).model_dump())

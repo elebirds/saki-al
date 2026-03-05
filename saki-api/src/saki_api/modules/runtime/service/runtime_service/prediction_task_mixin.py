@@ -455,7 +455,7 @@ class PredictionTaskMixin:
         return rows
 
     @transactional
-    async def generate_prediction_set(
+    async def create_prediction(
         self,
         *,
         project_id: uuid.UUID,
@@ -463,7 +463,7 @@ class PredictionTaskMixin:
         actor_user_id: uuid.UUID | None,
     ) -> PredictionSet:
         if actor_user_id is None:
-            raise BadRequestAppException("actor user is required when generating prediction_set")
+            raise BadRequestAppException("actor user is required when creating prediction")
 
         explicit_model_id = self._safe_uuid(payload.get("model_id"))
         explicit_artifact_name = str(payload.get("artifact_name") or "best.pt").strip() or "best.pt"
@@ -637,8 +637,8 @@ class PredictionTaskMixin:
         return self._attach_task_projection(prediction_set, None)
 
     @transactional
-    async def settle_prediction_task(self, *, prediction_set_id: uuid.UUID) -> PredictionSet:
-        prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_set_id)
+    async def settle_prediction_task(self, *, prediction_id: uuid.UUID) -> PredictionSet:
+        prediction_set = await self.prediction_set_repo.get_by_id_or_raise(prediction_id)
         task = await self.task_repo.get_by_id(prediction_set.task_id)
         if task is None:
             failed = await self.prediction_set_repo.update(
@@ -669,7 +669,7 @@ class PredictionTaskMixin:
             task_meta = prediction_set.params.get("_prediction_task") if isinstance(prediction_set.params, dict) else {}
             target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
             if target_branch_id is None:
-                raise BadRequestAppException("prediction_set is missing target_branch_id")
+                raise BadRequestAppException("prediction is missing target_branch_id")
             base_commit_id = prediction_set.base_commit_id or task.input_commit_id
             if base_commit_id is None:
                 branch_row = await self.project_gateway.get_branch(target_branch_id)
@@ -734,49 +734,49 @@ class PredictionTaskMixin:
             ) or prediction_set
         return self._attach_task_projection(prediction_set, None)
 
-    async def list_prediction_sets(self, *, project_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:
+    async def list_predictions(self, *, project_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:
         rows = await self.prediction_set_repo.list_by_project(project_id=project_id, limit=limit)
         settled_rows: list[PredictionSet] = []
         for row in rows:
-            settled_rows.append(await self.settle_prediction_task(prediction_set_id=row.id))
+            settled_rows.append(await self.settle_prediction_task(prediction_id=row.id))
         return settled_rows
 
     async def list_prediction_tasks(self, *, project_id: uuid.UUID, limit: int = 100) -> list[PredictionSet]:
-        return await self.list_prediction_sets(project_id=project_id, limit=limit)
+        return await self.list_predictions(project_id=project_id, limit=limit)
 
     async def get_prediction_task(self, *, task_id: uuid.UUID) -> PredictionSet:
         prediction = await self.prediction_set_repo.get_by_task_id(task_id)
         if prediction is None:
             raise NotFoundAppException("prediction task not found")
-        return await self.settle_prediction_task(prediction_set_id=prediction.id)
+        return await self.settle_prediction_task(prediction_id=prediction.id)
 
-    async def get_prediction_set_detail(
+    async def get_prediction_detail(
         self,
         *,
-        prediction_set_id: uuid.UUID,
+        prediction_id: uuid.UUID,
         item_limit: int = 2000,
     ) -> tuple[PredictionSet, list[PredictionItem]]:
-        prediction_set = await self.settle_prediction_task(prediction_set_id=prediction_set_id)
-        items = await self.prediction_item_repo.list_by_prediction_set(prediction_set_id, limit=item_limit)
+        prediction_set = await self.settle_prediction_task(prediction_id=prediction_id)
+        items = await self.prediction_item_repo.list_by_prediction(prediction_id, limit=item_limit)
         return prediction_set, items
 
     @transactional
-    async def apply_prediction_set(
+    async def apply_prediction(
         self,
         *,
-        prediction_set_id: uuid.UUID,
+        prediction_id: uuid.UUID,
         actor_user_id: uuid.UUID | None,
         branch_name: str | None = None,
         dry_run: bool = False,
     ) -> dict[str, Any]:
         if actor_user_id is None:
-            raise BadRequestAppException("actor user is required when applying prediction_set")
-        prediction_set = await self.settle_prediction_task(prediction_set_id=prediction_set_id)
+            raise BadRequestAppException("actor user is required when applying prediction")
+        prediction_set = await self.settle_prediction_task(prediction_id=prediction_id)
         project_id = prediction_set.project_id
-        items = await self.prediction_item_repo.list_by_prediction_set(prediction_set_id, limit=100000)
+        items = await self.prediction_item_repo.list_by_prediction(prediction_id, limit=100000)
         if not items:
             return {
-                "prediction_set_id": prediction_set.id,
+                "prediction_id": prediction_set.id,
                 "applied_count": 0,
                 "status": str(prediction_set.status or "ready"),
             }
@@ -801,12 +801,12 @@ class PredictionTaskMixin:
                 if loop is not None:
                     branch_row = await self.project_gateway.get_branch(loop.branch_id)
         if branch_row is None:
-            raise BadRequestAppException("target branch not found when applying prediction_set")
+            raise BadRequestAppException("target branch not found when applying prediction")
 
         resolved_branch_name = str(getattr(branch_row, "name", "") or "").strip() or "master"
         branch_head_commit_id: uuid.UUID | None = getattr(branch_row, "head_commit_id", None)
         try:
-            resolver = await self._prediction_resolver_for_set(prediction_set_id=prediction_set_id)
+            resolver = await self._prediction_resolver_for_set(prediction_set_id=prediction_id)
         except PredictionResolveError as exc:
             prediction_set = await self.prediction_set_repo.update(
                 prediction_set.id,
@@ -816,7 +816,7 @@ class PredictionTaskMixin:
                 },
             ) or prediction_set
             return {
-                "prediction_set_id": prediction_set.id,
+                "prediction_id": prediction_set.id,
                 "applied_count": 0,
                 "status": str(prediction_set.status or "failed"),
             }
@@ -870,7 +870,7 @@ class PredictionTaskMixin:
                         },
                     ) or prediction_set
                     return {
-                        "prediction_set_id": prediction_set.id,
+                        "prediction_id": prediction_set.id,
                         "applied_count": 0,
                         "status": str(prediction_set.status or "failed"),
                     }
@@ -887,7 +887,7 @@ class PredictionTaskMixin:
                         },
                     ) or prediction_set
                     return {
-                        "prediction_set_id": prediction_set.id,
+                        "prediction_id": prediction_set.id,
                         "applied_count": 0,
                         "status": str(prediction_set.status or "failed"),
                     }
@@ -909,7 +909,7 @@ class PredictionTaskMixin:
                             },
                         ) or prediction_set
                         return {
-                            "prediction_set_id": prediction_set.id,
+                            "prediction_id": prediction_set.id,
                             "applied_count": 0,
                             "status": str(prediction_set.status or "failed"),
                         }
@@ -979,7 +979,7 @@ class PredictionTaskMixin:
             ) or prediction_set
 
         return {
-            "prediction_set_id": prediction_set.id,
+            "prediction_id": prediction_set.id,
             "applied_count": int(applied_count),
             "status": str(prediction_set.status or ("ready" if dry_run else "applied")),
         }

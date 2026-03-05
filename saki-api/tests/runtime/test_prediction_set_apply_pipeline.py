@@ -253,7 +253,7 @@ async def _create_prediction_task(
     }
     if predict_conf is not None:
         payload["predict_conf"] = float(predict_conf)
-    return await service.generate_prediction_set(
+    return await service.create_prediction(
         project_id=ctx.project.id,
         payload=payload,
         actor_user_id=ctx.actor.id,
@@ -317,7 +317,7 @@ async def test_generate_prediction_set_supports_model_id_payload(prediction_set_
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
 
-        prediction_set = await service.generate_prediction_set(
+        prediction_set = await service.create_prediction(
             project_id=ctx.project.id,
             payload={
                 "model_id": str(ctx.model.id),
@@ -452,8 +452,8 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
         settled = await service.get_prediction_task(task_id=prediction_set.task_id)
         assert settled.status == "ready"
 
-        _, items = await service.get_prediction_set_detail(
-            prediction_set_id=prediction_set.id,
+        _, items = await service.get_prediction_detail(
+            prediction_id=prediction_set.id,
             item_limit=10,
         )
         assert len(items) == 1
@@ -545,7 +545,7 @@ async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_en
             ],
         )
 
-        _, items = await service.get_prediction_set_detail(prediction_set_id=prediction_set.id, item_limit=10)
+        _, items = await service.get_prediction_detail(prediction_id=prediction_set.id, item_limit=10)
         assert len(items) == 1
         assert items[0].sample_id == sample_b.id
 
@@ -612,8 +612,8 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
             ],
         )
 
-        result = await service.apply_prediction_set(
-            prediction_set_id=prediction_set.id,
+        result = await service.apply_prediction(
+            prediction_id=prediction_set.id,
             actor_user_id=ctx.actor.id,
             branch_name="master",
             dry_run=False,
@@ -687,8 +687,8 @@ async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_e
             ],
         )
 
-        result = await service.apply_prediction_set(
-            prediction_set_id=prediction_set.id,
+        result = await service.apply_prediction(
+            prediction_id=prediction_set.id,
             actor_user_id=ctx.actor.id,
             branch_name="master",
             dry_run=False,
@@ -717,7 +717,7 @@ async def test_generate_prediction_set_requires_base_commit_id(prediction_set_en
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
         with pytest.raises(BadRequestAppException):
-            await service.generate_prediction_set(
+            await service.create_prediction(
                 project_id=ctx.project.id,
                 payload={
                     "model_id": str(ctx.model.id),
@@ -737,7 +737,7 @@ async def test_generate_prediction_set_rejects_legacy_payload_fields(prediction_
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
         with pytest.raises(BadRequestAppException, match="legacy prediction fields are not supported"):
-            await service.generate_prediction_set(
+            await service.create_prediction(
                 project_id=ctx.project.id,
                 payload={
                     "model_id": str(ctx.model.id),

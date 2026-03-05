@@ -14,7 +14,7 @@ from saki_api.modules.access.api.dependencies import get_current_user_id
 from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.modules.runtime.api.http.support.loop_control_helpers import (
     ensure_loop_project_perm,
-    to_prediction_set_read,
+    to_prediction_read,
     to_prediction_task_read,
 )
 from saki_api.modules.runtime.api.round_step import (
@@ -46,7 +46,7 @@ async def create_prediction(
         project_id=project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    result = await runtime_service.generate_prediction_set(
+    result = await runtime_service.create_prediction(
         project_id=project_id,
         payload=payload.model_dump(exclude_none=True),
         actor_user_id=current_user_id,
@@ -63,7 +63,7 @@ async def create_prediction(
             )
     settled = await runtime_service.get_prediction_task(task_id=result.task_id)
     task = await runtime_service.task_repo.get_by_id(settled.task_id)
-    return to_prediction_set_read(settled, task=task)
+    return to_prediction_read(settled, task=task)
 
 
 @router.get("/projects/{project_id}/predictions", response_model=list[PredictionRead])
@@ -81,12 +81,12 @@ async def list_predictions(
         project_id=project_id,
         required=Permissions.LOOP_READ,
     )
-    rows = await runtime_service.list_prediction_sets(project_id=project_id, limit=limit)
+    rows = await runtime_service.list_predictions(project_id=project_id, limit=limit)
     task_ids = [row.task_id for row in rows if getattr(row, "task_id", None) is not None]
     tasks = await runtime_service.task_repo.get_by_ids(task_ids)
     task_by_id = {item.id: item for item in tasks}
     return [
-        to_prediction_set_read(
+        to_prediction_read(
             row,
             task=task_by_id.get(getattr(row, "task_id", None)),
         )
@@ -150,20 +150,20 @@ async def get_prediction_detail(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    prediction_set, items = await runtime_service.get_prediction_set_detail(
-        prediction_set_id=prediction_id,
+    prediction, items = await runtime_service.get_prediction_detail(
+        prediction_id=prediction_id,
         item_limit=item_limit,
     )
     await ensure_loop_project_perm(
         session=session,
         current_user_id=current_user_id,
-        project_id=prediction_set.project_id,
+        project_id=prediction.project_id,
         required=Permissions.LOOP_READ,
     )
     return PredictionDetailRead(
-        prediction=to_prediction_set_read(
-            prediction_set,
-            task=(await runtime_service.task_repo.get_by_id(prediction_set.task_id) if prediction_set.task_id else None),
+        prediction=to_prediction_read(
+            prediction,
+            task=(await runtime_service.task_repo.get_by_id(prediction.task_id) if prediction.task_id else None),
         ),
         items=[
             {
@@ -190,21 +190,21 @@ async def apply_prediction(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    prediction_set = await runtime_service.prediction_repo.get_by_id_or_raise(prediction_id)
+    prediction = await runtime_service.prediction_repo.get_by_id_or_raise(prediction_id)
     await ensure_loop_project_perm(
         session=session,
         current_user_id=current_user_id,
-        project_id=prediction_set.project_id,
+        project_id=prediction.project_id,
         required=Permissions.LOOP_MANAGE,
     )
-    result = await runtime_service.apply_prediction_set(
-        prediction_set_id=prediction_id,
+    result = await runtime_service.apply_prediction(
+        prediction_id=prediction_id,
         actor_user_id=current_user_id,
         branch_name=payload.branch_name,
         dry_run=bool(payload.dry_run),
     )
     return PredictionApplyResponse(
-        prediction_id=result["prediction_set_id"],
+        prediction_id=result["prediction_id"],
         applied_count=int(result.get("applied_count", 0)),
         status=str(result.get("status") or "ready"),
     )

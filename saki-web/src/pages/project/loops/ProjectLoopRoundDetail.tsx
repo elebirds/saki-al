@@ -307,9 +307,7 @@ const ProjectLoopRoundDetail: React.FC = () => {
                 onOpenRoundOverview={() => setRoundOverviewOpen(true)}
                 onOpenLoopDetail={() => navigate(`/projects/${projectId}/loops/${loopId}`)}
                 onOpenPublishModel={() => navigate(`/projects/${projectId}/models?roundId=${round.id}`)}
-                onOpenPredictionTasks={() => navigate(
-                    `/projects/${projectId}/prediction-tasks?targetRoundId=${round.id}&artifactName=best.pt`,
-                )}
+                onOpenPredictionTasks={() => navigate(`/projects/${projectId}/prediction-tasks`)}
                 onSelectStep={handleSelectStep}
             />
 

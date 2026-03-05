@@ -50,14 +50,11 @@ import {
     LoopGateResponse,
     RoundMissingSamplesQuery,
     RoundMissingSamplesResponse,
-    PredictionSetApplyRequest,
-    PredictionSetApplyResponse,
+    PredictionApplyRequest,
+    PredictionApplyResponse,
     PredictionCreateRequest,
     PredictionDetailRead,
     PredictionRead,
-    PredictionSetDetailRead,
-    PredictionSetGenerateRequest,
-    PredictionSetRead,
     PredictionTaskRead,
     RoundPredictionCleanupResponse,
     LoopUpdateRequest,
@@ -1038,33 +1035,13 @@ export class RealApiService implements ApiService {
 
     async applyPrediction(
         predictionId: string,
-        payload: PredictionSetApplyRequest,
-    ): Promise<PredictionSetApplyResponse> {
-        const response = await this.client.post<PredictionSetApplyResponse>(
+        payload: PredictionApplyRequest,
+    ): Promise<PredictionApplyResponse> {
+        const response = await this.client.post<PredictionApplyResponse>(
             `/predictions/${predictionId}:apply`,
             payload ?? {},
         );
         return response.data;
-    }
-
-    // Compatibility wrappers during hard-cut migration.
-    async generatePredictionSet(projectId: string, payload: PredictionSetGenerateRequest): Promise<PredictionSetRead> {
-        return await this.createPrediction(projectId, payload);
-    }
-
-    async listPredictionSets(projectId: string, limit: number = 100): Promise<PredictionSetRead[]> {
-        return await this.listPredictions(projectId, limit);
-    }
-
-    async getPredictionSetDetail(predictionSetId: string, itemLimit: number = 1000): Promise<PredictionSetDetailRead> {
-        return await this.getPredictionDetail(predictionSetId, itemLimit);
-    }
-
-    async applyPredictionSet(
-        predictionSetId: string,
-        payload: PredictionSetApplyRequest,
-    ): Promise<PredictionSetApplyResponse> {
-        return await this.applyPrediction(predictionSetId, payload);
     }
 
     async cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse> {

@@ -969,7 +969,7 @@
         "createSuccess": "预测任务已创建",
         "createFailed": "创建预测任务失败",
         "applySuccess": "已应用到 Draft：{{count}} 条",
-        "applyFailed": "应用 PredictionSet 失败"
+        "applyFailed": "应用 Prediction 失败"
       },
       "table": {
         "taskId": "任务 ID",

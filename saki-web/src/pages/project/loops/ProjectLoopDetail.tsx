@@ -46,7 +46,7 @@ import {
     LoopSummary,
     RuntimeRound,
     RuntimeRoundEvent,
-    PredictionSetRead,
+    PredictionRead,
 } from '../../../types';
 import {mergeRuntimeRoundEvents, normalizeRuntimeRoundEvent} from './runtimeEventFormatter';
 
@@ -209,10 +209,10 @@ const ProjectLoopDetail: React.FC = () => {
     const [rounds, setRounds] = useState<RuntimeRound[]>([]);
     const [gateInfo, setGateInfo] = useState<LoopGateResponse | null>(null);
     const [snapshotInfo, setSnapshotInfo] = useState<LoopSnapshotRead | null>(null);
-    const [predictionSets, setPredictionSets] = useState<PredictionSetRead[]>([]);
+    const [predictions, setPredictions] = useState<PredictionRead[]>([]);
     const [predictionLoading, setPredictionLoading] = useState(false);
     const [predictionSubmitting, setPredictionSubmitting] = useState(false);
-    const [applyingPredictionSetId, setApplyingPredictionSetId] = useState<string>('');
+    const [applyingPredictionId, setApplyingPredictionId] = useState<string>('');
     const [predictionScopeOpen, setPredictionScopeOpen] = useState(false);
     const [predictionScopeStatus, setPredictionScopeStatus] = useState<'all' | 'unlabeled' | 'labeled' | 'draft'>('all');
     const [snapshotInitOpen, setSnapshotInitOpen] = useState(false);
@@ -299,8 +299,8 @@ const ProjectLoopDetail: React.FC = () => {
         } else {
             setSnapshotInfo(null);
         }
-        const predictionRows = await api.listPredictionSets(projectId, 50).catch(() => []);
-        setPredictionSets(predictionRows.filter((item) => item.loopId === loopId));
+        const predictionRows = await api.listPredictions(projectId, 50).catch(() => []);
+        setPredictions(predictionRows);
     }, [loopId, projectId]);
 
     const loadData = useCallback(async () => {
@@ -590,24 +590,24 @@ const ProjectLoopDetail: React.FC = () => {
         }
     };
 
-    const refreshPredictionSets = useCallback(async () => {
+    const refreshPredictions = useCallback(async () => {
         if (!loopId || !projectId) return;
         setPredictionLoading(true);
         try {
-            const rows = await api.listPredictionSets(projectId, 50);
-            setPredictionSets(rows.filter((item) => item.loopId === loopId));
+            const rows = await api.listPredictions(projectId, 50);
+            setPredictions(rows);
         } catch (error: any) {
-            messageApi.error(error?.message || '加载 PredictionSet 失败');
+            messageApi.error(error?.message || '加载 Prediction 失败');
         } finally {
             setPredictionLoading(false);
         }
     }, [loopId, projectId, messageApi]);
 
-    const handleGeneratePredictionSet = useCallback(async (status: 'all' | 'unlabeled' | 'labeled' | 'draft') => {
+    const handleGeneratePrediction = useCallback(async (status: 'all' | 'unlabeled' | 'labeled' | 'draft') => {
         if (!loopId || !projectId) return;
         const targetRoundId = latestRound?.id;
         if (!targetRoundId || !loop) {
-            messageApi.warning('当前没有可用 round 生成 PredictionSet');
+            messageApi.warning('当前没有可用 round 生成 Prediction');
             return;
         }
         const pluginId = String(latestRound?.pluginId || loop.modelArch || '').trim();
@@ -637,29 +637,29 @@ const ProjectLoopDetail: React.FC = () => {
                 scopeType: 'sample_status',
                 scopePayload: {status},
             });
-            messageApi.success(`PredictionSet 已生成：${row.id}`);
-            await refreshPredictionSets();
+            messageApi.success(`Prediction 已生成：${row.id}`);
+            await refreshPredictions();
             setPredictionScopeOpen(false);
         } catch (error: any) {
-            messageApi.error(error?.message || '生成 PredictionSet 失败');
+            messageApi.error(error?.message || '生成 Prediction 失败');
         } finally {
             setPredictionSubmitting(false);
         }
-    }, [loopId, projectId, latestRound?.id, latestRound?.pluginId, loop, refreshPredictionSets, messageApi]);
+    }, [loopId, projectId, latestRound?.id, latestRound?.pluginId, loop, refreshPredictions, messageApi]);
 
-    const handleApplyPredictionSet = useCallback(async (predictionSetId: string) => {
-        if (!predictionSetId) return;
-        setApplyingPredictionSetId(predictionSetId);
+    const handleApplyPrediction = useCallback(async (predictionId: string) => {
+        if (!predictionId) return;
+        setApplyingPredictionId(predictionId);
         try {
-            const result = await api.applyPrediction(predictionSetId, {});
+            const result = await api.applyPrediction(predictionId, {});
             messageApi.success(`已应用到 Draft：${result.appliedCount} 条`);
-            await refreshPredictionSets();
+            await refreshPredictions();
         } catch (error: any) {
-            messageApi.error(error?.message || '应用 PredictionSet 失败');
+            messageApi.error(error?.message || '应用 Prediction 失败');
         } finally {
-            setApplyingPredictionSetId('');
+            setApplyingPredictionId('');
         }
-    }, [refreshPredictionSets, messageApi]);
+    }, [refreshPredictions, messageApi]);
 
     const parseSampleIds = (raw?: string): string[] | undefined => {
         const text = String(raw || '').trim();
@@ -1143,13 +1143,13 @@ const ProjectLoopDetail: React.FC = () => {
 
             <Card
                 className="!border-github-border !bg-github-panel"
-                title="PredictionSet（循环外预测辅助标注）"
+                title="Prediction（循环外预测辅助标注）"
                 extra={(
                     <div className="flex items-center gap-2">
                         <Button onClick={() => navigate(`/projects/${projectId}/prediction-tasks`)}>
                             任务页
                         </Button>
-                        <Button onClick={() => void refreshPredictionSets()} loading={predictionLoading}>
+                        <Button onClick={() => void refreshPredictions()} loading={predictionLoading}>
                             刷新
                         </Button>
                         <Button type="primary" onClick={() => setPredictionScopeOpen(true)} loading={predictionSubmitting}>
@@ -1161,7 +1161,7 @@ const ProjectLoopDetail: React.FC = () => {
                 <Table
                     size="small"
                     rowKey={(row) => row.id}
-                    dataSource={predictionSets}
+                    dataSource={predictions}
                     pagination={{pageSize: 6, showSizeChanger: false}}
                     columns={[
                         {
@@ -1178,9 +1178,9 @@ const ProjectLoopDetail: React.FC = () => {
                         {
                             title: '来源',
                             width: 220,
-                            render: (_: unknown, row: PredictionSetRead) => (
+                            render: (_: unknown, row: PredictionRead) => (
                                 <Text type="secondary">
-                                    {row.sourceRoundId ? `round:${row.sourceRoundId.slice(0, 8)}...` : '-'}
+                                    {row.modelId ? `model:${row.modelId.slice(0, 8)}...` : '-'}
                                 </Text>
                             ),
                         },
@@ -1198,11 +1198,11 @@ const ProjectLoopDetail: React.FC = () => {
                         {
                             title: '操作',
                             width: 180,
-                            render: (_: unknown, row: PredictionSetRead) => (
+                            render: (_: unknown, row: PredictionRead) => (
                                 <Button
                                     size="small"
-                                    onClick={() => void handleApplyPredictionSet(row.id)}
-                                    loading={applyingPredictionSetId === row.id}
+                                    onClick={() => void handleApplyPrediction(row.id)}
+                                    loading={applyingPredictionId === row.id}
                                     disabled={row.status === 'applied'}
                                 >
                                     应用到 Draft
@@ -1214,10 +1214,10 @@ const ProjectLoopDetail: React.FC = () => {
             </Card>
 
             <Modal
-                title="生成 PredictionSet"
+                title="生成 Prediction"
                 open={predictionScopeOpen}
                 onCancel={() => setPredictionScopeOpen(false)}
-                onOk={() => void handleGeneratePredictionSet(predictionScopeStatus)}
+                onOk={() => void handleGeneratePrediction(predictionScopeStatus)}
                 okText="生成"
                 confirmLoading={predictionSubmitting}
             >

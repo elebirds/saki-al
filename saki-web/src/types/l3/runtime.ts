@@ -27,8 +27,6 @@ export type LoopActionKey =
     | 'snapshot_init'
     | 'snapshot_update'
     | 'selection_adjust'
-    | 'generate_prediction_set'
-    | 'apply_prediction_set'
     | 'read'
     | 'observe'
     | 'annotate';
@@ -410,11 +408,8 @@ export interface PredictionCreateRequest {
 export interface PredictionRead {
     id: string;
     projectId: string;
-    loopId?: string | null;
     pluginId: string;
-    sourceRoundId?: string | null;
-    sourceStepId?: string | null;
-    modelId?: string | null;
+    modelId: string;
     baseCommitId?: string | null;
     taskId: string;
     taskStatus?: RuntimeTaskStatus | null;
@@ -457,13 +452,6 @@ export interface PredictionApplyResponse {
     appliedCount: number;
     status: string;
 }
-
-// Hard-cut aliases for gradual callsite migration.
-export type PredictionSetGenerateRequest = PredictionCreateRequest;
-export type PredictionSetRead = PredictionRead;
-export type PredictionSetDetailRead = PredictionDetailRead;
-export type PredictionSetApplyRequest = PredictionApplyRequest;
-export type PredictionSetApplyResponse = PredictionApplyResponse;
 
 export interface StepArtifactDownload {
     stepId: string;

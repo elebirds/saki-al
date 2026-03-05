@@ -145,34 +145,29 @@ class PredictionTaskMixin:
                 return key, dict(raw_value)
         return None
 
-    async def _resolve_prediction_model_source(
+    async def _resolve_prediction_model_artifact(
         self,
         *,
         project_id: uuid.UUID,
         plugin_id: str,
-        model_source: dict[str, Any],
+        model_id: uuid.UUID,
+        artifact_name: str,
     ) -> tuple[uuid.UUID, str, str]:
-        kind = str(model_source.get("kind") or "").strip().lower()
-        artifact_name = str(model_source.get("artifact_name") or "best.pt").strip() or "best.pt"
-        if kind != "model":
-            raise BadRequestAppException("model_source.kind must be model")
-        model_id = self._safe_uuid(model_source.get("model_id"))
-        if model_id is None:
-            raise BadRequestAppException("model_source.model_id is required when kind=model")
+        resolved_artifact_name = str(artifact_name or "best.pt").strip() or "best.pt"
         model = await self.model_repo.get_by_id_or_raise(model_id)
         if model.project_id != project_id:
-            raise BadRequestAppException("model_source.model_id does not belong to project")
+            raise BadRequestAppException("model_id does not belong to project")
         if str(model.plugin_id or "").strip() != plugin_id:
             raise BadRequestAppException("plugin_id mismatch with model.plugin_id")
         artifact_match = self._match_artifact_payload(
             artifacts=model.artifacts if isinstance(model.artifacts, dict) else {},
-            artifact_name=artifact_name,
+            artifact_name=resolved_artifact_name,
         )
         if artifact_match is None:
-            raise BadRequestAppException(f"model artifact '{artifact_name}' not found")
-        _, artifact = artifact_match
+            raise BadRequestAppException(f"model artifact '{resolved_artifact_name}' not found")
+        matched_artifact_name, artifact = artifact_match
         uri = str(artifact.get("uri") or "")
-        return model.id, await self._resolve_artifact_download_url(uri=uri), artifact_name
+        return model.id, await self._resolve_artifact_download_url(uri=uri), matched_artifact_name
 
     @staticmethod
     def _normalize_class_name(raw: Any) -> str:
@@ -500,15 +495,11 @@ class PredictionTaskMixin:
         plugin_id = str(model_probe.plugin_id or "").strip()
         if not plugin_id:
             raise BadRequestAppException("model.plugin_id is required")
-        model_source = {
-            "kind": "model",
-            "model_id": str(model_probe.id),
-            "artifact_name": explicit_artifact_name,
-        }
-        model_id, model_download_url, artifact_name = await self._resolve_prediction_model_source(
+        model_id, model_download_url, artifact_name = await self._resolve_prediction_model_artifact(
             project_id=project_id,
             plugin_id=plugin_id,
-            model_source=model_source,
+            model_id=model_probe.id,
+            artifact_name=explicit_artifact_name,
         )
         latest_round_stmt = (
             select(Round)

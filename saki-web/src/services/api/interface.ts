@@ -50,8 +50,8 @@ import {
     LoopGateResponse,
     RoundMissingSamplesQuery,
     RoundMissingSamplesResponse,
-    PredictionSetApplyRequest,
-    PredictionSetApplyResponse,
+    PredictionApplyRequest,
+    PredictionApplyResponse,
     PredictionDetailRead,
     PredictionCreateRequest,
     PredictionRead,
@@ -263,13 +263,8 @@ export interface ApiService {
     getPredictionDetail(predictionId: string, itemLimit?: number): Promise<PredictionDetailRead>;
     applyPrediction(
         predictionId: string,
-        payload: PredictionSetApplyRequest,
-    ): Promise<PredictionSetApplyResponse>;
-    // Compatibility methods for legacy callsites during hard cut.
-    generatePredictionSet(projectId: string, payload: PredictionCreateRequest): Promise<PredictionRead>;
-    listPredictionSets(projectId: string, limit?: number): Promise<PredictionRead[]>;
-    getPredictionSetDetail(predictionId: string, itemLimit?: number): Promise<PredictionDetailRead>;
-    applyPredictionSet(predictionId: string, payload: PredictionSetApplyRequest): Promise<PredictionSetApplyResponse>;
+        payload: PredictionApplyRequest,
+    ): Promise<PredictionApplyResponse>;
     cleanupRoundPredictions(loopId: string, roundIndex: number): Promise<RoundPredictionCleanupResponse>;
 
     getLoopSummary(loopId: string): Promise<LoopSummary>;

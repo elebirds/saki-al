@@ -189,8 +189,25 @@ async def act_loop(
         executed_action = LoopActionKey.RETRY_ROUND
         command_id = str(getattr(response, "command_id", "") or getattr(response, "request_id", "") or "")
         message_text = str(getattr(response, "message", "") or "retry_round dispatched")
+    elif action_key == LoopActionKey.START.value:
+        bootstrap_result = await runtime_service.ensure_simulation_snapshot_bootstrap(
+            loop_id=loop_id,
+            actor_user_id=current_user_id,
+        )
+        # SIM 自动 bootstrap 会更新 loop/snapshot 相关行。
+        # 这里需要先提交，避免后续 dispatcher 在独立事务里锁等待。
+        if bootstrap_result is not None:
+            await session.commit()
+        response = await _dispatch_loop_command(
+            command=action_key,
+            loop_id=loop_id,
+            force=bool(payload.force),
+            dispatcher_admin_client=dispatcher_admin_client,
+        )
+        executed_action = LoopActionKey(action_key)
+        command_id = str(getattr(response, "command_id", "") or getattr(response, "request_id", "") or "")
+        message_text = str(getattr(response, "message", "") or f"{action_key} dispatched")
     elif action_key in {
-        LoopActionKey.START.value,
         LoopActionKey.START_NEXT_ROUND.value,
         LoopActionKey.PAUSE.value,
         LoopActionKey.RESUME.value,

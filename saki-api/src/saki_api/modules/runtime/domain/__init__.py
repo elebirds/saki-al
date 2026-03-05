@@ -14,8 +14,8 @@ from saki_api.modules.runtime.domain.dispatch_outbox import DispatchOutbox
 from saki_api.modules.runtime.domain.runtime_command_log import RuntimeCommandLog
 from saki_api.modules.runtime.domain.runtime_executor import RuntimeExecutor
 from saki_api.modules.runtime.domain.runtime_executor_stats import RuntimeExecutorStats
-from saki_api.modules.runtime.domain.prediction_set import Prediction, PredictionSet
-from saki_api.modules.runtime.domain.prediction_set_binding import PredictionBinding, PredictionSetBinding
+from saki_api.modules.runtime.domain.prediction import Prediction
+from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
 from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
@@ -47,8 +47,6 @@ __all__ = [
     "RuntimeExecutorStats",
     "Prediction",
     "PredictionBinding",
-    "PredictionSet",
-    "PredictionSetBinding",
     "PredictionItem",
     "StepCandidateItem",
     "StepEvent",

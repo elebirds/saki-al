@@ -38,7 +38,7 @@ from saki_api.core.exceptions import BadRequestAppException
 
 
 @dataclass
-class _PredictionSetSeedContext:
+class _PredictionSeedContext:
     actor: User
     project: Project
     branch: Branch
@@ -51,8 +51,8 @@ class _PredictionSetSeedContext:
 
 
 @pytest.fixture
-async def prediction_set_env(tmp_path):
-    db_path = tmp_path / "prediction_set_pipeline.sqlite3"
+async def prediction_env(tmp_path):
+    db_path = tmp_path / "prediction_pipeline.sqlite3"
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
     session_local = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -65,7 +65,7 @@ async def prediction_set_env(tmp_path):
         await engine.dispose()
 
 
-async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedContext:
+async def _seed_prediction_context(session: AsyncSession) -> _PredictionSeedContext:
     actor = User(email=f"actor-{uuid.uuid4()}@example.com", hashed_password="hashed")
     session.add(actor)
     await session.flush()
@@ -180,7 +180,7 @@ async def _seed_prediction_context(session: AsyncSession) -> _PredictionSetSeedC
     await session.flush()
     await session.commit()
 
-    return _PredictionSetSeedContext(
+    return _PredictionSeedContext(
         actor=actor,
         project=project,
         branch=branch,
@@ -237,7 +237,7 @@ async def _seed_committed_annotation(
 async def _create_prediction_task(
     *,
     service: RuntimeService,
-    ctx: _PredictionSetSeedContext,
+    ctx: _PredictionSeedContext,
     scope_status: str = "all",
     predict_conf: float | None = None,
     params: dict | None = None,
@@ -293,31 +293,31 @@ async def _finish_prediction_task(
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_creates_queued_prediction_task_without_step(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_creates_queued_prediction_task_without_step(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
 
-        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
 
-        assert prediction_set.status == "queued"
-        assert prediction_set.project_id == ctx.project.id
-        assert prediction_set.plugin_id == "demo_det_v1"
-        assert prediction_set.task_id is not None
-        task_row = await session.get(Task, prediction_set.task_id)
+        assert prediction.status == "queued"
+        assert prediction.project_id == ctx.project.id
+        assert prediction.plugin_id == "demo_det_v1"
+        assert prediction.task_id is not None
+        task_row = await session.get(Task, prediction.task_id)
         assert task_row is not None
         assert task_row.status == RuntimeTaskStatus.READY
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_supports_model_id_payload(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_supports_model_id_payload(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
 
-        prediction_set = await service.create_prediction(
+        prediction = await service.create_prediction(
             project_id=ctx.project.id,
             payload={
                 "model_id": str(ctx.model.id),
@@ -330,25 +330,25 @@ async def test_generate_prediction_set_supports_model_id_payload(prediction_set_
             actor_user_id=ctx.actor.id,
         )
 
-        assert prediction_set.id is not None
-        assert prediction_set.model_id == ctx.model.id
-        assert prediction_set.task_id is not None
+        assert prediction.id is not None
+        assert prediction.model_id == ctx.model.id
+        assert prediction.task_id is not None
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_persists_predict_conf_to_plugin_params(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_persists_predict_conf_to_plugin_params(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
 
-        prediction_set = await _create_prediction_task(
+        prediction = await _create_prediction_task(
             service=service,
             ctx=ctx,
             scope_status="all",
             predict_conf=0.02,
         )
-        task_row = await session.get(Task, prediction_set.task_id)
+        task_row = await session.get(Task, prediction.task_id)
         assert task_row is not None
         plugin_params = (
             task_row.resolved_params.get("plugin")
@@ -360,8 +360,8 @@ async def test_generate_prediction_set_persists_predict_conf_to_plugin_params(pr
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_rejects_invalid_predict_conf(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_rejects_invalid_predict_conf(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
@@ -375,8 +375,8 @@ async def test_generate_prediction_set_rejects_invalid_predict_conf(prediction_s
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_rejects_sampling_topk_for_predict(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_rejects_sampling_topk_for_predict(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
@@ -395,8 +395,8 @@ async def test_generate_prediction_set_rejects_sampling_topk_for_predict(predict
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_requires_model_class_schema(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_requires_model_class_schema(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         rows = await session.exec(select(ModelClassSchema).where(ModelClassSchema.model_id == ctx.model.id))
@@ -410,16 +410,16 @@ async def test_generate_prediction_set_requires_model_class_schema(prediction_se
 
 
 @pytest.mark.anyio
-async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(prediction_set_env):
-    session_local = prediction_set_env
+async def test_materialize_prediction_from_reason_snapshot_with_cls_mapping(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
 
-        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
         await _finish_prediction_task(
             session=session,
-            task_id=prediction_set.task_id,
+            task_id=prediction.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -449,11 +449,11 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
             ],
         )
 
-        settled = await service.get_prediction_task(task_id=prediction_set.task_id)
+        settled = await service.get_prediction_task(task_id=prediction.task_id)
         assert settled.status == "ready"
 
         _, items = await service.get_prediction_detail(
-            prediction_id=prediction_set.id,
+            prediction_id=prediction.id,
             item_limit=10,
         )
         assert len(items) == 1
@@ -469,8 +469,8 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
 
 
 @pytest.mark.anyio
-async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_env):
-    session_local = prediction_set_env
+async def test_sample_status_unlabeled_filters_labeled_samples(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         sample_b = Sample(dataset_id=ctx.sample.dataset_id, name="sample-b", asset_group={})
@@ -488,11 +488,11 @@ async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_en
         await session.commit()
 
         service = RuntimeService(session)
-        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="unlabeled")
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="unlabeled")
 
         await _finish_prediction_task(
             session=session,
-            task_id=prediction_set.task_id,
+            task_id=prediction.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -545,14 +545,14 @@ async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_en
             ],
         )
 
-        _, items = await service.get_prediction_detail(prediction_id=prediction_set.id, item_limit=10)
+        _, items = await service.get_prediction_detail(prediction_id=prediction.id, item_limit=10)
         assert len(items) == 1
         assert items[0].sample_id == sample_b.id
 
 
 @pytest.mark.anyio
-async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predictions(prediction_set_env):
-    session_local = prediction_set_env
+async def test_apply_prediction_merges_head_commit_and_expands_multi_predictions(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         committed_ann = await _seed_committed_annotation(
@@ -566,11 +566,11 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
         await session.commit()
 
         service = RuntimeService(session)
-        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
 
         await _finish_prediction_task(
             session=session,
-            task_id=prediction_set.task_id,
+            task_id=prediction.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -613,7 +613,7 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
         )
 
         result = await service.apply_prediction(
-            prediction_id=prediction_set.id,
+            prediction_id=prediction.id,
             actor_user_id=ctx.actor.id,
             branch_name="master",
             dry_run=False,
@@ -650,17 +650,17 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
 
 
 @pytest.mark.anyio
-async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_env):
-    session_local = prediction_set_env
+async def test_apply_prediction_fails_on_unresolvable_label(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
 
-        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
 
         await _finish_prediction_task(
             session=session,
-            task_id=prediction_set.task_id,
+            task_id=prediction.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -688,7 +688,7 @@ async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_e
         )
 
         result = await service.apply_prediction(
-            prediction_id=prediction_set.id,
+            prediction_id=prediction.id,
             actor_user_id=ctx.actor.id,
             branch_name="master",
             dry_run=False,
@@ -705,14 +705,14 @@ async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_e
             )
         )
         assert draft_row.one_or_none() is None
-        settled = await service.get_prediction_task(task_id=prediction_set.task_id)
+        settled = await service.get_prediction_task(task_id=prediction.task_id)
         assert str(settled.status or "").lower() == "failed"
         assert "IR_PREDICTION_FIELD_MISSING" in str(settled.last_error or "")
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_requires_base_commit_id(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_requires_base_commit_id(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
@@ -731,8 +731,8 @@ async def test_generate_prediction_set_requires_base_commit_id(prediction_set_en
 
 
 @pytest.mark.anyio
-async def test_generate_prediction_set_rejects_legacy_payload_fields(prediction_set_env):
-    session_local = prediction_set_env
+async def test_generate_prediction_rejects_legacy_payload_fields(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
@@ -753,16 +753,16 @@ async def test_generate_prediction_set_rejects_legacy_payload_fields(prediction_
 
 
 @pytest.mark.anyio
-async def test_settle_prediction_set_fails_on_class_name_and_index_conflict(prediction_set_env):
-    session_local = prediction_set_env
+async def test_settle_prediction_fails_on_class_name_and_index_conflict(prediction_env):
+    session_local = prediction_env
     async with session_local() as session:
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
-        prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
+        prediction = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
 
         await _finish_prediction_task(
             session=session,
-            task_id=prediction_set.task_id,
+            task_id=prediction.task_id,
             rows=[
                 {
                     "sample_id": ctx.sample.id,
@@ -791,6 +791,6 @@ async def test_settle_prediction_set_fails_on_class_name_and_index_conflict(pred
             ],
         )
 
-        settled = await service.get_prediction_task(task_id=prediction_set.task_id)
+        settled = await service.get_prediction_task(task_id=prediction.task_id)
         assert str(settled.status or "").lower() == "failed"
         assert "PREDICTION_LABEL_CONFLICT" in str(settled.last_error or "")

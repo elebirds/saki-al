@@ -169,8 +169,6 @@ class LoopActionKey(str, Enum):
     SNAPSHOT_INIT = "snapshot_init"
     SNAPSHOT_UPDATE = "snapshot_update"
     SELECTION_ADJUST = "selection_adjust"
-    GENERATE_PREDICTION_SET = "generate_prediction_set"
-    APPLY_PREDICTION_SET = "apply_prediction_set"
     READ = "read"
     OBSERVE = "observe"
     ANNOTATE = "annotate"

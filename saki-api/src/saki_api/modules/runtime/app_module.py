@@ -13,7 +13,7 @@ from saki_api.modules.runtime.api.http import (
 )
 from saki_api.modules.runtime.api.http.endpoints import (
     loop_action_endpoints,
-    prediction_set_endpoints,
+    prediction_endpoints,
     round_step_command_endpoints,
     round_step_query_endpoints,
     snapshot_endpoints,
@@ -31,7 +31,7 @@ class RuntimeAppModule:
         api_router.include_router(l3_runtime.router, prefix="", tags=["runtime"])
         api_router.include_router(loop_action_endpoints.router, prefix="", tags=["loops", "annotation-batches"])
         api_router.include_router(snapshot_endpoints.router, prefix="", tags=["loops", "annotation-batches"])
-        api_router.include_router(prediction_set_endpoints.router, prefix="", tags=["loops", "annotation-batches"])
+        api_router.include_router(prediction_endpoints.router, prefix="", tags=["loops", "annotation-batches"])
         api_router.include_router(l3_model.router, prefix="", tags=["models"])
 
     async def startup(self) -> None:

@@ -8,7 +8,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
-from saki_api.modules.runtime.domain.prediction_set import Prediction
+from saki_api.modules.runtime.domain.prediction import Prediction
 
 
 class PredictionRepository(BaseRepository[Prediction]):
@@ -27,7 +27,3 @@ class PredictionRepository(BaseRepository[Prediction]):
     async def get_by_task_id(self, task_id: uuid.UUID) -> Prediction | None:
         stmt = select(Prediction).where(Prediction.task_id == task_id).limit(1)
         return (await self.session.exec(stmt)).first()
-
-
-# Temporary alias for residual imports during hard cut.
-PredictionSetRepository = PredictionRepository

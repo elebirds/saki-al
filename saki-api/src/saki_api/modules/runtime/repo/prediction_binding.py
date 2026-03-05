@@ -8,7 +8,7 @@ from typing import Any
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from saki_api.modules.runtime.domain.prediction_set_binding import PredictionBinding
+from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
 
 
 class PredictionBindingRepository:
@@ -18,7 +18,7 @@ class PredictionBindingRepository:
     async def get_by_prediction_id(self, prediction_id: uuid.UUID) -> PredictionBinding | None:
         stmt = (
             select(PredictionBinding)
-            .where(PredictionBinding.prediction_set_id == prediction_id)
+            .where(PredictionBinding.prediction_id == prediction_id)
             .limit(1)
         )
         return (await self.session.exec(stmt)).first()
@@ -26,20 +26,16 @@ class PredictionBindingRepository:
     async def upsert(
         self,
         *,
-        prediction_id: uuid.UUID | None = None,
-        prediction_set_id: uuid.UUID | None = None,
+        prediction_id: uuid.UUID,
         model_id: uuid.UUID,
         schema_hash: str,
         by_index_json: list[str],
         by_name_json: dict[str, Any],
     ) -> PredictionBinding:
-        target_prediction_id = prediction_id or prediction_set_id
-        if target_prediction_id is None:
-            raise ValueError("prediction_id is required")
-        existing = await self.get_by_prediction_id(target_prediction_id)
+        existing = await self.get_by_prediction_id(prediction_id)
         if existing is None:
             row = PredictionBinding(
-                prediction_set_id=target_prediction_id,
+                prediction_id=prediction_id,
                 model_id=model_id,
                 schema_hash=schema_hash,
                 by_index_json=list(by_index_json),
@@ -58,10 +54,3 @@ class PredictionBindingRepository:
         await self.session.flush()
         await self.session.refresh(existing)
         return existing
-
-    async def get_by_prediction_set_id(self, prediction_set_id: uuid.UUID) -> PredictionBinding | None:
-        return await self.get_by_prediction_id(prediction_set_id)
-
-
-# Temporary alias for residual imports during hard cut.
-PredictionSetBindingRepository = PredictionBindingRepository

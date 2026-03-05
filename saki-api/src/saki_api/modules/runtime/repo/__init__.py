@@ -15,8 +15,8 @@ from saki_api.modules.runtime.repo.runtime_executor_stats import RuntimeExecutor
 from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemRepository
 from saki_api.modules.runtime.repo.step_event import StepEventRepository
 from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
-from saki_api.modules.runtime.repo.prediction_set import PredictionRepository, PredictionSetRepository
-from saki_api.modules.runtime.repo.prediction_set_binding import PredictionBindingRepository, PredictionSetBindingRepository
+from saki_api.modules.runtime.repo.prediction import PredictionRepository
+from saki_api.modules.runtime.repo.prediction_binding import PredictionBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
 from saki_api.modules.runtime.repo.snapshot_query import SnapshotQueryRepository
 from saki_api.modules.runtime.repo.prediction_query import PredictionQueryRepository
@@ -39,8 +39,6 @@ __all__ = [
     "ModelClassSchemaRepository",
     "PredictionRepository",
     "PredictionBindingRepository",
-    "PredictionSetRepository",
-    "PredictionSetBindingRepository",
     "PredictionItemRepository",
     "SnapshotQueryRepository",
     "PredictionQueryRepository",

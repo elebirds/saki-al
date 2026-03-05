@@ -27,7 +27,3 @@ class Prediction(UUIDMixin, TimestampMixin, SQLModel, table=True):
     params: dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
     last_error: str | None = Field(default=None, max_length=4000)
     created_by: uuid.UUID | None = Field(default=None, foreign_key="user.id", index=True)
-
-
-# Temporary alias for residual imports during hard cut.
-PredictionSet = Prediction

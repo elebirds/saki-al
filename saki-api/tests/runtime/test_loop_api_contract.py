@@ -13,7 +13,7 @@ from saki_api.modules.access.domain.rbac.audit_log import AuditLog
 from saki_api.modules.runtime.api.http import query as loop_query_endpoint
 from saki_api.modules.runtime.api.http.endpoints import (
     loop_action_endpoints,
-    prediction_set_endpoints,
+    prediction_endpoints,
     snapshot_endpoints,
 )
 from saki_api.modules.runtime.api.http.endpoints import round_step_query_endpoints as round_step_query_endpoint
@@ -1165,7 +1165,7 @@ async def test_loop_control_act_start_bootstraps_simulation_snapshot(loop_api_en
         return None
 
     monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
-    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_endpoints, "ensure_loop_project_perm", _allow)
     monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     async with session_local() as session:
@@ -1272,7 +1272,7 @@ async def test_loop_control_act_confirm_rejects_manual_mode(loop_api_env, monkey
         return None
 
     monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
-    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_endpoints, "ensure_loop_project_perm", _allow)
     monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     class _DispatcherAdminStub:
@@ -1331,7 +1331,7 @@ async def test_loop_control_act_confirm_forwards_force_flag(loop_api_env, monkey
         return None
 
     monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
-    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_endpoints, "ensure_loop_project_perm", _allow)
     monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     class _DispatcherAdminStub:
@@ -1414,7 +1414,7 @@ async def test_loop_control_act_rejects_selection_adjust(loop_api_env, monkeypat
         return None
 
     monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
-    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_endpoints, "ensure_loop_project_perm", _allow)
     monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     class _DispatcherAdminStub:
@@ -1471,7 +1471,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
         return None
 
     monkeypatch.setattr(loop_action_endpoints, "ensure_loop_project_perm", _allow)
-    monkeypatch.setattr(prediction_set_endpoints, "ensure_loop_project_perm", _allow)
+    monkeypatch.setattr(prediction_endpoints, "ensure_loop_project_perm", _allow)
     monkeypatch.setattr(snapshot_endpoints, "ensure_loop_project_perm", _allow)
 
     async with session_local() as session:
@@ -1551,7 +1551,7 @@ async def test_cleanup_round_predictions_writes_audit_log(loop_api_env, monkeypa
             )
             await session.commit()
 
-            response = await prediction_set_endpoints.cleanup_round_predictions(
+            response = await prediction_endpoints.cleanup_round_predictions(
                 loop_id=loop.id,
                 round_index=1,
                 runtime_service=service,

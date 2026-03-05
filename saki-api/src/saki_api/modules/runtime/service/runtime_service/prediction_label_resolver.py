@@ -1,4 +1,4 @@
-"""Prediction label resolution against frozen prediction_set binding."""
+"""Prediction label resolution against frozen prediction binding."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from saki_api.modules.runtime.domain.prediction_set_binding import PredictionSetBinding
+from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
 
 
 def _safe_uuid(value: Any) -> uuid.UUID | None:
@@ -93,7 +93,7 @@ class PredictionLabelResolver:
         return self._model_id
 
     @classmethod
-    def from_binding(cls, binding: PredictionSetBinding) -> "PredictionLabelResolver":
+    def from_binding(cls, binding: PredictionBinding) -> "PredictionLabelResolver":
         by_index_raw = list(binding.by_index_json or [])
         by_index: list[uuid.UUID | None] = []
         for value in by_index_raw:
@@ -165,7 +165,7 @@ class PredictionLabelResolver:
         if explicit_label_id is not None and explicit_label_id not in self._known_labels:
             raise PredictionResolveError(
                 code="PREDICTION_BINDING_MISMATCH",
-                message="explicit label_id is not part of prediction_set binding",
+                message="explicit label_id is not part of prediction binding",
                 sample_id=sample_id,
                 class_index=class_index,
                 class_name=class_name,

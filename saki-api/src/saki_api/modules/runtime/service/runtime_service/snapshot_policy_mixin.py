@@ -12,7 +12,7 @@ from typing import Any
 
 from saki_api.core.exceptions import BadRequestAppException
 from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
-from saki_api.modules.runtime.domain.prediction_set import PredictionSet
+from saki_api.modules.runtime.domain.prediction import Prediction
 from saki_api.modules.runtime.domain.round import Round
 from saki_api.modules.runtime.domain.step import Step
 from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
@@ -567,6 +567,6 @@ class SnapshotPolicyMixin:
         return "queued"
 
     @staticmethod
-    def _attach_task_projection(prediction_set: PredictionSet, step: Step | None) -> PredictionSet:
+    def _attach_task_projection(prediction: Prediction, step: Step | None) -> Prediction:
         del step
-        return prediction_set
+        return prediction

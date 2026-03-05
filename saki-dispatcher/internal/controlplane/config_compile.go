@@ -29,25 +29,25 @@ func compileRoundConfig(loop loopRow, roundIndex int) map[string]any {
 	samplingSeed := deriveScopedSeed(globalSeed, "sampling")
 
 	deterministicLevel := strings.TrimSpace(toString(reproConfig["deterministic_level"]))
-	if deterministicLevel == "" {
-		deterministicLevel = "strict"
-	}
+	deterministicLevel, deterministicEnabled, strongDeterministicEnabled := parseDeterministicLevel(deterministicLevel)
 	reproConfig["global_seed"] = globalSeed
 	reproConfig["deterministic_level"] = deterministicLevel
 
 	payload := map[string]any{
-		"loop_id":         loop.ID.String(),
-		"round_index":     roundIndex,
-		"mode":            string(loop.Mode),
-		"plugin_id":       loop.ModelArch,
-		"plugin":          pluginConfig,
-		"mode_config":     modeConfig,
-		"reproducibility": reproConfig,
-		"execution":       executionConfig,
-		"split_seed":      int(splitSeed),
-		"train_seed":      int(trainSeed),
-		"sampling_seed":   int(samplingSeed),
-		"deterministic":   isDeterministicLevel(deterministicLevel),
+		"loop_id":              loop.ID.String(),
+		"round_index":          roundIndex,
+		"mode":                 string(loop.Mode),
+		"plugin_id":            loop.ModelArch,
+		"plugin":               pluginConfig,
+		"mode_config":          modeConfig,
+		"reproducibility":      reproConfig,
+		"execution":            executionConfig,
+		"split_seed":           int(splitSeed),
+		"train_seed":           int(trainSeed),
+		"sampling_seed":        int(samplingSeed),
+		"deterministic_level":  deterministicLevel,
+		"deterministic":        deterministicEnabled,
+		"strong_deterministic": strongDeterministicEnabled,
 	}
 	if loop.Mode != modeManual {
 		payload["sampling"] = compileSamplingConfig(loop, loopConfig)
@@ -139,12 +139,14 @@ func deriveScopedSeed(globalSeed string, scope string) uint32 {
 	return binary.BigEndian.Uint32(sum[:4])
 }
 
-func isDeterministicLevel(level string) bool {
+func parseDeterministicLevel(level string) (string, bool, bool) {
 	switch strings.ToLower(strings.TrimSpace(level)) {
-	case "strict", "high", "full", "on", "true", "deterministic":
-		return true
+	case "deterministic":
+		return "deterministic", true, false
+	case "strong_deterministic":
+		return "strong_deterministic", true, true
 	default:
-		return false
+		return "off", false, false
 	}
 }
 

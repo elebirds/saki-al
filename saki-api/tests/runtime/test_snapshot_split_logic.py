@@ -57,12 +57,18 @@ def test_append_split_expand_with_batch_val_produces_val_batch() -> None:
     assert any(row["partition"] == SnapshotPartition.VAL_BATCH for row in rows)
 
 
-def test_compute_seed_requires_requested_seed() -> None:
-    mixin = SnapshotMixin()
-    explicit = mixin._compute_seed(requested_seed="user-seed")
-    assert explicit == "user-seed"
-    with pytest.raises(BadRequestAppException, match="snapshot seed is required"):
-        mixin._compute_seed(requested_seed=None)
+def test_resolve_snapshot_seed_uses_loop_global_seed() -> None:
+    class _SeedMixin(SnapshotMixin):
+        _get_loop_global_seed = staticmethod(
+            lambda raw_config: str((raw_config.get("reproducibility") or {}).get("global_seed") or "").strip()
+        )
+
+    mixin = _SeedMixin()
+    loop = type("LoopStub", (), {"config": {"reproducibility": {"global_seed": "seed-loop-main"}}})()
+    assert mixin._resolve_snapshot_seed(loop=loop) == "seed-loop-main"
+    missing_seed_loop = type("LoopStub", (), {"config": {"reproducibility": {}}})()
+    with pytest.raises(BadRequestAppException, match="global_seed"):
+        mixin._resolve_snapshot_seed(loop=missing_seed_loop)
 
 
 def test_parse_enum_accepts_enum_value_name_and_qualified_name() -> None:

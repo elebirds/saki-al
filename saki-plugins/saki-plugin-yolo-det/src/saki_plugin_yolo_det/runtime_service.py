@@ -146,6 +146,7 @@ class YoloRuntimeService:
                 "message": (
                     f"training reproducibility train_seed={config.train_seed} "
                     f"deterministic={config.deterministic} "
+                    f"strong_deterministic={config.strong_deterministic} "
                     f"split_seed={getattr(resolved_params, 'split_seed', 0)}"
                 ),
             },
@@ -281,6 +282,7 @@ class YoloRuntimeService:
         device: Any,
         train_seed: int,
         deterministic: bool,
+        strong_deterministic: bool,
         yolo_task: str = "obb",
         epoch_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
@@ -295,6 +297,7 @@ class YoloRuntimeService:
             device=device,
             train_seed=train_seed,
             deterministic=deterministic,
+            strong_deterministic=strong_deterministic,
             stop_flag=self._stop_flag,
             load_yolo=self._load_yolo,
             ensure_cjk_plot_font=self._ensure_cjk_plot_font,

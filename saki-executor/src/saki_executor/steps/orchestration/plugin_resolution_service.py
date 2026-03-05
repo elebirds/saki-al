@@ -64,7 +64,15 @@ class PluginResolutionService:
             ) from exc
 
         effective_plugin_params = self._resolved_config_to_dict(resolved_config)
-        for key in ("split_seed", "train_seed", "sampling_seed", "round_index", "deterministic"):
+        for key in (
+            "split_seed",
+            "train_seed",
+            "sampling_seed",
+            "round_index",
+            "deterministic",
+            "deterministic_level",
+            "strong_deterministic",
+        ):
             if key in request.resolved_params and key not in effective_plugin_params:
                 effective_plugin_params[key] = request.resolved_params.get(key)
         effective_plugin_params["step_type"] = request.step_type

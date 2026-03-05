@@ -23,11 +23,17 @@ from saki_api.modules.shared.modeling.enums import (
 from saki_api.modules.storage.api.sample import ProjectSampleRead
 
 
+class LoopSnapshotInitConfig(BaseModel):
+    train_seed_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    val_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    test_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    val_policy: SnapshotValPolicy = SnapshotValPolicy.ANCHOR_ONLY
+
+
 class LoopSimulationConfig(BaseModel):
     oracle_commit_id: Optional[uuid.UUID] = None
-    seed_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
-    step_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
     max_rounds: int = Field(default=20, ge=1)
+    snapshot_init: LoopSnapshotInitConfig = Field(default_factory=LoopSnapshotInitConfig)
 
 
 class LoopCreateRequest(BaseModel):
@@ -475,7 +481,6 @@ class LoopActionSpec(BaseModel):
 
 
 class SnapshotInitRequest(BaseModel):
-    seed: Optional[str] = None
     train_seed_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
     val_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
     test_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
@@ -485,7 +490,6 @@ class SnapshotInitRequest(BaseModel):
 
 class SnapshotUpdateRequest(BaseModel):
     mode: SnapshotUpdateMode = SnapshotUpdateMode.APPEND_ALL_TO_POOL
-    seed: Optional[str] = None
     sample_ids: Optional[List[uuid.UUID]] = None
     batch_test_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
     batch_val_ratio: float = Field(default=0.1, ge=0.0, le=1.0)

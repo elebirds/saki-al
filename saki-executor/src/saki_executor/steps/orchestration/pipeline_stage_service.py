@@ -202,7 +202,11 @@ class PipelineStageService:
                 "split_seed": runtime_context.split_seed,
                 "train_seed": runtime_context.train_seed,
                 "sampling_seed": runtime_context.sampling_seed,
+                "deterministic_level": str(self._request.resolved_params.get("deterministic_level") or "off"),
                 "deterministic": bool(self._request.resolved_params.get("deterministic", False)),
+                "strong_deterministic": bool(
+                    self._request.resolved_params.get("strong_deterministic", False)
+                ),
                 "mode": runtime_context.mode,
                 "step_type": runtime_context.step_type,
                 "round_index": runtime_context.round_index,

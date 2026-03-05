@@ -96,6 +96,30 @@ async def _seed_project_branch(session: AsyncSession) -> tuple[Project, Branch]:
     return project, branch
 
 
+async def _seed_additional_branch(session: AsyncSession, *, project: Project, name: str) -> Branch:
+    head_commit = (
+        await session.exec(
+            select(Commit)
+            .where(Commit.project_id == project.id)
+            .order_by(Commit.created_at.desc())
+            .limit(1)
+        )
+    ).first()
+    if head_commit is None:
+        raise RuntimeError("project has no commit")
+    branch = Branch(
+        project_id=project.id,
+        name=name,
+        head_commit_id=head_commit.id,
+        description=name,
+        is_protected=False,
+    )
+    session.add(branch)
+    await session.commit()
+    await session.refresh(branch)
+    return branch
+
+
 async def _seed_project_samples(session: AsyncSession, *, project: Project, count: int = 3) -> list[uuid.UUID]:
     user = User(
         email=f"seed-{uuid.uuid4().hex[:8]}@example.com",
@@ -259,6 +283,7 @@ async def test_loop_endpoints_create_list_get_update_contract(loop_api_env, monk
             assert plugin_cfg.get("batch") == 16
             # annotation_types is injected from the project's enabled_annotation_types
             assert isinstance(plugin_cfg.get("annotation_types"), list)
+            assert created.config.get("reproducibility", {}).get("deterministic_level") == "off"
 
             listed = await loop_query_endpoint.list_project_loops(
                 project_id=project.id,
@@ -454,6 +479,142 @@ async def test_update_loop_rejects_global_seed_change_after_non_draft(loop_api_e
 
 
 @pytest.mark.anyio
+async def test_create_loop_accepts_deterministic_and_strong_deterministic_levels(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop_det = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-deterministic",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-deterministic",
+                                "deterministic_level": "deterministic",
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            assert loop_det.config.get("reproducibility", {}).get("deterministic_level") == "deterministic"
+
+            branch_2 = await _seed_additional_branch(session, project=project, name="al-branch-2")
+            loop_strong = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-strong-deterministic",
+                    branch_id=branch_2.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-strong",
+                                "deterministic_level": "strong_deterministic",
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            assert loop_strong.config.get("reproducibility", {}).get("deterministic_level") == "strong_deterministic"
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_create_loop_rejects_legacy_deterministic_level_values(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            with pytest.raises(BadRequestAppException, match="deterministic_level"):
+                await service.create_loop(
+                    project.id,
+                    LoopCreateRequest(
+                        name="loop-invalid-deterministic-level",
+                        branch_id=branch.id,
+                        mode=LoopMode.ACTIVE_LEARNING,
+                        model_arch="yolo_det_v1",
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "reproducibility": {
+                                    "global_seed": "seed-invalid",
+                                    "deterministic_level": "strict",
+                                },
+                            }
+                        ),
+                        lifecycle=LoopLifecycle.DRAFT,
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_update_loop_rejects_deterministic_level_change_after_non_draft(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-deterministic-level-locked",
+                    branch_id=branch.id,
+                    mode=LoopMode.ACTIVE_LEARNING,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-lock",
+                                "deterministic_level": "off",
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.RUNNING,
+                ),
+            )
+            with pytest.raises(BadRequestAppException, match="deterministic_level is immutable"):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config={
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {
+                                "global_seed": "seed-lock",
+                                "deterministic_level": "deterministic",
+                            },
+                        }
+                    ),
+                )
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
 async def test_update_loop_oracle_commit_change_requires_draft_and_no_snapshot(loop_api_env):
     session_local = loop_api_env
 
@@ -520,7 +681,7 @@ async def test_update_loop_oracle_commit_change_requires_draft_and_no_snapshot(l
 
             with pytest.raises(
                 BadRequestAppException,
-                match="oracle_commit_id can only change while loop is draft and snapshot is not initialized",
+                match="oracle_commit_id/config.mode.snapshot_init can only change while loop is draft and snapshot is not initialized",
             ):
                 await service.update_loop(
                     loop.id,
@@ -529,6 +690,29 @@ async def test_update_loop_oracle_commit_change_requires_draft_and_no_snapshot(l
                             {
                                 "sampling": {"strategy": "random_baseline", "topk": 200},
                                 "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                            }
+                        )
+                    ),
+                )
+            with pytest.raises(
+                BadRequestAppException,
+                match="oracle_commit_id/config.mode.snapshot_init can only change while loop is draft and snapshot is not initialized",
+            ):
+                await service.update_loop(
+                    loop.id,
+                    LoopUpdateRequest(
+                        config=_loop_config(
+                            {
+                                "sampling": {"strategy": "random_baseline", "topk": 200},
+                                "mode": {
+                                    "oracle_commit_id": str(next_commit.id),
+                                    "snapshot_init": {
+                                        "train_seed_ratio": 0.25,
+                                        "val_ratio": 0.15,
+                                        "test_ratio": 0.2,
+                                        "val_policy": "expand_with_batch_val",
+                                    },
+                                },
                             }
                         )
                     ),
@@ -931,6 +1115,153 @@ async def test_loop_stage_snapshot_required_does_not_offer_start_action(loop_api
             action_keys = {str(item.get("key")) for item in gate.get("actions") or []}
             assert "snapshot_init" in action_keys
             assert "start" not in action_keys
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_simulation_draft_without_snapshot_can_start(loop_api_env):
+    session_local = loop_api_env
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=1)
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=branch.head_commit_id,
+            labeled_ids=[sample_ids[0]],
+        )
+        service = RuntimeService(session)
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-can-start",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "mode": {"oracle_commit_id": str(branch.head_commit_id)},
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+            gate = await service.get_loop_gate(loop_id=loop.id)
+            assert gate["gate"] == LoopGate.CAN_START
+            action_keys = {str(item.get("key")) for item in gate.get("actions") or []}
+            assert "start" in action_keys
+            assert "snapshot_init" not in action_keys
+        finally:
+            _session_ctx.reset(token)
+
+
+@pytest.mark.anyio
+async def test_loop_control_act_start_bootstraps_simulation_snapshot(loop_api_env, monkeypatch):
+    session_local = loop_api_env
+
+    async def _allow(*args, **kwargs) -> None:
+        del args, kwargs
+        return None
+
+    monkeypatch.setattr(loop_control_endpoint, "_ensure_project_perm", _allow)
+
+    async with session_local() as session:
+        project, branch = await _seed_project_branch(session)
+        sample_ids = await _seed_project_samples(session, project=project, count=3)
+        await _set_commit_sample_states(
+            session,
+            project=project,
+            commit_id=branch.head_commit_id,
+            labeled_ids=[sample_ids[0], sample_ids[1], sample_ids[2]],
+        )
+        service = RuntimeService(session)
+        current_user_id = uuid.uuid4()
+
+        token = _session_ctx.set(session)
+        try:
+            loop = await service.create_loop(
+                project.id,
+                LoopCreateRequest(
+                    name="loop-sim-start-bootstrap",
+                    branch_id=branch.id,
+                    mode=LoopMode.SIMULATION,
+                    model_arch="yolo_det_v1",
+                    config=_loop_config(
+                        {
+                            "sampling": {"strategy": "random_baseline", "topk": 200},
+                            "reproducibility": {"global_seed": "sim-seed-main"},
+                            "mode": {
+                                "oracle_commit_id": str(branch.head_commit_id),
+                                "snapshot_init": {
+                                    "train_seed_ratio": 0.2,
+                                    "val_ratio": 0.3,
+                                    "test_ratio": 0.4,
+                                    "val_policy": "anchor_only",
+                                },
+                            },
+                        }
+                    ),
+                    lifecycle=LoopLifecycle.DRAFT,
+                ),
+            )
+
+            commit_counter = {"count": 0}
+            _orig_commit = session.commit
+
+            async def _commit_spy():
+                commit_counter["count"] += 1
+                return await _orig_commit()
+
+            monkeypatch.setattr(session, "commit", _commit_spy)
+
+            class _DispatcherAdminStub:
+                def __init__(self) -> None:
+                    self.enabled = True
+                    self.start_calls: list[str] = []
+
+                async def start_loop(self, loop_id: str):
+                    assert commit_counter["count"] >= 1
+                    self.start_calls.append(loop_id)
+
+                    class _Resp:
+                        command_id = "cmd-start"
+                        message = "start dispatched"
+
+                    return _Resp()
+
+            dispatcher_admin_stub = _DispatcherAdminStub()
+
+            await loop_control_endpoint.act_loop(
+                loop_id=loop.id,
+                payload=LoopActionRequest(action=LoopActionKey.START),
+                runtime_service=service,
+                dispatcher_admin_client=dispatcher_admin_stub,
+                session=session,
+                current_user_id=current_user_id,
+            )
+            assert dispatcher_admin_stub.start_calls == [str(loop.id)]
+
+            snapshots = list(
+                (
+                    await session.exec(
+                        select(ALSnapshotVersion)
+                        .where(ALSnapshotVersion.loop_id == loop.id)
+                        .order_by(ALSnapshotVersion.version_index.asc())
+                    )
+                ).all()
+            )
+            assert len(snapshots) == 1
+            assert snapshots[0].seed == "sim-seed-main"
+            rule_json = dict(snapshots[0].rule_json or {})
+            assert float(rule_json.get("train_seed_ratio")) == pytest.approx(0.2)
+            assert float(rule_json.get("val_ratio")) == pytest.approx(0.3)
+            assert float(rule_json.get("test_ratio")) == pytest.approx(0.4)
         finally:
             _session_ctx.reset(token)
 
@@ -2329,9 +2660,15 @@ async def test_create_simulation_loop_normalizes_mode_without_seeds_or_random_ba
                         "reproducibility": {"global_seed": "seed-1"},
                         "mode": {
                             "oracle_commit_id": str(branch.head_commit_id),
+                            "snapshot_init": {
+                                "train_seed_ratio": 0.1,
+                                "val_ratio": 0.2,
+                                "test_ratio": 0.3,
+                                "val_policy": "expand_with_batch_val",
+                            },
+                            "max_rounds": 7,
                             "seed_ratio": 0.1,
                             "step_ratio": 0.2,
-                            "max_rounds": 7,
                             "seeds": [0, 1, 2],
                             "random_baseline_enabled": True,
                         },
@@ -2344,9 +2681,14 @@ async def test_create_simulation_loop_normalizes_mode_without_seeds_or_random_ba
             assert created.mode == LoopMode.SIMULATION
             mode_cfg = created.config.get("mode") if isinstance(created.config.get("mode"), dict) else {}
             assert mode_cfg.get("oracle_commit_id") == str(branch.head_commit_id)
-            assert float(mode_cfg.get("seed_ratio")) == pytest.approx(0.1)
-            assert float(mode_cfg.get("step_ratio")) == pytest.approx(0.2)
+            snapshot_init_cfg = mode_cfg.get("snapshot_init") if isinstance(mode_cfg.get("snapshot_init"), dict) else {}
+            assert float(snapshot_init_cfg.get("train_seed_ratio")) == pytest.approx(0.1)
+            assert float(snapshot_init_cfg.get("val_ratio")) == pytest.approx(0.2)
+            assert float(snapshot_init_cfg.get("test_ratio")) == pytest.approx(0.3)
+            assert str(snapshot_init_cfg.get("val_policy")) == "expand_with_batch_val"
             assert int(mode_cfg.get("max_rounds")) == 7
+            assert "seed_ratio" not in mode_cfg
+            assert "step_ratio" not in mode_cfg
             assert "seeds" not in mode_cfg
             assert "random_baseline_enabled" not in mode_cfg
         finally:
@@ -2382,8 +2724,12 @@ async def test_update_simulation_loop_applies_mode_max_rounds(loop_api_env, monk
                         "reproducibility": {"global_seed": "seed-1"},
                         "mode": {
                             "oracle_commit_id": str(branch.head_commit_id),
-                            "seed_ratio": 0.1,
-                            "step_ratio": 0.2,
+                            "snapshot_init": {
+                                "train_seed_ratio": 0.1,
+                                "val_ratio": 0.2,
+                                "test_ratio": 0.3,
+                                "val_policy": "anchor_only",
+                            },
                             "max_rounds": 7,
                         },
                     },
@@ -2402,8 +2748,12 @@ async def test_update_simulation_loop_applies_mode_max_rounds(loop_api_env, monk
                         "reproducibility": {"global_seed": "seed-1"},
                         "mode": {
                             "oracle_commit_id": str(branch.head_commit_id),
-                            "seed_ratio": 0.15,
-                            "step_ratio": 0.25,
+                            "snapshot_init": {
+                                "train_seed_ratio": 0.15,
+                                "val_ratio": 0.25,
+                                "test_ratio": 0.35,
+                                "val_policy": "expand_with_batch_val",
+                            },
                             "max_rounds": 11,
                         },
                     },
@@ -2415,5 +2765,10 @@ async def test_update_simulation_loop_applies_mode_max_rounds(loop_api_env, monk
             assert int(updated.max_rounds) == 11
             mode_cfg = updated.config.get("mode") if isinstance(updated.config.get("mode"), dict) else {}
             assert int(mode_cfg.get("max_rounds")) == 11
+            snapshot_init_cfg = mode_cfg.get("snapshot_init") if isinstance(mode_cfg.get("snapshot_init"), dict) else {}
+            assert float(snapshot_init_cfg.get("train_seed_ratio")) == pytest.approx(0.15)
+            assert float(snapshot_init_cfg.get("val_ratio")) == pytest.approx(0.25)
+            assert float(snapshot_init_cfg.get("test_ratio")) == pytest.approx(0.35)
+            assert str(snapshot_init_cfg.get("val_policy")) == "expand_with_batch_val"
         finally:
             _session_ctx.reset(token)

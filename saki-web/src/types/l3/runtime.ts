@@ -64,18 +64,26 @@ export interface LoopSamplingConfig {
     minCandidatesRequired?: number;
 }
 
+export interface LoopSnapshotInitConfig {
+    trainSeedRatio?: number;
+    valRatio?: number;
+    testRatio?: number;
+    valPolicy?: SnapshotValPolicy;
+}
+
 export interface LoopModeConfig {
     confirmRequired?: boolean;
     oracleCommitId?: string | null;
-    seedRatio?: number;
-    stepRatio?: number;
     maxRounds?: number;
+    snapshotInit?: LoopSnapshotInitConfig;
     roundCooldownSec?: number;
 }
 
+export type DeterministicLevel = 'off' | 'deterministic' | 'strong_deterministic';
+
 export interface LoopReproducibilityConfig {
     globalSeed: string;
-    deterministicLevel?: string;
+    deterministicLevel?: DeterministicLevel;
 }
 
 export interface LoopExecutionConfig {
@@ -520,7 +528,6 @@ export interface LoopActionResponse {
 }
 
 export interface SnapshotInitRequest {
-    seed?: string;
     trainSeedRatio?: number;
     valRatio?: number;
     testRatio?: number;
@@ -530,7 +537,6 @@ export interface SnapshotInitRequest {
 
 export interface SnapshotUpdateRequest {
     mode?: Exclude<SnapshotUpdateMode, 'init'>;
-    seed?: string;
     sampleIds?: string[];
     batchTestRatio?: number;
     batchValRatio?: number;

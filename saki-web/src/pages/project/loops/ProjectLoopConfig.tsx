@@ -46,6 +46,7 @@ const ProjectLoopConfig: React.FC = () => {
 
     const selectedPluginId = Form.useWatch('modelArch', configForm);
     const selectedMode = Form.useWatch('mode', configForm) || 'active_learning';
+    const selectedDeterministicLevel = Form.useWatch('deterministicLevel', configForm) || 'off';
     const selectedOracleInputMode = Form.useWatch(['simulationConfig', 'oracleInputMode'], configForm) || 'select';
     const pluginConfigValues: Record<string, any> = Form.useWatch('pluginConfig', configForm) || {};
 
@@ -91,6 +92,12 @@ const ProjectLoopConfig: React.FC = () => {
         const loopModeConfig = loopConfig.mode || {};
         const loopReproducibility = loopConfig.reproducibility || {};
         const oracleCommitId = String(loopModeConfig.oracleCommitId || '').trim();
+        const loopSnapshotInit = (loopModeConfig.snapshotInit || {}) as Record<string, any>;
+        const rawDeterministicLevel = String(loopReproducibility.deterministicLevel || '').trim().toLowerCase();
+        const deterministicLevel =
+            rawDeterministicLevel === 'deterministic' || rawDeterministicLevel === 'strong_deterministic'
+                ? rawDeterministicLevel
+                : 'off';
         const commitExists = commitRows.some((item) => item.id === oracleCommitId);
         const oracleInputMode = oracleCommitId && !commitExists ? 'manual' : 'select';
         configForm.setFieldsValue({
@@ -98,6 +105,7 @@ const ProjectLoopConfig: React.FC = () => {
             mode: loopRow.mode || 'active_learning',
             modelArch: loopRow.modelArch,
             globalSeed: String(loopReproducibility.globalSeed || ''),
+            deterministicLevel,
             samplingStrategy: loopSampling.strategy || pickDefaultSamplingStrategy(plugin),
             queryBatchSize: Number(loopSampling.topk ?? 200),
             pluginConfig: mergePluginConfigWithDefaults(plugin, loopConfig.plugin || {}),
@@ -105,9 +113,13 @@ const ProjectLoopConfig: React.FC = () => {
                 oracleInputMode,
                 oracleCommitId: oracleInputMode === 'select' ? (oracleCommitId || commitRows[0]?.id) : undefined,
                 oracleCommitIdManual: oracleInputMode === 'manual' ? oracleCommitId : '',
-                seedRatio: loopModeConfig.seedRatio ?? 0.05,
-                stepRatio: loopModeConfig.stepRatio ?? 0.05,
                 maxRounds: Number(loopModeConfig.maxRounds ?? loopRow.maxRounds ?? 20),
+                snapshotInit: {
+                    trainSeedRatio: Number(loopSnapshotInit.trainSeedRatio ?? 0.05),
+                    valRatio: Number(loopSnapshotInit.valRatio ?? 0.1),
+                    testRatio: Number(loopSnapshotInit.testRatio ?? 0.1),
+                    valPolicy: String(loopSnapshotInit.valPolicy || 'anchor_only'),
+                },
             },
         });
     }, [loopId, projectId, configForm]);
@@ -182,6 +194,7 @@ const ProjectLoopConfig: React.FC = () => {
             </Card>
         );
     }
+    const simulationSnapshotLocked = Boolean(loop.activeSnapshotVersionId);
 
     return (
         <div className="flex h-full flex-col gap-4 overflow-auto pr-1">
@@ -266,7 +279,7 @@ const ProjectLoopConfig: React.FC = () => {
                         ) : null}
                     </div>
 
-                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
                         <Form.Item
                             name="globalSeed"
                             label={t('project.loopConfig.form.globalSeed')}
@@ -275,6 +288,38 @@ const ProjectLoopConfig: React.FC = () => {
                         >
                             <Input disabled={loop.lifecycle !== 'draft'} />
                         </Form.Item>
+                        <Form.Item
+                            name="deterministicLevel"
+                            label={t('project.loopConfig.form.deterministicLevel')}
+                            rules={[{required: true, message: t('project.loopConfig.form.deterministicLevelRequired')}]}
+                            extra={
+                                loop.lifecycle === 'draft'
+                                    ? undefined
+                                    : t('project.loopConfig.form.deterministicLevelImmutable')
+                            }
+                        >
+                            <Select
+                                disabled={loop.lifecycle !== 'draft'}
+                                options={[
+                                    {label: t('project.loopConfig.form.deterministicLevelOptions.off'), value: 'off'},
+                                    {
+                                        label: t('project.loopConfig.form.deterministicLevelOptions.deterministic'),
+                                        value: 'deterministic',
+                                    },
+                                    {
+                                        label: t('project.loopConfig.form.deterministicLevelOptions.strongDeterministic'),
+                                        value: 'strong_deterministic',
+                                    },
+                                ]}
+                            />
+                        </Form.Item>
+                        {selectedDeterministicLevel !== 'off' ? (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                message={t('project.loopConfig.form.deterministicLevelPerfHint')}
+                            />
+                        ) : null}
                         {selectedMode !== 'manual' ? (
                             <Form.Item name="queryBatchSize" label={t('project.loopConfig.form.queryBatchSize')}>
                                 <InputNumber min={1} max={5000} className="w-full"/>
@@ -292,6 +337,7 @@ const ProjectLoopConfig: React.FC = () => {
                                     rules={[{required: true, message: t('project.loopConfig.form.oracleCommitInputModeRequired')}]}
                                 >
                                     <Radio.Group
+                                        disabled={simulationSnapshotLocked}
                                         options={[
                                             {label: t('project.loopConfig.form.oracleCommitSelect'), value: 'select'},
                                             {label: t('project.loopConfig.form.oracleCommitManual'), value: 'manual'},
@@ -327,7 +373,10 @@ const ProjectLoopConfig: React.FC = () => {
                                             },
                                         ]}
                                     >
-                                        <Input placeholder={t('project.loopConfig.form.oracleCommitIdPlaceholder')}/>
+                                        <Input
+                                            placeholder={t('project.loopConfig.form.oracleCommitIdPlaceholder')}
+                                            disabled={simulationSnapshotLocked}
+                                        />
                                     </Form.Item>
                                 ) : (
                                     <Form.Item
@@ -339,6 +388,7 @@ const ProjectLoopConfig: React.FC = () => {
                                             showSearch
                                             options={commitOptions}
                                             placeholder={t('project.loopConfig.form.oracleCommitIdSelectPlaceholder')}
+                                            disabled={simulationSnapshotLocked}
                                             filterOption={(input, option) => {
                                                 const haystack = String((option as any)?.searchText || '').toLowerCase();
                                                 return haystack.includes(input.toLowerCase());
@@ -346,22 +396,55 @@ const ProjectLoopConfig: React.FC = () => {
                                         />
                                     </Form.Item>
                                 )}
-                                <Form.Item name={['simulationConfig', 'seedRatio']} label={t('project.loopConfig.form.seedRatio')}>
+                                <Form.Item
+                                    name={['simulationConfig', 'snapshotInit', 'trainSeedRatio']}
+                                    label={t('project.loopConfig.form.snapshotInitTrainSeedRatio')}
+                                >
                                     <Slider
                                         min={0}
                                         max={1}
                                         step={0.001}
+                                        disabled={simulationSnapshotLocked}
                                         marks={{0: '0', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
                                         tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
                                     />
                                 </Form.Item>
-                                <Form.Item name={['simulationConfig', 'stepRatio']} label={t('project.loopConfig.form.stepRatio')}>
+                                <Form.Item
+                                    name={['simulationConfig', 'snapshotInit', 'valRatio']}
+                                    label={t('project.loopConfig.form.snapshotInitValRatio')}
+                                >
                                     <Slider
                                         min={0}
                                         max={1}
                                         step={0.001}
+                                        disabled={simulationSnapshotLocked}
                                         marks={{0: '0', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
                                         tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                    />
+                                </Form.Item>
+                                <Form.Item
+                                    name={['simulationConfig', 'snapshotInit', 'testRatio']}
+                                    label={t('project.loopConfig.form.snapshotInitTestRatio')}
+                                >
+                                    <Slider
+                                        min={0}
+                                        max={1}
+                                        step={0.001}
+                                        disabled={simulationSnapshotLocked}
+                                        marks={{0: '0', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                        tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                    />
+                                </Form.Item>
+                                <Form.Item
+                                    name={['simulationConfig', 'snapshotInit', 'valPolicy']}
+                                    label={t('project.loopConfig.form.snapshotInitValPolicy')}
+                                >
+                                    <Select
+                                        disabled={simulationSnapshotLocked}
+                                        options={[
+                                            {label: 'ANCHOR_ONLY', value: 'anchor_only'},
+                                            {label: 'EXPAND_WITH_BATCH_VAL', value: 'expand_with_batch_val'},
+                                        ]}
                                     />
                                 </Form.Item>
                             </div>

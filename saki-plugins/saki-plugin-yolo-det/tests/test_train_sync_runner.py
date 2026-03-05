@@ -84,6 +84,26 @@ def test_build_train_kwargs_for_deterministic_mode():
         device="cuda:0",
         train_seed=123,
         deterministic=True,
+        strong_deterministic=False,
+        train_project_dir=Path("/tmp/project"),
+    )
+    assert kwargs["seed"] == 123
+    assert kwargs["deterministic"] is True
+    assert "workers" not in kwargs
+    assert "amp" not in kwargs
+
+
+def test_build_train_kwargs_for_strong_deterministic_mode():
+    kwargs = _build_train_kwargs(
+        dataset_yaml=Path("/tmp/dataset.yaml"),
+        epochs=10,
+        batch=8,
+        imgsz=640,
+        patience=20,
+        device="cuda:0",
+        train_seed=123,
+        deterministic=True,
+        strong_deterministic=True,
         train_project_dir=Path("/tmp/project"),
     )
     assert kwargs["seed"] == 123
@@ -102,6 +122,7 @@ def test_build_train_kwargs_for_non_deterministic_mode():
         device="cuda:0",
         train_seed=123,
         deterministic=False,
+        strong_deterministic=False,
         train_project_dir=Path("/tmp/project"),
     )
     assert kwargs["seed"] == 123

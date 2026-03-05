@@ -98,12 +98,11 @@ class SnapshotMixin:
             return 0
         return selected
 
-    @staticmethod
-    def _compute_seed(*, requested_seed: str | None) -> str:
-        raw = str(requested_seed or "").strip()
-        if raw:
-            return raw
-        raise BadRequestAppException("snapshot seed is required")
+    def _resolve_snapshot_seed(self, *, loop: Any) -> str:
+        seed = self._get_loop_global_seed(loop.config or {})
+        if seed:
+            return seed
+        raise BadRequestAppException("config.reproducibility.global_seed is required for snapshot")
 
     @staticmethod
     def _manifest_hash(rows: list[dict[str, Any]]) -> str:
@@ -1395,6 +1394,8 @@ class SnapshotMixin:
         if loop.lifecycle == LoopLifecycle.DRAFT:
             if loop.mode == LoopMode.MANUAL:
                 return LoopGate.CAN_START, {"mode": str(loop.mode)}, start_action, [start_action]
+            if loop.mode == LoopMode.SIMULATION:
+                return LoopGate.CAN_START, {"mode": str(loop.mode)}, start_action, [start_action]
 
             if not loop.active_snapshot_version_id:
                 snapshot_action = self._action("snapshot_init", label="Init Snapshot")
@@ -1439,10 +1440,7 @@ class SnapshotMixin:
             raise BadRequestAppException("no samples found for snapshot init")
 
         version_index = await self.al_snapshot_version_repo.next_version_index(loop.id)
-        inherited_seed = self._get_loop_global_seed(loop.config or {})
-        requested_seed = payload.get("seed")
-        effective_seed = requested_seed if str(requested_seed or "").strip() else inherited_seed
-        seed = self._compute_seed(requested_seed=effective_seed)
+        seed = self._resolve_snapshot_seed(loop=loop)
         train_seed_ratio = float(payload.get("train_seed_ratio", 0.05))
         val_ratio = float(payload.get("val_ratio", 0.1))
         test_ratio = float(payload.get("test_ratio", 0.1))
@@ -1576,10 +1574,7 @@ class SnapshotMixin:
             }
 
         version_index = await self.al_snapshot_version_repo.next_version_index(loop.id)
-        inherited_seed = self._get_loop_global_seed(loop.config or {})
-        requested_seed = payload.get("seed")
-        effective_seed = requested_seed if str(requested_seed or "").strip() else inherited_seed
-        seed = self._compute_seed(requested_seed=effective_seed)
+        seed = self._resolve_snapshot_seed(loop=loop)
         val_policy = parent.val_policy
         if payload.get("val_policy"):
             val_policy = self._parse_enum(
@@ -1680,6 +1675,43 @@ class SnapshotMixin:
             "created": True,
             "sample_count": len(merged_rows),
         }
+
+    async def ensure_simulation_snapshot_bootstrap(
+        self,
+        *,
+        loop_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None,
+    ) -> dict[str, Any] | None:
+        loop = await self.loop_repo.get_by_id_or_raise(loop_id)
+        if loop.mode != LoopMode.SIMULATION:
+            return None
+        if loop.active_snapshot_version_id:
+            return None
+
+        simulation = self._extract_simulation_config(loop.config or {})
+        snapshot_init_cfg = simulation.snapshot_init
+        val_policy = self._parse_enum(
+            SnapshotValPolicy,
+            snapshot_init_cfg.val_policy,
+            field_name="config.mode.snapshot_init.val_policy",
+            default=SnapshotValPolicy.ANCHOR_ONLY,
+        )
+        payload = {
+            "train_seed_ratio": float(snapshot_init_cfg.train_seed_ratio),
+            "val_ratio": float(snapshot_init_cfg.val_ratio),
+            "test_ratio": float(snapshot_init_cfg.test_ratio),
+            "val_policy": val_policy.value,
+        }
+        try:
+            return await self.init_loop_snapshot(
+                loop_id=loop_id,
+                payload=payload,
+                actor_user_id=actor_user_id,
+            )
+        except BadRequestAppException as exc:
+            if "active snapshot already exists" in str(exc):
+                return None
+            raise
 
     async def get_loop_snapshot(self, *, loop_id: uuid.UUID) -> dict[str, Any]:
         loop = await self.loop_repo.get_by_id_or_raise(loop_id)

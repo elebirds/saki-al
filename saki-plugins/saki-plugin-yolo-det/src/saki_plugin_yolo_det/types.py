@@ -16,6 +16,7 @@ class TrainConfig:
     resolved_base_model: str
     train_seed: int
     deterministic: bool
+    strong_deterministic: bool
     yolo_task: str = "obb"
 
 

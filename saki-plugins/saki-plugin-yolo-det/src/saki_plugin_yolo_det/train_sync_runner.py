@@ -85,6 +85,7 @@ def _build_train_kwargs(
     device: Any,
     train_seed: int,
     deterministic: bool,
+    strong_deterministic: bool,
     train_project_dir: Path,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
@@ -101,7 +102,7 @@ def _build_train_kwargs(
         "exist_ok": True,
         "verbose": False,
     }
-    if deterministic:
+    if strong_deterministic:
         # 严格确定性：关闭多 worker 与 AMP，减少跨轮漂移。
         kwargs["workers"] = 0
         kwargs["amp"] = False
@@ -120,6 +121,7 @@ def run_train_sync(
     device: Any,
     train_seed: int,
     deterministic: bool,
+    strong_deterministic: bool,
     stop_flag: Event,
     load_yolo: LoadYoloFn,
     ensure_cjk_plot_font: EnsureFontFn,
@@ -161,6 +163,7 @@ def run_train_sync(
             device=device,
             train_seed=train_seed,
             deterministic=deterministic,
+            strong_deterministic=strong_deterministic,
             train_project_dir=train_project_dir,
         )
     )

@@ -55,6 +55,7 @@ const ProjectLoopCreate: React.FC = () => {
     const [createForm] = Form.useForm<LoopEditorFormValues>();
 
     const selectedMode = Form.useWatch('mode', createForm) || 'active_learning';
+    const selectedDeterministicLevel = Form.useWatch('deterministicLevel', createForm) || 'off';
     const selectedPluginId = Form.useWatch('modelArch', createForm);
     const selectedOracleInputMode = Form.useWatch(['simulationConfig', 'oracleInputMode'], createForm) || 'select';
     const pluginConfigValues: Record<string, any> = Form.useWatch('pluginConfig', createForm) || {};
@@ -114,6 +115,7 @@ const ProjectLoopCreate: React.FC = () => {
                 mode: 'active_learning',
                 modelArch: firstPlugin?.pluginId,
                 globalSeed: '',
+                deterministicLevel: 'off',
                 samplingStrategy: defaultStrategy || RANDOM_BASELINE_STRATEGY,
                 queryBatchSize: 200,
                 pluginConfig: mergePluginConfigWithDefaults(firstPlugin, {}),
@@ -121,9 +123,13 @@ const ProjectLoopCreate: React.FC = () => {
                     oracleInputMode: 'select',
                     oracleCommitId: commitRows[0]?.id,
                     oracleCommitIdManual: '',
-                    seedRatio: 0.05,
-                    stepRatio: 0.05,
                     maxRounds: 20,
+                    snapshotInit: {
+                        trainSeedRatio: 0.05,
+                        valRatio: 0.1,
+                        testRatio: 0.1,
+                        valPolicy: 'anchor_only',
+                    },
                 },
             });
         } catch (error: any) {
@@ -242,7 +248,7 @@ const ProjectLoopCreate: React.FC = () => {
                         </Form.Item>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-x-4 md:grid-cols-4">
                         <Form.Item
                             name="mode"
                             label={t('project.loopCreate.form.mode')}
@@ -297,6 +303,32 @@ const ProjectLoopCreate: React.FC = () => {
                         >
                             <Input placeholder={t('project.loopCreate.form.globalSeedPlaceholder')}/>
                         </Form.Item>
+                        <Form.Item
+                            name="deterministicLevel"
+                            label={t('project.loopCreate.form.deterministicLevel')}
+                            rules={[{required: true, message: t('project.loopCreate.form.deterministicLevelRequired')}]}
+                        >
+                            <Select
+                                options={[
+                                    {label: t('project.loopCreate.form.deterministicLevelOptions.off'), value: 'off'},
+                                    {
+                                        label: t('project.loopCreate.form.deterministicLevelOptions.deterministic'),
+                                        value: 'deterministic',
+                                    },
+                                    {
+                                        label: t('project.loopCreate.form.deterministicLevelOptions.strongDeterministic'),
+                                        value: 'strong_deterministic',
+                                    },
+                                ]}
+                            />
+                        </Form.Item>
+                        {selectedDeterministicLevel !== 'off' ? (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                message={t('project.loopCreate.form.deterministicLevelPerfHint')}
+                            />
+                        ) : null}
                     </div>
                 </Card>
 
@@ -391,7 +423,10 @@ const ProjectLoopCreate: React.FC = () => {
                                 </Form.Item>
                             )}
 
-                            <Form.Item name={['simulationConfig', 'seedRatio']} label={t('project.loopCreate.form.seedRatio')}>
+                            <Form.Item
+                                name={['simulationConfig', 'snapshotInit', 'trainSeedRatio']}
+                                label={t('project.loopCreate.form.snapshotInitTrainSeedRatio')}
+                            >
                                 <Slider
                                     min={0}
                                     max={1}
@@ -400,13 +435,39 @@ const ProjectLoopCreate: React.FC = () => {
                                     tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
                                 />
                             </Form.Item>
-                            <Form.Item name={['simulationConfig', 'stepRatio']} label={t('project.loopCreate.form.stepRatio')}>
+                            <Form.Item
+                                name={['simulationConfig', 'snapshotInit', 'valRatio']}
+                                label={t('project.loopCreate.form.snapshotInitValRatio')}
+                            >
                                 <Slider
                                     min={0}
                                     max={1}
                                     step={0.001}
                                     marks={{0: '0', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
                                     tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                />
+                            </Form.Item>
+                            <Form.Item
+                                name={['simulationConfig', 'snapshotInit', 'testRatio']}
+                                label={t('project.loopCreate.form.snapshotInitTestRatio')}
+                            >
+                                <Slider
+                                    min={0}
+                                    max={1}
+                                    step={0.001}
+                                    marks={{0: '0', 0.1: '0.1', 0.5: '0.5', 1: '1.0'}}
+                                    tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(3) : '')}}
+                                />
+                            </Form.Item>
+                            <Form.Item
+                                name={['simulationConfig', 'snapshotInit', 'valPolicy']}
+                                label={t('project.loopCreate.form.snapshotInitValPolicy')}
+                            >
+                                <Select
+                                    options={[
+                                        {label: 'ANCHOR_ONLY', value: 'anchor_only'},
+                                        {label: 'EXPAND_WITH_BATCH_VAL', value: 'expand_with_batch_val'},
+                                    ]}
                                 />
                             </Form.Item>
                         </div>

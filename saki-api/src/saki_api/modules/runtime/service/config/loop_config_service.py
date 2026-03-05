@@ -4,6 +4,16 @@ import uuid
 from typing import Any
 
 from saki_api.core.exceptions import BadRequestAppException
+from saki_api.modules.shared.modeling.enums import SnapshotValPolicy
+
+_DETERMINISTIC_LEVEL_OFF = "off"
+_DETERMINISTIC_LEVEL_DETERMINISTIC = "deterministic"
+_DETERMINISTIC_LEVEL_STRONG = "strong_deterministic"
+_ALLOWED_DETERMINISTIC_LEVELS: tuple[str, ...] = (
+    _DETERMINISTIC_LEVEL_OFF,
+    _DETERMINISTIC_LEVEL_DETERMINISTIC,
+    _DETERMINISTIC_LEVEL_STRONG,
+)
 
 
 def to_bool(value: Any, default: bool) -> bool:
@@ -33,6 +43,53 @@ def to_float(value: Any, default: float) -> float:
         return default
 
 
+def _normalize_deterministic_level(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return _DETERMINISTIC_LEVEL_OFF
+    if text in _ALLOWED_DETERMINISTIC_LEVELS:
+        return text
+    raise BadRequestAppException(
+        "invalid config.reproducibility.deterministic_level: "
+        f"{value}. allowed={list(_ALLOWED_DETERMINISTIC_LEVELS)}"
+    )
+
+
+def _normalize_snapshot_val_policy(value: Any) -> str:
+    if isinstance(value, SnapshotValPolicy):
+        return str(value.value)
+    text = str(value or "").strip()
+    if not text:
+        return SnapshotValPolicy.ANCHOR_ONLY.value
+    candidates = [text]
+    if "." in text:
+        candidates.append(text.rsplit(".", maxsplit=1)[-1])
+    for candidate in candidates:
+        try:
+            return SnapshotValPolicy(candidate).value
+        except Exception:
+            pass
+        enum_name = candidate.upper()
+        if enum_name in SnapshotValPolicy.__members__:
+            return SnapshotValPolicy[enum_name].value
+    allowed_values = ", ".join(sorted(item.value for item in SnapshotValPolicy))
+    allowed_names = ", ".join(sorted(item.name for item in SnapshotValPolicy))
+    raise BadRequestAppException(
+        f"invalid simulation mode snapshot_init.val_policy: {value}. "
+        f"allowed values=[{allowed_values}], names=[{allowed_names}]"
+    )
+
+
+def _normalize_simulation_snapshot_init(raw: Any) -> dict[str, Any]:
+    payload = raw if isinstance(raw, dict) else {}
+    return {
+        "train_seed_ratio": min(1.0, max(0.0, to_float(payload.get("train_seed_ratio"), 0.05))),
+        "val_ratio": min(1.0, max(0.0, to_float(payload.get("val_ratio"), 0.1))),
+        "test_ratio": min(1.0, max(0.0, to_float(payload.get("test_ratio"), 0.1))),
+        "val_policy": _normalize_snapshot_val_policy(payload.get("val_policy")),
+    }
+
+
 def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> dict[str, Any]:
     config = dict(raw_config or {})
     plugin = config.get("plugin")
@@ -47,7 +104,9 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     reproducibility_map = dict(reproducibility) if isinstance(reproducibility, dict) else {}
     normalized_repro = {
         "global_seed": str(reproducibility_map.get("global_seed") or "").strip(),
-        "deterministic_level": str(reproducibility_map.get("deterministic_level") or "strict").strip(),
+        "deterministic_level": _normalize_deterministic_level(
+            reproducibility_map.get("deterministic_level")
+        ),
     }
     normalized_execution = dict(execution) if isinstance(execution, dict) else {}
 
@@ -85,11 +144,11 @@ def normalize_loop_config(raw_config: dict[str, Any] | None, *, mode: str) -> di
     elif mode == "active_learning":
         normalized_mode["confirm_required"] = to_bool(normalized_mode.get("confirm_required"), True)
     elif mode == "simulation":
+        snapshot_init = _normalize_simulation_snapshot_init(normalized_mode.get("snapshot_init"))
         normalized_mode = {
             "oracle_commit_id": str(normalized_mode.get("oracle_commit_id") or "").strip(),
-            "seed_ratio": min(1.0, max(0.0, to_float(normalized_mode.get("seed_ratio"), 0.05))),
-            "step_ratio": min(1.0, max(0.0, to_float(normalized_mode.get("step_ratio"), 0.05))),
             "max_rounds": max(1, to_int(normalized_mode.get("max_rounds"), 20)),
+            "snapshot_init": snapshot_init,
         }
     else:
         raise BadRequestAppException(f"unsupported mode: {mode}")
@@ -116,6 +175,7 @@ def validate_loop_config(config: dict[str, Any], *, mode: str) -> None:
     global_seed = str(reproducibility_map.get("global_seed") or "").strip()
     if not global_seed:
         raise BadRequestAppException("all loop modes require config.reproducibility.global_seed")
+    _normalize_deterministic_level(reproducibility_map.get("deterministic_level"))
 
     if mode == "manual":
         if sampling_map:
@@ -139,6 +199,21 @@ def validate_loop_config(config: dict[str, Any], *, mode: str) -> None:
             raise BadRequestAppException(
                 "simulation mode requires valid UUID config.mode.oracle_commit_id"
             ) from exc
+        snapshot_init = mode_map.get("snapshot_init")
+        snapshot_init_map = snapshot_init if isinstance(snapshot_init, dict) else {}
+        train_seed_ratio = to_float(snapshot_init_map.get("train_seed_ratio"), 0.05)
+        val_ratio = to_float(snapshot_init_map.get("val_ratio"), 0.1)
+        test_ratio = to_float(snapshot_init_map.get("test_ratio"), 0.1)
+        for field_name, ratio in (
+            ("train_seed_ratio", train_seed_ratio),
+            ("val_ratio", val_ratio),
+            ("test_ratio", test_ratio),
+        ):
+            if ratio < 0.0 or ratio > 1.0:
+                raise BadRequestAppException(
+                    f"simulation mode snapshot_init.{field_name} must be within [0, 1]"
+                )
+        _normalize_snapshot_val_policy(snapshot_init_map.get("val_policy"))
 
 
 def derive_loop_max_rounds(*, mode: str, config: dict[str, Any]) -> int:

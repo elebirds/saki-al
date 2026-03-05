@@ -19,6 +19,12 @@ from saki_api.modules.shared.modeling.enums import LoopLifecycle, LoopMode
 
 
 class LoopCommandMixin:
+    @staticmethod
+    def _extract_config_deterministic_level(config: dict[str, Any] | None) -> str:
+        reproducibility = (config or {}).get("reproducibility")
+        reproducibility_map = reproducibility if isinstance(reproducibility, dict) else {}
+        return str(reproducibility_map.get("deterministic_level") or "off").strip().lower() or "off"
+
     def _extract_config_oracle_commit_id(self, config: dict[str, Any] | None) -> uuid.UUID | None:
         simulation = self._extract_simulation_config(dict(config or {}))
         raw = str(simulation.oracle_commit_id or "").strip()
@@ -28,6 +34,16 @@ class LoopCommandMixin:
             return uuid.UUID(raw)
         except Exception as exc:
             raise BadRequestAppException("config.mode.oracle_commit_id must be a valid UUID") from exc
+
+    def _extract_config_snapshot_init(self, config: dict[str, Any] | None) -> dict[str, Any]:
+        simulation = self._extract_simulation_config(dict(config or {}))
+        snapshot_init = simulation.snapshot_init
+        return {
+            "train_seed_ratio": float(snapshot_init.train_seed_ratio),
+            "val_ratio": float(snapshot_init.val_ratio),
+            "test_ratio": float(snapshot_init.test_ratio),
+            "val_policy": str(snapshot_init.val_policy or "").strip() or "anchor_only",
+        }
 
     async def _validate_simulation_oracle_commit(
         self,
@@ -139,6 +155,16 @@ class LoopCommandMixin:
                 and current_seed != next_seed
             ):
                 raise BadRequestAppException("config.reproducibility.global_seed is immutable once lifecycle is not draft")
+            current_deterministic_level = self._extract_config_deterministic_level(loop.config or {})
+            next_deterministic_level = self._extract_config_deterministic_level(normalized_config)
+            if (
+                str(loop.lifecycle.value if hasattr(loop.lifecycle, "value") else loop.lifecycle).strip().lower()
+                != "draft"
+                and current_deterministic_level != next_deterministic_level
+            ):
+                raise BadRequestAppException(
+                    "config.reproducibility.deterministic_level is immutable once lifecycle is not draft"
+                )
 
             current_oracle_commit_id = await self._validate_simulation_oracle_commit(
                 project_id=loop.project_id,
@@ -150,13 +176,16 @@ class LoopCommandMixin:
                 mode=next_mode,
                 config=normalized_config,
             )
-            if current_oracle_commit_id != next_oracle_commit_id:
+            current_snapshot_init = self._extract_config_snapshot_init(loop.config or {})
+            next_snapshot_init = self._extract_config_snapshot_init(normalized_config)
+            if current_oracle_commit_id != next_oracle_commit_id or current_snapshot_init != next_snapshot_init:
                 can_update_oracle = (
                     loop.lifecycle == LoopLifecycle.DRAFT and loop.active_snapshot_version_id is None
                 )
                 if not can_update_oracle:
                     raise BadRequestAppException(
-                        "config.mode.oracle_commit_id can only change while loop is draft and snapshot is not initialized"
+                        "config.mode.oracle_commit_id/config.mode.snapshot_init can only change "
+                        "while loop is draft and snapshot is not initialized"
                     )
             patch.config = normalized_config
             patch.max_rounds = self._derive_loop_max_rounds(mode=mode_text, config=normalized_config)

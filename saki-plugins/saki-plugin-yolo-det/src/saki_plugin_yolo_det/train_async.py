@@ -71,6 +71,7 @@ async def resolve_train_config(
         resolved_base_model=resolved_base_model,
         train_seed=max(0, int(getattr(plugin_config, "train_seed", 0) or 0)),
         deterministic=bool(getattr(plugin_config, "deterministic", False)),
+        strong_deterministic=bool(getattr(plugin_config, "strong_deterministic", False)),
         yolo_task=str(plugin_config.yolo_task),
     )
 
@@ -96,7 +97,8 @@ async def run_train_with_epoch_stream(
                 f"epochs={config.epochs} batch={config.batch} imgsz={config.imgsz} "
                 f"patience={config.patience} requested_device={config.requested_device} "
                 f"resolved_backend={config.resolved_backend} device={config.device} "
-                f"train_seed={config.train_seed} deterministic={config.deterministic}"
+                f"train_seed={config.train_seed} deterministic={config.deterministic} "
+                f"strong_deterministic={config.strong_deterministic}"
             ),
         },
     )
@@ -126,6 +128,7 @@ async def run_train_with_epoch_stream(
                 device=config.device,
                 train_seed=config.train_seed,
                 deterministic=config.deterministic,
+                strong_deterministic=config.strong_deterministic,
                 yolo_task=config.yolo_task,
                 epoch_callback=_on_epoch_update,
             )

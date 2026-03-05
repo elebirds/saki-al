@@ -198,7 +198,7 @@ func TestCompileRoundConfigSeedsStableAcrossRoundIndex(t *testing.T) {
 		ModelArch:      "yolo_det_v1",
 		Config: []byte(`{
 			"sampling": {"strategy": "random_baseline", "topk": 32},
-			"reproducibility": {"global_seed": "seed-fixed", "deterministic_level": "strict"}
+			"reproducibility": {"global_seed": "seed-fixed", "deterministic_level": "deterministic"}
 		}`),
 	}
 	first := compileRoundConfig(loop, 1)
@@ -214,7 +214,59 @@ func TestCompileRoundConfigSeedsStableAcrossRoundIndex(t *testing.T) {
 		t.Fatalf("sampling_seed should be stable across rounds: %v != %v", first["sampling_seed"], second["sampling_seed"])
 	}
 	if first["deterministic"] != true {
-		t.Fatalf("deterministic should be true when deterministic_level=strict: %v", first["deterministic"])
+		t.Fatalf("deterministic should be true when deterministic_level=deterministic: %v", first["deterministic"])
+	}
+	if first["strong_deterministic"] != false {
+		t.Fatalf("strong_deterministic should be false when deterministic_level=deterministic: %v", first["strong_deterministic"])
+	}
+	if first["deterministic_level"] != "deterministic" {
+		t.Fatalf("deterministic_level should be normalized as deterministic: %v", first["deterministic_level"])
+	}
+}
+
+func TestCompileRoundConfigDeterministicLevelDefaultsToOff(t *testing.T) {
+	loop := loopRow{
+		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790acb"),
+		Mode:           modeAL,
+		QueryBatchSize: 128,
+		ModelArch:      "yolo_det_v1",
+		Config: []byte(`{
+			"sampling": {"strategy": "random_baseline", "topk": 32},
+			"reproducibility": {"global_seed": "seed-fixed"}
+		}`),
+	}
+	config := compileRoundConfig(loop, 1)
+	if config["deterministic_level"] != "off" {
+		t.Fatalf("deterministic_level should default to off: %v", config["deterministic_level"])
+	}
+	if config["deterministic"] != false {
+		t.Fatalf("deterministic should be false when deterministic_level=off: %v", config["deterministic"])
+	}
+	if config["strong_deterministic"] != false {
+		t.Fatalf("strong_deterministic should be false when deterministic_level=off: %v", config["strong_deterministic"])
+	}
+}
+
+func TestCompileRoundConfigStrongDeterministicLevel(t *testing.T) {
+	loop := loopRow{
+		ID:             mustUUID("f1fa6112-6ea6-4367-a83a-e6f993790acc"),
+		Mode:           modeAL,
+		QueryBatchSize: 128,
+		ModelArch:      "yolo_det_v1",
+		Config: []byte(`{
+			"sampling": {"strategy": "random_baseline", "topk": 32},
+			"reproducibility": {"global_seed": "seed-fixed", "deterministic_level": "strong_deterministic"}
+		}`),
+	}
+	config := compileRoundConfig(loop, 1)
+	if config["deterministic_level"] != "strong_deterministic" {
+		t.Fatalf("deterministic_level should be normalized as strong_deterministic: %v", config["deterministic_level"])
+	}
+	if config["deterministic"] != true {
+		t.Fatalf("deterministic should be true when deterministic_level=strong_deterministic: %v", config["deterministic"])
+	}
+	if config["strong_deterministic"] != true {
+		t.Fatalf("strong_deterministic should be true when deterministic_level=strong_deterministic: %v", config["strong_deterministic"])
 	}
 }
 

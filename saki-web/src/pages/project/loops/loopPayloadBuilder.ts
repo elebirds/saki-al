@@ -1,4 +1,5 @@
 import {
+    DeterministicLevel,
     LoopCreateRequest,
     LoopMode,
     LoopUpdateRequest,
@@ -16,6 +17,7 @@ export type LoopEditorFormValues = {
     mode?: LoopMode;
     modelArch: string;
     globalSeed: string;
+    deterministicLevel?: DeterministicLevel;
     samplingStrategy?: string;
     queryBatchSize?: number;
     pluginConfig?: Record<string, any>;
@@ -23,9 +25,13 @@ export type LoopEditorFormValues = {
         oracleInputMode?: OracleInputMode;
         oracleCommitId?: string;
         oracleCommitIdManual?: string;
-        seedRatio?: number;
-        stepRatio?: number;
         maxRounds?: number;
+        snapshotInit?: {
+            trainSeedRatio?: number;
+            valRatio?: number;
+            testRatio?: number;
+            valPolicy?: string;
+        };
     };
 };
 
@@ -42,6 +48,17 @@ const normalizePositiveInt = (value: unknown, fallback: number): number => {
 };
 
 const normalizeText = (value: unknown): string => String(value ?? '').trim();
+const normalizeDeterministicLevel = (value: unknown): DeterministicLevel => {
+    const text = normalizeText(value).toLowerCase();
+    if (text === 'deterministic') return 'deterministic';
+    if (text === 'strong_deterministic') return 'strong_deterministic';
+    return 'off';
+};
+const normalizeSnapshotValPolicy = (value: unknown): 'anchor_only' | 'expand_with_batch_val' => {
+    const text = normalizeText(value).toLowerCase();
+    if (text === 'expand_with_batch_val') return 'expand_with_batch_val';
+    return 'anchor_only';
+};
 
 export const pickDefaultSamplingStrategy = (
     plugin: RuntimePluginCatalogItem | undefined,
@@ -74,6 +91,7 @@ export const buildLoopRuntimeConfig = (
         plugin: mergePluginConfigWithDefaults(plugin, values.pluginConfig),
         reproducibility: {
             globalSeed: normalizeText(values.globalSeed),
+            deterministicLevel: normalizeDeterministicLevel(values.deterministicLevel),
         },
     };
 
@@ -87,9 +105,13 @@ export const buildLoopRuntimeConfig = (
     if (mode === 'simulation') {
         config.mode = {
             oracleCommitId: resolveOracleCommitId(values.simulationConfig),
-            seedRatio: clampRatio(values.simulationConfig?.seedRatio, 0.05),
-            stepRatio: clampRatio(values.simulationConfig?.stepRatio, 0.05),
             maxRounds: normalizePositiveInt(values.simulationConfig?.maxRounds, 20),
+            snapshotInit: {
+                trainSeedRatio: clampRatio(values.simulationConfig?.snapshotInit?.trainSeedRatio, 0.05),
+                valRatio: clampRatio(values.simulationConfig?.snapshotInit?.valRatio, 0.1),
+                testRatio: clampRatio(values.simulationConfig?.snapshotInit?.testRatio, 0.1),
+                valPolicy: normalizeSnapshotValPolicy(values.simulationConfig?.snapshotInit?.valPolicy),
+            },
         };
     }
 

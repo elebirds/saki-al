@@ -189,7 +189,7 @@ const formatGateHint = (gateInfo: LoopGateResponse | null): string => {
         }
         return 0;
     };
-    if (gate === 'need_snapshot') return '需要先初始化 Snapshot，才能进入主动学习流程。';
+    if (gate === 'need_snapshot') return '需要先初始化 Snapshot，才能开始当前循环。';
     if (gate === 'need_labels') return `Round 0 就绪未完成，仍缺 ${num('gapCount', 'gap_count')} 个标注。`;
     if (gate === 'need_round_labels') {
         return `本轮 Query 仍需补标：缺失 ${num('missingCount', 'missing_count')} / 已选 ${num('selectedCount', 'selected_count')}（达标 ${num('revealedCount', 'revealed_count')}/${num('minRequired', 'min_required')}）。`;
@@ -709,7 +709,6 @@ const ProjectLoopDetail: React.FC = () => {
             const values = await initForm.validateFields();
             setSnapshotSubmitting(true);
             const payload: SnapshotInitRequest = {
-                seed: values.seed,
                 trainSeedRatio: values.trainSeedRatio,
                 valRatio: values.valRatio,
                 testRatio: values.testRatio,
@@ -735,7 +734,6 @@ const ProjectLoopDetail: React.FC = () => {
             setSnapshotSubmitting(true);
             const payload: SnapshotUpdateRequest = {
                 mode: values.mode,
-                seed: values.seed,
                 batchTestRatio: values.batchTestRatio,
                 batchValRatio: values.batchValRatio,
                 valPolicy: values.valPolicy,
@@ -1437,9 +1435,6 @@ const ProjectLoopDetail: React.FC = () => {
                 destroyOnHidden
             >
                 <Form form={initForm} layout="vertical">
-                    <Form.Item name="seed" label="Seed">
-                        <Input placeholder="可选，不填则按规则生成"/>
-                    </Form.Item>
                     <Form.Item name="trainSeedRatio" label="Train Seed Ratio">
                         <Slider min={0} max={1} step={0.01} tooltip={{formatter: (value) => (typeof value === 'number' ? value.toFixed(2) : '')}}/>
                     </Form.Item>
@@ -1481,9 +1476,6 @@ const ProjectLoopDetail: React.FC = () => {
                                 {label: 'APPEND_SPLIT', value: 'append_split'},
                             ]}
                         />
-                    </Form.Item>
-                    <Form.Item name="seed" label="Seed">
-                        <Input placeholder="可选，不填则按规则生成"/>
                     </Form.Item>
                     <Form.Item name="valPolicy" label="Val Policy（可选覆盖）">
                         <Select

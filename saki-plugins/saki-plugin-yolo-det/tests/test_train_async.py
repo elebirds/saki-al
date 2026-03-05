@@ -29,6 +29,7 @@ def _make_train_config() -> TrainConfig:
         resolved_base_model="yolo11n.pt",
         train_seed=0,
         deterministic=False,
+        strong_deterministic=False,
         yolo_task="obb",
     )
 

@@ -342,6 +342,7 @@ async def test_runtime_train_reads_split_seed_from_plugin_config_attrs(tmp_path:
             resolved_base_model="yolov8n.pt",
             train_seed=22,
             deterministic=False,
+            strong_deterministic=False,
             yolo_task="detect",
         )
 

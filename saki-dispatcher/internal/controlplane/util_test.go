@@ -11,7 +11,7 @@ import (
 func TestDecodeTaskEventStatusUsesLowercasePayload(t *testing.T) {
 	event := &runtimecontrolv1.TaskEvent{
 		EventPayload: &runtimecontrolv1.TaskEvent_StatusEvent{
-			StatusEvent: &runtimecontrolv1.StatusEvent{Status: runtimecontrolv1.RuntimeStepStatus_RUNNING, Reason: "step running"},
+			StatusEvent: &runtimecontrolv1.StatusEvent{Status: runtimecontrolv1.RuntimeTaskStatus_RUNNING, Reason: "step running"},
 		},
 	}
 	eventType, payload, statusValue := decodeTaskEvent(event)
@@ -30,7 +30,7 @@ func TestDecodeTaskEventStatusMapsPreRunStages(t *testing.T) {
 	event := &runtimecontrolv1.TaskEvent{
 		EventPayload: &runtimecontrolv1.TaskEvent_StatusEvent{
 			StatusEvent: &runtimecontrolv1.StatusEvent{
-				Status: runtimecontrolv1.RuntimeStepStatus_PROBING_RUNTIME,
+				Status: runtimecontrolv1.RuntimeTaskStatus_PROBING_RUNTIME,
 				Reason: "runtime probe",
 			},
 		},

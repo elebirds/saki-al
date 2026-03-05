@@ -1,7 +1,7 @@
 -- name: InsertDispatchOutbox :execrows
 INSERT INTO dispatch_outbox(
   id,
-  step_id,
+  task_id,
   executor_id,
   request_id,
   payload,
@@ -12,7 +12,7 @@ INSERT INTO dispatch_outbox(
   updated_at
 ) VALUES (
   sqlc.arg(outbox_id)::uuid,
-  sqlc.arg(step_id)::uuid,
+  sqlc.arg(task_id)::uuid,
   sqlc.arg(executor_id),
   sqlc.arg(request_id),
   sqlc.arg(payload)::jsonb,
@@ -43,7 +43,7 @@ FROM picked
 WHERE o.id = picked.id
 RETURNING
   o.id AS id,
-  o.step_id AS step_id,
+  o.task_id AS task_id,
   o.executor_id,
   o.request_id,
   o.payload,
@@ -88,11 +88,12 @@ WHERE s.state IN (
   'PROBING_RUNTIME'::stepstatus,
   'BINDING_DEVICE'::stepstatus
 )
+  AND s.task_id IS NOT NULL
   AND s.updated_at < sqlc.arg(cutoff)
   AND NOT EXISTS (
     SELECT 1
     FROM dispatch_outbox o
-    WHERE o.step_id = s.id
+    WHERE o.task_id = s.task_id
       AND o.status IN ('PENDING', 'SENDING')
   )
 ORDER BY s.updated_at ASC

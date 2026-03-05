@@ -13,7 +13,7 @@ import (
 )
 
 const insertStepEvent = `-- name: InsertStepEvent :execrows
-INSERT INTO step_event(id, step_id, seq, ts, event_type, payload, created_at, updated_at)
+INSERT INTO task_event(id, task_id, seq, ts, event_type, payload, created_at, updated_at)
 VALUES(
   $1::uuid,
   $2::uuid,
@@ -24,12 +24,12 @@ VALUES(
   now(),
   now()
 )
-ON CONFLICT (step_id, seq) DO NOTHING
+ON CONFLICT (task_id, seq) DO NOTHING
 `
 
 type InsertStepEventParams struct {
 	EventID   uuid.UUID
-	StepID    uuid.UUID
+	TaskID    uuid.UUID
 	Seq       int32
 	Ts        pgtype.Timestamptz
 	EventType string
@@ -39,7 +39,7 @@ type InsertStepEventParams struct {
 func (q *Queries) InsertStepEvent(ctx context.Context, arg InsertStepEventParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertStepEvent,
 		arg.EventID,
-		arg.StepID,
+		arg.TaskID,
 		arg.Seq,
 		arg.Ts,
 		arg.EventType,

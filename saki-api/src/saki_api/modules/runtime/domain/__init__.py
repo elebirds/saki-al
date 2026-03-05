@@ -18,9 +18,9 @@ from saki_api.modules.runtime.domain.prediction import Prediction
 from saki_api.modules.runtime.domain.prediction_binding import PredictionBinding
 from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
-from saki_api.modules.runtime.domain.step_event import StepEvent
-from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
+from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem, TaskCandidateItem
+from saki_api.modules.runtime.domain.step_event import StepEvent, TaskEvent
+from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint, TaskMetricPoint
 from saki_api.modules.runtime.domain.state_machine import (
     RUNNING_ROUND_STATES,
     RUNNING_STEP_STATES,
@@ -49,8 +49,11 @@ __all__ = [
     "PredictionBinding",
     "PredictionItem",
     "StepCandidateItem",
+    "TaskCandidateItem",
     "StepEvent",
+    "TaskEvent",
     "StepMetricPoint",
+    "TaskMetricPoint",
     "phase_for_mode",
     "RUNNING_ROUND_STATES",
     "RUNNING_STEP_STATES",

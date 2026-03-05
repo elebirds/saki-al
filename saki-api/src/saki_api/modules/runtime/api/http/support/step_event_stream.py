@@ -1,4 +1,4 @@
-"""Step-event WebSocket auth and streaming helpers."""
+"""Task-event WebSocket auth and streaming helpers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from starlette.websockets import WebSocket, WebSocketState
 from saki_api.core.config import settings
 from saki_api.infra.db.session import SessionLocal
 from saki_api.modules.access.service.permission_checker import PermissionChecker
-from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.task import Task
 from saki_api.modules.runtime.service.runtime_service import RuntimeService
 from saki_api.modules.access.domain.rbac import Permissions, ResourceType
 
@@ -38,25 +38,23 @@ async def authenticate_stream_token(websocket: WebSocket) -> uuid.UUID | None:
         return None
 
 
-async def authorize_stream_step_access(
+async def authorize_stream_task_access(
     *,
     websocket: WebSocket,
     user_id: uuid.UUID,
-    parsed_step_id: uuid.UUID,
+    parsed_task_id: uuid.UUID,
 ) -> bool:
     async with SessionLocal() as session:
-        step = await session.get(Step, parsed_step_id)
-        if not step:
-            await websocket.close(code=1008, reason="step not found")
+        task = await session.get(Task, parsed_task_id)
+        if not task:
+            await websocket.close(code=1008, reason="task not found")
             return False
-        runtime_service = RuntimeService(session=session)
-        round_row = await runtime_service.get_by_id_or_raise(step.round_id)
         checker = PermissionChecker(session)
         allowed = await checker.check(
             user_id=user_id,
             permission=Permissions.ROUND_READ,
             resource_type=ResourceType.PROJECT,
-            resource_id=str(round_row.project_id),
+            resource_id=str(task.project_id),
         )
         if not allowed:
             await websocket.close(code=1008, reason="permission denied")
@@ -64,10 +62,10 @@ async def authorize_stream_step_access(
     return True
 
 
-async def stream_step_events_loop(
+async def stream_task_events_loop(
     *,
     websocket: WebSocket,
-    parsed_step_id: uuid.UUID,
+    parsed_task_id: uuid.UUID,
     cursor: int,
 ) -> int:
     disconnect_task: asyncio.Task[dict] | None = None
@@ -80,8 +78,8 @@ async def stream_step_events_loop(
 
             async with SessionLocal() as session:  # type: AsyncSession
                 runtime_service = RuntimeService(session=session)
-                payload = await runtime_service.query_step_events(
-                    step_id=parsed_step_id,
+                payload = await runtime_service.query_task_events(
+                    task_id=parsed_task_id,
                     after_seq=cursor,
                     limit=500,
                 )

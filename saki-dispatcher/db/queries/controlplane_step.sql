@@ -190,28 +190,28 @@ WHERE round_id = sqlc.arg(round_id)::uuid
 ORDER BY step_index DESC
 LIMIT 1;
 
--- name: ListStepCandidatesByStepID :many
+-- name: ListTaskCandidatesByTaskID :many
 SELECT
   sample_id AS sample_id,
   rank,
   score,
   reason AS reason_json,
   prediction_snapshot AS prediction_json
-FROM step_candidate_item
-WHERE step_id = sqlc.arg(step_id)::uuid
+FROM task_candidate_item
+WHERE task_id = sqlc.arg(task_id)::uuid
 ORDER BY rank ASC, score DESC
 LIMIT sqlc.arg(limit_count);
 
--- name: DeleteStepCandidatesByStepID :exec
-DELETE FROM step_candidate_item
-WHERE step_id = sqlc.arg(step_id)::uuid;
+-- name: DeleteTaskCandidatesByTaskID :exec
+DELETE FROM task_candidate_item
+WHERE task_id = sqlc.arg(task_id)::uuid;
 
--- name: InsertStepCandidateItem :exec
-INSERT INTO step_candidate_item(
-  id, step_id, sample_id, rank, score, reason, prediction_snapshot, created_at, updated_at
+-- name: InsertTaskCandidateItem :exec
+INSERT INTO task_candidate_item(
+  id, task_id, sample_id, rank, score, reason, prediction_snapshot, created_at, updated_at
 ) VALUES (
   sqlc.arg(candidate_id)::uuid,
-  sqlc.arg(step_id)::uuid,
+  sqlc.arg(task_id)::uuid,
   sqlc.arg(sample_id)::uuid,
   sqlc.arg(rank),
   sqlc.arg(score),
@@ -221,9 +221,9 @@ INSERT INTO step_candidate_item(
   now()
 );
 
--- name: CopyStepCandidateItems :copyfrom
-INSERT INTO step_candidate_item(
-  id, step_id, sample_id, rank, score, reason, prediction_snapshot, created_at, updated_at
+-- name: CopyTaskCandidateItems :copyfrom
+INSERT INTO task_candidate_item(
+  id, task_id, sample_id, rank, score, reason, prediction_snapshot, created_at, updated_at
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9
 );
@@ -258,12 +258,12 @@ SET state = sqlc.arg(state)::stepstatus,
 WHERE id = sqlc.arg(step_id)::uuid
   AND state = sqlc.arg(from_state)::stepstatus;
 
--- name: InsertStepMetricPoint :exec
-INSERT INTO step_metric_point(
-  id, step_id, step, epoch, metric_name, metric_value, ts, created_at, updated_at
+-- name: InsertTaskMetricPoint :exec
+INSERT INTO task_metric_point(
+  id, task_id, step, epoch, metric_name, metric_value, ts, created_at, updated_at
 ) VALUES (
   sqlc.arg(metric_id)::uuid,
-  sqlc.arg(step_id)::uuid,
+  sqlc.arg(task_id)::uuid,
   sqlc.arg(step),
   sqlc.arg(epoch),
   sqlc.arg(metric_name),
@@ -273,9 +273,9 @@ INSERT INTO step_metric_point(
   now()
 );
 
--- name: CopyStepMetricPoints :copyfrom
-INSERT INTO step_metric_point(
-  id, step_id, step, epoch, metric_name, metric_value, ts, created_at, updated_at
+-- name: CopyTaskMetricPoints :copyfrom
+INSERT INTO task_metric_point(
+  id, task_id, step, epoch, metric_name, metric_value, ts, created_at, updated_at
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9
 );

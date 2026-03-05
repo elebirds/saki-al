@@ -25,7 +25,7 @@ from saki_api.modules.runtime.domain.model_class_schema import ModelClassSchema
 from saki_api.modules.runtime.domain.prediction_item import PredictionItem
 from saki_api.modules.runtime.domain.prediction import Prediction
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver import (
     PredictionLabelResolver,
     PredictionResolveError,
@@ -240,8 +240,8 @@ class PredictionTaskMixin:
         actor_user_id: uuid.UUID | None,
         scope_type: str,
         scope_payload: dict[str, Any],
-        candidates: list[StepCandidateItem],
-    ) -> list[StepCandidateItem]:
+        candidates: list[TaskCandidateItem],
+    ) -> list[TaskCandidateItem]:
         status = self._prediction_scope_status(scope_type=scope_type, scope_payload=scope_payload)
         if status == "all":
             return candidates
@@ -320,7 +320,7 @@ class PredictionTaskMixin:
         self,
         *,
         prediction_id: uuid.UUID,
-        candidates: list[StepCandidateItem],
+        candidates: list[TaskCandidateItem],
     ) -> list[dict[str, Any]]:
         resolver = await self._prediction_resolver_for_prediction(prediction_id=prediction_id)
         prediction_rows: list[dict[str, Any]] = []
@@ -407,46 +407,8 @@ class PredictionTaskMixin:
         del step
         return prediction
 
-    def _task_result_candidates(
-        self,
-        *,
-        task,
-        fallback_step_id: uuid.UUID | None = None,
-    ) -> list[StepCandidateItem]:
-        params = task.resolved_params if isinstance(task.resolved_params, dict) else {}
-        raw_rows = params.get("_result_candidates")
-        if not isinstance(raw_rows, list):
-            return []
-        placeholder_step_id = fallback_step_id or uuid.uuid4()
-        rows: list[StepCandidateItem] = []
-        for idx, raw in enumerate(raw_rows, start=1):
-            if not isinstance(raw, dict):
-                continue
-            sample_id = self._safe_uuid(raw.get("sample_id"))
-            if sample_id is None:
-                continue
-            rank_raw = raw.get("rank", idx)
-            try:
-                rank = max(1, int(rank_raw))
-            except Exception:
-                rank = idx
-            reason = raw.get("reason")
-            reason_payload = dict(reason) if isinstance(reason, dict) else {}
-            snapshot_raw = raw.get("prediction_snapshot")
-            if not isinstance(snapshot_raw, dict):
-                reason_snapshot = reason_payload.get("prediction_snapshot")
-                snapshot_raw = reason_snapshot if isinstance(reason_snapshot, dict) else {}
-            rows.append(
-                StepCandidateItem(
-                    step_id=placeholder_step_id,
-                    sample_id=sample_id,
-                    rank=rank,
-                    score=self._safe_float(raw.get("score"), default=0.0),
-                    reason=reason_payload,
-                    prediction_snapshot=dict(snapshot_raw),
-                )
-            )
-        return rows
+    async def _task_result_candidates(self, *, task_id: uuid.UUID) -> list[TaskCandidateItem]:
+        return await self.task_candidate_repo.list_by_task(task_id)
 
     @transactional
     async def create_prediction(
@@ -641,10 +603,7 @@ class PredictionTaskMixin:
                 branch_row = await self.project_gateway.get_branch(target_branch_id)
                 base_commit_id = branch_row.head_commit_id if branch_row else None
 
-            source_candidates = self._task_result_candidates(
-                task=task,
-                fallback_step_id=None,
-            )
+            source_candidates = await self._task_result_candidates(task_id=task.id)
             filtered_candidates = await self._filter_candidates_by_sample_scope(
                 project_id=prediction.project_id,
                 target_branch_id=target_branch_id,

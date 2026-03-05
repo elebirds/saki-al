@@ -11,7 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from saki_api.modules.project.domain.commit_sample_state import CommitSampleState
 from saki_api.modules.runtime.domain.al_loop_visibility import ALLoopVisibility
 from saki_api.modules.runtime.domain.step import Step
-from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
+from saki_api.modules.runtime.domain.step_candidate_item import TaskCandidateItem
 from saki_api.modules.shared.modeling.enums import CommitSampleReviewState, StepType
 from saki_api.modules.storage.domain.dataset import Dataset
 from saki_api.modules.storage.domain.sample import Sample
@@ -22,16 +22,17 @@ class SnapshotQueryRepository:
         self.session = session
 
     async def list_selected_sample_ids_by_round(self, *, round_id: uuid.UUID) -> list[uuid.UUID]:
-        min_rank = func.min(StepCandidateItem.rank).label("min_rank")
+        min_rank = func.min(TaskCandidateItem.rank).label("min_rank")
         stmt = (
-            select(StepCandidateItem.sample_id, min_rank)
-            .join(Step, Step.id == StepCandidateItem.step_id)
+            select(TaskCandidateItem.sample_id, min_rank)
+            .join(Step, Step.task_id == TaskCandidateItem.task_id)
             .where(
                 Step.round_id == round_id,
                 Step.step_type == StepType.SELECT,
+                Step.task_id.is_not(None),
             )
-            .group_by(StepCandidateItem.sample_id)
-            .order_by(min_rank.asc(), StepCandidateItem.sample_id.asc())
+            .group_by(TaskCandidateItem.sample_id)
+            .order_by(min_rank.asc(), TaskCandidateItem.sample_id.asc())
         )
         rows = await self.session.exec(stmt)
         return [sample_id for sample_id, _ in rows.all()]

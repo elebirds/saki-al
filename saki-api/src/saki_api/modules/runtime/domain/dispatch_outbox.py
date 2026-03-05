@@ -1,18 +1,14 @@
-"""Transactional outbox for reliable step dispatch delivery."""
+"""Transactional outbox for reliable task dispatch delivery."""
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict
+from typing import Any, Dict
 
 import sqlalchemy as sa
 from sqlalchemy import Column, Index
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUIDMixin
-
-if TYPE_CHECKING:
-    from saki_api.modules.runtime.domain.step import Step
-
 
 class DispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
     __tablename__ = "dispatch_outbox"
@@ -20,7 +16,7 @@ class DispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
         Index("ix_dispatch_outbox_status_next_attempt_at", "status", "next_attempt_at"),
     )
 
-    step_id: uuid.UUID = Field(foreign_key="step.id", index=True)
+    task_id: uuid.UUID = Field(foreign_key="task.id", index=True)
     executor_id: str = Field(max_length=128)
     request_id: str = Field(max_length=128, unique=True, index=True)
     payload: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(OPT_JSON))
@@ -30,5 +26,3 @@ class DispatchOutbox(UUIDMixin, TimestampMixin, SQLModel, table=True):
     locked_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     sent_at: datetime | None = Field(default=None, sa_type=sa.DateTime(timezone=True))
     last_error: str | None = Field(default=None, max_length=4000)
-
-    step: "Step" = Relationship(back_populates="dispatch_outboxes")

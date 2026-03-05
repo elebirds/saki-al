@@ -545,7 +545,7 @@ CREATE TABLE public.dispatch_outbox (
     created_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL,
     id uuid NOT NULL,
-    step_id uuid NOT NULL,
+    task_id uuid NOT NULL,
     executor_id character varying(128) NOT NULL,
     request_id character varying(128) NOT NULL,
     payload jsonb,
@@ -1031,56 +1031,6 @@ CREATE TABLE public.step (
 
 
 --
--- Name: step_candidate_item; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.step_candidate_item (
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    id uuid NOT NULL,
-    step_id uuid NOT NULL,
-    sample_id uuid NOT NULL,
-    rank integer NOT NULL,
-    score double precision NOT NULL,
-    reason jsonb,
-    prediction_snapshot jsonb
-);
-
-
---
--- Name: step_event; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.step_event (
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    id uuid NOT NULL,
-    step_id uuid NOT NULL,
-    seq integer NOT NULL,
-    ts timestamp with time zone NOT NULL,
-    event_type character varying(64) NOT NULL,
-    payload jsonb
-);
-
-
---
--- Name: step_metric_point; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.step_metric_point (
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    id uuid NOT NULL,
-    step_id uuid NOT NULL,
-    step integer NOT NULL,
-    epoch integer,
-    metric_name character varying(128) NOT NULL,
-    metric_value double precision NOT NULL,
-    ts timestamp with time zone NOT NULL
-);
-
-
---
 -- Name: system_setting; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1114,6 +1064,56 @@ CREATE TABLE public.task (
     started_at timestamp with time zone,
     ended_at timestamp with time zone,
     last_error character varying(4000)
+);
+
+
+--
+-- Name: task_candidate_item; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.task_candidate_item (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    task_id uuid NOT NULL,
+    sample_id uuid NOT NULL,
+    rank integer NOT NULL,
+    score double precision NOT NULL,
+    reason jsonb,
+    prediction_snapshot jsonb
+);
+
+
+--
+-- Name: task_event; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.task_event (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    task_id uuid NOT NULL,
+    seq integer NOT NULL,
+    ts timestamp with time zone NOT NULL,
+    event_type character varying(64) NOT NULL,
+    payload jsonb
+);
+
+
+--
+-- Name: task_metric_point; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.task_metric_point (
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    id uuid NOT NULL,
+    task_id uuid NOT NULL,
+    step integer NOT NULL,
+    epoch integer,
+    metric_name character varying(128) NOT NULL,
+    metric_value double precision NOT NULL,
+    ts timestamp with time zone NOT NULL
 );
 
 
@@ -1423,30 +1423,6 @@ ALTER TABLE ONLY public.sample
 
 
 --
--- Name: step_candidate_item step_candidate_item_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_candidate_item
-    ADD CONSTRAINT step_candidate_item_pkey PRIMARY KEY (id);
-
-
---
--- Name: step_event step_event_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_event
-    ADD CONSTRAINT step_event_pkey PRIMARY KEY (id);
-
-
---
--- Name: step_metric_point step_metric_point_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_metric_point
-    ADD CONSTRAINT step_metric_point_pkey PRIMARY KEY (id);
-
-
---
 -- Name: step step_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1460,6 +1436,30 @@ ALTER TABLE ONLY public.step
 
 ALTER TABLE ONLY public.system_setting
     ADD CONSTRAINT system_setting_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: task_candidate_item task_candidate_item_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_candidate_item
+    ADD CONSTRAINT task_candidate_item_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: task_event task_event_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_event
+    ADD CONSTRAINT task_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: task_metric_point task_metric_point_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_metric_point
+    ADD CONSTRAINT task_metric_point_pkey PRIMARY KEY (id);
 
 
 --
@@ -1567,27 +1567,27 @@ ALTER TABLE ONLY public.round_selection_override
 
 
 --
--- Name: step_candidate_item uq_step_candidate_item; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_candidate_item
-    ADD CONSTRAINT uq_step_candidate_item UNIQUE (step_id, sample_id);
-
-
---
--- Name: step_event uq_step_event_seq; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_event
-    ADD CONSTRAINT uq_step_event_seq UNIQUE (step_id, seq);
-
-
---
 -- Name: step uq_step_order; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.step
     ADD CONSTRAINT uq_step_order UNIQUE (round_id, step_index);
+
+
+--
+-- Name: task_candidate_item uq_task_candidate_item; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_candidate_item
+    ADD CONSTRAINT uq_task_candidate_item UNIQUE (task_id, sample_id);
+
+
+--
+-- Name: task_event uq_task_event_seq; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_event
+    ADD CONSTRAINT uq_task_event_seq UNIQUE (task_id, seq);
 
 
 --
@@ -1859,10 +1859,10 @@ CREATE INDEX ix_dispatch_outbox_status_next_attempt_at ON public.dispatch_outbox
 
 
 --
--- Name: ix_dispatch_outbox_step_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_dispatch_outbox_task_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_dispatch_outbox_step_id ON public.dispatch_outbox USING btree (step_id);
+CREATE INDEX ix_dispatch_outbox_task_id ON public.dispatch_outbox USING btree (task_id);
 
 
 --
@@ -2489,20 +2489,6 @@ CREATE INDEX ix_step_assigned_executor_id ON public.step USING btree (assigned_e
 
 
 --
--- Name: ix_step_candidate_item_sample_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_candidate_item_sample_id ON public.step_candidate_item USING btree (sample_id);
-
-
---
--- Name: ix_step_candidate_item_step_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_candidate_item_step_id ON public.step_candidate_item USING btree (step_id);
-
-
---
 -- Name: ix_step_dispatch_kind; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2510,73 +2496,10 @@ CREATE INDEX ix_step_dispatch_kind ON public.step USING btree (dispatch_kind);
 
 
 --
--- Name: ix_step_event_event_type; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_event_event_type ON public.step_event USING btree (event_type);
-
-
---
--- Name: ix_step_event_seq; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_event_seq ON public.step_event USING btree (seq);
-
-
---
--- Name: ix_step_event_step_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_event_step_id ON public.step_event USING btree (step_id);
-
-
---
--- Name: ix_step_event_ts; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_event_ts ON public.step_event USING btree (ts);
-
-
---
 -- Name: ix_step_input_commit_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_step_input_commit_id ON public.step USING btree (input_commit_id);
-
-
---
--- Name: ix_step_metric_point_epoch; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_metric_point_epoch ON public.step_metric_point USING btree (epoch);
-
-
---
--- Name: ix_step_metric_point_metric_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_metric_point_metric_name ON public.step_metric_point USING btree (metric_name);
-
-
---
--- Name: ix_step_metric_point_step; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_metric_point_step ON public.step_metric_point USING btree (step);
-
-
---
--- Name: ix_step_metric_point_step_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_metric_point_step_id ON public.step_metric_point USING btree (step_id);
-
-
---
--- Name: ix_step_metric_point_ts; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_step_metric_point_ts ON public.step_metric_point USING btree (ts);
 
 
 --
@@ -2636,6 +2559,48 @@ CREATE INDEX ix_task_assigned_executor_id ON public.task USING btree (assigned_e
 
 
 --
+-- Name: ix_task_candidate_item_sample_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_candidate_item_sample_id ON public.task_candidate_item USING btree (sample_id);
+
+
+--
+-- Name: ix_task_candidate_item_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_candidate_item_task_id ON public.task_candidate_item USING btree (task_id);
+
+
+--
+-- Name: ix_task_event_event_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_event_event_type ON public.task_event USING btree (event_type);
+
+
+--
+-- Name: ix_task_event_seq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_event_seq ON public.task_event USING btree (seq);
+
+
+--
+-- Name: ix_task_event_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_event_task_id ON public.task_event USING btree (task_id);
+
+
+--
+-- Name: ix_task_event_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_event_ts ON public.task_event USING btree (ts);
+
+
+--
 -- Name: ix_task_input_commit_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2647,6 +2612,41 @@ CREATE INDEX ix_task_input_commit_id ON public.task USING btree (input_commit_id
 --
 
 CREATE INDEX ix_task_kind ON public.task USING btree (kind);
+
+
+--
+-- Name: ix_task_metric_point_epoch; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_metric_point_epoch ON public.task_metric_point USING btree (epoch);
+
+
+--
+-- Name: ix_task_metric_point_metric_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_metric_point_metric_name ON public.task_metric_point USING btree (metric_name);
+
+
+--
+-- Name: ix_task_metric_point_step; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_metric_point_step ON public.task_metric_point USING btree (step);
+
+
+--
+-- Name: ix_task_metric_point_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_metric_point_task_id ON public.task_metric_point USING btree (task_id);
+
+
+--
+-- Name: ix_task_metric_point_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_task_metric_point_ts ON public.task_metric_point USING btree (ts);
 
 
 --
@@ -2881,11 +2881,11 @@ ALTER TABLE ONLY public.dataset
 
 
 --
--- Name: dispatch_outbox dispatch_outbox_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: dispatch_outbox dispatch_outbox_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatch_outbox
-    ADD CONSTRAINT dispatch_outbox_step_id_fkey FOREIGN KEY (step_id) REFERENCES public.step(id);
+    ADD CONSTRAINT dispatch_outbox_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
 
 
 --
@@ -3257,43 +3257,11 @@ ALTER TABLE ONLY public.sample
 
 
 --
--- Name: step_candidate_item step_candidate_item_sample_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_candidate_item
-    ADD CONSTRAINT step_candidate_item_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
-
-
---
--- Name: step_candidate_item step_candidate_item_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_candidate_item
-    ADD CONSTRAINT step_candidate_item_step_id_fkey FOREIGN KEY (step_id) REFERENCES public.step(id);
-
-
---
--- Name: step_event step_event_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_event
-    ADD CONSTRAINT step_event_step_id_fkey FOREIGN KEY (step_id) REFERENCES public.step(id);
-
-
---
 -- Name: step step_input_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.step
     ADD CONSTRAINT step_input_commit_id_fkey FOREIGN KEY (input_commit_id) REFERENCES public.commit(id);
-
-
---
--- Name: step_metric_point step_metric_point_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.step_metric_point
-    ADD CONSTRAINT step_metric_point_step_id_fkey FOREIGN KEY (step_id) REFERENCES public.step(id);
 
 
 --
@@ -3321,11 +3289,43 @@ ALTER TABLE ONLY public.system_setting
 
 
 --
+-- Name: task_candidate_item task_candidate_item_sample_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_candidate_item
+    ADD CONSTRAINT task_candidate_item_sample_id_fkey FOREIGN KEY (sample_id) REFERENCES public.sample(id);
+
+
+--
+-- Name: task_candidate_item task_candidate_item_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_candidate_item
+    ADD CONSTRAINT task_candidate_item_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
+
+
+--
+-- Name: task_event task_event_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_event
+    ADD CONSTRAINT task_event_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
+
+
+--
 -- Name: task task_input_commit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.task
     ADD CONSTRAINT task_input_commit_id_fkey FOREIGN KEY (input_commit_id) REFERENCES public.commit(id);
+
+
+--
+-- Name: task_metric_point task_metric_point_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.task_metric_point
+    ADD CONSTRAINT task_metric_point_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.task(id);
 
 
 --

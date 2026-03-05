@@ -36,7 +36,7 @@ def test_build_assign_task_message_and_decode_fields():
             "loop_id": "loop-1",
             "project_id": "project-1",
             "input_commit_id": "commit-1",
-            "step_type": "train",
+            "task_type": "train",
             "dispatch_kind": "orchestrator",
             "plugin_id": "yolo_det_v1",
             "mode": "manual",
@@ -51,18 +51,18 @@ def test_build_assign_task_message_and_decode_fields():
     assert message.WhichOneof("payload") == "assign_task"
     task_payload = message.assign_task.task
     assert task_payload.task_id == "task-1"
-    assert task_payload.step_type == pb.TRAIN
+    assert task_payload.task_type == pb.TRAIN
     assert task_payload.dispatch_kind == pb.ORCHESTRATOR
     assert task_payload.mode == pb.MANUAL
     assert runtime_codec.struct_to_dict(task_payload.resolved_params) == {"epochs": 1}
 
 
-def test_step_type_codec_keeps_only_active_runtime_types():
-    assert runtime_codec.text_to_step_type("legacy_removed_step_a") == pb.CUSTOM
-    assert runtime_codec.text_to_step_type("legacy_removed_step_b") == pb.CUSTOM
-    assert runtime_codec.step_type_to_text(pb.RUNTIME_STEP_TYPE_UNSPECIFIED) == "custom"
-    assert runtime_codec.text_to_step_type("custom") == pb.CUSTOM
-    assert runtime_codec.step_type_to_text(pb.CUSTOM) == "custom"
+def test_task_type_codec_keeps_only_active_runtime_types():
+    assert runtime_codec.text_to_task_type("legacy_removed_step_a") == pb.CUSTOM
+    assert runtime_codec.text_to_task_type("legacy_removed_step_b") == pb.CUSTOM
+    assert runtime_codec.task_type_to_text(pb.RUNTIME_TASK_TYPE_UNSPECIFIED) == "custom"
+    assert runtime_codec.text_to_task_type("custom") == pb.CUSTOM
+    assert runtime_codec.task_type_to_text(pb.CUSTOM) == "custom"
 
 
 def test_resource_summary_supports_accelerators_roundtrip():

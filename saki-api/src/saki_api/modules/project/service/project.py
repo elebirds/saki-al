@@ -669,14 +669,17 @@ class ProjectService(CrudServiceBase[Project, ProjectRepository, ProjectCreate, 
         )
         round_ids = list(round_id_rows.all())
         if round_ids:
-            step_id_rows = await self.session.exec(
-                select(Step.id).where(Step.round_id.in_(round_ids))
+            task_id_rows = await self.session.exec(
+                select(Step.task_id).where(
+                    Step.round_id.in_(round_ids),
+                    Step.task_id.is_not(None),
+                )
             )
-            step_ids = list(step_id_rows.all())
-            if step_ids:
+            task_ids = list(task_id_rows.all())
+            if task_ids:
                 candidate_rows = await self.session.exec(
                     select(StepCandidateItem).where(
-                        StepCandidateItem.step_id.in_(step_ids),
+                        StepCandidateItem.task_id.in_(task_ids),
                         StepCandidateItem.sample_id.in_(sample_ids),
                     )
                 )

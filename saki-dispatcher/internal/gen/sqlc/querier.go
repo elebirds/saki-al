@@ -16,8 +16,8 @@ type Querier interface {
 	CancelStepsByIDs(ctx context.Context, arg CancelStepsByIDsParams) error
 	CancelStepsByRound(ctx context.Context, arg CancelStepsByRoundParams) error
 	ClaimDispatchOutboxDue(ctx context.Context, limitCount int32) ([]ClaimDispatchOutboxDueRow, error)
-	CopyStepCandidateItems(ctx context.Context, arg []CopyStepCandidateItemsParams) (int64, error)
-	CopyStepMetricPoints(ctx context.Context, arg []CopyStepMetricPointsParams) (int64, error)
+	CopyTaskCandidateItems(ctx context.Context, arg []CopyTaskCandidateItemsParams) (int64, error)
+	CopyTaskMetricPoints(ctx context.Context, arg []CopyTaskMetricPointsParams) (int64, error)
 	CountCommitAnnotationsByCommit(ctx context.Context, commitID uuid.UUID) (int64, error)
 	CountLoopActiveSteps(ctx context.Context, loopID uuid.UUID) (int32, error)
 	CountLoopInFlightSteps(ctx context.Context, loopID uuid.UUID) (int32, error)
@@ -26,7 +26,7 @@ type Querier interface {
 	DeletePredictionEvents(ctx context.Context, arg DeletePredictionEventsParams) (int64, error)
 	DeletePredictionMetrics(ctx context.Context, arg DeletePredictionMetricsParams) (int64, error)
 	DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
-	DeleteStepCandidatesByStepID(ctx context.Context, stepID uuid.UUID) error
+	DeleteTaskCandidatesByTaskID(ctx context.Context, taskID uuid.UUID) error
 	FindRoundIDByStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	GetCommandLogByCommandID(ctx context.Context, commandID string) (GetCommandLogByCommandIDRow, error)
 	GetDependencyStatesByIDs(ctx context.Context, stepIds []uuid.UUID) ([]Stepstatus, error)
@@ -51,16 +51,16 @@ type Querier interface {
 	InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOutboxParams) (int64, error)
 	InsertRound(ctx context.Context, arg InsertRoundParams) error
 	InsertStep(ctx context.Context, arg InsertStepParams) error
-	InsertStepCandidateItem(ctx context.Context, arg InsertStepCandidateItemParams) error
 	InsertStepEvent(ctx context.Context, arg InsertStepEventParams) (int64, error)
-	InsertStepMetricPoint(ctx context.Context, arg InsertStepMetricPointParams) error
+	InsertTaskCandidateItem(ctx context.Context, arg InsertTaskCandidateItemParams) error
+	InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetricPointParams) error
 	ListLoopStoppableSteps(ctx context.Context, loopID uuid.UUID) ([]ListLoopStoppableStepsRow, error)
 	ListOrphanDispatchingStepIDs(ctx context.Context, arg ListOrphanDispatchingStepIDsParams) ([]uuid.UUID, error)
 	ListPendingStepIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListReadyStepIDsForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListRetryingStepIDsDueForUpdateSkipLocked(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	ListRoundActiveStepIDs(ctx context.Context, roundID uuid.UUID) ([]uuid.UUID, error)
-	ListStepCandidatesByStepID(ctx context.Context, arg ListStepCandidatesByStepIDParams) ([]ListStepCandidatesByStepIDRow, error)
+	ListTaskCandidatesByTaskID(ctx context.Context, arg ListTaskCandidatesByTaskIDParams) ([]ListTaskCandidatesByTaskIDRow, error)
 	ListTickLoopIDs(ctx context.Context, limitCount int32) ([]uuid.UUID, error)
 	MarkDispatchOutboxRetry(ctx context.Context, arg MarkDispatchOutboxRetryParams) (int64, error)
 	MarkDispatchOutboxSent(ctx context.Context, outboxID uuid.UUID) (int64, error)

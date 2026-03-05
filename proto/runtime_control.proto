@@ -9,8 +9,8 @@ service RuntimeControl {
   rpc Stream(stream RuntimeMessage) returns (stream RuntimeMessage);
 }
 
-enum RuntimeStepStatus {
-  RUNTIME_STEP_STATUS_UNSPECIFIED = 0;
+enum RuntimeTaskStatus {
+  RUNTIME_TASK_STATUS_UNSPECIFIED = 0;
   PENDING = 1;
   DISPATCHING = 2;
   RUNNING = 3;
@@ -48,8 +48,8 @@ enum AckReason {
   ACK_REASON_REJECTED = 6;
 }
 
-enum RuntimeStepType {
-  RUNTIME_STEP_TYPE_UNSPECIFIED = 0;
+enum RuntimeTaskType {
+  RUNTIME_TASK_TYPE_UNSPECIFIED = 0;
   TRAIN = 1;
   EVAL = 2;
   SCORE = 3;
@@ -58,8 +58,8 @@ enum RuntimeStepType {
   CUSTOM = 99;
 }
 
-enum RuntimeStepDispatchKind {
-  RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED = 0;
+enum RuntimeTaskDispatchKind {
+  RUNTIME_TASK_DISPATCH_KIND_UNSPECIFIED = 0;
   DISPATCHABLE = 1;
   ORCHESTRATOR = 2;
 }
@@ -135,7 +135,7 @@ message TaskPayload {
   string loop_id = 3;
   string project_id = 4;
   string input_commit_id = 5;
-  RuntimeStepType step_type = 6;
+  RuntimeTaskType task_type = 6;
   string plugin_id = 7;
   RuntimeLoopMode mode = 8;
   string query_strategy = 9;
@@ -144,7 +144,7 @@ message TaskPayload {
   int32 round_index = 12;
   int32 attempt = 13;
   repeated string depends_on_task_ids = 14;
-  RuntimeStepDispatchKind dispatch_kind = 15;
+  RuntimeTaskDispatchKind dispatch_kind = 15;
 }
 
 message AssignTask {
@@ -159,7 +159,7 @@ message StopTask {
 }
 
 message StatusEvent {
-  RuntimeStepStatus status = 1;
+  RuntimeTaskStatus status = 1;
   string reason = 2;
 }
 
@@ -219,7 +219,7 @@ message QueryCandidate {
 message TaskResult {
   string request_id = 1;
   string task_id = 2;
-  RuntimeStepStatus status = 3;
+  RuntimeTaskStatus status = 3;
   map<string, double> metrics = 4;
   repeated ArtifactItem artifacts = 5;
   repeated QueryCandidate candidates = 6;

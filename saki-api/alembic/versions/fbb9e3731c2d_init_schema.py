@@ -1,8 +1,8 @@
 """init_schema
 
-Revision ID: 0eeafa563b95
+Revision ID: fbb9e3731c2d
 Revises: 
-Create Date: 2026-03-06 05:51:53.301382
+Create Date: 2026-03-06 06:40:27.955327
 
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sqlmodel
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '0eeafa563b95'
+revision = 'fbb9e3731c2d'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -531,6 +531,26 @@ def upgrade() -> None:
     op.create_index(op.f('ix_commit_sample_state_project_id'), 'commit_sample_state', ['project_id'], unique=False)
     op.create_index(op.f('ix_commit_sample_state_sample_id'), 'commit_sample_state', ['sample_id'], unique=False)
     op.create_index(op.f('ix_commit_sample_state_state'), 'commit_sample_state', ['state'], unique=False)
+    op.create_table('dispatch_outbox',
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('task_id', sa.Uuid(), nullable=False),
+    sa.Column('executor_id', sqlmodel.sql.sqltypes.AutoString(length=128), nullable=False),
+    sa.Column('request_id', sqlmodel.sql.sqltypes.AutoString(length=128), nullable=False),
+    sa.Column('payload', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
+    sa.Column('status', sqlmodel.sql.sqltypes.AutoString(length=32), nullable=False),
+    sa.Column('attempt_count', sa.Integer(), nullable=False),
+    sa.Column('next_attempt_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('locked_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('sent_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('last_error', sqlmodel.sql.sqltypes.AutoString(length=4000), nullable=True),
+    sa.ForeignKeyConstraint(['task_id'], ['task.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_dispatch_outbox_request_id'), 'dispatch_outbox', ['request_id'], unique=True)
+    op.create_index('ix_dispatch_outbox_status_next_attempt_at', 'dispatch_outbox', ['status', 'next_attempt_at'], unique=False)
+    op.create_index(op.f('ix_dispatch_outbox_task_id'), 'dispatch_outbox', ['task_id'], unique=False)
     op.create_table('loop_sample_state',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -618,6 +638,58 @@ def upgrade() -> None:
     op.create_index(op.f('ix_step_step_index'), 'step', ['step_index'], unique=False)
     op.create_index(op.f('ix_step_step_type'), 'step', ['step_type'], unique=False)
     op.create_index(op.f('ix_step_task_id'), 'step', ['task_id'], unique=True)
+    op.create_table('task_candidate_item',
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('task_id', sa.Uuid(), nullable=False),
+    sa.Column('sample_id', sa.Uuid(), nullable=False),
+    sa.Column('rank', sa.Integer(), nullable=False),
+    sa.Column('score', sa.Float(), nullable=False),
+    sa.Column('reason', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
+    sa.Column('prediction_snapshot', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
+    sa.ForeignKeyConstraint(['sample_id'], ['sample.id'], ),
+    sa.ForeignKeyConstraint(['task_id'], ['task.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('task_id', 'sample_id', name='uq_task_candidate_item')
+    )
+    op.create_index(op.f('ix_task_candidate_item_sample_id'), 'task_candidate_item', ['sample_id'], unique=False)
+    op.create_index(op.f('ix_task_candidate_item_task_id'), 'task_candidate_item', ['task_id'], unique=False)
+    op.create_table('task_event',
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('task_id', sa.Uuid(), nullable=False),
+    sa.Column('seq', sa.Integer(), nullable=False),
+    sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('event_type', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
+    sa.Column('payload', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
+    sa.ForeignKeyConstraint(['task_id'], ['task.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('task_id', 'seq', name='uq_task_event_seq')
+    )
+    op.create_index(op.f('ix_task_event_event_type'), 'task_event', ['event_type'], unique=False)
+    op.create_index(op.f('ix_task_event_seq'), 'task_event', ['seq'], unique=False)
+    op.create_index(op.f('ix_task_event_task_id'), 'task_event', ['task_id'], unique=False)
+    op.create_index(op.f('ix_task_event_ts'), 'task_event', ['ts'], unique=False)
+    op.create_table('task_metric_point',
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('task_id', sa.Uuid(), nullable=False),
+    sa.Column('step', sa.Integer(), nullable=False),
+    sa.Column('epoch', sa.Integer(), nullable=True),
+    sa.Column('metric_name', sqlmodel.sql.sqltypes.AutoString(length=128), nullable=False),
+    sa.Column('metric_value', sa.Float(), nullable=False),
+    sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['task_id'], ['task.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_task_metric_point_epoch'), 'task_metric_point', ['epoch'], unique=False)
+    op.create_index(op.f('ix_task_metric_point_metric_name'), 'task_metric_point', ['metric_name'], unique=False)
+    op.create_index(op.f('ix_task_metric_point_step'), 'task_metric_point', ['step'], unique=False)
+    op.create_index(op.f('ix_task_metric_point_task_id'), 'task_metric_point', ['task_id'], unique=False)
+    op.create_index(op.f('ix_task_metric_point_ts'), 'task_metric_point', ['ts'], unique=False)
     op.create_table('commit_annotation_map',
     sa.Column('commit_id', sa.Uuid(), nullable=False),
     sa.Column('sample_id', sa.Uuid(), nullable=False),
@@ -634,26 +706,6 @@ def upgrade() -> None:
     op.create_index(op.f('ix_commit_annotation_map_commit_id'), 'commit_annotation_map', ['commit_id'], unique=False)
     op.create_index(op.f('ix_commit_annotation_map_project_id'), 'commit_annotation_map', ['project_id'], unique=False)
     op.create_index(op.f('ix_commit_annotation_map_sample_id'), 'commit_annotation_map', ['sample_id'], unique=False)
-    op.create_table('dispatch_outbox',
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('step_id', sa.Uuid(), nullable=False),
-    sa.Column('executor_id', sqlmodel.sql.sqltypes.AutoString(length=128), nullable=False),
-    sa.Column('request_id', sqlmodel.sql.sqltypes.AutoString(length=128), nullable=False),
-    sa.Column('payload', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
-    sa.Column('status', sqlmodel.sql.sqltypes.AutoString(length=32), nullable=False),
-    sa.Column('attempt_count', sa.Integer(), nullable=False),
-    sa.Column('next_attempt_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('locked_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('sent_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('last_error', sqlmodel.sql.sqltypes.AutoString(length=4000), nullable=True),
-    sa.ForeignKeyConstraint(['step_id'], ['step.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_dispatch_outbox_request_id'), 'dispatch_outbox', ['request_id'], unique=True)
-    op.create_index('ix_dispatch_outbox_status_next_attempt_at', 'dispatch_outbox', ['status', 'next_attempt_at'], unique=False)
-    op.create_index(op.f('ix_dispatch_outbox_step_id'), 'dispatch_outbox', ['step_id'], unique=False)
     op.create_table('model',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -685,58 +737,6 @@ def upgrade() -> None:
     op.create_index(op.f('ix_model_source_commit_id'), 'model', ['source_commit_id'], unique=False)
     op.create_index(op.f('ix_model_source_round_id'), 'model', ['source_round_id'], unique=False)
     op.create_index(op.f('ix_model_source_step_id'), 'model', ['source_step_id'], unique=False)
-    op.create_table('step_candidate_item',
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('step_id', sa.Uuid(), nullable=False),
-    sa.Column('sample_id', sa.Uuid(), nullable=False),
-    sa.Column('rank', sa.Integer(), nullable=False),
-    sa.Column('score', sa.Float(), nullable=False),
-    sa.Column('reason', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
-    sa.Column('prediction_snapshot', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
-    sa.ForeignKeyConstraint(['sample_id'], ['sample.id'], ),
-    sa.ForeignKeyConstraint(['step_id'], ['step.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('step_id', 'sample_id', name='uq_step_candidate_item')
-    )
-    op.create_index(op.f('ix_step_candidate_item_sample_id'), 'step_candidate_item', ['sample_id'], unique=False)
-    op.create_index(op.f('ix_step_candidate_item_step_id'), 'step_candidate_item', ['step_id'], unique=False)
-    op.create_table('step_event',
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('step_id', sa.Uuid(), nullable=False),
-    sa.Column('seq', sa.Integer(), nullable=False),
-    sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('event_type', sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
-    sa.Column('payload', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), nullable=True),
-    sa.ForeignKeyConstraint(['step_id'], ['step.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('step_id', 'seq', name='uq_step_event_seq')
-    )
-    op.create_index(op.f('ix_step_event_event_type'), 'step_event', ['event_type'], unique=False)
-    op.create_index(op.f('ix_step_event_seq'), 'step_event', ['seq'], unique=False)
-    op.create_index(op.f('ix_step_event_step_id'), 'step_event', ['step_id'], unique=False)
-    op.create_index(op.f('ix_step_event_ts'), 'step_event', ['ts'], unique=False)
-    op.create_table('step_metric_point',
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('step_id', sa.Uuid(), nullable=False),
-    sa.Column('step', sa.Integer(), nullable=False),
-    sa.Column('epoch', sa.Integer(), nullable=True),
-    sa.Column('metric_name', sqlmodel.sql.sqltypes.AutoString(length=128), nullable=False),
-    sa.Column('metric_value', sa.Float(), nullable=False),
-    sa.Column('ts', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['step_id'], ['step.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_step_metric_point_epoch'), 'step_metric_point', ['epoch'], unique=False)
-    op.create_index(op.f('ix_step_metric_point_metric_name'), 'step_metric_point', ['metric_name'], unique=False)
-    op.create_index(op.f('ix_step_metric_point_step'), 'step_metric_point', ['step'], unique=False)
-    op.create_index(op.f('ix_step_metric_point_step_id'), 'step_metric_point', ['step_id'], unique=False)
-    op.create_index(op.f('ix_step_metric_point_ts'), 'step_metric_point', ['ts'], unique=False)
     op.create_table('model_class_schema',
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -823,45 +823,45 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_prediction_item_label_id'), 'prediction_item', ['label_id'], unique=False)
     op.create_index(op.f('ix_prediction_item_rank'), 'prediction_item', ['rank'], unique=False)
-    op.create_foreign_key('fk_loop_active_snapshot_version_id_loop_snapshot_version', 'loop', 'loop_snapshot_version', ['active_snapshot_version_id'], ['id'])
     op.create_foreign_key('fk_loop_project_id_project', 'loop', 'project', ['project_id'], ['id'])
     op.create_foreign_key('fk_loop_last_confirmed_commit_id_commit', 'loop', 'commit', ['last_confirmed_commit_id'], ['id'])
     op.create_foreign_key('fk_loop_branch_id_branch', 'loop', 'branch', ['branch_id'], ['id'])
+    op.create_foreign_key('fk_loop_active_snapshot_version_id_loop_snapshot_version', 'loop', 'loop_snapshot_version', ['active_snapshot_version_id'], ['id'])
+    op.create_foreign_key('fk_loop_snapshot_version_24991dae', 'loop_snapshot_version', 'loop_snapshot_version', ['parent_version_id'], ['id'])
     op.create_foreign_key('fk_loop_snapshot_version_created_by_user', 'loop_snapshot_version', 'user', ['created_by'], ['id'])
     op.create_foreign_key('fk_loop_snapshot_version_loop_id_loop', 'loop_snapshot_version', 'loop', ['loop_id'], ['id'])
-    op.create_foreign_key('fk_loop_snapshot_version_24991dae', 'loop_snapshot_version', 'loop_snapshot_version', ['parent_version_id'], ['id'])
-    op.create_foreign_key('fk_round_input_commit_id_commit', 'round', 'commit', ['input_commit_id'], ['id'])
     op.create_foreign_key('fk_round_project_id_project', 'round', 'project', ['project_id'], ['id'])
     op.create_foreign_key('fk_round_retry_of_round_id_round', 'round', 'round', ['retry_of_round_id'], ['id'])
     op.create_foreign_key('fk_round_loop_id_loop', 'round', 'loop', ['loop_id'], ['id'])
-    op.create_foreign_key('fk_model_created_by_user', 'model', 'user', ['created_by'], ['id'])
-    op.create_foreign_key('fk_model_source_step_id_step', 'model', 'step', ['source_step_id'], ['id'])
-    op.create_foreign_key('fk_model_source_commit_id_commit', 'model', 'commit', ['source_commit_id'], ['id'])
+    op.create_foreign_key('fk_round_input_commit_id_commit', 'round', 'commit', ['input_commit_id'], ['id'])
     op.create_foreign_key('fk_model_parent_model_id_model', 'model', 'model', ['parent_model_id'], ['id'])
     op.create_foreign_key('fk_model_source_round_id_round', 'model', 'round', ['source_round_id'], ['id'])
     op.create_foreign_key('fk_model_project_id_project', 'model', 'project', ['project_id'], ['id'])
+    op.create_foreign_key('fk_model_created_by_user', 'model', 'user', ['created_by'], ['id'])
+    op.create_foreign_key('fk_model_source_step_id_step', 'model', 'step', ['source_step_id'], ['id'])
+    op.create_foreign_key('fk_model_source_commit_id_commit', 'model', 'commit', ['source_commit_id'], ['id'])
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
 # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_constraint('fk_loop_active_snapshot_version_id_loop_snapshot_version', 'loop', type_='foreignkey')
     op.drop_constraint('fk_loop_project_id_project', 'loop', type_='foreignkey')
     op.drop_constraint('fk_loop_last_confirmed_commit_id_commit', 'loop', type_='foreignkey')
     op.drop_constraint('fk_loop_branch_id_branch', 'loop', type_='foreignkey')
+    op.drop_constraint('fk_loop_active_snapshot_version_id_loop_snapshot_version', 'loop', type_='foreignkey')
+    op.drop_constraint('fk_loop_snapshot_version_24991dae', 'loop_snapshot_version', type_='foreignkey')
     op.drop_constraint('fk_loop_snapshot_version_created_by_user', 'loop_snapshot_version', type_='foreignkey')
     op.drop_constraint('fk_loop_snapshot_version_loop_id_loop', 'loop_snapshot_version', type_='foreignkey')
-    op.drop_constraint('fk_loop_snapshot_version_24991dae', 'loop_snapshot_version', type_='foreignkey')
-    op.drop_constraint('fk_round_input_commit_id_commit', 'round', type_='foreignkey')
     op.drop_constraint('fk_round_project_id_project', 'round', type_='foreignkey')
     op.drop_constraint('fk_round_retry_of_round_id_round', 'round', type_='foreignkey')
     op.drop_constraint('fk_round_loop_id_loop', 'round', type_='foreignkey')
-    op.drop_constraint('fk_model_created_by_user', 'model', type_='foreignkey')
-    op.drop_constraint('fk_model_source_step_id_step', 'model', type_='foreignkey')
-    op.drop_constraint('fk_model_source_commit_id_commit', 'model', type_='foreignkey')
+    op.drop_constraint('fk_round_input_commit_id_commit', 'round', type_='foreignkey')
     op.drop_constraint('fk_model_parent_model_id_model', 'model', type_='foreignkey')
     op.drop_constraint('fk_model_source_round_id_round', 'model', type_='foreignkey')
     op.drop_constraint('fk_model_project_id_project', 'model', type_='foreignkey')
+    op.drop_constraint('fk_model_created_by_user', 'model', type_='foreignkey')
+    op.drop_constraint('fk_model_source_step_id_step', 'model', type_='foreignkey')
+    op.drop_constraint('fk_model_source_commit_id_commit', 'model', type_='foreignkey')
     op.drop_index(op.f('ix_prediction_item_rank'), table_name='prediction_item')
     op.drop_index(op.f('ix_prediction_item_label_id'), table_name='prediction_item')
     op.drop_table('prediction_item')
@@ -883,20 +883,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_model_class_schema_label_id'), table_name='model_class_schema')
     op.drop_index(op.f('ix_model_class_schema_class_index'), table_name='model_class_schema')
     op.drop_table('model_class_schema')
-    op.drop_index(op.f('ix_step_metric_point_ts'), table_name='step_metric_point')
-    op.drop_index(op.f('ix_step_metric_point_step_id'), table_name='step_metric_point')
-    op.drop_index(op.f('ix_step_metric_point_step'), table_name='step_metric_point')
-    op.drop_index(op.f('ix_step_metric_point_metric_name'), table_name='step_metric_point')
-    op.drop_index(op.f('ix_step_metric_point_epoch'), table_name='step_metric_point')
-    op.drop_table('step_metric_point')
-    op.drop_index(op.f('ix_step_event_ts'), table_name='step_event')
-    op.drop_index(op.f('ix_step_event_step_id'), table_name='step_event')
-    op.drop_index(op.f('ix_step_event_seq'), table_name='step_event')
-    op.drop_index(op.f('ix_step_event_event_type'), table_name='step_event')
-    op.drop_table('step_event')
-    op.drop_index(op.f('ix_step_candidate_item_step_id'), table_name='step_candidate_item')
-    op.drop_index(op.f('ix_step_candidate_item_sample_id'), table_name='step_candidate_item')
-    op.drop_table('step_candidate_item')
     op.drop_index(op.f('ix_model_source_step_id'), table_name='model')
     op.drop_index(op.f('ix_model_source_round_id'), table_name='model')
     op.drop_index(op.f('ix_model_source_commit_id'), table_name='model')
@@ -906,16 +892,26 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_model_name'), table_name='model')
     op.drop_index(op.f('ix_model_model_arch'), table_name='model')
     op.drop_table('model')
-    op.drop_index(op.f('ix_dispatch_outbox_step_id'), table_name='dispatch_outbox')
-    op.drop_index('ix_dispatch_outbox_status_next_attempt_at', table_name='dispatch_outbox')
-    op.drop_index(op.f('ix_dispatch_outbox_request_id'), table_name='dispatch_outbox')
-    op.drop_table('dispatch_outbox')
     op.drop_index(op.f('ix_commit_annotation_map_sample_id'), table_name='commit_annotation_map')
     op.drop_index(op.f('ix_commit_annotation_map_project_id'), table_name='commit_annotation_map')
     op.drop_index(op.f('ix_commit_annotation_map_commit_id'), table_name='commit_annotation_map')
     op.drop_index(op.f('ix_commit_annotation_map_annotation_id'), table_name='commit_annotation_map')
     op.drop_index('idx_commit_sample_lookup', table_name='commit_annotation_map')
     op.drop_table('commit_annotation_map')
+    op.drop_index(op.f('ix_task_metric_point_ts'), table_name='task_metric_point')
+    op.drop_index(op.f('ix_task_metric_point_task_id'), table_name='task_metric_point')
+    op.drop_index(op.f('ix_task_metric_point_step'), table_name='task_metric_point')
+    op.drop_index(op.f('ix_task_metric_point_metric_name'), table_name='task_metric_point')
+    op.drop_index(op.f('ix_task_metric_point_epoch'), table_name='task_metric_point')
+    op.drop_table('task_metric_point')
+    op.drop_index(op.f('ix_task_event_ts'), table_name='task_event')
+    op.drop_index(op.f('ix_task_event_task_id'), table_name='task_event')
+    op.drop_index(op.f('ix_task_event_seq'), table_name='task_event')
+    op.drop_index(op.f('ix_task_event_event_type'), table_name='task_event')
+    op.drop_table('task_event')
+    op.drop_index(op.f('ix_task_candidate_item_task_id'), table_name='task_candidate_item')
+    op.drop_index(op.f('ix_task_candidate_item_sample_id'), table_name='task_candidate_item')
+    op.drop_table('task_candidate_item')
     op.drop_index(op.f('ix_step_task_id'), table_name='step')
     op.drop_index(op.f('ix_step_step_type'), table_name='step')
     op.drop_index(op.f('ix_step_step_index'), table_name='step')
@@ -940,6 +936,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_loop_sample_state_revealed_round_index'), table_name='loop_sample_state')
     op.drop_index(op.f('ix_loop_sample_state_reveal_commit_id'), table_name='loop_sample_state')
     op.drop_table('loop_sample_state')
+    op.drop_index(op.f('ix_dispatch_outbox_task_id'), table_name='dispatch_outbox')
+    op.drop_index('ix_dispatch_outbox_status_next_attempt_at', table_name='dispatch_outbox')
+    op.drop_index(op.f('ix_dispatch_outbox_request_id'), table_name='dispatch_outbox')
+    op.drop_table('dispatch_outbox')
     op.drop_index(op.f('ix_commit_sample_state_state'), table_name='commit_sample_state')
     op.drop_index(op.f('ix_commit_sample_state_sample_id'), table_name='commit_sample_state')
     op.drop_index(op.f('ix_commit_sample_state_project_id'), table_name='commit_sample_state')

@@ -342,8 +342,8 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 		LoopId:           stepPayload.LoopID.String(),
 		ProjectId:        stepPayload.ProjectID.String(),
 		InputCommitId:    inputCommitID,
-		StepType:         toRuntimeStepType(stepPayload.StepType),
-		DispatchKind:     toRuntimeStepDispatchKind(stepPayload.DispatchKind),
+		TaskType:         toRuntimeTaskType(stepPayload.StepType),
+		DispatchKind:     toRuntimeTaskDispatchKind(stepPayload.DispatchKind),
 		PluginId:         stepPayload.PluginID,
 		Mode:             toRuntimeLoopMode(stepPayload.Mode),
 		QueryStrategy:    extractSamplingStrategyFromStruct(resolvedParams),
@@ -360,7 +360,7 @@ func (s *Service) dispatchStepByID(ctx context.Context, stepID uuid.UUID) (bool,
 	outboxID := uuid.New()
 	inserted, err := s.qtx(tx).InsertDispatchOutbox(ctx, db.InsertDispatchOutboxParams{
 		OutboxID:   outboxID,
-		StepID:     stepPayload.StepID,
+		TaskID:     dispatchTaskID,
 		ExecutorID: executorID,
 		RequestID:  requestID,
 		Payload:    payloadRaw,
@@ -437,8 +437,8 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		LoopId:           "",
 		ProjectId:        taskRow.ProjectID.String(),
 		InputCommitId:    inputCommitID,
-		StepType:         runtimeStepTypeFromTaskType(taskRow.TaskType),
-		DispatchKind:     runtimecontrolv1.RuntimeStepDispatchKind_DISPATCHABLE,
+		TaskType:         runtimeTaskTypeFromTaskType(taskRow.TaskType),
+		DispatchKind:     runtimecontrolv1.RuntimeTaskDispatchKind_DISPATCHABLE,
 		PluginId:         strings.TrimSpace(taskRow.PluginID),
 		Mode:             runtimecontrolv1.RuntimeLoopMode_MANUAL,
 		QueryStrategy:    extractSamplingStrategyFromStruct(resolvedParams),
@@ -581,8 +581,14 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 		}
 		return err
 	}
-	rows, err := s.qtx(tx).ListStepCandidatesByStepID(ctx, db.ListStepCandidatesByStepIDParams{
-		StepID:     scoreStepID,
+	scoreTaskID := scoreStepID
+	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, scoreStepID); mapErr != nil {
+		return mapErr
+	} else if ok {
+		scoreTaskID = mappedTaskID
+	}
+	rows, err := s.qtx(tx).ListTaskCandidatesByTaskID(ctx, db.ListTaskCandidatesByTaskIDParams{
+		TaskID:     scoreTaskID,
 		LimitCount: int32(queryBatch),
 	})
 	if err != nil {
@@ -604,15 +610,21 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 			predictionJSON: row.PredictionJson,
 		})
 	}
-	if err := s.qtx(tx).DeleteStepCandidatesByStepID(ctx, stepPayload.StepID); err != nil {
+	selectTaskID := stepPayload.StepID
+	if mappedTaskID, ok, mapErr := s.resolveTaskIDForStepTx(ctx, tx, stepPayload.StepID); mapErr != nil {
+		return mapErr
+	} else if ok {
+		selectTaskID = mappedTaskID
+	}
+	if err := s.qtx(tx).DeleteTaskCandidatesByTaskID(ctx, selectTaskID); err != nil {
 		return err
 	}
-	copyRows := make([]db.CopyStepCandidateItemsParams, 0, len(candidates))
+	copyRows := make([]db.CopyTaskCandidateItemsParams, 0, len(candidates))
 	now := toPGTimestamp(time.Now().UTC())
 	for idx, item := range candidates {
-		copyRows = append(copyRows, db.CopyStepCandidateItemsParams{
+		copyRows = append(copyRows, db.CopyTaskCandidateItemsParams{
 			ID:                 uuid.New(),
-			StepID:             stepPayload.StepID,
+			TaskID:             selectTaskID,
 			SampleID:           item.sampleID,
 			Rank:               int32(idx + 1),
 			Score:              item.score,
@@ -623,7 +635,7 @@ func (s *Service) runSelectTopKTx(ctx context.Context, tx pgx.Tx, stepPayload st
 		})
 	}
 	if len(copyRows) > 0 {
-		if _, err := s.qtx(tx).CopyStepCandidateItems(ctx, copyRows); err != nil {
+		if _, err := s.qtx(tx).CopyTaskCandidateItems(ctx, copyRows); err != nil {
 			return err
 		}
 	}
@@ -659,6 +671,21 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 	if err != nil {
 		return err
 	}
+	if inserted, err := s.insertStepEventTx(
+		ctx,
+		tx,
+		taskID,
+		event.GetSeq(),
+		eventTS,
+		eventType,
+		payloadJSON,
+		strings.TrimSpace(event.GetRequestId()),
+	); err != nil {
+		return err
+	} else if !inserted {
+		// Duplicate event by (task_id, seq), skip side effects.
+		return tx.Commit(ctx)
+	}
 	if !found {
 		if eventType == "status" {
 			targetTaskStatus := normalizeTaskEnumText(string(statusValue))
@@ -669,22 +696,6 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 				}
 			}
 		}
-		return tx.Commit(ctx)
-	}
-
-	if inserted, err := s.insertStepEventTx(
-		ctx,
-		tx,
-		stepID,
-		event.GetSeq(),
-		eventTS,
-		eventType,
-		payloadJSON,
-		strings.TrimSpace(event.GetRequestId()),
-	); err != nil {
-		return err
-	} else if !inserted {
-		// Duplicate event by (step_id, seq), skip side effects.
 		return tx.Commit(ctx)
 	}
 
@@ -714,7 +725,7 @@ func (s *Service) OnTaskEvent(ctx context.Context, event *runtimecontrolv1.TaskE
 			if err := s.insertMetricPointsTx(
 				ctx,
 				tx,
-				stepID,
+				taskID,
 				int(metricPayload.GetStep()),
 				ptrInt(int(metricPayload.GetEpoch())),
 				metricPayload.GetMetrics(),
@@ -777,19 +788,19 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	if err != nil {
 		return err
 	}
+	if err := s.persistStandaloneTaskResultTx(
+		ctx,
+		tx,
+		taskID,
+		targetState,
+		result.GetMetrics(),
+		result.GetArtifacts(),
+		result.GetCandidates(),
+		strings.TrimSpace(result.GetErrorMessage()),
+	); err != nil {
+		return err
+	}
 	if !found {
-		if err := s.persistStandaloneTaskResultTx(
-			ctx,
-			tx,
-			taskID,
-			targetState,
-			result.GetMetrics(),
-			result.GetArtifacts(),
-			result.GetCandidates(),
-			strings.TrimSpace(result.GetErrorMessage()),
-		); err != nil {
-			return err
-		}
 		return tx.Commit(ctx)
 	}
 
@@ -799,10 +810,6 @@ func (s *Service) OnTaskResult(ctx context.Context, result *runtimecontrolv1.Tas
 	}
 	if affected == 0 {
 		return fmt.Errorf("步骤结果导致非法状态迁移: step_id=%s target=%s", stepID, targetState)
-	}
-
-	if err := s.replaceStepCandidatesTx(ctx, tx, stepID, result.GetCandidates()); err != nil {
-		return err
 	}
 
 	roundID, err := s.findRoundIDByStep(ctx, tx, stepID)
@@ -1005,7 +1012,10 @@ func (s *Service) persistStandaloneTaskResultTx(
 		return err
 	}
 	paramsMap["_result_artifacts"] = artifactPayload
-	paramsMap["_result_candidates"] = buildTaskResultCandidateRows(candidates)
+	if err := s.replaceTaskCandidatesTx(ctx, tx, taskID, candidates); err != nil {
+		return err
+	}
+	delete(paramsMap, "_result_candidates")
 	errorMessage = strings.TrimSpace(errorMessage)
 	if errorMessage == "" {
 		delete(paramsMap, "_result_error_message")
@@ -1100,22 +1110,22 @@ func (s *Service) listReadyPredictionTaskIDs(ctx context.Context, limit int) ([]
 	return ids, nil
 }
 
-func runtimeStepTypeFromTaskType(taskType string) runtimecontrolv1.RuntimeStepType {
+func runtimeTaskTypeFromTaskType(taskType string) runtimecontrolv1.RuntimeTaskType {
 	switch normalizeTaskEnumText(taskType) {
 	case "TRAIN":
-		return runtimecontrolv1.RuntimeStepType_TRAIN
+		return runtimecontrolv1.RuntimeTaskType_TRAIN
 	case "EVAL":
-		return runtimecontrolv1.RuntimeStepType_EVAL
+		return runtimecontrolv1.RuntimeTaskType_EVAL
 	case "SCORE":
-		return runtimecontrolv1.RuntimeStepType_SCORE
+		return runtimecontrolv1.RuntimeTaskType_SCORE
 	case "SELECT":
-		return runtimecontrolv1.RuntimeStepType_SELECT
+		return runtimecontrolv1.RuntimeTaskType_SELECT
 	case "PREDICT":
-		return runtimecontrolv1.RuntimeStepType_PREDICT
+		return runtimecontrolv1.RuntimeTaskType_PREDICT
 	case "CUSTOM":
-		return runtimecontrolv1.RuntimeStepType_CUSTOM
+		return runtimecontrolv1.RuntimeTaskType_CUSTOM
 	default:
-		return runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED
+		return runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED
 	}
 }
 
@@ -1480,7 +1490,7 @@ func (s *Service) getStepPayloadByIDTx(ctx context.Context, tx pgx.Tx, stepID uu
 func (s *Service) insertStepEventTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	stepID uuid.UUID,
+	taskID uuid.UUID,
 	seq int64,
 	ts time.Time,
 	eventType string,
@@ -1490,7 +1500,7 @@ func (s *Service) insertStepEventTx(
 	_ = requestID
 	affected, err := s.qtx(tx).InsertStepEvent(ctx, db.InsertStepEventParams{
 		EventID:   uuid.New(),
-		StepID:    stepID,
+		TaskID:    taskID,
 		Seq:       int32(seq),
 		Ts:        toPGTimestamp(ts),
 		EventType: eventType,
@@ -1557,7 +1567,7 @@ func (s *Service) loopHasActiveStepsTx(ctx context.Context, tx pgx.Tx, loopID uu
 func (s *Service) insertMetricPointsTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	stepID uuid.UUID,
+	taskID uuid.UUID,
 	step int,
 	epoch *int,
 	metrics map[string]float64,
@@ -1567,15 +1577,15 @@ func (s *Service) insertMetricPointsTx(
 		return nil
 	}
 	now := toPGTimestamp(time.Now().UTC())
-	rows := make([]db.CopyStepMetricPointsParams, 0, len(metrics))
+	rows := make([]db.CopyTaskMetricPointsParams, 0, len(metrics))
 	for metricName, metricValue := range metrics {
 		cleanMetricName := strings.TrimSpace(metricName)
 		if cleanMetricName == "" {
 			continue
 		}
-		rows = append(rows, db.CopyStepMetricPointsParams{
+		rows = append(rows, db.CopyTaskMetricPointsParams{
 			ID:          uuid.New(),
-			StepID:      stepID,
+			TaskID:      taskID,
 			Step:        int32(step),
 			Epoch:       toPGInt4(epoch),
 			MetricName:  cleanMetricName,
@@ -1588,23 +1598,23 @@ func (s *Service) insertMetricPointsTx(
 	if len(rows) == 0 {
 		return nil
 	}
-	if _, err := s.qtx(tx).CopyStepMetricPoints(ctx, rows); err != nil {
+	if _, err := s.qtx(tx).CopyTaskMetricPoints(ctx, rows); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Service) replaceStepCandidatesTx(
+func (s *Service) replaceTaskCandidatesTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	stepID uuid.UUID,
+	taskID uuid.UUID,
 	candidates []*runtimecontrolv1.QueryCandidate,
 ) error {
-	if err := s.qtx(tx).DeleteStepCandidatesByStepID(ctx, stepID); err != nil {
+	if err := s.qtx(tx).DeleteTaskCandidatesByTaskID(ctx, taskID); err != nil {
 		return err
 	}
 	now := toPGTimestamp(time.Now().UTC())
-	rows := make([]db.CopyStepCandidateItemsParams, 0, len(candidates))
+	rows := make([]db.CopyTaskCandidateItemsParams, 0, len(candidates))
 	for idx, item := range candidates {
 		sampleIDText := strings.TrimSpace(item.GetSampleId())
 		if sampleIDText == "" {
@@ -1623,9 +1633,9 @@ func (s *Service) replaceStepCandidatesTx(
 		if err != nil {
 			return err
 		}
-		rows = append(rows, db.CopyStepCandidateItemsParams{
+		rows = append(rows, db.CopyTaskCandidateItemsParams{
 			ID:                 uuid.New(),
-			StepID:             stepID,
+			TaskID:             taskID,
 			SampleID:           parsedSampleID,
 			Rank:               int32(idx + 1),
 			Score:              item.GetScore(),
@@ -1636,7 +1646,7 @@ func (s *Service) replaceStepCandidatesTx(
 		})
 	}
 	if len(rows) > 0 {
-		if _, err := s.qtx(tx).CopyStepCandidateItems(ctx, rows); err != nil {
+		if _, err := s.qtx(tx).CopyTaskCandidateItems(ctx, rows); err != nil {
 			return err
 		}
 	}

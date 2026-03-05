@@ -24,6 +24,7 @@ from saki_api.modules.runtime.api.round_step import (
     StepArtifactsResponse,
     StepCandidateRead,
     StepEventQueryResponse,
+    TaskEventQueryResponse,
     StepMetricPointRead,
 )
 from saki_api.modules.access.domain.rbac import Permissions
@@ -228,10 +229,10 @@ async def get_step(
     return StepRead.model_validate(step)
 
 
-@router.get("/steps/{step_id}/events", response_model=StepEventQueryResponse)
-async def get_step_events(
+@router.get("/tasks/{task_id}/events", response_model=TaskEventQueryResponse)
+async def get_task_events(
     *,
-    step_id: uuid.UUID,
+    task_id: uuid.UUID,
     after_seq: int = Query(default=0, ge=0),
     limit: int = Query(default=5000, ge=1, le=100000),
     event_types: str | None = Query(default=None),
@@ -245,6 +246,44 @@ async def get_step_events(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    task = await runtime_service.task_repo.get_by_id_or_raise(task_id)
+    await ensure_project_permission(
+        session=session,
+        current_user_id=current_user_id,
+        project_id=task.project_id,
+        required_permission=Permissions.ROUND_READ,
+    )
+    payload = await runtime_service.query_task_events(
+        task_id=task_id,
+        after_seq=after_seq,
+        limit=limit,
+        event_types=_csv_to_list(event_types),
+        levels=_csv_to_list(levels),
+        tags=_csv_to_list(tags),
+        q=q,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        include_facets=include_facets,
+    )
+    return TaskEventQueryResponse.model_validate(payload)
+
+
+async def get_step_events(
+    *,
+    step_id: uuid.UUID,
+    after_seq: int = 0,
+    limit: int = 5000,
+    event_types: str | None = None,
+    levels: str | None = None,
+    tags: str | None = None,
+    q: str | None = None,
+    from_ts: datetime | None = None,
+    to_ts: datetime | None = None,
+    include_facets: bool = False,
+    runtime_service: RuntimeServiceDep,
+    session: AsyncSession,
+    current_user_id: uuid.UUID,
+) -> StepEventQueryResponse:
     step = await runtime_service.get_step_by_id_or_raise(step_id)
     round_item = await runtime_service.get_by_id_or_raise(step.round_id)
     await ensure_project_permission(
@@ -253,8 +292,10 @@ async def get_step_events(
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
     )
-    payload = await runtime_service.query_step_events(
-        step_id=step_id,
+    if step.task_id is None:
+        return StepEventQueryResponse(items=[], next_after_seq=None, facets=None)
+    payload = await runtime_service.query_task_events(
+        task_id=step.task_id,
         after_seq=after_seq,
         limit=limit,
         event_types=_csv_to_list(event_types),

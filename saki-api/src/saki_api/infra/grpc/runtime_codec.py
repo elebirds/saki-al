@@ -27,7 +27,7 @@ _STATUS_TO_TEXT: dict[int, str] = {
 
 _TEXT_TO_STATUS: dict[str, int] = {value: key for key, value in _STATUS_TO_TEXT.items()}
 
-_STEP_TYPE_TO_TEXT: dict[int, str] = {
+_TASK_TYPE_TO_TEXT: dict[int, str] = {
     pb.TRAIN: "train",
     pb.EVAL: "eval",
     pb.SCORE: "score",
@@ -35,7 +35,7 @@ _STEP_TYPE_TO_TEXT: dict[int, str] = {
     pb.PREDICT: "predict",
     pb.CUSTOM: "custom",
 }
-_TEXT_TO_STEP_TYPE: dict[str, int] = {value: key for key, value in _STEP_TYPE_TO_TEXT.items()}
+_TEXT_TO_TASK_TYPE: dict[str, int] = {value: key for key, value in _TASK_TYPE_TO_TEXT.items()}
 
 _DISPATCH_KIND_TO_TEXT: dict[int, str] = {
     pb.DISPATCHABLE: "dispatchable",
@@ -146,12 +146,12 @@ def text_to_ack_reason(reason: str | None) -> int:
     return _TEXT_TO_ACK_REASON.get((reason or "").strip().lower(), pb.ACK_REASON_REJECTED)
 
 
-def step_type_to_text(step_type: int) -> str:
-    return _STEP_TYPE_TO_TEXT.get(int(step_type), "custom")
+def task_type_to_text(task_type: int) -> str:
+    return _TASK_TYPE_TO_TEXT.get(int(task_type), "custom")
 
 
-def text_to_step_type(step_type: str | None) -> int:
-    return _TEXT_TO_STEP_TYPE.get((step_type or "").strip().lower(), pb.CUSTOM)
+def text_to_task_type(task_type: str | None) -> int:
+    return _TEXT_TO_TASK_TYPE.get((task_type or "").strip().lower(), pb.CUSTOM)
 
 
 def dispatch_kind_to_text(dispatch_kind: int) -> str:
@@ -334,7 +334,7 @@ def build_error_message(
 
 
 def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) -> pb.RuntimeMessage:
-    step_type = text_to_step_type(str(payload.get("step_type") or "custom"))
+    task_type = text_to_task_type(str(payload.get("task_type") or payload.get("step_type") or "custom"))
     dispatch_kind = text_to_dispatch_kind(str(payload.get("dispatch_kind") or "dispatchable"))
     loop_mode = text_to_loop_mode(str(payload.get("mode") or "active_learning"))
     task_id = str(payload.get("task_id") or "")
@@ -350,7 +350,7 @@ def build_assign_task_message(*, request_id: str, payload: Mapping[str, Any]) ->
                 loop_id=str(payload.get("loop_id") or ""),
                 project_id=str(payload.get("project_id") or ""),
                 input_commit_id=input_commit_id,
-                step_type=step_type,
+                task_type=task_type,
                 dispatch_kind=dispatch_kind,
                 plugin_id=str(payload.get("plugin_id") or ""),
                 mode=loop_mode,

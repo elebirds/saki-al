@@ -230,33 +230,33 @@ func phaseForStep(mode db.Loopmode, stepType db.Steptype) (db.Loopphase, bool) {
 	return "", false
 }
 
-func toRuntimeStepType(raw db.Steptype) runtimecontrolv1.RuntimeStepType {
+func toRuntimeTaskType(raw db.Steptype) runtimecontrolv1.RuntimeTaskType {
 	switch raw {
 	case db.SteptypeTRAIN:
-		return runtimecontrolv1.RuntimeStepType_TRAIN
+		return runtimecontrolv1.RuntimeTaskType_TRAIN
 	case db.SteptypeEVAL:
-		return runtimecontrolv1.RuntimeStepType_EVAL
+		return runtimecontrolv1.RuntimeTaskType_EVAL
 	case db.SteptypeSCORE:
-		return runtimecontrolv1.RuntimeStepType_SCORE
+		return runtimecontrolv1.RuntimeTaskType_SCORE
 	case db.SteptypeSELECT:
-		return runtimecontrolv1.RuntimeStepType_SELECT
+		return runtimecontrolv1.RuntimeTaskType_SELECT
 	case db.SteptypePREDICT:
-		return runtimecontrolv1.RuntimeStepType_PREDICT
+		return runtimecontrolv1.RuntimeTaskType_PREDICT
 	case db.SteptypeCUSTOM:
-		return runtimecontrolv1.RuntimeStepType_CUSTOM
+		return runtimecontrolv1.RuntimeTaskType_CUSTOM
 	default:
-		return runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED
+		return runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED
 	}
 }
 
-func toRuntimeStepDispatchKind(raw db.Stepdispatchkind) runtimecontrolv1.RuntimeStepDispatchKind {
+func toRuntimeTaskDispatchKind(raw db.Stepdispatchkind) runtimecontrolv1.RuntimeTaskDispatchKind {
 	switch raw {
 	case db.StepdispatchkindDISPATCHABLE:
-		return runtimecontrolv1.RuntimeStepDispatchKind_DISPATCHABLE
+		return runtimecontrolv1.RuntimeTaskDispatchKind_DISPATCHABLE
 	case db.StepdispatchkindORCHESTRATOR:
-		return runtimecontrolv1.RuntimeStepDispatchKind_ORCHESTRATOR
+		return runtimecontrolv1.RuntimeTaskDispatchKind_ORCHESTRATOR
 	default:
-		return runtimecontrolv1.RuntimeStepDispatchKind_RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED
+		return runtimecontrolv1.RuntimeTaskDispatchKind_RUNTIME_TASK_DISPATCH_KIND_UNSPECIFIED
 	}
 }
 
@@ -273,29 +273,29 @@ func toRuntimeLoopMode(raw db.Loopmode) runtimecontrolv1.RuntimeLoopMode {
 	}
 }
 
-func runtimeStatusToStepStatus(status runtimecontrolv1.RuntimeStepStatus) db.Stepstatus {
+func runtimeStatusToStepStatus(status runtimecontrolv1.RuntimeTaskStatus) db.Stepstatus {
 	switch status {
-	case runtimecontrolv1.RuntimeStepStatus_PENDING:
+	case runtimecontrolv1.RuntimeTaskStatus_PENDING:
 		return stepPending
-	case runtimecontrolv1.RuntimeStepStatus_DISPATCHING:
+	case runtimecontrolv1.RuntimeTaskStatus_DISPATCHING:
 		return stepDispatching
-	case runtimecontrolv1.RuntimeStepStatus_SYNCING_ENV:
+	case runtimecontrolv1.RuntimeTaskStatus_SYNCING_ENV:
 		return stepSyncingEnv
-	case runtimecontrolv1.RuntimeStepStatus_PROBING_RUNTIME:
+	case runtimecontrolv1.RuntimeTaskStatus_PROBING_RUNTIME:
 		return stepProbingRt
-	case runtimecontrolv1.RuntimeStepStatus_BINDING_DEVICE:
+	case runtimecontrolv1.RuntimeTaskStatus_BINDING_DEVICE:
 		return stepBindingDev
-	case runtimecontrolv1.RuntimeStepStatus_RUNNING:
+	case runtimecontrolv1.RuntimeTaskStatus_RUNNING:
 		return stepRunning
-	case runtimecontrolv1.RuntimeStepStatus_RETRYING:
+	case runtimecontrolv1.RuntimeTaskStatus_RETRYING:
 		return stepRetrying
-	case runtimecontrolv1.RuntimeStepStatus_SUCCEEDED:
+	case runtimecontrolv1.RuntimeTaskStatus_SUCCEEDED:
 		return stepSucceeded
-	case runtimecontrolv1.RuntimeStepStatus_FAILED:
+	case runtimecontrolv1.RuntimeTaskStatus_FAILED:
 		return stepFailed
-	case runtimecontrolv1.RuntimeStepStatus_CANCELLED:
+	case runtimecontrolv1.RuntimeTaskStatus_CANCELLED:
 		return stepCancelled
-	case runtimecontrolv1.RuntimeStepStatus_SKIPPED:
+	case runtimecontrolv1.RuntimeTaskStatus_SKIPPED:
 		return stepSkipped
 	default:
 		return ""

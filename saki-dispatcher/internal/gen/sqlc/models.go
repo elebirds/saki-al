@@ -1300,7 +1300,7 @@ type DispatchOutbox struct {
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
 	ID            uuid.UUID
-	StepID        uuid.UUID
+	TaskID        uuid.UUID
 	ExecutorID    string
 	RequestID     string
 	Payload       []byte
@@ -1663,41 +1663,6 @@ type Step struct {
 	LastError          pgtype.Text
 }
 
-type StepCandidateItem struct {
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
-	ID                 uuid.UUID
-	StepID             uuid.UUID
-	SampleID           uuid.UUID
-	Rank               int32
-	Score              float64
-	Reason             []byte
-	PredictionSnapshot []byte
-}
-
-type StepEvent struct {
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	ID        uuid.UUID
-	StepID    uuid.UUID
-	Seq       int32
-	Ts        pgtype.Timestamptz
-	EventType string
-	Payload   []byte
-}
-
-type StepMetricPoint struct {
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
-	ID          uuid.UUID
-	StepID      uuid.UUID
-	Step        int32
-	Epoch       pgtype.Int4
-	MetricName  string
-	MetricValue float64
-	Ts          pgtype.Timestamptz
-}
-
 type SystemSetting struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
@@ -1723,6 +1688,41 @@ type Task struct {
 	StartedAt          pgtype.Timestamptz
 	EndedAt            pgtype.Timestamptz
 	LastError          pgtype.Text
+}
+
+type TaskCandidateItem struct {
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	ID                 uuid.UUID
+	TaskID             uuid.UUID
+	SampleID           uuid.UUID
+	Rank               int32
+	Score              float64
+	Reason             []byte
+	PredictionSnapshot []byte
+}
+
+type TaskEvent struct {
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	ID        uuid.UUID
+	TaskID    uuid.UUID
+	Seq       int32
+	Ts        pgtype.Timestamptz
+	EventType string
+	Payload   []byte
+}
+
+type TaskMetricPoint struct {
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+	ID          uuid.UUID
+	TaskID      uuid.UUID
+	Step        int32
+	Epoch       pgtype.Int4
+	MetricName  string
+	MetricValue float64
+	Ts          pgtype.Timestamptz
 }
 
 type User struct {

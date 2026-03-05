@@ -31,7 +31,7 @@ FROM picked
 WHERE o.id = picked.id
 RETURNING
   o.id AS id,
-  o.step_id AS step_id,
+  o.task_id AS task_id,
   o.executor_id,
   o.request_id,
   o.payload,
@@ -40,7 +40,7 @@ RETURNING
 
 type ClaimDispatchOutboxDueRow struct {
 	ID           uuid.UUID
-	StepID       uuid.UUID
+	TaskID       uuid.UUID
 	ExecutorID   string
 	RequestID    string
 	Payload      []byte
@@ -58,7 +58,7 @@ func (q *Queries) ClaimDispatchOutboxDue(ctx context.Context, limitCount int32) 
 		var i ClaimDispatchOutboxDueRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.StepID,
+			&i.TaskID,
 			&i.ExecutorID,
 			&i.RequestID,
 			&i.Payload,
@@ -92,7 +92,7 @@ func (q *Queries) DeleteSentDispatchOutboxBefore(ctx context.Context, cutoff pgt
 const insertDispatchOutbox = `-- name: InsertDispatchOutbox :execrows
 INSERT INTO dispatch_outbox(
   id,
-  step_id,
+  task_id,
   executor_id,
   request_id,
   payload,
@@ -118,7 +118,7 @@ ON CONFLICT (request_id) DO NOTHING
 
 type InsertDispatchOutboxParams struct {
 	OutboxID   uuid.UUID
-	StepID     uuid.UUID
+	TaskID     uuid.UUID
 	ExecutorID string
 	RequestID  string
 	Payload    []byte
@@ -127,7 +127,7 @@ type InsertDispatchOutboxParams struct {
 func (q *Queries) InsertDispatchOutbox(ctx context.Context, arg InsertDispatchOutboxParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertDispatchOutbox,
 		arg.OutboxID,
-		arg.StepID,
+		arg.TaskID,
 		arg.ExecutorID,
 		arg.RequestID,
 		arg.Payload,
@@ -147,11 +147,12 @@ WHERE s.state IN (
   'PROBING_RUNTIME'::stepstatus,
   'BINDING_DEVICE'::stepstatus
 )
+  AND s.task_id IS NOT NULL
   AND s.updated_at < $1
   AND NOT EXISTS (
     SELECT 1
     FROM dispatch_outbox o
-    WHERE o.step_id = s.id
+    WHERE o.task_id = s.task_id
       AND o.status IN ('PENDING', 'SENDING')
   )
 ORDER BY s.updated_at ASC

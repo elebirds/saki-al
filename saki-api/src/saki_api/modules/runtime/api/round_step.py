@@ -177,6 +177,7 @@ class StepRead(BaseModel):
     metrics: Dict[str, Any]
     artifacts: Dict[str, Any]
     input_commit_id: Optional[uuid.UUID] = None
+    task_id: Optional[uuid.UUID] = None
     assigned_executor_id: Optional[str] = None
     attempt: int
     max_attempts: int
@@ -208,6 +209,7 @@ class StepCommandResponse(BaseModel):
 
 
 class StepEventRead(BaseModel):
+    task_id: uuid.UUID
     seq: int
     ts: datetime
     event_type: str
@@ -237,7 +239,14 @@ class StepEventQueryResponse(BaseModel):
     facets: Optional[StepEventFacetsRead] = None
 
 
+class TaskEventQueryResponse(StepEventQueryResponse):
+    pass
+
+
 class RoundEventRead(BaseModel):
+    task_id: uuid.UUID
+    task_index: int
+    task_type: StepType
     step_id: uuid.UUID
     step_index: int
     step_type: StepType

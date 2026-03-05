@@ -1,4 +1,4 @@
-"""Repository for StepMetricPoint time series."""
+"""Repository for task metric point time series."""
 
 import uuid
 from typing import List
@@ -7,28 +7,45 @@ from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.infra.db.repository import BaseRepository
-from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
+from saki_api.modules.runtime.domain.step import Step
+from saki_api.modules.runtime.domain.step_metric_point import TaskMetricPoint
 
 
-class StepMetricPointRepository(BaseRepository[StepMetricPoint]):
+class TaskMetricPointRepository(BaseRepository[TaskMetricPoint]):
     def __init__(self, session: AsyncSession):
-        super().__init__(StepMetricPoint, session)
+        super().__init__(TaskMetricPoint, session)
 
-    async def add_many(self, rows: List[StepMetricPoint]) -> None:
+    async def add_many(self, rows: List[TaskMetricPoint]) -> None:
         for row in rows:
             self.session.add(row)
 
-    async def list_by_step(self, step_id: uuid.UUID, limit: int = 5000) -> List[StepMetricPoint]:
+    async def list_by_task(self, task_id: uuid.UUID, limit: int = 5000) -> List[TaskMetricPoint]:
         stmt = (
-            select(StepMetricPoint)
-            .where(StepMetricPoint.step_id == step_id)
-            .order_by(StepMetricPoint.metric_step.asc(), StepMetricPoint.created_at.asc())
+            select(TaskMetricPoint)
+            .where(TaskMetricPoint.task_id == task_id)
+            .order_by(TaskMetricPoint.metric_step.asc(), TaskMetricPoint.created_at.asc())
             .limit(limit)
         )
         rows = await self.session.exec(stmt)
         return list(rows.all())
 
-    async def delete_by_step(self, step_id: uuid.UUID) -> int:
-        stmt = delete(StepMetricPoint).where(StepMetricPoint.step_id == step_id)
+    async def delete_by_task(self, task_id: uuid.UUID) -> int:
+        stmt = delete(TaskMetricPoint).where(TaskMetricPoint.task_id == task_id)
         result = await self.session.exec(stmt)
         return int(result.rowcount or 0)
+
+    async def list_by_step(self, step_id: uuid.UUID, limit: int = 5000) -> List[TaskMetricPoint]:
+        step = await self.session.get(Step, step_id)
+        if step is None or step.task_id is None:
+            return []
+        return await self.list_by_task(step.task_id, limit=limit)
+
+    async def delete_by_step(self, step_id: uuid.UUID) -> int:
+        step = await self.session.get(Step, step_id)
+        if step is None or step.task_id is None:
+            return 0
+        return await self.delete_by_task(step.task_id)
+
+
+# Legacy alias, kept for incremental refactor of imports.
+StepMetricPointRepository = TaskMetricPointRepository

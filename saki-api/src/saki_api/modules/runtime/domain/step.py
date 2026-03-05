@@ -12,11 +12,7 @@ from saki_api.modules.shared.modeling.base import OPT_JSON, TimestampMixin, UUID
 from saki_api.modules.shared.modeling.enums import StepDispatchKind, StepStatus, StepType
 
 if TYPE_CHECKING:
-    from saki_api.modules.runtime.domain.dispatch_outbox import DispatchOutbox
     from saki_api.modules.runtime.domain.round import Round
-    from saki_api.modules.runtime.domain.step_candidate_item import StepCandidateItem
-    from saki_api.modules.runtime.domain.step_event import StepEvent
-    from saki_api.modules.runtime.domain.step_metric_point import StepMetricPoint
 
 
 class Step(UUIDMixin, TimestampMixin, SQLModel, table=True):
@@ -48,7 +44,3 @@ class Step(UUIDMixin, TimestampMixin, SQLModel, table=True):
     last_error: Optional[str] = Field(default=None, max_length=4000)
 
     round: "Round" = Relationship(back_populates="steps")
-    events: List["StepEvent"] = Relationship(back_populates="step")
-    metric_points: List["StepMetricPoint"] = Relationship(back_populates="step")
-    candidates: List["StepCandidateItem"] = Relationship(back_populates="step")
-    dispatch_outboxes: List["DispatchOutbox"] = Relationship(back_populates="step")

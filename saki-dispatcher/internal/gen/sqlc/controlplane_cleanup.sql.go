@@ -12,11 +12,12 @@ import (
 )
 
 const deletePredictionCandidates = `-- name: DeletePredictionCandidates :execrows
-DELETE FROM step_candidate_item c
+DELETE FROM task_candidate_item c
 USING step s
 JOIN round r ON r.id = s.round_id
-WHERE c.step_id = s.id
+WHERE c.task_id = s.task_id
   AND s.step_type = 'SCORE'::steptype
+  AND s.task_id IS NOT NULL
   AND COALESCE(s.ended_at, s.updated_at, s.created_at) < $1
   AND (
     SELECT COUNT(*)::int
@@ -40,11 +41,12 @@ func (q *Queries) DeletePredictionCandidates(ctx context.Context, arg DeletePred
 }
 
 const deletePredictionEvents = `-- name: DeletePredictionEvents :execrows
-DELETE FROM step_event e
+DELETE FROM task_event e
 USING step s
 JOIN round r ON r.id = s.round_id
-WHERE e.step_id = s.id
+WHERE e.task_id = s.task_id
   AND s.step_type = 'SCORE'::steptype
+  AND s.task_id IS NOT NULL
   AND COALESCE(s.ended_at, s.updated_at, s.created_at) < $1
   AND (
     SELECT COUNT(*)::int
@@ -70,11 +72,12 @@ func (q *Queries) DeletePredictionEvents(ctx context.Context, arg DeletePredicti
 }
 
 const deletePredictionMetrics = `-- name: DeletePredictionMetrics :execrows
-DELETE FROM step_metric_point m
+DELETE FROM task_metric_point m
 USING step s
 JOIN round r ON r.id = s.round_id
-WHERE m.step_id = s.id
+WHERE m.task_id = s.task_id
   AND s.step_type = 'SCORE'::steptype
+  AND s.task_id IS NOT NULL
   AND COALESCE(s.ended_at, s.updated_at, s.created_at) < $1
   AND (
     SELECT COUNT(*)::int

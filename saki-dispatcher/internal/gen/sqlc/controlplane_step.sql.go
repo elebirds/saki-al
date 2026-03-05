@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type CopyStepCandidateItemsParams struct {
+type CopyTaskCandidateItemsParams struct {
 	ID                 uuid.UUID
-	StepID             uuid.UUID
+	TaskID             uuid.UUID
 	SampleID           uuid.UUID
 	Rank               int32
 	Score              float64
@@ -24,9 +24,9 @@ type CopyStepCandidateItemsParams struct {
 	UpdatedAt          pgtype.Timestamptz
 }
 
-type CopyStepMetricPointsParams struct {
+type CopyTaskMetricPointsParams struct {
 	ID          uuid.UUID
-	StepID      uuid.UUID
+	TaskID      uuid.UUID
 	Step        int32
 	Epoch       pgtype.Int4
 	MetricName  string
@@ -36,13 +36,13 @@ type CopyStepMetricPointsParams struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
-const deleteStepCandidatesByStepID = `-- name: DeleteStepCandidatesByStepID :exec
-DELETE FROM step_candidate_item
-WHERE step_id = $1::uuid
+const deleteTaskCandidatesByTaskID = `-- name: DeleteTaskCandidatesByTaskID :exec
+DELETE FROM task_candidate_item
+WHERE task_id = $1::uuid
 `
 
-func (q *Queries) DeleteStepCandidatesByStepID(ctx context.Context, stepID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteStepCandidatesByStepID, stepID)
+func (q *Queries) DeleteTaskCandidatesByTaskID(ctx context.Context, taskID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteTaskCandidatesByTaskID, taskID)
 	return err
 }
 
@@ -238,9 +238,9 @@ func (q *Queries) GetSucceededScoreStepIDByRound(ctx context.Context, roundID uu
 	return step_id, err
 }
 
-const insertStepCandidateItem = `-- name: InsertStepCandidateItem :exec
-INSERT INTO step_candidate_item(
-  id, step_id, sample_id, rank, score, reason, prediction_snapshot, created_at, updated_at
+const insertTaskCandidateItem = `-- name: InsertTaskCandidateItem :exec
+INSERT INTO task_candidate_item(
+  id, task_id, sample_id, rank, score, reason, prediction_snapshot, created_at, updated_at
 ) VALUES (
   $1::uuid,
   $2::uuid,
@@ -254,9 +254,9 @@ INSERT INTO step_candidate_item(
 )
 `
 
-type InsertStepCandidateItemParams struct {
+type InsertTaskCandidateItemParams struct {
 	CandidateID        uuid.UUID
-	StepID             uuid.UUID
+	TaskID             uuid.UUID
 	SampleID           uuid.UUID
 	Rank               int32
 	Score              float64
@@ -264,10 +264,10 @@ type InsertStepCandidateItemParams struct {
 	PredictionSnapshot []byte
 }
 
-func (q *Queries) InsertStepCandidateItem(ctx context.Context, arg InsertStepCandidateItemParams) error {
-	_, err := q.db.Exec(ctx, insertStepCandidateItem,
+func (q *Queries) InsertTaskCandidateItem(ctx context.Context, arg InsertTaskCandidateItemParams) error {
+	_, err := q.db.Exec(ctx, insertTaskCandidateItem,
 		arg.CandidateID,
-		arg.StepID,
+		arg.TaskID,
 		arg.SampleID,
 		arg.Rank,
 		arg.Score,
@@ -277,9 +277,9 @@ func (q *Queries) InsertStepCandidateItem(ctx context.Context, arg InsertStepCan
 	return err
 }
 
-const insertStepMetricPoint = `-- name: InsertStepMetricPoint :exec
-INSERT INTO step_metric_point(
-  id, step_id, step, epoch, metric_name, metric_value, ts, created_at, updated_at
+const insertTaskMetricPoint = `-- name: InsertTaskMetricPoint :exec
+INSERT INTO task_metric_point(
+  id, task_id, step, epoch, metric_name, metric_value, ts, created_at, updated_at
 ) VALUES (
   $1::uuid,
   $2::uuid,
@@ -293,9 +293,9 @@ INSERT INTO step_metric_point(
 )
 `
 
-type InsertStepMetricPointParams struct {
+type InsertTaskMetricPointParams struct {
 	MetricID    uuid.UUID
-	StepID      uuid.UUID
+	TaskID      uuid.UUID
 	Step        int32
 	Epoch       pgtype.Int4
 	MetricName  string
@@ -303,10 +303,10 @@ type InsertStepMetricPointParams struct {
 	Ts          pgtype.Timestamptz
 }
 
-func (q *Queries) InsertStepMetricPoint(ctx context.Context, arg InsertStepMetricPointParams) error {
-	_, err := q.db.Exec(ctx, insertStepMetricPoint,
+func (q *Queries) InsertTaskMetricPoint(ctx context.Context, arg InsertTaskMetricPointParams) error {
+	_, err := q.db.Exec(ctx, insertTaskMetricPoint,
 		arg.MetricID,
-		arg.StepID,
+		arg.TaskID,
 		arg.Step,
 		arg.Epoch,
 		arg.MetricName,
@@ -421,25 +421,25 @@ func (q *Queries) ListRetryingStepIDsDueForUpdateSkipLocked(ctx context.Context,
 	return items, nil
 }
 
-const listStepCandidatesByStepID = `-- name: ListStepCandidatesByStepID :many
+const listTaskCandidatesByTaskID = `-- name: ListTaskCandidatesByTaskID :many
 SELECT
   sample_id AS sample_id,
   rank,
   score,
   reason AS reason_json,
   prediction_snapshot AS prediction_json
-FROM step_candidate_item
-WHERE step_id = $1::uuid
+FROM task_candidate_item
+WHERE task_id = $1::uuid
 ORDER BY rank ASC, score DESC
 LIMIT $2
 `
 
-type ListStepCandidatesByStepIDParams struct {
-	StepID     uuid.UUID
+type ListTaskCandidatesByTaskIDParams struct {
+	TaskID     uuid.UUID
 	LimitCount int32
 }
 
-type ListStepCandidatesByStepIDRow struct {
+type ListTaskCandidatesByTaskIDRow struct {
 	SampleID       uuid.UUID
 	Rank           int32
 	Score          float64
@@ -447,15 +447,15 @@ type ListStepCandidatesByStepIDRow struct {
 	PredictionJson []byte
 }
 
-func (q *Queries) ListStepCandidatesByStepID(ctx context.Context, arg ListStepCandidatesByStepIDParams) ([]ListStepCandidatesByStepIDRow, error) {
-	rows, err := q.db.Query(ctx, listStepCandidatesByStepID, arg.StepID, arg.LimitCount)
+func (q *Queries) ListTaskCandidatesByTaskID(ctx context.Context, arg ListTaskCandidatesByTaskIDParams) ([]ListTaskCandidatesByTaskIDRow, error) {
+	rows, err := q.db.Query(ctx, listTaskCandidatesByTaskID, arg.TaskID, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListStepCandidatesByStepIDRow
+	var items []ListTaskCandidatesByTaskIDRow
 	for rows.Next() {
-		var i ListStepCandidatesByStepIDRow
+		var i ListTaskCandidatesByTaskIDRow
 		if err := rows.Scan(
 			&i.SampleID,
 			&i.Rank,

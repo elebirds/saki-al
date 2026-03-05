@@ -50,7 +50,6 @@ SET state = 'CANCELLED'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE id = ANY($2::uuid[])
-  AND step_type <> 'PREDICT'::steptype
   AND state IN (
     'PENDING'::stepstatus,
     'READY'::stepstatus,
@@ -81,7 +80,6 @@ SET state = 'CANCELLED'::stepstatus,
     state_version = state_version + 1,
     updated_at = now()
 WHERE round_id = $2::uuid
-  AND step_type <> 'PREDICT'::steptype
   AND state IN (
     'PENDING'::stepstatus,
     'READY'::stepstatus,
@@ -122,7 +120,6 @@ SELECT COUNT(*)::int AS count
 FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE j.loop_id = $1::uuid
-  AND t.step_type <> 'PREDICT'::steptype
   AND t.state IN (
     'PENDING'::stepstatus,
     'READY'::stepstatus,
@@ -147,7 +144,6 @@ SELECT COUNT(*)::int AS count
 FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE j.loop_id = $1::uuid
-  AND t.step_type <> 'PREDICT'::steptype
   AND t.state IN (
     'DISPATCHING'::stepstatus,
     'SYNCING_ENV'::stepstatus,
@@ -169,7 +165,6 @@ const countStepStatesByRound = `-- name: CountStepStatesByRound :many
 SELECT state, COUNT(*)::int AS count
 FROM step
 WHERE round_id = $1::uuid
-  AND step_type <> 'PREDICT'::steptype
 GROUP BY state
 `
 
@@ -655,7 +650,6 @@ SELECT
 FROM step t
 JOIN round j ON j.id = t.round_id
 WHERE j.loop_id = $1::uuid
-  AND t.step_type <> 'PREDICT'::steptype
   AND t.state IN (
     'PENDING'::stepstatus,
     'READY'::stepstatus,
@@ -705,7 +699,6 @@ const listRoundActiveStepIDs = `-- name: ListRoundActiveStepIDs :many
 SELECT id
 FROM step
 WHERE round_id = $1::uuid
-  AND step_type <> 'PREDICT'::steptype
   AND state IN (
     'PENDING'::stepstatus,
     'READY'::stepstatus,

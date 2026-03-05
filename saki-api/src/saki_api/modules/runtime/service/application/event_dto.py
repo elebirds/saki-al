@@ -1,4 +1,4 @@
-"""DTOs for runtime step event/result persistence."""
+"""DTOs for runtime task event/result persistence."""
 
 from __future__ import annotations
 
@@ -18,12 +18,37 @@ class RuntimeArtifactDTO(BaseModel):
     meta: dict[str, Any] = Field(default_factory=dict)
 
 
-class RuntimeStepCandidateDTO(BaseModel):
+class RuntimeTaskCandidateDTO(BaseModel):
     sample_id: uuid.UUID
     rank: int
     score: float
     reason: dict[str, Any] = Field(default_factory=dict)
     prediction_snapshot: dict[str, Any] = Field(default_factory=dict)
+
+
+class RuntimeStepCandidateDTO(RuntimeTaskCandidateDTO):
+    pass
+
+
+class RuntimeTaskEventDTO(BaseModel):
+    task_id: uuid.UUID
+    step_id: uuid.UUID | None = None
+    seq: int
+    ts: datetime
+    event_type: Literal["status", "log", "progress", "metric", "artifact"]
+    payload: dict[str, Any] = Field(default_factory=dict)
+    status: StepStatus | None = None
+    request_id: str | None = None
+
+
+class RuntimeTaskResultDTO(BaseModel):
+    task_id: uuid.UUID
+    step_id: uuid.UUID | None = None
+    status: StepStatus
+    metrics: dict[str, float] = Field(default_factory=dict)
+    artifacts: list[RuntimeArtifactDTO] = Field(default_factory=list)
+    candidates: list[RuntimeTaskCandidateDTO] = Field(default_factory=list)
+    last_error: str | None = None
 
 
 class RuntimeStepEventDTO(BaseModel):

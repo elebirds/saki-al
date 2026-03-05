@@ -34,52 +34,52 @@ func TestCancelAttemptCommandIDIsDeterministicAndAttemptScoped(t *testing.T) {
 	}
 }
 
-func TestToRuntimeStepDispatchKind(t *testing.T) {
-	if got := toRuntimeStepDispatchKind(db.StepdispatchkindDISPATCHABLE); got != runtimecontrolv1.RuntimeStepDispatchKind_DISPATCHABLE {
+func TestToRuntimeTaskDispatchKind(t *testing.T) {
+	if got := toRuntimeTaskDispatchKind(db.StepdispatchkindDISPATCHABLE); got != runtimecontrolv1.RuntimeTaskDispatchKind_DISPATCHABLE {
 		t.Fatalf("dispatchable mapping mismatch: %v", got)
 	}
-	if got := toRuntimeStepDispatchKind(db.StepdispatchkindORCHESTRATOR); got != runtimecontrolv1.RuntimeStepDispatchKind_ORCHESTRATOR {
+	if got := toRuntimeTaskDispatchKind(db.StepdispatchkindORCHESTRATOR); got != runtimecontrolv1.RuntimeTaskDispatchKind_ORCHESTRATOR {
 		t.Fatalf("orchestrator mapping mismatch: %v", got)
 	}
-	if got := toRuntimeStepDispatchKind(db.Stepdispatchkind("unknown")); got != runtimecontrolv1.RuntimeStepDispatchKind_RUNTIME_STEP_DISPATCH_KIND_UNSPECIFIED {
+	if got := toRuntimeTaskDispatchKind(db.Stepdispatchkind("unknown")); got != runtimecontrolv1.RuntimeTaskDispatchKind_RUNTIME_TASK_DISPATCH_KIND_UNSPECIFIED {
 		t.Fatalf("unexpected fallback mapping: %v", got)
 	}
 }
 
-func TestToRuntimeStepType(t *testing.T) {
-	cases := map[db.Steptype]runtimecontrolv1.RuntimeStepType{
-		db.SteptypeTRAIN:   runtimecontrolv1.RuntimeStepType_TRAIN,
-		db.SteptypeSCORE:   runtimecontrolv1.RuntimeStepType_SCORE,
-		db.SteptypeSELECT:  runtimecontrolv1.RuntimeStepType_SELECT,
-		db.SteptypeEVAL:    runtimecontrolv1.RuntimeStepType_EVAL,
-		db.SteptypePREDICT: runtimecontrolv1.RuntimeStepType_PREDICT,
-		db.SteptypeCUSTOM:  runtimecontrolv1.RuntimeStepType_CUSTOM,
+func TestToRuntimeTaskType(t *testing.T) {
+	cases := map[db.Steptype]runtimecontrolv1.RuntimeTaskType{
+		db.SteptypeTRAIN:   runtimecontrolv1.RuntimeTaskType_TRAIN,
+		db.SteptypeSCORE:   runtimecontrolv1.RuntimeTaskType_SCORE,
+		db.SteptypeSELECT:  runtimecontrolv1.RuntimeTaskType_SELECT,
+		db.SteptypeEVAL:    runtimecontrolv1.RuntimeTaskType_EVAL,
+		db.SteptypePREDICT: runtimecontrolv1.RuntimeTaskType_PREDICT,
+		db.SteptypeCUSTOM:  runtimecontrolv1.RuntimeTaskType_CUSTOM,
 	}
 	for stepType, want := range cases {
-		if got := toRuntimeStepType(stepType); got != want {
+		if got := toRuntimeTaskType(stepType); got != want {
 			t.Fatalf("step type mapping mismatch: %s -> %v, want %v", stepType, got, want)
 		}
 	}
-	if got := toRuntimeStepType(db.Steptype("UNKNOWN")); got != runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED {
+	if got := toRuntimeTaskType(db.Steptype("UNKNOWN")); got != runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED {
 		t.Fatalf("unknown step type fallback mismatch: %v", got)
 	}
 }
 
-func TestRuntimeStepTypeFromTaskType(t *testing.T) {
-	cases := map[string]runtimecontrolv1.RuntimeStepType{
-		"TRAIN":   runtimecontrolv1.RuntimeStepType_TRAIN,
-		"EVAL":    runtimecontrolv1.RuntimeStepType_EVAL,
-		"SCORE":   runtimecontrolv1.RuntimeStepType_SCORE,
-		"SELECT":  runtimecontrolv1.RuntimeStepType_SELECT,
-		"PREDICT": runtimecontrolv1.RuntimeStepType_PREDICT,
-		"CUSTOM":  runtimecontrolv1.RuntimeStepType_CUSTOM,
+func TestRuntimeTaskTypeFromTaskType(t *testing.T) {
+	cases := map[string]runtimecontrolv1.RuntimeTaskType{
+		"TRAIN":   runtimecontrolv1.RuntimeTaskType_TRAIN,
+		"EVAL":    runtimecontrolv1.RuntimeTaskType_EVAL,
+		"SCORE":   runtimecontrolv1.RuntimeTaskType_SCORE,
+		"SELECT":  runtimecontrolv1.RuntimeTaskType_SELECT,
+		"PREDICT": runtimecontrolv1.RuntimeTaskType_PREDICT,
+		"CUSTOM":  runtimecontrolv1.RuntimeTaskType_CUSTOM,
 	}
 	for taskType, want := range cases {
-		if got := runtimeStepTypeFromTaskType(taskType); got != want {
+		if got := runtimeTaskTypeFromTaskType(taskType); got != want {
 			t.Fatalf("task type mapping mismatch: %s -> %v, want %v", taskType, got, want)
 		}
 	}
-	if got := runtimeStepTypeFromTaskType("legacy"); got != runtimecontrolv1.RuntimeStepType_RUNTIME_STEP_TYPE_UNSPECIFIED {
+	if got := runtimeTaskTypeFromTaskType("legacy"); got != runtimecontrolv1.RuntimeTaskType_RUNTIME_TASK_TYPE_UNSPECIFIED {
 		t.Fatalf("unknown task type fallback mismatch: %v", got)
 	}
 }

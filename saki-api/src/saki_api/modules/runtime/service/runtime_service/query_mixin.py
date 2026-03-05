@@ -192,9 +192,11 @@ class RuntimeQueryMixin:
         return steps[: max(1, min(limit, 5000))]
 
     async def list_step_events(self, step_id: uuid.UUID, after_seq: int = 0, limit: int = 5000):
-        await self.step_repo.get_by_id_or_raise(step_id)
-        return await self.step_event_repo.list_by_step_after_seq(
-            step_id=step_id,
+        step = await self.step_repo.get_by_id_or_raise(step_id)
+        if not step.task_id:
+            return []
+        return await self.task_event_repo.list_by_task_after_seq(
+            task_id=step.task_id,
             after_seq=max(0, after_seq),
             limit=max(1, min(limit, 100000)),
         )
@@ -430,40 +432,40 @@ class RuntimeQueryMixin:
             version = int(payload.get("v", 0))
             if version != self._ROUND_EVENT_CURSOR_VERSION:
                 raise ValueError("cursor version mismatch")
-            step_seq_raw = payload.get("step_seq")
-            if not isinstance(step_seq_raw, dict):
-                raise ValueError("cursor step_seq must be object")
-            step_seq: dict[str, int] = {}
-            for key, value in step_seq_raw.items():
-                step_id = str(uuid.UUID(str(key)))
+            task_seq_raw = payload.get("task_seq")
+            if not isinstance(task_seq_raw, dict):
+                raise ValueError("cursor task_seq must be object")
+            task_seq: dict[str, int] = {}
+            for key, value in task_seq_raw.items():
+                task_id = str(uuid.UUID(str(key)))
                 seq_value = max(0, int(value or 0))
-                step_seq[step_id] = seq_value
-            return step_seq
+                task_seq[task_id] = seq_value
+            return task_seq
         except Exception as exc:
             raise BadRequestAppException("invalid after_cursor") from exc
 
-    def encode_round_events_cursor(self, step_seq: dict[str, int]) -> str | None:
-        if not step_seq:
+    def encode_round_events_cursor(self, task_seq: dict[str, int]) -> str | None:
+        if not task_seq:
             return None
         normalized: dict[str, int] = {}
-        for key, value in step_seq.items():
+        for key, value in task_seq.items():
             try:
-                step_id = str(uuid.UUID(str(key)))
+                task_id = str(uuid.UUID(str(key)))
             except Exception:
                 continue
-            normalized[step_id] = max(0, int(value or 0))
+            normalized[task_id] = max(0, int(value or 0))
         if not normalized:
             return None
         payload = {
             "v": self._ROUND_EVENT_CURSOR_VERSION,
-            "step_seq": normalized,
+            "task_seq": normalized,
         }
         return self._encode_round_events_cursor_payload(payload)
 
-    async def query_step_events(
+    async def query_task_events(
         self,
         *,
-        step_id: uuid.UUID,
+        task_id: uuid.UUID,
         after_seq: int = 0,
         limit: int = 5000,
         event_types: list[str] | None = None,
@@ -474,13 +476,13 @@ class RuntimeQueryMixin:
         to_ts: datetime | None = None,
         include_facets: bool = False,
     ) -> dict[str, Any]:
-        await self.step_repo.get_by_id_or_raise(step_id)
+        await self.task_repo.get_by_id_or_raise(task_id)
         normalized_event_types = [str(item).strip().lower() for item in (event_types or []) if str(item).strip()]
         normalized_levels = {str(item).strip().upper() for item in (levels or []) if str(item).strip()}
         normalized_tags = {str(item).strip().lower() for item in (tags or []) if str(item).strip()}
         text_query = str(q or "").strip().lower()
-        rows = await self.step_event_repo.list_by_step_query(
-            step_id=step_id,
+        rows = await self.task_event_repo.list_by_task_query(
+            task_id=task_id,
             after_seq=max(0, int(after_seq or 0)),
             limit=max(1, min(int(limit or 5000), 100000)),
             event_types=normalized_event_types or None,
@@ -491,6 +493,7 @@ class RuntimeQueryMixin:
         items: list[dict[str, Any]] = []
         for row in rows:
             item = self._normalize_step_event(row)
+            item["task_id"] = row.task_id
             if normalized_levels:
                 level = str(item.get("level") or "").upper()
                 if level not in normalized_levels:
@@ -538,6 +541,36 @@ class RuntimeQueryMixin:
             }
         return payload
 
+    async def query_step_events(
+        self,
+        *,
+        step_id: uuid.UUID,
+        after_seq: int = 0,
+        limit: int = 5000,
+        event_types: list[str] | None = None,
+        levels: list[str] | None = None,
+        tags: list[str] | None = None,
+        q: str | None = None,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        include_facets: bool = False,
+    ) -> dict[str, Any]:
+        step = await self.step_repo.get_by_id_or_raise(step_id)
+        if not step.task_id:
+            return {"items": [], "next_after_seq": None, "facets": None}
+        return await self.query_task_events(
+            task_id=step.task_id,
+            after_seq=after_seq,
+            limit=limit,
+            event_types=event_types,
+            levels=levels,
+            tags=tags,
+            q=q,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            include_facets=include_facets,
+        )
+
     async def query_round_events(
         self,
         *,
@@ -562,44 +595,53 @@ class RuntimeQueryMixin:
             step_stage[step.id] = stage
             if stage_filter and stage not in stage_filter:
                 continue
+            if step.task_id is None:
+                continue
             target_steps.append(step)
 
-        cursor_step_seq = self.decode_round_events_cursor(after_cursor)
+        cursor_task_seq = self.decode_round_events_cursor(after_cursor)
         if not target_steps:
             return {
                 "items": [],
-                "next_after_cursor": self.encode_round_events_cursor(cursor_step_seq) if cursor_step_seq else None,
+                "next_after_cursor": self.encode_round_events_cursor(cursor_task_seq) if cursor_task_seq else None,
                 "has_more": False,
             }
 
         safe_limit = max(1, min(int(limit or 5000), 100000))
-        target_step_ids = [step.id for step in target_steps]
-        step_seq_cursor = {step_id: max(0, int(cursor_step_seq.get(str(step_id), 0))) for step_id in target_step_ids}
-        rows = await self.step_event_repo.list_by_round_after_cursor(
+        target_task_ids = [step.task_id for step in target_steps if step.task_id is not None]
+        task_seq_cursor = {
+            task_id: max(0, int(cursor_task_seq.get(str(task_id), 0)))
+            for task_id in target_task_ids
+        }
+        rows = await self.task_event_repo.list_by_round_after_cursor(
             round_id=round_id,
-            step_ids=target_step_ids,
-            after_step_seq=step_seq_cursor,
+            task_ids=target_task_ids,
+            after_task_seq=task_seq_cursor,
             limit=safe_limit,
         )
 
-        step_lookup = {step.id: step for step in target_steps}
-        next_step_seq = dict(cursor_step_seq)
+        step_lookup = {step.task_id: step for step in target_steps if step.task_id is not None}
+        next_task_seq = dict(cursor_task_seq)
         items: list[dict[str, Any]] = []
         for row in rows:
             event = row[0]
             step = row[1]
-            if step.id not in step_lookup:
+            if event.task_id not in step_lookup:
                 continue
+            step = step_lookup[event.task_id]
             item = self._normalize_step_event(event)
+            item["task_id"] = event.task_id
+            item["task_index"] = int(step.step_index or 0)
+            item["task_type"] = str(step.step_type.value if hasattr(step.step_type, "value") else step.step_type)
             item["step_id"] = step.id
             item["step_index"] = int(step.step_index or 0)
             item["step_type"] = str(step.step_type.value if hasattr(step.step_type, "value") else step.step_type)
             item["stage"] = step_stage.get(step.id) or self._round_stage_from_step_type(step.step_type)
             items.append(item)
-            step_key = str(step.id)
-            next_step_seq[step_key] = max(int(next_step_seq.get(step_key, 0) or 0), int(event.seq or 0))
+            task_key = str(event.task_id)
+            next_task_seq[task_key] = max(int(next_task_seq.get(task_key, 0) or 0), int(event.seq or 0))
 
-        next_after = self.encode_round_events_cursor(next_step_seq)
+        next_after = self.encode_round_events_cursor(next_task_seq)
         if not items and after_cursor:
             next_after = str(after_cursor)
         return {
@@ -609,12 +651,16 @@ class RuntimeQueryMixin:
         }
 
     async def list_step_metric_series(self, step_id: uuid.UUID, limit: int = 5000):
-        await self.step_repo.get_by_id_or_raise(step_id)
-        return await self.step_metric_repo.list_by_step(step_id, limit=max(1, min(limit, 100000)))
+        step = await self.step_repo.get_by_id_or_raise(step_id)
+        if not step.task_id:
+            return []
+        return await self.task_metric_repo.list_by_task(step.task_id, limit=max(1, min(limit, 100000)))
 
     async def list_step_candidates(self, step_id: uuid.UUID, limit: int = 200) -> List[StepCandidateItem]:
-        await self.step_repo.get_by_id_or_raise(step_id)
-        return await self.step_candidate_repo.list_topk_by_step(step_id, limit=max(1, min(limit, 5000)))
+        step = await self.step_repo.get_by_id_or_raise(step_id)
+        if not step.task_id:
+            return []
+        return await self.task_candidate_repo.list_topk_by_task(step.task_id, limit=max(1, min(limit, 5000)))
 
     def _extract_downloadable_step_artifacts(self, step: Step) -> list[StepArtifactRead]:
         artifacts: list[StepArtifactRead] = []

@@ -329,12 +329,13 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
         limit = max(1, int(topk or 1))
         select_stmt = (
             select(StepCandidateItem.sample_id)
-            .join(Step, Step.id == StepCandidateItem.step_id)
+            .join(Step, Step.task_id == StepCandidateItem.task_id)
             .join(Round, Round.id == Step.round_id)
             .where(
                 Round.loop_id == loop_id,
                 Round.round_index == round_index,
                 Step.step_type == StepType.SELECT,
+                Step.task_id.is_not(None),
             )
             .order_by(StepCandidateItem.rank.asc(), StepCandidateItem.created_at.asc())
             .limit(limit)
@@ -343,12 +344,13 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
         if not sample_ids:
             fallback_stmt = (
                 select(StepCandidateItem.sample_id)
-                .join(Step, Step.id == StepCandidateItem.step_id)
+                .join(Step, Step.task_id == StepCandidateItem.task_id)
                 .join(Round, Round.id == Step.round_id)
                 .where(
                     Round.loop_id == loop_id,
                     Round.round_index == round_index,
                     Step.step_type == StepType.SCORE,
+                    Step.task_id.is_not(None),
                 )
                 .order_by(StepCandidateItem.rank.asc(), StepCandidateItem.created_at.asc())
                 .limit(limit)

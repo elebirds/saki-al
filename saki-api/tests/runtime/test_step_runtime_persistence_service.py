@@ -195,12 +195,15 @@ async def test_persist_step_result_no_longer_appends_terminal_metric_points(pers
             )
         )
         await session.commit()
+        step = await session.get(Step, step_id)
+        assert step is not None
+        assert step.task_id is not None
 
         metric_rows = list(
             (
                 await session.exec(
                     select(StepMetricPoint)
-                    .where(StepMetricPoint.step_id == step_id)
+                    .where(StepMetricPoint.task_id == step.task_id)
                     .order_by(StepMetricPoint.metric_step.asc(), StepMetricPoint.metric_name.asc())
                 )
             ).all()
@@ -228,14 +231,15 @@ async def test_persist_step_result_without_metric_events_keeps_series_empty(pers
             )
         )
         await session.commit()
+        step = await session.get(Step, step_id)
+        assert step is not None
+        assert step.task_id is not None
 
         metric_rows = list(
-            (await session.exec(select(StepMetricPoint).where(StepMetricPoint.step_id == step_id))).all()
+            (await session.exec(select(StepMetricPoint).where(StepMetricPoint.task_id == step.task_id))).all()
         )
         assert metric_rows == []
 
-        step = await session.get(Step, step_id)
-        assert step is not None
         assert float(step.metrics.get("map50", 0.0)) == pytest.approx(0.70)
         assert float(step.metrics.get("loss", 0.0)) == pytest.approx(0.30)
 

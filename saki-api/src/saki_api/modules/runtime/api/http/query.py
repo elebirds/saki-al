@@ -23,8 +23,8 @@ from saki_api.modules.runtime.api.http.support.round_event_stream import (
 )
 from saki_api.modules.runtime.api.http.support.step_event_stream import (
     authenticate_stream_token,
-    authorize_stream_step_access,
-    stream_step_events_loop,
+    authorize_stream_task_access,
+    stream_task_events_loop,
 )
 from saki_api.modules.runtime.api.round_step import (
     LoopCreateRequest,
@@ -73,16 +73,16 @@ async def _authenticate_stream_token(websocket: WebSocket) -> uuid.UUID | None:
     return await authenticate_stream_token(websocket)
 
 
-async def _authorize_stream_step_access(
+async def _authorize_stream_task_access(
     *,
     websocket: WebSocket,
     user_id: uuid.UUID,
-    parsed_step_id: uuid.UUID,
+    parsed_task_id: uuid.UUID,
 ) -> bool:
-    return await authorize_stream_step_access(
+    return await authorize_stream_task_access(
         websocket=websocket,
         user_id=user_id,
-        parsed_step_id=parsed_step_id,
+        parsed_task_id=parsed_task_id,
     )
 
 
@@ -99,15 +99,15 @@ async def _authorize_stream_round_access(
     )
 
 
-async def _stream_step_events_loop(
+async def _stream_task_events_loop(
     *,
     websocket: WebSocket,
-    parsed_step_id: uuid.UUID,
+    parsed_task_id: uuid.UUID,
     cursor: int,
 ) -> int:
-    return await stream_step_events_loop(
+    return await stream_task_events_loop(
         websocket=websocket,
-        parsed_step_id=parsed_step_id,
+        parsed_task_id=parsed_task_id,
         cursor=cursor,
     )
 
@@ -281,10 +281,10 @@ async def get_loop_summary(
     )
 
 
-@router.websocket("/steps/{step_id}/events/ws")
-async def stream_step_events(
+@router.websocket("/tasks/{task_id}/events/ws")
+async def stream_task_events(
     websocket: WebSocket,
-    step_id: str,
+    task_id: str,
     after_seq: int = 0,
 ):
     user_id = await _authenticate_stream_token(websocket)
@@ -292,15 +292,15 @@ async def stream_step_events(
         return
 
     try:
-        parsed_step_id = uuid.UUID(step_id)
+        parsed_task_id = uuid.UUID(task_id)
     except Exception:
-        await websocket.close(code=1008, reason="invalid step_id")
+        await websocket.close(code=1008, reason="invalid task_id")
         return
 
-    authorized = await _authorize_stream_step_access(
+    authorized = await _authorize_stream_task_access(
         websocket=websocket,
         user_id=user_id,
-        parsed_step_id=parsed_step_id,
+        parsed_task_id=parsed_task_id,
     )
     if not authorized:
         return
@@ -308,16 +308,16 @@ async def stream_step_events(
     await websocket.accept()
     cursor = max(0, after_seq)
     try:
-        cursor = await _stream_step_events_loop(
+        cursor = await _stream_task_events_loop(
             websocket=websocket,
-            parsed_step_id=parsed_step_id,
+            parsed_task_id=parsed_task_id,
             cursor=cursor,
         )
     except WebSocketDisconnect:
-        logger.debug("step event stream disconnected step_id={} after_seq={}", parsed_step_id, cursor)
+        logger.debug("task event stream disconnected task_id={} after_seq={}", parsed_task_id, cursor)
         return
     except Exception:
-        logger.exception("step event stream failed step_id={} after_seq={}", parsed_step_id, cursor)
+        logger.exception("task event stream failed task_id={} after_seq={}", parsed_task_id, cursor)
         if websocket.client_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close(code=1011, reason="internal error")

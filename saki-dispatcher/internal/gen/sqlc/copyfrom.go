@@ -9,13 +9,13 @@ import (
 	"context"
 )
 
-// iteratorForCopyStepCandidateItems implements pgx.CopyFromSource.
-type iteratorForCopyStepCandidateItems struct {
-	rows                 []CopyStepCandidateItemsParams
+// iteratorForCopyTaskCandidateItems implements pgx.CopyFromSource.
+type iteratorForCopyTaskCandidateItems struct {
+	rows                 []CopyTaskCandidateItemsParams
 	skippedFirstNextCall bool
 }
 
-func (r *iteratorForCopyStepCandidateItems) Next() bool {
+func (r *iteratorForCopyTaskCandidateItems) Next() bool {
 	if len(r.rows) == 0 {
 		return false
 	}
@@ -27,10 +27,10 @@ func (r *iteratorForCopyStepCandidateItems) Next() bool {
 	return len(r.rows) > 0
 }
 
-func (r iteratorForCopyStepCandidateItems) Values() ([]interface{}, error) {
+func (r iteratorForCopyTaskCandidateItems) Values() ([]interface{}, error) {
 	return []interface{}{
 		r.rows[0].ID,
-		r.rows[0].StepID,
+		r.rows[0].TaskID,
 		r.rows[0].SampleID,
 		r.rows[0].Rank,
 		r.rows[0].Score,
@@ -41,21 +41,21 @@ func (r iteratorForCopyStepCandidateItems) Values() ([]interface{}, error) {
 	}, nil
 }
 
-func (r iteratorForCopyStepCandidateItems) Err() error {
+func (r iteratorForCopyTaskCandidateItems) Err() error {
 	return nil
 }
 
-func (q *Queries) CopyStepCandidateItems(ctx context.Context, arg []CopyStepCandidateItemsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"step_candidate_item"}, []string{"id", "step_id", "sample_id", "rank", "score", "reason", "prediction_snapshot", "created_at", "updated_at"}, &iteratorForCopyStepCandidateItems{rows: arg})
+func (q *Queries) CopyTaskCandidateItems(ctx context.Context, arg []CopyTaskCandidateItemsParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"task_candidate_item"}, []string{"id", "task_id", "sample_id", "rank", "score", "reason", "prediction_snapshot", "created_at", "updated_at"}, &iteratorForCopyTaskCandidateItems{rows: arg})
 }
 
-// iteratorForCopyStepMetricPoints implements pgx.CopyFromSource.
-type iteratorForCopyStepMetricPoints struct {
-	rows                 []CopyStepMetricPointsParams
+// iteratorForCopyTaskMetricPoints implements pgx.CopyFromSource.
+type iteratorForCopyTaskMetricPoints struct {
+	rows                 []CopyTaskMetricPointsParams
 	skippedFirstNextCall bool
 }
 
-func (r *iteratorForCopyStepMetricPoints) Next() bool {
+func (r *iteratorForCopyTaskMetricPoints) Next() bool {
 	if len(r.rows) == 0 {
 		return false
 	}
@@ -67,10 +67,10 @@ func (r *iteratorForCopyStepMetricPoints) Next() bool {
 	return len(r.rows) > 0
 }
 
-func (r iteratorForCopyStepMetricPoints) Values() ([]interface{}, error) {
+func (r iteratorForCopyTaskMetricPoints) Values() ([]interface{}, error) {
 	return []interface{}{
 		r.rows[0].ID,
-		r.rows[0].StepID,
+		r.rows[0].TaskID,
 		r.rows[0].Step,
 		r.rows[0].Epoch,
 		r.rows[0].MetricName,
@@ -81,10 +81,10 @@ func (r iteratorForCopyStepMetricPoints) Values() ([]interface{}, error) {
 	}, nil
 }
 
-func (r iteratorForCopyStepMetricPoints) Err() error {
+func (r iteratorForCopyTaskMetricPoints) Err() error {
 	return nil
 }
 
-func (q *Queries) CopyStepMetricPoints(ctx context.Context, arg []CopyStepMetricPointsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"step_metric_point"}, []string{"id", "step_id", "step", "epoch", "metric_name", "metric_value", "ts", "created_at", "updated_at"}, &iteratorForCopyStepMetricPoints{rows: arg})
+func (q *Queries) CopyTaskMetricPoints(ctx context.Context, arg []CopyTaskMetricPointsParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"task_metric_point"}, []string{"id", "task_id", "step", "epoch", "metric_name", "metric_value", "ts", "created_at", "updated_at"}, &iteratorForCopyTaskMetricPoints{rows: arg})
 }

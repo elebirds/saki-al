@@ -18,9 +18,9 @@ from saki_api.modules.runtime.repo.round import RoundRepository
 from saki_api.modules.runtime.repo.runtime_executor import RuntimeExecutorRepository
 from saki_api.modules.runtime.repo.step import StepRepository
 from saki_api.modules.runtime.repo.task import TaskRepository
-from saki_api.modules.runtime.repo.step_candidate_item import StepCandidateItemRepository
-from saki_api.modules.runtime.repo.step_event import StepEventRepository
-from saki_api.modules.runtime.repo.step_metric_point import StepMetricPointRepository
+from saki_api.modules.runtime.repo.step_candidate_item import TaskCandidateItemRepository
+from saki_api.modules.runtime.repo.step_event import TaskEventRepository
+from saki_api.modules.runtime.repo.step_metric_point import TaskMetricPointRepository
 from saki_api.modules.runtime.repo.prediction import PredictionRepository
 from saki_api.modules.runtime.repo.prediction_binding import PredictionBindingRepository
 from saki_api.modules.runtime.repo.prediction_item import PredictionItemRepository
@@ -83,9 +83,13 @@ class RuntimeService(
         self.runtime_executor_repo = RuntimeExecutorRepository(session)
         self.step_repo = StepRepository(session)
         self.task_repo = TaskRepository(session)
-        self.step_event_repo = StepEventRepository(session)
-        self.step_metric_repo = StepMetricPointRepository(session)
-        self.step_candidate_repo = StepCandidateItemRepository(session)
+        self.task_event_repo = TaskEventRepository(session)
+        self.task_metric_repo = TaskMetricPointRepository(session)
+        self.task_candidate_repo = TaskCandidateItemRepository(session)
+        # Legacy aliases for remaining step-based mixins during migration.
+        self.step_event_repo = self.task_event_repo
+        self.step_metric_repo = self.task_metric_repo
+        self.step_candidate_repo = self.task_candidate_repo
         self.prediction_repo = PredictionRepository(session)
         self.prediction_binding_repo = PredictionBindingRepository(session)
         self.prediction_item_repo = PredictionItemRepository(session)

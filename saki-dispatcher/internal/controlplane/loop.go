@@ -1159,9 +1159,6 @@ func (s *Service) createRoundAttemptTx(
 	}
 	var previousStepID *uuid.UUID
 	for idx, stepSpec := range stepPlan {
-		if stepSpec.StepType == db.SteptypePREDICT {
-			return nil, fmt.Errorf("step_type=PREDICT is not allowed in loop step plans")
-		}
 		stepID := uuid.New()
 		dependsOn := make([]uuid.UUID, 0, 1)
 		if previousStepID != nil {

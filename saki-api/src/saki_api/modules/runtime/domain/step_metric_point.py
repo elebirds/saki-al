@@ -1,30 +1,36 @@
-"""Time-series metric points for runtime steps."""
+"""Time-series metric points for runtime tasks."""
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import sqlalchemy as sa
 from sqlalchemy import Column, Integer
-from sqlmodel import Field, Relationship, SQLModel
+from pydantic import model_validator
+from sqlmodel import Field, SQLModel
 
 from saki_api.modules.shared.modeling.base import TimestampMixin, UUIDMixin
 
-if TYPE_CHECKING:
-    from saki_api.modules.runtime.domain.step import Step
+class TaskMetricPoint(UUIDMixin, TimestampMixin, SQLModel, table=True):
+    __tablename__ = "task_metric_point"
 
-
-class StepMetricPoint(UUIDMixin, TimestampMixin, SQLModel, table=True):
-    __tablename__ = "step_metric_point"
-
-    step_id: uuid.UUID = Field(foreign_key="step.id", index=True)
+    task_id: uuid.UUID = Field(foreign_key="task.id", index=True)
     metric_step: int = Field(default=0, ge=0, sa_column=Column("step", Integer, nullable=False, index=True))
     epoch: Optional[int] = Field(default=None, index=True)
     metric_name: str = Field(index=True, max_length=128)
     metric_value: float
     ts: datetime = Field(index=True, sa_type=sa.DateTime(timezone=True))
 
-    step: "Step" = Relationship(
-        back_populates="metric_points",
-        sa_relationship_kwargs={"foreign_keys": "[StepMetricPoint.step_id]"},
-    )
+    @model_validator(mode="before")
+    @classmethod
+    def _compat_step_id(cls, data):
+        if not isinstance(data, dict):
+            return data
+        if data.get("task_id") is None and data.get("step_id") is not None:
+            patched = dict(data)
+            patched["task_id"] = patched.get("step_id")
+            return patched
+        return data
+
+# Legacy alias, kept for incremental refactor of imports.
+StepMetricPoint = TaskMetricPoint

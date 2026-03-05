@@ -94,7 +94,7 @@ class RuntimeControlIngressService:
                     code="invalid_data_request",
                     message=exc.message,
                     reply_to=str(message.request_id or ""),
-                    step_id=str(message.step_id or ""),
+                    task_id=str(message.task_id or ""),
                     query_type=int(message.query_type),
                     reason=exc.reason,
                 )
@@ -121,7 +121,7 @@ class RuntimeControlIngressService:
                     code="data_query_failed",
                     message="data query failed",
                     reply_to=request.request_id,
-                    step_id=request.step_id,
+                    task_id=request.step_id,
                     query_type=request.query_type,
                     reason=str(exc),
                 )
@@ -139,7 +139,7 @@ class RuntimeControlIngressService:
                     data_response=pb.DataResponse(
                         request_id=str(uuid.uuid4()),
                         reply_to=request.request_id,
-                        step_id=request.step_id,
+                        task_id=request.step_id,
                         query_type=request.query_type,
                         payload_id=chunk["payload_id"],
                         chunk_index=chunk["chunk_index"],
@@ -164,7 +164,7 @@ class RuntimeControlIngressService:
                 code="invalid_upload_ticket_request",
                 message=exc.message,
                 reply_to=str(message.request_id or ""),
-                step_id=str(message.step_id or ""),
+                task_id=str(message.task_id or ""),
                 reason=exc.reason,
             )
 
@@ -180,7 +180,7 @@ class RuntimeControlIngressService:
                 code="upload_ticket_failed",
                 message="failed to issue upload ticket",
                 reply_to=request.request_id,
-                step_id=request.step_id,
+                task_id=request.step_id,
                 reason=str(exc),
             )
 
@@ -189,15 +189,15 @@ class RuntimeControlIngressService:
             upload_ticket_response=pb.UploadTicketResponse(
                 request_id=str(uuid.uuid4()),
                 reply_to=request.request_id,
-                step_id=request.step_id,
+                task_id=request.step_id,
                 upload_url=upload_url,
                 storage_uri=storage_uri,
                 headers={"Content-Type": request.content_type},
             )
         )
 
-    async def persist_step_event(self, message: pb.StepEvent) -> None:
-        step_id = self._parse_uuid(message.step_id, "step_id")
+    async def persist_step_event(self, message: pb.TaskEvent) -> None:
+        step_id = self._parse_uuid(message.task_id, "task_id")
         event_type, payload, status_enum = runtime_codec.decode_step_event(message)
         mapped_status = self._status_from_pb(status_enum) if status_enum is not None else None
         event_dto = RuntimeStepEventDTO(
@@ -215,8 +215,8 @@ class RuntimeControlIngressService:
             await persistence.persist_step_event(event_dto)
             await session.commit()
 
-    async def persist_step_result(self, message: pb.StepResult) -> None:
-        step_id = self._parse_uuid(message.step_id, "step_id")
+    async def persist_step_result(self, message: pb.TaskResult) -> None:
+        step_id = self._parse_uuid(message.task_id, "task_id")
         artifacts: list[RuntimeArtifactDTO] = [
             RuntimeArtifactDTO(
                 name=str(item.name or ""),
@@ -279,9 +279,9 @@ class RuntimeControlIngressService:
 
     def _decode_data_request(self, message: pb.DataRequest) -> RuntimeDataRequestDTO:
         request_id = str(message.request_id or "")
-        step_id = str(message.step_id or "")
-        if not request_id or not step_id:
-            raise _InvalidRuntimeRequest("request_id and step_id are required", "missing_required_field")
+        task_id = str(message.task_id or "")
+        if not request_id or not task_id:
+            raise _InvalidRuntimeRequest("request_id and task_id are required", "missing_required_field")
 
         try:
             project_id = self._parse_uuid(str(message.project_id or ""), "project_id")
@@ -291,7 +291,7 @@ class RuntimeControlIngressService:
 
         return RuntimeDataRequestDTO(
             request_id=request_id,
-            step_id=step_id,
+            step_id=task_id,
             query_type=int(message.query_type),
             project_id=project_id,
             commit_id=commit_id,
@@ -303,11 +303,11 @@ class RuntimeControlIngressService:
 
     def _decode_upload_ticket_request(self, message: pb.UploadTicketRequest) -> RuntimeUploadTicketRequestDTO:
         request_id = str(message.request_id or "")
-        step_id = str(message.step_id or "")
+        step_id = str(message.task_id or "")
         artifact_name = str(message.artifact_name or "").strip()
         if not request_id or not step_id or not artifact_name:
             raise _InvalidRuntimeRequest(
-                "request_id/step_id/artifact_name are required",
+                "request_id/task_id/artifact_name are required",
                 "missing_required_field",
             )
 

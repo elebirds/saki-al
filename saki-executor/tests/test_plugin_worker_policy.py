@@ -51,8 +51,8 @@ async def test_unregistered_plugin_fails(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=1.0)  # noqa: SLF001
 
-    result_messages = [item for item in sent_messages if item.WhichOneof("payload") == "step_result"]
+    result_messages = [item for item in sent_messages if item.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "not found" in result.error_message.lower() or "not loadable" in result.error_message.lower()

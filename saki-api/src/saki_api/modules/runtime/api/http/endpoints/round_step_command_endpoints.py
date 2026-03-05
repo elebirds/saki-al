@@ -150,7 +150,7 @@ async def stop_step(
     if not dispatcher_admin_client.enabled:
         raise InternalServerErrorAppException("dispatcher_admin is not configured")
     try:
-        response = await dispatcher_admin_client.stop_step(str(step_id), reason=reason)
+        response = await dispatcher_admin_client.stop_task(str(step_id), reason=reason)
         status = str(response.status or "").strip().lower() or "accepted"
         return StepCommandResponse(
             request_id=str(response.request_id or response.command_id or uuid.uuid4()),

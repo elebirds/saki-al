@@ -158,7 +158,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
             return build_data_response_message(
                 request_id=f"resp-{req.request_id}",
                 reply_to=req.request_id,
-                step_id=req.step_id,
+                step_id=req.task_id,
                 query_type=req.query_type,
                 items=[pb.DataItem(sample_item=pb.SampleItem(id="sample-1"))],
             )
@@ -168,7 +168,7 @@ async def test_fetch_page_and_upload_ticket_are_typed_contracts(tmp_path: Path):
                 upload_ticket_response=pb.UploadTicketResponse(
                     request_id=f"resp-{req.request_id}",
                     reply_to=req.request_id,
-                    step_id=req.step_id,
+                    task_id=req.task_id,
                     upload_url="https://upload.local/test.bin",
                     storage_uri="s3://bucket/test.bin",
                     headers={"x-test": "1"},

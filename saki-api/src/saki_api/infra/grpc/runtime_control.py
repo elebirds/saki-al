@@ -41,8 +41,8 @@ def _parse_uuid(raw: str) -> uuid.UUID | None:
         return None
 
 
-def _resolve_step_id(step_id: str) -> str:
-    return str(step_id or "").strip()
+def _resolve_task_id(task_id: str) -> str:
+    return str(task_id or "").strip()
 
 
 def _build_activation_key(loop_id: uuid.UUID, round_index: int, sample_ids: list[uuid.UUID]) -> str:
@@ -52,11 +52,11 @@ def _build_activation_key(loop_id: uuid.UUID, round_index: int, sample_ids: list
 
 
 def _to_domain_data_response(response: pb.DataResponse) -> domain_pb.DataResponse:
-    step_id = _resolve_step_id(response.step_id)
+    task_id = _resolve_task_id(response.task_id)
     return domain_pb.DataResponse(
         request_id=str(response.request_id or ""),
         reply_to=str(response.reply_to or ""),
-        step_id=step_id,
+        task_id=task_id,
         query_type=int(response.query_type),
         payload_id=str(response.payload_id or ""),
         chunk_index=int(response.chunk_index),
@@ -476,11 +476,11 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
 
     async def QueryData(self, request, context):  # noqa: N802
-        step_id = _resolve_step_id(request.step_id)
+        task_id = _resolve_task_id(request.task_id)
         response_messages = await self._runtime_ingress.handle_data_request(
             pb.DataRequest(
                 request_id=str(request.request_id or ""),
-                step_id=step_id,
+                task_id=task_id,
                 query_type=int(request.query_type),
                 project_id=str(request.project_id or ""),
                 commit_id=str(request.commit_id or ""),
@@ -504,11 +504,11 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             yield _to_domain_data_response(response_message.data_response)
 
     async def CreateUploadTicket(self, request, context):  # noqa: N802
-        step_id = _resolve_step_id(request.step_id)
+        task_id = _resolve_task_id(request.task_id)
         response_message = await self._runtime_ingress.handle_upload_ticket_request(
             pb.UploadTicketRequest(
                 request_id=str(request.request_id or ""),
-                step_id=step_id,
+                task_id=task_id,
                 artifact_name=str(request.artifact_name or ""),
                 content_type=str(request.content_type or "application/octet-stream"),
             )
@@ -521,7 +521,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.UploadTicketResponse(
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
-                step_id=step_id,
+                task_id=task_id,
                 upload_url="",
                 storage_uri="",
                 headers={},
@@ -532,17 +532,17 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.UploadTicketResponse(
                 request_id=str(request.request_id or ""),
                 reply_to=str(request.request_id or ""),
-                step_id=step_id,
+                task_id=task_id,
                 upload_url="",
                 storage_uri="",
                 headers={},
             )
         upload_ticket = response_message.upload_ticket_response
-        upload_step_id = _resolve_step_id(upload_ticket.step_id)
+        upload_task_id = _resolve_task_id(upload_ticket.task_id)
         return domain_pb.UploadTicketResponse(
             request_id=str(upload_ticket.request_id or ""),
             reply_to=str(upload_ticket.reply_to or ""),
-            step_id=upload_step_id,
+            task_id=upload_task_id,
             upload_url=str(upload_ticket.upload_url or ""),
             storage_uri=str(upload_ticket.storage_uri or ""),
             headers=dict(upload_ticket.headers),
@@ -550,15 +550,15 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
 
     async def CreateDownloadTicket(self, request, context):  # noqa: N802
         request_id = str(request.request_id or "") or str(uuid.uuid4())
-        step_id = _parse_uuid(request.step_id)
+        task_id = _parse_uuid(request.task_id)
         artifact_name = str(request.artifact_name or "").strip()
-        if step_id is None or not artifact_name:
+        if task_id is None or not artifact_name:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details("step_id/artifact_name are required")
+            context.set_details("task_id/artifact_name are required")
             return domain_pb.DownloadTicketResponse(
                 request_id=request_id,
                 reply_to=request_id,
-                step_id=str(request.step_id or ""),
+                task_id=str(request.task_id or ""),
                 artifact_name=artifact_name,
                 download_url="",
                 storage_uri="",
@@ -566,14 +566,14 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
 
         async with SessionLocal() as session:
-            step = await session.get(Step, step_id)
+            step = await session.get(Step, task_id)
             if step is None:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details("step not found")
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    step_id=str(step_id),
+                    task_id=str(task_id),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri="",
@@ -588,7 +588,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    step_id=str(step_id),
+                    task_id=str(task_id),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri="",
@@ -602,7 +602,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    step_id=str(step_id),
+                    task_id=str(task_id),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri="",
@@ -613,7 +613,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    step_id=str(step_id),
+                    task_id=str(task_id),
                     artifact_name=artifact_name,
                     download_url=uri,
                     storage_uri=uri,
@@ -626,7 +626,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    step_id=str(step_id),
+                    task_id=str(task_id),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri=uri,
@@ -642,7 +642,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    step_id=str(step_id),
+                    task_id=str(task_id),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri=uri,
@@ -656,8 +656,8 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 )
             except Exception as exc:
                 logger.exception(
-                    "failed to issue download ticket step_id={} artifact={} error={}",
-                    step_id,
+                    "failed to issue download ticket task_id={} artifact={} error={}",
+                    task_id,
                     artifact_name,
                     exc,
                 )
@@ -666,7 +666,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,
-                    step_id=str(step_id),
+                    task_id=str(task_id),
                     artifact_name=artifact_name,
                     download_url="",
                     storage_uri=uri,
@@ -676,7 +676,7 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             return domain_pb.DownloadTicketResponse(
                 request_id=request_id,
                 reply_to=request_id,
-                step_id=str(step_id),
+                task_id=str(task_id),
                 artifact_name=artifact_name,
                 download_url=download_url,
                 storage_uri=uri,

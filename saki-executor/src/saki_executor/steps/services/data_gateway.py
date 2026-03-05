@@ -164,7 +164,7 @@ class DataGateway:
         return FetchedPage(
             request_id=str(messages[0].data_response.request_id or ""),
             reply_to=reply_to,
-            step_id=str(messages[0].data_response.step_id or ""),
+            step_id=str(messages[0].data_response.task_id or ""),
             query_type=query_type_text,
             items=items,
             next_cursor=next_cursor,

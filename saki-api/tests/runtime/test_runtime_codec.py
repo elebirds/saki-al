@@ -13,9 +13,9 @@ def test_struct_roundtrip():
 
 
 def test_decode_step_status_event():
-    event = pb.StepEvent(
+    event = pb.TaskEvent(
         request_id="r1",
-        step_id="t1",
+        task_id="t1",
         seq=1,
         ts=1,
         status_event=pb.StatusEvent(status=pb.RUNNING, reason="ok"),
@@ -48,13 +48,13 @@ def test_build_assign_step_message_and_decode_fields():
             "depends_on_step_ids": ["step-0"],
         },
     )
-    assert message.WhichOneof("payload") == "assign_step"
-    step_payload = message.assign_step.step
-    assert step_payload.step_id == "step-1"
-    assert step_payload.step_type == pb.TRAIN
-    assert step_payload.dispatch_kind == pb.ORCHESTRATOR
-    assert step_payload.mode == pb.MANUAL
-    assert runtime_codec.struct_to_dict(step_payload.resolved_params) == {"epochs": 1}
+    assert message.WhichOneof("payload") == "assign_task"
+    task_payload = message.assign_task.task
+    assert task_payload.task_id == "step-1"
+    assert task_payload.step_type == pb.TRAIN
+    assert task_payload.dispatch_kind == pb.ORCHESTRATOR
+    assert task_payload.mode == pb.MANUAL
+    assert runtime_codec.struct_to_dict(task_payload.resolved_params) == {"epochs": 1}
 
 
 def test_step_type_codec_keeps_only_active_runtime_types():
@@ -88,9 +88,9 @@ def test_resource_summary_supports_accelerators_roundtrip():
 def test_decode_step_artifact_event():
     meta = Struct()
     meta.update({"size": 12})
-    event = pb.StepEvent(
+    event = pb.TaskEvent(
         request_id="r2",
-        step_id="t2",
+        task_id="t2",
         seq=2,
         ts=2,
         artifact_event=pb.ArtifactEvent(
@@ -115,9 +115,9 @@ def test_decode_step_log_event_with_structured_fields():
     message_args.update({"epoch": 3})
     meta = Struct()
     meta.update({"source": "worker_stdio", "stream": "stderr", "line_count": 2})
-    event = pb.StepEvent(
+    event = pb.TaskEvent(
         request_id="r3",
-        step_id="t3",
+        task_id="t3",
         seq=3,
         ts=3,
         log_event=pb.LogEvent(

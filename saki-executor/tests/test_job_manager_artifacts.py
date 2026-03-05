@@ -246,7 +246,7 @@ def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
             return build_data_response_message(
                 request_id=f"resp-{request.request_id}",
                 reply_to=request.request_id,
-                step_id=request.step_id,
+                step_id=request.task_id,
                 query_type=request.query_type,
                 items=_mock_data_items(request.query_type),
             )
@@ -260,7 +260,7 @@ def _make_fake_request(upload_headers: dict[str, dict[str, str]] | None = None):
                 upload_ticket_response=pb.UploadTicketResponse(
                     request_id=f"upload-{req.request_id}",
                     reply_to=req.request_id,
-                    step_id=req.step_id,
+                    task_id=req.task_id,
                     upload_url=upload_url,
                     storage_uri=f"s3://bucket/runtime/{name}",
                     headers=headers,
@@ -363,9 +363,9 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
 
     optional_url = "https://upload.local/confusion_matrix.png"
@@ -375,9 +375,9 @@ async def test_artifact_upload_retries_and_uses_storage_uri(tmp_path: Path, monk
     assert upload_state["headers"][best_url].get("Content-Length") == str(len(upload_state["uploaded_bytes"][best_url]))
 
     artifact_events = [
-        m.step_event for m in sent_messages
-        if m.WhichOneof("payload") == "step_event"
-        and m.step_event.WhichOneof("event_payload") == "artifact_event"
+        m.task_event for m in sent_messages
+        if m.WhichOneof("payload") == "task_event"
+        and m.task_event.WhichOneof("event_payload") == "artifact_event"
     ]
     assert {event.artifact_event.artifact.name for event in artifact_events} == {
         "best.pt",
@@ -425,9 +425,9 @@ async def test_optional_artifact_failure_marks_partial_failed(tmp_path: Path, mo
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "confusion_matrix.png" in result.error_message
     assert {item.name for item in result.artifacts} == {"best.pt", "report.json"}
@@ -468,9 +468,9 @@ async def test_required_artifact_failure_marks_failed(tmp_path: Path, monkeypatc
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "required artifact upload failed" in result.error_message
 
@@ -514,9 +514,9 @@ async def test_read_error_retries_then_succeeds(tmp_path: Path, monkeypatch):
     best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][best_url] == 3
     assert backoff_calls == [1.0, 2.0]
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    assert result_messages[0].step_result.status == pb.SUCCEEDED
+    assert result_messages[0].task_result.status == pb.SUCCEEDED
 
 
 @pytest.mark.anyio
@@ -558,8 +558,8 @@ async def test_http_4xx_not_retried_and_fails_fast(tmp_path: Path, monkeypatch):
     best_url = "https://upload.local/best.pt"
     assert upload_state["attempts"][best_url] == 1
     assert backoff_calls == []
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "non-retryable status=403" in result.error_message

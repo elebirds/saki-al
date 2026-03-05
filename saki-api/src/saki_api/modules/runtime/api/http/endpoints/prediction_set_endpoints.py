@@ -51,12 +51,12 @@ async def create_prediction(
         payload=payload.model_dump(exclude_none=True),
         actor_user_id=current_user_id,
     )
-    task_step_id = result.source_step_id
-    if task_step_id is not None and dispatcher_admin_client.enabled:
+    dispatch_task_id = getattr(result, "task_id", None) or result.source_step_id
+    if dispatch_task_id is not None and dispatcher_admin_client.enabled:
         try:
-            await dispatcher_admin_client.dispatch_step(str(task_step_id))
+            await dispatcher_admin_client.dispatch_task(str(dispatch_task_id))
         except Exception as exc:
-            logger.warning("dispatch prediction task failed task_step_id={} error={}", task_step_id, exc)
+            logger.warning("dispatch prediction task failed task_id={} error={}", dispatch_task_id, exc)
             await runtime_service.prediction_repo.update(
                 result.id,
                 {"last_error": f"dispatch failed: {exc}"},

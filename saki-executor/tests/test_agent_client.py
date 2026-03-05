@@ -114,10 +114,10 @@ async def test_duplicate_assign_step_returns_cached_ack_without_reassign(tmp_pat
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
-        assign_step=pb.AssignStep(
+        assign_task=pb.AssignTask(
             request_id="assign-dup-1",
-            step=pb.StepPayload(
-                step_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            task=pb.TaskPayload(
+                task_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 round_id="11111111-1111-1111-1111-111111111111",
                 project_id="22222222-2222-2222-2222-222222222222",
                 loop_id="33333333-3333-3333-3333-333333333333",
@@ -150,10 +150,10 @@ async def test_invalid_assign_step_returns_rejected_ack(tmp_path):
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
-        assign_step=pb.AssignStep(
+        assign_task=pb.AssignTask(
             request_id="assign-invalid-1",
-            step=pb.StepPayload(
-                step_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            task=pb.TaskPayload(
+                task_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 round_id="11111111-1111-1111-1111-111111111111",
                 project_id="22222222-2222-2222-2222-222222222222",
                 loop_id="33333333-3333-3333-3333-333333333333",
@@ -195,9 +195,9 @@ async def test_duplicate_stop_step_returns_cached_ack_without_restop(tmp_path):
     client.send_message = fake_send_message  # type: ignore[method-assign]
 
     incoming = pb.RuntimeMessage(
-        stop_step=pb.StopStep(
+        stop_task=pb.StopTask(
             request_id="stop-dup-1",
-            step_id="task-dup-1",
+            task_id="task-dup-1",
             reason="manual",
         )
     )

@@ -27,7 +27,7 @@ def build_data_response_message(
         data_response=pb.DataResponse(
             request_id=request_id,
             reply_to=reply_to,
-            step_id=step_id,
+            task_id=step_id,
             query_type=query_type,
             payload_id=chunk["payload_id"],
             chunk_index=chunk["chunk_index"],

@@ -15,17 +15,17 @@ def test_build_ack_message():
     assert message.ack.request_id == "r1"
     assert message.ack.ack_for == "r0"
     assert message.ack.status == pb.OK
-    assert message.ack.type == pb.ACK_TYPE_ASSIGN_STEP
+    assert message.ack.type == pb.ACK_TYPE_ASSIGN_TASK
     assert message.ack.reason == pb.ACK_REASON_ACCEPTED
     assert message.ack.detail == "accepted"
 
 
 def test_parse_assign_step_payload():
     runtime_message = pb.RuntimeMessage(
-        assign_step=pb.AssignStep(
+        assign_task=pb.AssignTask(
             request_id="req1",
-            step=pb.StepPayload(
-                step_id="task1",
+            task=pb.TaskPayload(
+                task_id="task1",
                 round_id="job1",
                 project_id="project1",
                 loop_id="loop1",
@@ -41,8 +41,9 @@ def test_parse_assign_step_payload():
             ),
         )
     )
-    payload = codec.parse_assign_step(runtime_message.assign_step)
+    payload = codec.parse_assign_step(runtime_message.assign_task)
     assert payload["step_id"] == "task1"
+    assert payload["task_id"] == "task1"
     assert payload["round_id"] == "job1"
     assert payload["resolved_params"]["epochs"] == 5
     assert payload["step_type"] == "train"
@@ -53,10 +54,10 @@ def test_parse_assign_step_payload():
 
 def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
     runtime_message = pb.RuntimeMessage(
-        assign_step=pb.AssignStep(
+        assign_task=pb.AssignTask(
             request_id="req1",
-            step=pb.StepPayload(
-                step_id="task1",
+            task=pb.TaskPayload(
+                task_id="task1",
                 round_id="job1",
                 project_id="project1",
                 loop_id="loop1",
@@ -71,7 +72,7 @@ def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
             ),
         )
     )
-    payload = codec.parse_assign_step(runtime_message.assign_step)
+    payload = codec.parse_assign_step(runtime_message.assign_task)
     assert payload["step_type"] == ""
     assert payload["dispatch_kind"] == ""
     assert payload["mode"] == ""
@@ -79,10 +80,10 @@ def test_parse_assign_step_unknown_runtime_enums_keep_empty_fields():
 
 def test_parse_assign_step_unsupported_step_type_is_not_mapped():
     runtime_message = pb.RuntimeMessage(
-        assign_step=pb.AssignStep(
+        assign_task=pb.AssignTask(
             request_id="req-unsupported-step",
-            step=pb.StepPayload(
-                step_id="task-unsupported-step",
+            task=pb.TaskPayload(
+                task_id="task-unsupported-step",
                 round_id="job-unsupported-step",
                 project_id="project1",
                 loop_id="loop1",
@@ -97,7 +98,7 @@ def test_parse_assign_step_unsupported_step_type_is_not_mapped():
             ),
         )
     )
-    payload = codec.parse_assign_step(runtime_message.assign_step)
+    payload = codec.parse_assign_step(runtime_message.assign_task)
     assert payload["step_type"] == ""
     assert payload["dispatch_kind"] == "orchestrator"
     assert payload["mode"] == "manual"
@@ -124,7 +125,7 @@ def test_parse_error_message_includes_reply_to_and_error():
         message="boom",
         reply_to="req-1",
         reason="boom",
-        step_id="task-1",
+        task_id="task-1",
         query_type=pb.LABELS,
     )
     parsed = codec.parse_error(error_payload)
@@ -177,7 +178,7 @@ def test_task_status_codec_mapping():
         candidates=[],
         error_message="task failed",
     )
-    assert message.step_result.status == pb.FAILED
+    assert message.task_result.status == pb.FAILED
     assert codec.status_enum_to_text(pb.FAILED) == "failed"
     assert codec.step_status_to_enum("syncing_env") == pb.SYNCING_ENV
     assert codec.step_status_to_enum("probing_runtime") == pb.PROBING_RUNTIME
@@ -203,8 +204,8 @@ def test_build_step_event_message_log_supports_structured_fields():
             "meta": {"source": "worker_stdio", "stream": "stderr", "line_count": 2},
         },
     )
-    assert message.WhichOneof("payload") == "step_event"
-    log_event = message.step_event.log_event
+    assert message.WhichOneof("payload") == "task_event"
+    log_event = message.task_event.log_event
     assert log_event.level == "DEBUG"
     assert log_event.message == "display text"
     assert log_event.raw_message == "raw text"

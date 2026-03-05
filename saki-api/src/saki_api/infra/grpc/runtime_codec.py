@@ -67,21 +67,36 @@ _TEXT_TO_ACCELERATOR_TYPE: dict[str, int] = {value: key for key, value in _ACCEL
 
 _ACK_TYPE_TO_TEXT: dict[int, str] = {
     pb.ACK_TYPE_REGISTER: "register",
-    pb.ACK_TYPE_ASSIGN_STEP: "assign_step",
-    pb.ACK_TYPE_STOP_STEP: "stop_step",
+    pb.ACK_TYPE_ASSIGN_TASK: "assign_task",
+    pb.ACK_TYPE_STOP_TASK: "stop_task",
     pb.ACK_TYPE_REQUEST: "request",
 }
-_TEXT_TO_ACK_TYPE: dict[str, int] = {value: key for key, value in _ACK_TYPE_TO_TEXT.items()}
+_TEXT_TO_ACK_TYPE: dict[str, int] = {
+    "register": pb.ACK_TYPE_REGISTER,
+    "assign_task": pb.ACK_TYPE_ASSIGN_TASK,
+    "assign_step": pb.ACK_TYPE_ASSIGN_TASK,
+    "stop_task": pb.ACK_TYPE_STOP_TASK,
+    "stop_step": pb.ACK_TYPE_STOP_TASK,
+    "request": pb.ACK_TYPE_REQUEST,
+}
 
 _ACK_REASON_TO_TEXT: dict[int, str] = {
     pb.ACK_REASON_REGISTERED: "registered",
     pb.ACK_REASON_ACCEPTED: "accepted",
     pb.ACK_REASON_EXECUTOR_BUSY: "executor_busy",
     pb.ACK_REASON_STOPPING: "stopping",
-    pb.ACK_REASON_STEP_NOT_RUNNING: "step_not_running",
+    pb.ACK_REASON_TASK_NOT_RUNNING: "task_not_running",
     pb.ACK_REASON_REJECTED: "rejected",
 }
-_TEXT_TO_ACK_REASON: dict[str, int] = {value: key for key, value in _ACK_REASON_TO_TEXT.items()}
+_TEXT_TO_ACK_REASON: dict[str, int] = {
+    "registered": pb.ACK_REASON_REGISTERED,
+    "accepted": pb.ACK_REASON_ACCEPTED,
+    "executor_busy": pb.ACK_REASON_EXECUTOR_BUSY,
+    "stopping": pb.ACK_REASON_STOPPING,
+    "task_not_running": pb.ACK_REASON_TASK_NOT_RUNNING,
+    "step_not_running": pb.ACK_REASON_TASK_NOT_RUNNING,
+    "rejected": pb.ACK_REASON_REJECTED,
+}
 
 
 def dict_to_struct(payload: Mapping[str, Any] | None) -> Struct:
@@ -300,11 +315,12 @@ def build_error_message(
     request_id: str | None = None,
     reply_to: str = "",
     ack_for: str = "",
+    task_id: str = "",
     step_id: str = "",
     query_type: int = pb.RUNTIME_QUERY_TYPE_UNSPECIFIED,
     reason: str = "",
 ) -> pb.RuntimeMessage:
-    step_id_value = str(step_id)
+    task_id_value = str(task_id or step_id)
     return pb.RuntimeMessage(
         error=pb.Error(
             request_id=request_id or str(uuid.uuid4()),
@@ -312,7 +328,7 @@ def build_error_message(
             message=str(message),
             reply_to=str(reply_to),
             ack_for=str(ack_for),
-            step_id=step_id_value,
+            task_id=task_id_value,
             query_type=int(query_type),
             reason=str(reason),
         )
@@ -323,15 +339,22 @@ def build_assign_step_message(*, request_id: str, payload: Mapping[str, Any]) ->
     step_type = text_to_step_type(str(payload.get("step_type") or "custom"))
     dispatch_kind = text_to_dispatch_kind(str(payload.get("dispatch_kind") or "dispatchable"))
     loop_mode = text_to_loop_mode(str(payload.get("mode") or "active_learning"))
-    step_id = str(payload.get("step_id") or "")
+    step_id = str(payload.get("task_id") or payload.get("step_id") or "")
     round_id = str(payload.get("round_id") or "")
-    depends_on_step_ids = [str(v) for v in (payload.get("depends_on_step_ids") or [])]
+    depends_on_step_ids = [
+        str(v)
+        for v in (
+            payload.get("depends_on_task_ids")
+            or payload.get("depends_on_step_ids")
+            or []
+        )
+    ]
     input_commit_id = str(payload.get("input_commit_id") or "")
     return pb.RuntimeMessage(
-        assign_step=pb.AssignStep(
+        assign_task=pb.AssignTask(
             request_id=request_id,
-            step=pb.StepPayload(
-                step_id=step_id,
+            task=pb.TaskPayload(
+                task_id=step_id,
                 round_id=round_id,
                 loop_id=str(payload.get("loop_id") or ""),
                 project_id=str(payload.get("project_id") or ""),
@@ -345,7 +368,7 @@ def build_assign_step_message(*, request_id: str, payload: Mapping[str, Any]) ->
                 resources=dict_to_resource_summary(payload.get("resources") or {}),
                 round_index=int(payload.get("round_index") or 0),
                 attempt=int(payload.get("attempt") or 1),
-                depends_on_step_ids=depends_on_step_ids,
+                depends_on_task_ids=depends_on_step_ids,
             ),
         )
     )
@@ -354,15 +377,15 @@ def build_assign_step_message(*, request_id: str, payload: Mapping[str, Any]) ->
 def build_stop_step_message(*, request_id: str, step_id: str, reason: str) -> pb.RuntimeMessage:
     step_id = str(step_id)
     return pb.RuntimeMessage(
-        stop_step=pb.StopStep(
+        stop_task=pb.StopTask(
             request_id=request_id,
-            step_id=step_id,
+            task_id=step_id,
             reason=str(reason or ""),
         )
     )
 
 
-def decode_step_event(event: pb.StepEvent) -> tuple[str, dict[str, Any], int | None]:
+def decode_step_event(event: pb.TaskEvent) -> tuple[str, dict[str, Any], int | None]:
     payload_type = event.WhichOneof("event_payload")
     if payload_type == "status_event":
         status_value = int(event.status_event.status)
@@ -466,6 +489,6 @@ def parse_heartbeat(message: pb.Heartbeat) -> RuntimeHeartbeatDTO:
         request_id=str(message.request_id),
         executor_id=str(message.executor_id),
         busy=bool(message.busy),
-        current_step_id=str(message.current_step_id or ""),
+        current_step_id=str(message.current_task_id or ""),
         resources=resource_summary_to_dict(message.resources),
     )

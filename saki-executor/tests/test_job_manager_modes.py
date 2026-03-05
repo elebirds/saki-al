@@ -556,7 +556,7 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -583,9 +583,9 @@ async def test_simulation_mode_keeps_topk_sampling_and_uses_labeled_subset(tmp_p
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 0
     assert plugin.predict_calls == 0
@@ -609,7 +609,7 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -636,9 +636,9 @@ async def test_active_learning_mode_keeps_topk_sampling(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 0
     assert plugin.predict_calls == 0
@@ -662,7 +662,7 @@ async def test_runtime_context_built_once_and_reused_across_step_pipeline(tmp_pa
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -692,9 +692,9 @@ async def test_runtime_context_built_once_and_reused_across_step_pipeline(tmp_pa
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    assert result_messages[0].step_result.status == pb.SUCCEEDED
+    assert result_messages[0].task_result.status == pb.SUCCEEDED
 
     assert len(plugin.context_ids) >= 3
     assert len(set(plugin.context_ids)) == 1
@@ -792,9 +792,9 @@ async def test_external_handle_validation_fails_before_proxy_start(tmp_path: Pat
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     error_message = str(result.error_message or "")
     assert "plugin_id=strict_external_plugin step_id=task-strict-external-1" in error_message
@@ -819,7 +819,7 @@ async def test_startup_status_events_skip_pending(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -847,10 +847,10 @@ async def test_startup_status_events_skip_pending(tmp_path: Path):
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
     status_codes = [
-        message.step_event.status_event.status
+        message.task_event.status_event.status
         for message in sent_messages
-        if message.WhichOneof("payload") == "step_event"
-        and message.step_event.WhichOneof("event_payload") == "status_event"
+        if message.WhichOneof("payload") == "task_event"
+        and message.task_event.WhichOneof("event_payload") == "status_event"
     ]
     assert status_codes[:5] == [
         pb.DISPATCHING,
@@ -885,7 +885,7 @@ async def test_syncing_env_failure_stops_before_runtime_probe(tmp_path: Path, mo
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -912,16 +912,16 @@ async def test_syncing_env_failure_stops_before_runtime_probe(tmp_path: Path, mo
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
     status_codes = [
-        message.step_event.status_event.status
+        message.task_event.status_event.status
         for message in sent_messages
-        if message.WhichOneof("payload") == "step_event"
-        and message.step_event.WhichOneof("event_payload") == "status_event"
+        if message.WhichOneof("payload") == "task_event"
+        and message.task_event.WhichOneof("event_payload") == "status_event"
     ]
     assert status_codes[:2] == [pb.DISPATCHING, pb.SYNCING_ENV]
     assert pb.PROBING_RUNTIME not in status_codes
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    assert result_messages[0].step_result.status == pb.FAILED
+    assert result_messages[0].task_result.status == pb.FAILED
 
 
 @pytest.mark.anyio
@@ -944,7 +944,7 @@ async def test_runtime_probe_failure_stops_before_binding(tmp_path: Path, monkey
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -971,16 +971,16 @@ async def test_runtime_probe_failure_stops_before_binding(tmp_path: Path, monkey
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
     status_codes = [
-        message.step_event.status_event.status
+        message.task_event.status_event.status
         for message in sent_messages
-        if message.WhichOneof("payload") == "step_event"
-        and message.step_event.WhichOneof("event_payload") == "status_event"
+        if message.WhichOneof("payload") == "task_event"
+        and message.task_event.WhichOneof("event_payload") == "status_event"
     ]
     assert status_codes[:3] == [pb.DISPATCHING, pb.SYNCING_ENV, pb.PROBING_RUNTIME]
     assert pb.BINDING_DEVICE not in status_codes
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    assert result_messages[0].step_result.status == pb.FAILED
+    assert result_messages[0].task_result.status == pb.FAILED
 
 
 @pytest.mark.anyio
@@ -999,7 +999,7 @@ async def test_score_step_skips_training_and_only_runs_sampling(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1026,9 +1026,9 @@ async def test_score_step_skips_training_and_only_runs_sampling(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 2
     assert plugin.train_calls == 0
@@ -1059,7 +1059,7 @@ async def test_score_step_strict_model_handoff_fails_without_model_ref(tmp_path:
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1086,9 +1086,9 @@ async def test_score_step_strict_model_handoff_fails_without_model_ref(tmp_path:
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "trained model is required" in str(result.error_message or "")
 
@@ -1124,7 +1124,7 @@ async def test_score_step_shared_model_sets_local_model_ref(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1151,9 +1151,9 @@ async def test_score_step_shared_model_sets_local_model_ref(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
 
     assert plugin.last_predict_params is not None
@@ -1179,7 +1179,7 @@ async def test_eval_step_trains_without_sampling(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1206,9 +1206,9 @@ async def test_eval_step_trains_without_sampling(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 0
     assert plugin.train_calls == 0
@@ -1250,7 +1250,7 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
                 data_response=build_data_response_message(
                     request_id=f"resp-{request.request_id}",
                     reply_to=request.request_id,
-                    step_id=request.step_id,
+                    step_id=request.task_id,
                     query_type=request.query_type,
                     items=items,
                     next_cursor=next_cursor,
@@ -1260,7 +1260,7 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1287,9 +1287,9 @@ async def test_active_learning_streaming_topk_across_pages(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 0
     assert plugin.batch_calls == 0
@@ -1313,7 +1313,7 @@ async def test_predict_step_uses_samples_query_and_keeps_all_candidates(tmp_path
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1340,9 +1340,9 @@ async def test_predict_step_uses_samples_query_and_keeps_all_candidates(tmp_path
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 4
     assert pb.SAMPLES in query_types
@@ -1366,7 +1366,7 @@ async def test_predict_step_rejects_invalid_prediction_snapshot_format(tmp_path:
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1393,9 +1393,9 @@ async def test_predict_step_rejects_invalid_prediction_snapshot_format(tmp_path:
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "prediction_snapshot" in str(result.error_message or "")
 
@@ -1428,7 +1428,7 @@ async def test_predict_step_keep_all_overrides_topk_for_strict_plugins(tmp_path:
             return build_data_response_message(
                 request_id=f"resp-{request.request_id}",
                 reply_to=request.request_id,
-                step_id=request.step_id,
+                step_id=request.task_id,
                 query_type=request.query_type,
                 items=page,
                 next_cursor=next_cursor,
@@ -1436,7 +1436,7 @@ async def test_predict_step_keep_all_overrides_topk_for_strict_plugins(tmp_path:
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=[],
         )
@@ -1465,9 +1465,9 @@ async def test_predict_step_keep_all_overrides_topk_for_strict_plugins(tmp_path:
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == len(sample_items)
     assert pb.SAMPLES in query_types
@@ -1492,7 +1492,7 @@ async def test_predict_step_in_manual_mode_is_not_short_circuited(tmp_path: Path
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1523,9 +1523,9 @@ async def test_predict_step_in_manual_mode_is_not_short_circuited(tmp_path: Path
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) > 0
     assert plugin.predict_calls > 0
@@ -1568,9 +1568,9 @@ async def test_orchestrator_dispatch_kind_is_rejected(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "orchestrator step should not be dispatched" in result.error_message
     assert request_calls == 0
@@ -1613,9 +1613,9 @@ async def test_legacy_step_type_is_rejected_on_executor(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.FAILED
     assert "unsupported step_type for executor pipeline" in result.error_message
     assert request_calls == 0
@@ -1637,7 +1637,7 @@ async def test_custom_step_type_uses_train_and_sampling_pipeline(tmp_path: Path)
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1664,9 +1664,9 @@ async def test_custom_step_type_uses_train_and_sampling_pipeline(tmp_path: Path)
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 2
     assert plugin.train_calls == 1
@@ -1689,7 +1689,7 @@ async def test_plugin_default_hooks_reduce_boilerplate(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1716,9 +1716,9 @@ async def test_plugin_default_hooks_reduce_boilerplate(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    result = result_messages[0].step_result
+    result = result_messages[0].task_result
     assert result.status == pb.SUCCEEDED
     assert len(result.candidates) == 0
     assert plugin.train_calls == 1
@@ -1744,7 +1744,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1769,7 +1769,7 @@ async def test_unknown_mode_fails_with_controlled_error(tmp_path: Path):
             },
         )
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 0
     assert request_calls == 0
     assert plugin.prepare_samples_count == 0
@@ -1792,7 +1792,7 @@ async def test_stop_step_forces_cancelled_result(tmp_path: Path):
         return build_data_response_message(
             request_id=f"resp-{request.request_id}",
             reply_to=request.request_id,
-            step_id=request.step_id,
+            step_id=request.task_id,
             query_type=request.query_type,
             items=_mock_data_items(request.query_type),
         )
@@ -1822,6 +1822,6 @@ async def test_stop_step_forces_cancelled_result(tmp_path: Path):
     assert manager._task is not None  # noqa: SLF001
     await asyncio.wait_for(manager._task, timeout=2.0)  # noqa: SLF001
 
-    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "step_result"]
+    result_messages = [m for m in sent_messages if m.WhichOneof("payload") == "task_result"]
     assert len(result_messages) == 1
-    assert result_messages[0].step_result.status == pb.CANCELLED
+    assert result_messages[0].task_result.status == pb.CANCELLED

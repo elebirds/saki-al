@@ -163,7 +163,7 @@ class AgentClient:
             request_id=str(uuid.uuid4()),
             executor_id=settings.EXECUTOR_ID,
             busy=self.step_manager.busy,
-            current_step_id=self.step_manager.current_step_id,
+            current_task_id=self.step_manager.current_step_id,
             resources=self._resource_payload(),
         )
 
@@ -172,7 +172,7 @@ class AgentClient:
             await asyncio.sleep(settings.HEARTBEAT_INTERVAL_SEC)
             self._last_heartbeat_ts = int(time.time())
             await self.send_message(self._heartbeat_message())
-            logger.debug("已发送心跳 current_step_id={}", self.step_manager.current_step_id)
+            logger.debug("已发送心跳 current_task_id={}", self.step_manager.current_step_id)
 
     async def _request_iterator(self):
         while self._running:
@@ -275,8 +275,8 @@ class AgentClient:
                 )
             return
 
-        if payload_type == "assign_step":
-            assign = message.assign_step
+        if payload_type == "assign_task":
+            assign = message.assign_task
             request_id = str(assign.request_id or "")
             cached_ack = self._take_cached_control_ack(request_id)
             if cached_ack is not None:
@@ -285,7 +285,7 @@ class AgentClient:
                 return
 
             task_payload = runtime_codec.parse_assign_step(assign)
-            logger.info("收到任务派发 request_id={} step_id={}", request_id, task_payload.get("step_id"))
+            logger.info("收到任务派发 request_id={} task_id={}", request_id, task_payload.get("task_id"))
             ack_reason = "executor_busy"
             ack_detail = "executor busy"
             accepted = False
@@ -302,7 +302,7 @@ class AgentClient:
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
                 ok=accepted,
-                ack_type="assign_step",
+                ack_type="assign_task",
                 ack_reason=ack_reason,
                 detail=ack_detail,
             )
@@ -310,8 +310,8 @@ class AgentClient:
             self._cache_control_ack(request_id, ack_message)
             return
 
-        if payload_type == "stop_step":
-            stop = message.stop_step
+        if payload_type == "stop_task":
+            stop = message.stop_task
             request_id = str(stop.request_id or "")
             cached_ack = self._take_cached_control_ack(request_id)
             if cached_ack is not None:
@@ -319,16 +319,16 @@ class AgentClient:
                 logger.info("重复停止请求 request_id={}，已返回缓存 ack。", request_id)
                 return
 
-            step_id = str(stop.step_id or "")
-            logger.info("收到任务停止请求 request_id={} step_id={}", request_id, step_id)
-            stopped = await self.step_manager.stop_step(step_id)
+            task_id = str(stop.task_id or "")
+            logger.info("收到任务停止请求 request_id={} task_id={}", request_id, task_id)
+            stopped = await self.step_manager.stop_step(task_id)
             ack_message = runtime_codec.build_ack_message(
                 request_id=str(uuid.uuid4()),
                 ack_for=request_id,
                 ok=stopped,
-                ack_type="stop_step",
-                ack_reason="stopping" if stopped else "step_not_running",
-                detail="stopping" if stopped else "step not running",
+                ack_type="stop_task",
+                ack_reason="stopping" if stopped else "task_not_running",
+                detail="stopping" if stopped else "task not running",
             )
             await self.send_message(ack_message)
             self._cache_control_ack(request_id, ack_message)

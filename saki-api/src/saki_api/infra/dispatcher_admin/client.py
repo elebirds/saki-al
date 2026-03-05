@@ -147,6 +147,40 @@ class DispatcherAdminClient:
             metadata=self._metadata(),
         )
 
+    async def stop_task(
+            self,
+            task_id: str,
+            *,
+            reason: str = "",
+            command_id: str | None = None,
+    ) -> pb.CommandResponse:
+        stub = await self._get_stub()
+        return await stub.StopTask(
+            pb.TaskCommandRequest(
+                command_id=command_id or str(uuid.uuid4()),
+                task_id=str(task_id),
+                reason=str(reason or ""),
+            ),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )
+
+    async def dispatch_task(
+            self,
+            task_id: str,
+            *,
+            command_id: str | None = None,
+    ) -> pb.CommandResponse:
+        stub = await self._get_stub()
+        return await stub.DispatchTask(
+            pb.DispatchTaskRequest(
+                command_id=command_id or str(uuid.uuid4()),
+                task_id=str(task_id),
+            ),
+            timeout=self.timeout_sec,
+            metadata=self._metadata(),
+        )
+
     async def stop_step(
             self,
             step_id: str,
@@ -154,15 +188,10 @@ class DispatcherAdminClient:
             reason: str = "",
             command_id: str | None = None,
     ) -> pb.CommandResponse:
-        stub = await self._get_stub()
-        return await stub.StopStep(
-            pb.StepCommandRequest(
-                command_id=command_id or str(uuid.uuid4()),
-                step_id=str(step_id),
-                reason=str(reason or ""),
-            ),
-            timeout=self.timeout_sec,
-            metadata=self._metadata(),
+        return await self.stop_task(
+            task_id=step_id,
+            reason=reason,
+            command_id=command_id,
         )
 
     async def dispatch_step(
@@ -171,14 +200,9 @@ class DispatcherAdminClient:
             *,
             command_id: str | None = None,
     ) -> pb.CommandResponse:
-        stub = await self._get_stub()
-        return await stub.DispatchStep(
-            pb.DispatchStepRequest(
-                command_id=command_id or str(uuid.uuid4()),
-                step_id=str(step_id),
-            ),
-            timeout=self.timeout_sec,
-            metadata=self._metadata(),
+        return await self.dispatch_task(
+            task_id=step_id,
+            command_id=command_id,
         )
 
     async def get_runtime_summary(self) -> pb.RuntimeSummaryResponse:

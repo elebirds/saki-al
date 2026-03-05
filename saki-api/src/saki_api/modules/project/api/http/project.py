@@ -6,6 +6,7 @@ import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
+from loguru import logger
 
 from saki_api.app.deps import ProjectServiceDep, AssetServiceDep
 from saki_api.infra.db.pagination import PaginationResponse
@@ -390,8 +391,15 @@ async def list_project_samples(
             try:
                 primary_asset_url = await asset_service.get_presigned_download_url(sample.primary_asset_id)
                 sample_read.primary_asset_url = primary_asset_url
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "primary asset presigned url generate failed project_id={} dataset_id={} sample_id={} asset_id={} error={}",
+                    project_id,
+                    dataset_id,
+                    sample.id,
+                    sample.primary_asset_id,
+                    exc,
+                )
 
         count = page_data.annotation_counts.get(sample.id, 0)
         review_state = page_data.review_states.get(sample.id)

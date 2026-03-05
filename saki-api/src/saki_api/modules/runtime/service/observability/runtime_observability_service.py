@@ -8,6 +8,7 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.core.exceptions import NotFoundAppException
@@ -74,15 +75,30 @@ class RuntimeObservabilityService:
             raise RuntimeError("dispatcher_admin 未配置")
         return client
 
-    async def _get_dispatcher_summary_snapshot(self) -> dict[str, Any]:
+    @staticmethod
+    def _build_registry_fallback_snapshot(executors: list[RuntimeExecutor]) -> dict[str, Any]:
+        latest_heartbeat_at: datetime | None = None
+        online_count = 0
+        busy_count = 0
+        for executor in executors:
+            if executor.is_online:
+                online_count += 1
+                if executor.status in {"busy", "reserved"}:
+                    busy_count += 1
+            if executor.last_seen_at and (latest_heartbeat_at is None or executor.last_seen_at > latest_heartbeat_at):
+                latest_heartbeat_at = executor.last_seen_at
+        return {
+            "online_count": online_count,
+            "busy_count": busy_count,
+            "pending_assign_count": 0,
+            "pending_stop_count": 0,
+            "latest_heartbeat_at": latest_heartbeat_at,
+        }
+
+    async def _get_dispatcher_summary_snapshot(self, executors: list[RuntimeExecutor]) -> dict[str, Any]:
+        fallback = self._build_registry_fallback_snapshot(executors)
         if not self._dispatcher_admin_enabled:
-            return {
-                "online_count": 0,
-                "busy_count": 0,
-                "pending_assign_count": 0,
-                "pending_stop_count": 0,
-                "latest_heartbeat_at": None,
-            }
+            return fallback
 
         try:
             summary = await self.dispatcher_admin_client.get_runtime_summary()  # type: ignore[union-attr]
@@ -93,16 +109,9 @@ class RuntimeObservabilityService:
                 "pending_stop_count": int(summary.pending_stop_count),
                 "latest_heartbeat_at": self._parse_optional_datetime(summary.latest_heartbeat_at),
             }
-        except Exception:
-            pass
-
-        return {
-            "online_count": 0,
-            "busy_count": 0,
-            "pending_assign_count": 0,
-            "pending_stop_count": 0,
-            "latest_heartbeat_at": None,
-        }
+        except Exception as exc:
+            logger.warning("dispatcher summary unavailable, fallback to runtime registry error={}", exc)
+            return fallback
 
     async def _get_executor_pending_snapshot_map(self, executors: list[RuntimeExecutor]) -> dict[str, dict[str, int]]:
         if not executors:
@@ -119,8 +128,8 @@ class RuntimeObservabilityService:
                     for item in rows.items
                     if str(item.executor_id or "").strip()
                 }
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("dispatcher executor list unavailable, pending counts fallback to zero error={}", exc)
 
         return {
             executor.executor_id: {
@@ -190,7 +199,7 @@ class RuntimeObservabilityService:
 
     async def list_executors(self) -> RuntimeExecutorListResponse:
         executors = await self._list_executors_ordered()
-        dispatcher_snapshot = await self._get_dispatcher_summary_snapshot()
+        dispatcher_snapshot = await self._get_dispatcher_summary_snapshot(executors)
         pending_snapshot_map = await self._get_executor_pending_snapshot_map(executors)
 
         items: list[RuntimeExecutorRead] = []
@@ -229,8 +238,12 @@ class RuntimeObservabilityService:
                         "pending_assign_count": int(response.item.pending_assign_count),
                         "pending_stop_count": int(response.item.pending_stop_count),
                     }
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "dispatcher executor detail unavailable, pending counts fallback to zero executor_id={} error={}",
+                    executor_id,
+                    exc,
+                )
 
         return self._to_runtime_executor_read(
             executor=executor,

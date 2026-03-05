@@ -7,7 +7,7 @@ import {RepoActionBar} from '../../layouts/github/RepoActionBar'
 import {RepoHeader} from '../../layouts/github/RepoHeader'
 import {FileTable} from '../../layouts/github/FileTable'
 import {api} from '../../services/api'
-import {CommitHistoryItem, Dataset, Project, ProjectBranch, ProjectModel, ResourceMember} from '../../types'
+import {CommitHistoryItem, Dataset, Loop, Project, ProjectBranch, ProjectModel, ResourceMember} from '../../types'
 import {usePermission, useResourcePermission} from '../../hooks'
 import ProjectSidebar from './ProjectSidebar'
 
@@ -20,6 +20,7 @@ const ProjectOverview: React.FC = () => {
     const [datasets, setDatasets] = useState<Dataset[]>([])
     const [branches, setBranches] = useState<ProjectBranch[]>([])
     const [commits, setCommits] = useState<CommitHistoryItem[]>([])
+    const [loops, setLoops] = useState<Loop[]>([])
     const [models, setModels] = useState<ProjectModel[]>([])
     const [members, setMembers] = useState<ResourceMember[]>([])
     const [loading, setLoading] = useState(true)
@@ -29,12 +30,14 @@ const ProjectOverview: React.FC = () => {
     const [forkOpen, setForkOpen] = useState(false)
     const [forking, setForking] = useState(false)
     const [forkForm] = Form.useForm()
-    const {can} = usePermission()
+    const {can, isSuperAdmin} = usePermission()
     const {can: canProject} = useResourcePermission('project', projectId)
     const canFork = can('project:create')
     const canImport = canProject('annotation:create:assigned') && canProject('commit:create:assigned')
     const canExport = canProject('project:export:assigned')
     const canViewModels = canProject('model:read:assigned')
+    const canViewLoops = canProject('loop:manage:assigned') || can('loop:manage') || isSuperAdmin
+    const canViewSamples = canProject('project:read:assigned')
 
     const formatRelativeTime = useCallback((value?: string) => {
         if (!value) return t('common.placeholder')
@@ -57,7 +60,7 @@ const ProjectOverview: React.FC = () => {
         if (!projectId) return
         setLoading(true)
         try {
-            const [projectData, projectDatasets, branchData, commitData, modelRows] = await Promise.all([
+            const [projectData, projectDatasets, branchData, commitData, modelRows, loopRows] = await Promise.all([
                 api.getProject(projectId),
                 api.getProjectDatasetDetails(projectId),
                 api.getProjectBranches(projectId),
@@ -65,12 +68,16 @@ const ProjectOverview: React.FC = () => {
                 canViewModels
                     ? api.getProjectModels(projectId, {limit: 5}).catch(() => [] as ProjectModel[])
                     : Promise.resolve([] as ProjectModel[]),
+                canViewLoops
+                    ? api.getProjectLoops(projectId).catch(() => [] as Loop[])
+                    : Promise.resolve([] as Loop[]),
             ])
 
             setProject(projectData)
             setBranches(branchData)
             setCommits(commitData)
             setModels(modelRows)
+            setLoops(loopRows)
 
             setDatasets(projectDatasets || [])
 
@@ -87,10 +94,11 @@ const ProjectOverview: React.FC = () => {
         } catch (error) {
             console.error('Failed to load project overview', error)
             setModels([])
+            setLoops([])
         } finally {
             setLoading(false)
         }
-    }, [canViewModels, projectId])
+    }, [canViewLoops, canViewModels, projectId])
 
     useEffect(() => {
         loadProject()
@@ -100,15 +108,65 @@ const ProjectOverview: React.FC = () => {
         if (selectedDatasetId && !datasets.find((dataset) => dataset.id === selectedDatasetId)) {
             setSelectedDatasetId(null)
         }
-        if (!selectedDatasetId && datasets.length === 1) {
+        if (!selectedDatasetId && datasets.length > 0) {
             setSelectedDatasetId(datasets[0].id)
         }
     }, [datasets, selectedDatasetId])
 
     useEffect(() => {
-        // Sample stats endpoint is not wired in current frontend; keep overview summary empty.
-        setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
-    }, [datasets])
+        let cancelled = false
+        const loadSampleStats = async () => {
+            if (!projectId || !canViewSamples) {
+                setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+                return
+            }
+            const targetDatasetId = selectedDatasetId || datasets[0]?.id
+            if (!targetDatasetId) {
+                setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+                return
+            }
+            const branchName = selectedBranchName || branches[0]?.name || 'master'
+            try {
+                const [allPage, labeledPage, unlabeledPage] = await Promise.all([
+                    api.getProjectSamples(projectId, targetDatasetId, {
+                        status: 'all',
+                        branchName,
+                        page: 1,
+                        limit: 1,
+                    }),
+                    api.getProjectSamples(projectId, targetDatasetId, {
+                        status: 'labeled',
+                        branchName,
+                        page: 1,
+                        limit: 1,
+                    }),
+                    api.getProjectSamples(projectId, targetDatasetId, {
+                        status: 'unlabeled',
+                        branchName,
+                        page: 1,
+                        limit: 1,
+                    }),
+                ])
+                if (cancelled) return
+                const total = Number(allPage.total || 0)
+                const labeled = Number(labeledPage.total || 0)
+                const unlabeled = Number(unlabeledPage.total || 0)
+                setSampleStats({
+                    labeled,
+                    unlabeled,
+                    skipped: Math.max(total - labeled - unlabeled, 0),
+                    total,
+                })
+            } catch {
+                if (cancelled) return
+                setSampleStats({labeled: 0, unlabeled: 0, skipped: 0, total: 0})
+            }
+        }
+        void loadSampleStats()
+        return () => {
+            cancelled = true
+        }
+    }, [projectId, canViewSamples, selectedDatasetId, datasets, selectedBranchName, branches])
 
     useEffect(() => {
         if (branches.length === 0) return
@@ -355,6 +413,8 @@ const ProjectOverview: React.FC = () => {
                     sampleStatus={sampleStats}
                     models={models}
                     canViewModels={canViewModels}
+                    loops={loops}
+                    canViewLoops={canViewLoops}
                 />
             </div>
 

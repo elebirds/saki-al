@@ -12,7 +12,7 @@ def test_struct_roundtrip():
     assert runtime_codec.struct_to_dict(struct) == payload
 
 
-def test_decode_step_status_event():
+def test_decode_task_status_event():
     event = pb.TaskEvent(
         request_id="r1",
         task_id="t1",
@@ -20,18 +20,18 @@ def test_decode_step_status_event():
         ts=1,
         status_event=pb.StatusEvent(status=pb.RUNNING, reason="ok"),
     )
-    event_type, payload, status_enum = runtime_codec.decode_step_event(event)
+    event_type, payload, status_enum = runtime_codec.decode_task_event(event)
     assert event_type == "status"
     assert payload["status"] == "running"
     assert payload["reason"] == "ok"
     assert status_enum == pb.RUNNING
 
 
-def test_build_assign_step_message_and_decode_fields():
-    message = runtime_codec.build_assign_step_message(
+def test_build_assign_task_message_and_decode_fields():
+    message = runtime_codec.build_assign_task_message(
         request_id="assign-1",
         payload={
-            "step_id": "step-1",
+            "task_id": "task-1",
             "round_id": "round-1",
             "loop_id": "loop-1",
             "project_id": "project-1",
@@ -45,12 +45,12 @@ def test_build_assign_step_message_and_decode_fields():
             "resources": {"gpu_count": 0, "cpu_workers": 2, "memory_mb": 1024},
             "round_index": 2,
             "attempt": 1,
-            "depends_on_step_ids": ["step-0"],
+            "depends_on_task_ids": ["task-0"],
         },
     )
     assert message.WhichOneof("payload") == "assign_task"
     task_payload = message.assign_task.task
-    assert task_payload.task_id == "step-1"
+    assert task_payload.task_id == "task-1"
     assert task_payload.step_type == pb.TRAIN
     assert task_payload.dispatch_kind == pb.ORCHESTRATOR
     assert task_payload.mode == pb.MANUAL
@@ -85,7 +85,7 @@ def test_resource_summary_supports_accelerators_roundtrip():
     assert runtime_codec.accelerator_type_to_text(pb.CPU) == "cpu"
 
 
-def test_decode_step_artifact_event():
+def test_decode_task_artifact_event():
     meta = Struct()
     meta.update({"size": 12})
     event = pb.TaskEvent(
@@ -102,7 +102,7 @@ def test_decode_step_artifact_event():
             )
         ),
     )
-    event_type, payload, status_enum = runtime_codec.decode_step_event(event)
+    event_type, payload, status_enum = runtime_codec.decode_task_event(event)
     assert event_type == "artifact"
     assert payload["name"] == "best.pt"
     assert payload["uri"].startswith("s3://")
@@ -110,7 +110,7 @@ def test_decode_step_artifact_event():
     assert status_enum is None
 
 
-def test_decode_step_log_event_with_structured_fields():
+def test_decode_task_log_event_with_structured_fields():
     message_args = Struct()
     message_args.update({"epoch": 3})
     meta = Struct()
@@ -129,7 +129,7 @@ def test_decode_step_log_event_with_structured_fields():
             meta=meta,
         ),
     )
-    event_type, payload, status_enum = runtime_codec.decode_step_event(event)
+    event_type, payload, status_enum = runtime_codec.decode_task_event(event)
     assert event_type == "log"
     assert status_enum is None
     assert payload["level"] == "DEBUG"

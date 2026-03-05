@@ -452,9 +452,6 @@ func (s *Service) dispatchPredictionTaskByID(ctx context.Context, taskID uuid.UU
 		executorID,
 	)
 	if err != nil {
-		if isTaskBridgeCompatErr(err) {
-			return false, tx.Commit(ctx)
-		}
 		return false, err
 	}
 
@@ -976,9 +973,6 @@ func (s *Service) updateStandaloneTaskStatusTx(
 		lastError,
 	)
 	if err != nil {
-		if isTaskBridgeCompatErr(err) {
-			return nil
-		}
 		return err
 	}
 	return nil
@@ -1079,9 +1073,6 @@ func (s *Service) persistStandaloneTaskResultTx(
 		lastError,
 	)
 	if err != nil {
-		if isTaskBridgeCompatErr(err) {
-			return nil
-		}
 		return err
 	}
 	return nil
@@ -1115,9 +1106,6 @@ func (s *Service) listReadyPredictionTaskIDs(ctx context.Context, limit int) ([]
 		max(1, limit),
 	)
 	if err != nil {
-		if isTaskBridgeCompatErr(err) {
-			return []uuid.UUID{}, nil
-		}
 		return nil, err
 	}
 	defer rows.Close()

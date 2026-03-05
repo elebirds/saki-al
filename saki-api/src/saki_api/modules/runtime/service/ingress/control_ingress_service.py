@@ -199,7 +199,7 @@ class RuntimeControlIngressService:
         )
 
     async def persist_step_event(self, message: pb.TaskEvent) -> None:
-        event_type, payload, status_enum = runtime_codec.decode_step_event(message)
+        event_type, payload, status_enum = runtime_codec.decode_task_event(message)
         mapped_status = self._status_from_pb(status_enum) if status_enum is not None else None
         task_id = self._parse_uuid(message.task_id, "task_id")
 

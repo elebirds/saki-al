@@ -636,9 +636,6 @@ func (s *Service) StopTask(ctx context.Context, commandID string, taskID string,
 				reason,
 			)
 			if updateErr != nil {
-				if isTaskBridgeCompatErr(updateErr) {
-					return "rejected", "task not found", nil
-				}
 				return "", "", updateErr
 			}
 			s.dispatcher.StopStep(taskPGID.String(), reason)

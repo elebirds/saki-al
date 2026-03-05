@@ -3,11 +3,11 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	db "github.com/elebirds/saki/saki-dispatcher/internal/gen/sqlc"
 )
@@ -27,38 +27,6 @@ type runtimeTaskRow struct {
 	LastError          string
 }
 
-const (
-	pgErrCodeUndefinedColumn = "42703"
-	pgErrCodeUndefinedTable  = "42P01"
-	pgErrCodeUndefinedObject = "42704"
-	pgErrCodeTypeMismatch    = "42804"
-	pgErrCodeInvalidTextRep  = "22P02"
-)
-
-func isTaskBridgeSchemaErr(err error) bool {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return false
-	}
-	return pgErr.Code == pgErrCodeUndefinedColumn || pgErr.Code == pgErrCodeUndefinedTable
-}
-
-func isTaskBridgeCompatErr(err error) bool {
-	if isTaskBridgeSchemaErr(err) {
-		return true
-	}
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return false
-	}
-	switch pgErr.Code {
-	case pgErrCodeUndefinedObject, pgErrCodeTypeMismatch, pgErrCodeInvalidTextRep:
-		return true
-	default:
-		return false
-	}
-}
-
 func (s *Service) resolveStepIDForTaskTx(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -66,18 +34,6 @@ func (s *Service) resolveStepIDForTaskTx(
 ) (uuid.UUID, bool, error) {
 	var mappedStepID uuid.UUID
 	err := tx.QueryRow(ctx, "SELECT id FROM step WHERE task_id = $1 LIMIT 1", taskID).Scan(&mappedStepID)
-	switch {
-	case err == nil:
-		return mappedStepID, true, nil
-	case errors.Is(err, pgx.ErrNoRows):
-		// Compatible fallback: before task hard-cut, runtime task_id was directly step.id.
-	case isTaskBridgeSchemaErr(err):
-		// Schema not yet migrated on this environment; fallback to legacy behavior.
-	default:
-		return uuid.Nil, false, err
-	}
-
-	err = tx.QueryRow(ctx, "SELECT id FROM step WHERE id = $1 LIMIT 1", taskID).Scan(&mappedStepID)
 	if err == nil {
 		return mappedStepID, true, nil
 	}
@@ -100,7 +56,7 @@ func (s *Service) resolveTaskIDForStepTx(
 		}
 		return *taskID, true, nil
 	}
-	if errors.Is(err, pgx.ErrNoRows) || isTaskBridgeSchemaErr(err) {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, false, nil
 	}
 	return uuid.Nil, false, err
@@ -121,9 +77,6 @@ func (s *Service) resolveTaskIDsForStepDependenciesTx(
 		dependencyStepIDs,
 	)
 	if err != nil {
-		if isTaskBridgeSchemaErr(err) {
-			return uuidSliceToStringSlice(dependencyStepIDs), nil
-		}
 		return nil, err
 	}
 	defer rows.Close()
@@ -149,7 +102,7 @@ func (s *Service) resolveTaskIDsForStepDependenciesTx(
 			dependencyTaskIDs = append(dependencyTaskIDs, taskID.String())
 			continue
 		}
-		dependencyTaskIDs = append(dependencyTaskIDs, stepID.String())
+		return nil, fmt.Errorf("step missing task binding: step_id=%s", stepID.String())
 	}
 	return dependencyTaskIDs, nil
 }
@@ -190,18 +143,12 @@ func (s *Service) ensureTaskBindingForStepTx(
 		maxAttempts,
 	)
 	if err != nil {
-		if isTaskBridgeCompatErr(err) {
-			return uuid.Nil, false, nil
-		}
 		return uuid.Nil, false, err
 	}
 
 	_, err = tx.Exec(ctx, "UPDATE step SET task_id = $1 WHERE id = $2", taskID, stepID)
 	if err != nil {
-		if isTaskBridgeCompatErr(err) {
-			_, _ = tx.Exec(ctx, "DELETE FROM task WHERE id = $1", taskID)
-			return uuid.Nil, false, nil
-		}
+		_, _ = tx.Exec(ctx, "DELETE FROM task WHERE id = $1", taskID)
 		return uuid.Nil, false, err
 	}
 	return taskID, true, nil
@@ -262,7 +209,7 @@ func (s *Service) getTaskForUpdateTx(
 	if err == nil {
 		return row, true, nil
 	}
-	if errors.Is(err, pgx.ErrNoRows) || isTaskBridgeCompatErr(err) {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return runtimeTaskRow{}, false, nil
 	}
 	return runtimeTaskRow{}, false, err

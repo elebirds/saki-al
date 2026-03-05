@@ -89,21 +89,13 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
         return self._storage
 
     async def _resolve_step_by_task_id(self, *, session, task_id: uuid.UUID) -> Step | None:
-        rows = list(
-            (
-                await session.exec(
-                    select(Step)
-                    .where((Step.task_id == task_id) | (Step.id == task_id))
-                    .limit(2)
-                )
-            ).all()
-        )
-        if not rows:
-            return None
-        for row in rows:
-            if row.task_id == task_id:
-                return row
-        return rows[0]
+        return (
+            await session.exec(
+                select(Step)
+                .where(Step.task_id == task_id)
+                .limit(1)
+            )
+        ).first()
 
     async def GetBranchHead(self, request, context):  # noqa: N802
         branch_id = _parse_uuid(request.branch_id)

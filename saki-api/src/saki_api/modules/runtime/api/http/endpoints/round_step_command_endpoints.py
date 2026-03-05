@@ -40,7 +40,6 @@ async def apply_round_selection(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_MANAGE,
-        fallback_permissions=(Permissions.PROJECT_UPDATE,),
     )
     result = await runtime_service.apply_round_selection_override(
         round_id=round_id,
@@ -72,7 +71,6 @@ async def reset_round_selection(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_MANAGE,
-        fallback_permissions=(Permissions.PROJECT_UPDATE,),
     )
     result = await runtime_service.reset_round_selection_override(round_id=round_id)
     return RoundSelectionApplyResponse(
@@ -100,7 +98,6 @@ async def stop_round(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_MANAGE,
-        fallback_permissions=(Permissions.PROJECT_UPDATE,),
     )
 
     if round_item.state in {
@@ -145,7 +142,6 @@ async def stop_step(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_MANAGE,
-        fallback_permissions=(Permissions.PROJECT_UPDATE,),
     )
 
     if step.state in {StepStatus.SUCCEEDED, StepStatus.FAILED, StepStatus.CANCELLED, StepStatus.SKIPPED}:

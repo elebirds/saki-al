@@ -39,14 +39,6 @@ async def _ensure_project_perm(
         resource_id=str(project_id),
     )
     if not allowed:
-        fallback = Permissions.PROJECT_UPDATE if required == Permissions.MODEL_MANAGE else Permissions.PROJECT_READ
-        allowed = await checker.check(
-            user_id=current_user_id,
-            permission=fallback,
-            resource_type=ResourceType.PROJECT,
-            resource_id=str(project_id),
-        )
-    if not allowed:
         raise ForbiddenAppException(f"Permission denied: {required}")
 
 

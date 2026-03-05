@@ -17,7 +17,6 @@ async def ensure_project_permission(
     current_user_id: uuid.UUID,
     project_id: uuid.UUID,
     required_permission: str,
-    fallback_permissions: tuple[str, ...] = (),
 ) -> None:
     checker = PermissionChecker(session)
     allowed = await checker.check(
@@ -28,15 +27,5 @@ async def ensure_project_permission(
     )
     if allowed:
         return
-
-    for permission in fallback_permissions:
-        allowed = await checker.check(
-            user_id=current_user_id,
-            permission=permission,
-            resource_type=ResourceType.PROJECT,
-            resource_id=str(project_id),
-        )
-        if allowed:
-            return
 
     raise ForbiddenAppException(f"Permission denied: {required_permission}")

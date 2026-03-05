@@ -9,7 +9,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from saki_api.app.deps import DispatcherAdminClientDep
 from saki_api.core.exceptions import BadRequestAppException, InternalServerErrorAppException
-from saki_api.modules.access.domain.rbac import Permissions
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import PredictionSetRead, PredictionTaskRead
 
@@ -21,13 +20,11 @@ async def ensure_loop_project_perm(
     project_id: uuid.UUID,
     required: str,
 ) -> None:
-    fallback = (Permissions.PROJECT_UPDATE,) if required == Permissions.LOOP_MANAGE else (Permissions.PROJECT_READ,)
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
         project_id=project_id,
         required_permission=required,
-        fallback_permissions=fallback,
     )
 
 

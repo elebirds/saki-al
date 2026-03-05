@@ -39,13 +39,6 @@ async def authorize_stream_round_access(
             resource_id=str(round_row.project_id),
         )
         if not allowed:
-            allowed = await checker.check(
-                user_id=user_id,
-                permission=Permissions.PROJECT_READ,
-                resource_type=ResourceType.PROJECT,
-                resource_id=str(round_row.project_id),
-            )
-        if not allowed:
             await websocket.close(code=1008, reason="permission denied")
             return False
     return True

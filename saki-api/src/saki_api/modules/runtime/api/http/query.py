@@ -52,15 +52,11 @@ async def _ensure_project_perm(
     project_id: uuid.UUID,
     required: str,
 ) -> None:
-    fallback = (Permissions.PROJECT_READ,) if required in {Permissions.LOOP_READ, Permissions.ROUND_READ} else (
-        Permissions.PROJECT_UPDATE,
-    )
     await ensure_project_permission(
         session=session,
         current_user_id=current_user_id,
         project_id=project_id,
         required_permission=required,
-        fallback_permissions=fallback,
     )
 
 

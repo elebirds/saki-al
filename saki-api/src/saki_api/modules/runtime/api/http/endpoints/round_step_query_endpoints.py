@@ -52,7 +52,6 @@ async def get_round(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     loop = await runtime_service.loop_repo.get_by_id_or_raise(round_item.loop_id)
     latest_round = await runtime_service.repository.get_latest_by_loop(loop.id)
@@ -94,7 +93,6 @@ async def list_round_steps(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     steps = await runtime_service.list_steps(round_id, limit=limit)
     return [StepRead.model_validate(item) for item in steps]
@@ -114,7 +112,6 @@ async def get_round_selection(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     payload = await runtime_service.get_round_selection(round_id=round_id)
     return RoundSelectionRead.model_validate(payload)
@@ -135,7 +132,6 @@ async def get_round_artifacts(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     items = await runtime_service.list_round_artifacts(round_id=round_id, limit=limit)
     return RoundArtifactsResponse(round_id=round_id, items=items)
@@ -158,7 +154,6 @@ async def get_round_events(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     payload = await runtime_service.query_round_events(
         round_id=round_id,
@@ -191,7 +186,6 @@ async def get_round_missing_samples(
         current_user_id=current_user_id,
         project_id=loop.project_id,
         required_permission=Permissions.LOOP_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     payload = await runtime_service.list_round_missing_samples(
         loop_id=loop_id,
@@ -230,7 +224,6 @@ async def get_step(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     return StepRead.model_validate(step)
 
@@ -259,7 +252,6 @@ async def get_step_events(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     payload = await runtime_service.query_step_events(
         step_id=step_id,
@@ -292,7 +284,6 @@ async def get_step_metric_series(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     points = await runtime_service.list_step_metric_series(step_id, limit=limit)
     return [
@@ -324,7 +315,6 @@ async def get_step_candidates(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     rows = await runtime_service.list_step_candidates(step_id, limit=limit)
     return [
@@ -354,7 +344,6 @@ async def get_step_artifacts(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     artifacts = await runtime_service.list_step_artifacts(step_id)
     return StepArtifactsResponse(step_id=step_id, artifacts=artifacts)
@@ -377,7 +366,6 @@ async def get_step_artifact_download_url(
         current_user_id=current_user_id,
         project_id=round_item.project_id,
         required_permission=Permissions.ROUND_READ,
-        fallback_permissions=(Permissions.PROJECT_READ,),
     )
     download_url = await runtime_service.get_step_artifact_download_url(
         step_id=step_id,

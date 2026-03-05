@@ -14,6 +14,9 @@ export type AppShellProps = {
     language: string
     languageOptions: { value: string; label: string }[]
     onLanguageChange: (lng: string) => void
+    onQuickActionClick?: (action: 'new-project' | 'new-dataset') => void
+    onRepoOwnerClick?: () => void
+    onRepoNameClick?: () => void
     userName?: string
     userAvatarUrl?: string
     userMenuItems: MenuProps['items']
@@ -39,6 +42,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                                                       language,
                                                       languageOptions,
                                                       onLanguageChange,
+                                                      onQuickActionClick,
+                                                      onRepoOwnerClick,
+                                                      onRepoNameClick,
                                                       userName,
                                                       userAvatarUrl,
                                                       userMenuItems,
@@ -74,6 +80,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                     language={language}
                     languageOptions={languageOptions}
                     onLanguageChange={onLanguageChange}
+                    onQuickActionClick={onQuickActionClick}
+                    onRepoOwnerClick={onRepoOwnerClick}
+                    onRepoNameClick={onRepoNameClick}
                     userName={userName}
                     userAvatarUrl={userAvatarUrl}
                     userMenuItems={userMenuItems}

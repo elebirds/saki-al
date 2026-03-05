@@ -282,6 +282,15 @@ const ProtectedLayout: React.FC = () => {
                 {value: 'zh', label: t('common.language.chinese')},
             ]}
             onLanguageChange={changeLanguage}
+            onQuickActionClick={(action) => {
+                if (action === 'new-project') {
+                    navigate('/projects?create=1')
+                    return
+                }
+                navigate('/datasets?create=1')
+            }}
+            onRepoOwnerClick={() => navigate('/')}
+            onRepoNameClick={() => navigate('/projects')}
             userName={user?.fullName || user?.email}
             userAvatarUrl={user?.avatarUrl}
             userMenuItems={userMenuItems}

@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react'
 import {Button, Card, Checkbox, Form, Input, message, Modal, Select, Tag, Tooltip, Typography} from 'antd'
-import {useNavigate} from 'react-router-dom'
+import {useNavigate, useSearchParams} from 'react-router-dom'
 import {useTranslation} from 'react-i18next'
 import {PlusOutlined, QuestionCircleOutlined} from '@ant-design/icons'
 import {api} from '../../services/api'
@@ -24,6 +24,7 @@ const ALL_ANNOTATION_TYPES: DetectionAnnotationType[] = DEFAULT_DETECTION_ANNOTA
 const ProjectList: React.FC = () => {
     const {t} = useTranslation()
     const navigate = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
     const [createOpen, setCreateOpen] = useState(false)
     const [creating, setCreating] = useState(false)
     const [refreshKey, setRefreshKey] = useState(0)
@@ -67,6 +68,18 @@ const ProjectList: React.FC = () => {
         if (!createOpen) return
         void loadDatasets(datasetQuery)
     }, [createOpen, datasetQuery, loadDatasets])
+
+    useEffect(() => {
+        if (searchParams.get('create') !== '1') return
+        const next = new URLSearchParams(searchParams)
+        next.delete('create')
+        setSearchParams(next, {replace: true})
+        if (canCreate) {
+            setCreateOpen(true)
+        } else {
+            message.warning(t('common.noPermission'))
+        }
+    }, [searchParams, setSearchParams, canCreate, t])
 
     const selectedTaskType = Form.useWatch('taskType', form) as TaskType | undefined
     const selectedProjectDatasetType = Form.useWatch('datasetType', form) as Dataset['type'] | undefined

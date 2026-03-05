@@ -2,7 +2,6 @@ import React from 'react'
 import type {MenuProps} from 'antd'
 import {Avatar, Button, Dropdown, Switch} from 'antd'
 import {
-    BellOutlined,
     DownOutlined,
     GithubOutlined,
     GlobalOutlined,
@@ -28,6 +27,9 @@ export type TopHeaderProps = {
     language: string
     languageOptions: { value: string; label: string }[]
     onLanguageChange: (lng: string) => void
+    onQuickActionClick?: (action: 'new-project' | 'new-dataset') => void
+    onRepoOwnerClick?: () => void
+    onRepoNameClick?: () => void
     userName?: string
     userAvatarUrl?: string
     userMenuItems: MenuProps['items']
@@ -49,6 +51,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                                                         language,
                                                         languageOptions,
                                                         onLanguageChange,
+                                                        onQuickActionClick,
+                                                        onRepoOwnerClick,
+                                                        onRepoNameClick,
                                                         userName,
                                                         userAvatarUrl,
                                                         userMenuItems,
@@ -74,10 +79,19 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                         <div className="flex items-center gap-3">
                             <GithubOutlined className="text-github-text text-2xl"/>
                             <div className="flex items-center gap-1 text-sm">
-                                <span className="text-github-text hover:underline cursor-pointer">{repoOwner}</span>
+                                <span
+                                    className={`text-github-text ${onRepoOwnerClick ? 'hover:underline cursor-pointer' : ''}`}
+                                    onClick={onRepoOwnerClick}
+                                >
+                                    {repoOwner}
+                                </span>
                                 <span className="text-github-muted">/</span>
                                 <span
-                                    className="text-github-text font-semibold hover:underline cursor-pointer">{repoName}</span>
+                                    className={`text-github-text font-semibold ${onRepoNameClick ? 'hover:underline cursor-pointer' : ''}`}
+                                    onClick={onRepoNameClick}
+                                >
+                                    {repoName}
+                                </span>
                             </div>
                         </div>
                         <span className="ml-2 text-xs text-github-muted">{appTitle}</span>
@@ -129,10 +143,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                         >
                             <Button type="text" icon={<GlobalOutlined/>} className="!text-github-muted"/>
                         </Dropdown>
-                        <Dropdown menu={{items: plusMenuItems}} placement="bottomRight">
-                            <Button type="text" icon={<PlusOutlined/>} className="!text-github-muted"/>
+                        <Dropdown
+                            menu={{
+                                items: plusMenuItems,
+                                onClick: (info) => onQuickActionClick?.(info.key as 'new-project' | 'new-dataset'),
+                            }}
+                            placement="bottomRight"
+                        >
+                            <Button type="text" icon={<PlusOutlined/>} className="!text-github-muted" disabled={!onQuickActionClick}/>
                         </Dropdown>
-                        <Button type="text" icon={<BellOutlined/>} className="!text-github-muted"/>
                         <Dropdown menu={{items: userMenuItems, onClick: onUserMenuClick}} placement="bottomRight">
                             <Button type="text" className="!text-github-muted">
                                 <div className="flex items-center gap-2">

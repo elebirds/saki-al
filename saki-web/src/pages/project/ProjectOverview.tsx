@@ -312,6 +312,21 @@ const ProjectOverview: React.FC = () => {
                                 navigate(`/projects/${projectId}/branches`)
                             }
                         }}
+                        onTagsClick={() => {
+                            if (projectId) {
+                                navigate(`/projects/${projectId}/settings?section=labels`)
+                            }
+                        }}
+                        onQuickSearch={(keyword) => {
+                            if (!projectId) return
+                            const params = new URLSearchParams()
+                            if (selectedDatasetId) {
+                                params.set('datasetId', selectedDatasetId)
+                            }
+                            params.set('branch', activeBranchName)
+                            params.set('q', keyword)
+                            navigate(`/projects/${projectId}/samples?${params.toString()}`)
+                        }}
                     />
                         <FileTable
                             header={

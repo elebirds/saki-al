@@ -1,6 +1,6 @@
 import React, {useCallback, useMemo, useState} from 'react';
 import {Button, Card, Form, Input, message, Modal, Select, Switch, Tag, Tooltip, Typography} from 'antd';
-import {useNavigate} from 'react-router-dom';
+import {useNavigate, useSearchParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {Dataset} from '../../types';
 import {api} from '../../services/api';
@@ -18,6 +18,7 @@ const DatasetList: React.FC = () => {
     const [showNoMore, setShowNoMore] = useState(false);
     const [form] = Form.useForm();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Permission hook
     const {can} = usePermission();
@@ -63,6 +64,18 @@ const DatasetList: React.FC = () => {
             message.error(t('dataset.list.createError'));
         }
     };
+
+    React.useEffect(() => {
+        if (searchParams.get('create') !== '1') return;
+        const next = new URLSearchParams(searchParams);
+        next.delete('create');
+        setSearchParams(next, {replace: true});
+        if (canCreate) {
+            setIsModalVisible(true);
+        } else {
+            message.warning(t('common.noPermission'));
+        }
+    }, [searchParams, setSearchParams, canCreate, t]);
 
     const renderDatasets = useCallback((items: Dataset[], _loading?: boolean) => (
         <>

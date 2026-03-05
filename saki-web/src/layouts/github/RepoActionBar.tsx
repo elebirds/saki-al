@@ -11,6 +11,8 @@ export type RepoActionBarProps = {
     branches?: { id?: string; name: string }[]
     onBranchChange?: (name: string) => void
     onBranchesClick?: () => void
+    onTagsClick?: () => void
+    onQuickSearch?: (keyword: string) => void
 }
 
 export const RepoActionBar: React.FC<RepoActionBarProps> = ({
@@ -20,8 +22,11 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                                                                 branches,
                                                                 onBranchChange,
                                                                 onBranchesClick,
+                                                                onTagsClick,
+                                                                onQuickSearch,
                                                             }) => {
     const {t} = useTranslation()
+    const [searchKeyword, setSearchKeyword] = React.useState('')
     const branchMenuItems: MenuProps['items'] = (branches && branches.length > 0)
         ? branches.map((branch) => ({
             key: branch.id || branch.name,
@@ -56,12 +61,18 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                     type="text"
                     className="!text-github-muted hover:!text-github-text"
                     onClick={onBranchesClick}
+                    disabled={!onBranchesClick}
                 >
                     <BranchesOutlined className="mr-2"/>
                     <span className="font-semibold text-github-text">{branchesCount}</span>
                     <span className="ml-1">{t('layout.repoActionBar.branches')}</span>
                 </Button>
-                <Button type="text" className="!text-github-muted hover:!text-github-text">
+                <Button
+                    type="text"
+                    className="!text-github-muted hover:!text-github-text"
+                    onClick={onTagsClick}
+                    disabled={!onTagsClick}
+                >
                     <TagOutlined className="mr-2"/>
                     <span className="font-semibold text-github-text">{tagsCount}</span>
                     <span className="ml-1">{t('layout.repoActionBar.tags')}</span>
@@ -75,11 +86,21 @@ export const RepoActionBar: React.FC<RepoActionBarProps> = ({
                         prefix={<SearchOutlined className="text-github-muted"/>}
                         placeholder={t('layout.repoActionBar.goToFile')}
                         className="w-[180px] !bg-transparent !text-github-text placeholder:!text-github-muted"
+                        value={searchKeyword}
+                        onChange={(event) => setSearchKeyword(event.target.value)}
+                        onPressEnter={() => {
+                            const keyword = searchKeyword.trim()
+                            if (!keyword || !onQuickSearch) return
+                            onQuickSearch(keyword)
+                        }}
+                        disabled={!onQuickSearch}
                     />
-                    <kbd
-                        className="ml-2 px-1.5 py-0.5 text-xs bg-github-badge border border-github-border rounded text-github-muted">
-                        t
-                    </kbd>
+                    {onQuickSearch ? (
+                        <kbd
+                            className="ml-2 px-1.5 py-0.5 text-xs bg-github-badge border border-github-border rounded text-github-muted">
+                            Enter
+                        </kbd>
+                    ) : null}
                 </div>
             </div>
         </div>

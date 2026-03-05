@@ -806,7 +806,11 @@ class PredictionTaskMixin:
         return await self.list_prediction_sets(project_id=project_id, limit=limit)
 
     async def get_prediction_task(self, *, task_id: uuid.UUID) -> PredictionSet:
-        return await self.settle_prediction_task(prediction_set_id=task_id)
+        prediction = await self.prediction_set_repo.get_by_task_id(task_id)
+        if prediction is None:
+            # Compatibility fallback: some legacy call sites still pass prediction_id.
+            return await self.settle_prediction_task(prediction_set_id=task_id)
+        return await self.settle_prediction_task(prediction_set_id=prediction.id)
 
     async def get_prediction_set_detail(
         self,

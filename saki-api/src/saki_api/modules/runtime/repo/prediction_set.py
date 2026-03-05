@@ -24,6 +24,10 @@ class PredictionRepository(BaseRepository[Prediction]):
         )
         return list((await self.session.exec(stmt)).all())
 
+    async def get_by_task_id(self, task_id: uuid.UUID) -> Prediction | None:
+        stmt = select(Prediction).where(Prediction.task_id == task_id).limit(1)
+        return (await self.session.exec(stmt)).first()
+
 
 # Temporary alias for residual imports during hard cut.
 PredictionSetRepository = PredictionRepository

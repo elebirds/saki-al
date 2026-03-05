@@ -61,7 +61,7 @@ async def create_prediction(
                 result.id,
                 {"last_error": f"dispatch failed: {exc}"},
             )
-    settled = await runtime_service.get_prediction_task(task_id=result.id)
+    settled = await runtime_service.get_prediction_task(task_id=result.task_id)
     task = await runtime_service.task_repo.get_by_id(settled.task_id)
     settled_step = await runtime_service.step_repo.get_by_id(settled.source_step_id) if settled.source_step_id else None
     return to_prediction_set_read(settled, task=task, task_step=settled_step)

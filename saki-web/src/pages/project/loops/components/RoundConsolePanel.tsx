@@ -5,6 +5,7 @@ import {useTranslation} from 'react-i18next';
 
 import {RuntimeRoundEvent} from '../../../../types';
 import {buildRuntimeEventSearchText, formatRuntimeEventMessage, isRuntimeEventError} from '../runtimeEventFormatter';
+import {formatDateTime} from '../runtimeTime';
 
 type StageOption = {
     label: string;
@@ -56,15 +57,6 @@ const LEVEL_TAG_COLOR: Record<string, string> = {
     ERROR: 'error',
     CRITICAL: 'magenta',
     FATAL: 'magenta',
-};
-
-const formatDateTime = (value?: string | null) => {
-    if (!value) return '-';
-    try {
-        return new Date(value).toLocaleString();
-    } catch {
-        return value;
-    }
 };
 
 const buildEventFacetsFromItems = (items: RuntimeRoundEvent[]) => {

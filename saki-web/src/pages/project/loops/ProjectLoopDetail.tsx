@@ -34,6 +34,8 @@ import {
     normalizeFinalMetricSource,
     pickPreviewMetric,
 } from './runtimeMetricView';
+import {ROUND_WS_RECONNECT_DELAYS, buildRoundEventsWsUrl} from './runtimeRoundWs';
+import {formatDateTime} from './runtimeTime';
 import {
     Loop,
     LoopSnapshotRead,
@@ -123,23 +125,7 @@ const FINAL_METRIC_SOURCE_LABEL: Record<'eval' | 'train' | 'other' | 'none', str
 
 const FALLBACK_POLL_MS = 30000;
 const WS_REFRESH_THROTTLE_MS = 5000;
-const ROUND_WS_RECONNECT_DELAYS = [1000, 2000, 5000, 10000];
 const MAX_CONSOLE_EVENT_BUFFER = 20000;
-
-const buildRoundEventsWsUrl = (roundId: string, token: string, afterCursor?: string | null): string => {
-    const apiBaseUrlRaw = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-    const apiBaseUrl = apiBaseUrlRaw.endsWith('/') ? apiBaseUrlRaw.slice(0, -1) : apiBaseUrlRaw;
-    const query = new URLSearchParams();
-    query.set('token', token);
-    if (afterCursor) query.set('after_cursor', afterCursor);
-    const suffix = `/rounds/${roundId}/events/ws?${query.toString()}`;
-    if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
-        return `${apiBaseUrl.replace(/^http/, 'ws')}${suffix}`;
-    }
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const path = apiBaseUrl.startsWith('/') ? apiBaseUrl : `/${apiBaseUrl}`;
-    return `${protocol}//${window.location.host}${path}${suffix}`;
-};
 
 const shouldRefreshLoopByRoundEvent = (raw: unknown): boolean => {
     if (!raw || typeof raw !== 'object') return false;
@@ -453,7 +439,9 @@ const ProjectLoopDetail: React.FC = () => {
         const connectSocket = () => {
             if (cancelled || wsClosedRef.current) return;
             closeSocket();
-            const ws = new WebSocket(buildRoundEventsWsUrl(latestRoundId, token, wsCursorRef.current || undefined));
+            const ws = new WebSocket(buildRoundEventsWsUrl(latestRoundId, token, {
+                afterCursor: wsCursorRef.current || undefined,
+            }));
             wsRef.current = ws;
             ws.onopen = () => {
                 if (cancelled) return;
@@ -1204,7 +1192,7 @@ const ProjectLoopDetail: React.FC = () => {
                             title: '创建时间',
                             dataIndex: 'createdAt',
                             width: 180,
-                            render: (value: string) => new Date(value).toLocaleString(),
+                            render: (value: string) => formatDateTime(value),
                         },
                         {
                             title: '操作',

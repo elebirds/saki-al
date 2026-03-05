@@ -463,14 +463,15 @@ class PredictionTaskMixin:
 
         explicit_model_id = self._safe_uuid(payload.get("model_id"))
         explicit_artifact_name = str(payload.get("artifact_name") or "best.pt").strip() or "best.pt"
-        plugin_id = str(payload.get("plugin_id") or "").strip()
-
-        target_round_id = self._safe_uuid(payload.get("target_round_id"))
-        target_round = None
-        if target_round_id is not None:
-            target_round = await self.repository.get_by_id_or_raise(target_round_id)
-            if target_round.project_id != project_id:
-                raise BadRequestAppException("target_round_id does not belong to project")
+        legacy_fields = sorted(
+            field_name for field_name in ("plugin_id", "model_source", "target_round_id") if field_name in payload
+        )
+        if legacy_fields:
+            raise BadRequestAppException(
+                f"legacy prediction fields are not supported: {', '.join(legacy_fields)}"
+            )
+        if explicit_model_id is None:
+            raise BadRequestAppException("model_id is required")
 
         target_branch_id = self._safe_uuid(payload.get("target_branch_id"))
         if target_branch_id is None:
@@ -489,41 +490,34 @@ class PredictionTaskMixin:
         if base_commit is None or base_commit.project_id != project_id:
             raise BadRequestAppException("base_commit_id does not belong to project")
 
-        model_source = payload.get("model_source")
-        if not isinstance(model_source, dict):
-            if explicit_model_id is None:
-                raise BadRequestAppException("model_id is required")
-            model_source = {
-                "kind": "model",
-                "model_id": str(explicit_model_id),
-                "artifact_name": explicit_artifact_name,
-            }
+        model_probe = await self.model_repo.get_by_id_or_raise(explicit_model_id)
+        if model_probe.project_id != project_id:
+            raise BadRequestAppException("model_id does not belong to project")
+        plugin_id = str(model_probe.plugin_id or "").strip()
         if not plugin_id:
-            model_id_probe = self._safe_uuid(model_source.get("model_id"))
-            if model_id_probe is None:
-                raise BadRequestAppException("plugin_id is required when model_id is missing")
-            model_probe = await self.model_repo.get_by_id_or_raise(model_id_probe)
-            plugin_id = str(model_probe.plugin_id or "").strip()
-            if not plugin_id:
-                raise BadRequestAppException("model.plugin_id is required")
+            raise BadRequestAppException("model.plugin_id is required")
+        model_source = {
+            "kind": "model",
+            "model_id": str(model_probe.id),
+            "artifact_name": explicit_artifact_name,
+        }
         model_id, model_download_url, artifact_name = await self._resolve_prediction_model_source(
             project_id=project_id,
             plugin_id=plugin_id,
             model_source=model_source,
         )
-        if target_round is None:
-            latest_round_stmt = (
-                select(Round)
-                .where(
-                    Round.project_id == project_id,
-                    Round.plugin_id == plugin_id,
-                )
-                .order_by(Round.round_index.desc(), Round.attempt_index.desc(), Round.created_at.desc())
-                .limit(1)
+        latest_round_stmt = (
+            select(Round)
+            .where(
+                Round.project_id == project_id,
+                Round.plugin_id == plugin_id,
             )
-            target_round = (await self.session.exec(latest_round_stmt)).first()
-            if target_round is None:
-                raise BadRequestAppException("project has no round for model.plugin_id; cannot create prediction task")
+            .order_by(Round.round_index.desc(), Round.attempt_index.desc(), Round.created_at.desc())
+            .limit(1)
+        )
+        target_round = (await self.session.exec(latest_round_stmt)).first()
+        if target_round is None:
+            raise BadRequestAppException("project has no round for model.plugin_id; cannot create prediction task")
         schema_hash, by_index, by_name = await self._build_prediction_binding_from_model(model_id=model_id)
 
         scope_type = str(payload.get("scope_type") or "sample_status").strip() or "sample_status"
@@ -584,12 +578,7 @@ class PredictionTaskMixin:
             "scope_type": scope_type,
             "scope_payload": dict(scope_payload),
             "predict_conf": predict_conf,
-            "model_source": {
-                "kind": str(model_source.get("kind") or ""),
-                "round_id": str(model_source.get("round_id") or ""),
-                "model_id": str(model_source.get("model_id") or ""),
-                "artifact_name": artifact_name,
-            },
+            "artifact_name": artifact_name,
         }
         persisted_params["_prediction_task"] = task_meta
         step_params["_prediction_task"] = task_meta

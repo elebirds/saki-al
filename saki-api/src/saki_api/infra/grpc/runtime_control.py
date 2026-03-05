@@ -88,6 +88,23 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             self._storage = get_storage_provider()
         return self._storage
 
+    async def _resolve_step_by_task_id(self, *, session, task_id: uuid.UUID) -> Step | None:
+        rows = list(
+            (
+                await session.exec(
+                    select(Step)
+                    .where((Step.task_id == task_id) | (Step.id == task_id))
+                    .limit(2)
+                )
+            ).all()
+        )
+        if not rows:
+            return None
+        for row in rows:
+            if row.task_id == task_id:
+                return row
+        return rows[0]
+
     async def GetBranchHead(self, request, context):  # noqa: N802
         branch_id = _parse_uuid(request.branch_id)
         if branch_id is None:
@@ -566,10 +583,10 @@ class RuntimeDomainService(domain_pb_grpc.RuntimeDomainServicer):
             )
 
         async with SessionLocal() as session:
-            step = await session.get(Step, task_id)
+            step = await self._resolve_step_by_task_id(session=session, task_id=task_id)
             if step is None:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
-                context.set_details("step not found")
+                context.set_details("task not found")
                 return domain_pb.DownloadTicketResponse(
                     request_id=request_id,
                     reply_to=request_id,

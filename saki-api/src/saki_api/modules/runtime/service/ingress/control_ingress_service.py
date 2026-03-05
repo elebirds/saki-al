@@ -197,26 +197,30 @@ class RuntimeControlIngressService:
         )
 
     async def persist_step_event(self, message: pb.TaskEvent) -> None:
-        step_id = self._parse_uuid(message.task_id, "task_id")
         event_type, payload, status_enum = runtime_codec.decode_step_event(message)
         mapped_status = self._status_from_pb(status_enum) if status_enum is not None else None
-        event_dto = RuntimeStepEventDTO(
-            step_id=step_id,
-            seq=int(message.seq),
-            ts=self._to_datetime_seconds(int(message.ts)),
-            event_type=event_type,
-            payload=payload,
-            status=mapped_status,
-            request_id=str(message.request_id or "") or None,
-        )
+        task_id = self._parse_uuid(message.task_id, "task_id")
 
         async with self._session_local() as session:
+            step_id = await self._resolve_step_id_by_task(session=session, task_id=task_id)
+            if step_id is None:
+                logger.warning("runtime task event ignored: task_id={} has no mapped step", task_id)
+                return
+            event_dto = RuntimeStepEventDTO(
+                step_id=step_id,
+                seq=int(message.seq),
+                ts=self._to_datetime_seconds(int(message.ts)),
+                event_type=event_type,
+                payload=payload,
+                status=mapped_status,
+                request_id=str(message.request_id or "") or None,
+            )
             persistence = RuntimeStepPersistenceService(session)
             await persistence.persist_step_event(event_dto)
             await session.commit()
 
     async def persist_step_result(self, message: pb.TaskResult) -> None:
-        step_id = self._parse_uuid(message.task_id, "task_id")
+        task_id = self._parse_uuid(message.task_id, "task_id")
         artifacts: list[RuntimeArtifactDTO] = [
             RuntimeArtifactDTO(
                 name=str(item.name or ""),
@@ -263,16 +267,19 @@ class RuntimeControlIngressService:
                 )
             )
 
-        result_dto = RuntimeStepResultDTO(
-            step_id=step_id,
-            status=self._status_from_pb(int(message.status)),
-            metrics={str(k): float(v) for k, v in message.metrics.items()},
-            artifacts=artifacts,
-            candidates=candidates,
-            last_error=str(message.error_message or "") or None,
-        )
-
         async with self._session_local() as session:
+            step_id = await self._resolve_step_id_by_task(session=session, task_id=task_id)
+            if step_id is None:
+                logger.warning("runtime task result ignored: task_id={} has no mapped step", task_id)
+                return
+            result_dto = RuntimeStepResultDTO(
+                step_id=step_id,
+                status=self._status_from_pb(int(message.status)),
+                metrics={str(k): float(v) for k, v in message.metrics.items()},
+                artifacts=artifacts,
+                candidates=candidates,
+                last_error=str(message.error_message or "") or None,
+            )
             persistence = RuntimeStepPersistenceService(session)
             await persistence.persist_step_result(result_dto)
             await session.commit()
@@ -502,7 +509,7 @@ class RuntimeControlIngressService:
                 .join(Round, Round.id == Step.round_id)
                 .join(Loop, Loop.id == Round.loop_id)
                 .where(
-                    Step.id == step_uuid,
+                    (Step.id == step_uuid) | (Step.task_id == step_uuid),
                     Round.project_id == project_id,
                 )
                 .limit(1)
@@ -517,6 +524,24 @@ class RuntimeControlIngressService:
         if not snapshot:
             return loop_id, mode, None
         return loop_id, mode, snapshot
+
+    async def _resolve_step_id_by_task(self, *, session, task_id: uuid.UUID) -> uuid.UUID | None:
+        rows = list(
+            (
+                await session.exec(
+                    select(Step.id, Step.task_id)
+                    .where((Step.id == task_id) | (Step.task_id == task_id))
+                    .limit(2)
+                )
+            ).all()
+        )
+        if not rows:
+            return None
+        for step_row_id, mapped_task_id in rows:
+            if mapped_task_id == task_id:
+                return step_row_id
+        first_step_id, _ = rows[0]
+        return first_step_id
 
     async def _to_sample_items(
         self,

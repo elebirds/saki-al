@@ -245,13 +245,8 @@ async def _create_prediction_task(
     params: dict | None = None,
 ):
     payload = {
-        "plugin_id": "demo_det_v1",
-        "target_round_id": str(ctx.round_row.id),
-        "model_source": {
-            "kind": "model",
-            "model_id": str(ctx.model.id),
-            "artifact_name": "best.pt",
-        },
+        "model_id": str(ctx.model.id),
+        "artifact_name": "best.pt",
         "target_branch_id": str(ctx.branch.id),
         "base_commit_id": str(ctx.init_commit.id),
         "scope_type": "sample_status",
@@ -455,7 +450,7 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
             ],
         )
 
-        settled = await service.get_prediction_task(task_id=prediction_set.id)
+        settled = await service.get_prediction_task(task_id=prediction_set.task_id)
         assert settled.status == "ready"
 
         _, items = await service.get_prediction_set_detail(
@@ -714,7 +709,7 @@ async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_e
             )
         )
         assert draft_row.one_or_none() is None
-        settled = await service.get_prediction_task(task_id=prediction_set.id)
+        settled = await service.get_prediction_task(task_id=prediction_set.task_id)
         assert str(settled.status or "").lower() == "failed"
         assert "IR_PREDICTION_FIELD_MISSING" in str(settled.last_error or "")
 
@@ -729,16 +724,33 @@ async def test_generate_prediction_set_requires_base_commit_id(prediction_set_en
             await service.generate_prediction_set(
                 project_id=ctx.project.id,
                 payload={
-                    "plugin_id": "demo_det_v1",
-                    "target_round_id": str(ctx.round_row.id),
-                    "model_source": {
-                        "kind": "model",
-                        "model_id": str(ctx.model.id),
-                        "artifact_name": "best.pt",
-                    },
+                    "model_id": str(ctx.model.id),
+                    "artifact_name": "best.pt",
                     "target_branch_id": str(ctx.branch.id),
                     "scope_type": "sample_status",
                     "scope_payload": {"status": "all"},
+                },
+                actor_user_id=ctx.actor.id,
+            )
+
+
+@pytest.mark.anyio
+async def test_generate_prediction_set_rejects_legacy_payload_fields(prediction_set_env):
+    session_local = prediction_set_env
+    async with session_local() as session:
+        ctx = await _seed_prediction_context(session)
+        service = RuntimeService(session)
+        with pytest.raises(BadRequestAppException, match="legacy prediction fields are not supported"):
+            await service.generate_prediction_set(
+                project_id=ctx.project.id,
+                payload={
+                    "model_id": str(ctx.model.id),
+                    "artifact_name": "best.pt",
+                    "target_branch_id": str(ctx.branch.id),
+                    "base_commit_id": str(ctx.init_commit.id),
+                    "scope_type": "sample_status",
+                    "scope_payload": {"status": "all"},
+                    "model_source": {"kind": "model", "model_id": str(ctx.model.id)},
                 },
                 actor_user_id=ctx.actor.id,
             )
@@ -784,6 +796,6 @@ async def test_settle_prediction_set_fails_on_class_name_and_index_conflict(pred
             ],
         )
 
-        settled = await service.get_prediction_task(task_id=prediction_set.id)
+        settled = await service.get_prediction_task(task_id=prediction_set.task_id)
         assert str(settled.status or "").lower() == "failed"
         assert "PREDICTION_LABEL_CONFLICT" in str(settled.last_error or "")

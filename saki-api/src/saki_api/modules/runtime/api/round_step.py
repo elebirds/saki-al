@@ -371,6 +371,8 @@ class RoundMissingSamplesResponse(BaseModel):
 
 
 class PredictionCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model_id: uuid.UUID
     artifact_name: str = "best.pt"
     target_branch_id: uuid.UUID

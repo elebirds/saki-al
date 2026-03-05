@@ -304,7 +304,6 @@ async def test_generate_prediction_set_creates_queued_prediction_task_without_st
         assert prediction_set.status == "queued"
         assert prediction_set.project_id == ctx.project.id
         assert prediction_set.plugin_id == "demo_det_v1"
-        assert prediction_set.source_step_id is None
         assert prediction_set.task_id is not None
         task_row = await session.get(Task, prediction_set.task_id)
         assert task_row is not None
@@ -418,7 +417,6 @@ async def test_materialize_prediction_set_from_reason_snapshot_with_cls_mapping(
         service = RuntimeService(session)
 
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is None
         await _finish_prediction_task(
             session=session,
             task_id=prediction_set.task_id,
@@ -491,7 +489,6 @@ async def test_sample_status_unlabeled_filters_labeled_samples(prediction_set_en
 
         service = RuntimeService(session)
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="unlabeled")
-        assert prediction_set.source_step_id is None
 
         await _finish_prediction_task(
             session=session,
@@ -570,7 +567,6 @@ async def test_apply_prediction_set_merges_head_commit_and_expands_multi_predict
 
         service = RuntimeService(session)
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is None
 
         await _finish_prediction_task(
             session=session,
@@ -661,7 +657,6 @@ async def test_apply_prediction_set_fails_on_unresolvable_label(prediction_set_e
         service = RuntimeService(session)
 
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is None
 
         await _finish_prediction_task(
             session=session,
@@ -764,7 +759,6 @@ async def test_settle_prediction_set_fails_on_class_name_and_index_conflict(pred
         ctx = await _seed_prediction_context(session)
         service = RuntimeService(session)
         prediction_set = await _create_prediction_task(service=service, ctx=ctx, scope_status="all")
-        assert prediction_set.source_step_id is None
 
         await _finish_prediction_task(
             session=session,

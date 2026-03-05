@@ -386,10 +386,7 @@ class PredictionCreateRequest(BaseModel):
 class PredictionRead(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
-    loop_id: Optional[uuid.UUID] = None
     plugin_id: str
-    source_round_id: Optional[uuid.UUID] = None
-    source_step_id: Optional[uuid.UUID] = None
     model_id: uuid.UUID
     base_commit_id: Optional[uuid.UUID] = None
     task_id: uuid.UUID

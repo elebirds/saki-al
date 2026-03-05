@@ -11,7 +11,6 @@ from saki_api.app.deps import DispatcherAdminClientDep
 from saki_api.core.exceptions import BadRequestAppException, InternalServerErrorAppException
 from saki_api.modules.runtime.api.http.support.project_permission import ensure_project_permission
 from saki_api.modules.runtime.api.round_step import PredictionRead, PredictionTaskRead
-from saki_api.modules.shared.modeling.enums import RuntimeTaskStatus
 
 
 async def ensure_loop_project_perm(
@@ -68,20 +67,12 @@ async def dispatch_loop_command(
         raise InternalServerErrorAppException("dispatcher loop command failed") from exc
 
 
-def to_prediction_set_read(row, *, task=None, task_step=None) -> PredictionRead:
+def to_prediction_set_read(row, *, task=None) -> PredictionRead:
     task_status = getattr(task, "status", None)
-    if task_status is None and task_step is not None:
-        # Backward bridge: derive task status from legacy step state.
-        step_state = getattr(task_step, "state", None)
-        state_text = str(getattr(step_state, "value", step_state) or "").strip().lower()
-        task_status = RuntimeTaskStatus(state_text) if state_text in {item.value for item in RuntimeTaskStatus} else None
     return PredictionRead(
         id=row.id,
         project_id=row.project_id,
-        loop_id=getattr(row, "loop_id", None),
         plugin_id=str(row.plugin_id or ""),
-        source_round_id=getattr(row, "source_round_id", None),
-        source_step_id=getattr(row, "source_step_id", None),
         model_id=row.model_id,
         base_commit_id=row.base_commit_id,
         task_id=row.task_id,
@@ -98,5 +89,5 @@ def to_prediction_set_read(row, *, task=None, task_step=None) -> PredictionRead:
     )
 
 
-def to_prediction_task_read(row, *, task=None, task_step=None) -> PredictionTaskRead:
-    return PredictionTaskRead(**to_prediction_set_read(row, task=task, task_step=task_step).model_dump())
+def to_prediction_task_read(row, *, task=None) -> PredictionTaskRead:
+    return PredictionTaskRead(**to_prediction_set_read(row, task=task).model_dump())

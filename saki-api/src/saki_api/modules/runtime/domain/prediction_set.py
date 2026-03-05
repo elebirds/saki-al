@@ -15,10 +15,7 @@ class Prediction(UUIDMixin, TimestampMixin, SQLModel, table=True):
     __tablename__ = "prediction"
 
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
-    loop_id: uuid.UUID | None = Field(default=None, foreign_key="loop.id", index=True)
     plugin_id: str = Field(default="", max_length=255, index=True)
-    source_round_id: uuid.UUID | None = Field(default=None, foreign_key="round.id", index=True)
-    source_step_id: uuid.UUID | None = Field(default=None, foreign_key="step.id", index=True)
     model_id: uuid.UUID = Field(foreign_key="model.id", index=True)
     base_commit_id: uuid.UUID | None = Field(default=None, foreign_key="commit.id", index=True)
     task_id: uuid.UUID = Field(foreign_key="task.id", index=True, unique=True)

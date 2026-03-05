@@ -33,7 +33,6 @@ from saki_api.modules.runtime.service.runtime_service.prediction_label_resolver 
 )
 from saki_api.modules.shared.modeling.enums import (
     CommitSampleReviewState,
-    StepType,
     RuntimeTaskKind,
     RuntimeTaskStatus,
     RuntimeTaskType,
@@ -41,40 +40,6 @@ from saki_api.modules.shared.modeling.enums import (
 
 
 class PredictionTaskMixin:
-    async def _resolve_prediction_source_step(
-        self,
-        *,
-        loop_id: uuid.UUID,
-        source_round_id: uuid.UUID | None,
-        source_step_id: uuid.UUID | None,
-    ) -> tuple[Round, Step]:
-        if source_step_id is not None:
-            step_row = await self.step_repo.get_by_id_or_raise(source_step_id)
-            round_row = await self.repository.get_by_id_or_raise(step_row.round_id)
-            if round_row.loop_id != loop_id:
-                raise BadRequestAppException("source_step_id does not belong to loop")
-            return round_row, step_row
-
-        if source_round_id is not None:
-            round_row = await self.repository.get_by_id_or_raise(source_round_id)
-            if round_row.loop_id != loop_id:
-                raise BadRequestAppException("source_round_id does not belong to loop")
-        else:
-            round_row = await self.repository.get_latest_by_loop(loop_id)
-            if round_row is None:
-                raise BadRequestAppException("loop has no round")
-
-        steps = await self.step_repo.list_by_round(round_row.id)
-        ordered = sorted(steps, key=lambda item: int(item.step_index or 0), reverse=True)
-        preferred = next((item for item in ordered if item.step_type == StepType.SCORE), None)
-        if preferred is None:
-            preferred = next((item for item in ordered if item.step_type == StepType.PREDICT), None)
-        if preferred is None:
-            preferred = next((item for item in ordered if item.step_type == StepType.SELECT), None)
-        if preferred is None:
-            raise BadRequestAppException("round has no score/predict/select step for prediction_set source")
-        return round_row, preferred
-
     @staticmethod
     def _safe_uuid(raw: Any) -> uuid.UUID | None:
         if raw is None:
@@ -649,10 +614,7 @@ class PredictionTaskMixin:
         prediction_set = await self.prediction_set_repo.create(
             {
                 "project_id": project_id,
-                "loop_id": target_round.loop_id,
                 "plugin_id": plugin_id,
-                "source_round_id": target_round.id,
-                "source_step_id": None,
                 "model_id": model_id,
                 "base_commit_id": base_commit_id,
                 "scope_type": scope_type,
@@ -707,9 +669,6 @@ class PredictionTaskMixin:
             task_meta = prediction_set.params.get("_prediction_task") if isinstance(prediction_set.params, dict) else {}
             target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
             if target_branch_id is None:
-                loop = await self.loop_repo.get_by_id(prediction_set.loop_id) if prediction_set.loop_id else None
-                target_branch_id = loop.branch_id if loop else None
-            if target_branch_id is None:
                 raise BadRequestAppException("prediction_set is missing target_branch_id")
             base_commit_id = prediction_set.base_commit_id or task.input_commit_id
             if base_commit_id is None:
@@ -718,7 +677,7 @@ class PredictionTaskMixin:
 
             source_candidates = self._task_result_candidates(
                 task=task,
-                fallback_step_id=self._safe_uuid(prediction_set.source_step_id),
+                fallback_step_id=None,
             )
             filtered_candidates = await self._filter_candidates_by_sample_scope(
                 project_id=prediction_set.project_id,
@@ -837,8 +796,9 @@ class PredictionTaskMixin:
             target_branch_id = self._safe_uuid(task_meta.get("target_branch_id")) if isinstance(task_meta, dict) else None
             if target_branch_id is not None:
                 branch_row = await self.project_gateway.get_branch(target_branch_id)
-            if branch_row is None and prediction_set.loop_id is not None:
-                loop = await self.loop_repo.get_by_id(prediction_set.loop_id)
+            loop_id = self._safe_uuid(task_meta.get("loop_id")) if isinstance(task_meta, dict) else None
+            if branch_row is None and loop_id is not None:
+                loop = await self.loop_repo.get_by_id(loop_id)
                 if loop is not None:
                     branch_row = await self.project_gateway.get_branch(loop.branch_id)
         if branch_row is None:
